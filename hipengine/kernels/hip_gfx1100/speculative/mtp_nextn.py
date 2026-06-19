@@ -1224,34 +1224,36 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         per_expert_up_bytes = up_q.nbytes // num_experts
         per_expert_down_bytes = down_q.nbytes // num_experts
 
-        # M6: Pre-allocate reusable intermediate buffers
+        # M6: Pre-allocate reusable intermediate buffers (outside token loop)
         down_out = malloc(hidden_size * 4, runtime=runtime); buffers.append(down_out)
         scaled = malloc(hidden_size * 4, runtime=runtime); buffers.append(scaled)
-        row_dev = malloc(hidden_size * 4, runtime=runtime); buffers.append(row_dev)
+        # Pre-allocate all per-token buffers (reused across tokens)
+        xt_dev = malloc(hidden_size * 4, runtime=runtime); buffers.append(xt_dev)
+        xt_bf16_dev = malloc(hidden_size * 2, runtime=runtime); buffers.append(xt_bf16_dev)
+        sel_dev = malloc(top_k * 8, runtime=runtime); buffers.append(sel_dev)
+        gate_bf16_out = malloc(top_k * inter_dim * 2, runtime=runtime); buffers.append(gate_bf16_out)
+        up_bf16_out = malloc(top_k * inter_dim * 2, runtime=runtime); buffers.append(up_bf16_out)
+        gate_f32_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(gate_f32_out)
+        up_f32_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(up_f32_out)
+        inter_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(inter_out)
+        # Pre-load dual GEMV kernel symbol (avoid import per token)
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+            gguf_q4_k_selected_dual_gemv_bf16_bf16_out as _dual_gemv,
+        )
 
         for t in range(tokens):
             xt = np.ascontiguousarray(normed_host[t : t + 1])
             # M6: Batch gate+up GEMVs using selected_dual kernel (1 launch for all experts)
             if gate_qtype == GGMLQuantizationType.Q4_K and up_qtype == GGMLQuantizationType.Q4_K:
-                # Convert F32 input to BF16 on GPU
-                xt_dev = malloc(xt.nbytes, runtime=runtime); buffers.append(xt_dev)
+                # Convert F32 input to BF16 on GPU (reuses pre-allocated buffers)
                 copy_host_to_device(xt_dev, host_array_ptr(xt), runtime=runtime)
-                xt_bf16_dev = malloc(xt.size * 2, runtime=runtime); buffers.append(xt_bf16_dev)
                 _f32_to_bf16_device(xt_dev.ptr, xt_bf16_dev.ptr, xt.size, library=_cast_lib, runtime=runtime)
 
                 # Selected experts for this token
                 sel = np.ascontiguousarray(selected_experts[t, :top_k].astype(np.int64))
-                sel_dev = malloc(sel.nbytes, runtime=runtime); buffers.append(sel_dev)
                 copy_host_to_device(sel_dev, host_array_ptr(sel), runtime=runtime)
 
-                # Allocate BF16 outputs for all experts
-                gate_bf16_out = malloc(top_k * inter_dim * 2, runtime=runtime); buffers.append(gate_bf16_out)
-                up_bf16_out = malloc(top_k * inter_dim * 2, runtime=runtime); buffers.append(up_bf16_out)
-
                 # Single kernel launch for all gate+up GEMVs
-                from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
-                    gguf_q4_k_selected_dual_gemv_bf16_bf16_out as _dual_gemv,
-                )
                 _dual_gemv(
                     xt_bf16_dev.ptr, sel_dev.ptr,
                     gate_full_dev.ptr, up_full_dev.ptr,
@@ -1260,13 +1262,9 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                     library=_q4_k_lib, runtime=runtime,
                 )
 
-                # Convert BF16 outputs to F32 and do silu_mul per expert
-                gate_f32_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(gate_f32_out)
-                up_f32_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(up_f32_out)
+                # Convert BF16 outputs to F32
                 _bf16_to_f32_device(gate_bf16_out.ptr, gate_f32_out.ptr, top_k * inter_dim, library=_cast_lib, runtime=runtime)
                 _bf16_to_f32_device(up_bf16_out.ptr, up_f32_out.ptr, top_k * inter_dim, library=_cast_lib, runtime=runtime)
-
-                inter_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(inter_out)
 
                 for k in range(top_k):
                     w = float(routing_weights[t, k])
@@ -1283,18 +1281,15 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                         d_ptr, down_out, 1, inter_dim, hidden_size,
                         down_qtype, runtime=runtime)
                     mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, library=_mtp_lib, runtime=runtime)
-                    mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr, row_dev.ptr,
+                    # In-place add: selected_out += scaled (avoids extra memcpy per expert)
+                    mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr,
+                                selected_out_dev.ptr + t * hidden_size * 4,
                                 hidden_size, library=_mtp_lib, runtime=runtime)
-                    import ctypes as _ct
-                    runtime.memcpy(selected_out_dev.ptr + t * hidden_size * 4, row_dev.ptr,
-                                   hidden_size * 4, 0)
             else:
                 # Fallback: per-expert loop for non-Q4_K quant types
-                xt_dev = malloc(xt.nbytes, runtime=runtime); buffers.append(xt_dev)
                 copy_host_to_device(xt_dev, host_array_ptr(xt), runtime=runtime)
                 gate_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(gate_out)
                 up_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(up_out)
-                inter_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(inter_out)
                 for k in range(top_k):
                     e = int(selected_experts[t, k])
                     w = float(routing_weights[t, k])
@@ -1310,11 +1305,10 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                     _dispatch_gemv_raw(inter_out, d_ptr, down_out, 1, inter_dim, hidden_size,
                                    down_qtype, runtime=runtime)
                     mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, library=_mtp_lib, runtime=runtime)
-                    mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr, row_dev.ptr,
+                    # In-place add: selected_out += scaled
+                    mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr,
+                                selected_out_dev.ptr + t * hidden_size * 4,
                                 hidden_size, library=_mtp_lib, runtime=runtime)
-                    import ctypes as _ct
-                    runtime.memcpy(selected_out_dev.ptr + t * hidden_size * 4, row_dev.ptr,
-                                   hidden_size * 4, 0)
 
         # shared expert
         sg_dev = _cached_upload("ffn_shared_gate", shared_gate_q, runtime=runtime)
