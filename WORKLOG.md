@@ -101257,3 +101257,60 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.p
   the exact llama.cpp command needed to produce the missing greeting top-k oracle.
 - The next step can either run this plan (using `bg_task` for llama-server) or add
   an automated capture wrapper around the same commands.
+
+## 2026-06-19 — llama.cpp MTP trace capture wrapper
+
+### Change
+- Added `scripts/llamacpp_mtp_capture_trace.py`, an executable wrapper for the
+  committed trace plan. It:
+  1. loads a plan JSON;
+  2. starts llama-server with stdout/stderr redirected to the planned log;
+  3. polls `/health`;
+  4. POSTs the planned deterministic chat-completions request;
+  5. writes response + metadata JSON;
+  6. stops llama-server; and
+  7. runs `scripts/llamacpp_mtp_draft_trace.py` to produce the compact trace.
+- Added `--dry-run` so the plan can be validated without launching the large
+  server/model load.
+- Added `tests/test_llamacpp_mtp_capture_trace.py` for path/metadata/health URL
+  helpers.
+
+### Dry-run command
+```bash
+python3 scripts/llamacpp_mtp_capture_trace.py \
+  benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json --dry-run
+```
+- Confirms server command, health endpoint, request endpoint, metadata path,
+  response path, and parser command for the greeting B2 trace.
+
+### Verification
+```bash
+python3 -m pytest -q tests/test_llamacpp_mtp_capture_trace.py \
+  tests/test_llamacpp_mtp_greeting_trace_plan.py tests/test_llamacpp_mtp_draft_trace.py
+# 6 passed
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_llamacpp_mtp_capture_trace.py \
+  tests/test_llamacpp_mtp_greeting_trace_plan.py tests/test_llamacpp_mtp_draft_trace.py \
+  tests/test_gguf_mtp_bench_prompt.py tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_nextn_hidden_seed_contract.py
+# 13 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
+
+### Interpretation
+- This still does not claim parity. It makes the final oracle-capture step a
+  single reproducible command that can be run with the large llama.cpp model load
+  when appropriate (preferably under `bg_task` if run interactively).
