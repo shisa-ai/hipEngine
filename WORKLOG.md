@@ -100790,3 +100790,32 @@ python3 -m pytest -q \
 4. Run NextN depth 2 from that explicit seed row and token 1 embedding.
 5. Verify target top-1 rows for both draft tokens, apply llama.cpp reseed rule,
    and emit schema-4 visible-output metrics.
+
+## 2026-06-19 — B2 seed capture API inspection
+
+### Finding
+- `Qwen35GGUFResidentSession.fp32_hidden_seed_ptr()` is only valid after
+  `prefill(..., capture_hidden_seed_fp32=True)` or
+  `step(..., capture_hidden_seed_fp32=True)`.
+- `step()` runs `_run_token_to_final_hidden(...)`, advances `_position`, updates the
+  resident recurrent/KV state, and then samples from the resulting hidden row.
+- No resident-session snapshot/restore/clone API was found for KV/recurrent state.
+  Therefore using `session.step(draft_token, capture_hidden_seed_fp32=True)` to get
+  a depth-2 draft seed would corrupt the main target session if depth-1 is later
+  rejected.
+- `qwen35_gguf_mtp_nextn_layer_logits_f32()` currently returns logits only; it does
+  not expose the post-NextN hidden row that could seed depth 2.
+
+### Consequence
+- The true B2 GREEN path needs one of these primitives before the B2 RED marker can
+  become green:
+  1. a non-mutating/branch target decode that can capture the depth-1 hidden seed
+     without committing KV/recurrent state, or
+  2. an MTP-layer API variant that returns the intermediate draft hidden row for
+     reuse as the next depth seed, plus target verification that only commits
+     accepted tokens.
+- Until then, the B1-only `--draft-n-max` guard remains correct evidence hygiene.
+
+### Verification
+- This was inspection-only. Follow-up checks in this iteration re-ran the exact
+  mtp-gguf guard and prompt verifier before logging.
