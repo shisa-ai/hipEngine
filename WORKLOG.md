@@ -101205,3 +101205,55 @@ python3 -m pytest -q tests/test_llamacpp_mtp_draft_trace.py \
 HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
 # 2 passed
 ```
+
+## 2026-06-19 — Reproducible llama.cpp greeting B2 trace plan
+
+### Change
+- Added `scripts/llamacpp_mtp_greeting_trace_plan.py`.
+- Added `tests/test_llamacpp_mtp_greeting_trace_plan.py`.
+- Generated `benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json`.
+
+### Plan contents
+- Server command uses the prior successful LOG_DBG recipe:
+  - `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`
+  - model `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+  - `--spec-type draft-mtp --spec-draft-n-max 2`
+  - `--no-spec-draft-backend-sampling`
+  - `--log-verbosity 5 --no-log-prefix --no-log-timestamps`
+- Request endpoint: `/v1/chat/completions`
+- Request payload: prompt `Write a short greeting.`, temperature 0, top_k 1,
+  top_p 1, min_p 0, max_tokens 6, seed 12345, no prompt cache.
+- Parser command:
+  `python3 scripts/llamacpp_mtp_draft_trace.py <server-log> --top-k 10 --metadata <metadata-json> --out <trace-json>`.
+
+### Verification
+```bash
+python3 -m pytest -q tests/test_llamacpp_mtp_greeting_trace_plan.py \
+  tests/test_llamacpp_mtp_draft_trace.py
+# 4 passed
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_llamacpp_mtp_greeting_trace_plan.py \
+  tests/test_llamacpp_mtp_draft_trace.py tests/test_gguf_mtp_bench_prompt.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py
+# 11 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
+
+### Interpretation
+- This iteration does not claim parity or performance; it removes ambiguity about
+  the exact llama.cpp command needed to produce the missing greeting top-k oracle.
+- The next step can either run this plan (using `bg_task` for llama-server) or add
+  an automated capture wrapper around the same commands.

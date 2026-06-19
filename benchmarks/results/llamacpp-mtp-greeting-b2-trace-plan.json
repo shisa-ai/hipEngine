@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_mtp_trace_capture_plan",
+  "server_command": [
+    "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+    "-m",
+    "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8093",
+    "-c",
+    "4096",
+    "-ngl",
+    "999",
+    "--no-webui",
+    "--spec-type",
+    "draft-mtp",
+    "--spec-draft-n-max",
+    "2",
+    "--no-spec-draft-backend-sampling",
+    "--log-verbosity",
+    "5",
+    "--no-log-prefix",
+    "--no-log-timestamps"
+  ],
+  "server_log": "benchmarks/results/llamacpp-mtp-greeting-b2-server.log",
+  "request_endpoint": "http://127.0.0.1:8093/v1/chat/completions",
+  "request_payload": {
+    "model": "qwen36",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Write a short greeting."
+      }
+    ],
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "max_tokens": 6,
+    "seed": 12345,
+    "stream": false,
+    "cache_prompt": false
+  },
+  "metadata_path": "benchmarks/results/llamacpp-mtp-greeting-b2-metadata.json",
+  "metadata": {
+    "request": {
+      "prompt_name": "greeting",
+      "prompt": "Write a short greeting.",
+      "draft_n_max": 2,
+      "top_k_candidates": 10,
+      "temperature": 0.0,
+      "seed": 12345,
+      "max_tokens": 6
+    },
+    "native_reference_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
+    "reason": "Compare llama.cpp draft-mtp top-k candidates to native MTP top-k where native target 220 is absent."
+  },
+  "parser_command": [
+    "python3",
+    "scripts/llamacpp_mtp_draft_trace.py",
+    "benchmarks/results/llamacpp-mtp-greeting-b2-server.log",
+    "--top-k",
+    "10",
+    "--metadata",
+    "benchmarks/results/llamacpp-mtp-greeting-b2-metadata.json",
+    "--out",
+    "benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json"
+  ],
+  "trace_json": "benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json",
+  "instructions": [
+    "Start server_command and redirect stdout/stderr to server_log.",
+    "Wait for /health, then POST request_payload to request_endpoint.",
+    "Stop llama-server after response, write metadata to metadata_path, then run parser_command."
+  ]
+}
