@@ -101431,3 +101431,101 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.p
 ### Next
 - Re-run the capture wrapper with the updated plan to see whether llama.cpp now
   emits a non-reasoning token stream comparable to native top-k diagnostics.
+
+## 2026-06-19 — GGUF MTP accepted/output parity blocked by target AR parity
+
+### Change
+- Updated `scripts/gguf_mtp_bench.py` to render the llama.cpp reasoning-off
+  Qwen chat prompt: newline between `<|im_end|>` and the assistant turn plus the
+  empty `<think>\n\n</think>\n\n\n` suffix. The greeting prompt now tokenizes to
+  the same 17 IDs reported by llama.cpp.
+- Reworked the native diagnostic loop to match llama.cpp draft-MTP accounting:
+  draft from carried `pending_h` + current sampled token, then verify the
+  accepted draft prefix plus one corrective target row. Artifacts now include
+  `comparison_target_tokens`, `output_tokens`, and `pending_hidden_row_index`.
+- Added unit coverage for llama.cpp-style accepted-prefix/corrective-token
+  accounting and the reasoning-off prompt rendering. `ar_baseline_tokens_per_sec`
+  now uses visible output tokens over target AR verification time, so accepted
+  prefixes do not inflate speculative speedup comparisons.
+- Recaptured the reasoning-off llama.cpp greeting B2 trace.
+
+### Evidence
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+  python3 scripts/llamacpp_mtp_capture_trace.py \
+  benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json
+```
+- Updated compact trace: `benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json`
+- Updated response: `benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.response.json`
+- Updated metadata: `benchmarks/results/llamacpp-mtp-greeting-b2-metadata.json`
+- Raw server log: `benchmarks/results/llamacpp-mtp-greeting-b2-server.log` (local/raw, not for commit)
+- llama.cpp response: `Hello! I hope you're`
+- llama.cpp timings: `draft_n=4`, `draft_n_accepted=3`, acceptance `0.75`,
+  `prompt_tokens=17`.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt 'Write a short greeting.' \
+  --output benchmarks/results/mtp-bench-1781846200-b2-greeting-pending-state.json
+```
+- State-machine fix with the old 12-token native prompt: `0/10` accepted,
+  `accepted_per_output=0.0`. Cycle 0 target token `20` appeared at native draft
+  rank 8, but later target `220` remained absent.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt 'Write a short greeting.' \
+  --output benchmarks/results/mtp-bench-1781846500-b2-greeting-llamacpp-prompt-state.json
+```
+- Matched 17-token llama.cpp prompt plus pending-state loop: still `0/10`
+  accepted, `accepted_per_output=0.0`.
+- Native target tokens `[13, 13, 13, 13972, 1510]` diverge before MTP parity is
+  meaningful.
+
+Additional target AR probe:
+```bash
+python3 - <<'PY'
+from scripts.gguf_mtp_bench import build_chat_prompt
+from hipengine.loading.gguf import GGUFReader
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+model='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf'
+r=GGUFReader(model); tok=Qwen35GGUFTokenizer.from_gguf_info(r.info)
+p=build_chat_prompt(tok,'Write a short greeting.')
+with Qwen35GGUFResidentSession(model_path=model) as s:
+    res=s.prefill(p, return_logits=False, capture_hidden_seed_fp32=True)
+    print('prefill', res.token_id, repr(tok.decode([res.token_id])))
+    res2=s.step(res.token_id, capture_hidden_seed_fp32=True)
+    print('step1', res2.token_id, repr(tok.decode([res2.token_id])))
+PY
+# prefill 13 '.'
+# step1 13 '.'
+```
+- Serial prefill (`use_bulk=False`) starts with token `75` (`'l'`), while
+  llama.cpp starts with `Hello`. This is now a target-AR parity blocker, not an
+  MTP-only acceptance issue.
+
+### Verification
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_mtp_bench_prompt.py tests/test_llamacpp_mtp_capture_trace.py \
+  tests/test_llamacpp_mtp_greeting_trace_plan.py tests/test_llamacpp_mtp_draft_trace.py
+# 16 passed
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+```
+
+### Next
+- Fix or isolate native Qwen3.6 GGUF target AR parity on the matched llama.cpp
+  17-token reasoning-off prompt before spending more time on MTP cycle-cost
+  optimization. Native accepted/output cannot match llama.cpp while the target
+  verifier itself produces a different token stream.

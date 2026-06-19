@@ -28,17 +28,30 @@ GGUF_PATH = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 DEFAULT_PROMPT = "What is the capital of France?"
 IM_START_TOKEN = 248045
 IM_END_TOKEN = 248046
+THINK_START_TOKEN = 248068
+THINK_END_TOKEN = 248069
 
 
-def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT) -> list[int]:
-    """Build the Qwen chat prompt used by the native GGUF MTP benchmark."""
-    return (
+def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT, *, reasoning: str = "off") -> list[int]:
+    """Build the llama.cpp-compatible Qwen chat prompt for GGUF MTP.
+
+    llama.cpp ``--reasoning off`` still renders an empty thinking block for this
+    GGUF chat template.  Include that suffix by default so native accepted/output
+    diagnostics compare against the same token stream as llama-server.
+    """
+    if reasoning not in {"off", "none"}:
+        raise ValueError("build_chat_prompt currently supports only reasoning='off'/'none'")
+    prompt = (
         [IM_START_TOKEN]
         + tokenizer.encode(f"user\n{user_prompt}")
         + [IM_END_TOKEN]
+        + tokenizer.encode("\n")
         + [IM_START_TOKEN]
         + tokenizer.encode("assistant\n")
     )
+    if reasoning == "off":
+        prompt += [THINK_START_TOKEN] + tokenizer.encode("\n\n") + [THINK_END_TOKEN] + tokenizer.encode("\n\n\n")
+    return prompt
 
 
 def _hip_available() -> bool:
@@ -94,8 +107,8 @@ def validate_draft_n_max(draft_n_max: int) -> int:
 def compute_speculative_metrics(cycles: list[dict]) -> dict:
     """Compute MTP metrics with explicit llama.cpp-compatible denominators.
 
-    A verify cycle always emits one target token. Accepted draft tokens are also
-    visible output tokens, so ``accepted_per_output`` uses
+    A verify cycle always emits one target/corrective token. Accepted draft
+    tokens are also visible output tokens, so ``accepted_per_output`` uses
     ``accepted_draft_tokens / visible_output_token_count`` rather than dividing
     by verify-cycle count. This follows docs/MTP-gguf.md's denominator contract.
     """
@@ -118,7 +131,9 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
     avg_mtp_draft_ms = total_draft_ms / verify_cycle_count if verify_cycle_count > 0 else 0.0
     avg_ms_per_visible_token = total_cycle_ms / visible_output_tokens if visible_output_tokens > 0 else 0.0
     tokens_per_sec = 1000.0 / avg_ms_per_visible_token if avg_ms_per_visible_token > 0 else 0.0
-    ar_baseline_tokens_per_sec = 1000.0 / avg_ar_decode_ms if avg_ar_decode_ms > 0 else 0.0
+    ar_baseline_tokens_per_sec = (
+        1000.0 * visible_output_tokens / total_ar_ms if total_ar_ms > 0 and visible_output_tokens > 0 else 0.0
+    )
     speedup_vs_ar_visible = (
         tokens_per_sec / ar_baseline_tokens_per_sec if ar_baseline_tokens_per_sec > 0 else 0.0
     )
@@ -146,6 +161,48 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
             "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
             "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time",
         },
+    }
+
+
+def llama_cpp_acceptance_from_target_samples(
+    draft_tokens: list[int],
+    target_samples: list[int],
+) -> dict[str, object]:
+    """Summarize llama.cpp draft-MTP accept/commit semantics.
+
+    ``target_samples`` are the target-model greedy samples for rows
+    ``[sampled_token] + accepted_draft_prefix``.  The list must include the
+    corrective target row after the accepted prefix, so a fully accepted B2 draft
+    has three target samples: draft0, draft1, corrective.
+    """
+    if not draft_tokens:
+        raise ValueError("draft_tokens must be non-empty")
+    if not target_samples:
+        raise ValueError("target_samples must be non-empty")
+
+    drafts = [int(token) for token in draft_tokens]
+    targets = [int(token) for token in target_samples]
+    accepted = 0
+    for draft_token, target_token in zip(drafts, targets, strict=False):
+        if draft_token != target_token:
+            break
+        accepted += 1
+        if accepted == len(drafts):
+            break
+
+    if len(targets) <= accepted:
+        raise ValueError(
+            "target_samples must include the corrective target token after the accepted prefix"
+        )
+
+    output_tokens = targets[:accepted] + [targets[accepted]]
+    comparison_target_tokens = targets[: min(len(drafts), len(targets))]
+    return {
+        "accepted_draft_tokens": accepted,
+        "visible_output_tokens": len(output_tokens),
+        "output_tokens": output_tokens,
+        "comparison_target_tokens": comparison_target_tokens,
+        "pending_hidden_row_index": accepted,
     }
 
 
@@ -251,6 +308,22 @@ def main():
         runtime = session.runtime or get_hip_runtime()
         hidden_size = 2048
 
+        def copy_pending_hidden_seed() -> np.ndarray:
+            hidden_seed = np.empty((1, hidden_size), dtype=np.float32)
+            runtime.memcpy(
+                hidden_seed.ctypes.data,
+                session.fp32_hidden_seed_ptr(),
+                hidden_size * 4,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
+            return hidden_seed
+
+        # llama.cpp carries the post-output_norm hidden row from the position
+        # before ``prev_token`` and pairs it with ``prev_token`` in draft().
+        # Prefill with capture_hidden_seed_fp32=True populated that row for the
+        # final prompt token.
+        pending_hidden_seed = copy_pending_hidden_seed()
+
         total_drafts = 0
         total_accepted = 0
         total_output_tokens = 0
@@ -258,24 +331,15 @@ def main():
         decode_times = []
 
         for cycle in range(args.cycles):
-            # AR decode
-            t0 = time.perf_counter()
-            target_result = session.step(prev_token, capture_hidden_seed_fp32=True)
-            target_token = int(target_result.token_id)
-            t1 = time.perf_counter()
-            ar_decode_ms = (t1 - t0) * 1000
-
-            # Capture hidden seed
-            hidden_seed = np.empty((1, hidden_size), dtype=np.float32)
-            runtime.memcpy(hidden_seed.ctypes.data, session.fp32_hidden_seed_ptr(),
-                          hidden_size * 4, HipMemcpyKind.DEVICE_TO_HOST)
-
-            # MTP draft(s). B2 chains the post-FFN hidden row returned by depth 1
-            # and uses the depth-1 draft token embedding as the depth-2 token row.
+            # MTP draft(s). The seed row is the pending target hidden row from
+            # the previous accepted/corrective boundary, not the hidden row we
+            # are about to verify. B2 chains the MTP post-FFN hidden row returned
+            # by depth 1 and uses the depth-1 draft token embedding as the
+            # depth-2 token row.
             t2 = time.perf_counter()
             draft_tokens = []
             draft_top10_tokens = []
-            current_hidden_seed = hidden_seed
+            current_hidden_seed = pending_hidden_seed
             current_token = prev_token
             for draft_depth in range(args.draft_n_max):
                 token_embed = token_embd_f32[current_token:current_token+1].copy()
@@ -294,38 +358,44 @@ def main():
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
 
-            # Verify/account. A verify cycle emits one target token; accepted
-            # draft tokens are additional visible outputs. B2 verifies the
-            # second draft only if the first draft matched, preserving target
-            # state by advancing sequentially along the accepted prefix.
-            target_tokens = [target_token]
-            accepted_draft_tokens = 0
-            if draft_tokens[0] == target_token:
-                accepted_draft_tokens = 1
-                if args.draft_n_max > 1:
-                    t_verify2 = time.perf_counter()
-                    target2_result = session.step(target_token, capture_hidden_seed_fp32=False)
-                    t_verify2_end = time.perf_counter()
-                    ar_decode_ms += (t_verify2_end - t_verify2) * 1000
-                    target2_token = int(target2_result.token_id)
-                    target_tokens.append(target2_token)
-                    if draft_tokens[1] == target2_token:
-                        accepted_draft_tokens = 2
-                    prev_token = target2_token
-                else:
-                    prev_token = target_token
-            else:
-                prev_token = target_token
+            # Verify/account with llama.cpp semantics. The target evaluates the
+            # sampled token plus accepted draft prefix and returns one final
+            # corrective target token. Output tokens are therefore
+            # accepted_drafts + 1, and accept(n) re-seeds pending_hidden_seed from
+            # the hidden row at the accepted-prefix boundary.
+            ar_decode_ms = 0.0
+            target_tokens = []
+            verify_input_token = prev_token
+            while True:
+                t0 = time.perf_counter()
+                target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
+                t1 = time.perf_counter()
+                ar_decode_ms += (t1 - t0) * 1000
+                target_token = int(target_result.token_id)
+                target_tokens.append(target_token)
+                pending_hidden_seed = copy_pending_hidden_seed()
+
+                depth = len(target_tokens) - 1
+                if depth < len(draft_tokens) and target_token == draft_tokens[depth]:
+                    verify_input_token = target_token
+                    continue
+                break
+
+            acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, target_tokens)
+            accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
+            output_tokens = list(acceptance["output_tokens"])
+            comparison_target_tokens = list(acceptance["comparison_target_tokens"])
+            prev_token = int(output_tokens[-1])
 
             total_drafts += len(draft_tokens)
-            visible_output_tokens = 1 + accepted_draft_tokens
+            visible_output_tokens = int(acceptance["visible_output_tokens"])
             total_output_tokens += visible_output_tokens
             total_accepted += accepted_draft_tokens
             accepted = accepted_draft_tokens == len(draft_tokens)
 
             target_in_draft_top10 = []
             target_rank_in_draft_top10 = []
-            for depth, target in enumerate(target_tokens):
+            for depth, target in enumerate(comparison_target_tokens):
                 top10 = draft_top10_tokens[depth]
                 if target in top10:
                     target_in_draft_top10.append(True)
@@ -336,8 +406,10 @@ def main():
 
             cycle_details.append({
                 "cycle": cycle,
-                "target_token": target_token,
+                "target_token": target_tokens[0],
                 "target_tokens": target_tokens,
+                "comparison_target_tokens": comparison_target_tokens,
+                "output_tokens": output_tokens,
                 "draft_token": draft_tokens[0],
                 "draft_tokens": draft_tokens,
                 "draft_top10_tokens": draft_top10_tokens,
@@ -347,6 +419,7 @@ def main():
                 "generated_draft_tokens": len(draft_tokens),
                 "accepted_draft_tokens": accepted_draft_tokens,
                 "visible_output_tokens": visible_output_tokens,
+                "pending_hidden_row_index": acceptance["pending_hidden_row_index"],
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
             })
