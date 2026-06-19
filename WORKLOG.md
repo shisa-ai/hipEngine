@@ -101063,3 +101063,50 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.p
   prompt shows acceptance can collapse to zero. Next leverage is acceptance/parity
   investigation against llama.cpp traces or a broader prompt suite, not kernel
   speed alone.
+
+## 2026-06-19 — B2 prompt sweep acceptance-by-depth analysis
+
+### Artifact
+- Added diagnostic artifact:
+  `benchmarks/results/mtp-bench-1781845000-b2-acceptance-depth-analysis.json`
+- Source artifacts: `mtp-bench-1781845000-b2-sweep-{capital,count,greeting}.json`
+  and aggregate `mtp-bench-1781845000-b2-sweep-summary.json`.
+
+### Findings
+- Depth-1 acceptance across the 3-prompt B2 sweep: 2/15 = 13.3%.
+- Depth-2 drafts generated: 15, but target verification reached depth 2 only when
+  depth 1 matched, so only 2 depth-2 drafts were actually verified.
+- Conditional depth-2 acceptance: 1/2 = 50% (tiny sample).
+- Unconditional depth-2 acceptance: 1/15 = 6.7%.
+- Full depth-2 accept occurred only in the count prompt, cycle 2:
+  targets `[220, 16]`, drafts `[220, 16]`.
+
+### Interpretation
+- The limiting factor in the current sweep is depth-1 acceptance quality, not the
+  mechanics of depth-2 chaining. Schema-4 `accept_per_draft` remains the right
+  llama.cpp-compatible metric, but it intentionally includes generated depth-2
+  drafts that are never target-verified after depth-1 rejection.
+- Next parity work should compare depth-1 draft token/top-k against llama.cpp or
+  target oracle traces on rejection-heavy prompts before spending more effort on
+  B2 latency.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_prompt.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py
+# 6 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
