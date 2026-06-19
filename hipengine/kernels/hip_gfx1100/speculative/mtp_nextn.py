@@ -1188,6 +1188,14 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         per_expert_up_bytes = up_q.nbytes // num_experts
         per_expert_down_bytes = down_q.nbytes // num_experts
 
+        # M6: Pre-allocate reusable intermediate buffers (avoid 48 malloc/free per call)
+        gate_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(gate_out)
+        up_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(up_out)
+        inter_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(inter_out)
+        down_out = malloc(hidden_size * 4, runtime=runtime); buffers.append(down_out)
+        scaled = malloc(hidden_size * 4, runtime=runtime); buffers.append(scaled)
+        row_dev = malloc(hidden_size * 4, runtime=runtime); buffers.append(row_dev)
+
         for t in range(tokens):
             xt = np.ascontiguousarray(normed_host[t : t + 1])
             xt_dev = malloc(xt.nbytes, runtime=runtime); buffers.append(xt_dev)
@@ -1199,11 +1207,6 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                 g_ptr = gate_full_dev.ptr + e * per_expert_gate_bytes
                 u_ptr = up_full_dev.ptr + e * per_expert_up_bytes
                 d_ptr = down_full_dev.ptr + e * per_expert_down_bytes
-                gate_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(gate_out)
-                up_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(up_out)
-                inter_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(inter_out)
-                down_out = malloc(1 * hidden_size * 4, runtime=runtime); buffers.append(down_out)
-                scaled = malloc(1 * hidden_size * 4, runtime=runtime); buffers.append(scaled)
                 _dispatch_gemv_raw(xt_dev, g_ptr, gate_out, 1, hidden_size, inter_dim,
                                gate_qtype, runtime=runtime)
                 _dispatch_gemv_raw(xt_dev, u_ptr, up_out, 1, hidden_size, inter_dim,
@@ -1214,7 +1217,6 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                                down_qtype, runtime=runtime)
                 mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, runtime=runtime)
                 # selected_out[t] += scaled
-                row_dev = malloc(hidden_size * 4, runtime=runtime); buffers.append(row_dev)
                 mtp_add_f32(selected_out_dev.ptr + t * hidden_size * 4, scaled.ptr, row_dev.ptr,
                             hidden_size, runtime=runtime)
                 # copy row back
