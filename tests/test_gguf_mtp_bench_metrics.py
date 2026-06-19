@@ -45,8 +45,14 @@ def test_validate_draft_n_max_rejects_unimplemented_b2_b4() -> None:
 
 @pytest.mark.xfail(
     strict=True,
-    reason="RED: true target-attached GGUF MTP B2 runtime is not wired yet",
+    reason="RED: true target-attached GGUF MTP B2 runtime needs depth-2 seed chaining",
 )
 def test_validate_draft_n_max_accepts_true_b2_when_runtime_is_wired() -> None:
-    """Smallest RED for real B2: the bench must eventually execute depth 2."""
+    """Smallest RED for real B2: the bench must eventually execute depth 2.
+
+    Existing metadata can already represent a B2 batch if the runtime supplies
+    explicit seed rows for both draft depths.  The missing GREEN condition is
+    the driver step that captures the depth-1 draft/verify hidden row and feeds
+    it as the seed for depth 2 before target top-1 verification/accounting.
+    """
     assert validate_draft_n_max(2) == 2

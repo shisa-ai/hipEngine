@@ -100741,3 +100741,52 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The next GREEN step for this RED marker is target-attached B2 generation: run
   NextN for depth 1, use the verified/reseed hidden/token as the seed for depth 2,
   verify both rows against target top-1, then emit schema-4 visible-token metrics.
+
+## 2026-06-19 — B2 GREEN path inspection: seed chaining is the missing runtime step
+
+### Finding
+- `Qwen35GGUFMTPContext` and related metadata already support B2+ drafts when
+  explicit seed rows are provided:
+  - `build_draft_batch(..., token_ids=(...), seed_rows=(...))` assigns depths 1..N.
+  - `build_draft_proposal_from_logits(..., seed_rows=...)` supports multiple rows.
+  - `to_shared_draft_batch()` / `to_target_verify_batch()` project multi-depth rows.
+- The current `scripts/gguf_mtp_bench.py` runtime remains B1-only because it runs a
+  single `run_draft(hidden_seed, token_embed)` from the target seed and does not
+  capture/feed the post-depth-1 draft/verify hidden row as the seed for depth 2.
+
+### Change
+- Tightened the B2 strict-xfail reason/docstring in
+  `tests/test_gguf_mtp_bench_metrics.py` to name the actual missing GREEN piece:
+  target-attached depth-2 seed chaining.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py -rx
+# 2 passed, 1 xfailed
+
+python3 -m pytest -q \
+  tests/test_gguf_mtp_context.py::test_gguf_mtp_context_builds_multi_depth_proposal_from_registered_topk_logits \
+  tests/test_gguf_mtp_context.py::test_gguf_mtp_context_builds_multi_depth_draft_batch_from_seed_rows \
+  tests/test_gguf_mtp_context.py::test_gguf_mtp_draft_batch_projects_to_shared_verifier_batch
+# 3 passed
+```
+
+### Next GREEN shape
+1. Capture target seed row for depth 1 (already done for B1).
+2. Run NextN depth 1 and choose draft token 1.
+3. Materialize/capture the hidden seed row corresponding to draft token 1 / verify
+   row 1 (the missing runtime primitive).
+4. Run NextN depth 2 from that explicit seed row and token 1 embedding.
+5. Verify target top-1 rows for both draft tokens, apply llama.cpp reseed rule,
+   and emit schema-4 visible-output metrics.
