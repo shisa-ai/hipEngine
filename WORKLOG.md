@@ -101160,3 +101160,48 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_prompt.py \
 HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
 # 2 passed
 ```
+
+## 2026-06-19 — Greeting B2 top-k parity blocker manifest
+
+### Artifact
+- Added `benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-parity-blocker.json`.
+- It links the native greeting top-k diagnostic to the exact llama.cpp oracle still
+  needed for parity:
+  - native artifact: `mtp-bench-1781845600-b2-greeting-topk-diagnostic.json`
+  - prompt: `Write a short greeting.`
+  - draft_n_max=2, top_k=10, temperature=0.0
+  - parser available: `scripts/llamacpp_mtp_draft_trace.py`
+  - required llama.cpp log detail: `common_speculative_impl_draft_mtp::draft`
+    candidate top-k rows plus `accepted N/M` lines.
+
+### Finding
+- Existing committed llama.cpp fixture
+  `benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json` covers
+  `prompt_name=explain_concept`, not the greeting prompt.
+- The local model exists at `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` and a
+  llama-server binary exists at `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`.
+- Therefore the next parity step is feasible but requires producing a matching
+  llama.cpp LOG_DBG draft-MTP trace for the greeting prompt before changing MTP
+  math or making more latency-only tweaks.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_llamacpp_mtp_draft_trace.py \
+  tests/test_gguf_mtp_bench_prompt.py tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_nextn_hidden_seed_contract.py
+# 9 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
