@@ -582,14 +582,11 @@ def qwen35_gguf_mtp_eh_proj_f32(
     try:
         embed_dev = malloc(embed_arr.nbytes, runtime=runtime); buffers.append(embed_dev)
         hidden_dev = malloc(hidden_arr.nbytes, runtime=runtime); buffers.append(hidden_dev)
-        weight_dev = malloc(weight.nbytes, runtime=runtime); buffers.append(weight_dev)
-        hnorm_dev = malloc(hnorm.nbytes, runtime=runtime); buffers.append(hnorm_dev)
-        enorm_dev = malloc(enorm.nbytes, runtime=runtime); buffers.append(enorm_dev)
+        weight_dev = _cached_upload("eh_proj_weight", weight, runtime=runtime)
+        hnorm_dev = _cached_upload("eh_proj_hnorm", hnorm, runtime=runtime)
+        enorm_dev = _cached_upload("eh_proj_enorm", enorm, runtime=runtime)
         copy_host_to_device(embed_dev, host_array_ptr(embed_arr), runtime=runtime)
         copy_host_to_device(hidden_dev, host_array_ptr(hidden_arr), runtime=runtime)
-        copy_host_to_device(weight_dev, host_array_ptr(weight), runtime=runtime)
-        copy_host_to_device(hnorm_dev, host_array_ptr(hnorm), runtime=runtime)
-        copy_host_to_device(enorm_dev, host_array_ptr(enorm), runtime=runtime)
         # h_norm = rmsnorm(hidden, hnorm); e_norm = rmsnorm(embed, enorm)
         mtp_rmsnorm_f32(embed_dev.ptr, enorm_dev.ptr, e_norm_dev.ptr, rows, hidden, eps=eps,
                         runtime=runtime)
@@ -821,24 +818,21 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         # normed = rmsnorm(hidden, attn_norm)
         normed_dev = malloc(x.nbytes, runtime=runtime); buffers.append(normed_dev)
         hidden_dev = malloc(x.nbytes, runtime=runtime); buffers.append(hidden_dev)
-        attn_norm_dev = malloc(attn_norm.nbytes, runtime=runtime); buffers.append(attn_norm_dev)
+        attn_norm_dev = _cached_upload("attn_norm", attn_norm, runtime=runtime)
         copy_host_to_device(hidden_dev, host_array_ptr(x), runtime=runtime)
-        copy_host_to_device(attn_norm_dev, host_array_ptr(attn_norm), runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, attn_norm_dev.ptr, normed_dev.ptr, tokens, hidden_size,
                         eps=eps, runtime=runtime)
 
         # q_full = normed @ wq.T  -> [tokens, heads*2*qk_head_dim]
         q_full_dev = malloc(tokens * heads * 2 * qk_head_dim * 4, runtime=runtime)
         buffers.append(q_full_dev)
-        wq_dev = malloc(wq.nbytes, runtime=runtime); buffers.append(wq_dev)
-        copy_host_to_device(wq_dev, host_array_ptr(wq), runtime=runtime)
+        wq_dev = _cached_upload("attn_wq", wq, runtime=runtime)
         _attn_dispatch_gemv(normed_dev, wq_dev, q_full_dev, tokens, hidden_size,
                             heads * 2 * qk_head_dim, wq_qtype, runtime=runtime)
         # query = rmsnorm(q_full[...,0,:], q_norm)  over qk_head_dim, rows = tokens*heads
         query_dev = malloc(tokens * heads * qk_head_dim * 4, runtime=runtime)
         buffers.append(query_dev)
-        q_norm_dev = malloc(q_norm.nbytes, runtime=runtime); buffers.append(q_norm_dev)
-        copy_host_to_device(q_norm_dev, host_array_ptr(q_norm), runtime=runtime)
+        q_norm_dev = _cached_upload("attn_q_norm", q_norm, runtime=runtime)
         # q_full layout [t, h, 2, d]: the q-half is stride-2 over the (2,d) block.
         # Extract query (q_full[...,0,:]) and gate (q_full[...,1,:]) via host reshape is
         # simplest for correctness-first: D2H the small q_full, split, re-upload.
@@ -856,10 +850,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         # key_cur = rmsnorm(normed @ wk.T, k_norm)  -> [tokens, kv_heads, qk_head_dim]
         key_cur_dev = malloc(tokens * kv_heads * qk_head_dim * 4, runtime=runtime)
         buffers.append(key_cur_dev)
-        wk_dev = malloc(wk.nbytes, runtime=runtime); buffers.append(wk_dev)
-        k_norm_dev = malloc(k_norm.nbytes, runtime=runtime); buffers.append(k_norm_dev)
-        copy_host_to_device(wk_dev, host_array_ptr(wk), runtime=runtime)
-        copy_host_to_device(k_norm_dev, host_array_ptr(k_norm), runtime=runtime)
+        wk_dev = _cached_upload("attn_wk", wk, runtime=runtime)
+        k_norm_dev = _cached_upload("attn_k_norm", k_norm, runtime=runtime)
         _attn_dispatch_gemv(normed_dev, wk_dev, key_cur_dev, tokens, hidden_size,
                             kv_heads * qk_head_dim, wk_qtype, runtime=runtime)
         mtp_rmsnorm_f32(key_cur_dev.ptr, k_norm_dev.ptr, key_cur_dev.ptr, tokens * kv_heads,
@@ -978,10 +970,9 @@ def qwen35_gguf_mtp_moe_routing_f32(
     buffers: list = []
     try:
         x_dev = malloc(x.nbytes, runtime=runtime); buffers.append(x_dev)
-        router_dev = malloc(router.nbytes, runtime=runtime); buffers.append(router_dev)
+        router_dev = _cached_upload("ffn_router", router, runtime=runtime)
         logits_dev = malloc(tokens * experts * 4, runtime=runtime); buffers.append(logits_dev)
         copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
-        copy_host_to_device(router_dev, host_array_ptr(router), runtime=runtime)
         mtp_linear_f32(x_dev.ptr, router_dev.ptr, logits_dev.ptr, tokens, hidden_size, experts,
                        runtime=runtime)
         logits = np.empty((tokens, experts), dtype=np.float32)
@@ -1186,12 +1177,9 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                                hidden_size * 4, 0)  # 0 = hipMemcpyDeviceToDevice
 
         # shared expert
-        sg_dev = malloc(shared_gate_q.nbytes, runtime=runtime); buffers.append(sg_dev)
-        su_dev = malloc(shared_up_q.nbytes, runtime=runtime); buffers.append(su_dev)
-        sd_dev = malloc(shared_down_q.nbytes, runtime=runtime); buffers.append(sd_dev)
-        copy_host_to_device(sg_dev, host_array_ptr(shared_gate_q), runtime=runtime)
-        copy_host_to_device(su_dev, host_array_ptr(shared_up_q), runtime=runtime)
-        copy_host_to_device(sd_dev, host_array_ptr(shared_down_q), runtime=runtime)
+        sg_dev = _cached_upload("ffn_shared_gate", shared_gate_q, runtime=runtime)
+        su_dev = _cached_upload("ffn_shared_up", shared_up_q, runtime=runtime)
+        sd_dev = _cached_upload("ffn_shared_down", shared_down_q, runtime=runtime)
         s_gate = malloc(tokens * inter_dim * 4, runtime=runtime); buffers.append(s_gate)
         s_up = malloc(tokens * inter_dim * 4, runtime=runtime); buffers.append(s_up)
         s_inter = malloc(tokens * inter_dim * 4, runtime=runtime); buffers.append(s_inter)
