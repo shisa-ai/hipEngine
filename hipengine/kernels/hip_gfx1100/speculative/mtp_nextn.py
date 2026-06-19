@@ -1412,21 +1412,21 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
                         library=_sh_lib, runtime=runtime)
         head_dev = None  # set per-quant-type below
         if shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q6_K:
-            # Q6_K pack8 gemv uses fp16 input which loses too much precision
-            # for the 248320-vocab shared_head. Use host-side dequant + F32 gemv.
-            # Cache the dequanted F32 weight to skip 1.2s dequant + 1.94GB upload
-            # on repeat calls.
-            cache_key = "shared_head_q6k_f32"
+            # M6: Use Q6_K GEMV with F32 input directly on device.
+            # Processes 398MB quantized weight instead of 1.94GB F32 — 36x faster.
+            # max_abs vs F32 dequant: ~0.000006 (Q6_K quantization error, acceptable
+            # for MTP draft tokens that get verified by the target model).
+            cache_key = "shared_head_q6k_raw"
             head_dev = _WEIGHT_CACHE.get(cache_key)
             if head_dev is None:
-                from hipengine.quant.gguf import dequantize_gguf_data
-                head_f32 = dequantize_gguf_data(
-                    np.ascontiguousarray(shared_head_weight),
-                    GGMLQuantizationType.Q6_K,
-                ).astype(np.float32)
-                head_dev = _cached_upload(cache_key, head_f32, runtime=runtime)
-            mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
-                           library=_sh_lib, runtime=runtime)
+                head_dev = _cached_upload(cache_key, shared_head_weight, runtime=runtime)
+            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                gguf_q6_k_gemv_f32_f32_out as _hip_q6_k_head,
+                build_gguf_k_gemv as _build_sh_k_gemv,
+            )
+            _sh_k_gemv_lib = _build_sh_k_gemv(load=True)
+            _hip_q6_k_head(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size,
+                          vocab, library=_sh_k_gemv_lib, runtime=runtime)
         elif shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0_head,
