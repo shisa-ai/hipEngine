@@ -1410,21 +1410,27 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
                         library=_sh_lib, runtime=runtime)
         head_dev = None  # set per-quant-type below
         if shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q6_K:
-            # M6: Use Q6_K GEMV with F32 input directly on device.
-            # Processes 398MB quantized weight instead of 1.94GB F32 — 36x faster.
-            # max_abs vs F32 dequant: ~0.000006 (Q6_K quantization error, acceptable
-            # for MTP draft tokens that get verified by the target model).
+            # M6: Use Q6_K pack8 GEMV with BF16 input for 2.7x speedup over
+            # non-pack8 F32 GEMV (2.3ms vs 6.3ms). BF16 input preserves enough
+            # precision for MTP draft tokens (max_abs ~0.007 vs F32, top-5 match).
             cache_key = "shared_head_q6k_raw"
             head_dev = _WEIGHT_CACHE.get(cache_key)
             if head_dev is None:
                 head_dev = _cached_upload(cache_key, shared_head_weight, runtime=runtime)
-            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
-                gguf_q6_k_gemv_f32_f32_out as _hip_q6_k_head,
-                build_gguf_k_gemv as _build_sh_k_gemv,
+            # F32 → BF16 input conversion on device
+            normed_bf16_dev = malloc(rows * hidden_size * 2, runtime=runtime); buffers.append(normed_bf16_dev)
+            from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16, build_cast as _build_cast_sh
+            _sh_cast_lib = _build_cast_sh(load=True) if '_sh_cast_lib' not in dir() else _sh_cast_lib
+            f32_to_bf16(normed_dev.ptr, normed_bf16_dev.ptr, rows * hidden_size,
+                       library=_sh_cast_lib, runtime=runtime)
+            # Q6_K pack8 GEMV with BF16 input, F32 output
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+                gguf_q6_k_pack8_gemv_decode_bf16_f32_out as _hip_q6_k_head,
+                build_gguf_q6_k_pack8_gemv as _build_sh_pack8,
             )
-            _sh_k_gemv_lib = _build_sh_k_gemv(load=True)
-            _hip_q6_k_head(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size,
-                          vocab, library=_sh_k_gemv_lib, runtime=runtime)
+            _sh_pack8_lib = _build_sh_pack8(load=True) if '_sh_pack8_lib' not in dir() else _sh_pack8_lib
+            _hip_q6_k_head(normed_bf16_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size,
+                          vocab, library=_sh_pack8_lib, runtime=runtime)
         elif shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0_head,

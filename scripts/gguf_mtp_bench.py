@@ -100,11 +100,10 @@ def main():
     print(f"Prompt: {repr(tok.decode(prompt))}")
     print(f"Prompt tokens: {len(prompt)}")
 
-    # Pre-dequant Q6_K shared_head to F32 (avoids ~1s per-step dequant)
-    sh_f32 = dequantize_gguf_data(
-        np.asarray(get("output.weight"), dtype=np.uint8), qt("output.weight")
-    ).astype(np.float32)
-    print(f"Pre-dequanted shared_head: {sh_f32.nbytes/1e6:.0f}MB")
+    # Use raw Q6_K shared_head weight (398MB vs 2034MB F32 dequant)
+    sh_raw = np.asarray(get("output.weight"), dtype=np.uint8)
+    sh_qtype = qt("output.weight")
+    print(f"Raw shared_head ({sh_qtype.name}): {sh_raw.nbytes/1e6:.0f}MB")
 
     # Build GPU kernel args
     def run_draft(hidden_seed, token_embed):
@@ -122,7 +121,7 @@ def main():
             get("blk.40.ffn_gate_inp_shexp.weight"),
             get("blk.40.ffn_gate_shexp.weight"), get("blk.40.ffn_up_shexp.weight"),
             get("blk.40.ffn_down_shexp.weight"), qt("blk.40.ffn_gate_shexp.weight"),
-            get("blk.40.nextn.shared_head_norm.weight"), sh_f32,
+            get("blk.40.nextn.shared_head_norm.weight"), sh_raw,
         ]
         gpu_kwargs = dict(
             num_heads=16, num_kv_heads=2, experts_used=8,
@@ -130,6 +129,7 @@ def main():
             wq_qtype=qt("blk.40.attn_q.weight"), wk_qtype=qt("blk.40.attn_k.weight"),
             wv_qtype=qt("blk.40.attn_v.weight"), wo_qtype=qt("blk.40.attn_output.weight"),
             eps=1e-6,
+            shared_head_qtype=sh_qtype,
         )
         return np.asarray(gpu_kernel(*gpu_args, **gpu_kwargs), dtype=np.float32)
 
