@@ -1,0 +1,111 @@
+{
+  "schema": 3,
+  "status": "ok",
+  "timestamp": "2026-06-19T00:56:08",
+  "run_tag": "mtp-bench-1781830568",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "prompt": "What is the capital of France?",
+    "prompt_tokens": 14,
+    "cycles": 10,
+    "draft_n_max": 1,
+    "engine": "hipEngine GGUF MTP"
+  },
+  "metrics": {
+    "accept_per_draft": 0.1,
+    "accepted_per_output": 0.1,
+    "avg_decode_ms": 38561.54,
+    "tokens_per_sec": 0.03,
+    "total_accepted": 1,
+    "total_drafts": 10,
+    "total_output_tokens": 10
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "target_token": 59,
+      "draft_token": 2037,
+      "accepted": false,
+      "ar_decode_ms": 32315.37,
+      "mtp_draft_ms": 4970.39
+    },
+    {
+      "cycle": 1,
+      "target_token": 2037,
+      "draft_token": 84,
+      "accepted": false,
+      "ar_decode_ms": 32805.33,
+      "mtp_draft_ms": 5083.46
+    },
+    {
+      "cycle": 2,
+      "target_token": 220,
+      "draft_token": 2037,
+      "accepted": false,
+      "ar_decode_ms": 32142.84,
+      "mtp_draft_ms": 5463.04
+    },
+    {
+      "cycle": 3,
+      "target_token": 16,
+      "draft_token": 21,
+      "accepted": false,
+      "ar_decode_ms": 32083.81,
+      "mtp_draft_ms": 5036.04
+    },
+    {
+      "cycle": 4,
+      "target_token": 15,
+      "draft_token": 15,
+      "accepted": true,
+      "ar_decode_ms": 35906.64,
+      "mtp_draft_ms": 5474.65
+    },
+    {
+      "cycle": 5,
+      "target_token": 92,
+      "draft_token": 20,
+      "accepted": false,
+      "ar_decode_ms": 34082.55,
+      "mtp_draft_ms": 5075.37
+    },
+    {
+      "cycle": 6,
+      "target_token": 20,
+      "draft_token": 0,
+      "accepted": false,
+      "ar_decode_ms": 32560.33,
+      "mtp_draft_ms": 5323.08
+    },
+    {
+      "cycle": 7,
+      "target_token": 23,
+      "draft_token": 15,
+      "accepted": false,
+      "ar_decode_ms": 35016.77,
+      "mtp_draft_ms": 5573.62
+    },
+    {
+      "cycle": 8,
+      "target_token": 170761,
+      "draft_token": 13,
+      "accepted": false,
+      "ar_decode_ms": 33819.49,
+      "mtp_draft_ms": 5092.24
+    },
+    {
+      "cycle": 9,
+      "target_token": 120844,
+      "draft_token": 327,
+      "accepted": false,
+      "ar_decode_ms": 32574.68,
+      "mtp_draft_ms": 5215.73
+    }
+  ]
+}
