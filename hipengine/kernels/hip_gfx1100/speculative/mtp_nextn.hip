@@ -185,37 +185,6 @@ extern "C" __global__ void hipengine_mtp_linear_f32_kernel(
   }
 }
 
-// M6: Parallel linear kernel — 2D grid (tokens, out_feature_chunks) for
-// large out_features (e.g., vocab=248320). Each block computes a chunk
-// of output features, with threads iterating over input features.
-extern "C" __global__ void hipengine_mtp_linear_f32_parallel_kernel(
-    const float* __restrict__ x,
-    const float* __restrict__ weight,
-    float* __restrict__ out,
-    int64_t tokens,
-    int64_t in_features,
-    int64_t out_features,
-    int64_t out_chunk_size) {
-  const int64_t t = static_cast<int64_t>(blockIdx.x);
-  const int64_t chunk_idx = static_cast<int64_t>(blockIdx.y);
-  if (t >= tokens) {
-    return;
-  }
-  const int64_t j_start = chunk_idx * out_chunk_size;
-  const int64_t j_end = min(j_start + out_chunk_size, out_features);
-  const float* xr = x + t * in_features;
-  float* outr = out + t * out_features;
-  for (int64_t j = j_start + static_cast<int64_t>(threadIdx.x); j < j_end;
-       j += static_cast<int64_t>(blockDim.x)) {
-    const float* w = weight + j * in_features;
-    float acc = 0.0f;
-    for (int64_t k = 0; k < in_features; ++k) {
-      acc += xr[k] * w[k];
-    }
-    outr[j] = acc;
-  }
-}
-
 extern "C" int hipengine_mtp_linear_f32(
     const float* x,
     const float* weight,
