@@ -41,3 +41,12 @@ def test_validate_draft_n_max_rejects_unimplemented_b2_b4() -> None:
     assert validate_draft_n_max(1) == 1
     with pytest.raises(ValueError, match="only B1"):
         validate_draft_n_max(2)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="RED: true target-attached GGUF MTP B2 runtime is not wired yet",
+)
+def test_validate_draft_n_max_accepts_true_b2_when_runtime_is_wired() -> None:
+    """Smallest RED for real B2: the bench must eventually execute depth 2."""
+    assert validate_draft_n_max(2) == 2

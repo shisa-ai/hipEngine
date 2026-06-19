@@ -100703,3 +100703,41 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   not valid because the script still executed B1. This guard preserves evidence
   hygiene while keeping the B1 warm-positive artifact as the current native GGUF
   result.
+
+## 2026-06-19 — B2 runtime RED marker after B1-only guard
+
+### Change
+- Added an `xfail(strict=True)` RED marker to `tests/test_gguf_mtp_bench_metrics.py`:
+  `test_validate_draft_n_max_accepts_true_b2_when_runtime_is_wired`.
+- This is the smallest executable contract for the true B2 milestone: once the
+  target-attached GGUF MTP runtime can execute two sequential draft tokens, the
+  benchmark validator must accept `draft_n_max=2`. Until then, the B1-only guard
+  continues to reject B2-B4 labels so artifacts stay honest.
+
+### Verification
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py -rx
+# 2 passed, 1 xfailed
+
+python3 scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 1 --output /tmp/should-not-run.json
+# exits 2 before HIP/model work with the B1-only message
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+```
+
+### Interpretation
+- Existing `Qwen35GGUFMTPContext` metadata can already describe B2 rows, target
+  verify batches, accept summaries, and B2 denominator metrics, but the runtime
+  benchmark path still cannot generate/carry the second draft seed row.
+- The next GREEN step for this RED marker is target-attached B2 generation: run
+  NextN for depth 1, use the verified/reseed hidden/token as the seed for depth 2,
+  verify both rows against target top-1, then emit schema-4 visible-token metrics.
