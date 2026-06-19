@@ -727,19 +727,19 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
                             qtype, *, runtime):
         if qtype is None or qtype == GGMLQuantizationType.F32:
             mtp_linear_f32(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                           out_features, runtime=runtime)
+                           out_features, library=_attn_mtp_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
             )
             _hip_q8_0(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_attn_k_gemv_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q4_K:
             from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
                 gguf_q4_k_gemv_f32_f32_out as _hip_q4_k,
             )
             _hip_q4_k(x_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
-                      out_features, runtime=runtime)
+                      out_features, library=_attn_q4_k_lib, runtime=runtime)
         elif qtype == GGMLQuantizationType.Q5_K:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q5_k_gemv_f32_f32_out as _hip_q5_k,
@@ -822,6 +822,10 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         hidden_dev = malloc(x.nbytes, runtime=runtime); buffers.append(hidden_dev)
         attn_norm_dev = _cached_upload("attn_norm", attn_norm, runtime=runtime)
         _attn_mtp_lib = build_mtp_nextn(load=True)
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv as _build_q4_k
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv as _build_k_gemv
+        _attn_q4_k_lib = _build_q4_k(load=True)
+        _attn_k_gemv_lib = _build_k_gemv(load=True)
         copy_host_to_device(hidden_dev, host_array_ptr(x), runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, attn_norm_dev.ptr, normed_dev.ptr, tokens, hidden_size,
                         eps=eps, library=_attn_mtp_lib, runtime=runtime)
