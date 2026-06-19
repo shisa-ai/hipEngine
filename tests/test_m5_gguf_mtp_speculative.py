@@ -50,7 +50,7 @@ def _load_blk40_weights():
     r = GGUFReader(GGUF_PATH)
     weights = {}
     for t in r.info.tensors:
-        if "blk.40" in t.name or t.name == "output.weight":
+        if "blk.40" in t.name or t.name == "output.weight" or t.name == "token_embd.weight":
             data = r.tensor_data(t.name)
             weights[t.name] = (data, t.ggml_type, t.shape)
     return weights, r
@@ -64,7 +64,14 @@ def mtp_weights():
     def qt(name): return GGMLQuantizationType(weights[name][1])
     def dq(name): return dequantize_gguf_data(get(name), qt(name)).astype(np.float32)
 
+    # Load token embedding table (Q8_0) and dequant to F32
+    token_embd_f32 = dequantize_gguf_data(
+        np.asarray(get("token_embd.weight"), dtype=np.uint8),
+        qt("token_embd.weight"),
+    ).astype(np.float32)
+
     return {
+        "token_embd_f32": token_embd_f32,
         # Raw K-quant weights for GPU
         "eh_proj_weight": get("blk.40.nextn.eh_proj.weight"),
         "hnorm_weight": get("blk.40.nextn.hnorm.weight"),
@@ -205,14 +212,9 @@ def test_m5_ar_decode_plus_mtp_draft_consistency(mtp_weights):
         runtime.memcpy(hidden_seed.ctypes.data, seed_ptr,
                         hidden_size * 4, HipMemcpyKind.DEVICE_TO_HOST)
 
-        # For the token embedding, we need the embedding of the last token.
-        # The composite layer takes (hidden_seed, token_embedding) where
-        # token_embedding is the embedding of the last accepted token.
-        # For now, use a random embedding (the real pipeline would look up
-        # the token embedding from the model's embedding table).
-        # TODO: get the real token embedding from the resident session.
-        np.random.seed(99)
-        token_embed = np.random.randn(1, hidden_size).astype(np.float32) * 0.1
+        # Look up the real token embedding for the last accepted token
+        last_token = int(prefill_result.token_id) if hasattr(prefill_result, 'token_id') else 0
+        token_embed = mtp_weights["token_embd_f32"][last_token:last_token+1].copy()
 
         # Run MTP draft on GPU
         gpu_logits = _run_gpu_nextn(mtp_weights, hidden_seed, token_embed)
@@ -271,8 +273,8 @@ def test_m5_multiple_ar_steps_mtp_draft(mtp_weights):
             runtime.memcpy(hidden_seed.ctypes.data, session.fp32_hidden_seed_ptr(),
                             hidden_size * 4, HipMemcpyKind.DEVICE_TO_HOST)
 
-            # Use random token embedding (TODO: real embedding lookup)
-            token_embed = np.random.randn(1, hidden_size).astype(np.float32) * 0.1
+            # Use real token embedding for the previous token
+            token_embed = mtp_weights["token_embd_f32"][prev_token:prev_token+1].copy()
 
             # Run MTP draft on GPU and cpu
             gpu_logits = _run_gpu_nextn(mtp_weights, hidden_seed, token_embed)
