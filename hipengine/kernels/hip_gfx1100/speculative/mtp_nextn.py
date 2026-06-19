@@ -1067,6 +1067,47 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                 f"qtype={qtype.name} not supported (F32/Q4_K/Q5_K/Q6_K/Q8_0 only)"
             )
 
+    def _dispatch_gemv_raw(x_dev, weight_ptr, out_dev, rows, in_features, out_features,
+                       qtype, *, runtime):
+        """Like _dispatch_gemv but takes a raw device pointer (int) for the weight."""
+        if qtype == GGMLQuantizationType.F32:
+            mtp_linear_f32(x_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
+                           out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q4_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+                gguf_q4_k_gemv_f32_f32_out as _hip_q4_k,
+            )
+            _hip_q4_k(x_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q5_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                gguf_q5_k_gemv_f32_f32_out as _hip_q5_k,
+            )
+            _hip_q5_k(x_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q8_0:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+                gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
+            )
+            _hip_q8_0(x_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+        elif qtype == GGMLQuantizationType.Q6_K:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+                gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k,
+            )
+            x_f32 = np.empty((rows, in_features), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(x_f32), x_dev, x_f32.nbytes, runtime=runtime)
+            x_fp16 = x_f32.astype(np.float16)
+            x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
+            copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
+            _hip_q6_k(x_fp16_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
+                      out_features, runtime=runtime)
+            free(x_fp16_dev, runtime=runtime)
+        else:
+            raise NotImplementedError(
+                f"qtype={qtype.name} not supported (F32/Q4_K/Q5_K/Q6_K/Q8_0 only)"
+            )
+
     for qt, name in (
         (gate_qtype, "gate_qtype"), (up_qtype, "up_qtype"), (down_qtype, "down_qtype"),
         (shared_qtype, "shared_qtype"),
@@ -1137,6 +1178,16 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         normed_host = np.empty((tokens, hidden_size), dtype=np.float32)
         copy_device_to_host(host_array_ptr(normed_host), normed_dev, runtime=runtime)
 
+        # M6: Cache full expert weight tensors and compute per-expert device offsets.
+        # Each expert's slice is contiguous within the [num_experts, inter, block_bytes]
+        # tensor, so we pass (cached_ptr + expert * per_expert_bytes) to the GEMV kernel.
+        gate_full_dev = _cached_upload("ffn_gate_exps_full", gate_q, runtime=runtime)
+        up_full_dev = _cached_upload("ffn_up_exps_full", up_q, runtime=runtime)
+        down_full_dev = _cached_upload("ffn_down_exps_full", down_q, runtime=runtime)
+        per_expert_gate_bytes = gate_q.nbytes // num_experts
+        per_expert_up_bytes = up_q.nbytes // num_experts
+        per_expert_down_bytes = down_q.nbytes // num_experts
+
         for t in range(tokens):
             xt = np.ascontiguousarray(normed_host[t : t + 1])
             xt_dev = malloc(xt.nbytes, runtime=runtime); buffers.append(xt_dev)
@@ -1144,27 +1195,22 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             for k in range(top_k):
                 e = int(selected_experts[t, k])
                 w = float(routing_weights[t, k])
-                g_w = np.ascontiguousarray(gate_q[e])  # [inter, hidden]
-                u_w = np.ascontiguousarray(up_q[e])    # [inter, hidden]
-                d_w = np.ascontiguousarray(down_q[e])  # [hidden, inter]
-                g_dev = malloc(g_w.nbytes, runtime=runtime); buffers.append(g_dev)
-                u_dev = malloc(u_w.nbytes, runtime=runtime); buffers.append(u_dev)
-                d_dev = malloc(d_w.nbytes, runtime=runtime); buffers.append(d_dev)
-                copy_host_to_device(g_dev, host_array_ptr(g_w), runtime=runtime)
-                copy_host_to_device(u_dev, host_array_ptr(u_w), runtime=runtime)
-                copy_host_to_device(d_dev, host_array_ptr(d_w), runtime=runtime)
+                # Use cached full-tensor + per-expert byte offset (no upload!)
+                g_ptr = gate_full_dev.ptr + e * per_expert_gate_bytes
+                u_ptr = up_full_dev.ptr + e * per_expert_up_bytes
+                d_ptr = down_full_dev.ptr + e * per_expert_down_bytes
                 gate_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(gate_out)
                 up_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(up_out)
                 inter_out = malloc(1 * inter_dim * 4, runtime=runtime); buffers.append(inter_out)
                 down_out = malloc(1 * hidden_size * 4, runtime=runtime); buffers.append(down_out)
                 scaled = malloc(1 * hidden_size * 4, runtime=runtime); buffers.append(scaled)
-                _dispatch_gemv(xt_dev, g_dev, gate_out, 1, hidden_size, inter_dim,
+                _dispatch_gemv_raw(xt_dev, g_ptr, gate_out, 1, hidden_size, inter_dim,
                                gate_qtype, runtime=runtime)
-                _dispatch_gemv(xt_dev, u_dev, up_out, 1, hidden_size, inter_dim,
+                _dispatch_gemv_raw(xt_dev, u_ptr, up_out, 1, hidden_size, inter_dim,
                                up_qtype, runtime=runtime)
                 mtp_silu_mul_f32(gate_out.ptr, up_out.ptr, inter_out.ptr, inter_dim,
                                  runtime=runtime)
-                _dispatch_gemv(inter_out, d_dev, down_out, 1, inter_dim, hidden_size,
+                _dispatch_gemv_raw(inter_out, d_ptr, down_out, 1, inter_dim, hidden_size,
                                down_qtype, runtime=runtime)
                 mtp_scale_f32(down_out.ptr, scaled.ptr, w, hidden_size, runtime=runtime)
                 # selected_out[t] += scaled
