@@ -880,8 +880,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         # value_cur = normed @ wv.T  -> [tokens, kv_heads, value_head_dim]
         value_cur_dev = malloc(tokens * kv_heads * value_head_dim * 4, runtime=runtime)
         buffers.append(value_cur_dev)
-        wv_dev = malloc(wv.nbytes, runtime=runtime); buffers.append(wv_dev)
-        copy_host_to_device(wv_dev, host_array_ptr(wv), runtime=runtime)
+        wv_dev = _cached_upload("attn_wv", wv, runtime=runtime)
         _attn_dispatch_gemv(normed_dev, wv_dev, value_cur_dev, tokens, hidden_size,
                             kv_heads * value_head_dim, wv_qtype, runtime=runtime)
 
@@ -922,8 +921,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
                                  value_head_dim, runtime=runtime)
 
         # wo_out = gated @ wo.T  -> [tokens, hidden]
-        wo_dev = malloc(wo.nbytes, runtime=runtime); buffers.append(wo_dev)
-        copy_host_to_device(wo_dev, host_array_ptr(wo), runtime=runtime)
+        wo_dev = _cached_upload("attn_wo", wo, runtime=runtime)
         wo_out_dev = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(wo_out_dev)
         _attn_dispatch_gemv(gated_dev, wo_dev, wo_out_dev, tokens, heads * value_head_dim,
                             hidden_size, wo_qtype, runtime=runtime)
