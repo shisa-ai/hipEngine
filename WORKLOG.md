@@ -101110,3 +101110,53 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_prompt.py \
 HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
 # 2 passed
 ```
+
+## 2026-06-19 — B2 depth-1 top-k diagnostic on rejection-heavy prompt
+
+### Change
+- `scripts/gguf_mtp_bench.py` now records per-depth `draft_top10_tokens`,
+  `target_in_draft_top10`, and `target_rank_in_draft_top10` for target-verified
+  rows. This supports acceptance/parity triage without changing speculation
+  behavior.
+- Added `select_topk_tokens()` plus unit coverage in
+  `tests/test_gguf_mtp_bench_metrics.py`.
+
+### Measurement
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt "Write a short greeting." \
+  --output benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json
+```
+- Artifact: `benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json`
+- accept_per_draft=0.000, no accepted drafts.
+- Depth-1 target-in-MTP-top10 by cycle:
+  - cycle 0 target `[20]`: in top-10 at rank 2 (`[24, 20, 16, ...]`)
+  - cycles 1-4 target `[220]`: absent from top-10.
+
+### Interpretation
+- Greeting prompt rejection is not merely greedy tie-breaking. After the first
+  near miss, target token 220 is not present in the MTP top-10 candidate set.
+- This points to a depth-1 draft distribution/parity issue for some prompts, so
+  the next useful comparison is against llama.cpp MTP trace/top-k or a target
+  oracle for these rejected rows.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_prompt.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py
+# 7 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```

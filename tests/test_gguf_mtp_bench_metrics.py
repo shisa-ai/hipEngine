@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
-from scripts.gguf_mtp_bench import compute_speculative_metrics, validate_draft_n_max
+from scripts.gguf_mtp_bench import compute_speculative_metrics, select_topk_tokens, validate_draft_n_max
 
 
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
@@ -35,6 +36,15 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
         "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
         "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time",
     }
+
+
+def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
+    logits = np.array([0.1, 4.0, -1.0, 2.5, 3.0], dtype=np.float32)
+
+    greedy, top3 = select_topk_tokens(logits, k=3)
+
+    assert greedy == 1
+    assert top3 == [1, 4, 3]
 
 
 def test_validate_draft_n_max_accepts_b1_and_b2_only() -> None:

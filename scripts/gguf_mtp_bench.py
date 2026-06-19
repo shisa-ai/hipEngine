@@ -64,6 +64,17 @@ def _get_hw_info() -> dict:
     return {"gpu": "unknown", "arch": "gfx1151"}
 
 
+def select_topk_tokens(logits_row: "np.ndarray", *, k: int = 10) -> tuple[int, list[int]]:
+    """Return greedy token and descending top-k token IDs for one logits row."""
+    if logits_row.ndim != 1:
+        raise ValueError("logits_row must be rank-1")
+    limit = min(k, int(logits_row.shape[0]))
+    top_idx = np.argpartition(logits_row, -limit)[-limit:]
+    top_sorted = top_idx[np.argsort(logits_row[top_idx])[::-1]]
+    top_tokens = [int(t) for t in top_sorted]
+    return top_tokens[0], top_tokens
+
+
 def validate_draft_n_max(draft_n_max: int) -> int:
     """Validate the benchmark's currently implemented draft depth.
 
@@ -263,6 +274,7 @@ def main():
             # and uses the depth-1 draft token embedding as the depth-2 token row.
             t2 = time.perf_counter()
             draft_tokens = []
+            draft_top10_tokens = []
             current_hidden_seed = hidden_seed
             current_token = prev_token
             for draft_depth in range(args.draft_n_max):
@@ -275,9 +287,9 @@ def main():
                 else:
                     draft_logits = run_draft(current_hidden_seed, token_embed)
                 # Top-k=10 greedy selection (llama.cpp contract)
-                top10_idx = np.argpartition(draft_logits[0], -10)[-10:]
-                draft_token = int(top10_idx[np.argmax(draft_logits[0, top10_idx])])
+                draft_token, top10_tokens = select_topk_tokens(draft_logits[0], k=10)
                 draft_tokens.append(draft_token)
+                draft_top10_tokens.append(top10_tokens)
                 current_token = draft_token
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
@@ -311,12 +323,26 @@ def main():
             total_accepted += accepted_draft_tokens
             accepted = accepted_draft_tokens == len(draft_tokens)
 
+            target_in_draft_top10 = []
+            target_rank_in_draft_top10 = []
+            for depth, target in enumerate(target_tokens):
+                top10 = draft_top10_tokens[depth]
+                if target in top10:
+                    target_in_draft_top10.append(True)
+                    target_rank_in_draft_top10.append(top10.index(target) + 1)
+                else:
+                    target_in_draft_top10.append(False)
+                    target_rank_in_draft_top10.append(None)
+
             cycle_details.append({
                 "cycle": cycle,
                 "target_token": target_token,
                 "target_tokens": target_tokens,
                 "draft_token": draft_tokens[0],
                 "draft_tokens": draft_tokens,
+                "draft_top10_tokens": draft_top10_tokens,
+                "target_in_draft_top10": target_in_draft_top10,
+                "target_rank_in_draft_top10": target_rank_in_draft_top10,
                 "accepted": accepted,
                 "generated_draft_tokens": len(draft_tokens),
                 "accepted_draft_tokens": accepted_draft_tokens,
