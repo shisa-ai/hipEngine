@@ -1010,15 +1010,15 @@ def _f32_to_bf16_batch(src: "np.ndarray", dst: "np.ndarray") -> None:
     rounded = u32 + 0x7FFF + lsb
     dst[:] = (rounded >> 16).astype(np.uint16)
 
-def _bf16_to_f32_device(src_ptr: int, dst_ptr: int, n: int, *, runtime=None) -> None:
+def _bf16_to_f32_device(src_ptr: int, dst_ptr: int, n: int, *, library=None, runtime=None) -> None:
     """Convert BF16 (uint16) device array to F32 device array using GPU cast kernel."""
     from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
-    bf16_to_f32(src_ptr, dst_ptr, n, runtime=runtime)
+    bf16_to_f32(src_ptr, dst_ptr, n, library=library, runtime=runtime)
 
-def _f32_to_bf16_device(src_ptr: int, dst_ptr: int, n: int, *, runtime=None) -> None:
+def _f32_to_bf16_device(src_ptr: int, dst_ptr: int, n: int, *, library=None, runtime=None) -> None:
     """Convert F32 device array to BF16 (uint16) device array using GPU cast kernel."""
     from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
-    f32_to_bf16(src_ptr, dst_ptr, n, runtime=runtime)
+    f32_to_bf16(src_ptr, dst_ptr, n, library=library, runtime=runtime)
 
 def qwen35_gguf_mtp_ffn_sublayer_f32(
     hidden: "np.ndarray",
@@ -1207,6 +1207,8 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
         _q4_k_lib = build_gguf_q4_k_gemv(load=True)
         _k_gemv_lib = build_gguf_k_gemv(load=True)
+        from hipengine.kernels.hip_gfx1100.convert.cast import build_cast
+        _cast_lib = build_cast(load=True)
         _mtp_lib = build_mtp_nextn(load=True)
 
         # M6: Cache full expert weight tensors and compute per-expert device offsets.
@@ -1232,7 +1234,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                 xt_dev = malloc(xt.nbytes, runtime=runtime); buffers.append(xt_dev)
                 copy_host_to_device(xt_dev, host_array_ptr(xt), runtime=runtime)
                 xt_bf16_dev = malloc(xt.size * 2, runtime=runtime); buffers.append(xt_bf16_dev)
-                _f32_to_bf16_device(xt_dev.ptr, xt_bf16_dev.ptr, xt.size, runtime=runtime)
+                _f32_to_bf16_device(xt_dev.ptr, xt_bf16_dev.ptr, xt.size, library=_cast_lib, runtime=runtime)
 
                 # Selected experts for this token
                 sel = np.ascontiguousarray(selected_experts[t, :top_k].astype(np.int64))
@@ -1258,8 +1260,8 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                 # Convert BF16 outputs to F32 and do silu_mul per expert
                 gate_f32_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(gate_f32_out)
                 up_f32_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(up_f32_out)
-                _bf16_to_f32_device(gate_bf16_out.ptr, gate_f32_out.ptr, top_k * inter_dim, runtime=runtime)
-                _bf16_to_f32_device(up_bf16_out.ptr, up_f32_out.ptr, top_k * inter_dim, runtime=runtime)
+                _bf16_to_f32_device(gate_bf16_out.ptr, gate_f32_out.ptr, top_k * inter_dim, library=_cast_lib, runtime=runtime)
+                _bf16_to_f32_device(up_bf16_out.ptr, up_f32_out.ptr, top_k * inter_dim, library=_cast_lib, runtime=runtime)
 
                 inter_out = malloc(top_k * inter_dim * 4, runtime=runtime); buffers.append(inter_out)
 
