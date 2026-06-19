@@ -101375,3 +101375,59 @@ python3 -m pytest -q tests/test_llamacpp_mtp_capture_trace.py \
 HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
 # 2 passed
 ```
+
+## 2026-06-19 — llama.cpp greeting trace plan aligned with reasoning off
+
+### Change
+- Updated `scripts/llamacpp_mtp_greeting_trace_plan.py` so the default server
+  command includes `--reasoning off`.
+- The generated metadata now records `reasoning=off` and notes that this is meant
+  to match native `gguf_mtp_bench.py` prompt rendering.
+- Regenerated `benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json`.
+- Updated `tests/test_llamacpp_mtp_greeting_trace_plan.py` to pin the reasoning
+  flag and metadata field.
+
+### Why
+- The prior captured llama.cpp trace was not comparable: llama-server entered the
+  reasoning-content path and generated tokens like ` Process`, `:`, `1`, while
+  native greeting diagnostics used target token IDs `[20]`, then `[220]`.
+- `llama-server --help` exposes `--reasoning [on|off|auto]`; disabling reasoning
+  is the next alignment attempt before changing native MTP math.
+
+### Verification
+```bash
+python3 scripts/llamacpp_mtp_greeting_trace_plan.py \
+  --out benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json
+
+python3 -m pytest -q tests/test_llamacpp_mtp_greeting_trace_plan.py \
+  tests/test_llamacpp_mtp_capture_trace.py tests/test_llamacpp_mtp_draft_trace.py
+# 6 passed
+
+python3 scripts/llamacpp_mtp_capture_trace.py \
+  benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json --dry-run
+# server command includes --reasoning off
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_llamacpp_mtp_capture_trace.py \
+  tests/test_llamacpp_mtp_greeting_trace_plan.py tests/test_llamacpp_mtp_draft_trace.py \
+  tests/test_gguf_mtp_bench_prompt.py tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_nextn_hidden_seed_contract.py
+# 13 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
+
+### Next
+- Re-run the capture wrapper with the updated plan to see whether llama.cpp now
+  emits a non-reasoning token stream comparable to native top-k diagnostics.

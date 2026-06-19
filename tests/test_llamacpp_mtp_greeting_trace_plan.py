@@ -12,6 +12,8 @@ def test_greeting_trace_plan_uses_verbose_draft_mtp_flags() -> None:
     assert "--spec-draft-n-max" in cmd
     assert cmd[cmd.index("--spec-draft-n-max") + 1] == "2"
     assert "--no-spec-draft-backend-sampling" in cmd
+    assert "--reasoning" in cmd
+    assert cmd[cmd.index("--reasoning") + 1] == "off"
     assert "--log-verbosity" in cmd
     assert cmd[cmd.index("--log-verbosity") + 1] == "5"
     assert "--no-log-prefix" in cmd
@@ -28,6 +30,7 @@ def test_greeting_trace_plan_request_and_parser_match_needed_oracle() -> None:
     assert plan["request_payload"]["temperature"] == 0.0
     assert plan["request_payload"]["top_k"] == 1
     assert plan["metadata"]["request"]["top_k_candidates"] == 10
+    assert plan["metadata"]["request"]["reasoning"] == "off"
     assert plan["metadata"]["native_reference_artifact"].endswith(
         "mtp-bench-1781845600-b2-greeting-topk-diagnostic.json"
     )

@@ -39,6 +39,7 @@ def build_trace_plan(
     server_log: str = DEFAULT_SERVER_LOG,
     metadata_json: str = DEFAULT_METADATA_JSON,
     trace_json: str = DEFAULT_TRACE_JSON,
+    reasoning: str = "off",
 ) -> dict[str, Any]:
     """Build a deterministic command plan for the needed llama.cpp trace."""
     server_command = [
@@ -59,6 +60,8 @@ def build_trace_plan(
         "--spec-draft-n-max",
         str(draft_n_max),
         "--no-spec-draft-backend-sampling",
+        "--reasoning",
+        reasoning,
         "--log-verbosity",
         "5",
         "--no-log-prefix",
@@ -86,9 +89,10 @@ def build_trace_plan(
             "temperature": 0.0,
             "seed": seed,
             "max_tokens": max_tokens,
+            "reasoning": reasoning,
         },
         "native_reference_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
-        "reason": "Compare llama.cpp draft-mtp top-k candidates to native MTP top-k where native target 220 is absent.",
+        "reason": "Compare llama.cpp draft-mtp top-k candidates to native MTP top-k where native target 220 is absent, with reasoning disabled to match native prompt rendering.",
     }
     parser_command = [
         "python3",
@@ -131,6 +135,7 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--max-tokens", type=int, default=6)
     parser.add_argument("--seed", type=int, default=12345)
+    parser.add_argument("--reasoning", default="off", choices=("on", "off", "auto"), help="llama.cpp chat reasoning mode")
     parser.add_argument("--server-log", default=DEFAULT_SERVER_LOG)
     parser.add_argument("--metadata-json", default=DEFAULT_METADATA_JSON)
     parser.add_argument("--trace-json", default=DEFAULT_TRACE_JSON)
@@ -150,6 +155,7 @@ def main() -> None:
         server_log=args.server_log,
         metadata_json=args.metadata_json,
         trace_json=args.trace_json,
+        reasoning=args.reasoning,
     )
     payload = json.dumps(plan, indent=2) + "\n"
     if args.out:

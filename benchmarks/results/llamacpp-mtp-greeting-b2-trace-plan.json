@@ -19,6 +19,8 @@
     "--spec-draft-n-max",
     "2",
     "--no-spec-draft-backend-sampling",
+    "--reasoning",
+    "off",
     "--log-verbosity",
     "5",
     "--no-log-prefix",
@@ -52,10 +54,11 @@
       "top_k_candidates": 10,
       "temperature": 0.0,
       "seed": 12345,
-      "max_tokens": 6
+      "max_tokens": 6,
+      "reasoning": "off"
     },
     "native_reference_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
-    "reason": "Compare llama.cpp draft-mtp top-k candidates to native MTP top-k where native target 220 is absent."
+    "reason": "Compare llama.cpp draft-mtp top-k candidates to native MTP top-k where native target 220 is absent, with reasoning disabled to match native prompt rendering."
   },
   "parser_command": [
     "python3",
