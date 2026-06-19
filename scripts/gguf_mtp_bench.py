@@ -25,6 +25,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 GGUF_PATH = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+DEFAULT_PROMPT = "What is the capital of France?"
+IM_START_TOKEN = 248045
+IM_END_TOKEN = 248046
+
+
+def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT) -> list[int]:
+    """Build the Qwen chat prompt used by the native GGUF MTP benchmark."""
+    return (
+        [IM_START_TOKEN]
+        + tokenizer.encode(f"user\n{user_prompt}")
+        + [IM_END_TOKEN]
+        + [IM_START_TOKEN]
+        + tokenizer.encode("assistant\n")
+    )
 
 
 def _hip_available() -> bool:
@@ -129,6 +143,7 @@ def main():
     parser.add_argument("--model", default=GGUF_PATH, help="GGUF model path")
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
+    parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
     parser.add_argument("--output", default=None, help="Output JSON path (default: benchmarks/results/mtp-bench-<timestamp>.json)")
     args = parser.parse_args()
     try:
@@ -170,10 +185,7 @@ def main():
     token_embd_f32 = dq("token_embd.weight")
 
     # Build chat-formatted prompt
-    IM_START = 248045
-    IM_END = 248046
-    prompt = ([IM_START] + tok.encode("user\nWhat is the capital of France?") +
-              [IM_END] + [IM_START] + tok.encode("assistant\n"))
+    prompt = build_chat_prompt(tok, args.prompt)
 
     print(f"Prompt: {repr(tok.decode(prompt))}")
     print(f"Prompt tokens: {len(prompt)}")
@@ -368,7 +380,7 @@ def main():
             "model": Path(args.model).name,
             "model_path": args.model,
             "quant": "Q4_K_M",
-            "prompt": "What is the capital of France?",
+            "prompt": args.prompt,
             "prompt_tokens": len(prompt),
             "cycles": args.cycles,
             "draft_n_max": args.draft_n_max,

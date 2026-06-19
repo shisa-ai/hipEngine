@@ -100962,3 +100962,54 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_h
   fixture loop to the native `gguf_mtp_bench.py` path or add a new bridge in the
   prompt-suite harness that calls the native B2 runtime per prompt and records
   schema-4 accepted-token metrics.
+
+## 2026-06-19 — Native B2 prompt argument and count-prompt acceptance probe
+
+### Change
+- `scripts/gguf_mtp_bench.py` now accepts `--prompt`, with the previous France
+  prompt retained as the default.
+- Added `build_chat_prompt()` and `tests/test_gguf_mtp_bench_prompt.py` so prompt
+  sweep inputs can reuse the native B1/B2 runtime without editing the dirty
+  preflight prompt-suite harness.
+
+### Measurement
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py \
+  --cycles 5 --draft-n-max 2 --prompt "Count from one to five." \
+  --output benchmarks/results/mtp-bench-1781844300-b2-count-prompt-visible-output.json
+```
+- Artifact: `benchmarks/results/mtp-bench-1781844300-b2-count-prompt-visible-output.json`
+- accept_per_draft=0.200 overall (2 accepted / 10 generated drafts)
+- accepted_per_output=0.2857, visible_tokens_per_cycle=1.4
+- cold-inclusive: tokens_per_sec=14.67, speedup_vs_ar_visible=0.9093x
+- warm excluding cycle0: accept_per_draft=0.25, visible_tokens_per_cycle=1.5,
+  tokens_per_sec=19.20, speedup_vs_ar_visible=1.2396x
+- Cycle 2 had a true depth-2 accept: drafts `[220, 16]`, targets `[220, 16]`,
+  accepted_draft_tokens=2.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_prompt.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py
+# 6 passed
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_mtp_nextn_real_gguf.py -rs --tb=short
+# 2 passed
+```
+
+### Interpretation
+- B2 acceptance varies by prompt: the count prompt produced one full depth-2 accept
+  and a warm 1.24x visible-output speedup, unlike the France prompt (no depth-2
+  accepts). This validates adding a native prompt-sweep path before optimizing B2
+  kernels further. Cold-inclusive remains slower due to cache/warmup.
