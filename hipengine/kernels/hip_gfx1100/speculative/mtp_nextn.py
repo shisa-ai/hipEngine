@@ -576,6 +576,7 @@ def qwen35_gguf_mtp_eh_proj_f32(
         raise ValueError("enorm_weight must have shape [hidden]")
 
     runtime = get_hip_runtime()
+    _mtp_lib = build_mtp_nextn(load=True)
     e_norm_dev = malloc(embed_arr.nbytes, runtime=runtime)
     h_norm_dev = malloc(hidden_arr.nbytes, runtime=runtime)
     out_dev = malloc(hidden_arr.nbytes, runtime=runtime)
@@ -590,9 +591,9 @@ def qwen35_gguf_mtp_eh_proj_f32(
         copy_host_to_device(hidden_dev, host_array_ptr(hidden_arr), runtime=runtime)
         # h_norm = rmsnorm(hidden, hnorm); e_norm = rmsnorm(embed, enorm)
         mtp_rmsnorm_f32(embed_dev.ptr, enorm_dev.ptr, e_norm_dev.ptr, rows, hidden, eps=eps,
-                        runtime=runtime)
+                        library=_mtp_lib, runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, hnorm_dev.ptr, h_norm_dev.ptr, rows, hidden, eps=eps,
-                        runtime=runtime)
+                        library=_mtp_lib, runtime=runtime)
         if eh_proj_qtype is None or eh_proj_qtype == GGMLQuantizationType.F32:
             mtp_eh_proj_f32(e_norm_dev.ptr, h_norm_dev.ptr, weight_dev.ptr, out_dev.ptr,
                             rows, hidden, runtime=runtime)
@@ -820,9 +821,10 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         normed_dev = malloc(x.nbytes, runtime=runtime); buffers.append(normed_dev)
         hidden_dev = malloc(x.nbytes, runtime=runtime); buffers.append(hidden_dev)
         attn_norm_dev = _cached_upload("attn_norm", attn_norm, runtime=runtime)
+        _attn_mtp_lib = build_mtp_nextn(load=True)
         copy_host_to_device(hidden_dev, host_array_ptr(x), runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, attn_norm_dev.ptr, normed_dev.ptr, tokens, hidden_size,
-                        eps=eps, runtime=runtime)
+                        eps=eps, library=_attn_mtp_lib, runtime=runtime)
 
         # q_full = normed @ wq.T  -> [tokens, heads*2*qk_head_dim]
         q_full_dev = malloc(tokens * heads * 2 * qk_head_dim * 4, runtime=runtime)
@@ -844,7 +846,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         copy_host_to_device(query_dev, host_array_ptr(query_host), runtime=runtime)
         # per-head rmsnorm over qk_head_dim
         mtp_rmsnorm_f32(query_dev.ptr, q_norm_dev.ptr, query_dev.ptr, tokens * heads, qk_head_dim,
-                        eps=eps, runtime=runtime)
+                        eps=eps, library=_attn_mtp_lib, runtime=runtime)
         gate_dev = malloc(gate_host.nbytes, runtime=runtime); buffers.append(gate_dev)
         copy_host_to_device(gate_dev, host_array_ptr(gate_host), runtime=runtime)
 
@@ -923,7 +925,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         # out = hidden + wo_out
         out_dev = malloc(tokens * hidden_size * 4, runtime=runtime); buffers.append(out_dev)
         mtp_add_f32(hidden_dev.ptr, wo_out_dev.ptr, out_dev.ptr, tokens * hidden_size,
-                    runtime=runtime)
+                    library=_attn_mtp_lib, runtime=runtime)
         runtime.device_synchronize()
         out = np.empty((tokens, hidden_size), dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
@@ -975,7 +977,7 @@ def qwen35_gguf_mtp_moe_routing_f32(
         logits_dev = malloc(tokens * experts * 4, runtime=runtime); buffers.append(logits_dev)
         copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
         mtp_linear_f32(x_dev.ptr, router_dev.ptr, logits_dev.ptr, tokens, hidden_size, experts,
-                       runtime=runtime)
+                       library=build_mtp_nextn(load=True), runtime=runtime)
         logits = np.empty((tokens, experts), dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits), logits_dev, runtime=runtime)
     finally:
@@ -1169,6 +1171,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             gate_vec = gate_vec.astype(np.float32)
 
     runtime = get_hip_runtime()
+    _mtp_lib = build_mtp_nextn(load=True)
     buffers: list = []
     try:
         # normed = rmsnorm(hidden, attn_post_norm)
@@ -1178,7 +1181,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
         copy_host_to_device(norm_dev, host_array_ptr(norm_weight), runtime=runtime)
         mtp_rmsnorm_f32(x_dev.ptr, norm_dev.ptr, normed_dev.ptr, tokens, hidden_size, eps=eps,
-                        runtime=runtime)
+                        library=_mtp_lib, runtime=runtime)
 
         # routing (router linear on GPU, softmax/topk on host)
         selected_experts, routing_weights = qwen35_gguf_mtp_moe_routing_f32(
@@ -1329,7 +1332,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         sgl_dev = malloc(tokens * 1 * 4, runtime=runtime); buffers.append(sgl_dev)
         copy_host_to_device(gv_dev, host_array_ptr(gate_vec), runtime=runtime)
         mtp_linear_f32(normed_dev.ptr, gv_dev.ptr, sgl_dev.ptr, tokens, hidden_size, 1,
-                       runtime=runtime)
+                       library=_mtp_lib, runtime=runtime)
         sgl_host = np.empty((tokens, 1), dtype=np.float32)
         copy_device_to_host(host_array_ptr(sgl_host), sgl_dev, runtime=runtime)
         sigmoid_vec = (1.0 / (1.0 + np.exp(-sgl_host))).astype(np.float32).reshape(tokens)
@@ -1390,6 +1393,7 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         vocab = head_weight.shape[0]
 
     runtime = get_hip_runtime()
+    _sh_lib = build_mtp_nextn(load=True)
     buffers: list = []
     try:
         hidden_dev = malloc(hidden.nbytes, runtime=runtime); buffers.append(hidden_dev)
@@ -1398,7 +1402,7 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         out_dev = malloc(rows * vocab * 4, runtime=runtime); buffers.append(out_dev)
         copy_host_to_device(hidden_dev, host_array_ptr(hidden), runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, norm_dev.ptr, normed_dev.ptr, rows, hidden_size, eps=eps,
-                        runtime=runtime)
+                        library=_sh_lib, runtime=runtime)
         head_dev = None  # set per-quant-type below
         if shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q6_K:
             # Q6_K pack8 gemv uses fp16 input which loses too much precision
@@ -1415,7 +1419,7 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
                 ).astype(np.float32)
                 head_dev = _cached_upload(cache_key, head_f32, runtime=runtime)
             mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
-                           runtime=runtime)
+                           library=_sh_lib, runtime=runtime)
         elif shared_head_qtype is not None and shared_head_qtype == GGMLQuantizationType.Q8_0:
             from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                 gguf_q8_0_gemv_f32_f32_out as _hip_q8_0_head,
@@ -1426,7 +1430,7 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         else:
             head_dev = _cached_upload("shared_head_f32", head_weight, runtime=runtime)
             mtp_linear_f32(normed_dev.ptr, head_dev.ptr, out_dev.ptr, rows, hidden_size, vocab,
-                           runtime=runtime)
+                           library=_sh_lib, runtime=runtime)
         runtime.device_synchronize()
         out = np.empty((rows, vocab), dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
