@@ -100530,3 +100530,52 @@ from hip_gfx1100 and the real NextN down weights are Q5_K; RoPE; KVLiveSpans
 paged-cache attention path; GPU router softmax/topk; WMMA-tuned real-shape
 kernels. The mtp-gguf multiloop can resume against a real correctness signal now
 that the native runtime key exists.
+
+## 2026-06-19 — M6 GGUF MTP routing norm fix after shared-head pack8 speedup
+
+### Context
+- Current mtp-gguf loop is in M6 runtime optimization after landing:
+  - `8ad55cda` — Q6_K pack8 BF16→F32 shared_head GEMV, warm draft ~370ms → ~7ms.
+  - `5687af01` — FFN buffer preallocation + in-place add, warm draft ~7.0ms → ~6.7ms.
+- The remaining warm draft window is roughly eh_proj ~0.3ms, attention ~0.8ms,
+  FFN ~4-5ms, shared_head ~2.3ms.
+
+### Fix
+- `hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py`: route MoE experts from
+  the post-RMSNorm hidden (`normed_host`) instead of pre-norm `x`, matching the CPU
+  reference FFN ordering. The device `normed_dev` was already produced; now it is
+  downloaded once and reused for both host-side routing and the token-loop input.
+
+### Verification
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_mtp_nextn_eh_proj_hip.py tests/test_mtp_nextn_attention_hip.py \
+  tests/test_mtp_nextn_ffn_hip.py tests/test_mtp_nextn_layer_hip.py \
+  tests/test_mtp_nextn_real_quant_mix.py tests/test_mtp_nextn_rope_hip.py \
+  tests/test_mtp_nextn_paged_attn_hip.py tests/test_mtp_nextn_real_gguf.py \
+  tests/test_mtp_q4_k_gemv_adapter.py tests/test_mtp_q5_k_gemv_adapter.py \
+  tests/test_mtp_q8_0_gemv_adapter.py tests/test_mtp_q6_k_gemv_adapter.py \
+  tests/test_m6_weight_cache.py tests/test_kernel_registry.py -rs --tb=no
+# 53 passed, 1 warning
+```
+
+### Measurement
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --cycles 5 --draft-n-max 1
+```
+- Artifact: `benchmarks/results/mtp-bench-1781839841.json`
+- gfx1151 / Ryzen AI MAX+ 395 iGPU, `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+- accept_per_draft=0.200, accepted_per_output=0.200 (unchanged)
+- avg_decode_ms=74.86, tokens_per_sec=13.36
+- warm MTP draft cycles: 7.01ms, 6.70ms, 7.33ms, 7.09ms (cycle 0 cold cache 96.50ms)

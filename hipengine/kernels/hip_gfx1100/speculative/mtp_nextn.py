@@ -1186,9 +1186,12 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         mtp_rmsnorm_f32(x_dev.ptr, norm_dev.ptr, normed_dev.ptr, tokens, hidden_size, eps=eps,
                         library=_mtp_lib, runtime=runtime)
 
-        # routing (router linear on GPU, softmax/topk on host)
+        # routing: use normed (post-rmsnorm) hidden, matching cpu_reference
+        # Download normed from device to avoid re-uploading x (pre-norm)
+        normed_host = np.empty((tokens, hidden_size), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(normed_host), normed_dev, runtime=runtime)
         selected_experts, routing_weights = qwen35_gguf_mtp_moe_routing_f32(
-            x.copy(),  # host copy of hidden for the host-side routing shim
+            normed_host.copy(),
             router_weight,
             experts_used=experts_used,
             expert_weights_scale=expert_weights_scale,
@@ -1201,9 +1204,6 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         # zero-init
         zero = np.zeros((tokens, hidden_size), dtype=np.float32)
         copy_host_to_device(selected_out_dev, host_array_ptr(zero), runtime=runtime)
-
-        normed_host = np.empty((tokens, hidden_size), dtype=np.float32)
-        copy_device_to_host(host_array_ptr(normed_host), normed_dev, runtime=runtime)
 
         # M6: Pre-load GEMV libraries to avoid 61ms rebuild check per call.
         from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv
