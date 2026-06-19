@@ -43,6 +43,7 @@ import hipengine.kernels.hip_gfx1151  # noqa: F401,E402
 
 from hipengine.loading.gguf import GGUFReader  # noqa: E402
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data  # noqa: E402
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer  # noqa: E402
 
 
 def _load_blk40_weights():
@@ -194,8 +195,10 @@ def test_m5_ar_decode_plus_mtp_draft_consistency(mtp_weights):
 
     session = Qwen35GGUFResidentSession(model_path=GGUF_PATH)
     try:
-        # Simple 3-token prompt
-        prompt = [1, 2, 3]
+        # Meaningful English prompt
+        reader = GGUFReader(GGUF_PATH)
+        tok = Qwen35GGUFTokenizer.from_gguf_info(reader.info)
+        prompt = tok.encode("The capital of France is")
         prefill_result = session.prefill(prompt, return_logits=False,
                                          capture_hidden_seed_fp32=True)
 
@@ -249,9 +252,11 @@ def test_m5_multiple_ar_steps_mtp_draft(mtp_weights):
     """
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
+    reader = GGUFReader(GGUF_PATH)
+    tok = Qwen35GGUFTokenizer.from_gguf_info(reader.info)
     session = Qwen35GGUFResidentSession(model_path=GGUF_PATH)
     try:
-        prompt = [1, 2, 3, 4, 5]
+        prompt = tok.encode("The answer to life the universe and everything is")
         prefill_result = session.prefill(prompt, return_logits=False,
                         capture_hidden_seed_fp32=True)
 
