@@ -102966,3 +102966,61 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - The next boundary outside the verified attention branch is now capturable on device; the first compact capture is finite and records layer-0 post-attention residual/MoE combine inputs and layer output for final token 271.
 - This remains diagnostic-only and does not change generation math or target AR parity.
+
+## 2026-06-20 — GGUF layer capture script emitted full post-attention arrays
+
+### Change
+- Continued iteration 274 by adding `scripts/gguf_linear_layer_capture.py` and `tests/test_gguf_linear_layer_capture_script.py`.
+- The script wraps `Qwen35GGUFResidentSession.capture_linear_attention_layer(...)` with the same dry-run/HIP-guarded command style as the boundary capture script, plus opt-in `--include-arrays`/`--array-keys` support.
+- Emitted `benchmarks/results/mtp-gguf-iter274-linear-layer-full-arrays.json` for final greeting token position 16/layer 0.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_linear_layer_capture.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_linear_layer_capture_script.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+import ctypes
+ctypes.CDLL('libamdhip64.so')
+print('hip OK')
+PY
+# hip OK
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_linear_layer_capture.py --iteration 274 --include-arrays \
+  --output benchmarks/results/mtp-gguf-iter274-linear-layer-full-arrays.json
+# status=captured, position=16, token_id=271, layer_id=0
+# arrays=[attn_out_f32, ffn_or_moe_down_f32, hidden_in_f32, layer_out_f32,
+# moe_shared_out_f32, post_norm_f32, residual_f32]
+# layer_out_len=2048, ffn_or_moe_down_len=16384, artifact_bytes=685264
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter274-linear-layer-full-arrays.json \
+  >/tmp/iter274-layer-full.pretty && echo layer-full-arrays-json-ok
+# layer-full-arrays-json-ok
+
+git diff --check -- scripts/gguf_linear_layer_capture.py \
+  tests/test_gguf_linear_layer_capture_script.py \
+  benchmarks/results/mtp-gguf-iter274-linear-layer-full-arrays.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Exact layer-0 post-attention arrays are now available for CPU residual/add-RMSNorm and MoE/shared-expert combine checks, not just summary statistics.
+- This remains diagnostic-only and does not change generation math or target AR parity.
