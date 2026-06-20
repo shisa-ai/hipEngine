@@ -110586,3 +110586,68 @@ PY
 - Layer-9 post-attention residual and post-norm match the BF16 residual+RMSNorm oracle exactly at position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
 - Layer 9 remains `linear_attention`, with `preceding_layer_count=9` in the capture.
 - This clears the next layer-9 bisection step: MoE router from post-norm.
+
+## 2026-06-20 — validated layer-9 MoE router oracle
+
+### Change
+- Continued iteration 397 by adding `scripts/llamacpp_mtp_audit_layer9_moe_router_oracle.py`.
+- The script starts from the exact layer-9 post-attention residual artifact, hash-checks live `post_norm_f32`, materializes the layer-9 MoE router and shared-gate weights, and validates selected experts, routing weights, and shared-gate logit under the resident-BF16 contract.
+- Added `tests/test_llamacpp_mtp_audit_layer9_moe_router_oracle.py` covering post-attention artifact validation, post-norm hash guards, exact / tolerance / mismatch / blocked / unavailable classifications, and injected capture / weight fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter397-layer9-moe-router-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer9_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer9_moe_router_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer9_moe_router_oracle.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer9_moe_router_oracle.py \
+  --post-attn-artifact benchmarks/results/mtp-gguf-iter396-layer9-post-attn-residual-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter397-layer9-moe-router-oracle.json
+# status=ready
+# classification=layer9_moe_router_matches_oracle_within_tolerance
+# post_norm_input_classification=layer9_moe_router_input_matches_post_attn_artifact exact_hash_match=True
+# selected_experts_i64 exact
+# routing_weights_f32 within tolerance: max_abs=1.4901161193847656e-08 rmse=6.4523919540704355e-09
+# shared_gate_logit_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention preceding_layer_count=9
+# next_action=audit_layer9_moe_selected_and_shared_expert_outputs
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer9_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer9_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer8_moe_router_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic MoE router oracle/test only; no torch or
+# dispatch branches; no attention/KV ABI changed; RED-style focused tests added
+# before real artifact; llama.cpp/GGUF router oracle retained; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-9 `post_norm_f32` matches the exact post-attention artifact before router audit.
+- Layer-9 MoE router selected experts and shared-gate logit match exactly at position 16/token 271.
+- Layer-9 routing weights match within tolerance (`max_abs=1.4901161193847656e-08`, `rmse=6.4523919540704355e-09`).
+- Layer 9 remains `linear_attention`, with `preceding_layer_count=9` in the capture.
+- This clears the next layer-9 bisection step: selected/shared expert outputs.
