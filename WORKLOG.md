@@ -105377,3 +105377,104 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer count inferred for the MTP-bearing Qwen3.6 35B GGUF is `40`.
 - Recommended bisection order starts with final layer `39` to align against the iteration-309 pre-output boundary, then midpoint probes `[19, 9, 29]`.
 - Next action: build a temporary layer-39 llama.cpp `h_nextn_layer_out` capture and compare it to hipEngine `capture_attention_layer(...).layer_out_f32`.
+
+## 2026-06-20 — layer 39 reproduces the pre-output mismatch exactly
+
+### Change
+- Continued iteration 311 by adding `scripts/llamacpp_mtp_build_layer_boundary_harness.py`, which builds a temporary llama.cpp source tree patched to expose one selected decoder layer output through `res->t_h_nextn` as `h_nextn_layer_out`. The helper also applies the post-`output_norm` preservation patch and explicitly rejects any copied source containing the final `h_nextn_pre_output_norm` patch.
+- Added `scripts/llamacpp_mtp_compare_layer_boundary.py`, which runs the patched llama.cpp hidden-seed capture harness and compares it against hipEngine `session.capture_attention_layer(..., run_preceding_layers=True).layer_out_f32` after warming prior prompt tokens.
+- Added focused tests:
+  - `tests/test_llamacpp_mtp_layer_boundary_harness.py`
+  - `tests/test_llamacpp_mtp_compare_layer_boundary.py`
+- Emitted iteration-311 artifacts:
+  - `benchmarks/results/mtp-gguf-iter311-layer39-harness-build.json`
+  - `benchmarks/results/mtp-gguf-iter311-layer39-llamacpp-build-result.json`
+  - `benchmarks/results/mtp-gguf-iter311-layer39-harness-compile.json`
+  - `benchmarks/results/mtp-gguf-iter311-layer39-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_boundary_harness.py \
+  tests/test_llamacpp_mtp_compare_layer_boundary.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_layer_boundary_harness.py \
+  --plan benchmarks/results/mtp-gguf-iter310-layer-boundary-bisect-plan.json \
+  --base-build benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter311-layer39-harness-build.json \
+  --patched-build-result benchmarks/results/mtp-gguf-iter311-layer39-llamacpp-build-result.json \
+  --harness-compile benchmarks/results/mtp-gguf-iter311-layer39-harness-compile.json \
+  --source-dir /tmp/hipengine-llamacpp-mtp-iter311-layer39-src \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter311-layer39-build \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter311-layer39-build-logs \
+  --harness-dir /tmp/hipengine-llamacpp-mtp-iter311-layer39-harness \
+  --layer-id 39 --clean --iteration 311
+# status=ready, layer_id=39, patch_applied=true, configure_rc=0, build_rc=0,
+# harness_status=compiled
+
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/tmp/hipengine-llamacpp-mtp-iter311-layer39-src/src/models/qwen35moe.cpp')
+text = p.read_text()
+assert text.count('h_nextn_layer_out') == 1
+assert text.count('if (il == 39)') == 1
+assert text.count('h_nextn_post_output_norm') == 1
+assert text.count('h_nextn_pre_output_norm') == 0
+assert text.count('res->t_h_nextn = cur;') == 1
+print('layer39-patch-source-ok')
+PY
+# layer39-patch-source-ok
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_layer_boundary.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter311-layer39-harness-compile.json \
+  --prior-pre-output benchmarks/results/mtp-gguf-iter309-pre-output-norm-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 --layer-id 39 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter311-layer39/pos16 \
+  --output benchmarks/results/mtp-gguf-iter311-layer39-compare.json \
+  --all-rows --iteration 311
+# status=mismatched
+# llamacpp_rc=0
+# hipengine_status=captured
+# rmse=0.45158678625003046
+# max_abs_diff=6.707832336425781
+# classification=final_layer_reproduces_pre_output_mismatch
+# next_action=continue_bisect_with_layer_19
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_boundary_harness.py \
+  tests/test_llamacpp_mtp_compare_layer_boundary.py \
+  tests/test_llamacpp_mtp_layer_boundary_bisect_plan.py \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py
+# ........................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The temporary layer-39 patched source is correct:
+  - one `h_nextn_layer_out` tap
+  - one `if (il == 39)` selector
+  - one `h_nextn_post_output_norm` callback
+  - no `h_nextn_pre_output_norm` final-boundary patch
+  - only one `res->t_h_nextn = cur` assignment
+- Layer-39 comparison exactly reproduces the iteration-309 pre-output mismatch:
+  - llama.cpp SHA `1cab12b424a96e11d72e5b2157392dab90ff637613986e6972f233723c445468`
+  - hipEngine SHA `5063f20d812adb727746d96ba03ffecdaf19237a10ddd64ba92fd05ebb5ccb27`
+  - RMSE `0.45158678625003046`
+  - max abs diff `6.707832336425781`
+  - mean abs diff `0.3372998724516947`
+  - best all-row scan: row `11`, RMSE `0.41610622311193585`, max abs diff `4.8981032371521`
+- Classification: `final_layer_reproduces_pre_output_mismatch`.
+- Next action: continue the layer-boundary bisect with layer `19`.
