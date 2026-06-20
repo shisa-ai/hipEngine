@@ -106535,3 +106535,68 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - `recurrent_bf16_f32` matches exactly.
   - `attn_out_f32` matches within `1.1920928955078125e-07` max abs.
 - Interpretation: the next bisection step should return to the original warm position-16 boundary and add either CPU replay for tokens `0..15` or a diagnostic pre-token conv/recurrent state capture before recomputing the same oracle there.
+
+## 2026-06-20 — validated warm position-16 layer-0 conv/GDN replay
+
+### Change
+- Continued iteration 326 by adding `scripts/llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py`.
+- The script computes layer-0 replay inputs directly from GGUF `token_embd.weight` rows, applies the same BF16-contracted `attn_norm`, `attn_qkv`, `attn_gate`, `ssm_alpha`, and `ssm_beta` contracts, replays conv/GDN state for prompt positions `0..16`, and compares the target position-16 hipEngine boundary capture.
+- Added `tests/test_llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py` covering stateful conv shift/history, GDN recurrent state mutation, synthetic replay artifact generation, target-input mismatch classification, and row-selective token embedding loading.
+- Emitted `benchmarks/results/mtp-gguf-iter326-layer0-warm-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py \
+  --projection-artifact benchmarks/results/mtp-gguf-iter323-layer0-bf16-projection-oracle.json \
+  --plan benchmarks/results/mtp-gguf-iter324-layer0-conv-gdn-plan.json \
+  --position0-artifact benchmarks/results/mtp-gguf-iter325-layer0-position0-conv-gdn-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter326-layer0-warm-conv-gdn-oracle.json \
+  --iteration 326
+# status=ready
+# classification=layer0_warm_conv_gdn_matches_oracle_within_tolerance
+# target_input_classification=target_inputs_match_replay_within_tolerance
+# input attn_norm_f32: exact, max_abs=0.0, rmse=0.0
+# input linear_qkv_f32: within tolerance, max_abs=0.000244140625, rmse=2.6973982585332124e-06
+# input linear_z_f32: exact, max_abs=0.0, rmse=0.0
+# input ssm_alpha_f32: exact, max_abs=0.0, rmse=0.0
+# input ssm_beta_f32: exact, max_abs=0.0, rmse=0.0
+# field conv_out_f32: within tolerance, max_abs=1.332408282905817e-05, rmse=1.4725529240422475e-07
+# field recurrent_out_f32: within tolerance, max_abs=3.986060619354248e-07, rmse=9.869173034360301e-09
+# field recurrent_bf16_f32: within tolerance, max_abs=2.9802322387695312e-08, rmse=4.665698938310925e-10
+# field attn_out_f32: within tolerance, max_abs=9.5367431640625e-07, rmse=2.107342389479072e-08
+# next_action=continue_layer0_bisection_after_attn_out_or_residual
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Warm position-16 layer-0 conv/GDN state replay now passes against hipEngine.
+- The replayed target inputs match hipEngine under the existing BF16-contracted policy: `attn_norm`, `linear_z`, `ssm_alpha`, and `ssm_beta` exact; `linear_qkv` within one BF16 step (`0.000244140625` max abs), matching the iteration-323 projection finding.
+- The warmed conv/GDN/SSM-out outputs match within tolerance:
+  - `conv_out_f32` max abs `1.332408282905817e-05`
+  - `recurrent_out_f32` max abs `3.986060619354248e-07`
+  - `recurrent_bf16_f32` max abs `2.9802322387695312e-08`
+  - `attn_out_f32` max abs `9.5367431640625e-07`
+- Interpretation: the original layer-0 divergence is no longer attributable to layer-0 input embedding, `attn_norm`, qkv/gate/alpha/beta projections, or the warmed conv/GDN/SSM-out chain. Next bisection should move immediately after `attn_out` into residual/add or the following FFN/MoE boundary.
