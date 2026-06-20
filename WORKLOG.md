@@ -109282,3 +109282,59 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-6 expert inputs match the router artifact at warm position 16/token 271: `post_norm_f32` hash matches and selected experts are `[65, 22, 31, 226, 165, 36, 37, 76]`.
 - Selected expert down output, shared expert output, and final `layer_out_f32` are all exact against the BF16 raw-GGUF oracle.
 - This validates the layer-6 MoE expert-output boundary and clears the next bisection step: layer-7 BF16 handoff / next MTP boundary.
+
+## 2026-06-20 — validated layer-7 BF16 handoff
+
+### Change
+- Continued iteration 375 by adding `scripts/llamacpp_mtp_layer7_bf16_handoff_audit.py`.
+- The script starts from the validated layer-6 MoE expert-output artifact, re-captures layer 6 and layer 7 with `run_preceding_layers=True`, hash-checks the live source `layer_out_f32`, and compares layer-6 output to layer-7 `hidden_in_f32` under the exact BF16 handoff contract.
+- Added `tests/test_llamacpp_mtp_layer7_bf16_handoff_audit.py` covering source artifact validation, source hash guards, exact/mismatch/unavailable handoff classification, and preceding-layer count enforcement.
+- Emitted `benchmarks/results/mtp-gguf-iter375-layer7-bf16-handoff.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer7_bf16_handoff_audit.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_layer7_bf16_handoff_audit.py \
+  --layer6-experts benchmarks/results/mtp-gguf-iter374-layer6-moe-expert-outputs-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter375-layer7-bf16-handoff.json
+# status=ready
+# classification=layer7_hidden_in_matches_layer6_layer_out_exactly
+# source_layer=6 target_layer=7 position=16 token=271
+# source_reference=layer7_handoff_source_matches_layer6_artifact exact_hash_match=True
+# handoff exact, max_abs=0.0 rmse=0.0
+# source_preceding=6 target_preceding=7 target_layer_type=full_attention
+# source_layer_out_sha=8a1363dc0edce0ade6522f7bf1f22e6ffe5ca73ccded3e971ed314ef81cb5e11
+# target_hidden_sha=8a1363dc0edce0ade6522f7bf1f22e6ffe5ca73ccded3e971ed314ef81cb5e11
+# next_action=audit_layer7_attn_norm_under_bf16_contract_or_mtp_boundary
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_layer7_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer7_bf16_handoff_audit.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer7_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer6_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer6_moe_expert_outputs_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The layer-6 source capture matches the validated layer-6 expert-output artifact exactly at warm position 16/token 271.
+- Layer-7 `hidden_in_f32` is bit-identical to layer-6 `layer_out_f32` (`max_abs=0.0`, matching SHA `8a1363dc0edce0ade6522f7bf1f22e6ffe5ca73ccded3e971ed314ef81cb5e11`).
+- Layer 7 is the next full-attention layer (`target_layer_type=full_attention`), so this validates the cross-family BF16 handoff boundary and clears the next bisection step: layer-7 attention norm under the BF16 contract.
