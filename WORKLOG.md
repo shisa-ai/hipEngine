@@ -103153,3 +103153,84 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-0 MoE/shared-expert combine is bit-exact against the fused-kernel CPU formula: `layer_out_vs_cpu.max_abs_diff=0.0`, `rms_abs_diff=0.0`.
 - Weighted selected expert accumulation only changes by expected BF16 rounding (`weighted_selected_vs_bf16.max_abs_diff=0.00011600181460380554`) before the final combine.
 - Layer-0 final output is now fully explained by previous attention, residual/RMSNorm, and MoE/shared-expert diagnostics; target AR parity is still not fixed. Continue narrowing later-layer propagation or final output head.
+
+## 2026-06-20 — GGUF layer-1 post-attention path matches CPU oracles
+
+### Change
+- Continued iteration 277 by reusing the full-layer capture tap on layer 1 for the same final greeting token (`position=16`, `token_id=271`).
+- Generalized residual/RMSNorm and MoE combine artifact conclusions to report the actual `layer_id` instead of hard-coding "Layer-0"; added regression assertions for the conclusion labels.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter277-layer1-routing-full-arrays.json`
+  - `benchmarks/results/mtp-gguf-iter277-layer1-residual-norm-compare.json`
+  - `benchmarks/results/mtp-gguf-iter277-layer1-moe-combine-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_linear_layer_capture.py \
+  --iteration 277 --layer 1 --include-arrays \
+  --output benchmarks/results/mtp-gguf-iter277-layer1-routing-full-arrays.json
+# status=captured position=16 token_id=271 layer_id=1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_layer_residual_norm_compare.py \
+  scripts/gguf_layer_moe_combine_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_layer_residual_norm_compare.py \
+  tests/test_gguf_layer_moe_combine_compare.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_residual_norm_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter277-layer1-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter277-layer1-residual-norm-compare.json \
+  --layer 1 --iteration 277
+# residual_max_abs=0.0
+# post_norm_max_abs=0.015625
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_moe_combine_compare.py \
+  --capture benchmarks/results/mtp-gguf-iter277-layer1-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter277-layer1-moe-combine-compare.json \
+  --iteration 277
+# layer_out_max_abs=0.0
+# layer_out_rms=0.0
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter277-layer1-routing-full-arrays.json \
+  >/tmp/iter277-layer1-routing.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter277-layer1-residual-norm-compare.json \
+  >/tmp/iter277-layer1-resnorm.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter277-layer1-moe-combine-compare.json \
+  >/tmp/iter277-layer1-moe.pretty
+
+git diff --check -- \
+  scripts/gguf_layer_residual_norm_compare.py \
+  scripts/gguf_layer_moe_combine_compare.py \
+  tests/test_gguf_layer_residual_norm_compare.py \
+  tests/test_gguf_layer_moe_combine_compare.py \
+  benchmarks/results/mtp-gguf-iter277-layer1-routing-full-arrays.json \
+  benchmarks/results/mtp-gguf-iter277-layer1-residual-norm-compare.json \
+  benchmarks/results/mtp-gguf-iter277-layer1-moe-combine-compare.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-1 residual add is bit-exact: `residual_vs_cpu_bf16.max_abs_diff=0.0`.
+- Layer-1 post-attention RMSNorm matches CPU direct-weight GGUF RMSNorm within BF16-scale tolerance: `post_norm_vs_cpu_bf16.max_abs_diff=0.015625`.
+- Layer-1 MoE/shared-expert combine is bit-exact against the fused-kernel CPU formula: `layer_out_vs_cpu.max_abs_diff=0.0`, `rms_abs_diff=0.0`.
+- Layer-0 and layer-1 post-attention paths are now explained by CPU oracles; target AR parity is still not fixed. Continue toward the first full-attention layer, recurrent state propagation, or final output head.

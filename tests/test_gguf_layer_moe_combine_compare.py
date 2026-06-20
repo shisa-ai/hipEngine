@@ -5,7 +5,7 @@ import pytest
 
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
-from scripts.gguf_layer_moe_combine_compare import compare_moe_combine
+from scripts.gguf_layer_moe_combine_compare import _conclusion, compare_moe_combine
 
 
 def test_compare_moe_combine_matches_weighted_shared_residual_formula() -> None:
@@ -29,6 +29,15 @@ def test_compare_moe_combine_matches_weighted_shared_residual_formula() -> None:
     assert comparison["layer_out_vs_cpu"]["max_abs_diff"] == 0.0
     assert comparison["weighted_selected_vs_bf16"]["count"] == 3
     assert comparison["samples"]["device_layer_out"] == pytest.approx(layer_out.tolist())
+
+
+def test_moe_combine_conclusion_uses_layer_id() -> None:
+    comparison = {"layer_out_vs_cpu": {"max_abs_diff": 0.0}}
+
+    text = _conclusion(comparison, True, layer_id=7)
+
+    assert text.startswith("Layer-7 MoE/shared-expert combine")
+    assert "Layer-0" not in text
 
 
 def test_compare_moe_combine_rejects_shape_mismatches() -> None:

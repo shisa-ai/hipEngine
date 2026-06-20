@@ -5,7 +5,7 @@ import pytest
 
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
-from scripts.gguf_layer_residual_norm_compare import compare_residual_norm
+from scripts.gguf_layer_residual_norm_compare import _conclusion, compare_residual_norm
 
 
 def test_compare_residual_norm_matches_bf16_residual_and_rmsnorm() -> None:
@@ -28,6 +28,18 @@ def test_compare_residual_norm_matches_bf16_residual_and_rmsnorm() -> None:
     assert comparison["residual_vs_cpu_bf16"]["max_abs_diff"] == 0.0
     assert comparison["post_norm_vs_cpu_bf16"]["max_abs_diff"] == 0.0
     assert comparison["post_norm_cpu_f32_vs_bf16"]["count"] == 4
+
+
+def test_residual_norm_conclusion_uses_layer_id() -> None:
+    comparison = {
+        "residual_vs_cpu_bf16": {"max_abs_diff": 0.0},
+        "post_norm_vs_cpu_bf16": {"max_abs_diff": 0.015625},
+    }
+
+    text = _conclusion(comparison, True, layer_id=7)
+
+    assert text.startswith("Layer-7 residual add")
+    assert "Layer-0" not in text
 
 
 def test_compare_residual_norm_rejects_shape_mismatches() -> None:

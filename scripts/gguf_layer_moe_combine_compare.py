@@ -82,7 +82,7 @@ def build_moe_combine_artifact(capture_path: Path, *, iteration: int = 276) -> d
         "layer_out_vs_cpu": comparison["layer_out_vs_cpu"],
         "samples": comparison["samples"],
         "within_tolerance": bool(within),
-        "conclusion": _conclusion(comparison, within),
+        "conclusion": _conclusion(comparison, within, layer_id=int(capture.get("layer_id", -1))),
     }
 
 
@@ -164,16 +164,17 @@ def _diff_metrics(reference: np.ndarray, candidate: np.ndarray) -> dict[str, Any
     }
 
 
-def _conclusion(comparison: dict[str, Any], within: bool) -> str:
+def _conclusion(comparison: dict[str, Any], within: bool, *, layer_id: int) -> str:
     layer = comparison["layer_out_vs_cpu"]
+    label = "captured layer" if layer_id < 0 else f"Layer-{int(layer_id)}"
     if within:
         return (
-            "Layer-0 MoE/shared-expert combine is bit-exact against the CPU kernel formula: "
+            f"{label} MoE/shared-expert combine is bit-exact against the CPU kernel formula: "
             "BF16(weighted selected experts) + sigmoid(shared_gate)*shared + residual. "
-            "Layer-0 final output is now explained; continue to later layers or final head."
+            f"{label} final output is now explained; continue to later layers or final head."
         )
     return (
-        "Layer-0 MoE/shared-expert combine diverges from CPU formula; inspect routing weights, "
+        f"{label} MoE/shared-expert combine diverges from CPU formula; inspect routing weights, "
         f"shared gate, or combine kernel. max_abs={layer['max_abs_diff']:.6g}."
     )
 

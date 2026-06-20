@@ -106,7 +106,7 @@ def build_residual_norm_artifact(
         "post_norm_cpu_f32_vs_bf16": comparison["post_norm_cpu_f32_vs_bf16"],
         "samples": comparison["samples"],
         "within_tolerance": bool(within),
-        "conclusion": _conclusion(comparison, within),
+        "conclusion": _conclusion(comparison, within, layer_id=int(layer_id)),
     }
 
 
@@ -184,18 +184,19 @@ def _diff_metrics(reference: np.ndarray, candidate: np.ndarray) -> dict[str, Any
     }
 
 
-def _conclusion(comparison: dict[str, Any], within: bool) -> str:
+def _conclusion(comparison: dict[str, Any], within: bool, *, layer_id: int) -> str:
     residual = comparison["residual_vs_cpu_bf16"]
     post_norm = comparison["post_norm_vs_cpu_bf16"]
+    label = f"Layer-{int(layer_id)}"
     if within:
         return (
-            "Layer-0 residual add is bit-exact versus BF16(hidden_in + attn_out), and "
+            f"{label} residual add is bit-exact versus BF16(hidden_in + attn_out), and "
             f"post_attention_norm matches the CPU direct-weight RMSNorm within BF16-scale "
             f"tolerance (max_abs={post_norm['max_abs_diff']:.6g}). The next unchecked "
             "boundary is MoE/shared-expert combine or later layers."
         )
     return (
-        "Layer-0 residual/RMSNorm diverges from CPU oracle; inspect add+rmsnorm kernel. "
+        f"{label} residual/RMSNorm diverges from CPU oracle; inspect add+rmsnorm kernel. "
         f"residual max_abs={residual['max_abs_diff']:.6g}, "
         f"post_norm max_abs={post_norm['max_abs_diff']:.6g}."
     )
