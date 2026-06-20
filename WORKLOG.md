@@ -106167,3 +106167,84 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - hipEngine already has the matching boundary surface: `session.capture_linear_attention_boundary(..., layer_id=0).attn_norm_f32` from the linear-attention attn-only path.
 - Because hipEngine copies the BF16 RMSNorm scratch back to F32, the next comparison must report both exact F32 delta and BF16-rounded llama.cpp delta before interpreting any semantic mismatch.
 - Next action: build the layer-0 attn_norm capture harness and compare `h_nextn_layer0_attn_norm` to `attn_norm_f32`.
+
+## 2026-06-20 — compared layer-0 attn_norm sub-boundary
+
+### Change
+- Continued iteration 320 by adding `scripts/llamacpp_mtp_build_layer0_attn_norm_harness.py` to patch a temporary llama.cpp source tree with the iteration-319 `h_nextn_layer0_attn_norm` tap, preserve the post-output `res->t_h_nextn` assignment, build `libllama.so`, and compile the hidden-seed capture harness.
+- Added `scripts/llamacpp_mtp_compare_layer0_attn_norm.py` to run the patched llama.cpp harness and compare its layer-0 `attn_norm` row against hipEngine `capture_linear_attention_boundary(...).attn_norm_f32`, reporting both exact F32 and BF16-rounded llama.cpp deltas.
+- Added focused tests for the build and compare helpers.
+- Emitted compact artifacts:
+  - `benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-harness-build.json`
+  - `benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-llamacpp-build-result.json`
+  - `benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-harness-compile.json`
+  - `benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_attn_norm_harness.py \
+  tests/test_llamacpp_mtp_compare_layer0_attn_norm.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_layer0_attn_norm_harness.py \
+  --plan benchmarks/results/mtp-gguf-iter319-layer0-subboundary-plan.json \
+  --base-build benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-harness-build.json \
+  --patched-build-result benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-llamacpp-build-result.json \
+  --harness-compile benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-harness-compile.json \
+  --source-dir /tmp/hipengine-llamacpp-mtp-iter320-layer0-attn-norm-src \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter320-layer0-attn-norm-build \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter320-layer0-attn-norm-build-logs \
+  --harness-dir /tmp/hipengine-llamacpp-mtp-iter320-layer0-attn-norm-harness \
+  --compiler /home/lhl/miniforge3/envs/therock/bin/amdclang++ \
+  --jobs 8 --timeout-seconds 1800 --clean --iteration 320
+# status=ready patch_applied=true configure_rc=0 build_rc=0 harness_status=compiled
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_layer0_attn_norm.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-harness-compile.json \
+  --plan-artifact benchmarks/results/mtp-gguf-iter319-layer0-subboundary-plan.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 --layer-id 0 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter320-layer0-attn-norm/pos16 \
+  --output benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-compare.json \
+  --n-gpu-layers 999 --threads 8 --all-rows --timeout-seconds 1800 \
+  --exact-atol 0 --iteration 320
+# status=mismatched
+# classification=layer0_attn_norm_mismatch_after_bf16_roundtrip
+# exact_rmse=0.002668563099949135 exact_max_abs_diff=0.10197830200195312
+# bf16_rmse=0.0010861733990960747 bf16_max_abs_diff=0.03125
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_attn_norm_harness.py \
+  tests/test_llamacpp_mtp_compare_layer0_attn_norm.py \
+  tests/test_llamacpp_mtp_layer0_subboundary_plan.py \
+  tests/test_llamacpp_mtp_input_embed_harness.py \
+  tests/test_llamacpp_mtp_compare_input_embed.py
+# ..................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The patched temporary llama.cpp harness built and ran successfully; the external `/home/lhl/llama.cpp/llama.cpp-hip` checkout was not modified.
+- The first layer-0 sub-boundary is already mismatched:
+  - llama.cpp `h_nextn_layer0_attn_norm` SHA `a96ec9c0d42f024a5918cfce7d35cd2f0574952a6c9a0c6fef0794285e8b6461`
+  - hipEngine `capture_linear_attention_boundary.attn_norm_f32` SHA `6643bb9063224b0cb61fee4d81f589ae8cfce977a0e98bee3a0170eb984f1808`
+  - exact RMSE `0.002668563099949135`
+  - exact max abs diff `0.10197830200195312`
+  - exact mean abs diff `0.0005474534146969745`
+  - BF16-rounded llama.cpp RMSE `0.0010861733990960747`
+  - BF16-rounded max abs diff `0.03125`
+  - BF16-rounded exact match `false`
+- Interpretation: token embedding alignment is not sufficient; the earliest observed layer-0 mismatch is at attention RMSNorm output. Next action is to audit layer-0 RMSNorm inputs/weights/epsilon/materialization instead of deeper linear-attention projections.
