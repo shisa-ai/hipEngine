@@ -113338,3 +113338,71 @@ PY
 - Layer-15 `full_k_f32` and `full_v_f32` are exact vs the BF16 K/V projection oracles.
 - The capture used the full-attention MoE path with `top_k=8` and `preceding_layer_count=15`.
 - This clears the next bisection step: layer-15 Q/K norm + rotary / KV-write under the BF16 contract.
+
+## 2026-06-20 — validated layer-15 QK norm / rotary / KV oracle
+
+### Change
+- Continued iteration 439 by adding `scripts/llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py`.
+- The script starts from the layer-15 full-attention QKV artifact, hash-checks live `full_q_f32`, `full_k_f32`, and `full_v_f32`, validates the Q split / gate / key-raw fields, mirrors per-head Q/K RMSNorm + RoPE, and validates the layer-15 KV-cache write at the active token position.
+- Added `tests/test_llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py` covering QKV artifact validation, preflight hash guards, split exactness, rotary tolerance, KV-write exactness, wrong-layer metadata, mismatch, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter439-layer15-qk-norm-rotary-kv-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py
+# ............... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py \
+  --qkv-artifact benchmarks/results/mtp-gguf-iter438-layer15-full-attention-qkv-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter439-layer15-qk-norm-rotary-kv-oracle.json
+# status=ready
+# classification=layer15_qk_norm_rotary_matches_cpu_oracle_within_fp32_tolerance
+# preflight_classification=layer15_qk_norm_rotary_preflight_matches_qkv_artifact
+# split exact: full_query_raw_f32, full_gate_f32, full_key_raw_f32 max_abs=0.0 rmse=0.0
+# rotary within FP32 tolerance: full_query_f32 max_abs=7.152557373046875e-07 rmse=4.878449288980846e-08
+# rotary within FP32 tolerance: full_key_f32 max_abs=2.384185791015625e-07 rmse=2.5649971036045827e-08
+# KV write exact: key_cache_position_f32, value_cache_position_f32 max_abs=0.0 rmse=0.0
+# target layer type=full_attention is_moe=True top_k=8 preceding_layer_count=15
+# next_action=audit_layer15_full_attention_scores_or_attn_output_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py
+# ........................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-15 QK norm/rotary/KV oracle/test
+# only; no torch or dispatch branches; KVLiveSpans/cache path was observed but
+# not changed; focused RED-style tests cover preflight, split, rotary tolerance,
+# KV write, blocked/unavailable paths; QKV source artifact is hash-checked;
+# split and KV writes exact, rotary within small FP32 tolerance; compact artifact
+# contains summaries/hashes only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-15 `full_q_f32`, `full_k_f32`, and `full_v_f32` preflight hashes match the iteration-438 full-attention QKV artifact.
+- Layer-15 Q split / gate / key-raw fields are exact vs the QKV artifact (`max_abs=0.0`, `rmse=0.0`).
+- Layer-15 per-head Q/K RMSNorm + RoPE matches the CPU mirror within the existing tiny FP32 kernel tolerance (`full_query_f32 max_abs=7.15e-07`, `full_key_f32 max_abs=2.38e-07`).
+- Layer-15 key/value cache entries at the active token position are exact after the expected BF16 cache write (`max_abs=0.0`, `rmse=0.0`).
+- This clears the next bisection step: layer-15 full-attention scores / attention output under the BF16 contract.
