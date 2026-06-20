@@ -109394,3 +109394,65 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-7 attention-norm input hash matches the exact layer-7 BF16 handoff artifact at warm position 16/token 271.
 - `attn_norm_f32` is bit-exact against `BF16(RMSNorm(hidden_in_f32, blk.7.attn_norm.weight, eps_model))` (`max_abs=0.0`, `rmse=0.0`).
 - This validates the first full-attention layer-7 sub-boundary and clears the next bisection step: layer-7 attention projections under the BF16 contract.
+
+## 2026-06-20 — validated layer-7 full-attention QKV oracle
+
+### Change
+- Continued iteration 377 by adding `scripts/llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py`.
+- The script starts from the exact layer-7 attention-norm artifact, hash-checks live `attn_norm_f32`, reloads `blk.7.attn_q/k/v.weight`, and mirrors the established BF16 projection oracle for the first full-attention layer.
+- Reused the existing layer-1 projection classifier's BF16-step envelope for projection outputs: the live layer-7 Q projection differs from the BF16 oracle by at most one BF16 representable step, while K/V are bit-exact.
+- Added `tests/test_llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py` covering attn-norm artifact validation, input hash guards, exact / within-BF16-step / mismatch / blocked / unavailable classifications, and full-attention metadata checks.
+- Emitted `benchmarks/results/mtp-gguf-iter377-layer7-full-attention-qkv-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py \
+  --attn-norm-artifact benchmarks/results/mtp-gguf-iter376-layer7-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter377-layer7-full-attention-qkv-oracle.json
+# status=ready
+# classification=layer7_full_attention_qkv_matches_bf16_oracle_within_rounding
+# layer=7 position=16 token=271
+# input_classification=layer7_qkv_input_matches_attn_norm_artifact
+# full_q_f32 within one BF16 step: max_abs=0.0078125 rmse=8.897390216588974e-05 bad_count=0
+# full_k_f32 exact: max_abs=0.0 rmse=0.0
+# full_v_f32 exact: max_abs=0.0 rmse=0.0
+# next_action=audit_layer7_qk_norm_rotary_or_kv_write_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_attn_norm_oracle.py
+# ..................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic oracle/test only; no torch or dispatch branches;
+# docs/MTP-gguf oracle-first path preserved; no attention/KV ABI or performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-7 QKV input hash matches the exact layer-7 attention-norm artifact at warm position 16/token 271.
+- `full_q_f32` matches the BF16 projection oracle within one BF16 step across all 8192 elements (`bad_count=0`, `max_abs=0.0078125`, `rmse=8.897390216588974e-05`).
+- `full_k_f32` and `full_v_f32` are bit-exact against `BF16(project_f32(attn_norm_f32, blk.7.attn_k/v.weight))`.
+- This clears the next full-attention bisection step: layer-7 Q/K RMSNorm, rotary, and KV-write under the BF16 contract.
