@@ -109523,3 +109523,65 @@ PY
 - `full_query_f32` and `full_key_f32` match the head-RMSNorm + RoPE CPU mirror within FP32 kernel tolerance (`max_abs` under `5e-7`).
 - `key_cache_position_f32` and `value_cache_position_f32` exactly match the KV-write contract through the live cache capture.
 - This clears the next full-attention bisection step: layer-7 full-attention scores / attention output under the BF16 contract.
+
+## 2026-06-20 — validated layer-7 full-attention context/gate oracle
+
+### Change
+- Continued iteration 380 by adding `scripts/llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py`.
+- The script starts from the ready layer-7 QK norm / rotary / KV artifact, hash-checks live `full_query_f32`, `full_key_f32`, `full_gate_f32`, `key_cache_position_f32`, and `value_cache_position_f32`, then mirrors the established full-attention context + gate CPU oracle for layer 7.
+- The CPU mirror computes paged GQA attention over the BF16 K/V cache (`active_context = position + 1`) and validates the BF16 gate multiply `full_gated_f32 = BF16(full_attn_context_f32 * sigmoid(full_gate_f32))`.
+- Added `tests/test_llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py` covering artifact validation, preflight hash guards, exact context/gate classification, FP32 context tolerance, split-decode blockers, mismatch/unavailable classifications, and full-attention metadata checks.
+- Emitted `benchmarks/results/mtp-gguf-iter380-layer7-full-attention-context-gate-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py \
+  --qk-norm-rotary-kv-artifact benchmarks/results/mtp-gguf-iter379-layer7-qk-norm-rotary-kv-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter380-layer7-full-attention-context-gate-oracle.json
+# status=ready
+# classification=layer7_full_attention_context_matches_cpu_oracle_within_fp32_tolerance
+# preflight_classification=layer7_context_gate_preflight_matches_qk_artifact
+# used_split_decode=False
+# full_attn_context_f32 within FP32 kernel tolerance: max_abs=9.5367431640625e-07 rmse=5.790288426510415e-08
+# full_gated_f32 exact: max_abs=0.0 rmse=0.0
+# next_action=audit_layer7_attn_output_projection_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py
+# ........................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic oracle/test only; no torch or dispatch branches;
+# context uses KVLiveSpans-backed cache capture; docs/MTP-gguf oracle-first path
+# preserved; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-7 context/gate preflight hashes match the ready layer-7 QK norm / rotary / KV artifact at warm position 16/token 271.
+- `full_attn_context_f32` matches the paged GQA CPU oracle within FP32 kernel tolerance (`max_abs=9.5367431640625e-07`, `rmse=5.790288426510415e-08`).
+- `full_gated_f32` exactly matches `BF16(full_attn_context_f32 * sigmoid(full_gate_f32))`.
+- This clears the next full-attention bisection step: layer-7 attention output projection under the BF16 contract.
