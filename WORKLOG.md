@@ -109832,3 +109832,64 @@ PY
 - Shared expert output `moe_shared_out_f32` is exact.
 - Final `layer_out_f32` is exact.
 - This clears the next layer boundary: layer-8 BF16 handoff / MTP next boundary under the BF16 contract.
+
+## 2026-06-20 — validated layer-8 BF16 handoff
+
+### Change
+- Continued iteration 385 by adding `scripts/llamacpp_mtp_layer8_bf16_handoff_audit.py`.
+- The script starts from the ready layer-7 MoE expert-output artifact, hash-checks live layer-7 `layer_out_f32`, captures layer-8 `hidden_in_f32` after `run_preceding_layers=True`, and validates the exact BF16 inter-layer handoff.
+- Added `tests/test_llamacpp_mtp_layer8_bf16_handoff_audit.py` covering source artifact validation, source hash guards, exact / mismatch / wrong-preceding / unavailable classifications, and injected capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter385-layer8-bf16-handoff.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_layer8_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer8_bf16_handoff_audit.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer8_bf16_handoff_audit.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_layer8_bf16_handoff_audit.py \
+  --layer7-experts benchmarks/results/mtp-gguf-iter384-layer7-moe-expert-outputs-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter385-layer8-bf16-handoff.json
+# status=ready
+# classification=layer8_hidden_in_matches_layer7_layer_out_exactly
+# source_reference=layer8_handoff_source_matches_layer7_artifact exact_hash_match=True
+# handoff exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention preceding_layer_count=8
+# next_action=audit_layer8_attn_norm_under_bf16_contract_or_mtp_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer8_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer7_moe_expert_outputs_oracle.py
+# ...................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic handoff oracle/test only; no torch or
+# dispatch branches; no attention/KV ABI changed; RED-style focused tests added
+# before real artifact; docs/MTP-gguf oracle-first path preserved; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-8 `hidden_in_f32` exactly matches layer-7 `layer_out_f32` at warm position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
+- Source capture hash matches the ready layer-7 expert-output artifact.
+- Layer 8 is `linear_attention`, with `preceding_layer_count=8` in the target capture.
+- This clears the next layer-8 bisection step: attention norm under the BF16 contract.
