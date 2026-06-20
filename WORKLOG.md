@@ -104752,3 +104752,67 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - hipEngine audit confirms `prefill(..., capture_hidden_seed_fp32=True)` / `step(..., capture_hidden_seed_fp32=True)`, `fp32_hidden_seed_ptr()`, and `mtp_draft_seed()` are already present for the comparison side.
 - Comparison contract is pinned to the current oracle prompt, `position=16`, `token_id_at_position=271`, `hidden_width=2048`.
 - Next action: compile and run a llama.cpp `embeddings_nextn` hidden-seed capture harness, then compare its row to the hipEngine FP32 seed captured with `capture_hidden_seed_fp32=True`.
+
+## 2026-06-20 — compiled llama.cpp embeddings_nextn hidden-seed harness
+
+### Change
+- Continued iteration 302 by adding `scripts/llamacpp_mtp_compile_hidden_seed_harness.py`, a compile helper for llama.cpp `embeddings_nextn` FP32 hidden-seed link-probe and capture harnesses.
+- Added `tests/test_llamacpp_mtp_compile_hidden_seed_harness.py` covering source symbols, capture CLI/metadata contract, fake-compiler success/failure, and capture compile behavior.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-link-probe-compile.json`
+  - `benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-capture-harness-compile.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_seed_harness.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compile_hidden_seed_harness.py \
+  --build-result benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-link-probe-compile.json \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-link-probe \
+  --compiler /home/lhl/miniforge3/envs/therock/bin/amdclang++ \
+  --harness-kind link-probe \
+  --iteration 302
+# status=compiled
+# probe_rc=0
+# stdout={"linked_nextn_api":true,"tap":"h_nextn"}
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compile_hidden_seed_harness.py \
+  --build-result benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-capture-harness-compile.json \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness \
+  --compiler /home/lhl/miniforge3/envs/therock/bin/amdclang++ \
+  --harness-kind capture \
+  --iteration 302
+# status=compiled
+# executable=/tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness/llamacpp_hidden_seed_capture
+# next_action=run_hidden_seed_capture_harness_with_model_prompt_position
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_seed_harness.py \
+  tests/test_llamacpp_mtp_hidden_seed_oracle_plan.py \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# .................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The link probe compiled and ran against the existing patched llama.cpp build, proving the `embeddings_nextn` symbols link:
+  - `llama_set_embeddings_nextn`
+  - `llama_get_embeddings_nextn`
+  - `llama_get_embeddings_nextn_ith`
+- The capture harness compiled successfully. It decodes a prompt token sequence, enables `llama_set_embeddings_nextn(ctx, true, false)`, reads `llama_get_embeddings_nextn_ith(ctx, position)`, and writes the selected post-`output_norm` FP32 `h_nextn` row plus optional all-rows output.
+- External llama.cpp checkout remained untouched; the harness was generated under `/tmp` and linked against the existing temporary build from iteration 289.
+- Next action: run `/tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness/llamacpp_hidden_seed_capture` for the oracle prompt at `position=16`, then compare the captured row to hipEngine `capture_hidden_seed_fp32=True` output.
