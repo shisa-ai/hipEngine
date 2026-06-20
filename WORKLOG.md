@@ -110969,3 +110969,67 @@ PY
 - Layer-10 warm conv/GDN replay matches the oracle within tolerance at position 16/token 271: `conv_out_f32` max_abs `5.960464477539063e-08`, `recurrent_out_f32` max_abs `3.725290298461914e-08`, while `recurrent_bf16_f32` and `attn_out_f32` are exact.
 - Layer 10 remains `linear_attention`, with `preceding_layer_count=10` in the capture.
 - This clears the next layer-10 bisection step: post-attention residual / MoE boundary.
+
+## 2026-06-20 — validated layer-10 post-attention residual oracle
+
+### Change
+- Continued iteration 403 by adding `scripts/llamacpp_mtp_audit_layer10_post_attn_residual_oracle.py`.
+- The script starts from the ready layer-10 conv-GDN artifact and exact layer-10 handoff artifact, hash-checks live `hidden_in_f32` and `attn_out_f32`, materializes `blk.10.post_attention_norm.weight`, and validates the captured residual/post-attention norm under the resident-BF16 contract.
+- Added `tests/test_llamacpp_mtp_audit_layer10_post_attn_residual_oracle.py` covering source artifact validation, input hash guards, exact / tolerance / mismatch / blocked / unavailable classifications, and injected capture / weight fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter403-layer10-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer10_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer10_post_attn_residual_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer10_post_attn_residual_oracle.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer10_post_attn_residual_oracle.py \
+  --conv-gdn-artifact benchmarks/results/mtp-gguf-iter402-layer10-conv-gdn-oracle.json \
+  --handoff-artifact benchmarks/results/mtp-gguf-iter399-layer10-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter403-layer10-post-attn-residual-oracle.json
+# status=ready
+# classification=layer10_post_attn_residual_matches_oracle_exactly
+# input_classification=layer10_post_attn_inputs_match_prior_artifacts
+# residual_f32 exact: max_abs=0.0 rmse=0.0
+# post_norm_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention preceding_layer_count=10
+# next_action=audit_layer10_moe_router_from_post_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer10_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer10_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer9_post_attn_residual_oracle.py
+# .................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic post-attn residual oracle/test only; no torch
+# or dispatch branches; no attention/KV ABI changed; RED-style focused tests
+# added before real artifact; llama.cpp/GGUF residual+RMSNorm oracle retained;
+# no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-10 post-attention inputs (`hidden_in_f32`, `attn_out_f32`) match prior artifacts before the residual/norm audit.
+- Layer-10 post-attention residual and post-norm match the BF16 residual+RMSNorm oracle exactly at position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
+- Layer 10 remains `linear_attention`, with `preceding_layer_count=10` in the capture.
+- This clears the next layer-10 bisection step: MoE router from post-norm.
