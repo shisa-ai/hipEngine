@@ -103605,3 +103605,50 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Existing llama.cpp B2 greeting trace aligns with the hipEngine checkpoint prompt length (`prompt_tokens=17`, checkpoint `position=16`), so token/request setup is usable.
 - The trace only contains draft token/probability events: `has_numeric_layer_checkpoints=False`, `known_checkpoint_array_paths=[]`, and `numeric_array_paths_len_ge_16=[]`.
 - The next useful action is therefore not comparing against the existing trace; it is `capture_llamacpp_numeric_layer_checkpoint_or_add_llama_trace_tap` so the hipEngine actual layer-3 checkpoint has an external numeric oracle.
+
+## 2026-06-20 — llama.cpp numeric checkpoint tap plan anchors Qwen35MoE source
+
+### Change
+- Continued iteration 283 by adding `scripts/llamacpp_mtp_checkpoint_tap_plan.py`, a source-inventory helper for the read-only local llama.cpp checkout.
+- Added `tests/test_llamacpp_mtp_checkpoint_tap_plan.py` covering Qwen35MoE preference for A3B/MoE checkpoint artifacts, existing layer-input API detection, missing Qwen35MoE `t_layer_inp` wiring, and callback-name mapping.
+- Emitted `benchmarks/results/mtp-gguf-iter283-llamacpp-checkpoint-tap-plan.json` from `/home/lhl/llama.cpp/llama.cpp-hip` plus the iteration-281 hipEngine compact checkpoint and iteration-282 llama.cpp trace inventory.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_checkpoint_tap_plan.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_checkpoint_tap_plan.py \
+  --output benchmarks/results/mtp-gguf-iter283-llamacpp-checkpoint-tap-plan.json
+# status=tap_plan_ready
+# preferred_arch_source=qwen35moe
+# hidden_in_status=source_patch_needed_for_layer_input
+# next_action=prepare_llamacpp_qwen35moe_layer_input_patch_then_capture_hidden_in
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_checkpoint_tap_plan.py \
+  tests/test_llamacpp_mtp_trace_inventory.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter283-llamacpp-checkpoint-tap-plan.json \
+  >/tmp/mtp-gguf-iter283-tap-plan.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The target checkpoint model path and MoE array keys select `qwen35moe.cpp`, not the dense `qwen35.cpp` path.
+- llama.cpp already has layer-input extraction plumbing (`llama_set/get_embeddings_layer_inp`, `extract_layer_inputs`, `t_layer_inp` output support, and speculative use sites), but `qwen35moe.cpp` does **not** wire `res->t_layer_inp[il] = inpL` in its main layer loop.
+- Existing Qwen35MoE callback names align with the hipEngine layer-3 checkpoint keys for numeric tap planning: `attn_output-3`, `attn_residual-3`, `attn_post_norm-3`, `ffn_out-3`, `ffn_shexp_gated-3`, `shared_expert_gate_sigmoid-3`, and `l_out-3`.
+- Next action: prepare a temporary/patch-file llama.cpp source tap (without editing the read-only checkout in this repo task) that first wires Qwen35MoE layer-input extraction, then adds debug selected-tensor output copies for those callback names so the llama.cpp layer-3 prompt-position checkpoint can be captured and compared to hipEngine hashes.
