@@ -108044,3 +108044,60 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Selected experts match exactly: `[129, 233, 124, 110, 95, 107, 230, 69]`.
 - Shared-gate raw logit matches exactly; routing weights differ only by tiny softmax/order tolerance (`max_abs=2.98e-08`, tolerance `1e-06`).
 - This validates the layer-3 MoE router boundary and clears the next bisection step: layer-3 selected and shared expert outputs.
+
+## 2026-06-20 — validated layer-3 MoE expert-output oracle
+
+### Change
+- Continued iteration 353 by adding `scripts/llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py`.
+- The script starts from the validated layer-3 MoE router artifact, hash-checks live `post_norm_f32`, verifies the selected expert IDs, reloads only the selected GGUF expert rows plus shared expert weights, and reuses the established BF16 raw-GGUF expert branch oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py` covering router artifact validation, post-norm/selection guards, exact/near/mismatch classification, preceding-layer metadata enforcement, and unavailable-capture paths.
+- Emitted `benchmarks/results/mtp-gguf-iter353-layer3-moe-expert-outputs-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py \
+  --router-artifact benchmarks/results/mtp-gguf-iter352-layer3-moe-router-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter353-layer3-moe-expert-outputs-oracle.json
+# status=ready
+# classification=layer3_moe_expert_outputs_match_oracle_within_tolerance
+# layer=3 position=16 token=271
+# router_input_classification=layer3_moe_expert_inputs_match_router_artifact
+# selected_experts=[129, 233, 124, 110, 95, 107, 230, 69]
+# ffn_or_moe_down_f32 within tolerance, max_abs=1.4901161193847656e-08 rmse=1.1641532182693481e-10
+# moe_shared_out_f32 exact, max_abs=0.0 rmse=0.0
+# layer_out_f32 exact, max_abs=0.0 rmse=0.0
+# next_action=audit_layer4_bf16_handoff_or_mtp_next_boundary
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_post_attn_residual_oracle.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-3 expert inputs match the router artifact at warm position 16/token 271: `post_norm_f32` hash matches and selected experts are `[129, 233, 124, 110, 95, 107, 230, 69]`.
+- Shared expert output and final `layer_out_f32` are exact against the BF16 raw-GGUF oracle.
+- The per-selected `ffn_or_moe_down_f32` intermediate differs only by FP32 accumulation-scale noise (`max_abs=1.49e-08`, tolerance `5e-08`) while the final layer output is bit-exact.
+- This validates the layer-3 MoE expert-output boundary and clears the next bisection step: layer-4 BF16 handoff / next MTP boundary.
