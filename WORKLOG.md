@@ -107102,3 +107102,62 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The live full-layer capture's `hidden_in_f32` hash matches the layer-1 handoff artifact, and `attn_out_f32` hash matches the layer-1 conv/GDN artifact.
 - This validates the layer-1 post-attention add+RMSNorm boundary and seeds the next MoE router audit from `post_norm_f32`.
 - Next bisection should audit the layer-1 MoE router from post-norm.
+
+## 2026-06-20 — validated layer-1 MoE router oracle
+
+### Change
+- Continued iteration 336 by adding `scripts/llamacpp_mtp_audit_layer1_moe_router_oracle.py`.
+- The script starts from the exact layer-1 post-attention residual artifact, checks the live full-layer `post_norm_f32` hash against the prior post-attn artifact, reloads `blk.1.ffn_gate_inp.weight` and `blk.1.ffn_gate_inp_shexp.weight`, applies the resident-BF16 contraction, and recomputes:
+  - expert router logits
+  - selected top-k expert IDs
+  - softmax routing weights over selected experts
+  - raw shared-gate logit (`sigmoid` is applied later by the combine kernel)
+- Added `tests/test_llamacpp_mtp_audit_layer1_moe_router_oracle.py` covering layer-1 post-attn prerequisite validation, post-norm hash checks, exact/mismatch classification, injected artifact generation, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter336-layer1-moe-router-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer1_moe_router_oracle.py
+# ........ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer1_moe_router_oracle.py \
+  --post-attn-artifact benchmarks/results/mtp-gguf-iter335-layer1-post-attn-residual-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter336-layer1-moe-router-oracle.json \
+  --iteration 336
+# status=ready
+# classification=layer1_moe_router_matches_oracle_within_tolerance
+# layer=1 position=16 token=271
+# post_norm_input_classification=layer1_moe_router_input_matches_post_attn_artifact
+# selected_experts_i64: exact [19, 16, 224, 103, 242, 233, 94, 213]
+# routing_weights_f32: within tolerance, max_abs=1.4901161193847656e-08, rmse=6.4523919540704355e-09
+# shared_gate_logit_f32: exact, max_abs=0.0, rmse=0.0
+# next_action=audit_layer1_moe_selected_and_shared_expert_outputs
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer1_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_moe_router_oracle.py
+# .............................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-1 MoE router/top-k/shared-gate now matches the BF16-contracted CPU oracle at warm position 16/token 271.
+- `post_norm_f32` hash matches the exact layer-1 post-attn artifact.
+- Selected experts match exactly: `[19, 16, 224, 103, 242, 233, 94, 213]`.
+- Routing weights match within `1.4901161193847656e-08` max abs.
+- Raw shared-gate logit matches exactly.
+- Next bisection should audit layer-1 selected expert outputs and shared expert branch.
