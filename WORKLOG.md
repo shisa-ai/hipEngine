@@ -105944,3 +105944,68 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - best all-row scan: row `16`, RMSE `0.012114962719327636`, max abs diff `0.045740051893517375`
 - Classification: `layer_boundary_mismatch`.
 - Interpretation: the mismatch is present at the first decoder layer output. Next target is an initial token embedding/input capture before layer 0, or an audit of llama.cpp vs hipEngine token embedding preparation.
+
+## 2026-06-20 — planned initial input-embedding capture after layer-0 mismatch
+
+### Change
+- Continued iteration 317 by adding `scripts/llamacpp_mtp_initial_input_capture_plan.py` to derive the next diagnostic from real llama.cpp anchors, hipEngine resident-session capture hooks, and the iteration-316 layer-0 mismatch artifact.
+- Added `tests/test_llamacpp_mtp_initial_input_capture_plan.py` covering the unique llama.cpp input-embedding anchor, post-output preservation state, existing-capture-patch exclusion, hipEngine `hidden_in_f32` readiness, decision logic, and synthetic artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter317-initial-input-capture-plan.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_initial_input_capture_plan.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_initial_input_capture_plan.py \
+  --qwen35moe /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp \
+  --context /home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --embedding hipengine/runtime/gguf_embedding.py \
+  --layer0-artifact benchmarks/results/mtp-gguf-iter316-layer0-compare.json \
+  --output benchmarks/results/mtp-gguf-iter317-initial-input-capture-plan.json \
+  --iteration 317
+# status=ready
+# conclusion=initial_input_capture_plan_ready
+# llamacpp_input_patch_ready=true
+# hipengine_hidden_in_ready=true
+# next_action=build_input_embed_capture_and_compare_hidden_in_f32
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_initial_input_capture_plan.py \
+  tests/test_llamacpp_mtp_layer_boundary_bisect_plan.py \
+  tests/test_llamacpp_mtp_compare_layer_boundary.py
+# .................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter317-initial-input-capture-plan.json \
+  >/tmp/mtp-gguf-iter317-initial-input-capture-plan.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The initial input-capture plan is ready.
+- llama.cpp patch facts:
+  - unique `build_inp_embd(model.tok_embd)` / `model.input_embed` anchor count: `1`
+  - effective capture label: `h_nextn_input_embed`
+  - post-output preserve patch state: `needs_patch`
+  - existing `h_nextn_layer_out` patch count in clean source: `0`
+  - existing `h_nextn_pre_output_norm` patch count in clean source: `0`
+- hipEngine side is ready without runtime edits: warm prior prompt tokens with `session.step(...)`, then call `session.capture_attention_layer(token_id, position=16, layer_id=0, run_preceding_layers=False)` and compare `hidden_in_f32`.
+- Important dtype note for the next compare: hipEngine `launch_gguf_embedding` writes BF16 and `hidden_in_f32` copies BF16 back to F32, while llama.cpp `model.input_embed` is captured as F32. The next artifact should report both exact F32 delta and a BF16-rounded llama.cpp row delta before declaring a semantic embedding mismatch.
+- Next action: build a temporary input-embedding `h_nextn_input_embed` llama.cpp capture and compare it to hipEngine `capture_attention_layer(...).hidden_in_f32`.
