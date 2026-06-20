@@ -107652,3 +107652,55 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-3 `hidden_in_f32` matches layer-2 `layer_out_f32` exactly at warm position 16/token 271.
 - The handoff enters a `full_attention` layer with `preceding_layer_count == 3`.
 - This validates the layer-2→layer-3 resident-BF16 handoff and clears the next bisection step: layer-3 attention norm under the BF16 contract.
+
+## 2026-06-20 — validated layer-3 attention RMSNorm oracle
+
+### Change
+- Continued iteration 346 by adding `scripts/llamacpp_mtp_audit_layer3_attn_norm_oracle.py`.
+- The script starts from the exact layer-3 BF16 handoff artifact, checks the live layer-3 `hidden_in_f32` hash against that handoff artifact, captures resident full-attention layer-3 `attn_norm_f32` with `run_preceding_layers=True`, reloads `blk.3.attn_norm.weight`, and recomputes `BF16(RMSNorm(hidden_in, weight_f32, eps_model))` on CPU.
+- Added `tests/test_llamacpp_mtp_audit_layer3_attn_norm_oracle.py` covering handoff validation, full-attention target validation, hidden-input hash checks, classification, injected exact/mismatch captures, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter346-layer3-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_attn_norm_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer3_attn_norm_oracle.py \
+  --layer3-handoff benchmarks/results/mtp-gguf-iter345-layer3-bf16-handoff.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter346-layer3-attn-norm-oracle.json \
+  --iteration 346
+# status=ready
+# classification=layer3_attn_norm_matches_bf16_oracle_exactly
+# layer=3 position=16 token=271 layer_type=full_attention
+# input_classification=layer3_attn_norm_input_matches_handoff_artifact
+# preceding_layer_count=3
+# attn_norm max_abs=0.0 rmse=0.0
+# next_action=audit_layer3_full_attention_qkv_or_attention_outputs
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer3_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer2_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer2_bf16_handoff_audit.py
+# ...................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-3 `hidden_in_f32` hash matches the exact layer-3 handoff artifact at warm position 16/token 271.
+- Layer-3 is the first `full_attention` boundary in this bisection path and was captured with `preceding_layer_count == 3`.
+- Layer-3 `attn_norm_f32` matches the resident-BF16 CPU RMSNorm oracle exactly.
+- This establishes the first layer-3 sub-boundary and clears the next bisection step: layer-3 full-attention QKV or attention-output audit.
