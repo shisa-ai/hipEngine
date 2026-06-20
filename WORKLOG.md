@@ -103652,3 +103652,63 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - llama.cpp already has layer-input extraction plumbing (`llama_set/get_embeddings_layer_inp`, `extract_layer_inputs`, `t_layer_inp` output support, and speculative use sites), but `qwen35moe.cpp` does **not** wire `res->t_layer_inp[il] = inpL` in its main layer loop.
 - Existing Qwen35MoE callback names align with the hipEngine layer-3 checkpoint keys for numeric tap planning: `attn_output-3`, `attn_residual-3`, `attn_post_norm-3`, `ffn_out-3`, `ffn_shexp_gated-3`, `shared_expert_gate_sigmoid-3`, and `l_out-3`.
 - Next action: prepare a temporary/patch-file llama.cpp source tap (without editing the read-only checkout in this repo task) that first wires Qwen35MoE layer-input extraction, then adds debug selected-tensor output copies for those callback names so the llama.cpp layer-3 prompt-position checkpoint can be captured and compared to hipEngine hashes.
+
+## 2026-06-20 — llama.cpp Qwen35MoE hidden-in patch artifact prepared
+
+### Change
+- Continued iteration 284 by adding `scripts/llamacpp_mtp_layer_input_patch.py`, which generates a minimal unified diff for the first llama.cpp numeric-checkpoint blocker without modifying `/home/lhl/llama.cpp/llama.cpp-hip`.
+- Added `tests/test_llamacpp_mtp_layer_input_patch.py` for patch-ready, already-wired, anchor-missing, and JSON sidecar behavior.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input.patch`
+  - `benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input-patch.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_input_patch.py
+# .... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer_input_patch.py \
+  --patch-output benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input.patch \
+  --json-output benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input-patch.json
+# status=patch_ready
+# target=src/models/qwen35moe.cpp
+# patch_sha256=00eb7f5069994f9789a3bd1f7cb7953bde30f2551ab1a0576387775657f3ec08
+# next_action=apply_patch_to_temporary_llamacpp_checkout_and_capture_hidden_in
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_input_patch.py \
+  tests/test_llamacpp_mtp_checkpoint_tap_plan.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input-patch.json \
+  >/tmp/mtp-gguf-iter284-layer-input-patch.json
+
+tmp=$(mktemp -d); mkdir -p "$tmp/src/models"; \
+  cp /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp "$tmp/src/models/qwen35moe.cpp"; \
+  (cd "$tmp" && patch --dry-run -p1 < \
+    /home/lhl/hipEngine/benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input.patch \
+    >/tmp/mtp-gguf-iter284-patch-dry-run.log && patch -p1 < \
+    /home/lhl/hipEngine/benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input.patch \
+    >/tmp/mtp-gguf-iter284-patch-apply.log && \
+    grep -n 'res->t_layer_inp\[il\] = inpL;' src/models/qwen35moe.cpp)
+# 182:        res->t_layer_inp[il] = inpL;
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The patch is a single-source insertion at `src/models/qwen35moe.cpp:182`:
+  `res->t_layer_inp[il] = inpL;`
+- JSON sidecar records `status=patch_ready`, `external_checkout_modified=false`, `single_assignment_added=true`, and the next action `apply_patch_to_temporary_llamacpp_checkout_and_capture_hidden_in`.
+- Temp-copy dry-run/apply succeeded; the read-only llama.cpp checkout was not modified.
