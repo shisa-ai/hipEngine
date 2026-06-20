@@ -102857,3 +102857,58 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - The prompt-wide layer-0 GDN inputs/outputs are now available without unnecessary projection/full-output arrays, making the next CPU recurrent replay iteration practical while keeping the artifact smaller than a full 17-position capture.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF layer-0 GDN replay matches CPU oracle
+
+### Change
+- Continued iteration 272 by adding `scripts/gguf_gdn_replay_compare.py` and `tests/test_gguf_gdn_replay_compare.py`.
+- The script replays Qwen3.5 GDN recurrence over positions 0..16 from captured `conv_out`, `linear_z`, `ssm_alpha`, and `ssm_beta`, using GGUF `ssm_a`/`ssm_dt_bias`/`ssm_norm` weights, then compares CPU `recurrent_out` and BF16-rounded output against the device capture.
+- Emitted `benchmarks/results/mtp-gguf-iter272-gdn-replay-cpu-compare.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_gdn_replay_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_gdn_replay_compare.py
+# .. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_gdn_replay_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter271-gdn-replay-window-capture.json \
+  --output benchmarks/results/mtp-gguf-iter272-gdn-replay-cpu-compare.json \
+  --layer 0 --iteration 272
+# recurrent_out_max_abs=2.384185791015625e-07
+# recurrent_out_rms=2.4474007265240516e-09
+# recurrent_bf16_max_abs=1.52587890625e-05
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter272-gdn-replay-cpu-compare.json \
+  >/tmp/iter272-gdn-replay.pretty && echo gdn-replay-compare-json-ok
+# gdn-replay-compare-json-ok
+
+git diff --check -- scripts/gguf_gdn_replay_compare.py \
+  tests/test_gguf_gdn_replay_compare.py \
+  benchmarks/results/mtp-gguf-iter272-gdn-replay-cpu-compare.json WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- CPU replay of layer-0 GDN recurrence over the full captured prompt matches device `recurrent_out` and `recurrent_bf16`: recurrent max_abs=2.38e-07, BF16 max_abs=1.53e-05.
+- Combined with iterations 266–270, the entire captured layer-0 linear-attention branch from `attn_norm` through `attn_out` is now explained by CPU oracles.
+- Remaining native-vs-llama.cpp first-token mismatch should move outside this branch: state entering layer 0, residual/add ordering after `attn_out`, later layers, MoE/full-attn layers, output_norm/lm_head accumulation, or prompt-state alignment.
+- No runtime math or target AR parity changed in this iteration.
