@@ -114090,3 +114090,73 @@ PY
 - Layer-16 post-attention RMSNorm is exact after BF16 contraction (`max_abs=0.0`, `rmse=0.0`) using `blk.16.post_attention_norm.weight` (`F32`, shape `[2048]`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=16`.
 - This clears the next bisection step: layer-16 MoE router from post-norm.
+
+## 2026-06-20 — validated layer-16 MoE router oracle
+
+### Change
+- Continued iteration 450 by adding `scripts/llamacpp_mtp_audit_layer16_moe_router_oracle.py`.
+- The script starts from the layer-16 post-attention residual artifact, hash-checks live `post_norm_f32`, loads `blk.16` router/shared-gate weights under the resident BF16 contract, and validates selected experts, routing weights, and shared-gate logit against the BF16-contracted MoE router oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer16_moe_router_oracle.py` covering post-attention artifact validation, post-norm hash guards, exact / tolerance / mismatch classifications, wrong preceding-layer metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter450-layer16-moe-router-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer16_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_moe_router_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_moe_router_oracle.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer16_moe_router_oracle.py \
+  --post-attn-artifact benchmarks/results/mtp-gguf-iter449-layer16-post-attn-residual-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter450-layer16-moe-router-oracle.json
+# status=ready
+# classification=layer16_moe_router_matches_oracle_within_tolerance
+# post_norm_input_classification=layer16_moe_router_input_matches_post_attn_artifact
+# selected_experts_i64 exact: values match
+# routing_weights_f32 within tolerance: max_abs=1.4901161193847656e-08 rmse=6.4523919540704355e-09
+# shared_gate_logit_f32 exact: max_abs=0.0 rmse=0.0
+# top_k=8
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=16
+# next_action=audit_layer16_moe_selected_and_shared_expert_outputs
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_moe_router_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-16 MoE-router oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; focused RED-style
+# tests cover post-attn source validation, post_norm hash guard, exact,
+# tolerance, mismatch, and unavailable paths; router weights use GGUF F32
+# rounded to resident BF16; selected experts and shared gate are exact; routing
+# weights are within 1e-6 tolerance (max_abs=1.49e-08); compact artifact
+# contains summaries/hashes only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-16 `post_norm_f32` preflight hash matches the iteration-449 post-attention artifact.
+- Layer-16 selected experts match the BF16-contracted top-k router oracle exactly.
+- Layer-16 routing weights match within tolerance (`max_abs=1.49e-08`, `rmse=6.45e-09`; tolerance `1e-6`).
+- Layer-16 shared-gate logit is exact (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=16`.
+- This clears the next bisection step: layer-16 selected/shared expert outputs.
