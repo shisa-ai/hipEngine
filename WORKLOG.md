@@ -102743,3 +102743,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - The final-token convolution window now has exact adjacent-token `linear_qkv` arrays and captured `conv_out` arrays for positions 13..16, enough for a CPU-side `ssm_conv1d`/`conv_out` oracle.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF layer-0 conv_out matches CPU window oracle
+
+### Change
+- Continued iteration 270 by adding `scripts/gguf_conv_out_compare.py` and `tests/test_gguf_conv_out_compare.py`.
+- The script dequantizes layer-0 `ssm_conv1d`, uses the positions 13..16 `linear_qkv_f32` window from the iteration-269 capture, applies the decode-order per-channel convolution + SiLU formula, and compares against the captured final-token `conv_out_f32`.
+- Emitted `benchmarks/results/mtp-gguf-iter270-conv-out-cpu-compare.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_conv_out_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_conv_out_compare.py
+# .. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_conv_out_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter269-final-token-conv-window-capture.json \
+  --output benchmarks/results/mtp-gguf-iter270-conv-out-cpu-compare.json \
+  --layer 0 --iteration 270
+# max_abs_diff=5.960464477539063e-08
+# rms_abs_diff=2.1341464151447553e-09
+# within_float_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter270-conv-out-cpu-compare.json \
+  >/tmp/iter270-conv-out.pretty && echo conv-out-compare-json-ok
+# conv-out-compare-json-ok
+
+git diff --check -- scripts/gguf_conv_out_compare.py \
+  tests/test_gguf_conv_out_compare.py \
+  benchmarks/results/mtp-gguf-iter270-conv-out-cpu-compare.json WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Device `conv_out` for the final greeting token is explained by CPU `ssm_conv1d(linear_qkv[13:16])` to float tolerance: max_abs=5.96e-08, rms_abs=2.13e-09.
+- Combined with iterations 266–268, all captured layer-0 projection/conv/`ssm_out` boundaries from `attn_norm` through `attn_out` match CPU oracles; the remaining first-token mismatch is likely state entering layer 0, GDN recurrence details/state evolution, later layers, or final head accumulation.
+- No runtime math or target AR parity changed in this iteration.

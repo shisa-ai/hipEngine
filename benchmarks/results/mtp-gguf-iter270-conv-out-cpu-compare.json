@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_conv_out_cpu_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 270,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_capture": "benchmarks/results/mtp-gguf-iter269-final-token-conv-window-capture.json",
+  "source_iteration": 269,
+  "layer_id": 0,
+  "weight_name": "blk.0.ssm_conv1d.weight",
+  "weight_shape": [
+    8192,
+    4
+  ],
+  "positions": [
+    13,
+    14,
+    15,
+    16
+  ],
+  "token_ids": [
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "target_position": 16,
+  "target_token_id": 271,
+  "device_vs_cpu": {
+    "count": 8192,
+    "max_abs_diff": 5.960464477539063e-08,
+    "rms_abs_diff": 2.1341464151447553e-09,
+    "mean_abs_diff": 4.021687705080268e-10,
+    "reference_rms": 0.7094936370849609,
+    "candidate_rms": 0.7094936370849609
+  },
+  "within_float_tolerance": true,
+  "samples": {
+    "cpu_conv_out": [
+      -0.0059932502917945385,
+      0.001933962688781321,
+      0.022794723510742188,
+      0.0027411957271397114,
+      -0.005694342311471701,
+      -0.014557418413460255,
+      -0.012158554047346115,
+      0.012020559050142765
+    ],
+    "device_conv_out": [
+      -0.0059932502917945385,
+      0.001933962688781321,
+      0.022794723510742188,
+      0.0027411954943090677,
+      -0.005694342311471701,
+      -0.014557416550815105,
+      -0.012158554047346115,
+      0.012020559050142765
+    ]
+  },
+  "conclusion": "Device conv_out matches CPU ssm_conv1d over the captured linear_qkv window; max_abs=5.96046e-08, rms_abs=2.13415e-09. Layer-0 triage moves downstream into GDN recurrence or outside layer 0."
+}
