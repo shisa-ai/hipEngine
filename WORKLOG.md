@@ -108208,3 +108208,60 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-4 attention-norm input `hidden_in_f32` hash matches the exact layer-4 BF16 handoff artifact at warm position 16/token 271.
 - Layer-4 `attn_norm_f32` is bit-exact to the resident-BF16 CPU RMSNorm oracle (`max_abs=0.0`, `rmse=0.0`).
 - This validates the layer-4 attention-norm boundary and clears the next bisection step: layer-4 projection or conv/GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-4 projection oracle
+
+### Change
+- Continued iteration 356 by adding `scripts/llamacpp_mtp_audit_layer4_projection_oracle.py`.
+- The script starts from the exact layer-4 attention-norm artifact, hash-checks live `attn_norm_f32`, reloads the layer-4 GGUF linear-attention projection weights, and mirrors resident BF16 projection outputs for `linear_qkv_f32`, `linear_z_f32`, `ssm_alpha_f32`, and `ssm_beta_f32`.
+- Added `tests/test_llamacpp_mtp_audit_layer4_projection_oracle.py` covering attention-norm artifact validation, input hash guards, exact/near/mismatch projection classification, linear-attention metadata blocking, and unavailable-capture paths.
+- Emitted `benchmarks/results/mtp-gguf-iter356-layer4-projection-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer4_projection_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer4_projection_oracle.py \
+  --layer4-attn-norm benchmarks/results/mtp-gguf-iter355-layer4-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter356-layer4-projection-oracle.json
+# status=ready
+# classification=layer4_projections_match_bf16_oracle_within_rounding
+# layer=4 position=16 token=271
+# input_classification=layer4_projection_input_matches_attn_norm_artifact
+# linear_qkv_f32 within BF16 rounding, max_abs=0.001953125 rmse=2.157919698220212e-05
+# linear_z_f32 within BF16 rounding, max_abs=0.0001220703125 rmse=1.93692517314048e-06
+# ssm_alpha_f32 exact, max_abs=0.0 rmse=0.0
+# ssm_beta_f32 exact, max_abs=0.0 rmse=0.0
+# next_action=audit_layer4_conv_gdn_under_bf16_contract
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer4_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer4_projection_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer4_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer4_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer4_bf16_handoff_audit.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-4 projection input `attn_norm_f32` hash matches the exact attention-norm artifact at warm position 16/token 271.
+- Layer-4 SSM alpha/beta projections are bit-exact against the BF16 GGUF projection oracle.
+- Layer-4 QKV and gate projections differ only within BF16 rounding tolerance, matching the established linear-attention projection contract.
+- This validates the layer-4 projection boundary and clears the next bisection step: layer-4 conv/GDN replay under the BF16 contract.
