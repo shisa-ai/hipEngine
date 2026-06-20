@@ -114232,3 +114232,70 @@ PY
 - Layer-16 final `layer_out_f32` is exact after the BF16 combine/residual contract (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=16`.
 - This clears the next bisection step: layer-17 BF16 handoff / next-boundary audit.
+
+## 2026-06-20 — validated layer-17 BF16 handoff audit
+
+### Change
+- Continued iteration 452 by adding `scripts/llamacpp_mtp_layer17_bf16_handoff_audit.py`.
+- The script starts from the layer-16 MoE expert-output artifact, re-captures layer 16 and layer 17 with `run_preceding_layers=True`, hash-checks layer-16 `layer_out_f32` against the validated source artifact, and validates layer-17 `hidden_in_f32` against the source `layer_out_f32` under the resident BF16 handoff contract.
+- Added `tests/test_llamacpp_mtp_layer17_bf16_handoff_audit.py` covering source artifact validation, source hash guards, exact / mismatch / unavailable classifications, and source/target preceding-layer metadata checks.
+- Emitted `benchmarks/results/mtp-gguf-iter452-layer17-bf16-handoff.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_layer17_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer17_bf16_handoff_audit.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer17_bf16_handoff_audit.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_layer17_bf16_handoff_audit.py \
+  --layer16-experts benchmarks/results/mtp-gguf-iter451-layer16-moe-expert-outputs-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter452-layer17-bf16-handoff.json
+# status=ready
+# classification=layer17_hidden_in_matches_layer16_layer_out_exactly
+# source_layer=16 target_layer=17
+# source_reference=layer17_handoff_source_matches_layer16_artifact exact=True
+# handoff exact: max_abs=0.0 rmse=0.0
+# source capture: layer_id=16 layer_type=linear_attention is_moe=True top_k=8 preceding_layer_count=16
+# target capture: layer_id=17 layer_type=linear_attention is_moe=True top_k=8 preceding_layer_count=17
+# next_action=audit_layer17_attn_norm_under_bf16_contract_or_mtp_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer17_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer16_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer16_moe_expert_outputs_oracle.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-17 BF16 handoff audit/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; focused RED-style
+# tests cover source artifact validation, source hash guard, exact, mismatch,
+# unavailable paths, and preceding-layer count checks; layer-16 source
+# layer_out hash matches the expert-output artifact; layer-17 hidden_in matches
+# exactly (max_abs=0.0, rmse=0.0); compact artifact contains summaries/hashes
+# only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-16 `layer_out_f32` re-capture hash matches the iteration-451 expert-output artifact.
+- Layer-17 `hidden_in_f32` matches layer-16 `layer_out_f32` exactly (`max_abs=0.0`, `rmse=0.0`).
+- Source and target captures both use the linear-attention MoE path (`top_k=8`), with `preceding_layer_count=16` and `17` respectively.
+- This clears the next bisection step: layer-17 attention-norm under the BF16 contract / MTP boundary.
