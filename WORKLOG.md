@@ -103814,3 +103814,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Ninja is absent on this host, so the plan selects `Unix Makefiles`.
 - Planned configure command uses `GGML_HIP=ON`, `AMDGPU_TARGETS=gfx1151`, `BUILD_SHARED_LIBS=ON`, `LLAMA_BUILD_*` extras off, and therock `CMAKE_PREFIX_PATH`.
 - Next action: run the emitted configure/build command for target `llama`, then compile a hidden-in capture harness against the built library and `src/llama-ext.h`.
+
+## 2026-06-20 — isolated llama.cpp build runner captures HIP compiler blocker
+
+### Change
+- Continued iteration 287 by adding `scripts/llamacpp_mtp_run_build.py`, which executes the iteration-286 build plan in the isolated `/tmp` build tree, writes stdout/stderr logs under `/tmp`, and emits a compact build result manifest.
+- Added `tests/test_llamacpp_mtp_run_build.py` covering successful fake configure/build, configure failure with skipped build, sentinel-protected build-dir replacement, output library discovery, and diagnosis of CMake rejecting `hipcc` as `CMAKE_HIP_COMPILER`.
+- Emitted `benchmarks/results/mtp-gguf-iter287-llamacpp-build-result.json` after running the real configure/build plan.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_run_build.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_run_build.py \
+  --plan benchmarks/results/mtp-gguf-iter286-llamacpp-build-plan.json \
+  --output benchmarks/results/mtp-gguf-iter287-llamacpp-build-result.json \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter287-build-logs \
+  --replace-build-dir \
+  --timeout-seconds 2400
+# status=configure_failed
+# configure_rc=1
+# build_rc=null
+# libraries=[]
+# next_action=regenerate_build_plan_with_amdclangpp_or_without_cmake_hip_compiler
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_run_build.py \
+  tests/test_llamacpp_mtp_build_plan.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter287-llamacpp-build-result.json \
+  >/tmp/mtp-gguf-iter287-build-result.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The build runner successfully captured configure failure instead of crashing. `CMakeCache.txt` and the build sentinel were written in `/tmp/hipengine-llamacpp-mtp-iter286-build`; no `libllama` artifact was produced.
+- Configure failed in 0.719s because CMake rejects `CMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/hipcc`:
+  `CMAKE_HIP_COMPILER is set to the hipcc wrapper ... This is not supported. Use Clang directly, or let CMake pick a default.`
+- The manifest diagnoses `cmake_hip_compiler_wrapper_rejected`, finds candidate `/home/lhl/miniforge3/envs/therock/bin/amdclang++`, and sets next action `regenerate_build_plan_with_amdclangpp_or_without_cmake_hip_compiler`.
+- External llama.cpp source remained clean (`git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- src/models/qwen35moe.cpp` produced no output).
