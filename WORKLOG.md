@@ -107599,3 +107599,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-2 selected expert down outputs and shared expert output match the raw-GGUF BF16 oracle within tight tolerance (`1.86e-09` and `4.77e-07` max abs respectively).
 - Layer-2 combined `layer_out_f32` is exact vs the resident-BF16 expert-combine oracle.
 - This closes the layer-2 MoE sub-chain and clears the next bisection step: layer-3 handoff / next layer boundary under the resident-BF16 contract.
+
+## 2026-06-20 — validated layer-3 BF16 handoff
+
+### Change
+- Continued iteration 345 by adding `scripts/llamacpp_mtp_layer3_bf16_handoff_audit.py`.
+- The script starts from the verified layer-2 MoE expert-output artifact, verifies a fresh layer-2 `layer_out_f32` capture hash against that artifact, captures layer-3 `hidden_in_f32` with `run_preceding_layers=True`, and compares the two resident-BF16 vectors.
+- Added `tests/test_llamacpp_mtp_layer3_bf16_handoff_audit.py` covering layer-2 prerequisite validation, source hash checks, exact/mismatch handoff classification, preceding-layer checks, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter345-layer3-bf16-handoff.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer3_bf16_handoff_audit.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer3_bf16_handoff_audit.py \
+  --layer2-experts benchmarks/results/mtp-gguf-iter344-layer2-moe-expert-outputs-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter345-layer3-bf16-handoff.json \
+  --iteration 345
+# status=ready
+# classification=layer3_hidden_in_matches_layer2_layer_out_exactly
+# source_layer=2 target_layer=3 position=16 token=271
+# source_reference=layer3_handoff_source_matches_layer2_artifact exact_hash_match=True
+# source_preceding_layer_count=2 source_layer_type=linear_attention
+# target_preceding_layer_count=3 target_layer_type=full_attention
+# handoff max_abs=0.0 rmse=0.0
+# next_action=audit_layer3_attn_norm_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer3_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer2_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_layer2_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer1_moe_expert_outputs_oracle.py
+# ..................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Fresh layer-2 `layer_out_f32` hash matches the verified layer-2 expert-output artifact.
+- Layer-3 `hidden_in_f32` matches layer-2 `layer_out_f32` exactly at warm position 16/token 271.
+- The handoff enters a `full_attention` layer with `preceding_layer_count == 3`.
+- This validates the layer-2→layer-3 resident-BF16 handoff and clears the next bisection step: layer-3 attention norm under the BF16 contract.
