@@ -104884,3 +104884,67 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - mean abs diff `2.4181736992902216`
 - Llama.cpp all-row scan did not find an exact row; closest row by RMSE was row `12` with RMSE `2.912973812981715`, still a large mismatch.
 - Conclusion: the existing hipEngine FP32 seed target is not llama.cpp-exact; it is populated after upstream BF16 activation propagation, so exact MTP seed parity requires auditing/promoting the upstream activation lane or producing a comparable BF16 llama.cpp oracle before claiming B1-B4 exactness.
+
+## 2026-06-20 — hidden-seed mode sweep separates bulk drift from shared seed mismatch
+
+### Change
+- Continued iteration 304 by adding `scripts/gguf_hidden_seed_mode_sweep.py`, which reuses the iteration-303 llama.cpp `embeddings_nextn` FP32 seed row and compares it against hipEngine FP32 seed captures from multiple execution modes.
+- Added `tests/test_gguf_hidden_seed_mode_sweep.py` covering matching-mode detection, all-hip-modes-agree mismatch, divergent-mode mismatch, pairwise shape/skipped handling, mode parsing, and final-position guard.
+- Emitted `benchmarks/results/mtp-gguf-iter304-hidden-seed-mode-sweep.json` for modes `prefill-bulk`, `prefill-native`, `prefill-serial`, and `step-serial`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_seed_mode_sweep.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_hidden_seed_mode_sweep.py \
+  --llamacpp-artifact benchmarks/results/mtp-gguf-iter303-hidden-seed-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 \
+  --modes prefill-bulk,prefill-native,prefill-serial,step-serial \
+  --output benchmarks/results/mtp-gguf-iter304-hidden-seed-mode-sweep.json \
+  --iteration 304
+# status=mismatched
+# conclusion=hipengine_seed_modes_diverge_and_mismatch_llamacpp
+# best_mode=prefill-native, RMSE=3.1126764923274637
+# hip_modes_match=false
+# next_action=bisect_prefill_bulk_native_serial_seed_path
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_seed_mode_sweep.py \
+  tests/test_llamacpp_mtp_compare_hidden_seed.py \
+  tests/test_gguf_hidden_precision_decision_audit.py
+# ................. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter304-hidden-seed-mode-sweep.json \
+  >/tmp/mtp-gguf-iter304-hidden-seed-mode-sweep.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- All hipEngine modes remain far from the llama.cpp post-`output_norm` FP32 seed oracle.
+- `prefill-native`, forced token-serial `prefill-serial`, and explicit `step-serial` agree exactly:
+  - sha256 `e4c47dff146c9e0c530a92c236c13442a6ff7834ec97cb4c8de5b797e79b76ae`
+  - vs llama.cpp RMSE `3.1126764923274637`, max abs diff `14.318409442901611`, mean abs diff `2.4132720989882017`
+- Fast `prefill-bulk` differs slightly from the serial/native seed:
+  - sha256 `d3b436a35c1e5535aba0515987dbe020e4f193ca67f7de0b47da6f74ee37f326`
+  - vs llama.cpp RMSE `3.1180099001747528`, max abs diff `14.284552574157715`, mean abs diff `2.4181736992902216`
+  - vs `prefill-native` RMSE `0.03580982600551289`, max abs diff `0.17240047454833984`
+- Conclusion: there is a small bulk-prefill parity drift, but the dominant llama.cpp mismatch is shared by native/serial/step paths. Next action should bisect the shared activation/output_norm path first, while keeping the bulk-vs-serial delta recorded as secondary debt.
