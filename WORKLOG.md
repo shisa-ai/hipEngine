@@ -108547,3 +108547,59 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The layer-4 source capture matches the validated layer-4 expert-output artifact exactly at warm position 16/token 271.
 - Layer-5 `hidden_in_f32` is bit-identical to layer-4 `layer_out_f32` (`max_abs=0.0`, matching SHA `3d4ab49468b256f254f4b983ab65135cf012ef6d0fc020ae5243865fad8ad485`).
 - This validates the layer-5 BF16 handoff boundary and clears the next bisection step: layer-5 attention norm under the BF16 contract.
+
+## 2026-06-20 — validated layer-5 attention norm oracle
+
+### Change
+- Continued iteration 362 by adding `scripts/llamacpp_mtp_audit_layer5_attn_norm_oracle.py`.
+- The script starts from the exact layer-5 BF16 handoff artifact, hash-checks live `hidden_in_f32`, reloads `blk.5.attn_norm.weight`, and mirrors the established BF16 RMSNorm oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer5_attn_norm_oracle.py` covering handoff validation, hidden-input hash guards, exact/mismatch/unavailable oracle classification, linear-attention metadata checks, and preceding-layer count enforcement.
+- Emitted `benchmarks/results/mtp-gguf-iter362-layer5-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer5_attn_norm_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer5_attn_norm_oracle.py \
+  --layer5-handoff benchmarks/results/mtp-gguf-iter361-layer5-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter362-layer5-attn-norm-oracle.json
+# status=ready
+# classification=layer5_attn_norm_matches_bf16_oracle_exactly
+# layer=5 position=16 token=271
+# input_classification=layer5_attn_norm_input_matches_handoff_artifact
+# hidden_sha=3d4ab49468b256f254f4b983ab65135cf012ef6d0fc020ae5243865fad8ad485
+# attn_norm exact, max_abs=0.0 rmse=0.0
+# weight=blk.5.attn_norm.weight F32 [2048]
+# attn_norm_sha=df3e1e9b6323b2596f3c8c3c45490e5b4c9eeb5f61ee40c85614f69451be8a40
+# next_action=audit_layer5_projection_or_conv_gdn_under_bf16_contract
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer5_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer5_attn_norm_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer5_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer5_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer4_attn_norm_oracle.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-5 attention-norm input hash matches the exact layer-5 BF16 handoff artifact at warm position 16/token 271.
+- `attn_norm_f32` is bit-exact against `BF16(RMSNorm(hidden_in_f32, blk.5.attn_norm.weight, eps_model))` (`max_abs=0.0`, `rmse=0.0`).
+- This validates the first layer-5 sub-boundary and clears the next bisection step: layer-5 projections / conv-GDN under the BF16 contract.
