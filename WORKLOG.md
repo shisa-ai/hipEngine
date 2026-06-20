@@ -106009,3 +106009,109 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - hipEngine side is ready without runtime edits: warm prior prompt tokens with `session.step(...)`, then call `session.capture_attention_layer(token_id, position=16, layer_id=0, run_preceding_layers=False)` and compare `hidden_in_f32`.
 - Important dtype note for the next compare: hipEngine `launch_gguf_embedding` writes BF16 and `hidden_in_f32` copies BF16 back to F32, while llama.cpp `model.input_embed` is captured as F32. The next artifact should report both exact F32 delta and a BF16-rounded llama.cpp row delta before declaring a semantic embedding mismatch.
 - Next action: build a temporary input-embedding `h_nextn_input_embed` llama.cpp capture and compare it to hipEngine `capture_attention_layer(...).hidden_in_f32`.
+
+## 2026-06-20 — input embedding matches after BF16 rounding
+
+### Change
+- Continued iteration 318 by adding `scripts/llamacpp_mtp_build_input_embed_harness.py`, which builds a temporary llama.cpp source tree patched to expose `model.input_embed` through `res->t_h_nextn` as `h_nextn_input_embed`. The helper also applies the post-`output_norm` preserve patch and rejects copied sources containing layer-boundary or final pre-output diagnostic patches.
+- Added `scripts/llamacpp_mtp_compare_input_embed.py`, which runs the patched llama.cpp hidden-seed harness and compares its F32 input-embedding row against hipEngine `session.capture_attention_layer(..., layer_id=0, run_preceding_layers=False).hidden_in_f32`. It reports both exact F32 delta and a BF16-roundtripped llama.cpp delta.
+- Added focused tests:
+  - `tests/test_llamacpp_mtp_input_embed_harness.py`
+  - `tests/test_llamacpp_mtp_compare_input_embed.py`
+- Emitted iteration-318 artifacts:
+  - `benchmarks/results/mtp-gguf-iter318-input-embed-harness-build.json`
+  - `benchmarks/results/mtp-gguf-iter318-input-embed-llamacpp-build-result.json`
+  - `benchmarks/results/mtp-gguf-iter318-input-embed-harness-compile.json`
+  - `benchmarks/results/mtp-gguf-iter318-input-embed-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_input_embed_harness.py \
+  tests/test_llamacpp_mtp_compare_input_embed.py
+# ........ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_input_embed_harness.py \
+  --plan benchmarks/results/mtp-gguf-iter317-initial-input-capture-plan.json \
+  --base-build benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter318-input-embed-harness-build.json \
+  --patched-build-result benchmarks/results/mtp-gguf-iter318-input-embed-llamacpp-build-result.json \
+  --harness-compile benchmarks/results/mtp-gguf-iter318-input-embed-harness-compile.json \
+  --source-dir /tmp/hipengine-llamacpp-mtp-iter318-input-embed-src \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter318-input-embed-build \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter318-input-embed-build-logs \
+  --harness-dir /tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness \
+  --clean --iteration 318
+# status=ready, patch_applied=true, configure_rc=0, build_rc=0,
+# harness_status=compiled
+
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/src/models/qwen35moe.cpp')
+text = p.read_text()
+assert text.count('h_nextn_input_embed') == 1
+assert text.count('h_nextn_layer_out') == 0
+assert text.count('h_nextn_post_output_norm') == 1
+assert text.count('h_nextn_pre_output_norm') == 0
+assert text.count('res->t_h_nextn = inpL;') == 1
+assert text.count('res->t_h_nextn = cur;') == 0
+print('input-embed-patch-source-ok')
+PY
+# input-embed-patch-source-ok
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_input_embed.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter318-input-embed-harness-compile.json \
+  --layer0-reference benchmarks/results/mtp-gguf-iter316-layer0-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter318-input-embed/pos16 \
+  --output benchmarks/results/mtp-gguf-iter318-input-embed-compare.json \
+  --all-rows --iteration 318
+# status=mismatched
+# llamacpp_rc=0
+# hipengine_status=captured
+# exact_rmse=4.314661795910361e-06
+# bf16_roundtrip_rmse=0.0
+# classification=input_embed_matches_after_bf16_roundtrip
+# next_action=investigate_layer0_implementation_after_embedding
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_input_embed_harness.py \
+  tests/test_llamacpp_mtp_compare_input_embed.py \
+  tests/test_llamacpp_mtp_initial_input_capture_plan.py \
+  tests/test_llamacpp_mtp_layer_boundary_harness.py \
+  tests/test_llamacpp_mtp_compare_layer_boundary.py
+# ....................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The temporary input-embedding patched source is correct:
+  - one `h_nextn_input_embed` tap
+  - no `h_nextn_layer_out` tap
+  - one `h_nextn_post_output_norm` callback
+  - no `h_nextn_pre_output_norm` final-boundary patch
+  - one `res->t_h_nextn = inpL;` assignment
+  - no later `res->t_h_nextn = cur;` assignment
+- Exact F32 comparison between llama.cpp `model.input_embed` and hipEngine `hidden_in_f32` is mismatched only by BF16 rounding:
+  - llama.cpp F32 SHA `ce69511d7a54dec1a77cb3097923d71999d5f408690e377cec3bb39285dffa46`
+  - hipEngine hidden-in SHA `5b3464efb0fb72d5dbbe522b63b26531401d460e2667e971d2f2b8226fc1b9b3`
+  - exact RMSE `4.314661795910361e-06`
+  - exact max abs diff `8.296966552734375e-05`
+  - exact mean abs diff `2.105720341205597e-06`
+- BF16-roundtripping the llama.cpp row matches hipEngine exactly:
+  - BF16-rounded RMSE `0.0`
+  - BF16-rounded max abs diff `0.0`
+  - classification `input_embed_matches_after_bf16_roundtrip`
+- Interpretation: token embedding lookup/materialization is aligned once hipEngine's BF16 embedding output is accounted for. The remaining layer-0 output mismatch is introduced inside layer 0; next target is a layer-0 sub-boundary audit (norm/attention/MoE/residual pieces) rather than tokenizer/embedding.

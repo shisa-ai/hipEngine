@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_input_embed_harness_build",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 318,
+  "status": "ready",
+  "plan_path": "benchmarks/results/mtp-gguf-iter317-initial-input-capture-plan.json",
+  "base_build_path": "benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json",
+  "patched_build_result_path": "benchmarks/results/mtp-gguf-iter318-input-embed-llamacpp-build-result.json",
+  "harness_compile_path": "benchmarks/results/mtp-gguf-iter318-input-embed-harness-compile.json",
+  "source_dir": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src",
+  "build_dir": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build",
+  "log_dir": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build-logs",
+  "copy": {
+    "status": "copied",
+    "source_dir": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+    "target_source_dir": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src"
+  },
+  "patch": {
+    "name": "input_embed_capture",
+    "status": "applied",
+    "applied": true,
+    "path": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/src/models/qwen35moe.cpp",
+    "old_count_before": 1,
+    "new_count_before": 0,
+    "old_count_after": 0,
+    "new_count_after": 1,
+    "capture_label": "h_nextn_input_embed",
+    "post_output_preserve": {
+      "name": "post_output_preserve_pre_capture",
+      "status": "applied",
+      "applied": true,
+      "path": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/src/models/qwen35moe.cpp",
+      "old_count_before": 1,
+      "new_count_before": 0,
+      "old_count_after": 0,
+      "new_count_after": 1
+    },
+    "layer_capture_patch_count": 0,
+    "final_pre_output_patch_count": 0
+  },
+  "commands": {
+    "configure": {
+      "command": [
+        "cmake",
+        "-S",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src",
+        "-B",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build",
+        "-G",
+        "Unix Makefiles",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DGGML_HIP=ON",
+        "-DAMDGPU_TARGETS=gfx1151",
+        "-DLLAMA_BUILD_TESTS=OFF",
+        "-DLLAMA_BUILD_TOOLS=OFF",
+        "-DLLAMA_BUILD_EXAMPLES=OFF",
+        "-DLLAMA_BUILD_SERVER=OFF",
+        "-DLLAMA_BUILD_APP=OFF",
+        "-DLLAMA_BUILD_COMMON=OFF",
+        "-DLLAMA_CURL=OFF",
+        "-DBUILD_SHARED_LIBS=ON",
+        "-DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+        "-DCMAKE_PREFIX_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel;/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake"
+      ],
+      "command_shell": "cmake -S /tmp/hipengine-llamacpp-mtp-iter318-input-embed-src -B /tmp/hipengine-llamacpp-mtp-iter318-input-embed-build -G \"Unix Makefiles\" -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1151 -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_COMMON=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/amdclang++ -DCMAKE_PREFIX_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel;/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake",
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.695,
+      "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build-logs/configure.stdout.log",
+      "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build-logs/configure.stderr.log",
+      "stdout_tail": "-- The C compiler identification is GNU 16.1.1\n-- The CXX compiler identification is GNU 16.1.1\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: /usr/bin/cc - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: /usr/bin/c++ - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Git: /usr/bin/git (found version \"2.54.0\")\n-- The ASM compiler identification is GNU\n-- Found assembler: /usr/bin/cc\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success\n-- Found Threads: TRUE\n-- ccache found, compilation results will be cached. Disable with GGML_CCACHE=OFF.\n-- CMAKE_SYSTEM_PROCESSOR: x86_64\n-- GGML_SYSTEM_ARCH: x86\n-- Found OpenMP_C: -fopenmp (found version \"5.2\")\n-- Found OpenMP_CXX: -fopenmp (found version \"5.2\")\n-- Found OpenMP: TRUE (found version \"5.2\")\n-- Including CPU backend\n-- x86 detected\n-- Adding CPU backend variant ggml-cpu: -march=native \n-- The HIP compiler identification is Clang 23.0.0\n-- Detecting HIP compiler ABI info\n-- Detecting HIP compiler ABI info - done\n-- Check for working HIP compiler: /home/lhl/miniforge3/envs/therock/bin/amdclang++ - skipped\n-- Detecting HIP compile features\n-- Detecting HIP compile features - done\n-- HIP: Using hipcc from relative path: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/hipcc\n-- HIP_PLATFORM using hip_HIPCONFIG_EXECUTABLE: amd\n-- HIP: Using hipcc from relative path: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/hipcc\n-- HIP and hipBLAS found\n-- Including HIP backend\n-- ggml version: 0.15.1\n-- ggml commit:  unknown\n-- Configuring done (1.7s)\n-- Generating done (0.0s)\n-- Build files have been written to: /tmp/hipengine-llamacpp-mtp-iter318-input-embed-build\n",
+      "stderr_tail": "CMAKE_BUILD_TYPE=Release\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n"
+    },
+    "build": {
+      "command": [
+        "cmake",
+        "--build",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build",
+        "--target",
+        "llama",
+        "-j",
+        "8"
+      ],
+      "command_shell": "cmake --build /tmp/hipengine-llamacpp-mtp-iter318-input-embed-build --target llama -j 8",
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 143.804,
+      "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build-logs/build.stdout.log",
+      "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build-logs/build.stderr.log",
+      "stdout_tail": "a.dir/models/mistral4.cpp.o\n[ 83%] Building CXX object src/CMakeFiles/llama.dir/models/modern-bert.cpp.o\n[ 84%] Building CXX object src/CMakeFiles/llama.dir/models/mpt.cpp.o\n[ 84%] Building CXX object src/CMakeFiles/llama.dir/models/nemotron-h-moe.cpp.o\n[ 84%] Building CXX object src/CMakeFiles/llama.dir/models/nemotron-h.cpp.o\n[ 85%] Building CXX object src/CMakeFiles/llama.dir/models/nemotron.cpp.o\n[ 85%] Building CXX object src/CMakeFiles/llama.dir/models/neo-bert.cpp.o\n[ 85%] Building CXX object src/CMakeFiles/llama.dir/models/nomic-bert-moe.cpp.o\n[ 86%] Building CXX object src/CMakeFiles/llama.dir/models/nomic-bert.cpp.o\n[ 86%] Building CXX object src/CMakeFiles/llama.dir/models/olmo.cpp.o\n[ 86%] Building CXX object src/CMakeFiles/llama.dir/models/olmo2.cpp.o\n[ 87%] Building CXX object src/CMakeFiles/llama.dir/models/olmoe.cpp.o\n[ 87%] Building CXX object src/CMakeFiles/llama.dir/models/openai-moe.cpp.o\n[ 87%] Building CXX object src/CMakeFiles/llama.dir/models/openelm.cpp.o\n[ 87%] Building CXX object src/CMakeFiles/llama.dir/models/orion.cpp.o\n[ 88%] Building CXX object src/CMakeFiles/llama.dir/models/paddleocr.cpp.o\n[ 88%] Building CXX object src/CMakeFiles/llama.dir/models/pangu-embed.cpp.o\n[ 89%] Building CXX object src/CMakeFiles/llama.dir/models/phi3.cpp.o\n[ 89%] Building CXX object src/CMakeFiles/llama.dir/models/phi2.cpp.o\n[ 89%] Building CXX object src/CMakeFiles/llama.dir/models/phimoe.cpp.o\n[ 89%] Building CXX object src/CMakeFiles/llama.dir/models/plamo.cpp.o\n[ 90%] Building CXX object src/CMakeFiles/llama.dir/models/plamo2.cpp.o\n[ 90%] Building CXX object src/CMakeFiles/llama.dir/models/plamo3.cpp.o\n[ 90%] Building CXX object src/CMakeFiles/llama.dir/models/plm.cpp.o\n[ 90%] Building CXX object src/CMakeFiles/llama.dir/models/qwen.cpp.o\n[ 91%] Building CXX object src/CMakeFiles/llama.dir/models/qwen2.cpp.o\n[ 91%] Building CXX object src/CMakeFiles/llama.dir/models/qwen2moe.cpp.o\n[ 91%] Building CXX object src/CMakeFiles/llama.dir/models/qwen2vl.cpp.o\n[ 92%] Building CXX object src/CMakeFiles/llama.dir/models/qwen3.cpp.o\n[ 92%] Building CXX object src/CMakeFiles/llama.dir/models/qwen35.cpp.o\n[ 92%] Building CXX object src/CMakeFiles/llama.dir/models/qwen35moe.cpp.o\n[ 93%] Building CXX object src/CMakeFiles/llama.dir/models/qwen3moe.cpp.o\n[ 93%] Building CXX object src/CMakeFiles/llama.dir/models/qwen3next.cpp.o\n[ 93%] Building CXX object src/CMakeFiles/llama.dir/models/qwen3vl.cpp.o\n[ 93%] Building CXX object src/CMakeFiles/llama.dir/models/qwen3vlmoe.cpp.o\n[ 94%] Building CXX object src/CMakeFiles/llama.dir/models/refact.cpp.o\n[ 94%] Building CXX object src/CMakeFiles/llama.dir/models/rnd1.cpp.o\n[ 94%] Building CXX object src/CMakeFiles/llama.dir/models/rwkv6-base.cpp.o\n[ 95%] Building CXX object src/CMakeFiles/llama.dir/models/rwkv6.cpp.o\n[ 95%] Building CXX object src/CMakeFiles/llama.dir/models/rwkv6qwen2.cpp.o\n[ 95%] Building CXX object src/CMakeFiles/llama.dir/models/rwkv7-base.cpp.o\n[ 96%] Building CXX object src/CMakeFiles/llama.dir/models/rwkv7.cpp.o\n[ 96%] Building CXX object src/CMakeFiles/llama.dir/models/seed-oss.cpp.o\n[ 96%] Building CXX object src/CMakeFiles/llama.dir/models/smallthinker.cpp.o\n[ 96%] Building CXX object src/CMakeFiles/llama.dir/models/smollm3.cpp.o\n[ 97%] Building CXX object src/CMakeFiles/llama.dir/models/stablelm.cpp.o\n[ 97%] Building CXX object src/CMakeFiles/llama.dir/models/starcoder.cpp.o\n[ 97%] Building CXX object src/CMakeFiles/llama.dir/models/starcoder2.cpp.o\n[ 98%] Building CXX object src/CMakeFiles/llama.dir/models/step35.cpp.o\n[ 98%] Building CXX object src/CMakeFiles/llama.dir/models/t5.cpp.o\n[ 98%] Building CXX object src/CMakeFiles/llama.dir/models/t5encoder.cpp.o\n[ 99%] Building CXX object src/CMakeFiles/llama.dir/models/talkie.cpp.o\n[ 99%] Building CXX object src/CMakeFiles/llama.dir/models/wavtokenizer-dec.cpp.o\n[ 99%] Building CXX object src/CMakeFiles/llama.dir/models/xverse.cpp.o\n[100%] Linking CXX shared library ../bin/libllama.so\n[100%] Built target llama\n",
+      "stderr_tail": ""
+    }
+  },
+  "libraries": [
+    "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin/libllama.so",
+    "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin/libllama.so.0",
+    "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin/libllama.so.0.0.0"
+  ],
+  "harness_compile": {
+    "schema": 1,
+    "kind": "llamacpp_hidden_seed_harness_compile",
+    "date": "2026-06-20",
+    "loop": "mtp-gguf/run-20260615-103738",
+    "iteration": 318,
+    "status": "compiled",
+    "harness_kind": "capture",
+    "build_result_path": "benchmarks/results/mtp-gguf-iter318-input-embed-llamacpp-build-result.json",
+    "source_dir": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src",
+    "build_dir": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build",
+    "lib_dir": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin",
+    "compiler": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+    "header_validation": {
+      "llama_h": {
+        "path": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/include/llama.h",
+        "exists": true
+      },
+      "llama_ext_h": {
+        "path": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/src/llama-ext.h",
+        "exists": true
+      },
+      "ggml_include": {
+        "path": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/ggml/include",
+        "exists": true
+      }
+    },
+    "link_symbols": [
+      "llama_set_embeddings_nextn",
+      "llama_get_embeddings_nextn",
+      "llama_get_embeddings_nextn_ith"
+    ],
+    "compile": {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+        "-std=c++17",
+        "-O2",
+        "-I",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/include",
+        "-I",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/src",
+        "-I",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/ggml/include",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture.cpp",
+        "-L",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin",
+        "-Wl,-rpath,/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin",
+        "-Wl,--enable-new-dtags",
+        "-lllama",
+        "-o",
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture"
+      ],
+      "command_shell": "/home/lhl/miniforge3/envs/therock/bin/amdclang++ -std=c++17 -O2 -I /tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/include -I /tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/src -I /tmp/hipengine-llamacpp-mtp-iter318-input-embed-src/ggml/include /tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture.cpp -L /tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin -Wl,-rpath,/tmp/hipengine-llamacpp-mtp-iter318-input-embed-build/bin -Wl,--enable-new-dtags -lllama -o /tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture",
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.298,
+      "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/compile.stdout.log",
+      "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/compile.stderr.log",
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    "probe_run": {
+      "command": [
+        "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture"
+      ],
+      "command_shell": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture",
+      "returncode": null,
+      "timed_out": false,
+      "elapsed_seconds": 0.0,
+      "stdout_log": null,
+      "stderr_log": null,
+      "stdout_tail": "",
+      "stderr_tail": "compile_only_capture_harness"
+    },
+    "outputs": {
+      "source": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture.cpp",
+      "executable": "/tmp/hipengine-llamacpp-mtp-iter318-input-embed-harness/llamacpp_hidden_seed_capture",
+      "executable_exists": true,
+      "executable_bytes": 23080
+    },
+    "external_checkout_modified": false,
+    "next_action": "run_hidden_seed_capture_harness_with_model_prompt_position"
+  },
+  "external_checkout_modified": false,
+  "next_action": "run_input_embed_harness_and_compare_hipengine_hidden_in"
+}
