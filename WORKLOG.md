@@ -102169,3 +102169,67 @@ git diff --check -- scripts/gguf_linear_boundary_capture.py \
 ### Result
 - The real-device command path is now packaged and schema-tested; run it without `--dry-run` on the target ROCm box to emit actual layer-0 boundary summaries for the final greeting token.
 - This still does not change runtime math or target AR parity.
+
+## 2026-06-20 — GGUF real layer-0 boundary capture succeeded on gfx1151
+
+### Change
+- Continued iteration 259 by running `scripts/gguf_linear_boundary_capture.py` without `--dry-run` on the local ROCm environment.
+- Added explicit `--iteration` metadata support to the capture script and covered it in the dry-run test.
+- Emitted real capture artifact `benchmarks/results/mtp-gguf-iter259-linear-boundary-capture.json` for the captured 17-token greeting prompt, final position 16/token 271.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+import ctypes
+ctypes.CDLL('libamdhip64.so')
+print('hip OK')
+PY
+# hip OK
+
+rocminfo | grep -E 'Name:|gfx' | head -n 20
+# AMD RYZEN AI MAX+ 395 w/ Radeon 8060S / gfx1151
+
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_linear_boundary_capture.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_linear_boundary_capture_script.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_linear_boundary_capture.py --iteration 259 \
+  --output benchmarks/results/mtp-gguf-iter259-linear-boundary-capture.json
+# status=captured, position=16, token_id=271
+# artifact iteration=259
+# attn_norm_rms=1.1780647039413452
+# ssm_alpha rms=3.1589462757110596, sample starts [-1.015625, 2.390625, -2.171875]
+# ssm_beta rms=1.1960530281066895, sample starts [-1.15625, -0.6796875, 1.03125]
+# attn_out_rms=0.010142592713236809
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter259-linear-boundary-capture.json \
+  >/tmp/iter259-boundary-capture.pretty && echo boundary-capture-json-ok
+# boundary-capture-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- scripts/gguf_linear_boundary_capture.py \
+  tests/test_gguf_linear_boundary_capture_script.py \
+  benchmarks/results/mtp-gguf-iter259-linear-boundary-capture.json \
+  WORKLOG.md
+# no output
+```
+
+### Result
+- The first real host-visible device boundary for the captured greeting prompt is now recorded on gfx1151.
+- `ssm_alpha`/`ssm_beta` samples match the hipEngine BF16-side samples from the CPU precision-boundary probe, so the next useful comparison is downstream `attn_out`/layer output against a CPU/reference GDN path or a scoped F32 aux-projection experiment.
+- This still does not change target runtime math or target AR parity.

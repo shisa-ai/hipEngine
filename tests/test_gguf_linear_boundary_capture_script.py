@@ -25,6 +25,8 @@ def test_linear_boundary_capture_dry_run_writes_plan_artifact(tmp_path: Path) ->
             "1",
             "--layer",
             "0",
+            "--iteration",
+            "999",
             "--output",
             str(out),
         ],
@@ -45,6 +47,7 @@ def test_linear_boundary_capture_dry_run_writes_plan_artifact(tmp_path: Path) ->
     }
     assert artifact["kind"] == "mtp_gguf_linear_attention_boundary_capture"
     assert artifact["status"] == "dry_run"
+    assert artifact["iteration"] == 999
     assert artifact["prompt_tokens"] == [10, 11, 12]
     assert artifact["warmup_tokens"] == [10]
     assert artifact["api"] == "Qwen35GGUFResidentSession.capture_linear_attention_boundary"

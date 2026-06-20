@@ -51,6 +51,7 @@ def main() -> None:
     parser.add_argument("--tokens", default=",".join(str(token) for token in DEFAULT_PROMPT_TOKENS))
     parser.add_argument("--position", type=int, default=-1)
     parser.add_argument("--layer", type=int, default=0)
+    parser.add_argument("--iteration", type=int, default=258)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--compiler-version")
     parser.add_argument("--require-cached-build", action="store_true")
@@ -67,6 +68,7 @@ def main() -> None:
             position=position,
             layer=args.layer,
             status="dry_run",
+            iteration=args.iteration,
         )
     elif not _hip_available():
         artifact = _plan_artifact(
@@ -75,6 +77,7 @@ def main() -> None:
             position=position,
             layer=args.layer,
             status="skipped_no_hip_runtime",
+            iteration=args.iteration,
         )
     else:
         artifact = capture_linear_boundary(
@@ -85,6 +88,7 @@ def main() -> None:
             compiler_version=args.compiler_version,
             require_cached_build=bool(args.require_cached_build),
             max_sequence_length=args.max_sequence_length,
+            iteration=args.iteration,
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -111,6 +115,7 @@ def capture_linear_boundary(
     compiler_version: str | None,
     require_cached_build: bool,
     max_sequence_length: int | None,
+    iteration: int = 258,
 ) -> dict[str, Any]:
     max_seq = int(max_sequence_length or max(len(tokens) + 8, 32))
     with Qwen35GGUFResidentSession(
@@ -134,6 +139,7 @@ def capture_linear_boundary(
         position=position,
         layer=layer,
         status="captured",
+        iteration=iteration,
     )
     artifact["capture_summary"] = capture.as_summary_dict()
     artifact["buffers"] = {
@@ -152,13 +158,14 @@ def _plan_artifact(
     position: int,
     layer: int,
     status: str,
+    iteration: int = 258,
 ) -> dict[str, Any]:
     return {
         "schema": 1,
         "kind": "mtp_gguf_linear_attention_boundary_capture",
         "date": "2026-06-20",
         "loop": "mtp-gguf/run-20260615-103738",
-        "iteration": 258,
+        "iteration": int(iteration),
         "status": status,
         "model": str(model),
         "layer_id": int(layer),
