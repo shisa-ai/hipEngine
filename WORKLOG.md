@@ -109111,3 +109111,62 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-6 warm replay target inputs match the projection capture exactly at position 16/token 271.
 - Conv/GDN replay agrees with the BF16 contracted CPU oracle within tiny tolerances: conv and recurrent pass within tolerance; recurrent-BF16 and final `attn_out_f32` are exact.
 - This validates the layer-6 conv/GDN boundary and clears the next bisection step: layer-6 post-attention residual / MoE boundary.
+
+## 2026-06-20 — validated layer-6 post-attention residual oracle
+
+### Change
+- Continued iteration 372 by adding `scripts/llamacpp_mtp_audit_layer6_post_attn_residual_oracle.py`.
+- The script starts from the exact layer-6 BF16 handoff artifact plus the validated layer-6 conv/GDN artifact, hash-checks live `hidden_in_f32` and `attn_out_f32`, reloads `blk.6.post_attention_norm.weight`, and reuses the established BF16 add+RMSNorm CPU oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer6_post_attn_residual_oracle.py` covering source validation/alignment, input hash guards, linear-attention metadata blocking, exact/near/mismatch residual classification, and unavailable-capture paths.
+- Emitted `benchmarks/results/mtp-gguf-iter372-layer6-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer6_post_attn_residual_oracle.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer6_post_attn_residual_oracle.py \
+  --conv-gdn-artifact benchmarks/results/mtp-gguf-iter371-layer6-conv-gdn-oracle.json \
+  --handoff-artifact benchmarks/results/mtp-gguf-iter368-layer6-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter372-layer6-post-attn-residual-oracle.json
+# status=ready
+# classification=layer6_post_attn_residual_matches_oracle_exactly
+# layer=6 position=16 token=271
+# input_classification=layer6_post_attn_inputs_match_prior_artifacts
+# hidden_in_f32 hash matches layer-6 handoff: 48a0742f84297e7df10977e738601556b2c46d438a4e21e9544742d49b58b828
+# attn_out_f32 hash matches layer-6 conv/GDN: 487a9e57e1c4a4235f8f474e8f2b993f03760004a65f357c68d938a3a23e7121
+# residual_f32 exact, max_abs=0.0 rmse=0.0
+# post_norm_f32 exact, max_abs=0.0 rmse=0.0
+# norm=blk.6.post_attention_norm.weight F32 [2048]
+# next_action=audit_layer6_moe_router_from_post_norm
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer6_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer6_post_attn_residual_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer6_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer6_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_layer6_bf16_handoff_audit.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-6 post-attn inputs match prior artifacts at warm position 16/token 271: `hidden_in_f32` matches the layer-6 BF16 handoff and `attn_out_f32` matches the layer-6 conv/GDN oracle.
+- The residual add is exact: `residual_f32 == BF16(hidden_in_f32 + attn_out_f32)`.
+- The post-attention RMSNorm is exact against the CPU mirror using `blk.6.post_attention_norm.weight` and model epsilon.
+- This validates the layer-6 post-attention residual/RMSNorm boundary and clears the next bisection step: layer-6 MoE router from `post_norm_f32`.
