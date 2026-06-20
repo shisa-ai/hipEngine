@@ -101882,3 +101882,51 @@ PY
 ### Result
 - The remaining greeting mismatch is now more concretely scoped to an early target-trunk contract gap, especially llama.cpp's F32 activation/small-projection graph vs hipEngine's BF16 resident path, rather than the final output norm/head or prompt template.
 - Next useful work is a numeric boundary oracle/diagnostic mode at the earliest F32-vs-BF16 boundary (embedding/attn_norm/full-attn or GDN alpha-beta/router) before more MTP acceptance/performance tuning.
+
+## 2026-06-20 — GGUF precision contraction precheck made the F32→BF16 blocker executable
+
+### Change
+- Continued iteration 252 target AR parity triage by turning the source-contract audit into a small materialization-plan diagnostic.
+- Added `audit_qwen35_gguf_precision_contractions(plan)` and a RED/green helper test that flags source GGUF F32 tensors planned as BF16 resident weights while leaving F32→F32 and F16→BF16 specs unflagged.
+- Emitted compact artifact `benchmarks/results/mtp-gguf-iter252-precision-contraction-precheck.json` for the MTP-bearing Qwen3.6 GGUF.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_materialize_helpers.py
+# 2 passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_materialize_helpers.py tests/test_qwen35_gguf_materialize.py \
+  -rs --tb=short
+# 2 passed, 8 skipped (0.8B local fixture absent)
+
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Build GGUF tensor map/materialization plan for
+# /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf and run
+# audit_qwen35_gguf_precision_contractions(plan).
+PY
+# artifact: benchmarks/results/mtp-gguf-iter252-precision-contraction-precheck.json
+# findings_count=140: ffn_gate_inp=40, ffn_gate_inp_shexp=40,
+# ssm_alpha=30, ssm_beta=30
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter252-precision-contraction-precheck.json \
+  >/tmp/iter252-precheck.pretty && echo artifact-json-ok
+# artifact-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The F32 auxiliary-weight contraction suspected in iteration 251 is now machine-checkable without loading tensors to the GPU: the current Qwen3.6 MTP-bearing plan intentionally contracts 140 source F32 aux tensors to BF16 resident storage.
+- This is diagnostic only and does not improve target AR first-token parity; the next useful step remains a numeric boundary oracle around early GDN/router/full-attn math before acceptance/perf tuning.

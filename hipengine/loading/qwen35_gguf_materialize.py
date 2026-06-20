@@ -56,6 +56,19 @@ class Qwen35GGUFWeightSpec:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFPrecisionContraction:
+    """Diagnostic record for a source GGUF tensor planned at lower precision."""
+
+    slot_path: str
+    source_name: str
+    source_type: str
+    resident_layout: str
+    resident_quant_key: str
+    llama_cpp_contract: str
+    hipengine_contract: str
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMaterializationPlan:
     """Resident-weight layout plan derived from a validated tensor map."""
 
@@ -164,6 +177,37 @@ def plan_qwen35_gguf_materialization(
         root_specs=MappingProxyType(root_specs),
         layer_specs=tuple(MappingProxyType(layer) for layer in layer_specs),
     )
+
+
+def audit_qwen35_gguf_precision_contractions(
+    plan: Qwen35GGUFMaterializationPlan,
+) -> tuple[Qwen35GGUFPrecisionContraction, ...]:
+    """Return source F32 GGUF tensors intentionally planned as BF16 residents.
+
+    This is a parity diagnostic, not a failure by itself: current kernels may
+    require BF16 resident inputs, while llama.cpp's GGML graph consumes these
+    GGUF F32 tensors as F32 graph tensors.  The audit lets target-AR triage
+    name those contractions explicitly before changing math or kernels.
+    """
+
+    findings: list[Qwen35GGUFPrecisionContraction] = []
+    for spec in plan.specs:
+        if spec.layout != LAYOUT_DENSE_BF16:
+            continue
+        if GGMLQuantizationType(spec.source.ggml_type) != GGMLQuantizationType.F32:
+            continue
+        findings.append(
+            Qwen35GGUFPrecisionContraction(
+                slot_path=spec.slot_path,
+                source_name=spec.source.name,
+                source_type=spec.source.ggml_type_name,
+                resident_layout=spec.layout,
+                resident_quant_key=spec.quant_key,
+                llama_cpp_contract="GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+                hipengine_contract=_precision_contraction_contract(spec.slot_path),
+            )
+        )
+    return tuple(findings)
 
 
 def materialize_qwen35_gguf_weights(
@@ -355,6 +399,27 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
     raise ValueError(f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r}: {tensor.name}")
 
 
+def _precision_contraction_contract(slot_path: str) -> str:
+    known = {
+        ".ffn_gate_inp": (
+            "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+        ),
+        ".ffn_gate_inp_shexp": (
+            "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+        ),
+        ".ssm_alpha": (
+            "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+        ),
+        ".ssm_beta": (
+            "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+        ),
+    }
+    for suffix, contract in known.items():
+        if slot_path.endswith(suffix):
+            return contract
+    return "source F32 tensor is stored as BF16 by the current resident materialization plan"
+
+
 def _gguf_ssm_a_to_kernel_a_log(raw: object):
     """Convert GGUF Qwen3.5 ``ssm_a`` coefficients to the GDN kernel ABI.
 
@@ -528,10 +593,12 @@ __all__ = [
     "LAYOUT_RAW_GGUF",
     "Qwen35GGUFDeviceWeight",
     "Qwen35GGUFMaterializationPlan",
+    "Qwen35GGUFPrecisionContraction",
     "Qwen35GGUFResidentLayerWeights",
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
     "_gguf_ssm_a_to_kernel_a_log",
+    "audit_qwen35_gguf_precision_contractions",
     "gguf_decode_repack_enabled",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",
