@@ -103495,3 +103495,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - attn_out `max_abs=3.0224609375`
   - layer_out `max_abs=2.59375`
 - This corrects the diagnostic interpretation: prior layer-N captures were local kernel/formula checks, while `--run-preceding-layers` captures the actual in-stack boundary. AR parity remains unresolved; next useful boundary is comparing actual in-stack checkpoints against a llama.cpp trace or drilling into full-attention attn_out/KV values with an external oracle.
+
+## 2026-06-20 — GGUF actual layer-3 checkpoint compact summary
+
+### Change
+- Continued iteration 281 by adding `scripts/gguf_layer_capture_summary.py`, which turns a full-array GGUF layer capture into a compact checkpoint artifact with shape/dtype/statistics, stable SHA-256 hashes, first/last samples, and top-abs entries per array.
+- Added `tests/test_gguf_layer_capture_summary.py` for float and integer array summaries.
+- Emitted `benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json` from the iteration-280 actual in-stack layer-3 capture.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_layer_capture_summary.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_layer_capture_summary.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_capture_summary.py \
+  --capture benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json \
+  --iteration 281 \
+  --top-n 8
+# status=summarized array_count=10 layer_id=3 layer_type=full_attention run_preceding_layers=True
+# hidden_in_f32.sha256=f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07
+# attn_out_f32.sha256=3fd2762e24382812c2189197ae53c7fd98c8b6cbb7164a31c9d73e16f150292a
+# layer_out_f32.sha256=699e26e72ea2ed31f3a99cb0387e3834b4e79d39d875ab0785f8b85d1014368d
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json \
+  >/tmp/iter281-layer3-summary.pretty
+
+git diff --check -- \
+  scripts/gguf_layer_capture_summary.py \
+  tests/test_gguf_layer_capture_summary.py \
+  benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The compact checkpoint artifact records actual in-stack layer-3 metadata: `position=16`, `token_id=271`, `layer_type=full_attention`, `run_preceding_layers=True`, `preceding_layer_count=3`, `hidden_size=2048`, `top_k=8`, `finite=True`.
+- It includes hashes/samples for 10 arrays so a llama.cpp trace or external oracle can be aligned without repeatedly loading the ~600KB full-array artifact.
+- No runtime behavior changed; this is a diagnostic handoff artifact for the next oracle comparison step.
