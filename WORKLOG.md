@@ -114575,3 +114575,73 @@ PY
 - Layer-17 post-attention RMSNorm is exact after BF16 contraction (`max_abs=0.0`, `rmse=0.0`) using `blk.17.post_attention_norm.weight` (`F32`, shape `[2048]`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=17`.
 - This clears the next bisection step: layer-17 MoE router from post-norm.
+
+## 2026-06-20 — recorded MTP acceptance-rate status report
+
+### Change
+- Continued iteration 457 by adding `scripts/mtp_acceptance_status_report.py`.
+- The script consolidates the current hipEngine-vs-llama.cpp MTP acceptance status from retained artifacts into one JSON report and one Markdown report, with aligned denominator notes for `accept_per_draft` vs `accepted_per_output`.
+- Added `tests/test_mtp_acceptance_status_report.py` with tiny fixture artifacts so the extraction/math is reproducible without relying on `/tmp` llama.cpp outputs.
+- Emitted:
+  - `benchmarks/results/mtp-acceptance-status-2026-06-20.json`
+  - `benchmarks/results/mtp-acceptance-status-2026-06-20.md`
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/mtp_acceptance_status_report.py \
+  tests/test_mtp_acceptance_status_report.py
+# pass; script/test line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_mtp_acceptance_status_report.py
+# . [100%]
+
+python3 scripts/mtp_acceptance_status_report.py \
+  --json-output benchmarks/results/mtp-acceptance-status-2026-06-20.json \
+  --markdown-output benchmarks/results/mtp-acceptance-status-2026-06-20.md
+# status=diagnostic_recorded
+# current_status=behind_llamacpp_and_candidate_set_parity_incomplete
+# hipEngine B1 accepted/output=0.3600970226539931 decode=59.559994007626024 tok/s
+# llama.cpp HIP B4 accepted/output=0.7430555555555556 decode=91.11111111111111 tok/s
+# llama.cpp Vulkan B4 accepted/output=0.7465277777777778 decode=108.96333333333334 tok/s
+# native GGUF B2 sweep accept/draft=0.1 accepted/output=0.16666666666666666
+# native GGUF B2 mean warm/cold speedup=1.0191x/0.775x
+# gaps: hipEngine accepted/output is 0.485x HIP B4 and 0.482x Vulkan B4;
+# decode tok/s is 0.654x HIP and 0.547x Vulkan
+
+python3 -m json.tool benchmarks/results/mtp-acceptance-status-2026-06-20.json >/dev/null
+# pass
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped report script/test/artifacts only; no torch or
+# dispatch branches; no attention/KV ABI changed; report records denominators,
+# exact source artifacts, hipEngine-vs-llama.cpp accepted/output and decode
+# gaps, native GGUF B2 acceptance diagnostics, greeting blocker, and
+# performance_claim=false; generated JSON and Markdown provide one queryable
+# status source.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Current broad comparison remains behind llama.cpp:
+  - hipEngine PARO MTP B1: accepted/output `0.360`, decode `59.56 tok/s`.
+  - llama.cpp HIP UD-Q4_K_M B4: accepted/output `0.743`, decode `91.11 tok/s`.
+  - llama.cpp Vulkan UD-Q4_K_M B4: accepted/output `0.747`, decode `108.96 tok/s`.
+- Native GGUF B2 diagnostics show isolated warm wins but insufficient aggregate acceptance:
+  - B2 3-prompt sweep: `3/30` accepted drafts, accept/draft `0.100`, accepted/output `0.167`, mean warm/cold speedup `1.019x/0.775x`.
+  - Best warm prompt remains `count` with warm speedup `1.235x` and warm accept/draft `0.25`.
+  - Greeting remains candidate-set/parity blocked: llama.cpp accepted traced drafts while native depth-1 top-k omitted the target token.
+- The report marks `performance_claim=false`; it is a consolidated diagnostic status snapshot, not a promoted performance row.
