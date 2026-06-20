@@ -102682,3 +102682,64 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-0 linear projections are all explained by CPU GGUF GEMV BF16 oracles; the worst residual is `attn_qkv` max_abs=2.44e-04 and rms is in the low single-digit e-06 range.
 - Combined with iterations 266–267, the final-token layer-0 mismatch search has moved earlier than projection materialization/`ssm_out`: into convolution/GDN recurrent math, state entering layer 0, or later-layer accumulation.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF final-token convolution window capture emitted
+
+### Change
+- Continued iteration 269 by adding `--positions` multi-capture support to `scripts/gguf_linear_boundary_capture.py`.
+- Single-position behavior remains compatible, while multi-position mode emits a batch artifact with per-position capture records and supports ranges such as `13-16`.
+- Updated `tests/test_gguf_linear_boundary_capture_script.py` for batch dry-run/position parsing.
+- Emitted `benchmarks/results/mtp-gguf-iter269-final-token-conv-window-capture.json` with full arrays for positions 13..16 of the captured greeting prompt.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_linear_boundary_capture.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_linear_boundary_capture_script.py
+# .... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+import ctypes
+ctypes.CDLL('libamdhip64.so')
+print('hip OK')
+PY
+# hip OK
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_linear_boundary_capture.py --positions 13-16 --iteration 269 \
+  --include-arrays \
+  --output benchmarks/results/mtp-gguf-iter269-final-token-conv-window-capture.json
+# status=captured, positions=[13, 14, 15, 16]
+# token_ids=[248068, 271, 248069, 271], capture_count=4
+# linear_qkv_lens=[8192, 8192, 8192, 8192]
+# conv_out_lens=[8192, 8192, 8192, 8192]
+# artifact_bytes=3616975
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter269-final-token-conv-window-capture.json \
+  >/tmp/iter269-window.pretty && echo conv-window-capture-json-ok
+# conv-window-capture-json-ok
+
+git diff --check -- scripts/gguf_linear_boundary_capture.py \
+  tests/test_gguf_linear_boundary_capture_script.py \
+  benchmarks/results/mtp-gguf-iter269-final-token-conv-window-capture.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The final-token convolution window now has exact adjacent-token `linear_qkv` arrays and captured `conv_out` arrays for positions 13..16, enough for a CPU-side `ssm_conv1d`/`conv_out` oracle.
+- No runtime math or target AR parity changed in this iteration.
