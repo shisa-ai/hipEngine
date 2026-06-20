@@ -107273,3 +107273,55 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The fresh layer-1 source capture also matches the iteration-337 layer-1 expert-output artifact hash.
 - This validates the layer-1→layer-2 handoff and establishes the layer-2 seed.
 - Next bisection should audit layer-2 `attn_norm` under the BF16 contract.
+
+## 2026-06-20 — validated layer-2 attention RMSNorm oracle
+
+### Change
+- Continued iteration 339 by adding `scripts/llamacpp_mtp_audit_layer2_attn_norm_oracle.py`.
+- The script starts from the exact layer-2 BF16 handoff artifact, checks the live layer-2 `hidden_in_f32` hash against the handoff artifact, captures resident layer-2 `attn_norm_f32` with `run_preceding_layers=True`, reloads `blk.2.attn_norm.weight`, and recomputes `BF16(RMSNorm(hidden_in, weight_f32, eps_model))` on CPU.
+- Added `tests/test_llamacpp_mtp_audit_layer2_attn_norm_oracle.py` covering handoff validation, hidden-input hash checks, classification, injected exact/mismatch captures, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter339-layer2-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer2_attn_norm_oracle.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer2_attn_norm_oracle.py \
+  --layer2-handoff benchmarks/results/mtp-gguf-iter338-layer2-bf16-handoff.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter339-layer2-attn-norm-oracle.json \
+  --iteration 339
+# status=ready
+# classification=layer2_attn_norm_matches_bf16_oracle_exactly
+# layer=2 position=16 token=271
+# input_classification=layer2_attn_norm_input_matches_handoff_artifact
+# preceding_layer_count=2
+# attn_norm max_abs=0.0 rmse=0.0
+# next_action=audit_layer2_projection_or_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer2_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer2_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer1_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer1_bf16_handoff_audit.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-2 `hidden_in_f32` hash matches the exact layer-2 handoff artifact.
+- Layer-2 `attn_norm_f32` matches the resident-BF16 CPU RMSNorm oracle exactly at warm position 16/token 271.
+- This establishes the first layer-2 sub-boundary after the layer-1→layer-2 handoff.
+- Next bisection should audit layer-2 projection or conv/GDN outputs under the BF16 contract.
