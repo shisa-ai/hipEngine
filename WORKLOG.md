@@ -107435,3 +107435,57 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-2 `conv_out_f32` and `recurrent_out_f32` match the CPU replay oracle within tight tolerance (`1.19e-7` and `5.96e-8` max abs respectively).
 - Layer-2 `recurrent_bf16_f32` and `attn_out_f32` are exact vs the resident-BF16 replay oracle.
 - This validates the layer-2 conv/GDN sub-chain and clears the next bisection step: layer-2 post-attention residual or MoE boundary.
+
+## 2026-06-20 — validated layer-2 post-attention residual oracle
+
+### Change
+- Continued iteration 342 by adding `scripts/llamacpp_mtp_audit_layer2_post_attn_residual_oracle.py`.
+- The script starts from the verified layer-2 conv/GDN artifact, validates the hidden input hash through the layer-2 handoff chain, validates `attn_out_f32` through the conv/GDN artifact, captures a full resident layer-2 state with `run_preceding_layers=True`, reloads `blk.2.post_attention_norm.weight`, and recomputes `BF16(hidden_in + attn_out)` plus `BF16(RMSNorm(hidden_in + attn_out, weight, eps))` on CPU.
+- Added `tests/test_llamacpp_mtp_audit_layer2_post_attn_residual_oracle.py` covering conv/GDN prerequisite validation, input-hash classification, exact/mismatch classification, nested artifact reference loading, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter342-layer2-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer2_post_attn_residual_oracle.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer2_post_attn_residual_oracle.py \
+  --conv-gdn-artifact benchmarks/results/mtp-gguf-iter341-layer2-conv-gdn-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter342-layer2-post-attn-residual-oracle.json \
+  --iteration 342
+# status=ready
+# classification=layer2_post_attn_residual_matches_oracle_exactly
+# layer=2 position=16 token=271
+# input_classification=layer2_post_attn_inputs_match_prior_artifacts
+# hidden_in_f32 input hash exact
+# attn_out_f32 input hash exact
+# preceding_layer_count=2
+# residual_f32 exact, max_abs=0.0 rmse=0.0
+# post_norm_f32 exact, max_abs=0.0 rmse=0.0
+# next_action=audit_layer2_moe_router_from_post_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer2_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer2_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_conv_gdn_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-2 `hidden_in_f32` and `attn_out_f32` hashes match their prior verified artifacts exactly at warm position 16/token 271.
+- Layer-2 `residual_f32` and `post_norm_f32` match the resident-BF16 post-attention CPU oracle exactly.
+- This validates the layer-2 post-attention residual/post-norm boundary and clears the next bisection step: layer-2 MoE router from `post_norm_f32`.
