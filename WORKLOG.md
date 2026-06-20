@@ -102233,3 +102233,45 @@ git diff --check -- scripts/gguf_linear_boundary_capture.py \
 - The first real host-visible device boundary for the captured greeting prompt is now recorded on gfx1151.
 - `ssm_alpha`/`ssm_beta` samples match the hipEngine BF16-side samples from the CPU precision-boundary probe, so the next useful comparison is downstream `attn_out`/layer output against a CPU/reference GDN path or a scoped F32 aux-projection experiment.
 - This still does not change target runtime math or target AR parity.
+
+## 2026-06-20 — GGUF boundary capture matched CPU probe projection samples
+
+### Change
+- Continued iteration 260 by comparing the real gfx1151 boundary capture (`benchmarks/results/mtp-gguf-iter259-linear-boundary-capture.json`) against the CPU precision-boundary probe (`benchmarks/results/mtp-gguf-iter253-early-boundary-probe.json`).
+- Emitted comparison artifact `benchmarks/results/mtp-gguf-iter260-boundary-capture-vs-cpu-probe.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Load iter253 CPU probe and iter259 device capture, compare the
+# ssm_alpha/ssm_beta hipEngine-side samples.
+PY
+# alpha_max_abs=0.0, beta_max_abs=0.0
+# alpha_exact=True, beta_exact=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter260-boundary-capture-vs-cpu-probe.json \
+  >/tmp/iter260-boundary-compare.pretty && echo boundary-compare-json-ok
+# boundary-compare-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- \
+  benchmarks/results/mtp-gguf-iter260-boundary-capture-vs-cpu-probe.json \
+  WORKLOG.md
+# no output
+```
+
+### Result
+- Device-captured layer-0 `ssm_alpha` and `ssm_beta` BF16-side samples exactly match the CPU precision probe's hipEngine-side samples for final greeting token 271.
+- This moves the active mismatch search downstream of aux projection materialization into GDN/`ssm_out`/later-layer math, or into a scoped experiment that tests whether retaining F32 aux projections changes downstream target AR.
+- No target runtime math or target AR parity changed in this iteration.

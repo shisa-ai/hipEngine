@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_boundary_capture_vs_cpu_probe",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 260,
+  "cpu_probe_artifact": "benchmarks/results/mtp-gguf-iter253-early-boundary-probe.json",
+  "device_capture_artifact": "benchmarks/results/mtp-gguf-iter259-linear-boundary-capture.json",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151",
+  "position": 16,
+  "token_id": 271,
+  "comparisons": {
+    "ssm_alpha": {
+      "sample_count": 8,
+      "cpu_hipengine_sample": [
+        -1.015625,
+        2.390625,
+        -2.171875,
+        -1.359375,
+        -0.82421875,
+        1.1796875,
+        5.0625,
+        4.625
+      ],
+      "device_capture_sample": [
+        -1.015625,
+        2.390625,
+        -2.171875,
+        -1.359375,
+        -0.82421875,
+        1.1796875,
+        5.0625,
+        4.625
+      ],
+      "max_abs_diff": 0.0,
+      "rms_abs_diff": 0.0,
+      "exact_match": true
+    },
+    "ssm_beta": {
+      "sample_count": 8,
+      "cpu_hipengine_sample": [
+        -1.15625,
+        -0.6796875,
+        1.03125,
+        0.3125,
+        -0.330078125,
+        -0.1884765625,
+        0.6796875,
+        2.296875
+      ],
+      "device_capture_sample": [
+        -1.15625,
+        -0.6796875,
+        1.03125,
+        0.3125,
+        -0.330078125,
+        -0.1884765625,
+        0.6796875,
+        2.296875
+      ],
+      "max_abs_diff": 0.0,
+      "rms_abs_diff": 0.0,
+      "exact_match": true
+    }
+  },
+  "attn_out_summary": {
+    "shape": [
+      2048
+    ],
+    "finite": true,
+    "min": -0.11669921875,
+    "max": 0.2255859375,
+    "mean": 2.1754298359155655e-05,
+    "rms": 0.010142592713236809,
+    "sample": [
+      -0.007080078125,
+      0.0026397705078125,
+      0.004608154296875,
+      -0.0008392333984375,
+      -0.0125732421875,
+      0.0093994140625,
+      -0.0130615234375,
+      0.00110626220703125
+    ]
+  },
+  "conclusion": "Device-captured ssm_alpha/ssm_beta BF16-side samples exactly match the CPU precision probe hipEngine-side samples for token 271. The next unchecked boundary is downstream GDN/ssm_out attn_out versus a CPU/reference implementation or scoped F32 aux projection."
+}
