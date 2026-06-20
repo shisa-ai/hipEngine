@@ -103763,3 +103763,54 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The temporary source tree has the expected insertion at `/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/src/models/qwen35moe.cpp:182`:
   `res->t_layer_inp[il] = inpL;`
 - Next action: build the isolated temp source and capture `llama_get_embeddings_layer_inp(ctx, 3)` for prompt position 16 to compare against the hipEngine layer-3 `hidden_in_f32` hash.
+
+## 2026-06-20 — llama.cpp patched-source HIP build plan is ready
+
+### Change
+- Continued iteration 286 by adding `scripts/llamacpp_mtp_build_plan.py`, a preflight/build-spec helper for the isolated patched llama.cpp source tree.
+- Added `tests/test_llamacpp_mtp_build_plan.py` covering Make fallback when Ninja is absent, Ninja selection when present, missing rocBLAS blocker reporting, source-tree validation, tool discovery, and ROCm CMake package discovery.
+- Emitted `benchmarks/results/mtp-gguf-iter286-llamacpp-build-plan.json` for `/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input` with build dir `/tmp/hipengine-llamacpp-mtp-iter286-build`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_build_plan.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_plan.py \
+  --manifest benchmarks/results/mtp-gguf-iter285-llamacpp-patched-source-manifest.json \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter286-build \
+  --output benchmarks/results/mtp-gguf-iter286-llamacpp-build-plan.json
+# status=ready
+# generator=Unix Makefiles
+# source_dir=/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input
+# build_dir=/tmp/hipengine-llamacpp-mtp-iter286-build
+# preflight_passed=true
+# next_action=run_configure_and_build_llama_target_then_compile_hidden_in_capture_harness
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_build_plan.py \
+  tests/test_llamacpp_mtp_prepare_patched_source.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter286-llamacpp-build-plan.json \
+  >/tmp/mtp-gguf-iter286-build-plan.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Build preflight passed all checks: prepared manifest, patch applied, external checkout clean, temp source exists with `llama-ext.h`, single Qwen35MoE layer-input assignment, CMake/hipcc/make available, and therock ROCm `hip`/`rocblas` CMake package configs found.
+- Ninja is absent on this host, so the plan selects `Unix Makefiles`.
+- Planned configure command uses `GGML_HIP=ON`, `AMDGPU_TARGETS=gfx1151`, `BUILD_SHARED_LIBS=ON`, `LLAMA_BUILD_*` extras off, and therock `CMAKE_PREFIX_PATH`.
+- Next action: run the emitted configure/build command for target `llama`, then compile a hidden-in capture harness against the built library and `src/llama-ext.h`.
