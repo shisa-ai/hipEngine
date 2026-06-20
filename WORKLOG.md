@@ -109645,3 +109645,64 @@ PY
 - Layer-7 `full_gated_f32` preflight hash matches the ready layer-7 context/gate artifact at warm position 16/token 271.
 - `attn_out_f32` matches `BF16(project_f32(full_gated_f32, blk.7.attn_output.weight))` within BF16 rounding (`max_abs=3.814697265625e-06`, `rmse=8.429373821172703e-08`).
 - This clears the next layer-7 bisection step: post-attention residual / MoE boundary under the BF16 contract.
+
+## 2026-06-20 — validated layer-7 post-attention residual oracle
+
+### Change
+- Continued iteration 382 by adding `scripts/llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py`.
+- The script starts from the ready layer-7 attention-output artifact plus the layer-7 BF16 handoff artifact, hash-checks live `hidden_in_f32` and `attn_out_f32`, reloads `blk.7.post_attention_norm.weight`, and mirrors the established BF16 residual + post-attention RMSNorm oracle for layer 7.
+- Added `tests/test_llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py` covering source artifact validation, source alignment, preflight hash guards, exact / near / mismatch / blocked / unavailable classifications, and full-attention metadata checks.
+- Emitted `benchmarks/results/mtp-gguf-iter382-layer7-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py \
+  --attn-output-artifact benchmarks/results/mtp-gguf-iter381-layer7-attn-output-oracle.json \
+  --handoff-artifact benchmarks/results/mtp-gguf-iter375-layer7-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter382-layer7-post-attn-residual-oracle.json
+# status=ready
+# classification=layer7_post_attn_residual_matches_oracle_exactly
+# input_classification=layer7_post_attn_inputs_match_prior_artifacts
+# residual_f32 exact: max_abs=0.0 rmse=0.0
+# post_norm_f32 exact: max_abs=0.0 rmse=0.0
+# next_action=audit_layer7_moe_router_from_post_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_attn_output_oracle.py
+# ........................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic oracle/test only; no torch or dispatch branches;
+# no attention/KV ABI changed; RED-style focused tests added before real artifact;
+# docs/MTP-gguf oracle-first path preserved; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-7 post-attn inputs match prior artifacts at warm position 16/token 271: `hidden_in_f32` from the layer-7 BF16 handoff and `attn_out_f32` from the layer-7 attention-output oracle.
+- `residual_f32` exactly matches `BF16(hidden_in_f32 + attn_out_f32)`.
+- `post_norm_f32` exactly matches `BF16(RMSNorm(residual_f32, blk.7.post_attention_norm.weight))`.
+- This clears the next layer-7 bisection step: MoE router from post-attention norm.
