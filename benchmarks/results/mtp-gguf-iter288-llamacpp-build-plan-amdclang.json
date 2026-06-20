@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_mtp_build_plan",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 288,
+  "status": "ready",
+  "manifest_path": "benchmarks/results/mtp-gguf-iter285-llamacpp-patched-source-manifest.json",
+  "source_dir": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+  "build_dir": "/tmp/hipengine-llamacpp-mtp-iter288-build",
+  "target_relative_path": "src/models/qwen35moe.cpp",
+  "source_manifest_summary": {
+    "status": "prepared",
+    "observed_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "commit_matches_expected": true,
+    "external_checkout_modified": false,
+    "patch_sha256": "00eb7f5069994f9789a3bd1f7cb7953bde30f2551ab1a0576387775657f3ec08",
+    "patch_applied": true,
+    "assignment_line": 182
+  },
+  "source_validation": {
+    "source_dir_exists": true,
+    "cmakelists_exists": true,
+    "llama_ext_header_exists": true,
+    "target_exists": true,
+    "layer_input_assignment_count": 1,
+    "layer_input_assignment_line": 182,
+    "sentinel_exists": true
+  },
+  "tools": {
+    "cmake": {
+      "path": "/usr/bin/cmake",
+      "present": true,
+      "required": true
+    },
+    "hipcc": {
+      "path": "/home/lhl/miniforge3/envs/therock/bin/hipcc",
+      "present": true,
+      "required": true
+    },
+    "amdclang++": {
+      "path": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "present": true,
+      "required": false
+    },
+    "clang++": {
+      "path": "/usr/bin/clang++",
+      "present": true,
+      "required": false
+    },
+    "make": {
+      "path": "/usr/bin/make",
+      "present": true,
+      "required": true
+    },
+    "ninja": {
+      "path": null,
+      "present": false,
+      "required": false
+    },
+    "cmake_hip_compiler": {
+      "name": "amdclang++",
+      "path": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "source": "explicit_clang"
+    }
+  },
+  "rocm": {
+    "ROCM_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "HIP_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "CMAKE_PREFIX_PATH": [
+      "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+      "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake"
+    ],
+    "rocblas_config": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake/rocblas/rocblas-config.cmake",
+    "hip_config": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake/hip/hip-config.cmake",
+    "rocblas_config_present": true,
+    "hip_config_present": true
+  },
+  "build_plan": {
+    "generator": "Unix Makefiles",
+    "arch": "gfx1151",
+    "target": "llama",
+    "cmake_hip_compiler": {
+      "name": "amdclang++",
+      "path": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "source": "explicit_clang"
+    },
+    "configure_command": [
+      "cmake",
+      "-S",
+      "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+      "-B",
+      "/tmp/hipengine-llamacpp-mtp-iter288-build",
+      "-G",
+      "Unix Makefiles",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DGGML_HIP=ON",
+      "-DAMDGPU_TARGETS=gfx1151",
+      "-DLLAMA_BUILD_TESTS=OFF",
+      "-DLLAMA_BUILD_TOOLS=OFF",
+      "-DLLAMA_BUILD_EXAMPLES=OFF",
+      "-DLLAMA_BUILD_SERVER=OFF",
+      "-DLLAMA_BUILD_APP=OFF",
+      "-DLLAMA_BUILD_COMMON=OFF",
+      "-DLLAMA_CURL=OFF",
+      "-DBUILD_SHARED_LIBS=ON",
+      "-DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "-DCMAKE_PREFIX_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel;/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake"
+    ],
+    "configure_command_shell": "cmake -S /tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input -B /tmp/hipengine-llamacpp-mtp-iter288-build -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1151 -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_COMMON=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/amdclang++ '-DCMAKE_PREFIX_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel;/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake'",
+    "build_command": [
+      "cmake",
+      "--build",
+      "/tmp/hipengine-llamacpp-mtp-iter288-build",
+      "--target",
+      "llama",
+      "-j",
+      "8"
+    ],
+    "build_command_shell": "cmake --build /tmp/hipengine-llamacpp-mtp-iter288-build --target llama -j 8",
+    "notes": [
+      "Run from the hipEngine shell with the therock env active.",
+      "This builds libllama with GGML_HIP; capture harness can include src/llama-ext.h.",
+      "Keep /home/lhl/llama.cpp/llama.cpp-hip read-only; build only the isolated /tmp source."
+    ]
+  },
+  "preflight": {
+    "checks": {
+      "manifest_prepared": true,
+      "manifest_patch_applied": true,
+      "manifest_external_clean": true,
+      "source_dir_exists": true,
+      "cmakelists_exists": true,
+      "llama_ext_header_exists": true,
+      "target_has_single_layer_input_assignment": true,
+      "sentinel_exists": true,
+      "cmake_present": true,
+      "hipcc_present": true,
+      "cmake_hip_compiler_safe": true,
+      "make_present": true,
+      "rocblas_config_present": true,
+      "hip_config_present": true
+    },
+    "passed": true
+  },
+  "next_action": "run_configure_and_build_llama_target_then_compile_hidden_in_capture_harness"
+}

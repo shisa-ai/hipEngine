@@ -33,12 +33,44 @@ def test_build_plan_ready_with_make_fallback(tmp_path: Path) -> None:
     assert artifact["status"] == "ready"
     assert artifact["source_dir"] == str(source_dir)
     assert artifact["build_plan"]["generator"] == "Unix Makefiles"
-    assert "-DGGML_HIP=ON" in artifact["build_plan"]["configure_command"]
-    assert "-DAMDGPU_TARGETS=gfx1151" in artifact["build_plan"]["configure_command"]
+    command = artifact["build_plan"]["configure_command"]
+    assert "-DGGML_HIP=ON" in command
+    assert "-DAMDGPU_TARGETS=gfx1151" in command
+    assert all("CMAKE_HIP_COMPILER" not in item for item in command)
+    assert artifact["build_plan"]["cmake_hip_compiler"]["source"] == "cmake_default"
     assert artifact["preflight"]["passed"] is True
     assert artifact["tools"]["ninja"]["required"] is False
     assert "run_configure_and_build" in artifact["next_action"]
     json.dumps(artifact)
+
+
+def test_build_plan_prefers_amdclangpp_for_cmake_hip_compiler(
+    tmp_path: Path,
+) -> None:
+    manifest_path, _ = _write_manifest_and_source(tmp_path)
+    tool_dir = _write_tools(tmp_path, names=("cmake", "hipcc", "amdclang++", "make"))
+    rocm = _write_rocm_prefix(tmp_path)
+    env = {
+        "PATH": str(tool_dir),
+        "ROCM_PATH": str(rocm),
+        "CMAKE_PREFIX_PATH": str(rocm),
+    }
+
+    artifact = build_plan_artifact(
+        manifest_path=manifest_path,
+        build_dir=tmp_path / "build",
+        env=env,
+    )
+
+    compiler = artifact["build_plan"]["cmake_hip_compiler"]
+    command = artifact["build_plan"]["configure_command"]
+    assert compiler == {
+        "name": "amdclang++",
+        "path": str(tool_dir / "amdclang++"),
+        "source": "explicit_clang",
+    }
+    assert f"-DCMAKE_HIP_COMPILER={tool_dir / 'amdclang++'}" in command
+    assert f"-DCMAKE_HIP_COMPILER={tool_dir / 'hipcc'}" not in command
 
 
 def test_build_plan_uses_ninja_when_available(tmp_path: Path) -> None:
@@ -103,6 +135,9 @@ def test_discover_tools_marks_ninja_optional(tmp_path: Path) -> None:
     assert tools["cmake"]["present"] is True
     assert tools["ninja"]["present"] is False
     assert tools["ninja"]["required"] is False
+    assert tools["amdclang++"]["required"] is False
+    assert tools["clang++"]["required"] is False
+    assert tools["cmake_hip_compiler"]["source"] == "cmake_default"
 
 
 def test_discover_rocm_finds_nested_cmake_configs(tmp_path: Path) -> None:

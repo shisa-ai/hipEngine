@@ -109,6 +109,7 @@ def build_plan_artifact(
             "generator": generator,
             "arch": arch,
             "target": "llama",
+            "cmake_hip_compiler": tools["cmake_hip_compiler"],
             "configure_command": configure,
             "configure_command_shell": shlex.join(configure),
             "build_command": build,
@@ -157,8 +158,12 @@ def validate_source_tree(source_dir: Path) -> dict[str, Any]:
 
 def discover_tools(env: Mapping[str, str]) -> dict[str, Any]:
     path = env.get("PATH")
-    tools = {name: tool_record(name, path) for name in ("cmake", "hipcc", "make", "ninja")}
+    names = ("cmake", "hipcc", "amdclang++", "clang++", "make", "ninja")
+    tools = {name: tool_record(name, path) for name in names}
     tools["ninja"]["required"] = False
+    tools["amdclang++"]["required"] = False
+    tools["clang++"]["required"] = False
+    tools["cmake_hip_compiler"] = choose_cmake_hip_compiler(tools)
     return tools
 
 
@@ -190,6 +195,19 @@ def choose_generator(tools: dict[str, Any]) -> str:
     return "Ninja" if tools["ninja"]["present"] else "Unix Makefiles"
 
 
+def choose_cmake_hip_compiler(tools: dict[str, Any]) -> dict[str, Any]:
+    for name in ("amdclang++", "clang++"):
+        record = tools.get(name) or {}
+        if record.get("present"):
+            return {"name": name, "path": record["path"], "source": "explicit_clang"}
+    return {
+        "name": None,
+        "path": None,
+        "source": "cmake_default",
+        "reason": "no amdclang++/clang++ on PATH; do not pass hipcc wrapper",
+    }
+
+
 def build_configure_command(
     *,
     source_dir: Path,
@@ -219,9 +237,9 @@ def build_configure_command(
         "-DLLAMA_CURL=OFF",
         "-DBUILD_SHARED_LIBS=ON",
     ]
-    hipcc = tools.get("hipcc", {}).get("path")
-    if hipcc:
-        command.append(f"-DCMAKE_HIP_COMPILER={hipcc}")
+    hip_compiler = tools.get("cmake_hip_compiler") or {}
+    if hip_compiler.get("path"):
+        command.append(f"-DCMAKE_HIP_COMPILER={hip_compiler['path']}")
     prefix = rocm.get("CMAKE_PREFIX_PATH") or []
     if prefix:
         command.append("-DCMAKE_PREFIX_PATH=" + ";".join(prefix))
@@ -253,11 +271,18 @@ def summarize_preflight(
         "sentinel_exists": source_validation["sentinel_exists"],
         "cmake_present": tools["cmake"]["present"],
         "hipcc_present": tools["hipcc"]["present"],
+        "cmake_hip_compiler_safe": not _is_hipcc_wrapper(
+            (tools.get("cmake_hip_compiler") or {}).get("path")
+        ),
         "make_present": tools["make"]["present"],
         "rocblas_config_present": rocm["rocblas_config_present"],
         "hip_config_present": rocm["hip_config_present"],
     }
     return {"checks": checks, "passed": all(checks.values())}
+
+
+def _is_hipcc_wrapper(path: str | None) -> bool:
+    return path is not None and Path(path).name == "hipcc"
 
 
 def next_action(preflight: dict[str, Any]) -> str:

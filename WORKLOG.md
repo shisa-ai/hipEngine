@@ -103867,3 +103867,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   `CMAKE_HIP_COMPILER is set to the hipcc wrapper ... This is not supported. Use Clang directly, or let CMake pick a default.`
 - The manifest diagnoses `cmake_hip_compiler_wrapper_rejected`, finds candidate `/home/lhl/miniforge3/envs/therock/bin/amdclang++`, and sets next action `regenerate_build_plan_with_amdclangpp_or_without_cmake_hip_compiler`.
 - External llama.cpp source remained clean (`git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- src/models/qwen35moe.cpp` produced no output).
+
+## 2026-06-20 — llama.cpp HIP build plan now uses amdclang++ instead of hipcc wrapper
+
+### Change
+- Continued iteration 288 by updating `scripts/llamacpp_mtp_build_plan.py` to discover `amdclang++` / `clang++` and emit `CMAKE_HIP_COMPILER` only for a direct Clang compiler, never for the rejected `hipcc` wrapper.
+- Extended `tests/test_llamacpp_mtp_build_plan.py` to cover the no-hipcc-wrapper default path and explicit `amdclang++` preference.
+- Emitted `benchmarks/results/mtp-gguf-iter288-llamacpp-build-plan-amdclang.json` with build dir `/tmp/hipengine-llamacpp-mtp-iter288-build`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_build_plan.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_plan.py \
+  --manifest benchmarks/results/mtp-gguf-iter285-llamacpp-patched-source-manifest.json \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter288-build \
+  --output benchmarks/results/mtp-gguf-iter288-llamacpp-build-plan-amdclang.json \
+  --iteration 288
+# status=ready
+# generator=Unix Makefiles
+# source_dir=/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input
+# build_dir=/tmp/hipengine-llamacpp-mtp-iter288-build
+# preflight_passed=true
+# next_action=run_configure_and_build_llama_target_then_compile_hidden_in_capture_harness
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_build_plan.py \
+  tests/test_llamacpp_mtp_run_build.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter288-llamacpp-build-plan-amdclang.json \
+  >/tmp/mtp-gguf-iter288-build-plan-amdclang.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Corrected artifact records `cmake_hip_compiler={name: amdclang++, path: /home/lhl/miniforge3/envs/therock/bin/amdclang++, source: explicit_clang}`.
+- Configure command now includes `-DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/amdclang++` and still includes `GGML_HIP=ON`, `AMDGPU_TARGETS=gfx1151`, `BUILD_SHARED_LIBS=ON`, and therock `CMAKE_PREFIX_PATH`.
+- The rejected `-DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/hipcc` flag is absent.
+- External llama.cpp source remained clean.
+- Next action: rerun `scripts/llamacpp_mtp_run_build.py` with the iteration-288 plan artifact.
