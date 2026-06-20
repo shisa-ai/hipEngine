@@ -104387,3 +104387,60 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Selected-row RMSE ranking: layer 3 (`0.0238953`), layer 2 (`0.0249278`), layer 1 (`0.0256277`), layer 4 (`0.0258266`), layer 6 (`0.0281422`), layer 5 (`0.0283401`), layer 0 (`0.0297337`).
 - No selected row or all-row scan matched exactly. This rules out a nearby layer-numbering offset as the primary cause.
 - Next action: inspect tap placement / graph-path differences for layer-3 `hidden_in` (for example, whether hipEngine's materialized capture is pre/post a residual/norm path relative to llama.cpp `res->t_layer_inp[il] = inpL`).
+
+## 2026-06-20 — tap-placement compare points to hidden-in graph-path/materialization
+
+### Change
+- Continued iteration 296 by adding `scripts/llamacpp_mtp_compare_tap_placement.py`, which compares the llama.cpp layer-3 row-16 capture against every same-width hipEngine layer-3 checkpoint array.
+- Added `tests/test_llamacpp_mtp_compare_tap_placement.py` for target-hidden closest, non-hidden closest, exact match, skipped-array, and no-same-width ranking paths.
+- Emitted `benchmarks/results/mtp-gguf-iter296-llamacpp-tap-placement-compare.json` using the iteration-294 llama.cpp all-row capture and iteration-280 hipEngine full-array artifact.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compare_tap_placement.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_tap_placement.py \
+  --capture benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-allrows-scan.json \
+  --hipengine-arrays benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --target-key hidden_in_f32 \
+  --output benchmarks/results/mtp-gguf-iter296-llamacpp-tap-placement-compare.json \
+  --iteration 296
+# status=mismatched
+# best_key=hidden_in_f32
+# target_rank=1
+# conclusion=target_hidden_in_is_closest_but_mismatched
+# next_action=inspect_graph_path_or_materialization_difference_for_hidden_in
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compare_tap_placement.py \
+  tests/test_llamacpp_mtp_run_hidden_in_capture.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter296-llamacpp-tap-placement-compare.json \
+  >/tmp/mtp-gguf-iter296-tap-placement-compare.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The llama.cpp row is closest to hipEngine `hidden_in_f32`, not to a downstream same-width array:
+  1. `hidden_in_f32`: RMSE `0.0238953013`, max abs diff `0.0914031863`, mean abs diff `0.0190203032`
+  2. `layer_out_f32`: RMSE `0.0284020749`
+  3. `residual_f32`: RMSE `0.0287301758`
+  4. `attn_out_f32`: RMSE `0.0314374688`
+  5. `moe_shared_out_f32`: RMSE `0.0519521082`
+  6. `post_norm_f32`: RMSE `0.8967564909`
+- No same-width hipEngine array matches exactly; mismatched-width arrays (`ffn_or_moe_down_f32`, routing weights, shared gate, selected experts) were skipped.
+- This rules out a simple tap-name mixup within the existing hipEngine layer-3 checkpoint arrays. Next likely issue is graph-path/materialization for `hidden_in` itself, e.g. a difference between hipEngine's preceding-layer replay and llama.cpp's `inpL` path, rather than reading residual/post_norm/layer_out by mistake.
