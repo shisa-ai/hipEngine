@@ -113271,3 +113271,70 @@ PY
 - Layer-15 `attn_norm_f32` is exact vs `BF16(RMSNorm(hidden_in, blk.15.attn_norm.weight))` (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the full-attention MoE path with `top_k=8` and `preceding_layer_count=15`.
 - This clears the next bisection step: layer-15 full-attention projection under the BF16 contract.
+
+## 2026-06-20 — validated layer-15 full-attention QKV oracle
+
+### Change
+- Continued iteration 438 by adding `scripts/llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py`.
+- The script starts from the exact layer-15 attention-norm artifact, hash-checks live `attn_norm_f32`, materializes `blk.15.attn_q.weight`, `blk.15.attn_k.weight`, and `blk.15.attn_v.weight`, and validates `full_q_f32`, `full_k_f32`, and `full_v_f32` against the BF16-contracted full-attention projection oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py` covering attention-norm artifact validation, input hash guards, exact / one-BF16-step / mismatch QKV classifications, wrong-layer metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter438-layer15-full-attention-qkv-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py \
+  --attn-norm-artifact benchmarks/results/mtp-gguf-iter437-layer15-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter438-layer15-full-attention-qkv-oracle.json
+# status=ready
+# classification=layer15_full_attention_qkv_matches_bf16_oracle_within_rounding
+# input_classification=layer15_qkv_input_matches_attn_norm_artifact
+# full_q_f32 within one BF16 step: max_abs=9.5367431640625e-07 rmse=1.053671194739536e-08 bad_count=0
+# full_k_f32 exact: max_abs=0.0 rmse=0.0
+# full_v_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention is_moe=True top_k=8 preceding_layer_count=15
+# next_action=audit_layer15_qk_norm_rotary_or_kv_write_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-15 full-attention QKV oracle/test
+# only; no torch or dispatch branches; no attention/KV ABI changed; RED-style
+# focused tests added before retaining real artifact; layer-15 attn_norm source
+# artifact is hash-checked; Q is within one BF16 step with zero bad elements,
+# K/V exact; compact artifact contains summaries/hashes only; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-15 `attn_norm_f32` preflight hash matches the iteration-437 attention-norm artifact.
+- Layer-15 `full_q_f32` matches the BF16 Q projection oracle within one BF16 step with zero bad elements (`max_abs=9.54e-07`, `rmse=1.05e-08`).
+- Layer-15 `full_k_f32` and `full_v_f32` are exact vs the BF16 K/V projection oracles.
+- The capture used the full-attention MoE path with `top_k=8` and `preceding_layer_count=15`.
+- This clears the next bisection step: layer-15 Q/K norm + rotary / KV-write under the BF16 contract.
