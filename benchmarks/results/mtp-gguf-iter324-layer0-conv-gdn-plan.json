@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "kind": "layer0_conv_gdn_bisection_plan",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 324,
+  "status": "ready",
+  "projection_artifact_path": "benchmarks/results/mtp-gguf-iter323-layer0-bf16-projection-oracle.json",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "conv_kernel_path": "hipengine/kernels/hip_gfx1100/linear_attn/conv.hip",
+  "gdn_kernel_path": "hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip",
+  "llamacpp_qwen35moe_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 0,
+  "position": 16,
+  "token_id": 271,
+  "projection_prerequisite": {
+    "ready": true,
+    "facts": {
+      "status_ready": true,
+      "classification_ready": true,
+      "attn_norm_exact": true,
+      "linear_qkv_usable": true,
+      "linear_z_usable": true
+    },
+    "evidence": {
+      "classification": "layer0_projections_match_bf16_oracle_within_rounding",
+      "qkv_classification": "projection_matches_bf16_oracle_within_one_bf16_step",
+      "qkv_bf16_max_abs_diff": 0.000244140625,
+      "linear_z_classification": "projection_matches_bf16_oracle_exactly",
+      "linear_z_bf16_max_abs_diff": 0.0,
+      "next_action": "continue_layer0_bf16_bisection_at_conv_or_gdn_state"
+    }
+  },
+  "runtime_sequence": {
+    "ready": true,
+    "facts": {
+      "attn_norm_before_projection": true,
+      "projection_before_alpha_beta": true,
+      "alpha_beta_before_conv": true,
+      "conv_before_gdn": true,
+      "gdn_before_recurrent_cast": true,
+      "recurrent_cast_before_ssm_out": true,
+      "captures_conv_out": true,
+      "captures_recurrent_out": true,
+      "captures_recurrent_bf16": true,
+      "captures_attn_out": true
+    },
+    "fields_to_compare": [
+      "conv_out_f32",
+      "recurrent_out_f32",
+      "recurrent_bf16_f32",
+      "attn_out_f32"
+    ],
+    "stateful_inputs": [
+      "scratch.layer_conv_states[layer_id]",
+      "scratch.layer_recurrent_states[layer_id]"
+    ]
+  },
+  "kernel_state_dependencies": {
+    "ready": true,
+    "facts": {
+      "conv_decode_lowp_reads_bf16_input": true,
+      "conv_decode_updates_state_shift": true,
+      "conv_decode_appends_newest": true,
+      "conv_decode_outputs_silu": true,
+      "gdn_reads_recurrent_state": true,
+      "gdn_updates_recurrent_state": true,
+      "gdn_uses_sigmoid_beta": true,
+      "gdn_uses_softplus_decay": true,
+      "gdn_rmsnorm_gates_output": true
+    },
+    "position0_zero_state_feasible": true,
+    "warm_position_requires_state_replay_or_capture": true,
+    "state_mutations": [
+      "conv_state shifts left and appends the current BF16 linear_qkv row",
+      "recurrent_state decays and updates per v_head/value/key element"
+    ]
+  },
+  "llamacpp_anchors": {
+    "ready": true,
+    "facts": {
+      "build_conv_state_present": true,
+      "ggml_ssm_conv_present": true,
+      "conv_output_raw_callback": true,
+      "conv_output_silu_callback": true,
+      "qkv_views_present": true,
+      "recurrent_attn_present": true,
+      "final_output_callback": true,
+      "linear_attn_out_callback": true
+    },
+    "candidate_taps": [
+      "conv_output_silu",
+      "q_conv_predelta",
+      "k_conv_predelta",
+      "v_conv_predelta",
+      "final_output",
+      "linear_attn_out"
+    ]
+  },
+  "model_metadata": {
+    "ready": true,
+    "dimensions": {
+      "ssm_conv_kernel": 4,
+      "ssm_group_count": 16,
+      "ssm_inner_size": 4096,
+      "ssm_state_size": 128,
+      "ssm_time_step_rank": 32,
+      "linear_qkv_width": 8192,
+      "ssm_value_dim": 128,
+      "conv_state_floats": 32768,
+      "recurrent_state_floats": 524288
+    },
+    "tensors": {
+      "ssm_conv1d": {
+        "tensor_name": "blk.0.ssm_conv1d.weight",
+        "ggml_type": "F32",
+        "shape": [
+          8192,
+          4
+        ],
+        "nbytes": 131072
+      },
+      "ssm_dt_bias": {
+        "tensor_name": "blk.0.ssm_dt.bias",
+        "ggml_type": "F32",
+        "shape": [
+          32
+        ],
+        "nbytes": 128
+      },
+      "ssm_a": {
+        "tensor_name": "blk.0.ssm_a",
+        "ggml_type": "F32",
+        "shape": [
+          32
+        ],
+        "nbytes": 128
+      },
+      "ssm_norm": {
+        "tensor_name": "blk.0.ssm_norm.weight",
+        "ggml_type": "F32",
+        "shape": [
+          128
+        ],
+        "nbytes": 512
+      },
+      "ssm_out": {
+        "tensor_name": "blk.0.ssm_out.weight",
+        "ggml_type": "Q8_0",
+        "shape": [
+          2048,
+          4096
+        ],
+        "nbytes": 8912896
+      },
+      "ssm_alpha": {
+        "tensor_name": "blk.0.ssm_alpha.weight",
+        "ggml_type": "F32",
+        "shape": [
+          32,
+          2048
+        ],
+        "nbytes": 262144
+      },
+      "ssm_beta": {
+        "tensor_name": "blk.0.ssm_beta.weight",
+        "ggml_type": "F32",
+        "shape": [
+          32,
+          2048
+        ],
+        "nbytes": 262144
+      }
+    },
+    "facts": {
+      "conv_kernel_is_4": true,
+      "qkv_width_matches_conv_channels": true,
+      "alpha_beta_f32_to_bf16_materialization_expected": true,
+      "ssm_out_quantized": true
+    }
+  },
+  "decision": {
+    "ready": true,
+    "selected_strategy": "position0_stateless_conv_gdn_oracle_first",
+    "conclusion": "layer0_conv_gdn_plan_ready",
+    "reason": "Current position 16 depends on warmed conv/recurrent state. A position-0 oracle has zero initial state and can validate conv/GDN math and weight contracts before adding replay/capture for the warm-state position-16 comparison.",
+    "next_action": "build_position0_layer0_conv_gdn_oracle"
+  },
+  "next_probe_plan": {
+    "first_probe": "position0_conv_out_recurrent_out_attn_out",
+    "why_position0_first": "position 0 starts from zero conv/recurrent state, while position 16 requires replaying the prompt or capturing pre-token recurrent state",
+    "position0_expected_oracles": [
+      {
+        "field": "conv_out_f32",
+        "formula": "silu(BF16(linear_qkv)[channel] * ssm_conv1d[channel, kernel_size - 1]) with zero prior conv state",
+        "dtype_contract": "BF16 linear_qkv input, F32 conv state/output"
+      },
+      {
+        "field": "recurrent_out_f32",
+        "formula": "GDN recurrent update from zero recurrent state using conv_out, BF16 linear_z/alpha/beta, ssm_dt_bias, log(-ssm_a), and ssm_norm",
+        "dtype_contract": "F32 recurrent output before BF16 cast"
+      },
+      {
+        "field": "recurrent_bf16_f32",
+        "formula": "BF16(recurrent_out_f32) copied back to F32",
+        "dtype_contract": "BF16 output copied to F32"
+      },
+      {
+        "field": "attn_out_f32",
+        "formula": "ssm_out(Q8_0) projection from recurrent_bf16",
+        "dtype_contract": "BF16 input/output copied to F32"
+      }
+    ],
+    "warm_position16_followup": {
+      "requires": [
+        "replay tokens 0..15 through the same contracted CPU conv/GDN path",
+        "or add a diagnostic pre-token conv/recurrent state capture"
+      ],
+      "state_sizes": {
+        "conv_state_floats": 32768,
+        "recurrent_state_floats": 524288
+      }
+    }
+  },
+  "constraints": {
+    "must_not_change_hot_path": true,
+    "no_torch_hot_path": true,
+    "no_backend_or_quant_dispatch_branch": true,
+    "no_performance_claim": true,
+    "oracle_exactness_before_deeper_bisection": true,
+    "selected_oracle_policy": "bf16_contracted_resident_activation",
+    "mtp_seed_contract_unchanged": "post_output_norm fp32 hidden seed"
+  },
+  "conclusion": "layer0_conv_gdn_plan_ready",
+  "external_checkout_modified": false,
+  "next_action": "build_position0_layer0_conv_gdn_oracle"
+}

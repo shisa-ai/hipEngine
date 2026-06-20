@@ -106407,3 +106407,71 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - BF16 oracle vs hipEngine max abs diff `0.000244140625`
   - classification `projection_matches_bf16_oracle_within_one_bf16_step`
 - Interpretation: the immediate `attn_qkv` / `attn_gate` projections are not the source of a material projection mismatch under the resident BF16 oracle. Continue layer-0 bisection at convolution/GDN state effects.
+
+## 2026-06-20 — planned layer-0 conv/GDN state-effect oracle
+
+### Change
+- Continued iteration 324 by adding `scripts/llamacpp_mtp_layer0_conv_gdn_plan.py`, which turns the iteration-323 projection result into a focused plan for the next BF16-contracted layer-0 bisection step.
+- The plan inspects hipEngine `_run_linear_attention_attn_only`, `capture_linear_attention_boundary`, the conv/GDN HIP kernels, llama.cpp Qwen35MoE linear-attention anchors, and GGUF layer-0 SSM tensor metadata.
+- Added `tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py` covering projection prerequisites, runtime sequence ordering, conv/GDN state dependencies, llama.cpp anchors, strategy selection, and synthetic artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter324-layer0-conv-gdn-plan.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer0_conv_gdn_plan.py \
+  --projection-artifact benchmarks/results/mtp-gguf-iter323-layer0-bf16-projection-oracle.json \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --conv-kernel hipengine/kernels/hip_gfx1100/linear_attn/conv.hip \
+  --gdn-kernel hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip \
+  --llamacpp-qwen35moe /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter324-layer0-conv-gdn-plan.json \
+  --iteration 324
+# status=ready
+# conclusion=layer0_conv_gdn_plan_ready
+# selected_strategy=position0_stateless_conv_gdn_oracle_first
+# first_probe=position0_conv_out_recurrent_out_attn_out
+# next_action=build_position0_layer0_conv_gdn_oracle
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# .................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The plan is ready and selects `position0_stateless_conv_gdn_oracle_first`.
+- Rationale: the current position-16 comparison depends on warmed convolution and recurrent GDN state. Position 0 starts from zero conv/recurrent state, so it can validate conv/GDN math, weight contracts, dtype contractions, and capture plumbing before adding state replay or a pre-token state capture for the warm position-16 oracle.
+- Relevant GGUF metadata for layer 0:
+  - `linear_qkv_width=8192`
+  - `ssm_conv_kernel=4`
+  - `ssm_group_count=16`
+  - `ssm_state_size=128`
+  - `ssm_time_step_rank=32`
+  - `ssm_inner_size=4096`
+  - `conv_state_floats=32768`
+  - `recurrent_state_floats=524288`
+- Relevant tensor contracts:
+  - `blk.0.ssm_conv1d.weight`: F32 shape `[8192, 4]`
+  - `blk.0.ssm_dt.bias`: F32 shape `[32]`
+  - `blk.0.ssm_a`: F32 shape `[32]`, materialized as `log(-ssm_a)` for the GDN kernel ABI
+  - `blk.0.ssm_norm.weight`: F32 shape `[128]`
+  - `blk.0.ssm_out.weight`: Q8_0 shape `[2048, 4096]`
+  - `blk.0.ssm_alpha.weight` and `blk.0.ssm_beta.weight`: F32 source shape `[32, 2048]`, stored as BF16 for current kernels
+- Next action: build a position-0 BF16-contracted oracle for `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32`; only after that passes should we attempt a warm-state position-16 replay/capture oracle.
