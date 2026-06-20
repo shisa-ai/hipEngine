@@ -107325,3 +107325,58 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-2 `attn_norm_f32` matches the resident-BF16 CPU RMSNorm oracle exactly at warm position 16/token 271.
 - This establishes the first layer-2 sub-boundary after the layer-1→layer-2 handoff.
 - Next bisection should audit layer-2 projection or conv/GDN outputs under the BF16 contract.
+
+## 2026-06-20 — validated layer-2 projection oracle
+
+### Change
+- Continued iteration 340 by adding `scripts/llamacpp_mtp_audit_layer2_projection_oracle.py`.
+- The script starts from the exact layer-2 `attn_norm` artifact, checks the live layer-2 `attn_norm_f32` hash against that artifact, captures resident layer-2 projection buffers with `run_preceding_layers=True`, reloads `blk.2` `attn_qkv`, `attn_gate`, `ssm_alpha`, and `ssm_beta` weights, and recomputes `BF16(project_f32(attn_norm_f32, weight))` on CPU.
+- Added `tests/test_llamacpp_mtp_audit_layer2_projection_oracle.py` covering `attn_norm` prerequisite validation, input hash checks, exact/near/mismatch classification, wrong preceding-layer blocking, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter340-layer2-projection-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer2_projection_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer2_projection_oracle.py \
+  --layer2-attn-norm benchmarks/results/mtp-gguf-iter339-layer2-attn-norm-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter340-layer2-projection-oracle.json \
+  --iteration 340
+# status=ready
+# classification=layer2_projections_match_bf16_oracle_within_rounding
+# layer=2 position=16 token=271
+# input_classification=layer2_projection_input_matches_attn_norm_artifact
+# preceding_layer_count=2
+# linear_qkv_f32 exact, max_abs=0.0 rmse=0.0
+# linear_z_f32 within_one_bf16_step, max_abs=1.52587890625e-05 rmse=2.384185791015625e-07
+# ssm_alpha_f32 exact, max_abs=0.0 rmse=0.0
+# ssm_beta_f32 exact, max_abs=0.0 rmse=0.0
+# next_action=audit_layer2_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer2_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer2_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_attn_norm_oracle.py
+# ................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-2 projection input `attn_norm_f32` hash matches the exact layer-2 `attn_norm` artifact.
+- Layer-2 `linear_qkv_f32`, `ssm_alpha_f32`, and `ssm_beta_f32` match the resident-BF16 projection oracle exactly.
+- Layer-2 `linear_z_f32` differs by `1.52587890625e-05` but remains within one BF16 step with zero bad-step elements.
+- This validates layer-2 projection outputs under the BF16 contract and clears the next bisection step: layer-2 conv/GDN.
