@@ -111947,3 +111947,71 @@ PY
 - Layer-12 `linear_z_f32`, `ssm_alpha_f32`, and `ssm_beta_f32` are exact vs the BF16 projection oracle.
 - Layer 12 is `linear_attention` with `preceding_layer_count=12`.
 - This clears the next layer-12 bisection step: conv/GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-12 conv/GDN oracle
+
+### Change
+- Continued iteration 418 by adding `scripts/llamacpp_mtp_audit_layer12_conv_gdn_oracle.py`.
+- The script starts from the layer-12 projection artifact, captures/replays the warm prefix through layer-12 linear-attention state, verifies target projection inputs, and validates `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32` against the BF16-contracted CPU replay oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer12_conv_gdn_oracle.py` covering projection artifact validation, target input guards, exact / tolerance / mismatch conv-GDN classifications, unavailable capture, and injected replay fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter418-layer12-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer12_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_conv_gdn_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer12_conv_gdn_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer12_conv_gdn_oracle.py \
+  --layer12-projection benchmarks/results/mtp-gguf-iter417-layer12-projection-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter418-layer12-conv-gdn-oracle.json
+# status=ready
+# classification=layer12_warm_conv_gdn_matches_oracle_within_tolerance
+# target_input_classification=target_inputs_match_replay_exactly
+# conv_out_f32 within tolerance: max_abs=1.1920928955078125e-07 rmse=3.1174172132608646e-09
+# recurrent_out_f32 within tolerance: max_abs=8.940696716308594e-08 rmse=4.729644231815655e-09
+# recurrent_bf16_f32 exact: max_abs=0.0 rmse=0.0
+# attn_out_f32 within tolerance: max_abs=4.76837158203125e-07 rmse=1.0860993882033654e-08
+# target layer type=linear_attention preceding_layer_count=12
+# next_action=audit_layer12_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer12_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer10_conv_gdn_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-12 conv/GDN oracle/test only; no torch
+# or dispatch branches; no attention/KV ABI changed; RED-style focused tests
+# added before retaining real artifact; layer-12 projection replay inputs are
+# exact; conv/recurrent/attn_out are within fp32/BF16 replay tolerances and
+# recurrent_bf16 is exact; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-12 warm replay target projection inputs match exactly before conv/GDN replay.
+- Layer-12 `conv_out_f32` and `recurrent_out_f32` match the stateful CPU replay oracle within fp32 tolerance (`max_abs=1.1920928955078125e-07` and `8.940696716308594e-08`).
+- Layer-12 `recurrent_bf16_f32` is exact.
+- Layer-12 `attn_out_f32` matches the BF16-contracted output projection oracle within tolerance (`max_abs=4.76837158203125e-07`, `rmse=1.0860993882033654e-08`).
+- Layer 12 is `linear_attention` with `preceding_layer_count=12`.
+- This clears the next layer-12 bisection step: post-attention residual / MoE boundary.
