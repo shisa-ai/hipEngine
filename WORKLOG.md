@@ -103548,3 +103548,60 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The compact checkpoint artifact records actual in-stack layer-3 metadata: `position=16`, `token_id=271`, `layer_type=full_attention`, `run_preceding_layers=True`, `preceding_layer_count=3`, `hidden_size=2048`, `top_k=8`, `finite=True`.
 - It includes hashes/samples for 10 arrays so a llama.cpp trace or external oracle can be aligned without repeatedly loading the ~600KB full-array artifact.
 - No runtime behavior changed; this is a diagnostic handoff artifact for the next oracle comparison step.
+
+## 2026-06-20 — Existing llama.cpp greeting trace lacks numeric checkpoints
+
+### Change
+- Continued iteration 282 by adding `scripts/llamacpp_mtp_trace_inventory.py`, a compact inventory helper for existing llama.cpp MTP trace artifacts.
+- Added `tests/test_llamacpp_mtp_trace_inventory.py` covering token-only traces, synthetic numeric checkpoint traces, and prompt-length mismatch reporting.
+- Emitted `benchmarks/results/mtp-gguf-iter282-llamacpp-trace-inventory.json` by inspecting:
+  - `benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json`
+  - `benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json`
+  - `benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/llamacpp_mtp_trace_inventory.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_trace_inventory.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_trace_inventory.py \
+  --trace benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json \
+  --plan benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json \
+  --checkpoint-summary benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json \
+  --output benchmarks/results/mtp-gguf-iter282-llamacpp-trace-inventory.json \
+  --iteration 282
+# status=inventory_complete
+# prompt_tokens_match=True
+# has_numeric_layer_checkpoints=False
+# next_action=capture_llamacpp_numeric_layer_checkpoint_or_add_llama_trace_tap
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter282-llamacpp-trace-inventory.json \
+  >/tmp/iter282-trace-inventory.pretty
+
+git diff --check -- \
+  scripts/llamacpp_mtp_trace_inventory.py \
+  tests/test_llamacpp_mtp_trace_inventory.py \
+  benchmarks/results/mtp-gguf-iter282-llamacpp-trace-inventory.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Existing llama.cpp B2 greeting trace aligns with the hipEngine checkpoint prompt length (`prompt_tokens=17`, checkpoint `position=16`), so token/request setup is usable.
+- The trace only contains draft token/probability events: `has_numeric_layer_checkpoints=False`, `known_checkpoint_array_paths=[]`, and `numeric_array_paths_len_ge_16=[]`.
+- The next useful action is therefore not comparing against the existing trace; it is `capture_llamacpp_numeric_layer_checkpoint_or_add_llama_trace_tap` so the hipEngine actual layer-3 checkpoint has an external numeric oracle.

@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_mtp_trace_checkpoint_inventory",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 282,
+  "status": "inventory_complete",
+  "trace_path": "benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json",
+  "plan_path": "benchmarks/results/llamacpp-mtp-greeting-b2-trace-plan.json",
+  "checkpoint_summary_path": "benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json",
+  "trace_summary": {
+    "schema": 1,
+    "kind": "llamacpp_mtp_draft_candidate_trace",
+    "prompt_tokens": 17,
+    "source_log": "benchmarks/results/llamacpp-mtp-greeting-b2-server.log",
+    "summary": {
+      "candidate_count": 12,
+      "draft_acceptance": 0.75,
+      "draft_call_count": 2,
+      "draft_n": 4,
+      "draft_n_accepted": 3,
+      "observed_top_k": 3
+    },
+    "llamacpp_timing_summary": {
+      "draft_acceptance": 0.75,
+      "draft_n": 4,
+      "draft_n_accepted": 3
+    },
+    "request": {
+      "draft_n_max": 2,
+      "max_tokens": 6,
+      "prompt": "Write a short greeting.",
+      "prompt_name": "greeting",
+      "reasoning": "off",
+      "seed": 12345,
+      "temperature": 0.0,
+      "top_k_candidates": 10
+    },
+    "call_count": 2,
+    "calls": [
+      {
+        "call_count": 1,
+        "generated": 2,
+        "accepted": 1,
+        "accept_generated": 2,
+        "hist_size": 17,
+        "candidate_count": 6,
+        "positions": [
+          0,
+          1
+        ],
+        "top_by_pos": {
+          "0": {
+            "token_id": 0,
+            "piece": "!",
+            "prob": 0.961
+          },
+          "1": {
+            "token_id": 2500,
+            "piece": " How",
+            "prob": 0.833
+          }
+        }
+      },
+      {
+        "call_count": 2,
+        "generated": 2,
+        "accepted": 2,
+        "accept_generated": 2,
+        "hist_size": 19,
+        "candidate_count": 6,
+        "positions": [
+          0,
+          1
+        ],
+        "top_by_pos": {
+          "0": {
+            "token_id": 3769,
+            "piece": " hope",
+            "prob": 0.998
+          },
+          "1": {
+            "token_id": 488,
+            "piece": " you",
+            "prob": 0.991
+          }
+        }
+      }
+    ]
+  },
+  "plan_summary": {
+    "kind": "llamacpp_mtp_trace_capture_plan",
+    "server_binary": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+    "server_log": "benchmarks/results/llamacpp-mtp-greeting-b2-server.log",
+    "trace_json": "benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json",
+    "request_endpoint": "http://127.0.0.1:8093/v1/chat/completions",
+    "request_payload": {
+      "model": "qwen36",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a short greeting."
+        }
+      ],
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "max_tokens": 6,
+      "seed": 12345,
+      "stream": false,
+      "cache_prompt": false
+    },
+    "metadata": {
+      "request": {
+        "prompt_name": "greeting",
+        "prompt": "Write a short greeting.",
+        "draft_n_max": 2,
+        "top_k_candidates": 10,
+        "temperature": 0.0,
+        "seed": 12345,
+        "max_tokens": 6,
+        "reasoning": "off"
+      },
+      "native_reference_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
+      "reason": "Compare llama.cpp draft-mtp top-k candidates to native MTP top-k where native target 220 is absent, with reasoning disabled to match native prompt rendering."
+    }
+  },
+  "checkpoint_summary": {
+    "kind": "mtp_gguf_layer_capture_compact_summary",
+    "source_capture": "benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json",
+    "capture": {
+      "iteration": 280,
+      "status": "captured",
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "position": 16,
+      "token_id": 271,
+      "layer_id": 3,
+      "layer_type": "full_attention",
+      "run_preceding_layers": true,
+      "preceding_layer_count": 3,
+      "hidden_size": 2048,
+      "top_k": 8,
+      "finite": true
+    },
+    "array_keys": [
+      "attn_out_f32",
+      "ffn_or_moe_down_f32",
+      "hidden_in_f32",
+      "layer_out_f32",
+      "moe_routing_weights_f32",
+      "moe_selected_experts_i64",
+      "moe_shared_gate_f32",
+      "moe_shared_out_f32",
+      "post_norm_f32",
+      "residual_f32"
+    ],
+    "array_hashes": {
+      "hidden_in_f32": "f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07",
+      "attn_out_f32": "3fd2762e24382812c2189197ae53c7fd98c8b6cbb7164a31c9d73e16f150292a",
+      "post_norm_f32": "bf4006483b59054c2ae788add307c580498b70789079ec10d671bf2faca19caa",
+      "residual_f32": "9b79665b816ce3b3315228d382446b5d091fe24a7abd0e2454a1f09cc80d33f9",
+      "ffn_or_moe_down_f32": "05d2e465fc520669c7ebe109316281dc607d97cef5bc2a231888a145b6d8f40c",
+      "moe_shared_out_f32": "06c28d6b785763778a8ad1bb0020b4b661bc62f88ab814cca64f49656ce68556",
+      "moe_routing_weights_f32": "c89cadf11835a4af251eb63bb0a45cf5b86f92fb37cf3c69ae134372ea9b1cfb",
+      "moe_shared_gate_f32": "656c05fbf54a4a78cc6fddec77b7975a7eb392360cede29d7e4722c32f1ca07b",
+      "moe_selected_experts_i64": "cda6f74823da7ceae400dd8107145ec5551578c641607cb87a62febf2366f3ef",
+      "layer_out_f32": "699e26e72ea2ed31f3a99cb0387e3834b4e79d39d875ab0785f8b85d1014368d"
+    }
+  },
+  "trace_coverage": {
+    "has_numeric_layer_checkpoints": false,
+    "known_checkpoint_array_paths": [],
+    "hint_key_paths": [],
+    "numeric_array_paths_len_ge_16": [],
+    "supports_layer3_checkpoint_alignment": false,
+    "supports_token_draft_alignment": true
+  },
+  "alignment": {
+    "checkpoint_available": true,
+    "trace_prompt_tokens": 17,
+    "checkpoint_position": 16,
+    "expected_prompt_tokens_from_checkpoint": 17,
+    "prompt_tokens_match": true,
+    "layer_checkpoint_target": {
+      "layer_id": 3,
+      "layer_type": "full_attention",
+      "run_preceding_layers": true,
+      "preceding_layer_count": 3
+    }
+  },
+  "next_action": "capture_llamacpp_numeric_layer_checkpoint_or_add_llama_trace_tap",
+  "conclusion": "Existing llama.cpp greeting trace aligns at prompt-token count but only carries draft token/probability events; it lacks hidden/attn/layer checkpoint arrays or hashes required to compare the hipEngine actual layer-3 checkpoint."
+}
