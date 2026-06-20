@@ -112803,3 +112803,71 @@ PY
 - Layer-14 `attn_norm_f32` is exact vs `BF16(RMSNorm(hidden_in, blk.14.attn_norm.weight))` (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
 - This clears the next bisection step: layer-14 projection / conv-GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-14 projection oracle
+
+### Change
+- Continued iteration 431 by adding `scripts/llamacpp_mtp_audit_layer14_projection_oracle.py`.
+- The script starts from the exact layer-14 attention-norm artifact, hash-checks live `attn_norm_f32`, materializes the `blk.14` linear-attention projection weights, and validates `linear_qkv_f32`, `linear_z_f32`, `ssm_alpha_f32`, and `ssm_beta_f32` against the BF16 projection oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer14_projection_oracle.py` covering attention-norm artifact validation, input hash guards, exact / one-BF16-step / mismatch projection classifications, wrong-layer metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter431-layer14-projection-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer14_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_projection_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_projection_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer14_projection_oracle.py \
+  --layer14-attn-norm benchmarks/results/mtp-gguf-iter430-layer14-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter431-layer14-projection-oracle.json
+# status=ready
+# classification=layer14_projections_match_bf16_oracle_within_rounding
+# input_classification=layer14_projection_input_matches_attn_norm_artifact
+# linear_qkv_f32 within one BF16 step: max_abs=0.001953125 rmse=2.4724362447159365e-05 bad_count=0
+# linear_z_f32 within one BF16 step: max_abs=0.001953125 rmse=3.0517578125e-05 bad_count=0
+# ssm_alpha_f32 exact: max_abs=0.0 rmse=0.0
+# ssm_beta_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=14
+# next_action=audit_layer14_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_projection_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-14 projection oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before retaining real artifact; layer-14 attn_norm source artifact
+# is hash-checked; QKV/Z are within one BF16 step with zero bad elements, SSM
+# alpha/beta exact; compact artifact contains summaries/hashes only; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-14 `attn_norm_f32` preflight hash matches the iteration-430 attention-norm artifact.
+- Layer-14 `linear_qkv_f32` and `linear_z_f32` match the BF16 projection oracle within one BF16 step with zero bad elements (`max_abs=0.001953125`).
+- Layer-14 `ssm_alpha_f32` and `ssm_beta_f32` are exact vs the BF16 projection oracle.
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
+- This clears the next bisection step: layer-14 conv/GDN under the BF16 contract.
