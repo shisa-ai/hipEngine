@@ -104622,3 +104622,70 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - max abs diff `8.296966552734375e-05`
   - mean abs diff `2.105720341205597e-06`
 - Conclusion: the layer-0 mismatch is explained by hipEngine's BF16 embedding output/hidden buffer, not row selection, token id, llama.cpp tap placement, or embedding-kernel dequantization. Next action is to decide how to represent the token embedding / initial hidden state for llama.cpp-exact parity (e.g. F32 seed path or explicit parity-mode promotion) before re-running later-layer sweeps.
+
+## 2026-06-20 — hidden precision decision: FP32 seed target exists, BF16 activation lane remains
+
+### Change
+- Continued iteration 300 by adding `scripts/gguf_hidden_precision_decision_audit.py`, a source/evidence audit that combines:
+  - iteration-299 token-embedding parity evidence,
+  - iteration-298 earliest `hidden_in` divergence evidence,
+  - `Qwen35GGUFResidentSession` hidden-buffer/source ABI facts,
+  - `docs/MTP-gguf.md` FP32 hidden-seed contract language.
+- Added `tests/test_gguf_hidden_precision_decision_audit.py` covering source fact extraction, doc contract detection, decision priority, and synthetic artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter300-hidden-precision-decision-audit.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_precision_decision_audit.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_hidden_precision_decision_audit.py \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --doc docs/MTP-gguf.md \
+  --token-audit benchmarks/results/mtp-gguf-iter299-token-embedding-parity-audit.json \
+  --earliest benchmarks/results/mtp-gguf-iter298-hidden-in-earliest-divergence.json \
+  --output benchmarks/results/mtp-gguf-iter300-hidden-precision-decision-audit.json \
+  --iteration 300
+# status=decided
+# conclusion=fp32_seed_target_exists_but_activation_lane_is_bf16
+# current_seed_dtype=BF16
+# fp32_seed_dtype=FP32
+# default_activation_buffer_dtype=BF16
+# next_action=capture_fp32_hidden_seed_vs_llamacpp_post_output_norm_oracle
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_precision_decision_audit.py \
+  tests/test_gguf_token_embedding_parity_audit.py \
+  tests/test_gguf_hidden_in_earliest_divergence.py
+# ................ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter300-hidden-precision-decision-audit.json \
+  >/tmp/mtp-gguf-iter300-hidden-precision-decision-audit.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Decision artifact status: `decided`.
+- Numeric evidence remains:
+  - llama.cpp layer-0 `hidden_in` matches raw dequantized token embedding exactly,
+  - hipEngine embedding matches BF16-rounded token embedding exactly,
+  - first `hidden_in` mismatch is layer 0 with no preceding precision contractions.
+- Source ABI audit finds:
+  - current hidden-seed contract dtype is `BF16` and is not llama.cpp-compatible,
+  - an explicit `FP32` hidden-seed target contract already exists (`scratch.hidden_seed_fp32`) and has a populated guard via `capture_hidden_seed_fp32=True`,
+  - that FP32 seed target is currently populated by `gguf_rmsnorm_bf16_f32_weight_out_f32` from the BF16 activation lane,
+  - resident decode/prefill activation buffers remain BF16 (`hidden_size * 2`, `np.uint16` public hidden bits).
+- Conclusion: `fp32_seed_target_exists_but_activation_lane_is_bf16`.
+- Next action: capture the existing FP32 hidden seed and compare it to a llama.cpp post-output_norm oracle. If it mismatches, the blocker is upstream BF16 activation propagation; if it matches closely enough for MTP acceptance, the existing seed target can feed NextN while default runtime buffers stay BF16.
