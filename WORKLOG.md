@@ -104504,3 +104504,60 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - layers 0–2: `ffn_gate_inp`, `ffn_gate_inp_shexp`, `ssm_alpha`, `ssm_beta`
   - layer 3: `ffn_gate_inp`, `ffn_gate_inp_shexp`
 - Conclusion: `precision_contractions_or_preceding_layer_math_suspect`. Next action should be an earliest-layer hidden-in sweep comparing hipEngine and llama.cpp layer-by-layer, while accounting for those precision contractions.
+
+## 2026-06-20 — earliest hidden_in sweep finds layer-0 exactness drift
+
+### Change
+- Continued iteration 298 by adding `scripts/gguf_hidden_in_earliest_divergence.py`, which compares llama.cpp selected-row `hidden_in` captures against fresh hipEngine `capture_attention_layer(...).hidden_in_f32` vectors layer-by-layer.
+- Added `tests/test_gguf_hidden_in_earliest_divergence.py` with synthetic exact-match, layer-0 mismatch, and first-divergence-after-layer cases.
+- Emitted `benchmarks/results/mtp-gguf-iter298-hidden-in-earliest-divergence.json` using the existing iteration-295 llama.cpp layer sweep binaries and fresh hipEngine captures for layers 0–3 at position 16.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_in_earliest_divergence.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_hidden_in_earliest_divergence.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layer-sweep benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json \
+  --layers 0-3 \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 \
+  --output benchmarks/results/mtp-gguf-iter298-hidden-in-earliest-divergence.json \
+  --iteration 298
+# status=mismatched
+# first_mismatch_layer=0
+# conclusion=layer0_hidden_in_mismatch_embedding_or_capture
+# next_action=compare_token_embedding_weight_materialization_and_embedding_kernel
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_in_earliest_divergence.py \
+  tests/test_gguf_capture_path_audit.py \
+  tests/test_llamacpp_mtp_sweep_hidden_in_layers.py
+# ............... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter298-hidden-in-earliest-divergence.json \
+  >/tmp/mtp-gguf-iter298-hidden-in-earliest-divergence.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-by-layer selected-position `hidden_in` comparison against llama.cpp:
+  - layer 0: mismatched, RMSE `4.3146618e-06`, max abs diff `8.2969666e-05`, preceding precision contractions `0`
+  - layer 1: mismatched, RMSE `0.0121149627`, max abs diff `0.0457400519`, preceding precision contractions `4`
+  - layer 2: mismatched, RMSE `0.0186441147`, max abs diff `0.0817262977`, preceding precision contractions `8`
+  - layer 3: mismatched, RMSE `0.0238953013`, max abs diff `0.0914031863`, preceding precision contractions `12`
+- Exactness already fails at layer 0, before any preceding-layer replay or layer-local F32→BF16 contractions can contribute. The layer-0 drift is tiny and consistent with token-embedding materialization/copy precision rather than graph-path layer numbering or tap placement.
+- Next action: compare token embedding weight materialization and `launch_gguf_embedding` output against llama.cpp's layer-0 `hidden_in` row; decide whether hipEngine's embedding resident dtype must be promoted for parity or whether the llama.cpp capture is post-conversion in a different dtype path.
