@@ -106600,3 +106600,57 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - `recurrent_bf16_f32` max abs `2.9802322387695312e-08`
   - `attn_out_f32` max abs `9.5367431640625e-07`
 - Interpretation: the original layer-0 divergence is no longer attributable to layer-0 input embedding, `attn_norm`, qkv/gate/alpha/beta projections, or the warmed conv/GDN/SSM-out chain. Next bisection should move immediately after `attn_out` into residual/add or the following FFN/MoE boundary.
+
+## 2026-06-20 — validated layer-0 post-attn residual/post-norm
+
+### Change
+- Continued iteration 327 by adding `scripts/llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py`.
+- The script warms hipEngine through prompt positions `0..15`, captures the full layer-0 position-16 boundary, validates `hidden_in_f32` against the GGUF token embedding row, then recomputes `residual_f32` and `post_norm_f32` from the verified warm `attn_out_f32` using the same BF16 add+rmsnorm contract as `gguf_add_rmsnorm_bf16_f32_weight`.
+- Added `tests/test_llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py` covering kernel-style strided reduction, BF16 add+rmsnorm semantics, input classification, mismatch classification, injected artifact generation, and `post_attention_norm` loading.
+- Emitted `benchmarks/results/mtp-gguf-iter327-layer0-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py \
+  --warm-artifact benchmarks/results/mtp-gguf-iter326-layer0-warm-conv-gdn-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter327-layer0-post-attn-residual-oracle.json \
+  --iteration 327
+# status=ready
+# classification=layer0_post_attn_residual_matches_oracle_exactly
+# input_classification=post_attn_inputs_match_oracle
+# input hidden_in_f32: exact, max_abs=0.0, rmse=0.0
+# input attn_out_f32: covered by warm conv/GDN oracle from iteration 326
+# field residual_f32: exact, max_abs=0.0, rmse=0.0
+# field post_norm_f32: exact, max_abs=0.0, rmse=0.0
+# next_action=audit_layer0_moe_router_from_post_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# ....................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-0 post-attention residual/add and post-attention RMSNorm now match the CPU oracle exactly at the original warm position-16 boundary.
+- This removes another candidate source of the layer-0 mismatch: after the already-verified warm `attn_out`, both `BF16(hidden_in + attn_out)` and `BF16(rmsnorm(hidden_in + attn_out, post_attention_norm.weight))` are exact vs hipEngine.
+- Next bisection should move into the MoE/FFN path starting from `post_norm_f32`, first auditing router logits/top-k/shared-gate metadata and then selected expert/shared outputs.
