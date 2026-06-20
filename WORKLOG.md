@@ -106831,3 +106831,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The hipEngine internal layer-0 BF16-contracted oracle chain through MoE combine is exact at the same boundary (`layer_out_f32` max abs `0.0`).
 - Conclusion: the retained layer-0 mismatch is the known llama.cpp F32 activation versus hipEngine resident-BF16 activation split, not an uncovered hipEngine layer-0 arithmetic error in the audited chain.
 - Next action: advance the bisection to layer 1 or the next layer boundary under the BF16 contract.
+
+## 2026-06-20 — validated layer-0 to layer-1 BF16 handoff
+
+### Change
+- Continued iteration 331 by adding `scripts/llamacpp_mtp_layer1_bf16_handoff_audit.py`.
+- The script starts from the iteration-330 layer-0 BF16-oracle conclusion and captures:
+  - layer-0 `layer_out_f32` directly
+  - layer-1 `hidden_in_f32` with `run_preceding_layers=True`
+- It compares the two vectors as the layer-1 seed under the resident-BF16 contract before auditing layer-1 sub-boundaries.
+- Added `tests/test_llamacpp_mtp_layer1_bf16_handoff_audit.py` covering conclusion validation, handoff classification, injected exact/mismatch captures, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter331-layer1-bf16-handoff.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer1_bf16_handoff_audit.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer1_bf16_handoff_audit.py \
+  --layer0-conclusion benchmarks/results/mtp-gguf-iter330-layer0-bisection-conclusion.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter331-layer1-bf16-handoff.json \
+  --iteration 331
+# status=ready
+# classification=layer1_hidden_in_matches_layer0_layer_out_exactly
+# source_layer=0 target_layer=1
+# target preceding_layer_count=1
+# handoff max_abs=0.0 rmse=0.0
+# next_action=audit_layer1_attn_norm_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer1_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer0_bisection_conclusion.py \
+  tests/test_llamacpp_mtp_audit_layer0_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_moe_router_oracle.py
+# ........................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-1 `hidden_in_f32` exactly equals layer-0 `layer_out_f32` at the warm position-16/token-271 boundary when captured with `run_preceding_layers=True`.
+- This validates the layer-0→layer-1 resident-BF16 handoff and establishes the layer-1 seed for the next oracle.
+- Next bisection should audit layer-1 `attn_norm` under the BF16 contract.
