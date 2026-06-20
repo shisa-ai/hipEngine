@@ -103976,3 +103976,59 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - `/tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so.0.0.0`
 - `diagnostics.kind=none`, `external_checkout_modified=false`, and next action is `compile_hidden_in_capture_harness_against_built_libllama`.
 - Configure stderr still has harmless `fatal: not a git repository` messages because the temp source came from `git archive`; this did not block configure or build.
+
+## 2026-06-20 — llama.cpp hidden-in link probe compiles against patched libllama
+
+### Change
+- Continued iteration 290 by adding `scripts/llamacpp_mtp_compile_hidden_in_harness.py`, which writes and compiles a minimal C++ probe against the isolated patched `libllama.so`.
+- Added `tests/test_llamacpp_mtp_compile_hidden_in_harness.py` covering harness source generation, compile command flags, fake compile/probe success, compile-failure capture, and header validation.
+- Emitted `benchmarks/results/mtp-gguf-iter290-llamacpp-hidden-in-harness-compile.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compile_hidden_in_harness.py \
+  --build-result benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter290-llamacpp-hidden-in-harness-compile.json \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter290-hidden-in-harness \
+  --timeout-seconds 180 \
+  --iteration 290
+# status=compiled
+# compiler=/home/lhl/miniforge3/envs/therock/bin/amdclang++
+# executable=/tmp/hipengine-llamacpp-mtp-iter290-hidden-in-harness/llamacpp_hidden_in_probe
+# probe_rc=0
+# next_action=extend_harness_to_load_model_decode_prompt_and_dump_hidden_in
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py \
+  tests/test_llamacpp_mtp_run_build.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter290-llamacpp-hidden-in-harness-compile.json \
+  >/tmp/mtp-gguf-iter290-hidden-in-harness-compile.json
+
+LD_LIBRARY_PATH=/tmp/hipengine-llamacpp-mtp-iter288-build/bin:${LD_LIBRARY_PATH:-} \
+  /tmp/hipengine-llamacpp-mtp-iter290-hidden-in-harness/llamacpp_hidden_in_probe \
+  | grep -q 'linked_layer_input_api'
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The probe includes `llama.h` and `llama-ext.h`, takes addresses of `llama_set_embeddings_layer_inp` and `llama_get_embeddings_layer_inp`, and links against `/tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so`.
+- Compile succeeded with `/home/lhl/miniforge3/envs/therock/bin/amdclang++` after correcting the library flag to `-lllama` (`-llama` searches for `liblama`, not `libllama`).
+- Probe run succeeded and printed `{"linked_layer_input_api":true,"layer_id":3}`.
+- Artifact records `status=compiled`, executable size 6488 bytes, `external_checkout_modified=false`, and next action `extend_harness_to_load_model_decode_prompt_and_dump_hidden_in`.
