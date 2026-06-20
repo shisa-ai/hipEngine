@@ -113951,3 +113951,73 @@ PY
 - Layer-16 `ssm_alpha_f32` and `ssm_beta_f32` are exact (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=16`.
 - This clears the next bisection step: layer-16 conv/GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-16 conv/GDN oracle
+
+### Change
+- Continued iteration 448 by adding `scripts/llamacpp_mtp_audit_layer16_conv_gdn_oracle.py`.
+- The script starts from the layer-16 projection artifact, replays the linear-attention conv/GDN recurrence from zero state across positions 0..16, hash-checks the target replay inputs, and validates `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32` against the BF16-contracted warm replay oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer16_conv_gdn_oracle.py` covering projection artifact validation, replay input exactness, exact / tolerance / mismatch / blocked classifications, wrong next-action handling, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter448-layer16-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer16_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_conv_gdn_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_conv_gdn_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer16_conv_gdn_oracle.py \
+  --layer16-projection benchmarks/results/mtp-gguf-iter447-layer16-projection-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter448-layer16-conv-gdn-oracle.json
+# status=ready
+# classification=layer16_warm_conv_gdn_matches_oracle_within_tolerance
+# target_input_classification=target_inputs_match_replay_exactly
+# conv_out_f32 within tolerance: max_abs=5.960464477539063e-08 rmse=2.961691558667212e-09
+# recurrent_out_f32 within tolerance: max_abs=5.960464477539063e-08 rmse=3.9898426784645835e-09
+# recurrent_bf16_f32 within tolerance: max_abs=1.4901161193847656e-08 rmse=2.3283064365386963e-10
+# attn_out_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=16
+# replayed_positions=[0..16]
+# next_action=audit_layer16_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_conv_gdn_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-16 conv/GDN replay oracle/test only;
+# no torch or dispatch branches; no attention/KV ABI changed; focused RED-style
+# tests cover projection validation, replay input exactness, tolerance,
+# mismatch, blocked, and unavailable paths; layer-16 projection source artifact
+# is hash-checked; target inputs exact, conv/recurrent fields within tiny
+# tolerance, attn_out exact; compact artifact contains summaries/hashes only;
+# no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-16 projection replay inputs at the target position exactly match the iteration-447 projection artifact fields.
+- Layer-16 conv/GDN recurrence replay matches within tiny tolerance (`conv_out_f32 max_abs=5.96e-08`, `recurrent_out_f32 max_abs=5.96e-08`, `recurrent_bf16_f32 max_abs=1.49e-08`).
+- Layer-16 `attn_out_f32` is exact (`max_abs=0.0`, `rmse=0.0`).
+- The replay starts from zero state and covers positions 0..16 for the normal `linear_attention` MoE layer.
+- This clears the next bisection step: layer-16 post-attention residual / MoE boundary.
