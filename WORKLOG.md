@@ -106713,3 +106713,63 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Routing weights match within `7.450580596923828e-09` max abs.
 - Raw shared-gate logit matches exactly; this is intentionally raw because `weighted_sum_shared_gate_combine_residual_out_bf16_f32w` applies `sigmoid` during final combine.
 - Next bisection should audit selected expert outputs and the shared expert branch from the verified router selection/gate.
+
+## 2026-06-20 — validated layer-0 MoE selected/shared expert outputs
+
+### Change
+- Continued iteration 329 by adding `scripts/llamacpp_mtp_audit_layer0_moe_expert_outputs_oracle.py`.
+- The script starts from the verified layer-0 router artifact, reloads only the selected expert rows from raw GGUF tensors, and recomputes the MoE branch with kernel-order FP32 reductions and BF16 materialization:
+  - selected `Q4_K` gate/up GEMVs
+  - BF16 `SiLU(gate) * up`
+  - selected `Q5_K` down GEMVs into `ffn_or_moe_down_f32`
+  - shared `Q8_0` gate/up/down chain into `moe_shared_out_f32`
+  - final residual + weighted-selected + `sigmoid(shared_gate)` combine into `layer_out_f32`
+- Added `tests/test_llamacpp_mtp_audit_layer0_moe_expert_outputs_oracle.py` covering reduction order, BF16 SiLU/weighted combine, classification, injected artifact generation, and selected-row GGUF loading.
+- Emitted `benchmarks/results/mtp-gguf-iter329-layer0-moe-expert-outputs-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_moe_expert_outputs_oracle.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer0_moe_expert_outputs_oracle.py \
+  --router-artifact benchmarks/results/mtp-gguf-iter328-layer0-moe-router-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter329-layer0-moe-expert-outputs-oracle.json \
+  --iteration 329
+# status=ready
+# classification=layer0_moe_expert_outputs_match_oracle_exactly
+# ffn_or_moe_down_f32: exact, max_abs=0.0, rmse=0.0
+# moe_shared_out_f32: exact, max_abs=0.0, rmse=0.0
+# layer_out_f32: exact, max_abs=0.0, rmse=0.0
+# next_action=continue_layer0_bisection_after_moe_ffn_or_compare_layer_out
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# ..................................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-0 MoE selected expert outputs, shared expert output, and final layer output now match the raw-GGUF CPU oracle exactly at the original warm position-16 boundary.
+- Selected experts remain `[200, 140, 67, 81, 192, 177, 194, 86]` from the verified router artifact.
+- This removes the layer-0 MoE FFN as the source of the current bisection mismatch for the captured warm boundary.
+- Next bisection should compare the full layer-0 `layer_out_f32` against the corresponding llama.cpp trace boundary or move to the next layer boundary.
