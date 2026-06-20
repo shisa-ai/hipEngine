@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_extended_linear_attention_boundary_tap_contract",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 263,
+  "status": "diagnostic_contract_only_no_real_gguf_capture",
+  "api": "Qwen35GGUFResidentSession.capture_linear_attention_boundary(token_id, position, layer_id=0)",
+  "snapshot_type": "Qwen35GGUFLinearAttentionBoundaryCapture",
+  "new_buffers": [
+    {
+      "name": "linear_qkv_f32",
+      "source": "scratch.linear_qkv BF16 after attn_qkv projection before convolution",
+      "shape": ["linear_qkv_width"]
+    },
+    {
+      "name": "linear_z_f32",
+      "source": "scratch.linear_z BF16 after attn_gate projection",
+      "shape": ["ssm_inner_size"]
+    },
+    {
+      "name": "conv_out_f32",
+      "source": "scratch.conv_out F32 after qwen35_linear_attn_conv_decode_bf16",
+      "shape": ["linear_qkv_width"]
+    },
+    {
+      "name": "recurrent_out_f32",
+      "source": "scratch.recurrent_out F32 after GDN recurrent RMSNorm+gate before BF16 cast",
+      "shape": ["ssm_inner_size"]
+    },
+    {
+      "name": "recurrent_bf16_f32",
+      "source": "scratch.recurrent_bf16 BF16 after f32_to_bf16(recurrent_out)",
+      "shape": ["ssm_inner_size"]
+    }
+  ],
+  "existing_buffers_kept": [
+    "attn_norm_f32",
+    "ssm_alpha_f32",
+    "ssm_beta_f32",
+    "attn_out_f32"
+  ],
+  "why": "iteration 262 showed these intermediates are needed before a CPU attn_out oracle or scoped F32 aux-projection experiment can explain the target AR mismatch",
+  "test": "tests/test_qwen35_gguf_hidden_seed_contract.py::test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers",
+  "next_step": "rerun scripts/gguf_linear_boundary_capture.py without --dry-run to produce a real extended capture artifact"
+}

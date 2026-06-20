@@ -144,8 +144,13 @@ def capture_linear_boundary(
     artifact["capture_summary"] = capture.as_summary_dict()
     artifact["buffers"] = {
         "attn_norm_f32": _array_summary(capture.attn_norm_f32),
+        "linear_qkv_f32": _array_summary(capture.linear_qkv_f32),
+        "linear_z_f32": _array_summary(capture.linear_z_f32),
         "ssm_alpha_f32": _array_summary(capture.ssm_alpha_f32),
         "ssm_beta_f32": _array_summary(capture.ssm_beta_f32),
+        "conv_out_f32": _array_summary(capture.conv_out_f32),
+        "recurrent_out_f32": _array_summary(capture.recurrent_out_f32),
+        "recurrent_bf16_f32": _array_summary(capture.recurrent_bf16_f32),
         "attn_out_f32": _array_summary(capture.attn_out_f32),
     }
     return artifact

@@ -102359,3 +102359,49 @@ git diff --check -- benchmarks/results/mtp-gguf-iter262-gdn-attn-out-audit.json 
 - A CPU `attn_out` oracle cannot be built from the iter259 capture alone. The next diagnostic tap needs at least `scratch.linear_qkv`, `scratch.linear_z`, `scratch.conv_out`, `scratch.recurrent_out`, and `scratch.recurrent_bf16`; full CPU replay also needs the pre-token `conv_state`/`recurrent_state`.
 - The audited decode order is: hidden RMSNorm → `attn_qkv`/`attn_gate` → alpha/beta projections → conv decode → GDN recurrent RMSNorm+gate → BF16 cast → `ssm_out` projection to `attn_out`.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF boundary tap extended with GDN intermediates
+
+### Change
+- Continued iteration 263 by extending `Qwen35GGUFLinearAttentionBoundaryCapture` and `Qwen35GGUFResidentSession.capture_linear_attention_boundary(...)` with the missing downstream GDN/`ssm_out` diagnostic buffers identified in iteration 262.
+- New copied buffers: `linear_qkv_f32`, `linear_z_f32`, `conv_out_f32`, `recurrent_out_f32`, and `recurrent_bf16_f32`; existing `attn_norm`, `ssm_alpha`, `ssm_beta`, and `attn_out` captures remain.
+- Updated `scripts/gguf_linear_boundary_capture.py` to summarize the new buffers in future real artifacts.
+- Updated the no-GPU mocked unit test and emitted `benchmarks/results/mtp-gguf-iter263-extended-boundary-tap-contract.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter263-extended-boundary-tap-contract.json \
+  >/tmp/iter263-extended-tap.pretty && echo extended-tap-contract-json-ok
+# extended-tap-contract-json-ok
+
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_linear_boundary_capture.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_linear_boundary_capture_script.py
+# ................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_linear_boundary_capture.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  benchmarks/results/mtp-gguf-iter263-extended-boundary-tap-contract.json \
+  WORKLOG.md
+# no output
+```
+
+### Result
+- The real-device capture script is now ready to emit enough host-visible layer-0 buffers for the next CPU GDN/`attn_out` oracle attempt.
+- This is still diagnostic-only and does not change generation math or target AR parity.

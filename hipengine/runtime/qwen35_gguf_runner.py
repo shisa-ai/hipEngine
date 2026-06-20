@@ -325,9 +325,16 @@ class Qwen35GGUFLinearAttentionBoundaryCapture:
     position: int
     hidden_size: int
     ssm_time_step_rank: int
+    linear_qkv_width: int
+    ssm_inner_size: int
     attn_norm_f32: np.ndarray
+    linear_qkv_f32: np.ndarray
+    linear_z_f32: np.ndarray
     ssm_alpha_f32: np.ndarray
     ssm_beta_f32: np.ndarray
+    conv_out_f32: np.ndarray
+    recurrent_out_f32: np.ndarray
+    recurrent_bf16_f32: np.ndarray
     attn_out_f32: np.ndarray
 
     def as_summary_dict(self) -> dict[str, object]:
@@ -337,14 +344,26 @@ class Qwen35GGUFLinearAttentionBoundaryCapture:
             "position": int(self.position),
             "hidden_size": int(self.hidden_size),
             "ssm_time_step_rank": int(self.ssm_time_step_rank),
+            "linear_qkv_width": int(self.linear_qkv_width),
+            "ssm_inner_size": int(self.ssm_inner_size),
             "attn_norm_shape": list(self.attn_norm_f32.shape),
+            "linear_qkv_shape": list(self.linear_qkv_f32.shape),
+            "linear_z_shape": list(self.linear_z_f32.shape),
             "ssm_alpha_shape": list(self.ssm_alpha_f32.shape),
             "ssm_beta_shape": list(self.ssm_beta_f32.shape),
+            "conv_out_shape": list(self.conv_out_f32.shape),
+            "recurrent_out_shape": list(self.recurrent_out_f32.shape),
+            "recurrent_bf16_shape": list(self.recurrent_bf16_f32.shape),
             "attn_out_shape": list(self.attn_out_f32.shape),
             "finite": bool(
                 np.all(np.isfinite(self.attn_norm_f32))
+                and np.all(np.isfinite(self.linear_qkv_f32))
+                and np.all(np.isfinite(self.linear_z_f32))
                 and np.all(np.isfinite(self.ssm_alpha_f32))
                 and np.all(np.isfinite(self.ssm_beta_f32))
+                and np.all(np.isfinite(self.conv_out_f32))
+                and np.all(np.isfinite(self.recurrent_out_f32))
+                and np.all(np.isfinite(self.recurrent_bf16_f32))
                 and np.all(np.isfinite(self.attn_out_f32))
             ),
         }
@@ -3492,6 +3511,8 @@ class Qwen35GGUFResidentSession:
         cfg = self.runner.weights.config
         rank = int(cfg.ssm_time_step_rank)
         hidden_size = int(self.runner.hidden_size)
+        linear_qkv_width = int(self.runner.linear_qkv_width)
+        ssm_inner_size = int(cfg.ssm_inner_size)
         alpha_ptr = int(self.scratch.linear_alpha.ptr)
         beta_ptr = int(self.scratch.linear_beta.ptr)
         if cfg.is_moe:
@@ -3504,11 +3525,28 @@ class Qwen35GGUFResidentSession:
             position=int(position),
             hidden_size=hidden_size,
             ssm_time_step_rank=rank,
+            linear_qkv_width=linear_qkv_width,
+            ssm_inner_size=ssm_inner_size,
             attn_norm_f32=_copy_bf16_ptr_to_host_f32(
                 int(self.scratch.norm.ptr), hidden_size, runtime=runtime
             ),
+            linear_qkv_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.linear_qkv.ptr), linear_qkv_width, runtime=runtime
+            ),
+            linear_z_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.linear_z.ptr), ssm_inner_size, runtime=runtime
+            ),
             ssm_alpha_f32=_copy_bf16_ptr_to_host_f32(alpha_ptr, rank, runtime=runtime),
             ssm_beta_f32=_copy_bf16_ptr_to_host_f32(beta_ptr, rank, runtime=runtime),
+            conv_out_f32=_copy_f32_ptr_to_host(
+                int(self.scratch.conv_out.ptr), linear_qkv_width, runtime=runtime
+            ),
+            recurrent_out_f32=_copy_f32_ptr_to_host(
+                int(self.scratch.recurrent_out.ptr), ssm_inner_size, runtime=runtime
+            ),
+            recurrent_bf16_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.recurrent_bf16.ptr), ssm_inner_size, runtime=runtime
+            ),
             attn_out_f32=_copy_bf16_ptr_to_host_f32(
                 int(self.scratch.attn_out.ptr), hidden_size, runtime=runtime
             ),
@@ -6018,6 +6056,20 @@ def _copy_bf16_ptr_to_host_f32(ptr: int, elements: int, *, runtime: HipRuntime) 
         runtime=runtime,
     )
     return bf16_to_float32(bits)
+
+
+def _copy_f32_ptr_to_host(ptr: int, elements: int, *, runtime: HipRuntime) -> np.ndarray:
+    elements = int(elements)
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    values = np.empty((elements,), dtype=np.float32)
+    copy_device_to_host(
+        host_array_ptr(values),
+        DeviceBuffer(int(ptr), values.nbytes),
+        values.nbytes,
+        runtime=runtime,
+    )
+    return values
 
 
 def _read_i64_device_scalar(buffer, host: np.ndarray, *, stream: int = 0, runtime: HipRuntime) -> int:

@@ -344,17 +344,29 @@ def test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers(
     ) -> None:
         calls.append(("attn", layer_id, hidden_ptr, attn_out_ptr, kwargs["stream"]))
 
-    def fake_copy(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
-        calls.append(("copy", ptr, elements, runtime))
+    def fake_copy_bf16(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
+        calls.append(("copy_bf16", ptr, elements, runtime))
         payloads = {
             2000: np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+            2100: np.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=np.float32),
+            2200: np.asarray([0.7, 0.8, 0.9, 1.0], dtype=np.float32),
             5000: np.asarray([0.25, 0.5], dtype=np.float32),
             5004: np.asarray([-0.25, -0.5], dtype=np.float32),
+            2400: np.asarray([1.5, 1.6, 1.7, 1.8], dtype=np.float32),
             1000: np.asarray([5.0, 6.0, 7.0, 8.0], dtype=np.float32),
         }
         return payloads[int(ptr)]
 
-    monkeypatch.setattr(gguf_runner, "_copy_bf16_ptr_to_host_f32", fake_copy)
+    def fake_copy_f32(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
+        calls.append(("copy_f32", ptr, elements, runtime))
+        payloads = {
+            2300: np.asarray([1.1, 1.2, 1.3, 1.4, 1.5, 1.6], dtype=np.float32),
+            2350: np.asarray([2.1, 2.2, 2.3, 2.4], dtype=np.float32),
+        }
+        return payloads[int(ptr)]
+
+    monkeypatch.setattr(gguf_runner, "_copy_bf16_ptr_to_host_f32", fake_copy_bf16)
+    monkeypatch.setattr(gguf_runner, "_copy_f32_ptr_to_host", fake_copy_f32)
 
     runtime = FakeRuntime()
     session = object.__new__(Qwen35GGUFResidentSession)
@@ -366,18 +378,25 @@ def test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers(
     cfg = SimpleNamespace(
         layer_types=(gguf_runner.LINEAR_ATTENTION,),
         ssm_time_step_rank=2,
+        ssm_inner_size=4,
         is_moe=True,
     )
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(config=cfg),
         hidden_size=4,
+        linear_qkv_width=6,
         _run_linear_attention_attn_only=fake_attn,
     )
     session.scratch = SimpleNamespace(
         norm=SimpleNamespace(ptr=2000),
+        linear_qkv=SimpleNamespace(ptr=2100),
+        linear_z=SimpleNamespace(ptr=2200),
         linear_alpha=SimpleNamespace(ptr=3000),
         linear_beta=SimpleNamespace(ptr=4000),
         linear_alpha_beta=SimpleNamespace(ptr=5000),
+        conv_out=SimpleNamespace(ptr=2300),
+        recurrent_out=SimpleNamespace(ptr=2350),
+        recurrent_bf16=SimpleNamespace(ptr=2400),
         attn_out=SimpleNamespace(ptr=1000),
     )
 
@@ -390,22 +409,35 @@ def test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers(
         "position": 3,
         "hidden_size": 4,
         "ssm_time_step_rank": 2,
+        "linear_qkv_width": 6,
+        "ssm_inner_size": 4,
         "attn_norm_shape": [4],
+        "linear_qkv_shape": [6],
+        "linear_z_shape": [4],
         "ssm_alpha_shape": [2],
         "ssm_beta_shape": [2],
+        "conv_out_shape": [6],
+        "recurrent_out_shape": [4],
+        "recurrent_bf16_shape": [4],
         "attn_out_shape": [4],
         "finite": True,
     }
     np.testing.assert_allclose(capture.ssm_beta_f32, [-0.25, -0.5])
+    np.testing.assert_allclose(capture.conv_out_f32[:3], [1.1, 1.2, 1.3])
     assert calls == [
         ("position", 3, 0),
         ("token", 17, 0),
         ("attn", 0, 1234, 1000, 0),
         ("device_synchronize",),
-        ("copy", 2000, 4, runtime),
-        ("copy", 5000, 2, runtime),
-        ("copy", 5004, 2, runtime),
-        ("copy", 1000, 4, runtime),
+        ("copy_bf16", 2000, 4, runtime),
+        ("copy_bf16", 2100, 6, runtime),
+        ("copy_bf16", 2200, 4, runtime),
+        ("copy_bf16", 5000, 2, runtime),
+        ("copy_bf16", 5004, 2, runtime),
+        ("copy_f32", 2300, 6, runtime),
+        ("copy_f32", 2350, 4, runtime),
+        ("copy_bf16", 2400, 4, runtime),
+        ("copy_bf16", 1000, 4, runtime),
     ]
 
 
