@@ -105153,3 +105153,72 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - `/tmp/hipengine-llamacpp-mtp-iter307-pre-output-norm-harness/llamacpp_hidden_seed_capture`
 - External llama.cpp checkout remains untouched.
 - Next action: run the patched pre-`output_norm` harness for the oracle prompt and compare its row to a hipEngine serial pre-output row copied before `_run_output_norm_hidden`.
+
+## 2026-06-20 — first pre-output_norm patch was overwritten by post-output h_nextn
+
+### Change
+- Continued iteration 308 by adding `scripts/llamacpp_mtp_compare_pre_output_norm.py`, which runs the iteration-307 patched llama.cpp `embeddings_nextn` harness and compares it to a hipEngine serial pre-`output_norm` row copied from the final decoder output before `_run_output_norm_hidden`.
+- Added `tests/test_llamacpp_mtp_compare_pre_output_norm.py` covering fake-harness match, output-norm-suspect classification, pre-output mismatch classification, final-position guard, unavailable classification, and the overwritten-patch detector.
+- Emitted `benchmarks/results/mtp-gguf-iter308-pre-output-norm-compare.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_pre_output_norm.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter307-pre-output-norm-harness-compile.json \
+  --post-output-artifact benchmarks/results/mtp-gguf-iter303-hidden-seed-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter308-pre-output-norm/pos16 \
+  --output benchmarks/results/mtp-gguf-iter308-pre-output-norm-compare.json \
+  --all-rows \
+  --iteration 308
+# status=mismatched
+# llamacpp_rc=0
+# hipengine_status=captured
+# pre_rmse=2.465188216731663
+# pre_max_abs_diff=19.13701629638672
+# classification=llamacpp_pre_output_patch_overwritten_by_post_output_h_nextn
+# next_action=move_or_replace_post_output_h_nextn_assignment_in_llamacpp_patch
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py \
+  tests/test_llamacpp_mtp_compare_hidden_seed.py \
+  tests/test_llamacpp_mtp_build_pre_output_norm_harness.py
+# ................. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter308-pre-output-norm-compare.json \
+  >/tmp/mtp-gguf-iter308-pre-output-norm-compare.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The patched llama.cpp harness ran successfully, but its selected row SHA is identical to the iteration-303 post-`output_norm` oracle:
+  - pre-output patched harness llama.cpp SHA `a0b033227164792ad6d05a5c59adb5cdb018b6cc971fdf881bc31ca8afd27592`
+  - post-output llama.cpp SHA `a0b033227164792ad6d05a5c59adb5cdb018b6cc971fdf881bc31ca8afd27592`
+- This means the iteration-307 patch inserted a pre-`output_norm` `res->t_h_nextn = cur`, but the existing later post-`output_norm` `res->t_h_nextn = cur` overwrote it before `llama-context.cpp` copied `t_h_nextn` into `embeddings_nextn`.
+- HipEngine serial pre-`output_norm` capture worked and produced SHA `5063f20d812adb727746d96ba03ffecdaf19237a10ddd64ba92fd05ebb5ccb27`.
+- The numeric delta against the still-post-output llama.cpp row is not a valid pre-output comparison, but is recorded for traceability:
+  - RMSE `2.465188216731663`
+  - max abs diff `19.13701629638672`
+  - mean abs diff `1.8381368396274667`
+- Next action: replace or move the post-`output_norm` `h_nextn` assignment in the temporary llama.cpp source so `t_h_nextn` remains the pre-`output_norm` row at graph output, then rebuild/rerun the comparison.
