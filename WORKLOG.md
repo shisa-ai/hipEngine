@@ -112342,3 +112342,69 @@ PY
 - Layer-13 `attn_norm_f32` is exact vs the BF16 RMSNorm oracle (`max_abs=0.0`, `rmse=0.0`).
 - Layer 13 is `linear_attention` with `preceding_layer_count=13`.
 - This clears the next layer-13 bisection step: projection / conv-GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-13 projection oracle
+
+### Change
+- Continued iteration 424 by adding `scripts/llamacpp_mtp_audit_layer13_projection_oracle.py`.
+- The script starts from the exact layer-13 attention-norm artifact, hash-checks live `attn_norm_f32`, materializes the layer-13 linear-attention projection weights, and validates `linear_qkv_f32`, `linear_z_f32`, `ssm_alpha_f32`, and `ssm_beta_f32` against `BF16(project_f32(attn_norm_f32, GGUF projection weight))`.
+- Added `tests/test_llamacpp_mtp_audit_layer13_projection_oracle.py` covering attention-norm artifact validation, input hash guards, exact / one-BF16-step / mismatch projection classifications, wrong-layer-type blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter424-layer13-projection-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer13_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_projection_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_projection_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer13_projection_oracle.py \
+  --layer13-attn-norm benchmarks/results/mtp-gguf-iter423-layer13-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter424-layer13-projection-oracle.json
+# status=ready
+# classification=layer13_projections_match_bf16_oracle_exactly
+# input_classification=layer13_projection_input_matches_attn_norm_artifact exact_hash_match=True
+# linear_qkv_f32 exact: max_abs=0.0 rmse=0.0
+# linear_z_f32 exact: max_abs=0.0 rmse=0.0
+# ssm_alpha_f32 exact: max_abs=0.0 rmse=0.0
+# ssm_beta_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention preceding_layer_count=13
+# next_action=audit_layer13_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_projection_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-13 linear-attention projection
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# RED-style focused tests added before retaining real artifact; layer-13 attn_norm
+# source is hash-checked; qkv/gate/alpha/beta projections are exact; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-13 live `attn_norm_f32` preflight hash matches the iteration-423 attention-norm artifact.
+- Layer-13 `linear_qkv_f32`, `linear_z_f32`, `ssm_alpha_f32`, and `ssm_beta_f32` are exact vs the BF16 projection oracle.
+- Layer 13 is `linear_attention` with `preceding_layer_count=13`.
+- This clears the next layer-13 bisection step: conv/GDN under the BF16 contract.
