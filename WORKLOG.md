@@ -105572,3 +105572,96 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - best all-row scan: row `13`, RMSE `0.07481647252067326`, max abs diff `0.30769509077072144`
 - Classification: `layer_boundary_mismatch`.
 - Interpretation: the mismatch is introduced no later than layer `19`; continue the bisection with layer `9`.
+
+## 2026-06-20 — layer 9 still mismatches, bisect moves to layer 4
+
+### Change
+- Continued iteration 313 by reusing the layer-boundary harness builder for midpoint layer `9`.
+- Emitted iteration-313 artifacts:
+  - `benchmarks/results/mtp-gguf-iter313-layer9-harness-build.json`
+  - `benchmarks/results/mtp-gguf-iter313-layer9-llamacpp-build-result.json`
+  - `benchmarks/results/mtp-gguf-iter313-layer9-harness-compile.json`
+  - `benchmarks/results/mtp-gguf-iter313-layer9-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_layer_boundary_harness.py \
+  --plan benchmarks/results/mtp-gguf-iter310-layer-boundary-bisect-plan.json \
+  --base-build benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter313-layer9-harness-build.json \
+  --patched-build-result benchmarks/results/mtp-gguf-iter313-layer9-llamacpp-build-result.json \
+  --harness-compile benchmarks/results/mtp-gguf-iter313-layer9-harness-compile.json \
+  --source-dir /tmp/hipengine-llamacpp-mtp-iter313-layer9-src \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter313-layer9-build \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter313-layer9-build-logs \
+  --harness-dir /tmp/hipengine-llamacpp-mtp-iter313-layer9-harness \
+  --layer-id 9 --clean --iteration 313
+# status=ready, layer_id=9, patch_applied=true, configure_rc=0, build_rc=0,
+# harness_status=compiled
+
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/tmp/hipengine-llamacpp-mtp-iter313-layer9-src/src/models/qwen35moe.cpp')
+text = p.read_text()
+assert text.count('h_nextn_layer_out') == 1
+assert text.count('if (il == 9)') == 1
+assert text.count('h_nextn_post_output_norm') == 1
+assert text.count('h_nextn_pre_output_norm') == 0
+assert text.count('res->t_h_nextn = cur;') == 1
+print('layer9-patch-source-ok')
+PY
+# layer9-patch-source-ok
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_layer_boundary.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter313-layer9-harness-compile.json \
+  --prior-pre-output benchmarks/results/mtp-gguf-iter309-pre-output-norm-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 --layer-id 9 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter313-layer9/pos16 \
+  --output benchmarks/results/mtp-gguf-iter313-layer9-compare.json \
+  --all-rows --iteration 313
+# status=mismatched
+# layer_id=9
+# llamacpp_rc=0
+# hipengine_status=captured
+# rmse=0.04885333305975662
+# max_abs_diff=0.2050567865371704
+# classification=layer_boundary_mismatch
+# next_action=continue_bisect_with_layer_4
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_boundary_harness.py \
+  tests/test_llamacpp_mtp_compare_layer_boundary.py \
+  tests/test_llamacpp_mtp_layer_boundary_bisect_plan.py \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py
+# ........................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The temporary layer-9 patched source is correct:
+  - one `h_nextn_layer_out` tap
+  - one `if (il == 9)` selector
+  - one `h_nextn_post_output_norm` callback
+  - no `h_nextn_pre_output_norm` final-boundary patch
+  - only one `res->t_h_nextn = cur` assignment
+- Layer-9 comparison is still mismatched, with a smaller delta than layer 19:
+  - llama.cpp SHA `05dd4d28be515b0c683f592f9794de560eb8f3599fb24cb3313d4f7238bdf589`
+  - hipEngine SHA `17172df9306018e8e70b3b75d8ab44f2d11c23cd59734ccb6fd77113eb865531`
+  - RMSE `0.04885333305975662`
+  - max abs diff `0.2050567865371704`
+  - mean abs diff `0.03852951448254771`
+  - best all-row scan: row `11`, RMSE `0.046124072619117745`, max abs diff `0.24349987506866455`
+- Classification: `layer_boundary_mismatch`.
+- Interpretation: the mismatch is introduced no later than layer `9`; continue the bisection with layer `4`.
