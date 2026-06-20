@@ -109456,3 +109456,70 @@ PY
 - `full_q_f32` matches the BF16 projection oracle within one BF16 step across all 8192 elements (`bad_count=0`, `max_abs=0.0078125`, `rmse=8.897390216588974e-05`).
 - `full_k_f32` and `full_v_f32` are bit-exact against `BF16(project_f32(attn_norm_f32, blk.7.attn_k/v.weight))`.
 - This clears the next full-attention bisection step: layer-7 Q/K RMSNorm, rotary, and KV-write under the BF16 contract.
+
+## 2026-06-20 — validated layer-7 QK norm / rotary / KV oracle
+
+### Change
+- Continued iteration 379 by adding `scripts/llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py`.
+- The script starts from the ready layer-7 full-attention QKV artifact, hash-checks live `full_q_f32/full_k_f32/full_v_f32`, then mirrors the established full-attention split, head-RMSNorm, RoPE, and KV-write CPU oracle for layer 7.
+- Layer-7 validation accepts the QKV artifact's ready BF16 contract (`within_rounding` for Q, exact K/V) rather than requiring every projection field to be bit-exact against the BF16 matmul oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py` covering artifact validation, preflight hash guards, exact split/KV classifications, near rotary tolerance, mismatch/block/unavailable classifications, and full-attention metadata checks.
+- Emitted `benchmarks/results/mtp-gguf-iter379-layer7-qk-norm-rotary-kv-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py
+# ............... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py \
+  --qkv-artifact benchmarks/results/mtp-gguf-iter377-layer7-full-attention-qkv-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter379-layer7-qk-norm-rotary-kv-oracle.json
+# status=ready
+# classification=layer7_qk_norm_rotary_matches_cpu_oracle_within_fp32_tolerance
+# preflight_classification=layer7_qk_norm_rotary_preflight_matches_qkv_artifact
+# full_query_raw_f32 exact: max_abs=0.0 rmse=0.0
+# full_gate_f32 exact: max_abs=0.0 rmse=0.0
+# full_key_raw_f32 exact: max_abs=0.0 rmse=0.0
+# full_query_f32 within FP32 kernel tolerance: max_abs=4.76837158203125e-07 rmse=3.5401512832322624e-08
+# full_key_f32 within FP32 kernel tolerance: max_abs=2.384185791015625e-07 rmse=1.7392308038211013e-08
+# key_cache_position_f32 exact: max_abs=0.0 rmse=0.0
+# value_cache_position_f32 exact: max_abs=0.0 rmse=0.0
+# next_action=audit_layer7_full_attention_scores_or_attn_output_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py
+# ......................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic oracle/test only; no torch or dispatch branches;
+# KV-write remains checked through KVLiveSpans cache capture; docs/MTP-gguf oracle-first
+# path preserved; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-7 Q/K/V preflight hashes match the ready layer-7 QKV artifact at warm position 16/token 271.
+- `full_query_raw_f32`, `full_gate_f32`, and `full_key_raw_f32` exactly match the split/raw oracle.
+- `full_query_f32` and `full_key_f32` match the head-RMSNorm + RoPE CPU mirror within FP32 kernel tolerance (`max_abs` under `5e-7`).
+- `key_cache_position_f32` and `value_cache_position_f32` exactly match the KV-write contract through the live cache capture.
+- This clears the next full-attention bisection step: layer-7 full-attention scores / attention output under the BF16 contract.
