@@ -102405,3 +102405,59 @@ git diff --check -- hipengine/runtime/qwen35_gguf_runner.py \
 ### Result
 - The real-device capture script is now ready to emit enough host-visible layer-0 buffers for the next CPU GDN/`attn_out` oracle attempt.
 - This is still diagnostic-only and does not change generation math or target AR parity.
+
+## 2026-06-20 — GGUF real extended layer-0 boundary capture succeeded
+
+### Change
+- Continued iteration 264 by rerunning `scripts/gguf_linear_boundary_capture.py` without `--dry-run` after the iteration-263 tap extension.
+- Emitted `benchmarks/results/mtp-gguf-iter264-extended-linear-boundary-capture.json` for the captured 17-token greeting prompt, final position 16/token 271.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+import ctypes
+ctypes.CDLL('libamdhip64.so')
+print('hip OK')
+PY
+# hip OK
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_linear_boundary_capture.py --iteration 264 \
+  --output benchmarks/results/mtp-gguf-iter264-extended-linear-boundary-capture.json
+# status=captured, position=16, token_id=271
+# capture_summary finite=True
+# shapes: attn_norm=2048, linear_qkv=8192, linear_z=4096,
+# ssm_alpha=32, ssm_beta=32, conv_out=8192,
+# recurrent_out=4096, recurrent_bf16=4096, attn_out=2048
+# rms: attn_norm=1.1780647039413452
+# rms: linear_qkv=2.397266149520874, linear_z=2.5856070518493652
+# rms: conv_out=0.7094936370849609
+# rms: recurrent_out=0.02149813249707222
+# rms: recurrent_bf16=0.021449122577905655
+# rms: attn_out=0.010142592713236809
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter264-extended-linear-boundary-capture.json \
+  >/tmp/iter264-extended-capture.pretty && echo extended-capture-json-ok
+# extended-capture-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- \
+  benchmarks/results/mtp-gguf-iter264-extended-linear-boundary-capture.json \
+  WORKLOG.md
+# no output
+```
+
+### Result
+- The first real extended layer-0 boundary capture is available and finite, with enough summaries to start a CPU-side GDN/`attn_out` oracle or BF16-cast error audit.
+- No runtime math or target AR parity changed in this iteration.
