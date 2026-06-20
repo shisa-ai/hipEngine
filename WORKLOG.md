@@ -112871,3 +112871,74 @@ PY
 - Layer-14 `ssm_alpha_f32` and `ssm_beta_f32` are exact vs the BF16 projection oracle.
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
 - This clears the next bisection step: layer-14 conv/GDN under the BF16 contract.
+
+
+
+## 2026-06-20 — validated layer-14 conv/GDN oracle
+
+### Change
+- Continued iteration 432 by adding `scripts/llamacpp_mtp_audit_layer14_conv_gdn_oracle.py`.
+- The script starts from the validated layer-14 projection artifact, replays projection inputs across the warm position-16 sequence, materializes the `blk.14` conv/GDN weights, and validates `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32` against the BF16-contracted conv/GDN oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer14_conv_gdn_oracle.py` covering projection artifact validation, replay input guards, exact / mismatch / unavailable conv-GDN classifications, wrong-next-action blocking, and injected sequence fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter432-layer14-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer14_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_conv_gdn_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_conv_gdn_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer14_conv_gdn_oracle.py \
+  --layer14-projection benchmarks/results/mtp-gguf-iter431-layer14-projection-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter432-layer14-conv-gdn-oracle.json
+# status=ready
+# classification=layer14_warm_conv_gdn_matches_oracle_within_tolerance
+# target_input_classification=target_inputs_match_replay_exactly
+# conv_out_f32 within tolerance: max_abs=1.1920928955078125e-07 rmse=3.604412324165196e-09
+# recurrent_out_f32 within tolerance: max_abs=4.470348358154297e-08 rmse=4.454649982221781e-09
+# recurrent_bf16_f32 within tolerance: max_abs=3.814697265625e-06 rmse=6.143906006172983e-08
+# attn_out_f32 within tolerance: max_abs=0.000244140625 rmse=5.436780156742316e-06
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=14
+# next_action=audit_layer14_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_conv_gdn_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-14 conv/GDN oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before retaining real artifact; projection replay inputs are exact;
+# conv/GDN fields are within declared tolerances; compact artifact contains
+# summaries/hashes only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-14 projection replay inputs match exactly at the warm position-16 boundary.
+- Layer-14 `conv_out_f32` matches within tolerance (`max_abs=1.19e-07`, `rmse=3.60e-09`).
+- Layer-14 `recurrent_out_f32` matches within tolerance (`max_abs=4.47e-08`, `rmse=4.45e-09`).
+- Layer-14 `recurrent_bf16_f32` matches within tolerance (`max_abs=3.81e-06`, `rmse=6.14e-08`).
+- Layer-14 `attn_out_f32` matches within tolerance (`max_abs=2.44140625e-04`, `rmse=5.44e-06`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
+- This clears the next bisection step: layer-14 post-attention residual / MoE boundary.
