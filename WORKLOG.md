@@ -102316,3 +102316,46 @@ git diff --check -- \
 ### Result
 - llama.cpp's raw-prompt server path confirms the exact prompt wrapper is not the cause of the native first-token mismatch: the oracle still starts with `Hello`, while the current native target AR path has been observed returning token 271/newline.
 - The active mismatch search remains downstream of the matched layer-0 aux projections: GDN/`ssm_out`, later-layer math, or a scoped F32 aux-projection experiment.
+
+## 2026-06-20 — GGUF GDN/attn_out CPU-oracle input audit
+
+### Change
+- Continued iteration 262 by auditing the exact runtime and HIP kernel path downstream of the matched layer-0 `ssm_alpha`/`ssm_beta` projection samples.
+- Read `hipengine/runtime/qwen35_gguf_runner.py::_run_linear_attention_attn_only` and `hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip` around the decode-order GDN recurrence.
+- Emitted `benchmarks/results/mtp-gguf-iter262-gdn-attn-out-audit.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Build Qwen3.6 GGUF tensor map/config and record the GDN decode dimensions:
+# hidden_size=2048, num_k_heads=16, num_v_heads=32,
+# head_k_dim=128, head_v_dim=128, ssm_inner_size=4096,
+# linear_qkv_width=8192, ssm_conv_kernel=4, is_moe=True.
+PY
+# artifact: benchmarks/results/mtp-gguf-iter262-gdn-attn-out-audit.json
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter262-gdn-attn-out-audit.json \
+  >/tmp/iter262-gdn-audit.pretty && echo gdn-audit-json-ok
+# gdn-audit-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- benchmarks/results/mtp-gguf-iter262-gdn-attn-out-audit.json \
+  WORKLOG.md
+# no output
+```
+
+### Result
+- A CPU `attn_out` oracle cannot be built from the iter259 capture alone. The next diagnostic tap needs at least `scratch.linear_qkv`, `scratch.linear_z`, `scratch.conv_out`, `scratch.recurrent_out`, and `scratch.recurrent_bf16`; full CPU replay also needs the pre-token `conv_state`/`recurrent_state`.
+- The audited decode order is: hidden RMSNorm → `attn_qkv`/`attn_gate` → alpha/beta projections → conv decode → GDN recurrent RMSNorm+gate → BF16 cast → `ssm_out` projection to `attn_out`.
+- No runtime math or target AR parity changed in this iteration.
