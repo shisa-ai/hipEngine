@@ -111553,3 +111553,69 @@ PY
 - Layer-11 `attn_out_f32` is exact vs the BF16 GGUF projection oracle (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the full-attention path with `preceding_layer_count=11`, `q_width=4096`, and `attn_output_shape=[2048, 4096]`.
 - This clears the next layer-11 bisection step: post-attention residual / MoE boundary.
+
+## 2026-06-20 — validated layer-11 post-attention residual oracle
+
+### Change
+- Continued iteration 412 by adding `scripts/llamacpp_mtp_audit_layer11_post_attn_residual_oracle.py`.
+- The script starts from the exact layer-11 attention-output artifact and the exact layer-11 BF16 handoff artifact, hash-checks live `hidden_in_f32` and `attn_out_f32`, materializes `blk.11.post_attention_norm.weight`, and validates `residual_f32` plus `post_norm_f32` against the BF16 add + RMSNorm oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer11_post_attn_residual_oracle.py` covering source artifact validation, handoff alignment, input hash guards, exact / near / mismatch residual/post-norm classifications, wrong-layer-type blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter412-layer11-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer11_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_post_attn_residual_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_post_attn_residual_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer11_post_attn_residual_oracle.py \
+  --attn-output-artifact benchmarks/results/mtp-gguf-iter411-layer11-attn-output-oracle.json \
+  --handoff-artifact benchmarks/results/mtp-gguf-iter406-layer11-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter412-layer11-post-attn-residual-oracle.json
+# status=ready
+# classification=layer11_post_attn_residual_matches_oracle_exactly
+# input_classification=layer11_post_attn_inputs_match_prior_artifacts
+# residual_f32 exact: max_abs=0.0 rmse=0.0
+# post_norm_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention preceding_layer_count=11
+# next_action=audit_layer11_moe_router_from_post_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_post_attn_residual_oracle.py
+# .................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic post-attention residual/post-norm
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# RED-style focused tests added before retaining real artifact; layer-11 hidden_in
+# and attn_out llama.cpp/GGUF source artifacts are hash-checked; residual and
+# post_norm are exact; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-11 `hidden_in_f32` and `attn_out_f32` preflight hashes match the iteration-406 handoff and iteration-411 attention-output artifacts.
+- Layer-11 `residual_f32` is exact vs `BF16(hidden_in + attn_out)`.
+- Layer-11 `post_norm_f32` is exact vs `BF16(RMSNorm(residual, blk.11.post_attention_norm.weight))`.
+- The capture used the full-attention path with `preceding_layer_count=11`.
+- This clears the next layer-11 bisection step: MoE router from post-norm.
