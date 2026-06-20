@@ -33,6 +33,7 @@ def test_capture_harness_source_loads_decodes_and_writes_hidden_in() -> None:
         "llama_init_from_model",
         "llama_set_embeddings_layer_inp",
         "llama_decode",
+        "batch.n_tokens = n_tokens",
         "llama_get_embeddings_layer_inp",
         "llama_model_n_embd",
         "parse_prompt_tokens",

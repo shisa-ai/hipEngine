@@ -426,6 +426,7 @@ int main(int argc, char ** argv) {
 
     llama_set_embeddings_layer_inp(ctx, (uint32_t) args.layer, true);
     llama_batch batch = llama_batch_init(n_tokens, 0, 1);
+    batch.n_tokens = n_tokens;
     for (int i = 0; i < n_tokens; ++i) {
         batch.token[i] = tokens[(size_t) i];
         batch.pos[i] = i;

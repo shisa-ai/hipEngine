@@ -104164,3 +104164,84 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   `248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271`
   with layer `3`, position `16`, token id `271`, and expected `hidden_in_f32` hash `f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07`.
 - This avoids relying on llama.cpp chat template rendering or tokenizer text mode for the numeric checkpoint comparison.
+
+## 2026-06-20 — llama.cpp exact-token hidden-in capture runs but mismatches hipEngine
+
+### Change
+- Continued iteration 293 by adding `scripts/llamacpp_mtp_run_hidden_in_capture.py`, a wrapper that runs the compiled llama.cpp capture harness, hashes the emitted `.f32` row, compares it to the hipEngine checkpoint hash, and records compact stats/log tails.
+- Added `tests/test_llamacpp_mtp_run_hidden_in_capture.py` for matched, mismatched, failure, metadata/stat, and numeric-reference-delta paths.
+- Fixed the generated capture harness in `scripts/llamacpp_mtp_compile_hidden_in_harness.py` to set `batch.n_tokens = n_tokens` before `llama_decode`; the first real run reached llama.cpp but failed with `decode: n_tokens == 0` before this fix.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter293-llamacpp-hidden-in-capture-harness-batchtokens-compile.json`
+  - `benchmarks/results/mtp-gguf-iter293-llamacpp-hidden-in-capture-result.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_run_hidden_in_capture.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# ........ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compile_hidden_in_harness.py \
+  --build-result benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter293-llamacpp-hidden-in-capture-harness-batchtokens-compile.json \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter293-hidden-in-capture-harness \
+  --harness-kind capture \
+  --timeout-seconds 180 \
+  --iteration 293
+# status=compiled; source contains batch.n_tokens = n_tokens
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_run_hidden_in_capture.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter293-llamacpp-hidden-in-capture-harness-batchtokens-compile.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --layer 3 \
+  --position 16 \
+  --expected-sha256 f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07 \
+  --reference-arrays benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --reference-key hidden_in_f32 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter293-hidden-in/layer3-pos16 \
+  --output benchmarks/results/mtp-gguf-iter293-llamacpp-hidden-in-capture-result.json \
+  --n-gpu-layers 999 \
+  --threads 8 \
+  --timeout-seconds 2400 \
+  --iteration 293
+# status=mismatched
+# returncode=0
+# actual sha256=4e5087dca9da3112bb30d9506f5c6f17dfaa44b053158868f266286b43571444
+# expected sha256=f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07
+# bytes=8192, floats=2048
+# max_abs_diff=0.09140318632125854, mean_abs_diff=0.01902030316489345, rmse=0.023895301258143264
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_run_hidden_in_capture.py \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py \
+  tests/test_llamacpp_mtp_run_build.py
+# .................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter293-llamacpp-hidden-in-capture-result.json \
+  >/tmp/mtp-gguf-iter293-hidden-in-capture-result.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The exact-token llama.cpp capture harness now runs successfully with the patched isolated `libllama.so`; runtime was 2.787s and `llama_decode` returned success.
+- Captured row metadata: `prompt_token_source=token_ids`, `prompt_token_count=17`, `layer=3`, `position=16`, `n_embd=2048`, `dtype=float32`, raw path `/tmp/hipengine-llamacpp-mtp-iter293-hidden-in/layer3-pos16.f32`.
+- Captured row hash is `4e5087dca9da3112bb30d9506f5c6f17dfaa44b053158868f266286b43571444`, which does **not** match hipEngine compact checkpoint `hidden_in_f32` hash `f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07`.
+- Numeric delta versus the JSON full-array hipEngine reference (`benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json`, `hidden_in_f32`) is shape-compatible but nonzero: `max_abs_diff=0.0914031863`, `mean_abs_diff=0.0190203032`, `rmse=0.0238953013`, `actual_l2=1.0993092872`, `reference_l2=1.4133095130`.
+- Note: the JSON full-array reference repacks to sha `46d60fba2f8a3408065f0a5769552e84f23e9289fd5913be1b607811082b0eb5`; the compact checkpoint hash above remains the exact hipEngine checkpoint target.
+- Next action: inspect whether llama.cpp is capturing a different row/window (output buffer layout, layer numbering, or pre/post layer-input point) before comparing later layer tensors.
