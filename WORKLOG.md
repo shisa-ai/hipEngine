@@ -111227,3 +111227,66 @@ PY
 - Source capture hash matches the ready layer-10 expert-output artifact.
 - Layer 11 is `full_attention`, with `preceding_layer_count=11` in the target capture.
 - This clears the next layer-11 bisection step: attention norm under the BF16 contract.
+
+## 2026-06-20 — validated layer-11 attention norm
+
+### Change
+- Continued iteration 407 by adding `scripts/llamacpp_mtp_audit_layer11_attn_norm_oracle.py`.
+- The script starts from the exact layer-11 BF16 handoff artifact, hash-checks live `hidden_in_f32`, materializes `blk.11.attn_norm.weight`, and validates `BF16(RMSNorm(hidden_in_f32, weight, eps_model))` against the captured resident attention norm.
+- Added `tests/test_llamacpp_mtp_audit_layer11_attn_norm_oracle.py` covering handoff validation, input hash guards, exact / mismatch / unavailable classifications, full-attention layer metadata, and injected capture / weight fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter407-layer11-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer11_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_attn_norm_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_attn_norm_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer11_attn_norm_oracle.py \
+  --layer11-handoff benchmarks/results/mtp-gguf-iter406-layer11-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter407-layer11-attn-norm-oracle.json
+# status=ready
+# classification=layer11_attn_norm_matches_bf16_oracle_exactly
+# input_classification=layer11_attn_norm_input_matches_handoff_artifact exact_hash_match=True
+# attn_norm exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention preceding_layer_count=11
+# next_action=audit_layer11_attention_projection_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer11_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer7_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer10_attn_norm_oracle.py
+# ........................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic full-attention norm oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before real artifact; llama.cpp/CPU formula oracle retained; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-11 `hidden_in_f32` matches the exact handoff artifact before norm.
+- Layer-11 attention RMSNorm matches the BF16 formula oracle exactly at warm position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
+- Layer 11 is `full_attention`, with `preceding_layer_count=11` in the capture.
+- This clears the next layer-11 bisection step: full-attention projection under the BF16 contract.
