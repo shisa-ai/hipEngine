@@ -106301,3 +106301,52 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - `blk.0.attn_norm.weight` materialization is `dense_f32` / `f32`; alternate eps candidates (`0`, `1e-5`) do not win.
 - Conclusion: the iteration-320 mismatch is not an RMSNorm weight or epsilon bug; it is the existing BF16 activation contraction before layer-0 RMSNorm. Exact llama.cpp parity for this oracle now requires either a temporary F32 activation/RMSNorm diagnostic path in hipEngine or a BF16-contracted llama.cpp oracle, not deeper linear-attention debugging.
 - Next action: decide whether to add a narrow F32 activation/RMSNorm diagnostic path for parity bisection or switch the immediate oracle to a BF16-contracted llama.cpp expectation.
+
+## 2026-06-20 — selected BF16-contracted layer-0 oracle policy
+
+### Change
+- Continued iteration 322 by adding `scripts/llamacpp_mtp_layer0_dtype_oracle_policy.py` to turn the iteration-321 RMSNorm formula proof into an explicit oracle policy decision for the next layer-0 bisection step.
+- Added `tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py` covering exact-candidate readiness, missing-fact rejection, runtime boundary field extraction, and synthetic policy artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter322-layer0-dtype-oracle-policy.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer0_dtype_oracle_policy.py \
+  --audit benchmarks/results/mtp-gguf-iter321-layer0-attn-norm-formula-audit.json \
+  --attn-compare benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-compare.json \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --output benchmarks/results/mtp-gguf-iter322-layer0-dtype-oracle-policy.json \
+  --iteration 322
+# status=ready
+# decision=bf16_contracted_llamacpp_or_cpu_oracle
+# first_next_probe=linear_qkv_f32
+# next_action=build_layer0_bf16_contracted_projection_oracle
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py \
+  tests/test_llamacpp_mtp_audit_layer0_attn_norm_formula.py \
+  tests/test_llamacpp_mtp_compare_layer0_attn_norm.py
+# ............... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Selected policy: `bf16_contracted_llamacpp_or_cpu_oracle` for layer-0 AR boundary bisection only.
+- Rationale: iteration 321 proved hipEngine's resident path exactly matches the BF16-contracted input/RMSNorm/output candidate. Adding a temporary hipEngine F32 activation branch is not needed for the next diagnostic and would add cleanup debt before finding any deeper unexplained mismatch.
+- Explicit non-goal: this does **not** change the documented MTP seed contract. `docs/MTP-gguf.md` still requires the post-output_norm hidden seed at fp32 for MTP parity.
+- Boundary fields available from `capture_linear_attention_boundary`: `attn_norm_f32`, `linear_qkv_f32`, `linear_z_f32`, `ssm_alpha_f32`, `ssm_beta_f32`, `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32`.
+- Next action: build the layer-0 BF16-contracted projection oracle, starting with `linear_qkv_f32` and `linear_z_f32`, to separate projection/quantization mismatch from later GDN state effects.
