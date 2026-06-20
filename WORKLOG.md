@@ -102120,3 +102120,52 @@ git diff --check -- hipengine/runtime/qwen35_gguf_runner.py \
 ### Result
 - The next real-device step is now unblocked at the API level: a script can run the captured 17-token prompt through the resident session and call the tap at the selected position/layer to emit real GPU boundary arrays.
 - This is still diagnostic-only and does not change generation math or target AR parity.
+
+## 2026-06-20 — GGUF boundary capture script added with dry-run guard
+
+### Change
+- Continued iteration 258 by adding `scripts/gguf_linear_boundary_capture.py`.
+- The script warms resident state with prompt tokens before the selected position, then calls the iteration-257 boundary tap to capture layer `attn_norm`, `ssm_alpha`, `ssm_beta`, and `attn_out` summaries on HIP-capable machines.
+- Added `--dry-run`/no-HIP guarded behavior plus `tests/test_gguf_linear_boundary_capture_script.py`, so command/schema validation does not require loading the full GGUF.
+- Emitted dry-run artifact `benchmarks/results/mtp-gguf-iter258-linear-boundary-capture-dry-run.json` for the captured 17-token greeting prompt.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_linear_boundary_capture.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_linear_boundary_capture_script.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_linear_boundary_capture.py --dry-run \
+  --output benchmarks/results/mtp-gguf-iter258-linear-boundary-capture-dry-run.json
+# status=dry_run, position=16, token_id=271
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter258-linear-boundary-capture-dry-run.json \
+  >/tmp/iter258-boundary-capture-dry.pretty && echo boundary-capture-dry-json-ok
+# boundary-capture-dry-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- scripts/gguf_linear_boundary_capture.py \
+  tests/test_gguf_linear_boundary_capture_script.py \
+  benchmarks/results/mtp-gguf-iter258-linear-boundary-capture-dry-run.json \
+  WORKLOG.md
+# no output
+```
+
+### Result
+- The real-device command path is now packaged and schema-tested; run it without `--dry-run` on the target ROCm box to emit actual layer-0 boundary summaries for the final greeting token.
+- This still does not change runtime math or target AR parity.
