@@ -101818,3 +101818,40 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - The greeting mismatch is not explained by final BF16 `output_norm` storage or BF16-activation Q6_K lm-head precision: the fp32 seed + f32 lm-head still greedily selects token 271 (`'\n\n'`), not llama.cpp's token 9419 (`'Hello'`).
 - Continue target AR parity triage earlier in the stack (prompt/checkpoint semantics, recurrent/full-attention state, MoE/GDN math) before MTP acceptance/performance tuning.
+
+## 2026-06-20 — GGUF prompt-variant audit ruled out prompt suffix/tokenization drift for the greeting mismatch
+
+### Change
+- Continued iteration 250 target AR parity triage from the prompt-template/special-token hypothesis before touching model math.
+- Compared native `build_chat_prompt(..., reasoning='off')` against the previously logged llama.cpp reasoning-off token IDs and server log generation prompt.
+- Ran one resident-session diagnostic over current and nearby prompt variants (`no_reasoning_suffix`, omitted/final single newline after `</think>`, open `<think>`, assistant-only generation prompt, BOS+current, raw user text).
+
+### Evidence
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Build Qwen3.6 greeting prompt variants, compare current token IDs with the
+# logged llama.cpp reasoning-off 17-token prompt, then run
+# Qwen35GGUFResidentSession.prefill(..., return_logits=True) for each variant.
+PY
+# current_tokens [248045, 846, 198, 7734, 264, 2716, 40719, 13,
+#                 248046, 198, 248045, 74455, 198, 248068, 271,
+#                 248069, 271]
+# matches_expected_from_test True
+# current_decoded '<|im_start|>user\nWrite a short greeting.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n'
+# llama.cpp server log confirms the same generation prompt suffix:
+# '<|im_start|>assistant\n<think>\n\n</think>\n\n', preserved tokens 248068/248069, task.n_tokens=17.
+# native prefill current_llamacpp_reasoning_off -> 271 '\n\n'
+# top8 current: 271 '\n\n', 64 'a', 198 '\n', 77 'n', 248044 '<|endoftext|>', 286 'ing', ...
+# no_reasoning_suffix -> 16 '1'
+# omit_final_double_lf_after_think_end -> 198 '\n'
+# single_lf_after_think_end -> 248045 '<|im_start|>'
+# open_think_empty -> 16 '1'
+# assistant_only_generation_prompt -> 220 ' '
+# bos_plus_current -> 13 '.'
+# raw_user_text_only -> 220 ' '
+```
+
+### Result
+- The native prompt builder exactly matches the captured llama.cpp reasoning-off 17-token prompt and server log generation suffix.
+- Nearby suffix/BOS/raw prompt variants do not produce llama.cpp's token 9419 (`'Hello'`); the mismatch is unlikely to be a prompt-template/tokenization off-by-one.
+- Continue target AR parity triage in state/math execution (checkpoint/prefill segmentation, recurrent/full-attention state, MoE/GDN) before MTP acceptance/performance tuning.
