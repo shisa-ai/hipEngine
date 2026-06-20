@@ -114021,3 +114021,72 @@ PY
 - Layer-16 `attn_out_f32` is exact (`max_abs=0.0`, `rmse=0.0`).
 - The replay starts from zero state and covers positions 0..16 for the normal `linear_attention` MoE layer.
 - This clears the next bisection step: layer-16 post-attention residual / MoE boundary.
+
+## 2026-06-20 — validated layer-16 post-attention residual oracle
+
+### Change
+- Continued iteration 449 by adding `scripts/llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py`.
+- The script starts from the layer-16 conv/GDN artifact plus the layer-16 BF16 handoff artifact, hash-checks live `hidden_in_f32` and `attn_out_f32`, materializes `blk.16.post_attention_norm.weight`, and validates `residual_f32` plus `post_norm_f32` against the BF16 residual/RMSNorm oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py` covering source artifact validation, input hash guards, exact / tolerance / mismatch residual classifications, wrong-layer/type metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter449-layer16-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py \
+  --conv-gdn-artifact benchmarks/results/mtp-gguf-iter448-layer16-conv-gdn-oracle.json \
+  --handoff-artifact benchmarks/results/mtp-gguf-iter445-layer16-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter449-layer16-post-attn-residual-oracle.json
+# status=ready
+# classification=layer16_post_attn_residual_matches_oracle_exactly
+# input_classification=layer16_post_attn_inputs_match_prior_artifacts
+# residual_f32 exact: max_abs=0.0 rmse=0.0
+# post_norm_f32 exact: max_abs=0.0 rmse=0.0
+# norm=blk.16.post_attention_norm.weight F32 shape=[2048]
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=16
+# next_action=audit_layer16_moe_router_from_post_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py
+# .................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-16 post-attention residual/post-norm
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# focused RED-style tests cover source validation, input hashes, exact,
+# tolerance, mismatch, and unavailable paths; layer-16 handoff and conv/GDN
+# source artifacts are hash-checked; residual and post-attention RMSNorm are
+# exact; compact artifact contains summaries/hashes only; no performance claim
+# changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-16 `hidden_in_f32` and `attn_out_f32` preflight hashes match the iteration-445 handoff and iteration-448 conv/GDN artifacts.
+- Layer-16 post-attention residual is exact vs `BF16(hidden_in_f32 + attn_out_f32)` (`max_abs=0.0`, `rmse=0.0`).
+- Layer-16 post-attention RMSNorm is exact after BF16 contraction (`max_abs=0.0`, `rmse=0.0`) using `blk.16.post_attention_norm.weight` (`F32`, shape `[2048]`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=16`.
+- This clears the next bisection step: layer-16 MoE router from post-norm.
