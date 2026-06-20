@@ -103024,3 +103024,58 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - Exact layer-0 post-attention arrays are now available for CPU residual/add-RMSNorm and MoE/shared-expert combine checks, not just summary statistics.
 - This remains diagnostic-only and does not change generation math or target AR parity.
+
+## 2026-06-20 — GGUF layer-0 residual and post-norm match CPU oracles
+
+### Change
+- Continued iteration 275 by adding `scripts/gguf_layer_residual_norm_compare.py` and `tests/test_gguf_layer_residual_norm_compare.py`.
+- The script consumes the iteration-274 full-array layer capture, checks `residual == BF16(hidden_in + attn_out)`, dequantizes layer-0 `post_attention_norm`, and compares captured `post_norm` against CPU direct-weight RMSNorm rounded to BF16.
+- Emitted `benchmarks/results/mtp-gguf-iter275-layer-residual-norm-compare.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_layer_residual_norm_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_layer_residual_norm_compare.py
+# .. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_layer_residual_norm_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter274-linear-layer-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter275-layer-residual-norm-compare.json \
+  --layer 0 --iteration 275
+# residual_max_abs=0.0
+# post_norm_max_abs=0.03125
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter275-layer-residual-norm-compare.json \
+  >/tmp/iter275-layer-resnorm.pretty && echo layer-resnorm-json-ok
+# layer-resnorm-json-ok
+
+git diff --check -- scripts/gguf_layer_residual_norm_compare.py \
+  tests/test_gguf_layer_residual_norm_compare.py \
+  benchmarks/results/mtp-gguf-iter275-layer-residual-norm-compare.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-0 residual add is bit-exact: `residual == BF16(hidden_in + attn_out)`.
+- Layer-0 post-attention RMSNorm matches the CPU direct-weight GGUF RMSNorm within BF16-scale tolerance: max_abs=0.03125.
+- The remaining layer-0 post-attention search moves to MoE/shared-expert combine and selected-expert routing/output accumulation.
+- No runtime math or target AR parity changed in this iteration.

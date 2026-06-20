@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_layer_residual_norm_cpu_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 275,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_capture": "benchmarks/results/mtp-gguf-iter274-linear-layer-full-arrays.json",
+  "source_iteration": 274,
+  "layer_id": 0,
+  "position": 16,
+  "token_id": 271,
+  "norm_weight_name": "blk.0.post_attention_norm.weight",
+  "residual_vs_cpu_bf16": {
+    "count": 2048,
+    "max_abs_diff": 0.0,
+    "rms_abs_diff": 0.0,
+    "mean_abs_diff": 0.0,
+    "reference_rms": 0.01305458601564169,
+    "candidate_rms": 0.01305458601564169
+  },
+  "post_norm_vs_cpu_bf16": {
+    "count": 2048,
+    "max_abs_diff": 0.03125,
+    "rms_abs_diff": 0.0018319704104214907,
+    "mean_abs_diff": 0.0006204918026924133,
+    "reference_rms": 0.7013654708862305,
+    "candidate_rms": 0.7008966207504272
+  },
+  "post_norm_cpu_f32_vs_bf16": {
+    "count": 2048,
+    "max_abs_diff": 0.02610015869140625,
+    "rms_abs_diff": 0.0012362523702904582,
+    "mean_abs_diff": 0.0006497218273580074,
+    "reference_rms": 0.701079785823822,
+    "candidate_rms": 0.7013654708862305
+  },
+  "samples": {
+    "cpu_residual": [
+      -0.0103759765625,
+      0.002166748046875,
+      0.009521484375,
+      0.000110626220703125,
+      -0.0126953125,
+      0.00775146484375,
+      -0.0125732421875,
+      0.000156402587890625
+    ],
+    "device_residual": [
+      -0.0103759765625,
+      0.002166748046875,
+      0.009521484375,
+      0.000110626220703125,
+      -0.0126953125,
+      0.00775146484375,
+      -0.0125732421875,
+      0.000156402587890625
+    ],
+    "cpu_post_norm_bf16": [
+      -0.94140625,
+      0.15234375,
+      0.63671875,
+      0.006591796875,
+      -0.87890625,
+      0.50390625,
+      -1.0546875,
+      0.00946044921875
+    ],
+    "device_post_norm": [
+      -0.9453125,
+      0.15234375,
+      0.6328125,
+      0.006591796875,
+      -0.87890625,
+      0.5,
+      -1.0546875,
+      0.00946044921875
+    ]
+  },
+  "within_tolerance": true,
+  "conclusion": "Layer-0 residual add is bit-exact versus BF16(hidden_in + attn_out), and post_attention_norm matches the CPU direct-weight RMSNorm within BF16-scale tolerance (max_abs=0.03125). The next unchecked boundary is MoE/shared-expert combine or later layers."
+}
