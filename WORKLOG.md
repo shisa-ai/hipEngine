@@ -103079,3 +103079,77 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-0 post-attention RMSNorm matches the CPU direct-weight GGUF RMSNorm within BF16-scale tolerance: max_abs=0.03125.
 - The remaining layer-0 post-attention search moves to MoE/shared-expert combine and selected-expert routing/output accumulation.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF layer-0 MoE/shared combine matches CPU formula
+
+### Change
+- Continued iteration 276 by extending `Qwen35GGUFResidentSession.capture_linear_attention_layer()` to also capture MoE routing weights, shared-expert gate logit, and selected expert ids for MoE layers.
+- Updated `scripts/gguf_linear_layer_capture.py` so full-array artifacts can include those routing scalars while preserving selected expert ids as integer JSON values.
+- Added `scripts/gguf_layer_moe_combine_compare.py` and `tests/test_gguf_layer_moe_combine_compare.py` to replay the fused Paro combine formula on CPU: `BF16(residual + BF16(sum_i routing_weight_i * selected_down_i) + sigmoid(shared_gate) * shared_out)`.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter276-linear-layer-routing-full-arrays.json`
+  - `benchmarks/results/mtp-gguf-iter276-layer-moe-combine-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_linear_layer_capture.py \
+  scripts/gguf_layer_moe_combine_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_linear_layer_capture_script.py \
+  tests/test_gguf_layer_moe_combine_compare.py
+# .................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_linear_layer_capture.py \
+  --iteration 276 --include-arrays \
+  --output benchmarks/results/mtp-gguf-iter276-linear-layer-routing-full-arrays.json
+# status=captured position=16 token_id=271 layer_id=0
+# selected_experts=[200, 140, 67, 81, 192, 177, 194, 86]
+# routing_weights=[0.5838411450386047, 0.1831294745206833, 0.07267007976770401, 0.03895794600248337, 0.033023711293935776, 0.03302045166492462, 0.02825228124856949, 0.027104869484901428]
+# shared_gate_logit=-2.7660369873046875
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_moe_combine_compare.py \
+  --capture benchmarks/results/mtp-gguf-iter276-linear-layer-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter276-layer-moe-combine-compare.json \
+  --iteration 276
+# layer_out_max_abs=0.0
+# layer_out_rms=0.0
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter276-linear-layer-routing-full-arrays.json \
+  >/tmp/iter276-layer-routing.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter276-layer-moe-combine-compare.json \
+  >/tmp/iter276-moe-combine.pretty
+
+git diff --check -- \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_linear_layer_capture.py \
+  scripts/gguf_layer_moe_combine_compare.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_linear_layer_capture_script.py \
+  tests/test_gguf_layer_moe_combine_compare.py \
+  benchmarks/results/mtp-gguf-iter276-linear-layer-routing-full-arrays.json \
+  benchmarks/results/mtp-gguf-iter276-layer-moe-combine-compare.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-0 MoE/shared-expert combine is bit-exact against the fused-kernel CPU formula: `layer_out_vs_cpu.max_abs_diff=0.0`, `rms_abs_diff=0.0`.
+- Weighted selected expert accumulation only changes by expected BF16 rounding (`weighted_selected_vs_bf16.max_abs_diff=0.00011600181460380554`) before the final combine.
+- Layer-0 final output is now fully explained by previous attention, residual/RMSNorm, and MoE/shared-expert diagnostics; target AR parity is still not fixed. Continue narrowing later-layer propagation or final output head.

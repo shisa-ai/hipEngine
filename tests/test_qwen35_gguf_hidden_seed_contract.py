@@ -494,7 +494,21 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         }
         return payloads[int(ptr)]
 
+    def fake_copy_f32(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
+        calls.append(("copy_f32", ptr, elements, runtime))
+        payloads = {
+            1600: np.asarray([0.1, 0.2, 0.3], dtype=np.float32),
+            1716: np.asarray([-0.25], dtype=np.float32),
+        }
+        return payloads[int(ptr)]
+
+    def fake_copy_i64(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
+        calls.append(("copy_i64", ptr, elements, runtime))
+        return np.asarray([7, 8, 9], dtype=np.int64)
+
     monkeypatch.setattr(gguf_runner, "_copy_bf16_ptr_to_host_f32", fake_copy_bf16)
+    monkeypatch.setattr(gguf_runner, "_copy_f32_ptr_to_host", fake_copy_f32)
+    monkeypatch.setattr(gguf_runner, "_copy_i64_ptr_to_host", fake_copy_i64)
 
     runtime = FakeRuntime()
     session = object.__new__(Qwen35GGUFResidentSession)
@@ -508,6 +522,7 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         layer_types=(gguf_runner.LINEAR_ATTENTION,),
         is_moe=True,
         expert_used_count=3,
+        expert_count=4,
     )
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(config=cfg),
@@ -520,6 +535,9 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         residual=SimpleNamespace(ptr=1200),
         moe_down_out=SimpleNamespace(ptr=1300),
         moe_shared_out=SimpleNamespace(ptr=1400),
+        moe_routing_weights=SimpleNamespace(ptr=1600),
+        moe_router_logits=SimpleNamespace(ptr=1700),
+        moe_selected_experts=SimpleNamespace(ptr=1800),
         ffn_down=SimpleNamespace(ptr=1500),
     )
 
@@ -539,16 +557,24 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         "residual_shape": [4],
         "ffn_or_moe_down_shape": [12],
         "moe_shared_out_shape": [4],
+        "moe_routing_weights_shape": [3],
+        "moe_shared_gate_shape": [1],
+        "moe_selected_experts_shape": [3],
         "layer_out_shape": [4],
         "finite": True,
     }
     np.testing.assert_allclose(capture.layer_out_f32, [6.0, 6.1, 6.2, 6.3])
+    np.testing.assert_allclose(capture.moe_routing_weights_f32, [0.1, 0.2, 0.3])
+    np.testing.assert_array_equal(capture.moe_selected_experts_i64, [7, 8, 9])
     assert calls == [
         ("position", 3, 0),
         ("token", 17, 0),
         ("layer", 0, 100, 200, 0),
         ("device_synchronize",),
         ("copy_bf16", 1400, 4, runtime),
+        ("copy_f32", 1600, 3, runtime),
+        ("copy_f32", 1716, 1, runtime),
+        ("copy_i64", 1800, 3, runtime),
         ("copy_bf16", 100, 4, runtime),
         ("copy_bf16", 1000, 4, runtime),
         ("copy_bf16", 1100, 4, runtime),

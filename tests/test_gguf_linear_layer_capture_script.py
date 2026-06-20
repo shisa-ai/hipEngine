@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from scripts.gguf_linear_layer_capture import _plan_artifact
+from scripts.gguf_linear_layer_capture import _array_payload_for_json, _plan_artifact
 
 
 def test_linear_layer_capture_dry_run_writes_plan_artifact(tmp_path: Path) -> None:
@@ -75,6 +75,13 @@ def test_linear_layer_capture_requires_include_arrays_for_array_keys(tmp_path: P
 
     assert result.returncode != 0
     assert "--array-keys requires --include-arrays" in result.stderr
+
+
+def test_linear_layer_capture_serializes_integer_arrays_as_ints() -> None:
+    payload = _array_payload_for_json(np.asarray([200, 140, 67], dtype=np.int64))
+
+    assert payload == [200, 140, 67]
+    assert all(isinstance(item, int) for item in payload)
 
 
 def test_linear_layer_capture_plan_records_selected_position() -> None:

@@ -18,7 +18,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession  # noqa: E402
 from scripts.gguf_linear_boundary_capture import (  # noqa: E402
-    _array_payload,
     _array_summary,
     _parse_array_keys,
     _parse_tokens,
@@ -167,14 +166,27 @@ def capture_linear_layer(
     }
     if capture.moe_shared_out_f32 is not None:
         captured_arrays["moe_shared_out_f32"] = capture.moe_shared_out_f32
+    if capture.moe_routing_weights_f32 is not None:
+        captured_arrays["moe_routing_weights_f32"] = capture.moe_routing_weights_f32
+    if capture.moe_shared_gate_f32 is not None:
+        captured_arrays["moe_shared_gate_f32"] = capture.moe_shared_gate_f32
+    if capture.moe_selected_experts_i64 is not None:
+        captured_arrays["moe_selected_experts_i64"] = capture.moe_selected_experts_i64
     artifact["buffers"] = {name: _array_summary(array) for name, array in captured_arrays.items()}
     if include_arrays:
         selected_arrays = _select_arrays(captured_arrays, array_keys)
         artifact["array_keys"] = list(selected_arrays)
         artifact["arrays"] = {
-            name: _array_payload(array) for name, array in selected_arrays.items()
+            name: _array_payload_for_json(array) for name, array in selected_arrays.items()
         }
     return artifact
+
+
+def _array_payload_for_json(array: np.ndarray) -> list[float] | list[int]:
+    values = np.asarray(array).reshape(-1)
+    if np.issubdtype(values.dtype, np.integer):
+        return [int(x) for x in values]
+    return [float(x) for x in values.astype(np.float32)]
 
 
 def _plan_artifact(

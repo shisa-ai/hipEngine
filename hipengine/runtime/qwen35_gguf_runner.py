@@ -386,11 +386,22 @@ class Qwen35GGUFLinearAttentionLayerCapture:
     ffn_or_moe_down_f32: np.ndarray
     layer_out_f32: np.ndarray
     moe_shared_out_f32: np.ndarray | None = None
+    moe_routing_weights_f32: np.ndarray | None = None
+    moe_shared_gate_f32: np.ndarray | None = None
+    moe_selected_experts_i64: np.ndarray | None = None
 
     def as_summary_dict(self) -> dict[str, object]:
         optional_finite = True
         if self.moe_shared_out_f32 is not None:
             optional_finite = bool(np.all(np.isfinite(self.moe_shared_out_f32)))
+        if self.moe_routing_weights_f32 is not None:
+            optional_finite = optional_finite and bool(
+                np.all(np.isfinite(self.moe_routing_weights_f32))
+            )
+        if self.moe_shared_gate_f32 is not None:
+            optional_finite = optional_finite and bool(
+                np.all(np.isfinite(self.moe_shared_gate_f32))
+            )
         return {
             "layer_id": int(self.layer_id),
             "token_id": int(self.token_id),
@@ -407,6 +418,19 @@ class Qwen35GGUFLinearAttentionLayerCapture:
                 None
                 if self.moe_shared_out_f32 is None
                 else list(self.moe_shared_out_f32.shape)
+            ),
+            "moe_routing_weights_shape": (
+                None
+                if self.moe_routing_weights_f32 is None
+                else list(self.moe_routing_weights_f32.shape)
+            ),
+            "moe_shared_gate_shape": (
+                None if self.moe_shared_gate_f32 is None else list(self.moe_shared_gate_f32.shape)
+            ),
+            "moe_selected_experts_shape": (
+                None
+                if self.moe_selected_experts_i64 is None
+                else list(self.moe_selected_experts_i64.shape)
             ),
             "layer_out_shape": list(self.layer_out_f32.shape),
             "finite": bool(
@@ -3650,9 +3674,23 @@ class Qwen35GGUFResidentSession:
         )
         down_elements = hidden_size * top_k if cfg.is_moe else hidden_size
         moe_shared_out = None
+        moe_routing_weights = None
+        moe_shared_gate = None
+        moe_selected_experts = None
         if cfg.is_moe:
             moe_shared_out = _copy_bf16_ptr_to_host_f32(
                 int(self.scratch.moe_shared_out.ptr), hidden_size, runtime=runtime
+            )
+            moe_routing_weights = _copy_f32_ptr_to_host(
+                int(self.scratch.moe_routing_weights.ptr), top_k, runtime=runtime
+            )
+            shared_gate_ptr = (
+                int(self.scratch.moe_router_logits.ptr)
+                + int(cfg.expert_count) * DType.FP32.itemsize
+            )
+            moe_shared_gate = _copy_f32_ptr_to_host(shared_gate_ptr, 1, runtime=runtime)
+            moe_selected_experts = _copy_i64_ptr_to_host(
+                int(self.scratch.moe_selected_experts.ptr), top_k, runtime=runtime
             )
 
         return Qwen35GGUFLinearAttentionLayerCapture(
@@ -3681,6 +3719,9 @@ class Qwen35GGUFResidentSession:
                 int(self._hidden_b.ptr), hidden_size, runtime=runtime
             ),
             moe_shared_out_f32=moe_shared_out,
+            moe_routing_weights_f32=moe_routing_weights,
+            moe_shared_gate_f32=moe_shared_gate,
+            moe_selected_experts_i64=moe_selected_experts,
         )
 
     def _run_current_hidden_to_final_hidden(
@@ -6194,6 +6235,20 @@ def _copy_f32_ptr_to_host(ptr: int, elements: int, *, runtime: HipRuntime) -> np
     if elements <= 0:
         raise ValueError("elements must be positive")
     values = np.empty((elements,), dtype=np.float32)
+    copy_device_to_host(
+        host_array_ptr(values),
+        DeviceBuffer(int(ptr), values.nbytes),
+        values.nbytes,
+        runtime=runtime,
+    )
+    return values
+
+
+def _copy_i64_ptr_to_host(ptr: int, elements: int, *, runtime: HipRuntime) -> np.ndarray:
+    elements = int(elements)
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    values = np.empty((elements,), dtype=np.int64)
     copy_device_to_host(
         host_array_ptr(values),
         DeviceBuffer(int(ptr), values.nbytes),
