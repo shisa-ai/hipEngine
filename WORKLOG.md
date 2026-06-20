@@ -105312,3 +105312,68 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - mean abs diff `0.3372998724516947`
   - best all-row scan: row `11`, RMSE `0.41610622311193585`, max abs diff `4.8981032371521`
 - Next action: bisect final decoder-layer output before `output_norm`, likely by adding a layer-boundary capture between llama.cpp and hipEngine serial replay.
+
+## 2026-06-20 — planned decoder layer-boundary bisect for pre-output mismatch
+
+### Change
+- Continued iteration 310 by adding `scripts/llamacpp_mtp_layer_boundary_bisect_plan.py` to derive a concrete layer-boundary bisection plan from real llama.cpp anchors, the existing hipEngine resident capture helper, and the iteration-309 true pre-`output_norm` mismatch artifact.
+- Added `tests/test_llamacpp_mtp_layer_boundary_bisect_plan.py` covering the unique llama.cpp `l_out` anchor, idempotent post-output preservation state, the guard that the final pre-output patch must be absent for layer captures, hipEngine `capture_attention_layer(..., run_preceding_layers=True)` readiness, binary probe ordering, and synthetic artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter310-layer-boundary-bisect-plan.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_boundary_bisect_plan.py
+# ........ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer_boundary_bisect_plan.py \
+  --qwen35moe /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp \
+  --context /home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --compare-artifact benchmarks/results/mtp-gguf-iter309-pre-output-norm-compare.json \
+  --output benchmarks/results/mtp-gguf-iter310-layer-boundary-bisect-plan.json \
+  --iteration 310
+# status=ready
+# conclusion=layer_boundary_bisect_plan_ready
+# llamacpp_layer_patch_ready=true
+# hipengine_capture_ready=true
+# first_probe_layer=39
+# next_action=build_layer_boundary_capture_for_layer_39_and_compare
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_boundary_bisect_plan.py \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py \
+  tests/test_llamacpp_mtp_build_pre_output_norm_harness.py
+# ..................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter310-layer-boundary-bisect-plan.json \
+  >/tmp/mtp-gguf-iter310-layer-boundary-bisect-plan.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The plan is ready and uses the clean external llama.cpp source, not the iteration-309 pre-output patched source, because the final pre-output patch would overwrite a selected layer tap.
+- llama.cpp patch facts:
+  - unique `l_out` layer boundary anchor count: `1`
+  - post-output preserve patch state: `needs_patch`
+  - final pre-output patch count in clean source: `0`
+  - effective capture label: `h_nextn_layer_out`
+- hipEngine side is ready without runtime edits: warm prior prompt tokens with `session.step(...)`, then call `session.capture_attention_layer(token_id, position=16, layer_id=<target>, run_preceding_layers=True)` and compare `layer_out_f32`.
+- Layer count inferred for the MTP-bearing Qwen3.6 35B GGUF is `40`.
+- Recommended bisection order starts with final layer `39` to align against the iteration-309 pre-output boundary, then midpoint probes `[19, 9, 29]`.
+- Next action: build a temporary layer-39 llama.cpp `h_nextn_layer_out` capture and compare it to hipEngine `capture_attention_layer(...).layer_out_f32`.
