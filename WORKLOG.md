@@ -112408,3 +112408,69 @@ PY
 - Layer-13 `linear_qkv_f32`, `linear_z_f32`, `ssm_alpha_f32`, and `ssm_beta_f32` are exact vs the BF16 projection oracle.
 - Layer 13 is `linear_attention` with `preceding_layer_count=13`.
 - This clears the next layer-13 bisection step: conv/GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-13 conv/GDN oracle
+
+### Change
+- Continued iteration 425 by adding `scripts/llamacpp_mtp_audit_layer13_conv_gdn_oracle.py`.
+- The script starts from the layer-13 projection artifact, captures/replays the warm prefix through layer-13 linear-attention state, verifies target projection inputs, and validates `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32` against the BF16-contracted CPU replay oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer13_conv_gdn_oracle.py` covering projection artifact validation, target input guards, exact / tolerance / mismatch conv-GDN classifications, unavailable capture, and injected replay fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter425-layer13-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer13_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_conv_gdn_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_conv_gdn_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer13_conv_gdn_oracle.py \
+  --layer13-projection benchmarks/results/mtp-gguf-iter424-layer13-projection-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter425-layer13-conv-gdn-oracle.json
+# status=ready
+# classification=layer13_warm_conv_gdn_matches_oracle_within_tolerance
+# target_input_classification=target_inputs_match_replay_exactly
+# conv_out_f32 within tolerance: max_abs=1.1920928955078125e-07 rmse=2.9992137662304685e-09
+# recurrent_out_f32 within tolerance: max_abs=5.960464477539063e-08 rmse=3.180375296452098e-09
+# recurrent_bf16_f32 within tolerance: max_abs=2.3283064365386963e-10 rmse=3.637978807091713e-12
+# attn_out_f32 within tolerance: max_abs=7.450580596923828e-09 rmse=1.646361241780525e-10
+# target layer type=linear_attention preceding_layer_count=13
+# next_action=audit_layer13_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_conv_gdn_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-13 conv/GDN oracle/test only; no torch
+# or dispatch branches; no attention/KV ABI changed; RED-style focused tests
+# added before retaining real artifact; layer-13 projection replay inputs are
+# exact; conv/recurrent/recurrent_bf16/attn_out are within fp32/BF16 replay
+# tolerances; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-13 warm replay target projection inputs match exactly before conv/GDN replay.
+- Layer-13 `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32` match the stateful CPU replay oracle within fp32/BF16 tolerances.
+- Layer 13 is `linear_attention` with `preceding_layer_count=13`.
+- This clears the next layer-13 bisection step: post-attention residual / MoE boundary.
