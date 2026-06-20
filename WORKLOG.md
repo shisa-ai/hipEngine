@@ -109055,3 +109055,59 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-6 projection input `attn_norm_f32` hash matches the exact attention-norm artifact at warm position 16/token 271.
 - QKV and Z/gate projections match the BF16 projection oracle within the accepted one-BF16-step rounding envelope; SSM alpha/beta projections match exactly.
 - This validates the layer-6 projection boundary and clears the next bisection step: layer-6 conv/GDN replay under the BF16 contract.
+
+## 2026-06-20 — validated layer-6 conv/GDN oracle
+
+### Change
+- Continued iteration 371 by adding `scripts/llamacpp_mtp_audit_layer6_conv_gdn_oracle.py`.
+- The script starts from the validated layer-6 projection artifact, re-captures the warm projection sequence, hash/checks target replay inputs, reloads layer-6 conv/GDN weights, and reuses the established warm BF16 contracted conv/GDN replay oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer6_conv_gdn_oracle.py` covering projection artifact validation, replay input guards, exact/mismatch/blocked/unavailable classification, and next-action routing.
+- Emitted `benchmarks/results/mtp-gguf-iter371-layer6-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer6_conv_gdn_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer6_conv_gdn_oracle.py \
+  --layer6-projection benchmarks/results/mtp-gguf-iter370-layer6-projection-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter371-layer6-conv-gdn-oracle.json
+# status=ready
+# classification=layer6_warm_conv_gdn_matches_oracle_within_tolerance
+# layer=6 position=16 token=271
+# target_input_classification=target_inputs_match_replay_exactly
+# conv_out_f32 within tolerance, max_abs=2.384185791015625e-07 rmse=3.25614823992737e-09
+# recurrent_out_f32 within tolerance, max_abs=4.470348358154297e-08 rmse=3.3143268129975922e-09
+# recurrent_bf16_f32 exact, max_abs=0.0 rmse=0.0
+# attn_out_f32 exact, max_abs=0.0 rmse=0.0
+# next_action=audit_layer6_post_attn_residual_or_moe_boundary
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer6_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer6_conv_gdn_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer6_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer6_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer5_conv_gdn_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-6 warm replay target inputs match the projection capture exactly at position 16/token 271.
+- Conv/GDN replay agrees with the BF16 contracted CPU oracle within tiny tolerances: conv and recurrent pass within tolerance; recurrent-BF16 and final `attn_out_f32` are exact.
+- This validates the layer-6 conv/GDN boundary and clears the next bisection step: layer-6 post-attention residual / MoE boundary.
