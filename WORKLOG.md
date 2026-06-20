@@ -111490,3 +111490,66 @@ PY
 - BF16 gate multiply into `full_gated_f32` is exact.
 - The capture used the non-split full-attention path (`used_split_decode=False`) with `preceding_layer_count=11`.
 - This clears the next layer-11 bisection step: attention-output projection under the BF16 contract.
+
+## 2026-06-20 — validated layer-11 attention-output projection oracle
+
+### Change
+- Continued iteration 411 by adding `scripts/llamacpp_mtp_audit_layer11_attn_output_oracle.py`.
+- The script starts from the layer-11 full-attention context/gate artifact, hash-checks live `full_gated_f32`, materializes `blk.11.attn_output.weight`, and validates captured `attn_out_f32` against `BF16(project_f32(full_gated_f32, GGUF attn_output.weight))`.
+- Added `tests/test_llamacpp_mtp_audit_layer11_attn_output_oracle.py` covering source artifact validation, preflight hash guards, exact / near / mismatch output-projection classifications, wrong-layer-type blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter411-layer11-attn-output-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer11_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_attn_output_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_attn_output_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer11_attn_output_oracle.py \
+  --context-gate-artifact benchmarks/results/mtp-gguf-iter410-layer11-full-attention-context-gate-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter411-layer11-attn-output-oracle.json
+# status=ready
+# classification=layer11_attn_output_projection_matches_bf16_oracle_exactly
+# preflight_classification=layer11_attn_output_preflight_matches_context_gate
+# attn_out_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention preceding_layer_count=11 q_width=4096 attn_output_shape=[2048, 4096]
+# next_action=audit_layer11_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_attn_output_oracle.py
+# .................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic attention-output projection oracle/test
+# only; no torch or dispatch branches; no attention/KV ABI changed beyond
+# reusing the validated context-gate source; RED-style focused tests added before
+# retaining real artifact; GGUF/BF16 projection oracle retained; attn_out_f32
+# exact; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-11 `full_gated_f32` preflight matches the iteration-410 context/gate artifact before output projection.
+- Layer-11 `attn_out_f32` is exact vs the BF16 GGUF projection oracle (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the full-attention path with `preceding_layer_count=11`, `q_width=4096`, and `attn_output_shape=[2048, 4096]`.
+- This clears the next layer-11 bisection step: post-attention residual / MoE boundary.
