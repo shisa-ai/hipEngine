@@ -113682,3 +113682,73 @@ PY
 - Layer-15 shared-expert gate logit is exact (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the full-attention MoE path with `top_k=8` and `preceding_layer_count=15`.
 - This clears the next bisection step: layer-15 selected and shared expert outputs.
+
+## 2026-06-20 — validated layer-15 MoE expert outputs oracle
+
+### Change
+- Continued iteration 444 by adding `scripts/llamacpp_mtp_audit_layer15_moe_expert_outputs_oracle.py`.
+- The script starts from the layer-15 MoE router artifact, hash-checks live `post_norm_f32`, selected experts, routing weights, and shared-gate fields, materializes selected expert and shared-expert GGUF weights, and validates selected-expert down output, shared expert output, and final `layer_out_f32` against the BF16-contracted MoE expert oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer15_moe_expert_outputs_oracle.py` covering router artifact validation, router-field hash/value guards, exact / mismatch expert-output classifications, wrong layer metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter444-layer15-moe-expert-outputs-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer15_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_moe_expert_outputs_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_moe_expert_outputs_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer15_moe_expert_outputs_oracle.py \
+  --router-artifact benchmarks/results/mtp-gguf-iter443-layer15-moe-router-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter444-layer15-moe-expert-outputs-oracle.json
+# status=ready
+# classification=layer15_moe_expert_outputs_match_oracle_exactly
+# router_input_classification=layer15_moe_expert_inputs_match_router_artifact
+# selected experts=[162, 46, 218, 165, 100, 122, 185, 58]
+# ffn_or_moe_down_f32 exact: max_abs=0.0 rmse=0.0
+# moe_shared_out_f32 exact: max_abs=0.0 rmse=0.0
+# layer_out_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention is_moe=True top_k=8 preceding_layer_count=15
+# next_action=audit_layer16_bf16_handoff_or_mtp_next_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_moe_expert_outputs_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-15 selected/shared MoE expert-output
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# focused RED-style tests cover source validation, router-field hashes,
+# exact/mismatch/unavailable paths; layer-15 MoE-router source artifact is
+# hash-checked; selected expert down output, shared expert output, and final
+# layer_out are exact; compact artifact contains summaries/hashes only; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-15 router inputs match the iteration-443 MoE-router artifact, including selected experts `[162, 46, 218, 165, 100, 122, 185, 58]`.
+- Layer-15 selected expert down output is exact vs the BF16-selected-expert oracle (`max_abs=0.0`, `rmse=0.0`).
+- Layer-15 shared expert output is exact vs the BF16 shared-expert oracle (`max_abs=0.0`, `rmse=0.0`).
+- Layer-15 final `layer_out_f32` is exact after BF16 MoE combine/residual (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the full-attention MoE path with `top_k=8` and `preceding_layer_count=15`.
+- This closes layer 15 and clears the next bisection step: layer-16 BF16 handoff / MTP next boundary.
