@@ -1,0 +1,345 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_vs_hipengine_hidden_seed_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 303,
+  "status": "mismatched",
+  "compile_artifact_path": "benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-capture-harness-compile.json",
+  "executable": "/tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness/llamacpp_hidden_seed_capture",
+  "lib_dir": "/tmp/hipengine-llamacpp-mtp-iter288-build/bin",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "position": 16,
+  "token_id": 271,
+  "all_rows_requested": true,
+  "max_sequence_length": null,
+  "exact_atol": 0.0,
+  "llamacpp_run": {
+    "command": [
+      "/tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness/llamacpp_hidden_seed_capture",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--prompt-tokens",
+      "248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271",
+      "--position",
+      "16",
+      "--output-prefix",
+      "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16",
+      "--n-gpu-layers",
+      "999",
+      "--threads",
+      "8",
+      "--all-rows"
+    ],
+    "command_shell": "/tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness/llamacpp_hidden_seed_capture --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 --position 16 --output-prefix /tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16 --n-gpu-layers 999 --threads 8 --all-rows",
+    "returncode": 0,
+    "timed_out": false,
+    "elapsed_seconds": 2.746,
+    "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.stdout.log",
+    "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.stderr.log",
+    "stdout_tail": "{\"captured_hidden_seed\":true,\"position\":16,\"n_embd\":2048,\"binary\":\"/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.f32\"}\n",
+    "stderr_tail": "e: layer  37: filtered\nllama_kv_cache: layer  38: filtered\nllama_kv_cache: layer  39: dev = ROCm0\nllama_kv_cache: layer  40: filtered\nllama_kv_cache:      ROCm0 KV buffer size =     5.00 MiB\nllama_kv_cache: size =    5.00 MiB (   256 cells,  10 layers,  1/1 seqs), K (f16):    2.50 MiB, V (f16):    2.50 MiB\nllama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 256\nllama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 256\nllama_memory_recurrent, layer   0: dev = ROCm0\nllama_memory_recurrent, layer   1: dev = ROCm0\nllama_memory_recurrent, layer   2: dev = ROCm0\nllama_memory_recurrent: layer   3: skipped\nllama_memory_recurrent, layer   4: dev = ROCm0\nllama_memory_recurrent, layer   5: dev = ROCm0\nllama_memory_recurrent, layer   6: dev = ROCm0\nllama_memory_recurrent: layer   7: skipped\nllama_memory_recurrent, layer   8: dev = ROCm0\nllama_memory_recurrent, layer   9: dev = ROCm0\nllama_memory_recurrent, layer  10: dev = ROCm0\nllama_memory_recurrent: layer  11: skipped\nllama_memory_recurrent, layer  12: dev = ROCm0\nllama_memory_recurrent, layer  13: dev = ROCm0\nllama_memory_recurrent, layer  14: dev = ROCm0\nllama_memory_recurrent: layer  15: skipped\nllama_memory_recurrent, layer  16: dev = ROCm0\nllama_memory_recurrent, layer  17: dev = ROCm0\nllama_memory_recurrent, layer  18: dev = ROCm0\nllama_memory_recurrent: layer  19: skipped\nllama_memory_recurrent, layer  20: dev = ROCm0\nllama_memory_recurrent, layer  21: dev = ROCm0\nllama_memory_recurrent, layer  22: dev = ROCm0\nllama_memory_recurrent: layer  23: skipped\nllama_memory_recurrent, layer  24: dev = ROCm0\nllama_memory_recurrent, layer  25: dev = ROCm0\nllama_memory_recurrent, layer  26: dev = ROCm0\nllama_memory_recurrent: layer  27: skipped\nllama_memory_recurrent, layer  28: dev = ROCm0\nllama_memory_recurrent, layer  29: dev = ROCm0\nllama_memory_recurrent, layer  30: dev = ROCm0\nllama_memory_recurrent: layer  31: skipped\nllama_memory_recurrent, layer  32: dev = ROCm0\nllama_memory_recurrent, layer  33: dev = ROCm0\nllama_memory_recurrent, layer  34: dev = ROCm0\nllama_memory_recurrent: layer  35: skipped\nllama_memory_recurrent, layer  36: dev = ROCm0\nllama_memory_recurrent, layer  37: dev = ROCm0\nllama_memory_recurrent, layer  38: dev = ROCm0\nllama_memory_recurrent: layer  39: skipped\nllama_memory_recurrent:      ROCm0 RS buffer size =    62.81 MiB\nllama_memory_recurrent: size =   62.81 MiB (     1 cells,  40 layers,  1 seqs  0 rs_seq), R (f32):    2.81 MiB, S (f32):   60.00 MiB\nllama_context: enumerating backends\nllama_context: backend_ptrs.size() = 2\nsched_reserve: reserving ...\nsched_reserve: max_nodes = 24096\nsched_reserve: reserving full memory module\nsched_reserve: worst-case: n_tokens = 17, n_seqs = 1, n_outputs = 1\ngraph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1\nsched_reserve: Flash Attention was auto, set to enabled\nsched_reserve: resolving fused Gated Delta Net support:\ngraph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1\nsched_reserve: fused Gated Delta Net (autoregressive) enabled\ngraph_reserve: reserving a graph for ubatch with n_tokens =   16, n_seqs =  1, n_outputs =   16\nsched_reserve: fused Gated Delta Net (chunked) enabled\ngraph_reserve: reserving a graph for ubatch with n_tokens =   17, n_seqs =  1, n_outputs =   17\ngraph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1\ngraph_reserve: reserving a graph for ubatch with n_tokens =   17, n_seqs =  1, n_outputs =   17\nsched_reserve:      ROCm0 compute buffer size =    16.51 MiB\nsched_reserve:  ROCm_Host compute buffer size =     0.27 MiB\nsched_reserve: graph nodes  = 3727\nsched_reserve: graph splits = 2\nsched_reserve: reserve took 10.54 ms, sched copies = 1\nset_embeddings_nextn: value = 1, masked = 0\n~llama_context:      ROCm0 compute buffer size is  16.5114 MiB, matches expectation of  16.5114 MiB\n~llama_context:  ROCm_Host compute buffer size is   0.2747 MiB, matches expectation of   0.2747 MiB\n"
+  },
+  "llamacpp_capture": {
+    "binary_path": "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.f32",
+    "binary_exists": true,
+    "metadata_path": "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.json",
+    "metadata_exists": true,
+    "metadata": {
+      "kind": "llamacpp_hidden_seed_capture",
+      "tap": "h_nextn_post_output_norm",
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "prompt_token_source": "token_ids",
+      "prompt_token_count": 17,
+      "position": 16,
+      "n_embd": 2048,
+      "dtype": "float32",
+      "binary": "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.f32",
+      "row_index_semantics": "raw_prompt_position",
+      "all_rows": true,
+      "all_rows_binary": "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.all.f32"
+    },
+    "all_rows": {
+      "binary_path": "/tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16.all.f32",
+      "bytes": 139264,
+      "float_count": 34816,
+      "sha256": "7705aca4d1c583efcc91653b0b3cb988163b365e7e18ecd74b4ae4b4bed78759"
+    },
+    "bytes": 8192,
+    "float_count": 2048,
+    "sha256": "a0b033227164792ad6d05a5c59adb5cdb018b6cc971fdf881bc31ca8afd27592",
+    "stats": {
+      "count": 2048,
+      "finite_count": 2048,
+      "min": -20.03545379638672,
+      "max": 12.94743537902832,
+      "mean": -0.10034561828742028,
+      "l2": 112.83073397575968
+    },
+    "samples": [
+      0.60827744,
+      -1.30794644,
+      5.78340912,
+      -1.66716945,
+      0.37312651,
+      3.50185919,
+      1.41873217,
+      -0.67504102
+    ],
+    "top_abs": [
+      {
+        "index": 1452,
+        "value": -20.0354538,
+        "abs": 20.0354538
+      },
+      {
+        "index": 1524,
+        "value": -16.77429581,
+        "abs": 16.77429581
+      },
+      {
+        "index": 1692,
+        "value": 12.94743538,
+        "abs": 12.94743538
+      },
+      {
+        "index": 1754,
+        "value": -12.90043354,
+        "abs": 12.90043354
+      },
+      {
+        "index": 1307,
+        "value": 12.17936993,
+        "abs": 12.17936993
+      },
+      {
+        "index": 811,
+        "value": -11.90662289,
+        "abs": 11.90662289
+      },
+      {
+        "index": 772,
+        "value": -11.43780422,
+        "abs": 11.43780422
+      },
+      {
+        "index": 509,
+        "value": -10.73896313,
+        "abs": 10.73896313
+      }
+    ]
+  },
+  "hipengine_capture": {
+    "status": "captured",
+    "position": 16,
+    "token_id": 271,
+    "next_token_id": 271,
+    "contract": {
+      "provenance": "post_output_norm",
+      "dtype": "FP32",
+      "rows": 1,
+      "hidden_size": 2048,
+      "source_buffer": "Qwen35GGUFResidentSession.scratch.hidden_seed_fp32",
+      "populated_by_decode": true,
+      "llama_cpp_compatible": true,
+      "requires_fp32_tap": false,
+      "ready_for_mtp": true
+    },
+    "dtype": "FP32",
+    "summary": {
+      "count": 2048,
+      "sha256": "d3b436a35c1e5535aba0515987dbe020e4f193ca67f7de0b47da6f74ee37f326",
+      "stats": {
+        "count": 2048,
+        "finite_count": 2048,
+        "min": -10.742791175842285,
+        "max": 18.426355361938477,
+        "mean": -0.0874596851070919,
+        "l2": 101.5382756626261
+      },
+      "samples": [
+        2.43660617,
+        -4.49020767,
+        -1.18750381,
+        0.5352515,
+        -0.15939997,
+        0.21087489,
+        0.50824285,
+        0.87743342
+      ]
+    }
+  },
+  "numeric_delta": {
+    "available": true,
+    "shape_match": true,
+    "count": 2048,
+    "llamacpp_sha256": "a0b033227164792ad6d05a5c59adb5cdb018b6cc971fdf881bc31ca8afd27592",
+    "hipengine_sha256": "d3b436a35c1e5535aba0515987dbe020e4f193ca67f7de0b47da6f74ee37f326",
+    "max_abs_diff": 14.284552574157715,
+    "mean_abs_diff": 2.4181736992902216,
+    "rmse": 3.1180099001747528,
+    "llamacpp_l2": 112.83073397575968,
+    "hipengine_l2": 101.5382756626261,
+    "diff_samples": [
+      -1.82832873,
+      3.18226123,
+      6.97091293,
+      -2.20242095,
+      0.53252648,
+      3.2909843,
+      0.91048932,
+      -1.55247444
+    ],
+    "top_abs_diff": [
+      {
+        "index": 1452,
+        "actual": -20.0354538,
+        "reference": -5.75090122,
+        "diff": -14.28455257,
+        "abs_diff": 14.28455257
+      },
+      {
+        "index": 515,
+        "actual": 9.17231083,
+        "reference": -2.4738934,
+        "diff": 11.64620423,
+        "abs_diff": 11.64620423
+      },
+      {
+        "index": 1524,
+        "actual": -16.77429581,
+        "reference": -5.34661007,
+        "diff": -11.42768574,
+        "abs_diff": 11.42768574
+      },
+      {
+        "index": 206,
+        "actual": -6.76847124,
+        "reference": 4.26451635,
+        "diff": -11.03298759,
+        "abs_diff": 11.03298759
+      },
+      {
+        "index": 1563,
+        "actual": 4.25269938,
+        "reference": -6.6176548,
+        "diff": 10.87035418,
+        "abs_diff": 10.87035418
+      },
+      {
+        "index": 1986,
+        "actual": 5.86896515,
+        "reference": -4.71429539,
+        "diff": 10.58326054,
+        "abs_diff": 10.58326054
+      },
+      {
+        "index": 682,
+        "actual": 10.24753094,
+        "reference": -0.28443322,
+        "diff": 10.53196415,
+        "abs_diff": 10.53196415
+      },
+      {
+        "index": 772,
+        "actual": -11.43780422,
+        "reference": -1.18349445,
+        "diff": -10.25430977,
+        "abs_diff": 10.25430977
+      }
+    ],
+    "exact_match": false,
+    "all_rows_scan": {
+      "available": true,
+      "rows": 17,
+      "row_width": 2048,
+      "best_by_rmse": {
+        "row": 12,
+        "sha256": "35b71f6a70ee333d8437c7dd58f7171fae9b94dca6fd2a0717fc4ef93535ccd0",
+        "max_abs_diff": 13.409930229187012,
+        "mean_abs_diff": 2.3019920051893408,
+        "rmse": 2.912973812981715
+      },
+      "matches": [],
+      "rows_by_rmse": [
+        {
+          "row": 12,
+          "sha256": "35b71f6a70ee333d8437c7dd58f7171fae9b94dca6fd2a0717fc4ef93535ccd0",
+          "max_abs_diff": 13.409930229187012,
+          "mean_abs_diff": 2.3019920051893408,
+          "rmse": 2.912973812981715
+        },
+        {
+          "row": 9,
+          "sha256": "54989266abfd1fb587c8610908406ad94a86805676f933cc903a14804e6fca80",
+          "max_abs_diff": 11.588212490081787,
+          "mean_abs_diff": 2.3207739368737776,
+          "rmse": 2.94480904757446
+        },
+        {
+          "row": 11,
+          "sha256": "ee1d869a386b886f1bdbfb9a23412d22921d36eb1bf8c952814984553a4b5489",
+          "max_abs_diff": 11.299136638641357,
+          "mean_abs_diff": 2.3554465238096753,
+          "rmse": 2.9808540353839343
+        },
+        {
+          "row": 13,
+          "sha256": "d64b73f1cb0607496c181ea88cc899f43df8c038c93d44a2af43c341038cb63b",
+          "max_abs_diff": 15.62289023399353,
+          "mean_abs_diff": 2.340006595742665,
+          "rmse": 2.994317205613169
+        },
+        {
+          "row": 15,
+          "sha256": "aefdef38d7b5e44fb8c5d069118dd42ed0ef6e0c3b845c4d31073f58cc88022a",
+          "max_abs_diff": 14.928475379943848,
+          "mean_abs_diff": 2.411091636495371,
+          "rmse": 3.0482780486842422
+        },
+        {
+          "row": 10,
+          "sha256": "062e34ac7a9452bc4d653e64f15f30d555c167d009fc745814b51aa05430b2df",
+          "max_abs_diff": 13.443346738815308,
+          "mean_abs_diff": 2.4384320503080117,
+          "rmse": 3.0835638559869105
+        },
+        {
+          "row": 7,
+          "sha256": "785b10276014cf4ebffd0408004df28e7acd8c7c8695660573373d2a79571ff0",
+          "max_abs_diff": 32.26915740966797,
+          "mean_abs_diff": 2.2394194922232487,
+          "rmse": 3.0844133409549688
+        },
+        {
+          "row": 16,
+          "sha256": "a0b033227164792ad6d05a5c59adb5cdb018b6cc971fdf881bc31ca8afd27592",
+          "max_abs_diff": 14.284552574157715,
+          "mean_abs_diff": 2.4181736992902216,
+          "rmse": 3.1180099001747528
+        }
+      ]
+    }
+  },
+  "external_checkout_modified": false,
+  "next_action": "inspect_upstream_bf16_activation_propagation_before_fp32_seed"
+}

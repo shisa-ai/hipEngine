@@ -104816,3 +104816,71 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The capture harness compiled successfully. It decodes a prompt token sequence, enables `llama_set_embeddings_nextn(ctx, true, false)`, reads `llama_get_embeddings_nextn_ith(ctx, position)`, and writes the selected post-`output_norm` FP32 `h_nextn` row plus optional all-rows output.
 - External llama.cpp checkout remained untouched; the harness was generated under `/tmp` and linked against the existing temporary build from iteration 289.
 - Next action: run `/tmp/hipengine-llamacpp-mtp-iter302-hidden-seed-capture-harness/llamacpp_hidden_seed_capture` for the oracle prompt at `position=16`, then compare the captured row to hipEngine `capture_hidden_seed_fp32=True` output.
+
+## 2026-06-20 — llama.cpp vs hipEngine FP32 hidden seed mismatches
+
+### Change
+- Continued iteration 303 by adding `scripts/llamacpp_mtp_compare_hidden_seed.py`, which runs the compiled llama.cpp `embeddings_nextn` hidden-seed capture harness and compares the selected FP32 row to hipEngine `prefill(..., capture_hidden_seed_fp32=True)`.
+- Added `tests/test_llamacpp_mtp_compare_hidden_seed.py` covering fake-harness match/mismatch/failure, final-token guard, shape mismatch, and redacted hipEngine capture summaries.
+- Emitted `benchmarks/results/mtp-gguf-iter303-hidden-seed-compare.json` for the oracle prompt at `position=16` / token `271`, with `--all-rows` enabled for llama.cpp row-index sanity scanning.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compare_hidden_seed.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_hidden_seed.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-capture-harness-compile.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter303-hidden-seed/pos16 \
+  --output benchmarks/results/mtp-gguf-iter303-hidden-seed-compare.json \
+  --all-rows \
+  --iteration 303
+# status=mismatched
+# llamacpp_rc=0
+# hipengine_status=captured
+# rmse=3.1180099001747528
+# max_abs_diff=14.284552574157715
+# next_action=inspect_upstream_bf16_activation_propagation_before_fp32_seed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compare_hidden_seed.py \
+  tests/test_llamacpp_mtp_compile_hidden_seed_harness.py \
+  tests/test_llamacpp_mtp_hidden_seed_oracle_plan.py
+# .................. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter303-hidden-seed-compare.json \
+  >/tmp/mtp-gguf-iter303-hidden-seed-compare.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- llama.cpp `embeddings_nextn` capture succeeded (`returncode=0`) and produced a 2048-float post-`output_norm` FP32 `h_nextn` row:
+  - sha256 `a0b033227164792ad6d05a5c59adb5cdb018b6cc971fdf881bc31ca8afd27592`
+- hipEngine `prefill(..., capture_hidden_seed_fp32=True)` captured an FP32 seed row with a ready MTP contract:
+  - sha256 `d3b436a35c1e5535aba0515987dbe020e4f193ca67f7de0b47da6f74ee37f326`
+  - contract: `dtype=FP32`, `provenance=post_output_norm`, `ready_for_mtp=true`
+- Numeric comparison is shape-compatible but far from exact:
+  - RMSE `3.1180099001747528`
+  - max abs diff `14.284552574157715`
+  - mean abs diff `2.4181736992902216`
+- Llama.cpp all-row scan did not find an exact row; closest row by RMSE was row `12` with RMSE `2.912973812981715`, still a large mismatch.
+- Conclusion: the existing hipEngine FP32 seed target is not llama.cpp-exact; it is populated after upstream BF16 activation propagation, so exact MTP seed parity requires auditing/promoting the upstream activation lane or producing a comparable BF16 llama.cpp oracle before claiming B1-B4 exactness.
