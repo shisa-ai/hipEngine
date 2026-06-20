@@ -104948,3 +104948,69 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - vs llama.cpp RMSE `3.1180099001747528`, max abs diff `14.284552574157715`, mean abs diff `2.4181736992902216`
   - vs `prefill-native` RMSE `0.03580982600551289`, max abs diff `0.17240047454833984`
 - Conclusion: there is a small bulk-prefill parity drift, but the dominant llama.cpp mismatch is shared by native/serial/step paths. Next action should bisect the shared activation/output_norm path first, while keeping the bulk-vs-serial delta recorded as secondary debt.
+
+## 2026-06-20 — shared hidden-seed path audit points to pre-output_norm bisection
+
+### Change
+- Continued iteration 305 by adding `scripts/gguf_hidden_seed_shared_path_audit.py`, a source/evidence audit that combines the iteration-304 hidden-seed mode sweep with hipEngine serial/native/step source facts and llama.cpp `h_nextn` extraction semantics.
+- Added `tests/test_gguf_hidden_seed_shared_path_audit.py` covering mode-evidence summarization, hipEngine source-path detection, llama.cpp post-`output_norm` row semantics, decision logic, and synthetic artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter305-hidden-seed-shared-path-audit.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_seed_shared_path_audit.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_hidden_seed_shared_path_audit.py \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --qwen35moe /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp \
+  --context /home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp \
+  --mode-sweep benchmarks/results/mtp-gguf-iter304-hidden-seed-mode-sweep.json \
+  --output benchmarks/results/mtp-gguf-iter305-hidden-seed-shared-path-audit.json \
+  --iteration 305
+# status=audited
+# conclusion=shared_serial_path_mismatch_before_or_at_output_norm
+# shared_serial_modes_exact=true
+# bulk_secondary_rmse=0.03580982600551289
+# next_action=capture_pre_output_norm_rows_in_llamacpp_and_hipengine_serial_path
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_hidden_seed_shared_path_audit.py \
+  tests/test_gguf_hidden_seed_mode_sweep.py \
+  tests/test_llamacpp_mtp_hidden_seed_oracle_plan.py
+# ............... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter305-hidden-seed-shared-path-audit.json \
+  >/tmp/mtp-gguf-iter305-hidden-seed-shared-path-audit.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Source/evidence audit status: `audited`.
+- Reconfirms iteration-304 mode evidence:
+  - `prefill-native`, `prefill-serial`, and `step-serial` produce an identical FP32 seed row (`e4c47dff146c9e0c530a92c236c13442a6ff7834ec97cb4c8de5b797e79b76ae`) but remain far from llama.cpp (`RMSE=3.1126764923274637`).
+  - `prefill-bulk` is a secondary drift source (`bulk_vs_native RMSE=0.03580982600551289`, max abs `0.17240047454833984`).
+- HipEngine source-path audit confirms:
+  - serial prefill captures only the final prompt token,
+  - step serial and serial prefill both call `_run_token_to_final_hidden` / `_run_current_hidden_to_final_hidden`,
+  - all serial/native paths call `_run_output_norm_hidden`,
+  - the FP32 seed is recomputed by `gguf_rmsnorm_bf16_f32_weight_out_f32` from the same BF16 `src_ptr` used by the output-norm path.
+- llama.cpp source audit confirms `h_nextn` is set immediately after `build_norm(cur, model.output_norm, ...)`, and unmasked `embeddings_nextn` rows are indexed by raw prompt position.
+- Conclusion: `shared_serial_path_mismatch_before_or_at_output_norm`; row/mode mixups are unlikely.
+- Next action: capture pre-`output_norm` rows in both llama.cpp and hipEngine serial path, then compare pre-norm and post-norm deltas to decide whether mismatch is introduced by final output_norm precision or already present in the final layer output.
