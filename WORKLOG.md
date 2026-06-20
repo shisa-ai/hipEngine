@@ -113882,3 +113882,72 @@ PY
 - Layer-16 attention RMSNorm is exact vs `BF16(RMSNorm(hidden_in_f32, blk.16.attn_norm.weight, eps))` (`max_abs=0.0`, `rmse=0.0`).
 - The target remains a normal `linear_attention` MoE layer with `top_k=8` and `preceding_layer_count=16`.
 - This clears the next bisection step: layer-16 projection / conv-GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-16 projection oracle
+
+### Change
+- Continued iteration 447 by adding `scripts/llamacpp_mtp_audit_layer16_projection_oracle.py`.
+- The script starts from the exact layer-16 attention-norm artifact, hash-checks live `attn_norm_f32`, materializes `blk.16.attn_qkv.weight`, `blk.16.attn_gate.weight`, `blk.16.ssm_alpha.weight`, and `blk.16.ssm_beta.weight`, and validates the four linear-attention projection fields against the BF16-contracted projection oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer16_projection_oracle.py` covering attention-norm artifact validation, input hash guards, exact / rounding / mismatch projection classifications, wrong layer/type metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter447-layer16-projection-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer16_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_projection_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_projection_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer16_projection_oracle.py \
+  --layer16-attn-norm benchmarks/results/mtp-gguf-iter446-layer16-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter447-layer16-projection-oracle.json
+# status=ready
+# classification=layer16_projections_match_bf16_oracle_within_rounding
+# input_classification=layer16_projection_input_matches_attn_norm_artifact
+# linear_qkv_f32 within projection tolerance: max_abs=3.814697265625e-06 rmse=4.2331659955152645e-08 auxiliary_step_bad_count=1
+# linear_z_f32 within one BF16 step: max_abs=1.52587890625e-05 rmse=2.384185791015625e-07 bad_count=0
+# ssm_alpha_f32 exact: max_abs=0.0 rmse=0.0
+# ssm_beta_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=16
+# next_action=audit_layer16_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer16_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_projection_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-16 linear-attention projection
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# focused RED-style tests cover source validation, attn_norm hash, exact,
+# rounding, mismatch, and unavailable paths; layer-16 attn_norm source artifact
+# is hash-checked; qkv/z projections are within established BF16 projection
+# tolerance, alpha/beta exact; compact artifact contains summaries/hashes only;
+# no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-16 `attn_norm_f32` preflight hash matches the iteration-446 attention-norm artifact.
+- Layer-16 `linear_qkv_f32` and `linear_z_f32` match the BF16 projection oracle within the established projection tolerance (`linear_qkv_f32 max_abs=3.81e-06`, `linear_z_f32 max_abs=1.53e-05`).
+- Layer-16 `ssm_alpha_f32` and `ssm_beta_f32` are exact (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=16`.
+- This clears the next bisection step: layer-16 conv/GDN under the BF16 contract.
