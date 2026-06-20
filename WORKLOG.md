@@ -107220,3 +107220,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Selected expert down outputs differ by only `7.450580596923828e-09` max abs; shared expert output and combined `layer_out_f32` are exact.
 - This closes the layer-1 resident-BF16 internal chain through MoE combine.
 - Next bisection should advance to layer 2 or the next layer boundary under the BF16 contract.
+
+## 2026-06-20 — validated layer-1 to layer-2 BF16 handoff
+
+### Change
+- Continued iteration 338 by adding `scripts/llamacpp_mtp_layer2_bf16_handoff_audit.py`.
+- The script starts from the iteration-337 layer-1 expert-output artifact, verifies that a fresh layer-1 capture (`run_preceding_layers=True`) matches the stored `layer_out_f32` hash, then compares that source vector against layer-2 `hidden_in_f32` captured with `run_preceding_layers=True`.
+- Added `tests/test_llamacpp_mtp_layer2_bf16_handoff_audit.py` covering prerequisite validation, source hash checks, handoff classification, injected exact/mismatch captures, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter338-layer2-bf16-handoff.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer2_bf16_handoff_audit.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer2_bf16_handoff_audit.py \
+  --layer1-experts benchmarks/results/mtp-gguf-iter337-layer1-moe-expert-outputs-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter338-layer2-bf16-handoff.json \
+  --iteration 338
+# status=ready
+# classification=layer2_hidden_in_matches_layer1_layer_out_exactly
+# source_layer=1 target_layer=2
+# source preceding_layer_count=1
+# target preceding_layer_count=2
+# source_reference exact_hash_match=True
+# handoff max_abs=0.0 rmse=0.0
+# next_action=audit_layer2_attn_norm_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer2_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer1_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_layer1_bf16_handoff_audit.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-2 `hidden_in_f32` exactly equals layer-1 `layer_out_f32` at warm position 16/token 271 under the resident-BF16 contract.
+- The fresh layer-1 source capture also matches the iteration-337 layer-1 expert-output artifact hash.
+- This validates the layer-1→layer-2 handoff and establishes the layer-2 seed.
+- Next bisection should audit layer-2 `attn_norm` under the BF16 contract.
