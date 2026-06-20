@@ -102796,3 +102796,64 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Device `conv_out` for the final greeting token is explained by CPU `ssm_conv1d(linear_qkv[13:16])` to float tolerance: max_abs=5.96e-08, rms_abs=2.13e-09.
 - Combined with iterations 266–268, all captured layer-0 projection/conv/`ssm_out` boundaries from `attn_norm` through `attn_out` match CPU oracles; the remaining first-token mismatch is likely state entering layer 0, GDN recurrence details/state evolution, later layers, or final head accumulation.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF prompt-wide GDN replay capture emitted with filtered arrays
+
+### Change
+- Continued iteration 271 by adding `--array-keys` filtering to `scripts/gguf_linear_boundary_capture.py`.
+- The filter requires `--include-arrays` and keeps default/full-array behavior unchanged when omitted.
+- Updated `tests/test_gguf_linear_boundary_capture_script.py` for array-key parsing.
+- Emitted `benchmarks/results/mtp-gguf-iter271-gdn-replay-window-capture.json` with positions 0..16 and only the arrays needed for CPU GDN replay: `conv_out_f32`, `linear_z_f32`, `ssm_alpha_f32`, `ssm_beta_f32`, `recurrent_out_f32`, and `recurrent_bf16_f32`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_linear_boundary_capture.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_linear_boundary_capture_script.py
+# .... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+import ctypes
+ctypes.CDLL('libamdhip64.so')
+print('hip OK')
+PY
+# hip OK
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_linear_boundary_capture.py \
+  --positions 0-16 --iteration 271 --include-arrays \
+  --array-keys conv_out_f32,linear_z_f32,ssm_alpha_f32,ssm_beta_f32,recurrent_out_f32,recurrent_bf16_f32 \
+  --output benchmarks/results/mtp-gguf-iter271-gdn-replay-window-capture.json
+# status=captured, positions=0..16, capture_count=17
+# array_keys=[conv_out_f32, linear_z_f32, ssm_alpha_f32, ssm_beta_f32,
+# recurrent_out_f32, recurrent_bf16_f32]
+# artifact_bytes=10575197
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter271-gdn-replay-window-capture.json \
+  >/tmp/iter271-gdn-window.pretty && echo gdn-window-capture-json-ok
+# gdn-window-capture-json-ok
+
+git diff --check -- scripts/gguf_linear_boundary_capture.py \
+  tests/test_gguf_linear_boundary_capture_script.py \
+  benchmarks/results/mtp-gguf-iter271-gdn-replay-window-capture.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The prompt-wide layer-0 GDN inputs/outputs are now available without unnecessary projection/full-output arrays, making the next CPU recurrent replay iteration practical while keeping the artifact smaller than a full 17-position capture.
+- No runtime math or target AR parity changed in this iteration.

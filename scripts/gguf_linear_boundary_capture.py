@@ -58,10 +58,15 @@ def main() -> None:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--max-sequence-length", type=int)
     parser.add_argument("--include-arrays", action="store_true")
+    parser.add_argument("--array-keys")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    if args.array_keys and not args.include_arrays:
+        parser.error("--array-keys requires --include-arrays")
+
     tokens = _parse_tokens(args.tokens)
+    array_keys = _parse_array_keys(args.array_keys) if args.array_keys else None
     positions = _parse_positions(args.positions, len(tokens)) if args.positions else None
     if positions is None:
         positions = (_resolve_position(args.position, len(tokens)),)
@@ -94,6 +99,7 @@ def main() -> None:
             max_sequence_length=args.max_sequence_length,
             iteration=args.iteration,
             include_arrays=bool(args.include_arrays),
+            array_keys=array_keys,
         )
     else:
         artifact = capture_linear_boundaries(
@@ -106,6 +112,7 @@ def main() -> None:
             max_sequence_length=args.max_sequence_length,
             iteration=args.iteration,
             include_arrays=bool(args.include_arrays),
+            array_keys=array_keys,
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -124,6 +131,7 @@ def capture_linear_boundary(
     max_sequence_length: int | None,
     iteration: int = 258,
     include_arrays: bool = False,
+    array_keys: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     return capture_linear_boundaries(
         model=model,
@@ -135,6 +143,7 @@ def capture_linear_boundary(
         max_sequence_length=max_sequence_length,
         iteration=iteration,
         include_arrays=include_arrays,
+        array_keys=array_keys,
     )["captures"][0]
 
 
@@ -149,6 +158,7 @@ def capture_linear_boundaries(
     max_sequence_length: int | None,
     iteration: int = 258,
     include_arrays: bool = False,
+    array_keys: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     max_seq = int(max_sequence_length or max(len(tokens) + 8, 32))
     captures = []
@@ -176,6 +186,7 @@ def capture_linear_boundaries(
                     capture=capture,
                     iteration=iteration,
                     include_arrays=include_arrays,
+                    array_keys=array_keys,
                 )
             )
 
@@ -199,6 +210,7 @@ def _capture_artifact(
     capture: Any,
     iteration: int,
     include_arrays: bool,
+    array_keys: tuple[str, ...] | None,
 ) -> dict[str, Any]:
     artifact = _plan_artifact(
         model=model,
@@ -222,8 +234,10 @@ def _capture_artifact(
     }
     artifact["buffers"] = {name: _array_summary(array) for name, array in captured_arrays.items()}
     if include_arrays:
+        selected_arrays = _select_arrays(captured_arrays, array_keys)
+        artifact["array_keys"] = list(selected_arrays)
         artifact["arrays"] = {
-            name: _array_payload(array) for name, array in captured_arrays.items()
+            name: _array_payload(array) for name, array in selected_arrays.items()
         }
     return artifact
 
@@ -364,6 +378,26 @@ def _array_summary(array: np.ndarray) -> dict[str, Any]:
 
 def _array_payload(array: np.ndarray) -> list[float]:
     return [float(x) for x in np.asarray(array, dtype=np.float32).reshape(-1)]
+
+
+def _select_arrays(
+    arrays: dict[str, np.ndarray],
+    keys: tuple[str, ...] | None,
+) -> dict[str, np.ndarray]:
+    if keys is None:
+        return dict(arrays)
+    missing = [key for key in keys if key not in arrays]
+    if missing:
+        available = ", ".join(sorted(arrays))
+        raise ValueError(f"unknown --array-keys entries {missing}; available: {available}")
+    return {key: arrays[key] for key in keys}
+
+
+def _parse_array_keys(raw: str) -> tuple[str, ...]:
+    keys = tuple(dict.fromkeys(key.strip() for key in raw.split(",") if key.strip()))
+    if not keys:
+        raise ValueError("at least one array key is required")
+    return keys
 
 
 def _parse_tokens(raw: str) -> tuple[int, ...]:

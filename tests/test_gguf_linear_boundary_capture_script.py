@@ -11,6 +11,7 @@ import pytest
 from scripts.gguf_linear_boundary_capture import (
     _array_payload,
     _array_summary,
+    _parse_array_keys,
     _parse_positions,
     _parse_tokens,
     _resolve_position,
@@ -102,6 +103,10 @@ def test_linear_boundary_capture_multi_position_dry_run_writes_batch_plan(
 
 def test_linear_boundary_capture_helpers_validate_inputs() -> None:
     assert _parse_tokens("1, 2,3") == (1, 2, 3)
+    assert _parse_array_keys("conv_out_f32, ssm_alpha_f32,conv_out_f32") == (
+        "conv_out_f32",
+        "ssm_alpha_f32",
+    )
     assert _parse_positions("1,3-4,3", 5) == (1, 3, 4)
     assert _parse_positions("3-1", 5) == (3, 2, 1)
     assert _resolve_position(-1, 3) == 2
@@ -113,6 +118,8 @@ def test_linear_boundary_capture_helpers_validate_inputs() -> None:
         _resolve_position(3, 3)
     with pytest.raises(ValueError, match="at least one position"):
         _parse_positions(",", 3)
+    with pytest.raises(ValueError, match="at least one array key"):
+        _parse_array_keys(",")
 
 
 def test_array_summary_and_payload_are_json_friendly() -> None:
