@@ -111425,3 +111425,68 @@ PY
 - Head RMSNorm + RoPE matches the CPU oracle within the established fp32 kernel tolerance (`full_query_f32 max_abs=4.76837158203125e-07`, `full_key_f32 max_abs=2.384185791015625e-07`).
 - KV-cache writes through the KVLiveSpans path are exact at position 16 for both key and value.
 - This clears the next layer-11 bisection step: full-attention scores / attention output under the BF16 contract.
+
+## 2026-06-20 — validated layer-11 full-attention context and gate oracle
+
+### Change
+- Continued iteration 410 by adding `scripts/llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py`.
+- The script starts from the layer-11 QK norm / rotary / KV artifact, hash-checks live query/key/gate and KV-cache inputs, computes a CPU paged-GQA attention context over the KVLiveSpans-style live context, and validates the BF16 gate multiply into `full_gated_f32`.
+- Added `tests/test_llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py` covering source artifact validation, preflight hash guards, CPU attention shape, exact/near context classification, exact gate multiply, split-decode blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter410-layer11-full-attention-context-gate-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py \
+  --qk-norm-rotary-kv-artifact benchmarks/results/mtp-gguf-iter409-layer11-qk-norm-rotary-kv-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter410-layer11-full-attention-context-gate-oracle.json
+# status=ready
+# classification=layer11_full_attention_context_matches_cpu_oracle_within_fp32_tolerance
+# preflight_classification=layer11_context_gate_preflight_matches_qk_artifact
+# full_attn_context_f32 within fp32 kernel tolerance: max_abs=5.364418029785156e-07 rmse=6.669342411669277e-08
+# full_gated_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention preceding_layer_count=11 active_context=17 used_split_decode=False
+# next_action=audit_layer11_attn_output_projection_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py
+# ....................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic full-attention context/gate oracle/test only;
+# no torch or dispatch branches; KVLiveSpans paged-attention contract is
+# explicitly checked; RED-style focused tests added before real artifact;
+# CPU paged GQA oracle retained; context is within fp32 kernel tolerance and gate
+# multiply exact; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-11 full-attention context/gate preflight matches the iteration-409 QK norm / rotary / KV artifact.
+- CPU paged-GQA context over 17 live tokens matches the HIP capture within fp32 kernel tolerance (`max_abs=5.364418029785156e-07`, `rmse=6.669342411669277e-08`).
+- BF16 gate multiply into `full_gated_f32` is exact.
+- The capture used the non-split full-attention path (`used_split_decode=False`) with `preceding_layer_count=11`.
+- This clears the next layer-11 bisection step: attention-output projection under the BF16 contract.
