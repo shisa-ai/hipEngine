@@ -107875,3 +107875,59 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Full-attention context matches the CPU paged-GQA softmax oracle within small FP32 kernel-order tolerance only (`<= 4.77e-07`, tolerance `1e-05`).
 - Gate multiplication is exact: `full_gated_f32 == BF16(full_attn_context_f32 * sigmoid(full_gate_bf16))`.
 - This validates the layer-3 attention context/gate boundary and clears the next bisection step: layer-3 `attn_output` projection under the resident-BF16 contract.
+
+## 2026-06-20 — validated layer-3 attention output projection oracle
+
+### Change
+- Continued iteration 350 by adding `scripts/llamacpp_mtp_audit_layer3_attn_output_oracle.py`.
+- The script starts from the validated layer-3 full-attention context/gate artifact, checks the live `full_gated_f32` hash against that artifact, reloads `blk.3.attn_output.weight` from GGUF, and mirrors the resident GGUF output projection as `BF16(project_f32(full_gated_f32, attn_output.weight))`.
+- Added `tests/test_llamacpp_mtp_audit_layer3_attn_output_oracle.py` covering source artifact validation, preflight hash guards, exact/near/mismatch projection classification, capture-metadata blocking, and unavailable-capture paths.
+- Emitted `benchmarks/results/mtp-gguf-iter350-layer3-attn-output-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_attn_output_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer3_attn_output_oracle.py \
+  --context-gate-artifact benchmarks/results/mtp-gguf-iter349-layer3-full-attention-context-gate-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter350-layer3-attn-output-oracle.json
+# status=ready
+# classification=layer3_attn_output_projection_matches_bf16_oracle_exactly
+# layer=3 position=16 token=271
+# preflight_classification=layer3_attn_output_preflight_matches_context_gate
+# attn_out_f32 exact vs BF16 oracle, max_abs=0.0 rmse=0.0
+# f32 pre-round max_abs=0.0002351999282836914 rmse=3.225948239560239e-05
+# weight=blk.3.attn_output.weight Q8_0 [2048, 4096]
+# next_action=audit_layer3_post_attn_residual_or_moe_boundary
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer3_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_attn_output_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py
+# ...................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-3 `full_gated_f32` hash matches the validated context/gate artifact at warm position 16/token 271.
+- The attention output projection is exact after the BF16 output contract: `attn_out_f32 == BF16(project_f32(full_gated_f32, blk.3.attn_output.weight))`.
+- The dequantized-F32 pre-round oracle differs by only BF16 rounding (`max_abs=2.352e-04`), confirming the projection/kernel boundary rather than an upstream context or gate mismatch.
+- This validates the layer-3 attention output projection and clears the next bisection step: layer-3 post-attention residual/RMSNorm and MoE router boundary.
