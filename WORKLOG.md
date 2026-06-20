@@ -112279,3 +112279,66 @@ PY
 - Layer-13 `hidden_in_f32` exactly matches layer-12 `layer_out_f32` (`max_abs=0.0`, `rmse=0.0`).
 - Source layer 12 and target layer 13 are both `linear_attention`; target `preceding_layer_count=13`.
 - This clears the next layer-13 bisection step: attention norm under the BF16 contract.
+
+## 2026-06-20 — validated layer-13 attention-norm oracle
+
+### Change
+- Continued iteration 423 by adding `scripts/llamacpp_mtp_audit_layer13_attn_norm_oracle.py`.
+- The script starts from the exact layer-13 BF16 handoff artifact, hash-checks live `hidden_in_f32`, materializes `blk.13.attn_norm.weight`, and validates captured `attn_norm_f32` against `BF16(RMSNorm(hidden_in_f32, attn_norm.weight_f32, eps_model))`.
+- Added `tests/test_llamacpp_mtp_audit_layer13_attn_norm_oracle.py` covering handoff artifact validation, hidden-input hash guards, exact / tolerance / mismatch RMSNorm classifications, wrong-layer-type blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter423-layer13-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer13_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_attn_norm_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_attn_norm_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer13_attn_norm_oracle.py \
+  --layer13-handoff benchmarks/results/mtp-gguf-iter422-layer13-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter423-layer13-attn-norm-oracle.json
+# status=ready
+# classification=layer13_attn_norm_matches_bf16_oracle_exactly
+# input_classification=layer13_attn_norm_input_matches_handoff_artifact exact_hash_match=True
+# attn_norm_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention preceding_layer_count=13
+# next_action=audit_layer13_projection_or_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer13_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer12_attn_norm_oracle.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-13 attention RMSNorm oracle/test only;
+# no torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before retaining real artifact; layer-13 hidden_in handoff source
+# is hash-checked; attn_norm_f32 is exact and layer 13 is linear_attention; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-13 live `hidden_in_f32` preflight hash matches the iteration-422 BF16 handoff artifact.
+- Layer-13 `attn_norm_f32` is exact vs the BF16 RMSNorm oracle (`max_abs=0.0`, `rmse=0.0`).
+- Layer 13 is `linear_attention` with `preceding_layer_count=13`.
+- This clears the next layer-13 bisection step: projection / conv-GDN under the BF16 contract.
