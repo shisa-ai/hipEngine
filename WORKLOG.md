@@ -104323,3 +104323,67 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - `max_abs_diff=0.0914031863`, `mean_abs_diff=0.0190203032`, `rmse=0.0238953013`
 - No row matches the hipEngine target exactly. The top rows by RMSE are 16, 12, 14, 7, and 9; none are close enough to indicate a simple off-by-one/window issue.
 - Conclusion: the mismatch is not caused by reading the wrong output row/window. Next likely causes are layer numbering, pre/post tap placement, or a remaining graph-path difference between the hipEngine materialized layer capture and llama.cpp's patched `t_layer_inp` capture.
+
+## 2026-06-20 — llama.cpp hidden-in layer sweep rules out nearby layer-numbering offset
+
+### Change
+- Continued iteration 295 by adding `scripts/llamacpp_mtp_sweep_hidden_in_layers.py`, which runs the exact-token all-row hidden-in capture for multiple llama.cpp layer IDs and ranks selected-row/all-row RMSE against the hipEngine layer-3 `hidden_in_f32` reference.
+- Added `tests/test_llamacpp_mtp_sweep_hidden_in_layers.py` for layer-range parsing, exact-match discovery, target-layer-best mismatch, and closest-non-target conclusion paths.
+- Emitted `benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json` after sweeping layers `0-6` on the real MTP GGUF.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_sweep_hidden_in_layers.py
+# .... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_sweep_hidden_in_layers.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-capture-harness-allrows-compile.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --layers 0-6 \
+  --position 16 \
+  --expected-sha256 f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07 \
+  --reference-arrays benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --reference-key hidden_in_f32 \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter295-hidden-in-layer-sweep \
+  --output benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json \
+  --n-gpu-layers 999 \
+  --threads 8 \
+  --timeout-seconds 2400 \
+  --iteration 295
+# status=mismatched
+# conclusion=target_layer_best_but_mismatched
+# best_selected={layer: 3, row: 16, rmse: 0.023895301258143264}
+# best_any_row={layer: 3, row: 16, rmse: 0.023895301258143264}
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_sweep_hidden_in_layers.py \
+  tests/test_llamacpp_mtp_run_hidden_in_capture.py \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# .................. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json \
+  >/tmp/mtp-gguf-iter295-hidden-in-layer-sweep.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Swept llama.cpp layer IDs `0..6`; every capture returned successfully and produced comparable rows.
+- Layer 3 / row 16 is the best selected-row match and also the best all-row match, but remains mismatched:
+  - layer 3 row 16 sha `4e5087dca9da3112bb30d9506f5c6f17dfaa44b053158868f266286b43571444`
+  - `max_abs_diff=0.0914031863`, `mean_abs_diff=0.0190203032`, `rmse=0.0238953013`
+- Selected-row RMSE ranking: layer 3 (`0.0238953`), layer 2 (`0.0249278`), layer 1 (`0.0256277`), layer 4 (`0.0258266`), layer 6 (`0.0281422`), layer 5 (`0.0283401`), layer 0 (`0.0297337`).
+- No selected row or all-row scan matched exactly. This rules out a nearby layer-numbering offset as the primary cause.
+- Next action: inspect tap placement / graph-path differences for layer-3 `hidden_in` (for example, whether hipEngine's materialized capture is pre/post a residual/norm path relative to llama.cpp `res->t_layer_inp[il] = inpL`).
