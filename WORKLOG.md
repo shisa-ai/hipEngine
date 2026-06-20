@@ -112148,3 +112148,70 @@ PY
 - Layer-12 raw shared-gate logit is exact (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=12`.
 - This clears the next layer-12 bisection step: selected/shared expert outputs.
+
+## 2026-06-20 — validated layer-12 MoE expert-output oracle
+
+### Change
+- Continued iteration 421 by adding `scripts/llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py`.
+- The script starts from the exact layer-12 MoE-router artifact, hash/value-checks live `post_norm_f32` and selected experts, materializes the selected routed-expert and shared-expert weights, and validates `ffn_or_moe_down_f32`, `moe_shared_out_f32`, and `layer_out_f32` against the BF16-contracted expert-output oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py` covering router artifact validation, post-norm/selected-expert input guards, exact / tolerance / mismatch expert-output classifications, wrong-preceding-count blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter421-layer12-moe-expert-outputs-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py \
+  --router-artifact benchmarks/results/mtp-gguf-iter420-layer12-moe-router-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter421-layer12-moe-expert-outputs-oracle.json
+# status=ready
+# classification=layer12_moe_expert_outputs_match_oracle_exactly
+# router_input_classification=layer12_moe_expert_inputs_match_router_artifact
+# ffn_or_moe_down_f32 exact: max_abs=0.0 rmse=0.0
+# moe_shared_out_f32 exact: max_abs=0.0 rmse=0.0
+# layer_out_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=12
+# next_action=audit_layer13_bf16_handoff_or_mtp_next_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer10_moe_expert_outputs_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-12 MoE expert-output oracle/test only;
+# no torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before retaining real artifact; layer-12 post_norm and
+# selected-expert router inputs are hash/value checked; selected branch, shared
+# branch, and final layer_out are exact; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-12 `post_norm_f32` and selected-expert preflight inputs match the iteration-420 MoE-router artifact.
+- Layer-12 selected routed branch output `ffn_or_moe_down_f32` is exact vs the BF16-contracted GGUF expert oracle.
+- Layer-12 shared expert output `moe_shared_out_f32` is exact.
+- Layer-12 final `layer_out_f32` is exact after residual/selected/shared combine.
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=12`.
+- This clears the next layer-12-to-layer-13 handoff boundary.
