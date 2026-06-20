@@ -114780,3 +114780,6 @@ PY
 
 ### Operational note
 - The user paused `mtp-gguf/run-20260615-103738` after the iteration-459 validation finished and before `multiloop_measure` could persist the verdict. Do not start iteration 460 automatically; stop after committing this validated logical unit.
+
+### Operational note
+- Resumed `mtp-gguf/run-20260615-103738` only to finish the previously-paused iteration-459 bookkeeping. Re-ran focused validation, verify, guard, and prompt verifier; `multiloop_measure` recorded `correctness_gate_pass=1` with all checks passing, and `multiloop_decide action=log` persisted iteration 459. The loop was stopped again immediately afterward; do not continue to iteration 460 unless explicitly requested.
