@@ -106350,3 +106350,60 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Explicit non-goal: this does **not** change the documented MTP seed contract. `docs/MTP-gguf.md` still requires the post-output_norm hidden seed at fp32 for MTP parity.
 - Boundary fields available from `capture_linear_attention_boundary`: `attn_norm_f32`, `linear_qkv_f32`, `linear_z_f32`, `ssm_alpha_f32`, `ssm_beta_f32`, `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32`.
 - Next action: build the layer-0 BF16-contracted projection oracle, starting with `linear_qkv_f32` and `linear_z_f32`, to separate projection/quantization mismatch from later GDN state effects.
+
+## 2026-06-20 — validated layer-0 BF16 projection oracle
+
+### Change
+- Continued iteration 323 by adding `scripts/llamacpp_mtp_audit_layer0_projection_oracle.py`, which recomputes layer-0 `attn_qkv` and `attn_gate` projections from the BF16-contracted `attn_norm` oracle selected in iteration 322.
+- The script reloads GGUF `blk.0.attn_qkv.weight` and `blk.0.attn_gate.weight`, dequantizes Q8_0 to F32, computes F32 matmuls from the exact contracted `attn_norm`, rounds projection outputs to BF16, and compares them to a fresh hipEngine `capture_linear_attention_boundary` capture.
+- Added `tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py` covering projection orientation, exact/near/mismatch classification, synthetic end-to-end artifacts, and policy validation.
+- Emitted `benchmarks/results/mtp-gguf-iter323-layer0-bf16-projection-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer0_projection_oracle.py \
+  --input-compare benchmarks/results/mtp-gguf-iter318-input-embed-compare.json \
+  --policy benchmarks/results/mtp-gguf-iter322-layer0-dtype-oracle-policy.json \
+  --formula-audit benchmarks/results/mtp-gguf-iter321-layer0-attn-norm-formula-audit.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter323-layer0-bf16-projection-oracle.json \
+  --near-atol 0.00025 --iteration 323
+# status=ready
+# classification=layer0_projections_match_bf16_oracle_within_rounding
+# attn_norm_exact=true
+# linear_qkv_f32=projection_matches_bf16_oracle_within_one_bf16_step
+# linear_z_f32=projection_matches_bf16_oracle_exactly
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py \
+  tests/test_llamacpp_mtp_audit_layer0_attn_norm_formula.py
+# ................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The contracted `attn_norm` oracle still exactly matches hipEngine (`attn_norm_oracle.delta_vs_hip.exact_match=true`).
+- `blk.0.attn_qkv.weight` and `blk.0.attn_gate.weight` are both GGUF `Q8_0`.
+- `linear_z_f32` matches the BF16-contracted CPU oracle exactly:
+  - BF16 oracle vs hipEngine RMSE `0.0`
+  - BF16 oracle vs hipEngine max abs diff `0.0`
+- `linear_qkv_f32` matches within one BF16 step:
+  - BF16 oracle vs hipEngine RMSE `2.6973982585332124e-06`
+  - BF16 oracle vs hipEngine max abs diff `0.000244140625`
+  - classification `projection_matches_bf16_oracle_within_one_bf16_step`
+- Interpretation: the immediate `attn_qkv` / `attn_gate` projections are not the source of a material projection mismatch under the resident BF16 oracle. Continue layer-0 bisection at convolution/GDN state effects.
