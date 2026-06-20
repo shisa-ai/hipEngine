@@ -114712,3 +114712,71 @@ PY
 - Layer-17 shared-gate logit matches exactly (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=17`.
 - This clears the next bisection step: layer-17 selected/shared expert outputs.
+
+## 2026-06-20 — validated layer-17 MoE expert outputs oracle
+
+### Change
+- Continued iteration 459 by adding `scripts/llamacpp_mtp_audit_layer17_moe_expert_outputs_oracle.py`.
+- The script starts from the ready iteration-458 layer-17 MoE router artifact, hash-checks live `post_norm_f32`, verifies selected experts, materializes selected and shared expert weights, and validates selected expert down output, shared expert output, and final layer output against the BF16-contracted CPU expert oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer17_moe_expert_outputs_oracle.py` covering router artifact validation, post-norm/selection input checks, exact/tolerance/mismatch classifications, wrong preceding-layer metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter459-layer17-moe-expert-outputs-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer17_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer17_moe_expert_outputs_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer17_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer17_moe_router_oracle.py
+# ................................. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer17_moe_expert_outputs_oracle.py \
+  --router-artifact benchmarks/results/mtp-gguf-iter458-layer17-moe-router-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter459-layer17-moe-expert-outputs-oracle.json
+# status=ready
+# classification=layer17_moe_expert_outputs_match_oracle_exactly
+# position=16
+# router_input_classification=layer17_moe_expert_inputs_match_router_artifact
+# selected_experts=[5, 46, 20, 115, 64, 10, 77, 207]
+# ffn_or_moe_down_f32 exact: max_abs=0.0, rmse=0.0
+# moe_shared_out_f32 exact: max_abs=0.0, rmse=0.0
+# layer_out_f32 exact: max_abs=0.0, rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=17
+# next_action=audit_layer18_bf16_handoff_or_mtp_next_boundary
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-17 MoE expert-output oracle/test
+# only; no torch or dispatch branches; no attention/KV ABI changed; focused
+# tests cover router artifact validation, input hash/selection checks, exact/
+# tolerance/mismatch/unavailable paths; real artifact uses verified iter458
+# router state, selected branch, shared branch, and layer_out all match exactly;
+# compact artifact contains summaries/hashes only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-17 router inputs match the iteration-458 router artifact: `post_norm_f32` hash and selected experts are exact.
+- Selected experts are `[5, 46, 20, 115, 64, 10, 77, 207]`.
+- Layer-17 selected expert down output, shared expert output, and final layer output all match the CPU expert oracle exactly (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=17`.
+- This clears the next bisection step: layer-18 BF16 handoff / next boundary.
+
+### Operational note
+- The user paused `mtp-gguf/run-20260615-103738` after the iteration-459 validation finished and before `multiloop_measure` could persist the verdict. Do not start iteration 460 automatically; stop after committing this validated logical unit.
