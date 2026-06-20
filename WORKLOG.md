@@ -112942,3 +112942,69 @@ PY
 - Layer-14 `attn_out_f32` matches within tolerance (`max_abs=2.44140625e-04`, `rmse=5.44e-06`).
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
 - This clears the next bisection step: layer-14 post-attention residual / MoE boundary.
+
+## 2026-06-20 — validated layer-14 post-attention residual oracle
+
+### Change
+- Continued iteration 433 by adding `scripts/llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py`.
+- The script starts from the validated layer-14 conv/GDN artifact and the exact layer-14 BF16 handoff artifact, hash-checks live `hidden_in_f32` and `attn_out_f32`, materializes `blk.14.post_attention_norm.weight`, and validates `residual_f32` plus `post_norm_f32` against the BF16 add + RMSNorm oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py` covering source artifact validation, handoff alignment, input hash guards, exact / near / mismatch residual/post-norm classifications, wrong-layer-type blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter433-layer14-post-attn-residual-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py \
+  --conv-gdn-artifact benchmarks/results/mtp-gguf-iter432-layer14-conv-gdn-oracle.json \
+  --handoff-artifact benchmarks/results/mtp-gguf-iter429-layer14-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter433-layer14-post-attn-residual-oracle.json
+# status=ready
+# classification=layer14_post_attn_residual_matches_oracle_exactly
+# input_classification=layer14_post_attn_inputs_match_prior_artifacts
+# residual_f32 exact: max_abs=0.0 rmse=0.0
+# post_norm_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=14
+# next_action=audit_layer14_moe_router_from_post_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_post_attn_residual_oracle.py
+# .................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-14 post-attention residual/post-norm
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# RED-style focused tests added before retaining real artifact; layer-14 hidden_in
+# and attn_out source artifacts are hash-checked; residual and post_norm are
+# exact; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-14 `hidden_in_f32` and `attn_out_f32` preflight hashes match the iteration-429 handoff and iteration-432 conv/GDN artifacts.
+- Layer-14 `residual_f32` is exact vs `BF16(hidden_in + attn_out)`.
+- Layer-14 `post_norm_f32` is exact vs `BF16(RMSNorm(residual, blk.14.post_attention_norm.weight))`.
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
+- This clears the next layer-14 bisection step: MoE router from post-norm.
