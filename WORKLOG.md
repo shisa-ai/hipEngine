@@ -109954,3 +109954,66 @@ PY
 - `attn_norm_f32` exactly matches `BF16(RMSNorm(hidden_in_f32, blk.8.attn_norm.weight))` (`max_abs=0.0`, `rmse=0.0`).
 - Layer 8 remains confirmed as `linear_attention`, with `preceding_layer_count=8` in the capture.
 - This clears the next layer-8 bisection step: projection / conv-GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-8 projection oracle
+
+### Change
+- Continued iteration 387 by adding `scripts/llamacpp_mtp_audit_layer8_projection_oracle.py`.
+- The script starts from the exact layer-8 attention-norm artifact, hash-checks live `attn_norm_f32`, reloads the layer-8 linear-attention projection weights, and mirrors the established BF16 projection oracle for linear-attention layers.
+- Added `tests/test_llamacpp_mtp_audit_layer8_projection_oracle.py` covering attention-norm artifact validation, projection input hash guards, exact / within-BF16-step / mismatch / wrong-layer-type / unavailable classifications, and injected projection-weight fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter387-layer8-projection-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer8_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer8_projection_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer8_projection_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer8_projection_oracle.py \
+  --layer8-attn-norm benchmarks/results/mtp-gguf-iter386-layer8-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter387-layer8-projection-oracle.json
+# status=ready
+# classification=layer8_projections_match_bf16_oracle_within_rounding
+# input_classification=layer8_projection_input_matches_attn_norm_artifact
+# linear_qkv_f32 within one BF16 step: max_abs=7.62939453125e-06 rmse=8.429369557916289e-08 bad_count=0
+# linear_z_f32 within one BF16 step: max_abs=9.5367431640625e-07 rmse=1.4901161193847656e-08 bad_count=0
+# ssm_alpha_f32 exact: max_abs=0.0 rmse=0.0
+# ssm_beta_f32 exact: max_abs=0.0 rmse=0.0
+# next_action=audit_layer8_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer8_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer8_attn_norm_oracle.py
+# ...................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic projection oracle/test only; no torch or
+# dispatch branches; no attention/KV ABI changed; RED-style focused tests added
+# before real artifact; docs/MTP-gguf oracle-first path preserved; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-8 projection input `attn_norm_f32` hash matches the exact layer-8 attention-norm artifact at warm position 16/token 271.
+- `linear_qkv_f32` and `linear_z_f32` match the BF16 projection oracle within one BF16 step (`bad_count=0`).
+- `ssm_alpha_f32` and `ssm_beta_f32` are exact.
+- This clears the next layer-8 bisection step: conv/GDN under the BF16 contract.
