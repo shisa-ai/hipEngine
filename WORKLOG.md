@@ -112081,3 +112081,70 @@ PY
 - Layer-12 `post_norm_f32` is exact vs `BF16(RMSNorm(residual, blk.12.post_attention_norm.weight))`.
 - The capture used the linear-attention path with `preceding_layer_count=12`.
 - This clears the next layer-12 bisection step: MoE router from post-norm.
+
+## 2026-06-20 — validated layer-12 MoE router oracle
+
+### Change
+- Continued iteration 420 by adding `scripts/llamacpp_mtp_audit_layer12_moe_router_oracle.py`.
+- The script starts from the exact layer-12 post-attention residual/post-norm artifact, hash-checks live `post_norm_f32`, materializes the layer-12 router and shared-gate weights, and validates selected experts, routing weights, and raw shared-gate logit against the BF16-contracted MoE router oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer12_moe_router_oracle.py` covering post-attention artifact validation, post-norm hash guards, exact / tolerance / mismatch router classifications, wrong-preceding-count blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter420-layer12-moe-router-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer12_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_moe_router_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer12_moe_router_oracle.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer12_moe_router_oracle.py \
+  --post-attn-artifact benchmarks/results/mtp-gguf-iter419-layer12-post-attn-residual-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter420-layer12-moe-router-oracle.json
+# status=ready
+# classification=layer12_moe_router_matches_oracle_within_tolerance
+# post_norm_input_classification=layer12_moe_router_input_matches_post_attn_artifact exact_hash_match=True
+# selected_experts_i64 exact: [99, 165, 96, 44, 220, 85, 193, 101]
+# routing_weights_f32 within tolerance: max_abs=1.4901161193847656e-08 rmse=5.26835597369768e-09
+# shared_gate_logit_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=12
+# next_action=audit_layer12_moe_selected_and_shared_expert_outputs
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer12_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer10_moe_router_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-12 MoE-router oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before retaining real artifact; layer-12 post_norm source artifact
+# is hash-checked; top-k experts and shared gate are exact while routing softmax
+# is within tolerance; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-12 `post_norm_f32` preflight hash matches the iteration-419 post-attention residual artifact.
+- Layer-12 selected experts are exact vs the BF16-contracted router oracle: `[99, 165, 96, 44, 220, 85, 193, 101]`.
+- Layer-12 routing weights match within tolerance (`max_abs=1.4901161193847656e-08`, `rmse=5.26835597369768e-09`).
+- Layer-12 raw shared-gate logit is exact (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=12`.
+- This clears the next layer-12 bisection step: selected/shared expert outputs.
