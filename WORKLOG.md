@@ -111165,3 +111165,65 @@ PY
 - Layer-10 shared expert output and final layer output are exact at position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
 - Layer 10 remains `linear_attention`, with `preceding_layer_count=10` in the capture.
 - This clears the next layer boundary: layer-11 BF16 handoff / MTP next boundary.
+
+## 2026-06-20 — validated layer-11 BF16 handoff
+
+### Change
+- Continued iteration 406 by adding `scripts/llamacpp_mtp_layer11_bf16_handoff_audit.py`.
+- The script starts from the ready layer-10 MoE expert-output artifact, hash-checks live layer-10 `layer_out_f32`, captures layer-11 `hidden_in_f32` after `run_preceding_layers=True`, and validates the exact BF16 inter-layer handoff.
+- Added `tests/test_llamacpp_mtp_layer11_bf16_handoff_audit.py` covering source artifact validation, source hash guards, exact / mismatch / wrong-preceding / unavailable classifications, and injected capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter406-layer11-bf16-handoff.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_layer11_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer11_bf16_handoff_audit.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer11_bf16_handoff_audit.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_layer11_bf16_handoff_audit.py \
+  --layer10-experts benchmarks/results/mtp-gguf-iter405-layer10-moe-expert-outputs-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter406-layer11-bf16-handoff.json
+# status=ready
+# classification=layer11_hidden_in_matches_layer10_layer_out_exactly
+# source_reference=layer11_handoff_source_matches_layer10_artifact exact_hash_match=True
+# handoff exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention preceding_layer_count=11
+# next_action=audit_layer11_attn_norm_under_bf16_contract_or_mtp_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer11_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer10_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_layer10_bf16_handoff_audit.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic handoff oracle/test only; no torch or
+# dispatch branches; no attention/KV ABI changed; RED-style focused tests added
+# before real artifact; docs/MTP-gguf oracle-first path preserved; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-11 `hidden_in_f32` exactly matches layer-10 `layer_out_f32` at warm position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
+- Source capture hash matches the ready layer-10 expert-output artifact.
+- Layer 11 is `full_attention`, with `preceding_layer_count=11` in the target capture.
+- This clears the next layer-11 bisection step: attention norm under the BF16 contract.
