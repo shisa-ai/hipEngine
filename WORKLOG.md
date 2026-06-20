@@ -103330,3 +103330,58 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-3 post-attention RMSNorm matches CPU direct-weight GGUF RMSNorm within BF16-scale tolerance: `post_norm_vs_cpu_bf16.max_abs_diff=0.015625`.
 - Layer-3 MoE/shared-expert combine is bit-exact against the fused-kernel CPU formula: `layer_out_vs_cpu.max_abs_diff=0.0`, `rms_abs_diff=0.0`.
 - The first full-attention layer's post-attention FFN/MoE half is now explained; if AR parity remains off, the next likely boundary is the full-attention attention output/KV-cache state itself, later cross-layer propagation, or final output head.
+
+## 2026-06-20 — GGUF final output head matches streaming CPU oracle
+
+### Change
+- Continued iteration 279 by adding `scripts/gguf_output_head_compare.py`, a streaming CPU diagnostic for the final output_norm/lm_head boundary that does not materialize the full Q6_K lm_head matrix.
+- Added `tests/test_gguf_output_head_compare.py` for chunked lm_head replay and device-vs-CPU logit/top-k comparison helpers.
+- The first real attempt used the non-resident probe API and failed with `AttributeError: 'Qwen35GGUFResidentSession' object has no attribute 'run_prompt_hidden'`; fixed the diagnostic to mirror existing resident capture scripts by driving `_run_token_to_final_hidden`, copying the exact BF16 final hidden consumed by the device lm_head, and reading device logits via `_sample_from_hidden`.
+- Emitted `benchmarks/results/mtp-gguf-iter279-output-head-compare.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_output_head_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_output_head_compare.py
+# .... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_output_head_compare.py \
+  --iteration 279 \
+  --chunk-rows 1024 \
+  --output benchmarks/results/mtp-gguf-iter279-output-head-compare.json
+# status=compared position=16 token_id=271
+# top1_match=True
+# max_abs_diff=4.76837158203125e-06
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter279-output-head-compare.json \
+  >/tmp/iter279-output-head.pretty
+
+git diff --check -- \
+  scripts/gguf_output_head_compare.py \
+  tests/test_gguf_output_head_compare.py \
+  benchmarks/results/mtp-gguf-iter279-output-head-compare.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The final output_norm/lm_head boundary matches the streaming CPU dequant oracle for the default greeting prompt through `position=16` / `token_id=271`.
+- Device and CPU top-1 both select token `271`; top-8 overlap is complete (`8/8`).
+- Full-vocab device-vs-CPU logit diff is tiny: `max_abs_diff=4.76837158203125e-06`, `rms_abs_diff=6.850778504485788e-07`.
+- The MTP fp32 hidden-seed tap differs from the BF16 hidden consumed by the AR lm_head by `max_abs=0.045429229736328125`, as expected from fp32-vs-BF16 output_norm precision; the lm_head replay intentionally uses the exact BF16 device input.
+- Since layer-0, layer-1, first full-attention post-FFN path, and final lm_head now match CPU oracles, target AR parity is still not fixed and the next likely boundary is full-attention attention output/KV-cache state or later cross-layer propagation.
