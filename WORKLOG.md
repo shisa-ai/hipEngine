@@ -113008,3 +113008,70 @@ PY
 - Layer-14 `post_norm_f32` is exact vs `BF16(RMSNorm(residual, blk.14.post_attention_norm.weight))`.
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
 - This clears the next layer-14 bisection step: MoE router from post-norm.
+
+## 2026-06-20 — validated layer-14 MoE router oracle
+
+### Change
+- Continued iteration 434 by adding `scripts/llamacpp_mtp_audit_layer14_moe_router_oracle.py`.
+- The script starts from the exact layer-14 post-attention residual artifact, hash-checks live `post_norm_f32`, materializes `blk.14.ffn_gate_inp.weight` and `blk.14.ffn_gate_inp_shexp.weight`, and validates selected experts, routing weights, and shared-gate logit against the BF16-contracted MoE router oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer14_moe_router_oracle.py` covering post-attention artifact validation, input hash guards, exact / mismatch router classifications, preceding-layer blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter434-layer14-moe-router-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer14_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_moe_router_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_moe_router_oracle.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer14_moe_router_oracle.py \
+  --post-attn-artifact benchmarks/results/mtp-gguf-iter433-layer14-post-attn-residual-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter434-layer14-moe-router-oracle.json
+# status=ready
+# classification=layer14_moe_router_matches_oracle_within_tolerance
+# post_norm_input_classification=layer14_moe_router_input_matches_post_attn_artifact
+# selected_experts_i64 exact
+# routing_weights_f32 within tolerance: max_abs=1.4901161193847656e-08 rmse=1.1175870895385742e-08
+# shared_gate_logit_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=14
+# next_action=audit_layer14_moe_selected_and_shared_expert_outputs
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer14_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer14_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_moe_router_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-14 MoE router oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before retaining real artifact; post_norm source artifact is
+# hash-checked; selected experts exact, routing weights within 1e-6, shared
+# gate exact; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-14 `post_norm_f32` preflight hash matches the iteration-433 post-attention artifact.
+- Layer-14 MoE selected experts are exact vs BF16-contracted router top-k.
+- Layer-14 MoE routing weights match within tolerance (`max_abs=1.49e-08`, `rmse=1.12e-08`).
+- Layer-14 shared-gate logit is exact vs BF16-contracted shared-gate dot product.
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=14`.
+- This clears the next layer-14 bisection step: selected and shared expert outputs.
