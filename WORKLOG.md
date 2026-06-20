@@ -102022,3 +102022,58 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The early F32/BF16 numeric drift is prompt-wide rather than isolated to the final sampled position: peak layer-0 `attn_norm` max_abs=0.12713, `ssm_alpha` max_abs=0.03311, and `ssm_beta` max_abs=0.01785 across the exact 17-token llama.cpp-compatible prompt.
 - The repeated final token 271 has stable repeated metrics, so the boundary probe is deterministic and suitable for future device-boundary regression checks.
 - Still no target AR parity improvement is claimed; next work should capture the real device boundary after layer-0 GDN or test a scoped F32 aux-projection path.
+
+## 2026-06-20 — GGUF boundary probe gained a no-model regression fixture
+
+### Change
+- Continued iteration 255 by factoring `scripts/gguf_precision_boundary_probe.py` so the F32-vs-BF16 boundary math is callable without opening a full GGUF.
+- Added compact synthetic oracle fixture `benchmarks/fixtures/qwen35_gguf_precision_boundary_fixture.json` and `tests/test_gguf_precision_boundary_probe.py`.
+- Re-ran the real token-271 probe after the refactor and emitted `benchmarks/results/mtp-gguf-iter255-boundary-probe-regression-check.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_precision_boundary_probe.py
+# .. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_precision_boundary_probe.py
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_precision_boundary_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layer 0 --token-id 271 --iteration 255 \
+  --output benchmarks/results/mtp-gguf-iter255-boundary-probe-regression-check.json
+# norm_max_abs=0.10197830200195312
+# ssm_alpha_max_abs=0.018385887145996094
+# ssm_beta_max_abs=0.01250600814819336
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter255-boundary-probe-regression-check.json \
+  >/tmp/iter255-boundary-regression.pretty && echo boundary-regression-artifact-json-ok
+# boundary-regression-artifact-json-ok
+
+git diff --check -- scripts/gguf_precision_boundary_probe.py \
+  tests/test_gguf_precision_boundary_probe.py \
+  benchmarks/fixtures/qwen35_gguf_precision_boundary_fixture.json \
+  benchmarks/results/mtp-gguf-iter255-boundary-probe-regression-check.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The early-boundary probe now has a small, committed regression oracle that does not require `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+- The real GGUF token-271 metrics remained unchanged after refactoring, so the artifact from iteration 253 remains comparable.
+- Follow-up iteration 256 fixed the probe CLI metadata contract to accept `--iteration`; the checked regression artifact now records `iteration=255` instead of inheriting the original iter253 default.
+- This still does not change target runtime math or target AR parity; next useful work remains a device-side layer-0 boundary capture or a scoped F32 aux-projection experiment.

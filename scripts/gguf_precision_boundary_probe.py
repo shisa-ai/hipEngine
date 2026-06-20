@@ -34,10 +34,16 @@ def main() -> None:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--layer", type=int, default=0)
     parser.add_argument("--token-id", type=int, default=271)
+    parser.add_argument("--iteration", type=int, default=253)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    artifact = build_probe_artifact(args.model, layer_id=args.layer, token_id=args.token_id)
+    artifact = build_probe_artifact(
+        args.model,
+        layer_id=args.layer,
+        token_id=args.token_id,
+        iteration=args.iteration,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2) + "\n")
     print(
@@ -55,7 +61,13 @@ def main() -> None:
     )
 
 
-def build_probe_artifact(model: Path, *, layer_id: int, token_id: int) -> dict[str, Any]:
+def build_probe_artifact(
+    model: Path,
+    *,
+    layer_id: int,
+    token_id: int,
+    iteration: int = 253,
+) -> dict[str, Any]:
     reader = GGUFReader(model)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
     cfg = model_map.config
@@ -71,24 +83,20 @@ def build_probe_artifact(model: Path, *, layer_id: int, token_id: int) -> dict[s
     ssm_alpha = reader.dequantize_tensor(layer.tensor("ssm_alpha").name).astype(np.float32)
     ssm_beta = reader.dequantize_tensor(layer.tensor("ssm_beta").name).astype(np.float32)
 
-    llama_embedding = token_embedding.astype(np.float32)
-    llama_norm = _rmsnorm(llama_embedding, attn_norm_weight, eps=float(cfg.rms_norm_eps))
-
-    hip_embedding = _round_to_bf16_float(llama_embedding)
-    hip_norm_pre_store = _rmsnorm(hip_embedding, attn_norm_weight, eps=float(cfg.rms_norm_eps))
-    hip_norm = _round_to_bf16_float(hip_norm_pre_store)
-
-    projections = {
-        "ssm_alpha": _projection_boundary_metrics(llama_norm, hip_norm, ssm_alpha),
-        "ssm_beta": _projection_boundary_metrics(llama_norm, hip_norm, ssm_beta),
-    }
+    boundary = compute_precision_boundary_metrics(
+        token_embedding,
+        attn_norm_weight,
+        ssm_alpha,
+        ssm_beta,
+        rms_norm_eps=float(cfg.rms_norm_eps),
+    )
 
     return {
         "schema": 1,
         "kind": "mtp_gguf_early_precision_boundary_probe",
         "date": "2026-06-20",
         "loop": "mtp-gguf/run-20260615-103738",
-        "iteration": 253,
+        "iteration": int(iteration),
         "model": str(model),
         "layer_id": layer_id,
         "layer_type": layer.layer_type,
@@ -104,10 +112,57 @@ def build_probe_artifact(model: Path, *, layer_id: int, token_id: int) -> dict[s
                 "weights are materialized as BF16"
             ),
         },
-        "attn_norm_boundary": _diff_metrics(llama_norm, hip_norm),
-        "projections": projections,
-        "conclusion": _conclusion(projections),
+        "attn_norm_boundary": boundary["attn_norm_boundary"],
+        "projections": boundary["projections"],
+        "conclusion": _conclusion(boundary["projections"]),
     }
+
+
+def compute_precision_boundary_metrics(
+    token_embedding: np.ndarray,
+    attn_norm_weight: np.ndarray,
+    ssm_alpha: np.ndarray,
+    ssm_beta: np.ndarray,
+    *,
+    rms_norm_eps: float,
+) -> dict[str, Any]:
+    """Compare llama.cpp F32 graph math with hipEngine BF16 resident contracts."""
+
+    token_embedding = np.asarray(token_embedding, dtype=np.float32)
+    attn_norm_weight = np.asarray(attn_norm_weight, dtype=np.float32)
+    ssm_alpha = np.asarray(ssm_alpha, dtype=np.float32)
+    ssm_beta = np.asarray(ssm_beta, dtype=np.float32)
+    _validate_boundary_shapes(token_embedding, attn_norm_weight, ssm_alpha, ssm_beta)
+
+    llama_norm = _rmsnorm(token_embedding, attn_norm_weight, eps=float(rms_norm_eps))
+
+    hip_embedding = _round_to_bf16_float(token_embedding)
+    hip_norm_pre_store = _rmsnorm(hip_embedding, attn_norm_weight, eps=float(rms_norm_eps))
+    hip_norm = _round_to_bf16_float(hip_norm_pre_store)
+
+    return {
+        "attn_norm_boundary": _diff_metrics(llama_norm, hip_norm),
+        "projections": {
+            "ssm_alpha": _projection_boundary_metrics(llama_norm, hip_norm, ssm_alpha),
+            "ssm_beta": _projection_boundary_metrics(llama_norm, hip_norm, ssm_beta),
+        },
+    }
+
+
+def _validate_boundary_shapes(
+    token_embedding: np.ndarray,
+    attn_norm_weight: np.ndarray,
+    ssm_alpha: np.ndarray,
+    ssm_beta: np.ndarray,
+) -> None:
+    if token_embedding.ndim != 1:
+        raise ValueError("token_embedding must be a 1D hidden row")
+    hidden_size = token_embedding.shape[0]
+    if attn_norm_weight.shape != (hidden_size,):
+        raise ValueError("attn_norm_weight shape must match token_embedding")
+    for name, weight in {"ssm_alpha": ssm_alpha, "ssm_beta": ssm_beta}.items():
+        if weight.ndim != 2 or weight.shape[1] != hidden_size:
+            raise ValueError(f"{name} must be a 2D projection with hidden_size columns")
 
 
 def _dequant_row(reader: GGUFReader, name: str, row: int) -> np.ndarray:
