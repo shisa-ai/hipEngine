@@ -101976,3 +101976,49 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - The earliest real greeting boundary already shows measurable, bounded numeric drift before any target trunk attention/MoE acceptance work: layer-0 `attn_norm` max_abs=0.10198, `ssm_alpha` max_abs=0.01839, and `ssm_beta` max_abs=0.01251 under the F32-vs-BF16 contract comparison.
 - This still is not a full target-AR parity fix; next work should either capture a real device boundary after layer-0 GDN or add a temporary F32 resident path for the specific aux projections to see whether the first-token target AR moves toward llama.cpp.
+
+## 2026-06-20 — GGUF prompt-wide boundary probe showed F32/BF16 drift is not final-token-only
+
+### Change
+- Continued iteration 254 by applying `scripts/gguf_precision_boundary_probe.py` to every token in the captured 17-token reasoning-off greeting prompt.
+- Wrote compact aggregate artifact `benchmarks/results/mtp-gguf-iter254-prompt-boundary-probe.json` with per-token layer-0 `attn_norm`, `ssm_alpha`, and `ssm_beta` F32-vs-BF16 deltas.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Reused build_probe_artifact(...) for tokens
+# [248045, 846, 198, 7734, 264, 2716, 40719, 13, 248046,
+#  198, 248045, 74455, 198, 248068, 271, 248069, 271]
+# and wrote benchmarks/results/mtp-gguf-iter254-prompt-boundary-probe.json.
+PY
+# tokens=17
+# attn_norm_max_abs peak: position=7 token_id=13 value=0.12712860107421875
+# ssm_alpha_max_abs peak: position=8 token_id=248046 value=0.033110618591308594
+# ssm_beta_max_abs peak: position=5 token_id=2716 value=0.017852306365966797
+# repeated final token_id=271 at positions 14 and 16 has identical metrics.
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter254-prompt-boundary-probe.json \
+  >/tmp/iter254-prompt-boundary.pretty && echo prompt-boundary-artifact-json-ok
+# prompt-boundary-artifact-json-ok
+
+git diff --check -- WORKLOG.md \
+  benchmarks/results/mtp-gguf-iter254-prompt-boundary-probe.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The early F32/BF16 numeric drift is prompt-wide rather than isolated to the final sampled position: peak layer-0 `attn_norm` max_abs=0.12713, `ssm_alpha` max_abs=0.03311, and `ssm_beta` max_abs=0.01785 across the exact 17-token llama.cpp-compatible prompt.
+- The repeated final token 271 has stable repeated metrics, so the boundary probe is deterministic and suitable for future device-boundary regression checks.
+- Still no target AR parity improvement is claimed; next work should capture the real device boundary after layer-0 GDN or test a scoped F32 aux-projection path.
