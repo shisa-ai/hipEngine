@@ -317,6 +317,40 @@ class Qwen35GGUFFullAttentionPrefillResult:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFLinearAttentionBoundaryCapture:
+    """Host-visible diagnostic snapshot for one GGUF linear-attention boundary."""
+
+    layer_id: int
+    token_id: int
+    position: int
+    hidden_size: int
+    ssm_time_step_rank: int
+    attn_norm_f32: np.ndarray
+    ssm_alpha_f32: np.ndarray
+    ssm_beta_f32: np.ndarray
+    attn_out_f32: np.ndarray
+
+    def as_summary_dict(self) -> dict[str, object]:
+        return {
+            "layer_id": int(self.layer_id),
+            "token_id": int(self.token_id),
+            "position": int(self.position),
+            "hidden_size": int(self.hidden_size),
+            "ssm_time_step_rank": int(self.ssm_time_step_rank),
+            "attn_norm_shape": list(self.attn_norm_f32.shape),
+            "ssm_alpha_shape": list(self.ssm_alpha_f32.shape),
+            "ssm_beta_shape": list(self.ssm_beta_f32.shape),
+            "attn_out_shape": list(self.attn_out_f32.shape),
+            "finite": bool(
+                np.all(np.isfinite(self.attn_norm_f32))
+                and np.all(np.isfinite(self.ssm_alpha_f32))
+                and np.all(np.isfinite(self.ssm_beta_f32))
+                and np.all(np.isfinite(self.attn_out_f32))
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFDecodeGraphWeightRole:
     """Small, serialisable description of one resident weight's decode role."""
 
@@ -3411,6 +3445,75 @@ class Qwen35GGUFResidentSession:
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
         )
 
+    def capture_linear_attention_boundary(
+        self,
+        token_id: int,
+        *,
+        position: int,
+        layer_id: int = 0,
+        stream: int = 0,
+    ) -> Qwen35GGUFLinearAttentionBoundaryCapture:
+        """Run one decode linear-attention boundary and copy diagnostic buffers.
+
+        This is a correctness-debug tap, not a generation fast path.  It mutates
+        the resident decode state exactly like ``_run_linear_attention_attn_only``
+        for the selected token/layer so captured buffers can be compared against
+        CPU or llama.cpp boundary oracles.
+        """
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._hidden_a is None:
+            raise RuntimeError("GGUF resident session buffers are closed")
+        if position < 0:
+            raise ValueError("position must be non-negative")
+        layer_types = self.runner.weights.config.layer_types
+        if layer_id < 0 or layer_id >= len(layer_types):
+            raise ValueError(f"layer_id {layer_id} outside resident layer range")
+        if layer_types[layer_id] != LINEAR_ATTENTION:
+            raise ValueError(f"layer {layer_id} is not a linear_attention layer")
+
+        runtime = self.runtime or get_hip_runtime()
+        self._hidden_seed_fp32_populated = False
+        self._set_full_attention_position_device(position, stream=stream)
+        self._set_token_id_device(int(token_id), stream=stream)
+        self.runner._run_linear_attention_attn_only(
+            layer_id,
+            self._hidden_a.ptr,
+            self.scratch.attn_out.ptr,
+            self.scratch,
+            stream=stream,
+        )
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+
+        cfg = self.runner.weights.config
+        rank = int(cfg.ssm_time_step_rank)
+        hidden_size = int(self.runner.hidden_size)
+        alpha_ptr = int(self.scratch.linear_alpha.ptr)
+        beta_ptr = int(self.scratch.linear_beta.ptr)
+        if cfg.is_moe:
+            alpha_ptr = int(self.scratch.linear_alpha_beta.ptr)
+            beta_ptr = alpha_ptr + rank * DType.BF16.itemsize
+
+        return Qwen35GGUFLinearAttentionBoundaryCapture(
+            layer_id=int(layer_id),
+            token_id=int(token_id),
+            position=int(position),
+            hidden_size=hidden_size,
+            ssm_time_step_rank=rank,
+            attn_norm_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.norm.ptr), hidden_size, runtime=runtime
+            ),
+            ssm_alpha_f32=_copy_bf16_ptr_to_host_f32(alpha_ptr, rank, runtime=runtime),
+            ssm_beta_f32=_copy_bf16_ptr_to_host_f32(beta_ptr, rank, runtime=runtime),
+            attn_out_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.attn_out.ptr), hidden_size, runtime=runtime
+            ),
+        )
+
     def _run_current_hidden_to_final_hidden(
         self,
         *,
@@ -5903,6 +6006,20 @@ def _validate_raw_rank3_expert_weight(
         raise ValueError(f"invalid GGUF expert tensor shape for {source.name!r}")
 
 
+def _copy_bf16_ptr_to_host_f32(ptr: int, elements: int, *, runtime: HipRuntime) -> np.ndarray:
+    elements = int(elements)
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    bits = np.empty((elements,), dtype=np.uint16)
+    copy_device_to_host(
+        host_array_ptr(bits),
+        DeviceBuffer(int(ptr), elements * DType.BF16.itemsize),
+        bits.nbytes,
+        runtime=runtime,
+    )
+    return bf16_to_float32(bits)
+
+
 def _read_i64_device_scalar(buffer, host: np.ndarray, *, stream: int = 0, runtime: HipRuntime) -> int:
     if stream:
         runtime.stream_synchronize(stream)
@@ -6073,6 +6190,7 @@ __all__ = [
     "Qwen35GGUFDecodeGraphBucketKey",
     "Qwen35GGUFDecodeGraphWeightRole",
     "Qwen35GGUFFullAttentionPrefillResult",
+    "Qwen35GGUFLinearAttentionBoundaryCapture",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFHiddenSeedContract",
     "Qwen35GGUFMTPDraftSeed",

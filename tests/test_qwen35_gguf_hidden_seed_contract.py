@@ -320,6 +320,95 @@ def test_resident_output_norm_hidden_populates_fp32_seed_for_bulk_and_decode(mon
     assert session._hidden_seed_fp32_populated
 
 
+def test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class FakeRuntime:
+        def device_synchronize(self) -> None:
+            calls.append(("device_synchronize",))
+
+    def fake_position(position: int, *, stream: int = 0) -> None:
+        calls.append(("position", position, stream))
+
+    def fake_token(token_id: int, *, stream: int = 0) -> None:
+        calls.append(("token", token_id, stream))
+
+    def fake_attn(
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        scratch: object,
+        **kwargs: object,
+    ) -> None:
+        calls.append(("attn", layer_id, hidden_ptr, attn_out_ptr, kwargs["stream"]))
+
+    def fake_copy(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
+        calls.append(("copy", ptr, elements, runtime))
+        payloads = {
+            2000: np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+            5000: np.asarray([0.25, 0.5], dtype=np.float32),
+            5004: np.asarray([-0.25, -0.5], dtype=np.float32),
+            1000: np.asarray([5.0, 6.0, 7.0, 8.0], dtype=np.float32),
+        }
+        return payloads[int(ptr)]
+
+    monkeypatch.setattr(gguf_runner, "_copy_bf16_ptr_to_host_f32", fake_copy)
+
+    runtime = FakeRuntime()
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runtime = runtime
+    session._hidden_a = SimpleNamespace(ptr=1234)
+    session._hidden_seed_fp32_populated = True
+    session._set_full_attention_position_device = fake_position
+    session._set_token_id_device = fake_token
+    cfg = SimpleNamespace(
+        layer_types=(gguf_runner.LINEAR_ATTENTION,),
+        ssm_time_step_rank=2,
+        is_moe=True,
+    )
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=cfg),
+        hidden_size=4,
+        _run_linear_attention_attn_only=fake_attn,
+    )
+    session.scratch = SimpleNamespace(
+        norm=SimpleNamespace(ptr=2000),
+        linear_alpha=SimpleNamespace(ptr=3000),
+        linear_beta=SimpleNamespace(ptr=4000),
+        linear_alpha_beta=SimpleNamespace(ptr=5000),
+        attn_out=SimpleNamespace(ptr=1000),
+    )
+
+    capture = session.capture_linear_attention_boundary(17, position=3, layer_id=0)
+
+    assert not session._hidden_seed_fp32_populated
+    assert capture.as_summary_dict() == {
+        "layer_id": 0,
+        "token_id": 17,
+        "position": 3,
+        "hidden_size": 4,
+        "ssm_time_step_rank": 2,
+        "attn_norm_shape": [4],
+        "ssm_alpha_shape": [2],
+        "ssm_beta_shape": [2],
+        "attn_out_shape": [4],
+        "finite": True,
+    }
+    np.testing.assert_allclose(capture.ssm_beta_f32, [-0.25, -0.5])
+    assert calls == [
+        ("position", 3, 0),
+        ("token", 17, 0),
+        ("attn", 0, 1234, 1000, 0),
+        ("device_synchronize",),
+        ("copy", 2000, 4, runtime),
+        ("copy", 5000, 2, runtime),
+        ("copy", 5004, 2, runtime),
+        ("copy", 1000, 4, runtime),
+    ]
+
+
 def test_resident_session_reset_clears_hidden_seed_populated_flag_without_gpu_init() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.scratch = SimpleNamespace(zero_states=lambda runtime: None)

@@ -102077,3 +102077,46 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The real GGUF token-271 metrics remained unchanged after refactoring, so the artifact from iteration 253 remains comparable.
 - Follow-up iteration 256 fixed the probe CLI metadata contract to accept `--iteration`; the checked regression artifact now records `iteration=255` instead of inheriting the original iter253 default.
 - This still does not change target runtime math or target AR parity; next useful work remains a device-side layer-0 boundary capture or a scoped F32 aux-projection experiment.
+
+## 2026-06-20 — GGUF resident layer-0 boundary tap contract added
+
+### Change
+- Continued iteration 257 by adding a diagnostic-only `Qwen35GGUFResidentSession.capture_linear_attention_boundary(...)` tap.
+- The tap runs the existing resident decode embedding + selected linear-attention attention branch, then copies host-visible `attn_norm`, `ssm_alpha`, `ssm_beta`, and `attn_out` buffers as fp32 arrays for comparison against CPU/llama.cpp boundary oracles.
+- Added a mocked no-GPU unit test for the tap and compact contract artifact `benchmarks/results/mtp-gguf-iter257-linear-attention-boundary-tap-contract.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_hidden_seed_contract.py::test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers \
+  tests/test_qwen35_gguf_hidden_seed_contract.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter257-linear-attention-boundary-tap-contract.json \
+  >/tmp/iter257-boundary-tap.pretty && echo boundary-tap-contract-json-ok
+# boundary-tap-contract-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  benchmarks/results/mtp-gguf-iter257-linear-attention-boundary-tap-contract.json
+# no output
+```
+
+### Result
+- The next real-device step is now unblocked at the API level: a script can run the captured 17-token prompt through the resident session and call the tap at the selected position/layer to emit real GPU boundary arrays.
+- This is still diagnostic-only and does not change generation math or target AR parity.
