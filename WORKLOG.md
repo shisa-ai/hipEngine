@@ -106475,3 +106475,63 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - `blk.0.ssm_out.weight`: Q8_0 shape `[2048, 4096]`
   - `blk.0.ssm_alpha.weight` and `blk.0.ssm_beta.weight`: F32 source shape `[32, 2048]`, stored as BF16 for current kernels
 - Next action: build a position-0 BF16-contracted oracle for `conv_out_f32`, `recurrent_out_f32`, `recurrent_bf16_f32`, and `attn_out_f32`; only after that passes should we attempt a warm-state position-16 replay/capture oracle.
+
+## 2026-06-20 — validated position-0 layer-0 conv/GDN oracle
+
+### Change
+- Continued iteration 325 by adding `scripts/llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py`.
+- The script captures hipEngine layer-0 linear-attention boundary at position 0, uses resident BF16 boundary values as the input contract, reloads GGUF SSM/GDN weights, and computes a torch-free CPU oracle for:
+  - `conv_out_f32`
+  - `recurrent_out_f32`
+  - `recurrent_bf16_f32`
+  - `attn_out_f32`
+- Added `tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py` covering zero-state convolution, GDN math, tree-style reductions, mismatch classification, injected artifact generation, and `ssm_a -> log(-ssm_a)` conversion.
+- Emitted `benchmarks/results/mtp-gguf-iter325-layer0-position0-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py \
+  --projection-artifact benchmarks/results/mtp-gguf-iter323-layer0-bf16-projection-oracle.json \
+  --plan benchmarks/results/mtp-gguf-iter324-layer0-conv-gdn-plan.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter325-layer0-position0-conv-gdn-oracle.json \
+  --iteration 325
+# status=ready
+# classification=layer0_position0_conv_gdn_matches_oracle_within_tolerance
+# conv_out_f32: field_matches_oracle_within_tolerance, max_abs=2.384185791015625e-07, rmse=3.252899727357317e-09
+# recurrent_out_f32: field_matches_oracle_within_tolerance, max_abs=1.1920928955078125e-07, rmse=3.239629675633182e-09
+# recurrent_bf16_f32: field_matches_oracle_exactly, max_abs=0.0, rmse=0.0
+# attn_out_f32: field_matches_oracle_within_tolerance, max_abs=1.1920928955078125e-07, rmse=2.63417798684884e-09
+# next_action=extend_conv_gdn_oracle_to_warm_position16_replay_or_state_capture
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# ......................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Position-0 layer-0 conv/GDN path now has a passing BF16-contracted CPU oracle.
+- The zero-state convolution/GDN/SSM-out chain is not the source of the material layer-0 mismatch:
+  - `conv_out_f32` matches within `2.384185791015625e-07` max abs.
+  - `recurrent_out_f32` matches within `1.1920928955078125e-07` max abs.
+  - `recurrent_bf16_f32` matches exactly.
+  - `attn_out_f32` matches within `1.1920928955078125e-07` max abs.
+- Interpretation: the next bisection step should return to the original warm position-16 boundary and add either CPU replay for tokens `0..15` or a diagnostic pre-token conv/recurrent state capture before recomputing the same oracle there.
