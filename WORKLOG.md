@@ -110651,3 +110651,67 @@ PY
 - Layer-9 routing weights match within tolerance (`max_abs=1.4901161193847656e-08`, `rmse=6.4523919540704355e-09`).
 - Layer 9 remains `linear_attention`, with `preceding_layer_count=9` in the capture.
 - This clears the next layer-9 bisection step: selected/shared expert outputs.
+
+## 2026-06-20 — validated layer-9 MoE expert-output oracle
+
+### Change
+- Continued iteration 398 by adding `scripts/llamacpp_mtp_audit_layer9_moe_expert_outputs_oracle.py`.
+- The script starts from the ready layer-9 MoE router artifact, hash-checks live `post_norm_f32` and selected experts, materializes the selected/shared expert weights, and validates selected expert aggregate, shared expert output, and final layer output under the resident-BF16 contract.
+- Added `tests/test_llamacpp_mtp_audit_layer9_moe_expert_outputs_oracle.py` covering router artifact validation, router-input guards, exact / tolerance / mismatch / blocked / unavailable classifications, and injected capture / weight fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter398-layer9-moe-expert-outputs-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer9_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer9_moe_expert_outputs_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer9_moe_expert_outputs_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer9_moe_expert_outputs_oracle.py \
+  --router-artifact benchmarks/results/mtp-gguf-iter397-layer9-moe-router-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter398-layer9-moe-expert-outputs-oracle.json
+# status=ready
+# classification=layer9_moe_expert_outputs_match_oracle_exactly
+# router_input_classification=layer9_moe_expert_inputs_match_router_artifact
+# ffn_or_moe_down_f32 exact: max_abs=0.0 rmse=0.0
+# moe_shared_out_f32 exact: max_abs=0.0 rmse=0.0
+# layer_out_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention preceding_layer_count=9
+# next_action=audit_layer10_bf16_handoff_or_mtp_next_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer9_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer9_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer8_moe_expert_outputs_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic MoE expert-output oracle/test only; no torch
+# or dispatch branches; no attention/KV ABI changed; RED-style focused tests
+# added before real artifact; llama.cpp/GGUF expert oracle retained; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-9 expert inputs (`post_norm_f32`, selected experts) match the ready router artifact before expert-output audit.
+- Layer-9 selected expert aggregate, shared expert output, and final layer output all match the expert oracle exactly at position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
+- Layer 9 remains `linear_attention`, with `preceding_layer_count=9` in the capture.
+- This clears the next layer boundary: layer-10 BF16 handoff / MTP next boundary.
