@@ -103712,3 +103712,54 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   `res->t_layer_inp[il] = inpL;`
 - JSON sidecar records `status=patch_ready`, `external_checkout_modified=false`, `single_assignment_added=true`, and the next action `apply_patch_to_temporary_llamacpp_checkout_and_capture_hidden_in`.
 - Temp-copy dry-run/apply succeeded; the read-only llama.cpp checkout was not modified.
+
+## 2026-06-20 — prepared isolated patched llama.cpp source for hidden-in capture
+
+### Change
+- Continued iteration 285 by adding `scripts/llamacpp_mtp_prepare_patched_source.py`, a reproducible bridge from the committed Qwen35MoE layer-input patch artifact to an isolated build/capture-ready llama.cpp source tree.
+- Added `tests/test_llamacpp_mtp_prepare_patched_source.py`, using a tiny synthetic git repo to prove `git archive` extraction, patch application, sentinel-safe replacement, and target validation.
+- Emitted `benchmarks/results/mtp-gguf-iter285-llamacpp-patched-source-manifest.json` after extracting `/home/lhl/llama.cpp/llama.cpp-hip` at commit `6e9007ae61f4e994c27484759caac6ef2aa32b30` into `/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input` and applying the iteration-284 patch.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_prepare_patched_source.py
+# .... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_prepare_patched_source.py \
+  --replace \
+  --patch benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input.patch \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input \
+  --manifest benchmarks/results/mtp-gguf-iter285-llamacpp-patched-source-manifest.json
+# status=prepared
+# commit=6e9007ae61f4e994c27484759caac6ef2aa32b30
+# output_dir=/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input
+# assignment_line=182
+# next_action=build_temp_llamacpp_and_capture_hidden_in_with_layer_input_api
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_prepare_patched_source.py \
+  tests/test_llamacpp_mtp_layer_input_patch.py
+# ........ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter285-llamacpp-patched-source-manifest.json \
+  >/tmp/mtp-gguf-iter285-patched-source-manifest.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Manifest records `status=prepared`, `commit_matches_expected=true`, `external_checkout_modified=false`, patch sha `00eb7f5069994f9789a3bd1f7cb7953bde30f2551ab1a0576387775657f3ec08`, and `patch_applied=true`.
+- The temporary source tree has the expected insertion at `/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/src/models/qwen35moe.cpp:182`:
+  `res->t_layer_inp[il] = inpL;`
+- Next action: build the isolated temp source and capture `llama_get_embeddings_layer_inp(ctx, 3)` for prompt position 16 to compare against the hipEngine layer-3 `hidden_in_f32` hash.
