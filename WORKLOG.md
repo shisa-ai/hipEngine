@@ -105478,3 +105478,97 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - best all-row scan: row `11`, RMSE `0.41610622311193585`, max abs diff `4.8981032371521`
 - Classification: `final_layer_reproduces_pre_output_mismatch`.
 - Next action: continue the layer-boundary bisect with layer `19`.
+
+## 2026-06-20 — layer 19 already mismatches, bisect moves to layer 9
+
+### Change
+- Continued iteration 312 by reusing the layer-boundary harness builder for midpoint layer `19`.
+- Added a small `scripts/llamacpp_mtp_compare_layer_boundary.py` next-action helper update so a generic layer-boundary mismatch at layer `N` points to the earlier midpoint `(N - 1) // 2`; layer `19` now reports `continue_bisect_with_layer_9`.
+- Emitted iteration-312 artifacts:
+  - `benchmarks/results/mtp-gguf-iter312-layer19-harness-build.json`
+  - `benchmarks/results/mtp-gguf-iter312-layer19-llamacpp-build-result.json`
+  - `benchmarks/results/mtp-gguf-iter312-layer19-harness-compile.json`
+  - `benchmarks/results/mtp-gguf-iter312-layer19-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_layer_boundary_harness.py \
+  --plan benchmarks/results/mtp-gguf-iter310-layer-boundary-bisect-plan.json \
+  --base-build benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter312-layer19-harness-build.json \
+  --patched-build-result benchmarks/results/mtp-gguf-iter312-layer19-llamacpp-build-result.json \
+  --harness-compile benchmarks/results/mtp-gguf-iter312-layer19-harness-compile.json \
+  --source-dir /tmp/hipengine-llamacpp-mtp-iter312-layer19-src \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter312-layer19-build \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter312-layer19-build-logs \
+  --harness-dir /tmp/hipengine-llamacpp-mtp-iter312-layer19-harness \
+  --layer-id 19 --clean --iteration 312
+# status=ready, layer_id=19, patch_applied=true, configure_rc=0, build_rc=0,
+# harness_status=compiled
+
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/tmp/hipengine-llamacpp-mtp-iter312-layer19-src/src/models/qwen35moe.cpp')
+text = p.read_text()
+assert text.count('h_nextn_layer_out') == 1
+assert text.count('if (il == 19)') == 1
+assert text.count('h_nextn_post_output_norm') == 1
+assert text.count('h_nextn_pre_output_norm') == 0
+assert text.count('res->t_h_nextn = cur;') == 1
+print('layer19-patch-source-ok')
+PY
+# layer19-patch-source-ok
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_layer_boundary.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter312-layer19-harness-compile.json \
+  --prior-pre-output benchmarks/results/mtp-gguf-iter309-pre-output-norm-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 --layer-id 19 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter312-layer19/pos16 \
+  --output benchmarks/results/mtp-gguf-iter312-layer19-compare.json \
+  --all-rows --iteration 312
+# status=mismatched
+# layer_id=19
+# llamacpp_rc=0
+# hipengine_status=captured
+# rmse=0.09116468083353843
+# max_abs_diff=0.9129990339279175
+# classification=layer_boundary_mismatch
+# next_action=continue_bisect_with_layer_9
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer_boundary_harness.py \
+  tests/test_llamacpp_mtp_compare_layer_boundary.py \
+  tests/test_llamacpp_mtp_layer_boundary_bisect_plan.py \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py
+# ........................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The temporary layer-19 patched source is correct:
+  - one `h_nextn_layer_out` tap
+  - one `if (il == 19)` selector
+  - one `h_nextn_post_output_norm` callback
+  - no `h_nextn_pre_output_norm` final-boundary patch
+  - only one `res->t_h_nextn = cur` assignment
+- Layer-19 comparison is already mismatched, but with a smaller delta than layer 39:
+  - llama.cpp SHA `ccc36226af0b5b4968e2db46ee73ba61f021e865578bb12ea44db3aa2e46eab5`
+  - hipEngine SHA `c68b553071b322e9bb3d787356477847c7a9c1c4525913ac21b556bbf5e19dee`
+  - RMSE `0.09116468083353843`
+  - max abs diff `0.9129990339279175`
+  - mean abs diff `0.06992152715929478`
+  - best all-row scan: row `13`, RMSE `0.07481647252067326`, max abs diff `0.30769509077072144`
+- Classification: `layer_boundary_mismatch`.
+- Interpretation: the mismatch is introduced no later than layer `19`; continue the bisection with layer `9`.

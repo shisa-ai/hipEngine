@@ -9,6 +9,7 @@ from scripts.llamacpp_mtp_compare_layer_boundary import (
     classify_layer_boundary,
     classify_prior_alignment,
     compare_layer_boundary,
+    earlier_midpoint,
     next_action,
 )
 from scripts.llamacpp_mtp_run_hidden_in_capture import pack_float32, sha256_bytes
@@ -129,6 +130,11 @@ def test_prior_alignment_and_next_action_helpers() -> None:
     assert next_action("llamacpp_capture_failed", classification) == (
         "inspect_layer_boundary_llamacpp_capture_logs"
     )
+    assert earlier_midpoint(19) == 9
+    assert earlier_midpoint(0) is None
+    assert next_action(
+        "mismatched", "layer_boundary_mismatch", layer_id=19
+    ) == "continue_bisect_with_layer_9"
 
 
 def test_effective_layer_tap_annotation_records_stale_generic_metadata() -> None:

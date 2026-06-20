@@ -195,7 +195,7 @@ def compare_layer_boundary(
         "prior_alignment": alignment,
         "classification": classification,
         "external_checkout_modified": False,
-        "next_action": next_action(status, classification),
+        "next_action": next_action(status, classification, layer_id=int(layer_id)),
     }
 
 
@@ -300,7 +300,7 @@ def classify_layer_boundary(
     return "layer_boundary_comparison_unavailable"
 
 
-def next_action(status: str, classification: str) -> str:
+def next_action(status: str, classification: str, *, layer_id: int | None = None) -> str:
     if status == "matched":
         return "continue_bisect_with_earlier_midpoint_layer"
     if status == "llamacpp_capture_failed":
@@ -309,11 +309,22 @@ def next_action(status: str, classification: str) -> str:
         return "rerun_on_rocm_host"
     if classification == "final_layer_reproduces_pre_output_mismatch":
         return "continue_bisect_with_layer_19"
+    if classification == "layer_boundary_mismatch":
+        earlier = earlier_midpoint(layer_id)
+        if earlier is not None:
+            return f"continue_bisect_with_layer_{earlier}"
+        return "inspect_initial_embedding_or_token_capture"
     if classification == "hipengine_layer_out_differs_from_serial_pre_output":
         return "audit_hipengine_capture_attention_layer_vs_serial_loop"
     if classification == "llamacpp_layer_out_differs_from_pre_output_oracle":
         return "audit_llamacpp_layer_patch_alignment"
     return "inspect_layer_boundary_compare_failure"
+
+
+def earlier_midpoint(layer_id: int | None) -> int | None:
+    if layer_id is None or layer_id <= 0:
+        return None
+    return (int(layer_id) - 1) // 2
 
 
 def floats_equal(left: Any, right: Any, *, atol: float = 1e-12) -> bool:
