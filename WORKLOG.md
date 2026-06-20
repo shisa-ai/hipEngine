@@ -106115,3 +106115,55 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - BF16-rounded max abs diff `0.0`
   - classification `input_embed_matches_after_bf16_roundtrip`
 - Interpretation: token embedding lookup/materialization is aligned once hipEngine's BF16 embedding output is accounted for. The remaining layer-0 output mismatch is introduced inside layer 0; next target is a layer-0 sub-boundary audit (norm/attention/MoE/residual pieces) rather than tokenizer/embedding.
+
+## 2026-06-20 — planned layer-0 attn_norm sub-boundary capture
+
+### Change
+- Continued iteration 319 by adding `scripts/llamacpp_mtp_layer0_subboundary_plan.py` to derive the next layer-0 sub-boundary diagnostic from real llama.cpp anchors, existing hipEngine linear-attention boundary capture hooks, and the iteration-318 input-embedding alignment artifact.
+- Added `tests/test_llamacpp_mtp_layer0_subboundary_plan.py` covering the unique llama.cpp `attn_norm` anchor, post-output preservation state, existing diagnostic-patch exclusion, hipEngine `capture_linear_attention_boundary(...).attn_norm_f32` readiness, decision logic, and synthetic artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter319-layer0-subboundary-plan.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_subboundary_plan.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer0_subboundary_plan.py \
+  --qwen35moe /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp \
+  --context /home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --input-artifact benchmarks/results/mtp-gguf-iter318-input-embed-compare.json \
+  --layer0-artifact benchmarks/results/mtp-gguf-iter316-layer0-compare.json \
+  --output benchmarks/results/mtp-gguf-iter319-layer0-subboundary-plan.json \
+  --iteration 319
+# status=ready
+# conclusion=layer0_attn_norm_capture_plan_ready
+# first_probe=layer0_attn_norm_vs_linear_boundary_attn_norm_f32
+# next_action=build_layer0_attn_norm_capture_and_compare
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_subboundary_plan.py \
+  tests/test_llamacpp_mtp_initial_input_capture_plan.py \
+  tests/test_llamacpp_mtp_compare_input_embed.py \
+  tests/test_llamacpp_mtp_compare_layer_boundary.py
+# ........................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The next layer-0 oracle target is ready: patch a temporary llama.cpp source tree to expose layer-0 `attn_norm` as `h_nextn_layer0_attn_norm`, while preserving the earlier `res->t_h_nextn` diagnostic assignment through the post-output path.
+- The plan requires a clean copied llama.cpp source without prior `h_nextn_input_embed`, `h_nextn_layer_out`, or final pre-output-norm diagnostic taps; the live reference anchors satisfy that requirement.
+- hipEngine already has the matching boundary surface: `session.capture_linear_attention_boundary(..., layer_id=0).attn_norm_f32` from the linear-attention attn-only path.
+- Because hipEngine copies the BF16 RMSNorm scratch back to F32, the next comparison must report both exact F32 delta and BF16-rounded llama.cpp delta before interpreting any semantic mismatch.
+- Next action: build the layer-0 attn_norm capture harness and compare `h_nextn_layer0_attn_norm` to `attn_norm_f32`.
