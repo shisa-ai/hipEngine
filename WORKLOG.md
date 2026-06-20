@@ -107757,3 +107757,64 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-3 `attn_norm_f32` hash matches the exact layer-3 attention-norm artifact at warm position 16/token 271.
 - Layer-3 full-attention `full_q_f32`, `full_k_f32`, and `full_v_f32` match the resident-BF16 GGUF GEMV CPU oracle exactly.
 - This validates the first full-attention projection boundary and clears the next bisection step: layer-3 Q/K head RMSNorm+rotary or KV-write boundary under the resident-BF16 contract.
+
+## 2026-06-20 — validated layer-3 Q/K norm, RoPE, and KV-write oracle
+
+### Change
+- Continued iteration 348 by adding `scripts/llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py`.
+- The script starts from the exact layer-3 full-attention QKV artifact, checks live `full_q_f32`, `full_k_f32`, and `full_v_f32` hashes against that artifact, captures the resident layer-3 split/rotary/cache buffers with `run_preceding_layers=True`, reloads `blk.3.attn_q_norm.weight` and `blk.3.attn_k_norm.weight`, and mirrors the GGUF head-RMSNorm + half-rotation RoPE CPU formula.
+- Added `tests/test_llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py` covering QKV artifact validation, hash preflight guards, Q/gate split, Q/K head RMSNorm+RoPE classification, exact KV-write checks, metadata blocking, mismatch, and unavailable-capture paths.
+- Emitted `benchmarks/results/mtp-gguf-iter348-layer3-qk-norm-rotary-kv-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py
+# .............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py \
+  --qkv-artifact benchmarks/results/mtp-gguf-iter347-layer3-full-attention-qkv-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter348-layer3-qk-norm-rotary-kv-oracle.json
+# status=ready
+# classification=layer3_qk_norm_rotary_matches_cpu_oracle_within_fp32_tolerance
+# layer=3 position=16 token=271
+# preflight_classification=layer3_qk_norm_rotary_preflight_matches_qkv_artifact
+# full_query_raw_f32 exact, max_abs=0.0 rmse=0.0
+# full_gate_f32 exact, max_abs=0.0 rmse=0.0
+# full_key_raw_f32 exact, max_abs=0.0 rmse=0.0
+# full_query_f32 within FP32 kernel tolerance, max_abs=9.5367431640625e-07 rmse=6.287950071737214e-08
+# full_key_f32 within FP32 kernel tolerance, max_abs=2.384185791015625e-07 rmse=2.139763033426334e-08
+# key_cache_position_f32 exact, max_abs=0.0 rmse=0.0
+# value_cache_position_f32 exact, max_abs=0.0 rmse=0.0
+# next_action=audit_layer3_full_attention_scores_or_attn_output_under_bf16_contract
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_attn_norm_oracle.py
+# .................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-3 `full_q_f32`, `full_k_f32`, and `full_v_f32` hashes match the exact QKV artifact at warm position 16/token 271.
+- The Qwen full-attention split boundary is exact: `full_query_raw_f32`, `full_gate_f32`, and `full_key_raw_f32` all match their BF16 projection-derived oracles.
+- Q/K head RMSNorm + half-rotation RoPE matches the CPU mirror within small FP32 kernel-order tolerance only (`<= 9.54e-07`, tolerance `1e-05`). This is not a BF16/input mismatch.
+- KV write is exact via the `KVLiveSpans` path: current-position key cache equals `BF16(full_key_f32)` and value cache equals the BF16 `full_v_f32` projection.
+- This validates the layer-3 norm/rotary/cache boundary and clears the next bisection step: layer-3 full-attention scores or `attn_out` under the resident-BF16 contract.
