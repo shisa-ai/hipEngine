@@ -106248,3 +106248,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - BF16-rounded max abs diff `0.03125`
   - BF16-rounded exact match `false`
 - Interpretation: token embedding alignment is not sufficient; the earliest observed layer-0 mismatch is at attention RMSNorm output. Next action is to audit layer-0 RMSNorm inputs/weights/epsilon/materialization instead of deeper linear-attention projections.
+
+## 2026-06-20 — explained layer-0 attn_norm mismatch by BF16 input contraction
+
+### Change
+- Continued iteration 321 by adding `scripts/llamacpp_mtp_audit_layer0_attn_norm_formula.py`, a CPU formula audit for the layer-0 attention RMSNorm mismatch found in iteration 320.
+- The audit reads the saved llama.cpp input-embedding and `h_nextn_layer0_attn_norm` binary captures, reloads `blk.0.attn_norm.weight` and `qwen35moe.attention.layer_norm_rms_epsilon` from the GGUF, refreshes hipEngine `capture_linear_attention_boundary(...).attn_norm_f32`, and evaluates RMSNorm candidate formulas across F32/BF16 input, F32/BF16 weight, model/alternate eps, and F32/BF16 output assumptions.
+- Added `tests/test_llamacpp_mtp_audit_layer0_attn_norm_formula.py` for the formula, BF16-contraction classification, delta summaries, binary round-trip helpers, and synthetic end-to-end artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter321-layer0-attn-norm-formula-audit.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_attn_norm_formula.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer0_attn_norm_formula.py \
+  --input-compare benchmarks/results/mtp-gguf-iter318-input-embed-compare.json \
+  --attn-norm-compare benchmarks/results/mtp-gguf-iter320-layer0-attn-norm-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter321-layer0-attn-norm-formula-audit.json \
+  --iteration 321
+# status=ready
+# conclusion=attn_norm_mismatch_explained_by_input_activation_bf16_contraction
+# best_vs_llama=input_f32_weight_f32_eps_model_f32_out rmse=0.0
+# best_vs_hip=input_bf16_weight_f32_eps_model_bf16_out rmse=0.0
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_attn_norm_formula.py \
+  tests/test_llamacpp_mtp_compare_layer0_attn_norm.py \
+  tests/test_llamacpp_mtp_compare_input_embed.py \
+  tests/test_llamacpp_mtp_layer0_attn_norm_harness.py
+# .................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The formula audit exactly explains both sides of the layer-0 `attn_norm` split:
+  - llama.cpp `h_nextn_layer0_attn_norm` is exactly `RMSNorm(input_embed_f32, blk.0.attn_norm.weight_f32, eps=9.999999974752427e-07)` with F32 output.
+  - llama.cpp BF16-rounded `attn_norm` is exactly the same F32-input formula rounded to BF16 output.
+  - hipEngine `capture_linear_attention_boundary.attn_norm_f32` is exactly `RMSNorm(BF16(input_embed_f32), blk.0.attn_norm.weight_f32, eps=9.999999974752427e-07)` rounded to BF16 output and copied back to F32.
+- `blk.0.attn_norm.weight` materialization is `dense_f32` / `f32`; alternate eps candidates (`0`, `1e-5`) do not win.
+- Conclusion: the iteration-320 mismatch is not an RMSNorm weight or epsilon bug; it is the existing BF16 activation contraction before layer-0 RMSNorm. Exact llama.cpp parity for this oracle now requires either a temporary F32 activation/RMSNorm diagnostic path in hipEngine or a BF16-contracted llama.cpp oracle, not deeper linear-attention debugging.
+- Next action: decide whether to add a narrow F32 activation/RMSNorm diagnostic path for parity bisection or switch the immediate oracle to a BF16-contracted llama.cpp expectation.
