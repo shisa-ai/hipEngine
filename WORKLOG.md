@@ -110457,3 +110457,68 @@ PY
 - Layer-9 projections match the BF16 projection oracle within the established rounding contract: `linear_qkv_f32` has a one-BF16-step sparse delta (`max_abs=0.0001220703125`, `rmse=1.5174351801761077e-06`), while `linear_z_f32`, `ssm_alpha_f32`, and `ssm_beta_f32` are exact.
 - Layer 9 remains `linear_attention`, with `preceding_layer_count=9` in the capture.
 - This clears the next layer-9 bisection step: conv-GDN under the BF16 contract.
+
+## 2026-06-20 — validated layer-9 conv-GDN oracle
+
+### Change
+- Continued iteration 395 by adding `scripts/llamacpp_mtp_audit_layer9_conv_gdn_oracle.py`.
+- The script starts from the ready layer-9 projection artifact, replays the layer-9 linear-attention conv/GDN sequence from zero state across prompt positions 0..16, and validates the warm target capture under the resident-BF16 contract.
+- Added `tests/test_llamacpp_mtp_audit_layer9_conv_gdn_oracle.py` covering projection artifact validation, target-input guards, exact / mismatch / blocked / unavailable classifications, and injected capture / weight fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter395-layer9-conv-gdn-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer9_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer9_conv_gdn_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer9_conv_gdn_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer9_conv_gdn_oracle.py \
+  --layer9-projection benchmarks/results/mtp-gguf-iter394-layer9-projection-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter395-layer9-conv-gdn-oracle.json
+# status=ready
+# classification=layer9_warm_conv_gdn_matches_oracle_within_tolerance
+# target_input_classification=target_inputs_match_replay_exactly
+# conv_out_f32 within tolerance: max_abs=5.960464477539063e-08 rmse=2.809454224816932e-09
+# recurrent_out_f32 within tolerance: max_abs=7.450580596923828e-08 rmse=4.029624633972162e-09
+# recurrent_bf16_f32 within tolerance: max_abs=1.4901161193847656e-08 rmse=2.3283064365386963e-10
+# attn_out_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention preceding_layer_count=9
+# next_action=audit_layer9_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer9_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer9_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer8_conv_gdn_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic conv-GDN oracle/test only; no torch or
+# dispatch branches; no attention/KV ABI changed; RED-style focused tests added
+# before real artifact; llama.cpp/GGUF conv-GDN replay oracle retained; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-9 projection target inputs match the replay exactly before conv/GDN.
+- Layer-9 warm conv/GDN replay matches the oracle within tolerance at position 16/token 271: `conv_out_f32` max_abs `5.960464477539063e-08`, `recurrent_out_f32` max_abs `7.450580596923828e-08`, `recurrent_bf16_f32` max_abs `1.4901161193847656e-08`, and `attn_out_f32` exact.
+- Layer 9 remains `linear_attention`, with `preceding_layer_count=9` in the capture.
+- This clears the next layer-9 bisection step: post-attention residual / MoE boundary.
