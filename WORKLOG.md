@@ -104094,3 +104094,73 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The generated source contains the expected load/tokenize/decode/capture API path: `llama_model_load_from_file`, `llama_model_get_vocab`, `llama_tokenize`, `llama_init_from_model`, `llama_set_embeddings_layer_inp`, `llama_decode`, `llama_get_embeddings_layer_inp`, and `llama_model_n_embd`.
 - Usage smoke returns rc=2 and prints the expected `--model MODEL.gguf` usage, proving the executable is runnable/linkable without loading the model yet.
 - Next action: run the capture harness with the greeting prompt, layer 3, position 16, and the MTP GGUF path, then hash/compare the emitted `.f32` row against the hipEngine `hidden_in_f32` checkpoint.
+
+## 2026-06-20 — llama.cpp hidden-in capture harness accepts exact token IDs
+
+### Change
+- Continued iteration 292 by extending `scripts/llamacpp_mtp_compile_hidden_in_harness.py` so the generated capture harness accepts `--prompt-tokens IDS` in addition to `--prompt TEXT`.
+- The harness now enforces exactly one prompt source, parses comma-separated token IDs into `llama_token` values, records `prompt_token_source` in its metadata, and keeps the existing text-tokenization path.
+- Extended `tests/test_llamacpp_mtp_compile_hidden_in_harness.py` to require the exact-token API path and the 17-token checkpoint sequence shape.
+- Emitted `benchmarks/results/mtp-gguf-iter292-llamacpp-hidden-in-capture-harness-tokenids-compile.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# ........ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compile_hidden_in_harness.py \
+  --build-result benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter292-llamacpp-hidden-in-capture-harness-tokenids-compile.json \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter292-hidden-in-capture-harness \
+  --harness-kind capture \
+  --timeout-seconds 180 \
+  --iteration 292
+# status=compiled
+# compiler=/home/lhl/miniforge3/envs/therock/bin/amdclang++
+# harness_kind=capture
+# executable=/tmp/hipengine-llamacpp-mtp-iter292-hidden-in-capture-harness/llamacpp_hidden_in_capture
+# next_action=run_hidden_in_capture_harness_with_model_prompt_layer_position
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py \
+  tests/test_llamacpp_mtp_run_build.py
+# .............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter292-llamacpp-hidden-in-capture-harness-tokenids-compile.json \
+  >/tmp/mtp-gguf-iter292-hidden-in-capture-harness-tokenids-compile.json
+
+LD_LIBRARY_PATH=/tmp/hipengine-llamacpp-mtp-iter288-build/bin:${LD_LIBRARY_PATH:-} \
+  /tmp/hipengine-llamacpp-mtp-iter292-hidden-in-capture-harness/llamacpp_hidden_in_capture \
+  >/tmp/mtp-gguf-iter292-capture-usage.out \
+  2>/tmp/mtp-gguf-iter292-capture-usage.err
+# rc=2, usage text contains --prompt-tokens IDS
+
+LD_LIBRARY_PATH=/tmp/hipengine-llamacpp-mtp-iter288-build/bin:${LD_LIBRARY_PATH:-} \
+  /tmp/hipengine-llamacpp-mtp-iter292-hidden-in-capture-harness/llamacpp_hidden_in_capture \
+  --model /does/not/exist.gguf --prompt foo --prompt-tokens 1,2,3 \
+  --output-prefix /tmp/unused \
+  >/tmp/mtp-gguf-iter292-capture-exclusive.out \
+  2>/tmp/mtp-gguf-iter292-capture-exclusive.err
+# rc=2, stderr contains: provide exactly one of --prompt or --prompt-tokens
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The capture harness recompiles successfully with exact token-id support; executable size is 22312 bytes.
+- Generated source contains `--prompt-tokens`, `parse_prompt_tokens`, `prompt_tokens_csv`, `prompt_token_source`, and the existing `llama_get_embeddings_layer_inp` path.
+- The target hipEngine checkpoint prompt tokens are now passable exactly as CSV:
+  `248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271`
+  with layer `3`, position `16`, token id `271`, and expected `hidden_in_f32` hash `f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07`.
+- This avoids relying on llama.cpp chat template rendering or tokenizer text mode for the numeric checkpoint comparison.

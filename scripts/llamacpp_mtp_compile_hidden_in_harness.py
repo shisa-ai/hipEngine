@@ -205,6 +205,7 @@ def hidden_in_capture_harness_source() -> str:
 struct Args {
     std::string model;
     std::string prompt;
+    std::string prompt_tokens_csv;
     std::string output_prefix;
     int layer = 3;
     int position = 16;
@@ -214,8 +215,8 @@ struct Args {
 
 static void usage(const char * argv0) {
     std::fprintf(stderr,
-        "usage: %s --model MODEL.gguf --prompt TEXT --layer 3 "
-        "--position 16 --output-prefix PATH [--n-gpu-layers N]\n",
+        "usage: %s --model MODEL.gguf (--prompt TEXT | --prompt-tokens IDS) "
+        "--layer 3 --position 16 --output-prefix PATH [--n-gpu-layers N]\n",
         argv0);
 }
 
@@ -251,6 +252,10 @@ static bool parse_args(int argc, char ** argv, Args * args) {
             const char * value = need_value("--prompt");
             if (!value) return false;
             args->prompt = value;
+        } else if (key == "--prompt-tokens") {
+            const char * value = need_value("--prompt-tokens");
+            if (!value) return false;
+            args->prompt_tokens_csv = value;
         } else if (key == "--output-prefix") {
             const char * value = need_value("--output-prefix");
             if (!value) return false;
@@ -272,8 +277,36 @@ static bool parse_args(int argc, char ** argv, Args * args) {
             return false;
         }
     }
-    return !args->model.empty() && !args->prompt.empty() &&
-        !args->output_prefix.empty() && args->layer >= 0 && args->position >= 0;
+    const bool has_prompt = !args->prompt.empty();
+    const bool has_prompt_tokens = !args->prompt_tokens_csv.empty();
+    if (has_prompt == has_prompt_tokens) {
+        std::fprintf(stderr, "provide exactly one of --prompt or --prompt-tokens\n");
+        return false;
+    }
+    return !args->model.empty() && !args->output_prefix.empty() &&
+        args->layer >= 0 && args->position >= 0;
+}
+
+static bool parse_prompt_tokens(
+        const std::string & csv,
+        std::vector<llama_token> * tokens) {
+    tokens->clear();
+    size_t begin = 0;
+    while (begin <= csv.size()) {
+        const size_t comma = csv.find(',', begin);
+        const size_t end = comma == std::string::npos ? csv.size() : comma;
+        const std::string item = csv.substr(begin, end - begin);
+        int value = 0;
+        if (item.empty() || !parse_int(item.c_str(), &value)) {
+            return false;
+        }
+        tokens->push_back((llama_token) value);
+        if (comma == std::string::npos) {
+            break;
+        }
+        begin = comma + 1;
+    }
+    return !tokens->empty();
 }
 
 static int tokenize_prompt(
@@ -321,6 +354,8 @@ static bool write_meta(
     out << "{\n";
     out << "  \"kind\": \"llamacpp_hidden_in_capture\",\n";
     out << "  \"model\": \"" << args.model << "\",\n";
+    out << "  \"prompt_token_source\": \""
+        << (args.prompt_tokens_csv.empty() ? "text" : "token_ids") << "\",\n";
     out << "  \"prompt_token_count\": " << n_tokens << ",\n";
     out << "  \"layer\": " << args.layer << ",\n";
     out << "  \"position\": " << args.position << ",\n";
@@ -348,15 +383,25 @@ int main(int argc, char ** argv) {
         return 3;
     }
 
-    const llama_vocab * vocab = llama_model_get_vocab(model);
     std::vector<llama_token> tokens;
-    const int n_tokens = tokenize_prompt(vocab, args.prompt, &tokens);
-    if (n_tokens <= 0) {
-        std::fprintf(stderr, "failed to tokenize prompt\n");
-        llama_model_free(model);
-        llama_backend_free();
-        return 4;
+    if (!args.prompt_tokens_csv.empty()) {
+        if (!parse_prompt_tokens(args.prompt_tokens_csv, &tokens)) {
+            std::fprintf(stderr, "failed to parse --prompt-tokens\n");
+            llama_model_free(model);
+            llama_backend_free();
+            return 4;
+        }
+    } else {
+        const llama_vocab * vocab = llama_model_get_vocab(model);
+        const int tokenized = tokenize_prompt(vocab, args.prompt, &tokens);
+        if (tokenized <= 0) {
+            std::fprintf(stderr, "failed to tokenize prompt\n");
+            llama_model_free(model);
+            llama_backend_free();
+            return 4;
+        }
     }
+    const int n_tokens = (int) tokens.size();
     if (args.position >= n_tokens) {
         std::fprintf(stderr, "position %d out of range for %d tokens\n",
             args.position, n_tokens);

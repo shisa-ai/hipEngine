@@ -35,12 +35,45 @@ def test_capture_harness_source_loads_decodes_and_writes_hidden_in() -> None:
         "llama_decode",
         "llama_get_embeddings_layer_inp",
         "llama_model_n_embd",
+        "parse_prompt_tokens",
+        "--prompt-tokens IDS",
+        "prompt_token_source",
         "captured_hidden_in",
     ]
     for needle in required:
         assert needle in source
     assert "--model MODEL.gguf" in source
     assert "--output-prefix PATH" in source
+    assert "provide exactly one of --prompt or --prompt-tokens" in source
+
+
+def test_capture_harness_prompt_token_sequence_matches_checkpoint() -> None:
+    source = hidden_in_capture_harness_source()
+    prompt_tokens = [
+        248045,
+        846,
+        198,
+        7734,
+        264,
+        2716,
+        40719,
+        13,
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        271,
+        248069,
+        271,
+    ]
+    csv = ",".join(str(token) for token in prompt_tokens)
+
+    assert len(prompt_tokens) == 17
+    assert prompt_tokens[16] == 271
+    assert str(prompt_tokens[0]) in csv
+    assert "prompt_tokens_csv" in source
 
 
 def test_build_compile_command_has_expected_include_and_link_flags(tmp_path: Path) -> None:
