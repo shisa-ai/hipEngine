@@ -112607,3 +112607,71 @@ PY
 - Layer-13 shared-gate logit is exact vs BF16-contracted shared-gate dot product.
 - The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=13`.
 - This clears the next layer-13 bisection step: selected and shared expert outputs.
+
+## 2026-06-20 — validated layer-13 MoE expert-output oracle
+
+### Change
+- Continued iteration 428 by adding `scripts/llamacpp_mtp_audit_layer13_moe_expert_outputs_oracle.py`.
+- The script starts from the validated layer-13 MoE router artifact, hash-checks live `post_norm_f32` and selected expert IDs, materializes the selected/shared expert weights for `blk.13`, and validates selected down output, shared expert output, and final `layer_out_f32` against the BF16-contracted MoE expert oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer13_moe_expert_outputs_oracle.py` covering router artifact validation, input hash/value guards, exact / near / mismatch expert-output classifications, preceding-layer blocking, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter428-layer13-moe-expert-outputs-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer13_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_moe_expert_outputs_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_moe_expert_outputs_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer13_moe_expert_outputs_oracle.py \
+  --router-artifact benchmarks/results/mtp-gguf-iter427-layer13-moe-router-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter428-layer13-moe-expert-outputs-oracle.json
+# status=ready
+# classification=layer13_moe_expert_outputs_match_oracle_within_tolerance
+# router_input_classification=layer13_moe_expert_inputs_match_router_artifact
+# ffn_or_moe_down_f32 within tolerance: max_abs=0.0001220703125 rmse=9.5367431640625e-07
+# moe_shared_out_f32 exact: max_abs=0.0 rmse=0.0
+# layer_out_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=13
+# next_action=audit_layer14_bf16_handoff_or_mtp_next_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer13_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer13_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer12_moe_expert_outputs_oracle.py
+# ................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-13 MoE expert-output oracle/test
+# only; no torch or dispatch branches; no attention/KV ABI changed; RED-style
+# focused tests added before retaining real artifact; post_norm and selected-
+# expert inputs are hash/value checked against router artifact; selected branch
+# within tolerance, shared branch exact, final layer_out exact; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-13 expert-output inputs match the iteration-427 router artifact: `post_norm_f32` hash and `selected_experts_i64` values both match.
+- Layer-13 selected expert down output matches within the established BF16 tolerance (`max_abs=1.220703125e-04`, `rmse=9.5367431640625e-07`).
+- Layer-13 shared expert output is exact vs oracle.
+- Layer-13 final `layer_out_f32` is exact vs the BF16-contracted expert combine/residual oracle.
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=13`.
+- This clears the next bisection step: layer-14 BF16 handoff / next-boundary audit.
