@@ -111355,3 +111355,73 @@ PY
 - Layer-11 full-attention QKV projections match the BF16 projection oracle within the established rounding contract: `full_q_f32` has a one-BF16-step sparse delta (`max_abs=0.001953125`, `rmse=2.15791860682657e-05`), while `full_k_f32` and `full_v_f32` are exact.
 - Layer 11 is `full_attention`, with `preceding_layer_count=11` in the capture.
 - This clears the next layer-11 bisection step: Q/K norm + rotary / KV write under the BF16 contract.
+
+## 2026-06-20 — validated layer-11 QK norm, rotary, and KV-write oracle
+
+### Change
+- Continued iteration 409 by adding `scripts/llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py`.
+- The script starts from the layer-11 full-attention QKV artifact, hash-checks live `full_q_f32`, `full_k_f32`, and `full_v_f32`, mirrors the Qwen full-attention split of Q into query/gate, applies CPU head RMSNorm + half-rotation RoPE for Q/K, and validates the key/value cache position written through the KVLiveSpans path.
+- Added `tests/test_llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py` covering QKV artifact validation, preflight hash guards, split/gate/key_raw exactness, rotary exact/near tolerance classification, cache mismatch, wrong-layer-type, unavailable capture, and injected capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter409-layer11-qk-norm-rotary-kv-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py
+# ............... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py \
+  --qkv-artifact benchmarks/results/mtp-gguf-iter408-layer11-full-attention-qkv-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter409-layer11-qk-norm-rotary-kv-oracle.json
+# status=ready
+# classification=layer11_qk_norm_rotary_matches_cpu_oracle_within_fp32_tolerance
+# preflight_classification=layer11_qk_norm_rotary_preflight_matches_qkv_artifact
+# full_query_raw_f32 exact: max_abs=0.0 rmse=0.0
+# full_gate_f32 exact: max_abs=0.0 rmse=0.0
+# full_key_raw_f32 exact: max_abs=0.0 rmse=0.0
+# full_query_f32 within fp32 kernel tolerance: max_abs=4.76837158203125e-07 rmse=3.0062778932915535e-08
+# full_key_f32 within fp32 kernel tolerance: max_abs=2.384185791015625e-07 rmse=3.598005804406057e-08
+# key_cache_position_f32 exact: max_abs=0.0 rmse=0.0
+# value_cache_position_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention preceding_layer_count=11
+# next_action=audit_layer11_full_attention_scores_or_attn_output_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_qk_norm_rotary_kv_oracle.py
+# ........................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic QK norm/rotary/KV oracle/test only; no
+# torch or dispatch branches; KVLiveSpans cache-write contract is explicitly
+# checked; RED-style focused tests added before real artifact; llama.cpp/GGUF/CPU
+# oracle retained; split and KV writes exact while rotary deltas remain within
+# fp32 kernel tolerance; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-11 full-attention QKV preflight matches the iteration-408 artifact before Q/K norm and RoPE.
+- Q split outputs (`full_query_raw_f32`, `full_gate_f32`) and `full_key_raw_f32` are exact.
+- Head RMSNorm + RoPE matches the CPU oracle within the established fp32 kernel tolerance (`full_query_f32 max_abs=4.76837158203125e-07`, `full_key_f32 max_abs=2.384185791015625e-07`).
+- KV-cache writes through the KVLiveSpans path are exact at position 16 for both key and value.
+- This clears the next layer-11 bisection step: full-attention scores / attention output under the BF16 contract.
