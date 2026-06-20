@@ -111290,3 +111290,68 @@ PY
 - Layer-11 attention RMSNorm matches the BF16 formula oracle exactly at warm position 16/token 271 (`max_abs=0.0`, `rmse=0.0`).
 - Layer 11 is `full_attention`, with `preceding_layer_count=11` in the capture.
 - This clears the next layer-11 bisection step: full-attention projection under the BF16 contract.
+
+## 2026-06-20 — validated layer-11 full-attention QKV projection oracle
+
+### Change
+- Continued iteration 408 by adding `scripts/llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py`.
+- The script starts from the exact layer-11 attention-norm artifact, hash-checks live `attn_norm_f32`, materializes layer-11 full-attention `attn_q`, `attn_k`, and `attn_v` weights, and validates captured `full_q_f32`, `full_k_f32`, and `full_v_f32` against `BF16(project_f32(attn_norm_f32, GGUF weight))`.
+- Added `tests/test_llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py` covering attention-norm artifact validation, input hash guards, exact / one-BF16-step / mismatch / wrong-layer-type / unavailable classifications, and injected capture / weight fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter408-layer11-full-attention-qkv-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py \
+  --attn-norm-artifact benchmarks/results/mtp-gguf-iter407-layer11-attn-norm-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter408-layer11-full-attention-qkv-oracle.json
+# status=ready
+# classification=layer11_full_attention_qkv_matches_bf16_oracle_within_rounding
+# input_classification=layer11_qkv_input_matches_attn_norm_artifact exact_hash_match=True
+# full_q_f32 within one BF16 step: max_abs=0.001953125 rmse=2.15791860682657e-05
+# full_k_f32 exact: max_abs=0.0 rmse=0.0
+# full_v_f32 exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention preceding_layer_count=11
+# next_action=audit_layer11_qk_norm_rotary_or_kv_write_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_qkv_oracle.py
+# ............................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic full-attention QKV oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; RED-style focused
+# tests added before real artifact; llama.cpp/GGUF QKV oracle retained; Q
+# projection only within one-BF16-step tolerance while K/V exact; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-11 `attn_norm_f32` matches the exact attention-norm artifact before projection.
+- Layer-11 full-attention QKV projections match the BF16 projection oracle within the established rounding contract: `full_q_f32` has a one-BF16-step sparse delta (`max_abs=0.001953125`, `rmse=2.15791860682657e-05`), while `full_k_f32` and `full_v_f32` are exact.
+- Layer 11 is `full_attention`, with `preceding_layer_count=11` in the capture.
+- This clears the next layer-11 bisection step: Q/K norm + rotary / KV write under the BF16 contract.
