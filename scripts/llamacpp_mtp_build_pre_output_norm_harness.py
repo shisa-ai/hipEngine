@@ -123,6 +123,9 @@ def build_pre_output_norm_harness(
         old_text=plan["llamacpp_pre_output_patch"]["old_text"],
         new_text=plan["llamacpp_pre_output_patch"]["new_text"],
     )
+    preserve_result = apply_post_output_preserve_patch(source_dir=target_source_dir)
+    patch_result["post_output_preserve"] = preserve_result
+    patch_result["applied"] = bool(patch_result["applied"] and preserve_result["applied"])
     log_dir.mkdir(parents=True, exist_ok=True)
     configure_command = rewrite_configure_command(
         base_build["commands"]["configure"]["command"],
@@ -224,6 +227,40 @@ def copy_source_tree(source_dir: Path, target_source_dir: Path) -> dict[str, Any
 
 
 def apply_pre_output_patch(*, source_dir: Path, old_text: str, new_text: str) -> dict[str, Any]:
+    return replace_unique_block(
+        source_dir=source_dir,
+        old_text=old_text,
+        new_text=new_text,
+        patch_name="pre_output_capture",
+    )
+
+
+def apply_post_output_preserve_patch(*, source_dir: Path) -> dict[str, Any]:
+    old_text = (
+        '    cb(cur, "h_nextn", -1);\n'
+        "    res->t_h_nextn = cur;\n\n"
+        "    if (!cparams.embeddings_nextn_masked && inp_out_ids) {"
+    )
+    new_text = (
+        '    cb(cur, "h_nextn_post_output_norm", -1);\n'
+        "    // PRE-output_norm diagnostic: keep res->t_h_nextn from before output_norm.\n\n"
+        "    if (!cparams.embeddings_nextn_masked && inp_out_ids) {"
+    )
+    return replace_unique_block(
+        source_dir=source_dir,
+        old_text=old_text,
+        new_text=new_text,
+        patch_name="post_output_preserve_pre_capture",
+    )
+
+
+def replace_unique_block(
+    *,
+    source_dir: Path,
+    old_text: str,
+    new_text: str,
+    patch_name: str,
+) -> dict[str, Any]:
     path = source_dir / "src" / "models" / "qwen35moe.cpp"
     text = path.read_text()
     old_count = text.count(old_text)
@@ -240,6 +277,7 @@ def apply_pre_output_patch(*, source_dir: Path, old_text: str, new_text: str) ->
         applied = False
     final_text = path.read_text()
     return {
+        "name": patch_name,
         "status": status,
         "applied": applied,
         "path": str(path),

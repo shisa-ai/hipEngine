@@ -105222,3 +105222,93 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - max abs diff `19.13701629638672`
   - mean abs diff `1.8381368396274667`
 - Next action: replace or move the post-`output_norm` `h_nextn` assignment in the temporary llama.cpp source so `t_h_nextn` remains the pre-`output_norm` row at graph output, then rebuild/rerun the comparison.
+
+## 2026-06-20 — true pre-output_norm capture shows mismatch before output_norm
+
+### Change
+- Continued iteration 309 by tightening `scripts/llamacpp_mtp_build_pre_output_norm_harness.py` so the temporary llama.cpp patch now also replaces the later post-`output_norm` `h_nextn` block. The patched graph keeps the earlier pre-`output_norm` `res->t_h_nextn = cur` and relabels the later callback as `h_nextn_post_output_norm` without overwriting `t_h_nextn`.
+- Added tests for the new idempotent post-output preservation patch and added an effective-tap annotation in `scripts/llamacpp_mtp_compare_pre_output_norm.py` because the generic hidden-seed harness still writes its original metadata tap string.
+- Emitted iteration-309 artifacts:
+  - `benchmarks/results/mtp-gguf-iter309-pre-output-norm-harness-build.json`
+  - `benchmarks/results/mtp-gguf-iter309-pre-output-norm-llamacpp-build-result.json`
+  - `benchmarks/results/mtp-gguf-iter309-pre-output-norm-harness-compile.json`
+  - `benchmarks/results/mtp-gguf-iter309-pre-output-norm-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_build_pre_output_norm_harness.py \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_build_pre_output_norm_harness.py \
+  --plan benchmarks/results/mtp-gguf-iter306-pre-output-norm-capture-plan.json \
+  --base-build benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter309-pre-output-norm-harness-build.json \
+  --patched-build-result benchmarks/results/mtp-gguf-iter309-pre-output-norm-llamacpp-build-result.json \
+  --harness-compile benchmarks/results/mtp-gguf-iter309-pre-output-norm-harness-compile.json \
+  --source-dir /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src \
+  --build-dir /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-build-logs \
+  --harness-dir /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-harness \
+  --clean --iteration 309
+# status=ready, patch_applied=true, configure_rc=0, build_rc=0, harness_status=compiled
+
+python3 - <<'PY'
+from pathlib import Path
+p = Path('/tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm-src/src/models/qwen35moe.cpp')
+text = p.read_text()
+assert text.count('h_nextn_pre_output_norm') == 1
+assert text.count('h_nextn_post_output_norm') == 1
+assert text.count('res->t_h_nextn = cur;') == 1
+print('patch-source-ok')
+PY
+# patch-source-ok
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compare_pre_output_norm.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter309-pre-output-norm-harness-compile.json \
+  --post-output-artifact benchmarks/results/mtp-gguf-iter303-hidden-seed-compare.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --position 16 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter309-pre-output-norm/pos16 \
+  --output benchmarks/results/mtp-gguf-iter309-pre-output-norm-compare.json \
+  --all-rows --iteration 309
+# status=mismatched
+# llamacpp_rc=0
+# hipengine_status=captured
+# pre_rmse=0.45158678625003046
+# pre_max_abs_diff=6.707832336425781
+# classification=pre_output_mismatch_already_present
+# next_action=bisect_final_decoder_layer_output_before_output_norm
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_build_pre_output_norm_harness.py \
+  tests/test_llamacpp_mtp_compare_pre_output_norm.py \
+  tests/test_llamacpp_mtp_compare_hidden_seed.py
+# ................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The patched source now has one `h_nextn_pre_output_norm` callback, one `h_nextn_post_output_norm` callback, and only one `res->t_h_nextn = cur` assignment. The external llama.cpp checkout remains untouched.
+- True pre-`output_norm` llama.cpp row SHA differs from the iteration-303 post-`output_norm` SHA:
+  - pre-output llama.cpp SHA `1cab12b424a96e11d72e5b2157392dab90ff637613986e6972f233723c445468`
+  - post-output llama.cpp SHA `a0b033227164792ad6d05a5c59adb5cdb018b6cc971fdf881bc31ca8afd27592`
+- hipEngine serial pre-`output_norm` SHA remains `5063f20d812adb727746d96ba03ffecdaf19237a10ddd64ba92fd05ebb5ccb27`.
+- Valid pre-output comparison now shows the mismatch is already present before `output_norm`:
+  - RMSE `0.45158678625003046`
+  - max abs diff `6.707832336425781`
+  - mean abs diff `0.3372998724516947`
+  - best all-row scan: row `11`, RMSE `0.41610622311193585`, max abs diff `4.8981032371521`
+- Next action: bisect final decoder-layer output before `output_norm`, likely by adding a layer-boundary capture between llama.cpp and hipEngine serial replay.

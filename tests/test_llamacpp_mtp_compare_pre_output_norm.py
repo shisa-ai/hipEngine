@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from scripts.llamacpp_mtp_compare_pre_output_norm import (
+    annotate_effective_pre_output_tap,
     classify_pre_vs_post,
     compare_pre_output_norm,
     next_action,
@@ -119,6 +120,15 @@ def test_classification_detects_overwritten_llamacpp_patch() -> None:
     assert next_action("mismatched", classification) == (
         "move_or_replace_post_output_h_nextn_assignment_in_llamacpp_patch"
     )
+
+
+def test_effective_tap_annotation_records_stale_generic_metadata() -> None:
+    capture = {"metadata": {"tap": "h_nextn_post_output_norm"}}
+
+    annotate_effective_pre_output_tap(capture)
+
+    assert capture["effective_tap"] == "h_nextn_pre_output_norm"
+    assert "generic hidden-seed harness" in capture["metadata_tap_note"]
 
 
 def test_classification_and_next_action_unavailable() -> None:

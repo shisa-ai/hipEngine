@@ -139,6 +139,7 @@ def compare_pre_output_norm(
         binary_path=output_prefix.with_suffix(".f32"),
         meta_path=output_prefix.with_suffix(".json"),
     )
+    annotate_effective_pre_output_tap(llama_capture)
     hip_capture = (hip_capture_fn or capture_hipengine_pre_output_norm)(
         model_path,
         prompt_tokens,
@@ -191,6 +192,19 @@ def compare_pre_output_norm(
         "external_checkout_modified": False,
         "next_action": next_action(status, classification),
     }
+
+
+def annotate_effective_pre_output_tap(capture: dict[str, Any]) -> None:
+    metadata = capture.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    written_tap = metadata.get("tap")
+    capture["effective_tap"] = "h_nextn_pre_output_norm"
+    if written_tap != "h_nextn_pre_output_norm":
+        capture["metadata_tap_note"] = (
+            "generic hidden-seed harness writes its original tap label; the patched "
+            "llama.cpp graph now keeps res->t_h_nextn from before output_norm"
+        )
 
 
 def capture_hipengine_pre_output_norm(

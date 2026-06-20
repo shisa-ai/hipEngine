@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from scripts.llamacpp_mtp_build_pre_output_norm_harness import (
+    apply_post_output_preserve_patch,
     apply_pre_output_patch,
     build_pre_output_norm_harness,
     rewrite_build_command,
@@ -25,6 +26,16 @@ NEW_TEXT = (
     "    // post-norm hidden state feeds both the LM head and the MTP seed below\n"
     "    cur = build_norm(cur, model.output_norm, nullptr, LLM_NORM_RMS, -1);"
 )
+POST_OUTPUT_OLD = (
+    "    cb(cur, \"h_nextn\", -1);\n"
+    "    res->t_h_nextn = cur;\n\n"
+    "    if (!cparams.embeddings_nextn_masked && inp_out_ids) {"
+)
+POST_OUTPUT_NEW = (
+    "    cb(cur, \"h_nextn_post_output_norm\", -1);\n"
+    "    // PRE-output_norm diagnostic: keep res->t_h_nextn from before output_norm.\n\n"
+    "    if (!cparams.embeddings_nextn_masked && inp_out_ids) {"
+)
 
 
 def test_apply_pre_output_patch_is_idempotent(tmp_path: Path) -> None:
@@ -37,6 +48,22 @@ def test_apply_pre_output_patch_is_idempotent(tmp_path: Path) -> None:
     assert first["status"] == "applied"
     assert second["status"] == "already_applied"
     assert text.count(NEW_TEXT) == 1
+
+
+def test_apply_post_output_preserve_patch_is_idempotent(tmp_path: Path) -> None:
+    source = _write_source_tree(tmp_path / "src")
+
+    pre = apply_pre_output_patch(source_dir=source, old_text=OLD_TEXT, new_text=NEW_TEXT)
+    first = apply_post_output_preserve_patch(source_dir=source)
+    second = apply_post_output_preserve_patch(source_dir=source)
+
+    text = (source / "src" / "models" / "qwen35moe.cpp").read_text()
+    assert pre["status"] == "applied"
+    assert first["status"] == "applied"
+    assert second["status"] == "already_applied"
+    assert text.count(POST_OUTPUT_OLD) == 0
+    assert text.count(POST_OUTPUT_NEW) == 1
+    assert text.count("res->t_h_nextn = cur;") == 1
 
 
 def test_rewrite_configure_and_build_commands() -> None:
@@ -83,6 +110,7 @@ def test_build_pre_output_norm_harness_with_fake_tools(tmp_path: Path) -> None:
 
     assert artifact["status"] == "ready"
     assert artifact["patch"]["applied"] is True
+    assert artifact["patch"]["post_output_preserve"]["applied"] is True
     assert artifact["commands"]["configure"]["returncode"] == 0
     assert artifact["commands"]["build"]["returncode"] == 0
     assert artifact["harness_compile"]["status"] == "compiled"
@@ -140,7 +168,9 @@ def _write_source_tree(path: Path) -> Path:
     (path / "ggml" / "include").mkdir(parents=True)
     (path / "include" / "llama.h").write_text("// llama\n")
     (path / "src" / "llama-ext.h").write_text("// ext\n")
-    (path / "src" / "models" / "qwen35moe.cpp").write_text(OLD_TEXT + "\n")
+    (path / "src" / "models" / "qwen35moe.cpp").write_text(
+        OLD_TEXT + "\n\n" + POST_OUTPUT_OLD + "\n"
+    )
     return path
 
 
