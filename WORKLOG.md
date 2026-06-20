@@ -105014,3 +105014,63 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - llama.cpp source audit confirms `h_nextn` is set immediately after `build_norm(cur, model.output_norm, ...)`, and unmasked `embeddings_nextn` rows are indexed by raw prompt position.
 - Conclusion: `shared_serial_path_mismatch_before_or_at_output_norm`; row/mode mixups are unlikely.
 - Next action: capture pre-`output_norm` rows in both llama.cpp and hipEngine serial path, then compare pre-norm and post-norm deltas to decide whether mismatch is introduced by final output_norm precision or already present in the final layer output.
+
+## 2026-06-20 — pre-output_norm capture plan is ready
+
+### Change
+- Continued iteration 306 by adding `scripts/llamacpp_mtp_pre_output_norm_capture_plan.py`, a concrete plan for the next numeric pre-`output_norm` bisection.
+- Added `tests/test_llamacpp_mtp_pre_output_norm_capture_plan.py` covering the llama.cpp patch anchor, hipEngine serial pre-output capture strategy, decision logic, and synthetic artifact generation.
+- Emitted `benchmarks/results/mtp-gguf-iter306-pre-output-norm-capture-plan.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_pre_output_norm_capture_plan.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_pre_output_norm_capture_plan.py \
+  --qwen35moe /home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp \
+  --context /home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter302-llamacpp-hidden-seed-capture-harness-compile.json \
+  --shared-audit benchmarks/results/mtp-gguf-iter305-hidden-seed-shared-path-audit.json \
+  --output benchmarks/results/mtp-gguf-iter306-pre-output-norm-capture-plan.json \
+  --iteration 306
+# status=ready
+# conclusion=pre_output_norm_capture_plan_ready
+# llamacpp_patch_ready=true
+# hipengine_capture_ready=true
+# next_action=build_patched_llamacpp_pre_output_norm_harness_and_compare_serial_rows
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_pre_output_norm_capture_plan.py \
+  tests/test_gguf_hidden_seed_shared_path_audit.py \
+  tests/test_llamacpp_mtp_compile_hidden_seed_harness.py
+# ................. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter306-pre-output-norm-capture-plan.json \
+  >/tmp/mtp-gguf-iter306-pre-output-norm-capture-plan.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Artifact status: `ready`; conclusion: `pre_output_norm_capture_plan_ready`.
+- llama.cpp patch anchor is unique at trunk `cur = inpL` before `build_norm(cur, model.output_norm, ...)`. The planned temporary-source patch exposes pre-`output_norm` final decoder output through `res->t_h_nextn` / `embeddings_nextn` by inserting `cb(cur, "h_nextn_pre_output_norm", -1); res->t_h_nextn = cur;` before the output norm. The external checkout remains untouched.
+- hipEngine serial pre-output capture strategy is ready: replay the private serial layer loop for the final token, copy `src.ptr` with `_copy_bf16_ptr_to_host_f32` before `_run_output_norm_hidden`, then compare that row to the patched llama.cpp `embeddings_nextn` row.
+- Existing build inputs are present: source `/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input`, build `/tmp/hipengine-llamacpp-mtp-iter288-build`, and the iteration-302 hidden-seed capture harness.
+- Next action: build a temporary patched llama.cpp source/build for pre-`output_norm` `h_nextn`, compile/run the existing hidden-seed capture harness against it, and compare to hipEngine serial pre-output row.
