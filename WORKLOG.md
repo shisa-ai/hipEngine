@@ -113475,3 +113475,71 @@ PY
 - Layer-15 gate multiply is exact after BF16 contraction (`max_abs=0.0`, `rmse=0.0`).
 - The capture used the full-attention MoE path with `top_k=8`, `preceding_layer_count=15`, `active_context=17`, and `used_split_decode=False`.
 - This clears the next bisection step: layer-15 attention-output projection under the BF16 contract.
+
+## 2026-06-20 — validated layer-15 attention-output projection oracle
+
+### Change
+- Continued iteration 441 by adding `scripts/llamacpp_mtp_audit_layer15_attn_output_oracle.py`.
+- The script starts from the layer-15 full-attention context/gate artifact, hash-checks live `full_gated_f32`, materializes `blk.15.attn_output.weight`, and validates `attn_out_f32` against `BF16(project_f32(full_gated_f32, GGUF attn_output.weight))`.
+- Added `tests/test_llamacpp_mtp_audit_layer15_attn_output_oracle.py` covering context/gate artifact validation, preflight hash guards, exact / rounding / mismatch output projection classifications, wrong-layer metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter441-layer15-attn-output-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer15_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_attn_output_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_attn_output_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer15_attn_output_oracle.py \
+  --context-gate-artifact benchmarks/results/mtp-gguf-iter440-layer15-full-attention-context-gate-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter441-layer15-attn-output-oracle.json
+# status=ready
+# classification=layer15_attn_output_projection_matches_bf16_oracle_within_rounding
+# preflight_classification=layer15_attn_output_preflight_matches_context_gate
+# f32 oracle delta: max_abs=0.0010581016540527344 rmse=4.9318299716105685e-05
+# bf16 oracle delta: max_abs=9.5367431640625e-07 rmse=2.107342389479072e-08
+# field classification=full_attention_attn_output_matches_bf16_oracle_within_rounding
+# weight=blk.15.attn_output.weight Q8_0 shape=[2048, 4096]
+# target layer type=full_attention is_moe=True top_k=8 preceding_layer_count=15 q_width=4096
+# next_action=audit_layer15_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_attn_output_oracle.py
+# .................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-15 attention-output projection
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# focused RED-style tests cover source validation, preflight hash, exact,
+# rounding, mismatch, and unavailable paths; context/gate source artifact is
+# hash-checked; output projection matches BF16 oracle within rounding; compact
+# artifact contains summaries/hashes only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-15 `full_gated_f32` preflight hash matches the iteration-440 full-attention context/gate artifact.
+- Layer-15 attention-output projection matches the BF16-contracted oracle within rounding (`max_abs=9.54e-07`, `rmse=2.11e-08`); the raw F32 oracle delta is the expected BF16 contraction gap (`max_abs=1.06e-03`, `rmse=4.93e-05`).
+- The audited weight is `blk.15.attn_output.weight` (`Q8_0`, shape `[2048, 4096]`).
+- The capture used the full-attention MoE path with `top_k=8`, `preceding_layer_count=15`, and `q_width=4096`.
+- This clears the next bisection step: layer-15 post-attention residual / MoE boundary.
