@@ -107704,3 +107704,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-3 is the first `full_attention` boundary in this bisection path and was captured with `preceding_layer_count == 3`.
 - Layer-3 `attn_norm_f32` matches the resident-BF16 CPU RMSNorm oracle exactly.
 - This establishes the first layer-3 sub-boundary and clears the next bisection step: layer-3 full-attention QKV or attention-output audit.
+
+## 2026-06-20 — validated layer-3 full-attention QKV projection oracle
+
+### Change
+- Continued iteration 347 by adding `scripts/llamacpp_mtp_audit_layer3_full_attention_qkv_oracle.py`.
+- The script starts from the exact layer-3 `attn_norm` artifact, checks the live layer-3 `attn_norm_f32` hash against that artifact, captures resident full-attention layer-3 `full_q`, `full_k`, and `full_v` BF16 projection buffers with `run_preceding_layers=True`, reloads `blk.3.attn_q.weight`, `blk.3.attn_k.weight`, and `blk.3.attn_v.weight`, and recomputes `BF16(project_f32(attn_norm_f32, weight))` on CPU.
+- Added `tests/test_llamacpp_mtp_audit_layer3_full_attention_qkv_oracle.py` covering `attn_norm` prerequisite validation, full-attention metadata validation, input hash checks, exact/near/mismatch classification, blocked metadata paths, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter347-layer3-full-attention-qkv-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_full_attention_qkv_oracle.py
+# .......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer3_full_attention_qkv_oracle.py \
+  --attn-norm-artifact benchmarks/results/mtp-gguf-iter346-layer3-attn-norm-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter347-layer3-full-attention-qkv-oracle.json \
+  --iteration 347
+# status=ready
+# classification=layer3_full_attention_qkv_matches_bf16_oracle_exactly
+# layer=3 position=16 token=271
+# input_classification=layer3_qkv_input_matches_attn_norm_artifact
+# layer_type=full_attention preceding_layer_count=3
+# full_q_f32 exact, max_abs=0.0 rmse=0.0
+# full_k_f32 exact, max_abs=0.0 rmse=0.0
+# full_v_f32 exact, max_abs=0.0 rmse=0.0
+# next_action=audit_layer3_qk_norm_rotary_or_kv_write_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer3_full_attention_qkv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer3_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer3_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer2_projection_oracle.py
+# ........................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-3 `attn_norm_f32` hash matches the exact layer-3 attention-norm artifact at warm position 16/token 271.
+- Layer-3 full-attention `full_q_f32`, `full_k_f32`, and `full_v_f32` match the resident-BF16 GGUF GEMV CPU oracle exactly.
+- This validates the first full-attention projection boundary and clears the next bisection step: layer-3 Q/K head RMSNorm+rotary or KV-write boundary under the resident-BF16 contract.
