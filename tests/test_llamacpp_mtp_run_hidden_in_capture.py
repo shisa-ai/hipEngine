@@ -32,6 +32,7 @@ def test_run_hidden_in_capture_matches_expected_hash(tmp_path: Path) -> None:
         expected_sha256=expected,
         output_prefix=tmp_path / "capture" / "layer3-pos2",
         reference_arrays_path=reference_path,
+        all_rows=True,
         timeout_seconds=30,
         env={"PATH": _prepend_path(tmp_path)},
     )
@@ -45,6 +46,8 @@ def test_run_hidden_in_capture_matches_expected_hash(tmp_path: Path) -> None:
     assert artifact["capture"]["metadata"]["prompt_token_source"] == "token_ids"
     assert artifact["numeric_delta"]["available"] is True
     assert artifact["numeric_delta"]["max_abs_diff"] == 0.0
+    assert artifact["numeric_delta"]["all_rows_scan"]["available"] is True
+    assert artifact["numeric_delta"]["all_rows_scan"]["best_by_rmse"]["row"] == 0
     json.dumps(artifact)
 
 
@@ -161,11 +164,18 @@ def _write_fake_harness(tmp_path: Path, raw: bytes) -> Path:
         "prefix = pathlib.Path(args[args.index('--output-prefix') + 1])\n"
         "prefix.parent.mkdir(parents=True, exist_ok=True)\n"
         f"(prefix.with_suffix('.f32')).write_bytes({values_literal})\n"
-        "(prefix.with_suffix('.json')).write_text(json.dumps({\n"
+        "all_rows = '--all-rows' in args\n"
+        "if all_rows:\n"
+        f"    (prefix.with_suffix('.all.f32')).write_bytes({values_literal} * 2)\n"
+        "meta = {\n"
         "    'kind': 'llamacpp_hidden_in_capture',\n"
         "    'prompt_token_source': 'token_ids',\n"
         "    'binary': str(prefix.with_suffix('.f32')),\n"
-        "}))\n"
+        "    'n_embd': 4,\n"
+        "}\n"
+        "if all_rows:\n"
+        "    meta['all_rows_binary'] = str(prefix.with_suffix('.all.f32'))\n"
+        "(prefix.with_suffix('.json')).write_text(json.dumps(meta))\n"
         "print('{\"captured_hidden_in\":true}')\n"
     )
     exe.chmod(0o755)

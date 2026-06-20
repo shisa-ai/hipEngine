@@ -39,6 +39,8 @@ def test_capture_harness_source_loads_decodes_and_writes_hidden_in() -> None:
         "parse_prompt_tokens",
         "--prompt-tokens IDS",
         "prompt_token_source",
+        "--all-rows",
+        "all_rows_binary",
         "captured_hidden_in",
     ]
     for needle in required:

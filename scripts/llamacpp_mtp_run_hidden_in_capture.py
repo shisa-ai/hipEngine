@@ -46,6 +46,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--n-gpu-layers", type=int, default=999)
     parser.add_argument("--threads", type=int, default=8)
+    parser.add_argument("--all-rows", action="store_true")
     parser.add_argument("--timeout-seconds", type=int, default=1800)
     parser.add_argument("--iteration", type=int, default=293)
     args = parser.parse_args()
@@ -62,6 +63,7 @@ def main() -> None:
         output_prefix=args.output_prefix,
         n_gpu_layers=args.n_gpu_layers,
         threads=args.threads,
+        all_rows=args.all_rows,
         timeout_seconds=args.timeout_seconds,
         env=os.environ,
         iteration=args.iteration,
@@ -95,6 +97,7 @@ def run_hidden_in_capture(
     reference_key: str = DEFAULT_REFERENCE_KEY,
     n_gpu_layers: int = 999,
     threads: int = 8,
+    all_rows: bool = False,
     timeout_seconds: int = 1800,
     env: Mapping[str, str] | None = None,
     iteration: int = 293,
@@ -121,6 +124,8 @@ def run_hidden_in_capture(
         "--threads",
         str(threads),
     ]
+    if all_rows:
+        command.append("--all-rows")
     run_env = with_library_path(env_map, lib_dir)
     run = run_logged(
         command,
@@ -153,6 +158,7 @@ def run_hidden_in_capture(
         "prompt_tokens": parse_prompt_tokens(prompt_tokens),
         "layer": int(layer),
         "position": int(position),
+        "all_rows_requested": bool(all_rows),
         "expected_sha256": expected_sha256,
         "run": run,
         "capture": capture,
@@ -175,6 +181,17 @@ def summarize_capture(*, binary_path: Path, meta_path: Path) -> dict[str, Any]:
             capture["metadata"] = json.loads(meta_path.read_text())
         except json.JSONDecodeError as exc:
             capture["metadata_error"] = str(exc)
+    metadata = capture.get("metadata") or {}
+    all_rows_path = Path(metadata.get("all_rows_binary", "")) if metadata else None
+    if all_rows_path and str(all_rows_path) != "." and all_rows_path.exists():
+        all_data = all_rows_path.read_bytes()
+        all_floats = unpack_float32(all_data)
+        capture["all_rows"] = {
+            "binary_path": str(all_rows_path),
+            "bytes": len(all_data),
+            "float_count": len(all_floats),
+            "sha256": sha256_bytes(all_data),
+        }
     if not binary_path.exists():
         return capture
     data = binary_path.read_bytes()
@@ -227,7 +244,7 @@ def compare_numeric_reference(
         }
     diffs = [a - b for a, b in zip(actual, reference)]
     abs_diffs = [abs(value) for value in diffs]
-    return {
+    result = {
         "available": True,
         "shape_match": True,
         "reference_path": str(reference_arrays_path),
@@ -242,6 +259,58 @@ def compare_numeric_reference(
         "reference_l2": math.sqrt(sum(value * value for value in reference)),
         "diff_samples": [round(value, 8) for value in diffs[:8]],
         "top_abs_diff": top_abs_diff_entries(actual, reference, limit=8),
+    }
+    row_scan = compare_all_rows(capture, reference)
+    if row_scan is not None:
+        result["all_rows_scan"] = row_scan
+    return result
+
+
+def compare_all_rows(
+    capture: dict[str, Any], reference: list[float]
+) -> dict[str, Any] | None:
+    metadata = capture.get("metadata") or {}
+    all_rows = capture.get("all_rows") or {}
+    all_path = all_rows.get("binary_path") or metadata.get("all_rows_binary")
+    n_embd = int(metadata.get("n_embd") or len(reference))
+    if not all_path or not Path(all_path).exists() or n_embd <= 0:
+        return None
+    values = unpack_float32(Path(all_path).read_bytes())
+    if len(values) % n_embd != 0:
+        return {"available": False, "reason": "all_rows_shape_mismatch"}
+    rows = len(values) // n_embd
+    if n_embd != len(reference):
+        return {
+            "available": False,
+            "reason": "reference_width_mismatch",
+            "row_width": n_embd,
+            "reference_count": len(reference),
+        }
+    metrics = []
+    for row in range(rows):
+        start = row * n_embd
+        current = values[start : start + n_embd]
+        diffs = [a - b for a, b in zip(current, reference)]
+        abs_diffs = [abs(value) for value in diffs]
+        metrics.append(
+            {
+                "row": row,
+                "sha256": sha256_bytes(pack_float32(current)),
+                "max_abs_diff": max(abs_diffs) if abs_diffs else 0.0,
+                "mean_abs_diff": sum(abs_diffs) / len(abs_diffs) if abs_diffs else 0.0,
+                "rmse": math.sqrt(sum(value * value for value in diffs) / len(diffs))
+                if diffs
+                else 0.0,
+            }
+        )
+    best = min(metrics, key=lambda item: item["rmse"]) if metrics else None
+    return {
+        "available": True,
+        "rows": rows,
+        "row_width": n_embd,
+        "best_by_rmse": best,
+        "matches": [item for item in metrics if item["max_abs_diff"] == 0.0],
+        "rows_by_rmse": sorted(metrics, key=lambda item: item["rmse"])[:8],
     }
 
 

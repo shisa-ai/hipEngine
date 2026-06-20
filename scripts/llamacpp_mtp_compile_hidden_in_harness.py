@@ -211,12 +211,14 @@ struct Args {
     int position = 16;
     int n_gpu_layers = 999;
     int n_threads = 8;
+    bool all_rows = false;
 };
 
 static void usage(const char * argv0) {
     std::fprintf(stderr,
         "usage: %s --model MODEL.gguf (--prompt TEXT | --prompt-tokens IDS) "
-        "--layer 3 --position 16 --output-prefix PATH [--n-gpu-layers N]\n",
+        "--layer 3 --position 16 --output-prefix PATH [--n-gpu-layers N] "
+        "[--all-rows]\n",
         argv0);
 }
 
@@ -272,6 +274,8 @@ static bool parse_args(int argc, char ** argv, Args * args) {
         } else if (key == "--threads") {
             const char * value = need_value("--threads");
             if (!value || !parse_int(value, &args->n_threads)) return false;
+        } else if (key == "--all-rows") {
+            args->all_rows = true;
         } else {
             std::fprintf(stderr, "unknown argument: %s\n", key.c_str());
             return false;
@@ -346,7 +350,8 @@ static bool write_meta(
         const Args & args,
         int n_tokens,
         int n_embd,
-        const std::string & bin_path) {
+        const std::string & bin_path,
+        const std::string & all_bin_path) {
     std::ofstream out(path);
     if (!out) {
         return false;
@@ -361,7 +366,13 @@ static bool write_meta(
     out << "  \"position\": " << args.position << ",\n";
     out << "  \"n_embd\": " << n_embd << ",\n";
     out << "  \"dtype\": \"float32\",\n";
-    out << "  \"binary\": \"" << bin_path << "\"\n";
+    out << "  \"binary\": \"" << bin_path << "\",\n";
+    out << "  \"all_rows\": " << (args.all_rows ? "true" : "false");
+    if (args.all_rows) {
+        out << ",\n  \"all_rows_binary\": \"" << all_bin_path << "\"\n";
+    } else {
+        out << "\n";
+    }
     out << "}\n";
     return (bool) out;
 }
@@ -455,6 +466,7 @@ int main(int argc, char ** argv) {
     const int n_embd = llama_model_n_embd(model);
     const float * row = layer_input + (size_t) args.position * (size_t) n_embd;
     const std::string bin_path = args.output_prefix + ".f32";
+    const std::string all_bin_path = args.output_prefix + ".all.f32";
     const std::string meta_path = args.output_prefix + ".json";
     if (!write_binary(bin_path, row, (size_t) n_embd)) {
         std::fprintf(stderr, "failed to write %s\n", bin_path.c_str());
@@ -463,12 +475,22 @@ int main(int argc, char ** argv) {
         llama_backend_free();
         return 9;
     }
-    if (!write_meta(meta_path, args, n_tokens, n_embd, bin_path)) {
-        std::fprintf(stderr, "failed to write %s\n", meta_path.c_str());
+    if (args.all_rows && !write_binary(
+            all_bin_path,
+            layer_input,
+            (size_t) n_tokens * (size_t) n_embd)) {
+        std::fprintf(stderr, "failed to write %s\n", all_bin_path.c_str());
         llama_free(ctx);
         llama_model_free(model);
         llama_backend_free();
         return 10;
+    }
+    if (!write_meta(meta_path, args, n_tokens, n_embd, bin_path, all_bin_path)) {
+        std::fprintf(stderr, "failed to write %s\n", meta_path.c_str());
+        llama_free(ctx);
+        llama_model_free(model);
+        llama_backend_free();
+        return 11;
     }
 
     std::printf(

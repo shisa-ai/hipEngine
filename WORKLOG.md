@@ -104245,3 +104245,81 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Numeric delta versus the JSON full-array hipEngine reference (`benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json`, `hidden_in_f32`) is shape-compatible but nonzero: `max_abs_diff=0.0914031863`, `mean_abs_diff=0.0190203032`, `rmse=0.0238953013`, `actual_l2=1.0993092872`, `reference_l2=1.4133095130`.
 - Note: the JSON full-array reference repacks to sha `46d60fba2f8a3408065f0a5769552e84f23e9289fd5913be1b607811082b0eb5`; the compact checkpoint hash above remains the exact hipEngine checkpoint target.
 - Next action: inspect whether llama.cpp is capturing a different row/window (output buffer layout, layer numbering, or pre/post layer-input point) before comparing later layer tensors.
+
+## 2026-06-20 — all-row llama.cpp hidden-in scan rules out row/window mismatch
+
+### Change
+- Continued iteration 294 by extending the generated llama.cpp capture harness with `--all-rows`, which writes both the selected row (`.f32`) and the full prompt layer-input matrix (`.all.f32`).
+- Extended `scripts/llamacpp_mtp_run_hidden_in_capture.py` to request all rows, summarize the all-row binary, and scan every captured prompt row against the hipEngine `hidden_in_f32` reference.
+- Extended tests for all-row source generation, fake harness all-row output, and row-scan metrics.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-capture-harness-allrows-compile.json`
+  - `benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-allrows-scan.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_run_hidden_in_capture.py \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# .............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compile_hidden_in_harness.py \
+  --build-result benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-capture-harness-allrows-compile.json \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter294-hidden-in-capture-harness \
+  --harness-kind capture \
+  --timeout-seconds 180 \
+  --iteration 294
+# status=compiled
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_run_hidden_in_capture.py \
+  --compile-artifact benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-capture-harness-allrows-compile.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt-tokens 248045,846,198,7734,264,2716,40719,13,248046,198,248045,74455,198,248068,271,248069,271 \
+  --layer 3 \
+  --position 16 \
+  --expected-sha256 f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07 \
+  --reference-arrays benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --reference-key hidden_in_f32 \
+  --output-prefix /tmp/hipengine-llamacpp-mtp-iter294-hidden-in/layer3-pos16 \
+  --output benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-allrows-scan.json \
+  --n-gpu-layers 999 \
+  --threads 8 \
+  --all-rows \
+  --timeout-seconds 2400 \
+  --iteration 294
+# status=mismatched
+# selected row sha=4e5087dca9da3112bb30d9506f5c6f17dfaa44b053158868f266286b43571444
+# all_rows bytes=139264 (17 * 2048 * sizeof(float))
+# best row by RMSE = 16
+# exact row matches = []
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_run_hidden_in_capture.py \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py \
+  tests/test_llamacpp_mtp_run_build.py
+# .................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter294-llamacpp-hidden-in-allrows-scan.json \
+  >/tmp/mtp-gguf-iter294-hidden-in-allrows-scan.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The all-row capture confirms llama.cpp stores 17 raw prompt rows for layer input (`139264` bytes = `17 * 2048 * 4`).
+- Row 16 is the best row by RMSE versus the hipEngine `hidden_in_f32` reference and has the same mismatch as iteration 293:
+  - sha `4e5087dca9da3112bb30d9506f5c6f17dfaa44b053158868f266286b43571444`
+  - `max_abs_diff=0.0914031863`, `mean_abs_diff=0.0190203032`, `rmse=0.0238953013`
+- No row matches the hipEngine target exactly. The top rows by RMSE are 16, 12, 14, 7, and 9; none are close enough to indicate a simple off-by-one/window issue.
+- Conclusion: the mismatch is not caused by reading the wrong output row/window. Next likely causes are layer numbering, pre/post tap placement, or a remaining graph-path difference between the hipEngine materialized layer capture and llama.cpp's patched `t_layer_inp` capture.
