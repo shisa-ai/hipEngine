@@ -104561,3 +104561,64 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - layer 3: mismatched, RMSE `0.0238953013`, max abs diff `0.0914031863`, preceding precision contractions `12`
 - Exactness already fails at layer 0, before any preceding-layer replay or layer-local F32→BF16 contractions can contribute. The layer-0 drift is tiny and consistent with token-embedding materialization/copy precision rather than graph-path layer numbering or tap placement.
 - Next action: compare token embedding weight materialization and `launch_gguf_embedding` output against llama.cpp's layer-0 `hidden_in` row; decide whether hipEngine's embedding resident dtype must be promoted for parity or whether the llama.cpp capture is post-conversion in a different dtype path.
+
+## 2026-06-20 — token embedding audit explains layer-0 drift
+
+### Change
+- Continued iteration 299 by adding `scripts/gguf_token_embedding_parity_audit.py`, which compares llama.cpp layer-0 `hidden_in` against the raw GGUF token-embedding row, the BF16-rounded row, and a fresh hipEngine `launch_gguf_embedding` output.
+- Added `tests/test_gguf_token_embedding_parity_audit.py` covering BF16-output explanation, raw-row mismatch, HIP-skipped partial status, and embedding-kernel mismatch conclusions.
+- Emitted `benchmarks/results/mtp-gguf-iter299-token-embedding-parity-audit.json` for token `271`, position `16`, layer `0`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_token_embedding_parity_audit.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_token_embedding_parity_audit.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layer-sweep benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json \
+  --layer 0 \
+  --position 16 \
+  --token-id 271 \
+  --output benchmarks/results/mtp-gguf-iter299-token-embedding-parity-audit.json \
+  --iteration 299
+# status=explained
+# conclusion=layer0_drift_is_bf16_embedding_output
+# hipengine_capture_status=captured
+# next_action=decide_embedding_hidden_precision_for_llamacpp_exact_parity
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_token_embedding_parity_audit.py \
+  tests/test_gguf_hidden_in_earliest_divergence.py \
+  tests/test_gguf_capture_path_audit.py
+# ................ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter299-token-embedding-parity-audit.json \
+  >/tmp/mtp-gguf-iter299-token-embedding-parity-audit.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- llama.cpp layer-0 `hidden_in` exactly matches the raw dequantized GGUF `token_embd.weight[271]` row:
+  - sha256 `ce69511d7a54dec1a77cb3097923d71999d5f408690e377cec3bb39285dffa46`
+  - RMSE `0.0`, max abs diff `0.0`
+- hipEngine `launch_gguf_embedding` output exactly matches BF16-rounded raw dequantized embedding:
+  - sha256 `5b3464efb0fb72d5dbbe522b63b26531401d460e2667e971d2f2b8226fc1b9b3`
+  - hipEngine vs BF16-round RMSE `0.0`, max abs diff `0.0`
+- llama.cpp vs BF16-rounded / hipEngine embedding is exactly the layer-0 drift from iteration 298:
+  - RMSE `4.314661795910361e-06`
+  - max abs diff `8.296966552734375e-05`
+  - mean abs diff `2.105720341205597e-06`
+- Conclusion: the layer-0 mismatch is explained by hipEngine's BF16 embedding output/hidden buffer, not row selection, token id, llama.cpp tap placement, or embedding-kernel dequantization. Next action is to decide how to represent the token embedding / initial hidden state for llama.cpp-exact parity (e.g. F32 seed path or explicit parity-mode promotion) before re-running later-layer sweeps.
