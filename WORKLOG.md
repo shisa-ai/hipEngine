@@ -103920,3 +103920,59 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - The rejected `-DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/hipcc` flag is absent.
 - External llama.cpp source remained clean.
 - Next action: rerun `scripts/llamacpp_mtp_run_build.py` with the iteration-288 plan artifact.
+
+## 2026-06-20 — isolated patched llama.cpp builds with amdclang++
+
+### Change
+- Continued iteration 289 by rerunning `scripts/llamacpp_mtp_run_build.py` against `benchmarks/results/mtp-gguf-iter288-llamacpp-build-plan-amdclang.json`.
+- Emitted `benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json` recording the real configure/build result and log paths under `/tmp/hipengine-llamacpp-mtp-iter289-build-logs`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_run_build.py \
+  --plan benchmarks/results/mtp-gguf-iter288-llamacpp-build-plan-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --log-dir /tmp/hipengine-llamacpp-mtp-iter289-build-logs \
+  --replace-build-dir \
+  --timeout-seconds 3600 \
+  --iteration 289
+# status=built
+# configure_rc=0
+# build_rc=0
+# libraries=[/tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so, ...]
+# next_action=compile_hidden_in_capture_harness_against_built_libllama
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_run_build.py \
+  tests/test_llamacpp_mtp_build_plan.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  >/tmp/mtp-gguf-iter289-build-result-amdclang.json
+
+test -L /tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so
+
+test -f /tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so.0.0.0
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The patched isolated llama.cpp source configured and built successfully with `amdclang++`.
+- Configure: rc=0, elapsed=1.764s. Build: rc=0, elapsed=144.237s.
+- Built libraries:
+  - `/tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so`
+  - `/tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so.0`
+  - `/tmp/hipengine-llamacpp-mtp-iter288-build/bin/libllama.so.0.0.0`
+- `diagnostics.kind=none`, `external_checkout_modified=false`, and next action is `compile_hidden_in_capture_harness_against_built_libllama`.
+- Configure stderr still has harmless `fatal: not a git repository` messages because the temp source came from `git archive`; this did not block configure or build.
