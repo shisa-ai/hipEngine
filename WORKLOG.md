@@ -106934,3 +106934,58 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-1 `attn_norm_f32` matches the resident-BF16 CPU RMSNorm oracle exactly at warm position 16/token 271.
 - This establishes the first layer-1 sub-boundary after the layer-0→layer-1 handoff.
 - Next bisection should audit layer-1 projection or conv/GDN outputs under the BF16 contract.
+
+## 2026-06-20 — validated layer-1 projection inputs oracle
+
+### Change
+- Continued iteration 333 by adding `scripts/llamacpp_mtp_audit_layer1_projection_oracle.py`.
+- The script starts from the exact layer-1 attn_norm artifact, captures layer-1 projection buffers with `run_preceding_layers=True`, reloads GGUF `attn_qkv`, `attn_gate`, `ssm_alpha`, and `ssm_beta` weights, and recomputes `BF16(project_f32(attn_norm, weight))` on CPU.
+- Added per-value BF16 adjacency classification so a field can be accepted when every non-exact element is within one representable BF16 step of the oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer1_projection_oracle.py` covering attn_norm prerequisite validation, exact/near/mismatch projection classification, BF16 one-step classification, injected audit generation, and unavailable-capture handling.
+- Emitted `benchmarks/results/mtp-gguf-iter333-layer1-projection-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer1_projection_oracle.py
+# ......... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer1_projection_oracle.py \
+  --layer1-attn-norm benchmarks/results/mtp-gguf-iter332-layer1-attn-norm-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter333-layer1-projection-oracle.json \
+  --iteration 333
+# status=ready
+# classification=layer1_projections_match_bf16_oracle_within_rounding
+# layer=1 position=16 token=271 preceding_layer_count=1
+# linear_qkv_f32: within one BF16 step, max_abs=0.00048828125, rmse=5.394961135607446e-06, bad_count=0
+# linear_z_f32: within one BF16 step, max_abs=0.00390625, rmse=6.103515625e-05, bad_count=0
+# ssm_alpha_f32: exact, max_abs=0.0, rmse=0.0
+# ssm_beta_f32: exact, max_abs=0.0, rmse=0.0
+# next_action=audit_layer1_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer1_projection_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer1_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer1_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_layer0_bisection_conclusion.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py
+# ................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-1 projection inputs now match the resident-BF16 CPU oracle at warm position 16/token 271.
+- `ssm_alpha_f32` and `ssm_beta_f32` are exact.
+- `linear_qkv_f32` and `linear_z_f32` each have only one-BF16-step outliers and no elements outside the per-value BF16 adjacency envelope.
+- Next bisection should audit layer-1 conv/GDN under the BF16 contract.
