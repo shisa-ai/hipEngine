@@ -101930,3 +101930,49 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - The F32 auxiliary-weight contraction suspected in iteration 251 is now machine-checkable without loading tensors to the GPU: the current Qwen3.6 MTP-bearing plan intentionally contracts 140 source F32 aux tensors to BF16 resident storage.
 - This is diagnostic only and does not improve target AR first-token parity; the next useful step remains a numeric boundary oracle around early GDN/router/full-attn math before acceptance/perf tuning.
+
+## 2026-06-20 — GGUF early boundary probe quantified layer-0 F32/BF16 drift
+
+### Change
+- Continued iteration 253 by adding reproducible CPU-side diagnostic `scripts/gguf_precision_boundary_probe.py`.
+- The probe reads the real MTP-bearing GGUF, dequantizes token 271's embedding row and layer-0 `attn_norm`/`ssm_alpha`/`ssm_beta` weights, then compares llama.cpp-style F32 graph math against hipEngine-style BF16 resident embedding/RMSNorm + BF16 aux-weight projection.
+- Emitted compact artifact `benchmarks/results/mtp-gguf-iter253-early-boundary-probe.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_precision_boundary_probe.py
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_precision_boundary_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --layer 0 --token-id 271 \
+  --output benchmarks/results/mtp-gguf-iter253-early-boundary-probe.json
+# norm_max_abs=0.10197830200195312
+# ssm_alpha_max_abs=0.018385887145996094
+# ssm_beta_max_abs=0.01250600814819336
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter253-early-boundary-probe.json \
+  >/tmp/iter253-boundary.pretty && echo script-pycompile-and-artifact-json-ok
+# script-pycompile-and-artifact-json-ok
+
+git diff --check -- scripts/gguf_precision_boundary_probe.py \
+  WORKLOG.md benchmarks/results/mtp-gguf-iter253-early-boundary-probe.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The earliest real greeting boundary already shows measurable, bounded numeric drift before any target trunk attention/MoE acceptance work: layer-0 `attn_norm` max_abs=0.10198, `ssm_alpha` max_abs=0.01839, and `ssm_beta` max_abs=0.01251 under the F32-vs-BF16 contract comparison.
+- This still is not a full target-AR parity fix; next work should either capture a real device boundary after layer-0 GDN or add a temporary F32 resident path for the specific aux projections to see whether the first-token target AR moves toward llama.cpp.
