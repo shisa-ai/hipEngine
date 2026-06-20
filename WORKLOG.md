@@ -101781,3 +101781,40 @@ HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python \
 ### Result
 - Guard/focused tests remain green, and the default/bulk/native-attention prefill+decode paths still agree with each other.
 - Target AR still does **not** match llama.cpp's `Hello` greeting trace, so MTP accepted/output parity remains blocked by task #4.
+
+## 2026-06-19 — GGUF final head audit ruled out BF16 output-norm/head precision as the greeting mismatch
+
+### Change
+- Continued task #4 target AR parity triage for the 17-token llama.cpp reasoning-off greeting prompt.
+- Audited the end-of-model contract against llama.cpp `qwen35moe.cpp`: trunk applies `output_norm`, exposes the same post-norm row as `h_nextn`, then projects with `output.weight`.
+- Ran a native diagnostic that captures hipEngine's existing fp32 post-`output_norm` seed row and projects it through the raw GGUF Q6_K `f32->f32` lm-head kernel instead of the resident BF16 lm-head path.
+
+### Evidence
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Build the 17-token reasoning-off greeting prompt, run resident prefill with
+# capture_hidden_seed_fp32=True, then project scratch.hidden_seed_fp32 through
+# gguf_q6_k_gemv_f32_f32_out.
+PY
+# bf16 head token 271 '\n\n'
+# f32 head top: 271 '\n\n' (12.5931), 64 'a' (12.2712),
+#               198 '\n' (12.1184), 77 'n' (10.9671), ...
+```
+
+Correctness guard:
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# 22 passed, 5 skipped
+```
+
+### Result
+- The greeting mismatch is not explained by final BF16 `output_norm` storage or BF16-activation Q6_K lm-head precision: the fp32 seed + f32 lm-head still greedily selects token 271 (`'\n\n'`), not llama.cpp's token 9419 (`'Hello'`).
+- Continue target AR parity triage earlier in the stack (prompt/checkpoint semantics, recurrent/full-attention state, MoE/GDN math) before MTP acceptance/performance tuning.
