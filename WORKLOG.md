@@ -109585,3 +109585,63 @@ PY
 - `full_attn_context_f32` matches the paged GQA CPU oracle within FP32 kernel tolerance (`max_abs=9.5367431640625e-07`, `rmse=5.790288426510415e-08`).
 - `full_gated_f32` exactly matches `BF16(full_attn_context_f32 * sigmoid(full_gate_f32))`.
 - This clears the next full-attention bisection step: layer-7 attention output projection under the BF16 contract.
+
+## 2026-06-20 — validated layer-7 attention-output oracle
+
+### Change
+- Continued iteration 381 by adding `scripts/llamacpp_mtp_audit_layer7_attn_output_oracle.py`.
+- The script starts from the ready layer-7 full-attention context/gate artifact, hash-checks live `full_gated_f32`, reloads `blk.7.attn_output.weight`, and mirrors the established BF16 attention-output projection oracle for layer 7.
+- Added `tests/test_llamacpp_mtp_audit_layer7_attn_output_oracle.py` covering context/gate artifact validation, preflight hash guards, exact / within-rounding / mismatch / blocked / unavailable classifications, and full-attention metadata checks.
+- Emitted `benchmarks/results/mtp-gguf-iter381-layer7-attn-output-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer7_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_attn_output_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_attn_output_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer7_attn_output_oracle.py \
+  --context-gate-artifact benchmarks/results/mtp-gguf-iter380-layer7-full-attention-context-gate-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter381-layer7-attn-output-oracle.json
+# status=ready
+# classification=layer7_attn_output_projection_matches_bf16_oracle_within_rounding
+# preflight_classification=layer7_attn_output_preflight_matches_context_gate
+# attn_out_f32 classification=full_attention_attn_output_matches_bf16_oracle_within_rounding
+# f32 oracle delta: max_abs=0.00029747188091278076 rmse=2.9016006010351703e-05
+# bf16 oracle delta: max_abs=3.814697265625e-06 rmse=8.429373821172703e-08
+# next_action=audit_layer7_post_attn_residual_or_moe_boundary
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer7_attn_output_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer7_full_attention_context_gate_oracle.py
+# ........................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic oracle/test only; no torch or dispatch branches;
+# no attention/KV ABI changed; docs/MTP-gguf oracle-first path preserved; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-7 `full_gated_f32` preflight hash matches the ready layer-7 context/gate artifact at warm position 16/token 271.
+- `attn_out_f32` matches `BF16(project_f32(full_gated_f32, blk.7.attn_output.weight))` within BF16 rounding (`max_abs=3.814697265625e-06`, `rmse=8.429373821172703e-08`).
+- This clears the next layer-7 bisection step: post-attention residual / MoE boundary under the BF16 contract.
