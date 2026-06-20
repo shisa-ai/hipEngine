@@ -113207,3 +113207,67 @@ PY
 - Layer-15 live `hidden_in_f32` is exact vs the layer-14 `layer_out_f32` BF16 handoff (`max_abs=0.0`, `rmse=0.0`).
 - The source capture used `preceding_layer_count=14`; the target capture used `preceding_layer_count=15`.
 - The layer-15 target capture is a `full_attention` layer, so the next boundary is the layer-15 attention norm under the BF16 contract.
+
+## 2026-06-20 — validated layer-15 attention-norm oracle
+
+### Change
+- Continued iteration 437 by adding `scripts/llamacpp_mtp_audit_layer15_attn_norm_oracle.py`.
+- The script starts from the exact layer-15 BF16 handoff artifact, hash-checks live `hidden_in_f32`, materializes `blk.15.attn_norm.weight`, and validates `attn_norm_f32` against the BF16 RMSNorm oracle for a `full_attention` block.
+- Added `tests/test_llamacpp_mtp_audit_layer15_attn_norm_oracle.py` covering handoff artifact validation, input hash guards, exact / mismatch / unavailable attention-norm classifications, full-attention metadata checks, and injected-capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter437-layer15-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer15_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_attn_norm_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_attn_norm_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer15_attn_norm_oracle.py \
+  --layer15-handoff benchmarks/results/mtp-gguf-iter436-layer15-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter437-layer15-attn-norm-oracle.json
+# status=ready
+# classification=layer15_attn_norm_matches_bf16_oracle_exactly
+# input_classification=layer15_attn_norm_input_matches_handoff_artifact
+# attn_norm_delta exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention is_moe=True top_k=8 preceding_layer_count=15
+# weight=blk.15.attn_norm.weight
+# next_action=audit_layer15_attention_projection_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer15_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer11_attn_norm_oracle.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-15 full-attention attention-norm
+# oracle/test only; no torch or dispatch branches; no attention/KV ABI changed;
+# RED-style focused tests added before retaining real artifact; layer-15
+# hidden_in source handoff is hash-checked; attention RMSNorm is exact; compact
+# artifact contains summaries/hashes only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-15 `hidden_in_f32` preflight hash matches the iteration-436 handoff artifact.
+- Layer-15 `attn_norm_f32` is exact vs `BF16(RMSNorm(hidden_in, blk.15.attn_norm.weight))` (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the full-attention MoE path with `top_k=8` and `preceding_layer_count=15`.
+- This clears the next bisection step: layer-15 full-attention projection under the BF16 contract.
