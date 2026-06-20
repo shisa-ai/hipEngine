@@ -113406,3 +113406,72 @@ PY
 - Layer-15 per-head Q/K RMSNorm + RoPE matches the CPU mirror within the existing tiny FP32 kernel tolerance (`full_query_f32 max_abs=7.15e-07`, `full_key_f32 max_abs=2.38e-07`).
 - Layer-15 key/value cache entries at the active token position are exact after the expected BF16 cache write (`max_abs=0.0`, `rmse=0.0`).
 - This clears the next bisection step: layer-15 full-attention scores / attention output under the BF16 contract.
+
+## 2026-06-20 — validated layer-15 full-attention context/gate oracle
+
+### Change
+- Continued iteration 440 by adding `scripts/llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py`.
+- There was no layer-15 context/gate source artifact yet, so the next score/attention-output boundary was split at the established layer-11 checkpoint: first validate full-attention context + gate multiply from the iteration-439 QK/RoPE/KV artifact, then use this artifact as the source for the attn-output projection audit.
+- The script starts from the layer-15 QK norm / rotary / KV artifact, hash-checks live `full_query_f32`, `full_key_f32`, `full_gate_f32`, `key_cache_position_f32`, and `value_cache_position_f32`, mirrors paged GQA attention over the BF16 KV cache, and validates `full_gated_f32 = BF16(full_attn_context_f32 * sigmoid(full_gate_f32))`.
+- Added `tests/test_llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py` covering source validation, preflight hash guards, attention-context tolerance, gate exactness, split-decode blocking, mismatch, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter440-layer15-full-attention-context-gate-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py
+# ............ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py \
+  --qk-norm-rotary-kv-artifact benchmarks/results/mtp-gguf-iter439-layer15-qk-norm-rotary-kv-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter440-layer15-full-attention-context-gate-oracle.json
+# status=ready
+# classification=layer15_full_attention_context_matches_cpu_oracle_within_fp32_tolerance
+# preflight_classification=layer15_context_gate_preflight_matches_qk_artifact
+# attention context within FP32 tolerance: max_abs=2.980232238769531e-07 rmse=4.866172886863751e-08
+# gate multiply exact: max_abs=0.0 rmse=0.0
+# target layer type=full_attention is_moe=True top_k=8 preceding_layer_count=15 used_split_decode=False active_context=17
+# next_action=audit_layer15_attn_output_projection_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer15_full_attention_context_gate_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer15_qk_norm_rotary_kv_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer11_full_attention_context_gate_oracle.py
+# ....................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-15 full-attention context/gate
+# oracle/test only; no torch or dispatch branches; KVLiveSpans attention
+# context observed but runtime/ABI unchanged; focused RED-style tests cover
+# source validation, preflight hashes, context tolerance, gate exactness,
+# split-decode block, mismatch/unavailable paths; QK/rotary/KV source artifact
+# is hash-checked; attention context is within FP32 tolerance, gate multiply
+# exact; compact artifact contains summaries/hashes only; no performance claim
+# changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-15 QK/RoPE/KV preflight hashes match the iteration-439 artifact for the five source fields.
+- Layer-15 full-attention context matches the CPU paged-GQA softmax mirror within the existing tiny FP32 tolerance (`max_abs=2.98e-07`, `rmse=4.87e-08`).
+- Layer-15 gate multiply is exact after BF16 contraction (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the full-attention MoE path with `top_k=8`, `preceding_layer_count=15`, `active_context=17`, and `used_split_decode=False`.
+- This clears the next bisection step: layer-15 attention-output projection under the BF16 contract.
