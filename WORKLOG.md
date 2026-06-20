@@ -109893,3 +109893,64 @@ PY
 - Source capture hash matches the ready layer-7 expert-output artifact.
 - Layer 8 is `linear_attention`, with `preceding_layer_count=8` in the target capture.
 - This clears the next layer-8 bisection step: attention norm under the BF16 contract.
+
+## 2026-06-20 — validated layer-8 attention norm oracle
+
+### Change
+- Continued iteration 386 by adding `scripts/llamacpp_mtp_audit_layer8_attn_norm_oracle.py`.
+- The script starts from the exact layer-8 BF16 handoff artifact, hash-checks live `hidden_in_f32`, reloads `blk.8.attn_norm.weight`, and mirrors the established BF16 RMSNorm oracle for linear-attention layers.
+- Added `tests/test_llamacpp_mtp_audit_layer8_attn_norm_oracle.py` covering handoff artifact validation, hidden input hash guards, exact / mismatch / wrong-layer-type / unavailable classifications, and injected RMSNorm fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter386-layer8-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer8_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer8_attn_norm_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer8_attn_norm_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer8_attn_norm_oracle.py \
+  --layer8-handoff benchmarks/results/mtp-gguf-iter385-layer8-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter386-layer8-attn-norm-oracle.json
+# status=ready
+# classification=layer8_attn_norm_matches_bf16_oracle_exactly
+# input_classification=layer8_attn_norm_input_matches_handoff_artifact
+# attn_norm exact: max_abs=0.0 rmse=0.0
+# layer type=linear_attention preceding_layer_count=8
+# next_action=audit_layer8_projection_or_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer8_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer8_bf16_handoff_audit.py
+# ..................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic attn-norm oracle/test only; no torch or
+# dispatch branches; no attention/KV ABI changed; RED-style focused tests added
+# before real artifact; docs/MTP-gguf oracle-first path preserved; no performance
+# claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-8 attention-norm input `hidden_in_f32` hash matches the exact layer-8 BF16 handoff artifact at warm position 16/token 271.
+- `attn_norm_f32` exactly matches `BF16(RMSNorm(hidden_in_f32, blk.8.attn_norm.weight))` (`max_abs=0.0`, `rmse=0.0`).
+- Layer 8 remains confirmed as `linear_attention`, with `preceding_layer_count=8` in the capture.
+- This clears the next layer-8 bisection step: projection / conv-GDN under the BF16 contract.
