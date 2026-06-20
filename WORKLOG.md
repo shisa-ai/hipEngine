@@ -104444,3 +104444,63 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   6. `post_norm_f32`: RMSE `0.8967564909`
 - No same-width hipEngine array matches exactly; mismatched-width arrays (`ffn_or_moe_down_f32`, routing weights, shared gate, selected experts) were skipped.
 - This rules out a simple tap-name mixup within the existing hipEngine layer-3 checkpoint arrays. Next likely issue is graph-path/materialization for `hidden_in` itself, e.g. a difference between hipEngine's preceding-layer replay and llama.cpp's `inpL` path, rather than reading residual/post_norm/layer_out by mistake.
+
+## 2026-06-20 — hipEngine capture-path audit rules out missing embedding setup
+
+### Change
+- Continued iteration 297 by adding `scripts/gguf_capture_path_audit.py`, a static/metadata audit for the hipEngine GGUF layer-capture reference path.
+- Added `tests/test_gguf_capture_path_audit.py` covering source-fact extraction, conclusion priority, layer parsing, and missing-model behavior.
+- Emitted `benchmarks/results/mtp-gguf-iter297-hipengine-capture-path-audit.json` using the iteration-280 hipEngine full-array capture, iteration-295 llama.cpp layer sweep, and iteration-296 tap-placement comparison.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_capture_path_audit.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_capture_path_audit.py \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --tap-compare benchmarks/results/mtp-gguf-iter296-llamacpp-tap-placement-compare.json \
+  --layer-sweep benchmarks/results/mtp-gguf-iter295-llamacpp-hidden-in-layer-sweep.json \
+  --layers 0-3 \
+  --output benchmarks/results/mtp-gguf-iter297-hipengine-capture-path-audit.json \
+  --iteration 297
+# status=audited
+# capture_embedding_setup=true
+# hidden_tap_dtype=bf16_to_host_f32
+# precision_contractions=14
+# conclusion=precision_contractions_or_preceding_layer_math_suspect
+# next_action=run_earliest_layer_hidden_in_sweep_and_audit_precision_contractors
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_capture_path_audit.py \
+  tests/test_llamacpp_mtp_compare_tap_placement.py \
+  tests/test_llamacpp_mtp_sweep_hidden_in_layers.py
+# ............... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter297-hipengine-capture-path-audit.json \
+  >/tmp/mtp-gguf-iter297-capture-path-audit.json
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Static source audit confirms `capture_attention_layer` does call `_set_token_id_device`, which calls `_set_token_embedding_from_ptr`, which launches `launch_gguf_embedding`; the selected token embedding is therefore not missing from the hipEngine capture path.
+- The capture path replays preceding layers and copies `hidden_in_f32` from `target_src_ptr` through the BF16→F32 host copy helper.
+- Prior diagnostics are incorporated: tap compare says the closest same-width hipEngine array is `hidden_in_f32`, and layer sweep says llama.cpp layer 3 row 16 is closest. These rule out tap-name mixup and nearby layer-numbering offset.
+- Precision/materialization audit for layers 0–3 finds 14 GGUF F32 tensors intentionally resident as BF16 in hipEngine:
+  - layers 0–2: `ffn_gate_inp`, `ffn_gate_inp_shexp`, `ssm_alpha`, `ssm_beta`
+  - layer 3: `ffn_gate_inp`, `ffn_gate_inp_shexp`
+- Conclusion: `precision_contractions_or_preceding_layer_math_suspect`. Next action should be an earliest-layer hidden-in sweep comparing hipEngine and llama.cpp layer-by-layer, while accounting for those precision contractions.
