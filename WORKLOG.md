@@ -102575,3 +102575,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Device `recurrent_bf16` exactly matches host BF16 rounding of `recurrent_out`; the cast contributes max_abs=0.00330365 and rms_abs=5.34e-05 but is not a device/host mismatch.
 - The active layer-0 mismatch search should move to `ssm_out` input/weight precision or earlier GDN math, not the `f32_to_bf16` cast itself.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF layer-0 ssm_out GEMV matches CPU BF16 oracle
+
+### Change
+- Continued iteration 267 by adding `scripts/gguf_ssm_out_compare.py` and `tests/test_gguf_ssm_out_compare.py`.
+- The script dequantizes layer-0 `ssm_out`, multiplies it by the full-array captured `recurrent_bf16_f32`, BF16-rounds the CPU output, and compares it against device `attn_out_f32`.
+- Emitted `benchmarks/results/mtp-gguf-iter267-ssm-out-cpu-compare.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_ssm_out_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_ssm_out_compare.py
+# .. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_ssm_out_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter267-ssm-out-cpu-compare.json \
+  --layer 0 --iteration 267
+# max_abs_diff=9.5367431640625e-07
+# rms_abs_diff=2.107342389479072e-08
+# within_bf16_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter267-ssm-out-cpu-compare.json \
+  >/tmp/iter267-ssm-out.pretty && echo ssm-out-compare-json-ok
+# ssm-out-compare-json-ok
+
+git diff --check -- scripts/gguf_ssm_out_compare.py \
+  tests/test_gguf_ssm_out_compare.py \
+  benchmarks/results/mtp-gguf-iter267-ssm-out-cpu-compare.json WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Device `attn_out` is explained by CPU `ssm_out(recurrent_bf16)` after BF16 rounding at layer 0: max_abs=9.54e-07, rms_abs=2.11e-08.
+- The layer-0 mismatch search moves earlier than `ssm_out`: conv/GDN recurrence inputs or the state entering layer 0, not the `ssm_out` GEMV or recurrent BF16 cast.
+- No runtime math or target AR parity changed in this iteration.
