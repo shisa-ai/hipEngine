@@ -102461,3 +102461,64 @@ git diff --check -- \
 ### Result
 - The first real extended layer-0 boundary capture is available and finite, with enough summaries to start a CPU-side GDN/`attn_out` oracle or BF16-cast error audit.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF extended boundary full-array capture emitted
+
+### Change
+- Continued iteration 265 by adding `--include-arrays` to `scripts/gguf_linear_boundary_capture.py`.
+- The script still emits compact summaries by default; the new opt-in adds exact flattened fp32 arrays for every captured boundary buffer.
+- Updated `tests/test_gguf_linear_boundary_capture_script.py` for the JSON-friendly array payload helper.
+- Emitted `benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json` on the local ROCm environment for the captured greeting prompt, final position 16/token 271.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_linear_boundary_capture.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_linear_boundary_capture_script.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+import ctypes
+ctypes.CDLL('libamdhip64.so')
+print('hip OK')
+PY
+# hip OK
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_linear_boundary_capture.py --iteration 265 --include-arrays \
+  --output benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json
+# status=captured, position=16, token_id=271
+# arrays: attn_norm_f32, linear_qkv_f32, linear_z_f32, ssm_alpha_f32,
+# ssm_beta_f32, conv_out_f32, recurrent_out_f32, recurrent_bf16_f32,
+# attn_out_f32
+# linear_qkv_len=8192, conv_out_len=8192, recurrent_out_len=4096
+# artifact_bytes=773636
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json \
+  >/tmp/iter265-full-arrays.pretty && echo full-array-capture-json-ok
+# full-array-capture-json-ok
+
+git diff --check -- scripts/gguf_linear_boundary_capture.py \
+  tests/test_gguf_linear_boundary_capture_script.py \
+  benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The extended layer-0 capture now has an exact vector artifact suitable for CPU-side GDN/`attn_out` and BF16-cast error comparisons, not just summary statistics.
+- No runtime math or target AR parity changed in this iteration.

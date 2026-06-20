@@ -56,6 +56,7 @@ def main() -> None:
     parser.add_argument("--compiler-version")
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--max-sequence-length", type=int)
+    parser.add_argument("--include-arrays", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -89,6 +90,7 @@ def main() -> None:
             require_cached_build=bool(args.require_cached_build),
             max_sequence_length=args.max_sequence_length,
             iteration=args.iteration,
+            include_arrays=bool(args.include_arrays),
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +118,7 @@ def capture_linear_boundary(
     require_cached_build: bool,
     max_sequence_length: int | None,
     iteration: int = 258,
+    include_arrays: bool = False,
 ) -> dict[str, Any]:
     max_seq = int(max_sequence_length or max(len(tokens) + 8, 32))
     with Qwen35GGUFResidentSession(
@@ -142,17 +145,22 @@ def capture_linear_boundary(
         iteration=iteration,
     )
     artifact["capture_summary"] = capture.as_summary_dict()
-    artifact["buffers"] = {
-        "attn_norm_f32": _array_summary(capture.attn_norm_f32),
-        "linear_qkv_f32": _array_summary(capture.linear_qkv_f32),
-        "linear_z_f32": _array_summary(capture.linear_z_f32),
-        "ssm_alpha_f32": _array_summary(capture.ssm_alpha_f32),
-        "ssm_beta_f32": _array_summary(capture.ssm_beta_f32),
-        "conv_out_f32": _array_summary(capture.conv_out_f32),
-        "recurrent_out_f32": _array_summary(capture.recurrent_out_f32),
-        "recurrent_bf16_f32": _array_summary(capture.recurrent_bf16_f32),
-        "attn_out_f32": _array_summary(capture.attn_out_f32),
+    captured_arrays = {
+        "attn_norm_f32": capture.attn_norm_f32,
+        "linear_qkv_f32": capture.linear_qkv_f32,
+        "linear_z_f32": capture.linear_z_f32,
+        "ssm_alpha_f32": capture.ssm_alpha_f32,
+        "ssm_beta_f32": capture.ssm_beta_f32,
+        "conv_out_f32": capture.conv_out_f32,
+        "recurrent_out_f32": capture.recurrent_out_f32,
+        "recurrent_bf16_f32": capture.recurrent_bf16_f32,
+        "attn_out_f32": capture.attn_out_f32,
     }
+    artifact["buffers"] = {name: _array_summary(array) for name, array in captured_arrays.items()}
+    if include_arrays:
+        artifact["arrays"] = {
+            name: _array_payload(array) for name, array in captured_arrays.items()
+        }
     return artifact
 
 
@@ -197,6 +205,10 @@ def _array_summary(array: np.ndarray) -> dict[str, Any]:
         "rms": float(np.sqrt(np.mean(values * values, dtype=np.float32))) if values.size else 0.0,
         "sample": [float(x) for x in values[:8]],
     }
+
+
+def _array_payload(array: np.ndarray) -> list[float]:
+    return [float(x) for x in np.asarray(array, dtype=np.float32).reshape(-1)]
 
 
 def _parse_tokens(raw: str) -> tuple[int, ...]:

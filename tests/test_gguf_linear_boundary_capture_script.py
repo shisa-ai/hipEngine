@@ -8,7 +8,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from scripts.gguf_linear_boundary_capture import _array_summary, _parse_tokens, _resolve_position
+from scripts.gguf_linear_boundary_capture import (
+    _array_payload,
+    _array_summary,
+    _parse_tokens,
+    _resolve_position,
+)
 
 
 def test_linear_boundary_capture_dry_run_writes_plan_artifact(tmp_path: Path) -> None:
@@ -64,8 +69,9 @@ def test_linear_boundary_capture_helpers_validate_inputs() -> None:
         _resolve_position(3, 3)
 
 
-def test_array_summary_is_json_friendly() -> None:
-    summary = _array_summary(np.asarray([1.0, -2.0, 3.0], dtype=np.float32))
+def test_array_summary_and_payload_are_json_friendly() -> None:
+    values = np.asarray([1.0, -2.0, 3.0], dtype=np.float32)
+    summary = _array_summary(values)
 
     assert summary == {
         "shape": [3],
@@ -76,3 +82,4 @@ def test_array_summary_is_json_friendly() -> None:
         "rms": pytest.approx(np.sqrt(14.0 / 3.0)),
         "sample": [1.0, -2.0, 3.0],
     }
+    assert _array_payload(values.reshape(1, 3)) == [1.0, -2.0, 3.0]
