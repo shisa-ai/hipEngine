@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_target_ar_source_contract_audit",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 251,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt": "Write a short greeting.",
+  "status": "diagnostic_only_no_code_change",
+  "native_observed_first_token": {
+    "token_id": 271,
+    "piece": "\\n\\n"
+  },
+  "llamacpp_observed_first_token": {
+    "token_id": 9419,
+    "piece": "Hello"
+  },
+  "prior_hypotheses_ruled_out": [
+    "prompt/template/token-id drift: native 17-token reasoning-off prompt matches llama.cpp server log",
+    "final output_norm BF16 storage / lm-head BF16 activation precision: fp32 seed + f32 Q6_K head still selects token 271",
+    "bulk-vs-serial prefill scheduling: native bulk/serial/native-attention paths agree on the divergent target stream"
+  ],
+  "source_contract_findings": [
+    {
+      "component": "llama.cpp activation dtype baseline",
+      "finding": "GGML token embedding rows are materialized as F32 and RMSNorm/residual ops duplicate their input tensor type, so the qwen35moe trunk graph keeps F32 activations for the target path unless an op explicitly quantizes.",
+      "evidence": [
+        "/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml.c:3855-3867 ggml_get_rows TODO returns GGML_TYPE_F32 for non-I32 tensors",
+        "/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml.c:1858-1859 ggml_dup_tensor preserves source type",
+        "/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml.c:3119-3128 ggml_rms_norm_impl duplicates input type",
+        "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-graph.cpp:1144-1167 build_norm applies ggml_rms_norm then F32 weight multiply"
+      ]
+    },
+    {
+      "component": "hipEngine resident activation dtype",
+      "finding": "The native GGUF resident target path is BF16-activation-first: persistent hidden/prefill buffers allocate hidden_size*2 bytes, layer RMSNorm kernels write BF16, hidden projections default to BF16 outputs, and only selected q/k/final hidden taps are F32.",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:2983-2997 hidden and prefill buffers allocate hidden_size*2 bytes",
+        "hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip:36-63 gguf_rmsnorm_bf16_f32_weight writes uint16 BF16 output",
+        "hipengine/runtime/gguf_linear.py:296-299 documents hidden projections use output_dtype='bf16'",
+        "hipengine/runtime/qwen35_gguf_runner.py:3459-3477 default output_norm sample hidden is BF16; fp32 tap is optional diagnostic/MTP seed"
+      ]
+    },
+    {
+      "component": "F32 auxiliary weights",
+      "finding": "Several GGUF F32 qwen35moe weights that llama.cpp consumes as F32 graph tensors are intentionally materialized as BF16 in hipEngine for existing kernels: MoE router/shared-gate weights and GDN alpha/beta projections.",
+      "evidence": [
+        "GGUF tensor types: blk.0.ffn_gate_inp.weight, blk.0.ffn_gate_inp_shexp.weight, blk.0.ssm_alpha.weight, blk.0.ssm_beta.weight are F32",
+        "hipengine/loading/qwen35_gguf_materialize.py:243-252 maps .ffn_gate_inp, .ffn_gate_inp_shexp, .ssm_alpha, .ssm_beta F32 tensors to LAYOUT_DENSE_BF16"
+      ]
+    },
+    {
+      "component": "IMRoPE/positions",
+      "finding": "llama.cpp marks Qwen35/Qwen35MoE as IMRoPE and expands text token positions to 4D (p_t=p_h=p_w=pos, p_e=0). HipEngine currently uses 1D position tables and does not encode rope_dimension_sections; this remains a source-level parity item, although text-only equal t/h/w positions reduce the first-order difference relative to generic multimodal M-RoPE.",
+      "evidence": [
+        "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-model.cpp:2499-2501 returns LLAMA_ROPE_TYPE_IMROPE for QWEN35/QWEN35MOE",
+        "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-graph.cpp:146-155 expands text positions to 4D for n_pos_per_embd==4",
+        "hipengine/loading/qwen35_gguf.py stores rope_dimension_sections but hipengine/runtime/qwen35_gguf_runner.py:_rope_tables only builds a 1D Neox-style table"
+      ]
+    }
+  ],
+  "conclusion": "The next target-AR parity work should stop treating the final head as the main suspect and add a numeric oracle or diagnostic mode around the earliest F32-vs-BF16 activation/projection boundary (embedding/attn_norm/full-attn or GDN alpha-beta/router). Without closing that contract, B1-B4 MTP acceptance remains non-comparable to llama.cpp.",
+  "next_actions": [
+    "Add a small source-backed precision precheck that flags BF16 activation/projection contractions against llama.cpp F32 graph contracts.",
+    "Build a minimal numeric boundary oracle for one early layer (prefer layer 0 linear-attn alpha/beta/router or layer 3 full-attn q/k) before broad kernel edits.",
+    "Only after target AR first-token parity improves, rerun the greeting B2 accepted/output smoke."
+  ]
+}

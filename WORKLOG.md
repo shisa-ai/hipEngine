@@ -101855,3 +101855,30 @@ PY
 - The native prompt builder exactly matches the captured llama.cpp reasoning-off 17-token prompt and server log generation suffix.
 - Nearby suffix/BOS/raw prompt variants do not produce llama.cpp's token 9419 (`'Hello'`); the mismatch is unlikely to be a prompt-template/tokenization off-by-one.
 - Continue target AR parity triage in state/math execution (checkpoint/prefill segmentation, recurrent/full-attention state, MoE/GDN) before MTP acceptance/performance tuning.
+
+## 2026-06-20 — GGUF source contract audit identified F32/BF16 activation drift as the next target-AR blocker
+
+### Change
+- Continued iteration 251 target AR parity triage after prompt suffix and final-head precision were ruled out.
+- Audited llama.cpp Qwen35MoE source contracts against hipEngine's resident GGUF target path without changing code.
+- Wrote compact diagnostic artifact `benchmarks/results/mtp-gguf-iter251-target-ar-source-contract-audit.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Static source/metadata audit of llama.cpp GGML F32 target graph vs hipEngine
+# BF16 resident hidden/projection path for the matched reasoning-off greeting trace.
+PY
+# artifact: benchmarks/results/mtp-gguf-iter251-target-ar-source-contract-audit.json
+# llama.cpp source: ggml_get_rows returns F32 for non-I32 tensors; ggml_rms_norm
+# duplicates input type; build_norm multiplies by F32 weights.
+# hipEngine source: resident hidden/prefill buffers are hidden_size*2 bytes,
+# gguf_rmsnorm_bf16_f32_weight writes BF16, hidden projections default BF16,
+# and F32 ffn_gate_inp/ffn_gate_inp_shexp/ssm_alpha/ssm_beta are materialized BF16.
+# IMRoPE remains a source-level parity item: llama.cpp expands text positions to
+# 4D p_t=p_h=p_w=pos,p_e=0; hipEngine uses 1D Neox-style tables.
+```
+
+### Result
+- The remaining greeting mismatch is now more concretely scoped to an early target-trunk contract gap, especially llama.cpp's F32 activation/small-projection graph vs hipEngine's BF16 resident path, rather than the final output norm/head or prompt template.
+- Next useful work is a numeric boundary oracle/diagnostic mode at the earliest F32-vs-BF16 boundary (embedding/attn_norm/full-attn or GDN alpha-beta/router) before more MTP acceptance/performance tuning.
