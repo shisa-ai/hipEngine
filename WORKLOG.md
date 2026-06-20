@@ -104689,3 +104689,66 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
   - resident decode/prefill activation buffers remain BF16 (`hidden_size * 2`, `np.uint16` public hidden bits).
 - Conclusion: `fp32_seed_target_exists_but_activation_lane_is_bf16`.
 - Next action: capture the existing FP32 hidden seed and compare it to a llama.cpp post-output_norm oracle. If it mismatches, the blocker is upstream BF16 activation propagation; if it matches closely enough for MTP acceptance, the existing seed target can feed NextN while default runtime buffers stay BF16.
+
+## 2026-06-20 — llama.cpp hidden-seed oracle plan is ready
+
+### Change
+- Continued iteration 301 by adding `scripts/llamacpp_mtp_hidden_seed_oracle_plan.py`, a read-only source/evidence audit for the next llama.cpp post-`output_norm` FP32 hidden-seed oracle capture.
+- Added `tests/test_llamacpp_mtp_hidden_seed_oracle_plan.py` with synthetic llama.cpp source fixtures and readiness/blocked decision coverage.
+- Emitted `benchmarks/results/mtp-gguf-iter301-llamacpp-hidden-seed-oracle-plan.json` from the external llama.cpp checkout, hipEngine runner, `docs/MTP-gguf.md`, and the iteration-300 hidden-precision decision artifact.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_hidden_seed_oracle_plan.py
+# ..... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_hidden_seed_oracle_plan.py \
+  --source-dir /home/lhl/llama.cpp/llama.cpp-hip \
+  --runner hipengine/runtime/qwen35_gguf_runner.py \
+  --doc docs/MTP-gguf.md \
+  --decision benchmarks/results/mtp-gguf-iter300-hidden-precision-decision-audit.json \
+  --position 16 \
+  --output benchmarks/results/mtp-gguf-iter301-llamacpp-hidden-seed-oracle-plan.json \
+  --iteration 301
+# status=ready
+# conclusion=llamacpp_nextn_embedding_oracle_capture_ready
+# llamacpp_api_ready=true
+# hipengine_api_ready=true
+# next_action=compile_and_run_llamacpp_nextn_hidden_seed_capture_harness
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_hidden_seed_oracle_plan.py \
+  tests/test_gguf_hidden_precision_decision_audit.py \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# ................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter301-llamacpp-hidden-seed-oracle-plan.json \
+  >/tmp/mtp-gguf-iter301-llamacpp-hidden-seed-oracle-plan.json
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip status --porcelain -- \
+  src/models/qwen35moe.cpp src/llama-context.cpp src/llama-ext.h
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Artifact status: `ready`; conclusion: `llamacpp_nextn_embedding_oracle_capture_ready`.
+- llama.cpp read-only source audit confirms:
+  - `llama-ext.h` declares `llama_set_embeddings_nextn`, `llama_get_embeddings_nextn`, and `llama_get_embeddings_nextn_ith`.
+  - `llama-context.cpp` implements those APIs, copies `t_h_nextn` to `embd_nextn` with `ggml_backend_tensor_get_async`, and unmasked `get_embeddings_nextn_ith(i)` indexes raw token-position rows.
+  - `qwen35moe.cpp` sets trunk `res->t_h_nextn` immediately after `build_norm(cur, model.output_norm, ...)`, matching the documented post-`output_norm` FP32 seed contract.
+- hipEngine audit confirms `prefill(..., capture_hidden_seed_fp32=True)` / `step(..., capture_hidden_seed_fp32=True)`, `fp32_hidden_seed_ptr()`, and `mtp_draft_seed()` are already present for the comparison side.
+- Comparison contract is pinned to the current oracle prompt, `position=16`, `token_id_at_position=271`, `hidden_width=2048`.
+- Next action: compile and run a llama.cpp `embeddings_nextn` hidden-seed capture harness, then compare its row to the hipEngine FP32 seed captured with `capture_hidden_seed_fp32=True`.
