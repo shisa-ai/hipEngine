@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_hidden_in_harness_compile",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 291,
+  "status": "compiled",
+  "harness_kind": "capture",
+  "build_result_path": "benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json",
+  "source_dir": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+  "build_dir": "/tmp/hipengine-llamacpp-mtp-iter288-build",
+  "lib_dir": "/tmp/hipengine-llamacpp-mtp-iter288-build/bin",
+  "compiler": "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+  "header_validation": {
+    "llama_h": {
+      "path": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/include/llama.h",
+      "exists": true
+    },
+    "llama_ext_h": {
+      "path": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/src/llama-ext.h",
+      "exists": true
+    },
+    "ggml_include": {
+      "path": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/ggml/include",
+      "exists": true
+    }
+  },
+  "link_symbols": [
+    "llama_set_embeddings_layer_inp",
+    "llama_get_embeddings_layer_inp"
+  ],
+  "compile": {
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/amdclang++",
+      "-std=c++17",
+      "-O2",
+      "-I",
+      "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/include",
+      "-I",
+      "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/src",
+      "-I",
+      "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/ggml/include",
+      "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture.cpp",
+      "-L",
+      "/tmp/hipengine-llamacpp-mtp-iter288-build/bin",
+      "-Wl,-rpath,/tmp/hipengine-llamacpp-mtp-iter288-build/bin",
+      "-Wl,--enable-new-dtags",
+      "-lllama",
+      "-o",
+      "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture"
+    ],
+    "command_shell": "/home/lhl/miniforge3/envs/therock/bin/amdclang++ -std=c++17 -O2 -I /tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/include -I /tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/src -I /tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input/ggml/include /tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture.cpp -L /tmp/hipengine-llamacpp-mtp-iter288-build/bin -Wl,-rpath,/tmp/hipengine-llamacpp-mtp-iter288-build/bin -Wl,--enable-new-dtags -lllama -o /tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture",
+    "returncode": 0,
+    "timed_out": false,
+    "elapsed_seconds": 0.308,
+    "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/compile.stdout.log",
+    "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/compile.stderr.log",
+    "stdout_tail": "",
+    "stderr_tail": ""
+  },
+  "probe_run": {
+    "command": [
+      "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture"
+    ],
+    "command_shell": "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture",
+    "returncode": null,
+    "timed_out": false,
+    "elapsed_seconds": 0.0,
+    "stdout_log": null,
+    "stderr_log": null,
+    "stdout_tail": "",
+    "stderr_tail": "compile_only_capture_harness"
+  },
+  "outputs": {
+    "source": "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture.cpp",
+    "executable": "/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture",
+    "executable_exists": true,
+    "executable_bytes": 20216
+  },
+  "external_checkout_modified": false,
+  "next_action": "run_hidden_in_capture_harness_with_model_prompt_layer_position"
+}

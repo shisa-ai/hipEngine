@@ -104032,3 +104032,65 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Compile succeeded with `/home/lhl/miniforge3/envs/therock/bin/amdclang++` after correcting the library flag to `-lllama` (`-llama` searches for `liblama`, not `libllama`).
 - Probe run succeeded and printed `{"linked_layer_input_api":true,"layer_id":3}`.
 - Artifact records `status=compiled`, executable size 6488 bytes, `external_checkout_modified=false`, and next action `extend_harness_to_load_model_decode_prompt_and_dump_hidden_in`.
+
+## 2026-06-20 — llama.cpp hidden-in capture harness compiles
+
+### Change
+- Continued iteration 291 by extending `scripts/llamacpp_mtp_compile_hidden_in_harness.py` with `--harness-kind capture` while preserving the prior link-probe path.
+- The generated capture harness accepts `--model`, `--prompt`, `--layer`, `--position`, and `--output-prefix`; it is compile-ready to load the GGUF, tokenize/decode the prompt, enable `llama_set_embeddings_layer_inp`, call `llama_get_embeddings_layer_inp`, and write one float32 row plus JSON metadata.
+- Extended `tests/test_llamacpp_mtp_compile_hidden_in_harness.py` for capture-source API coverage and compile-only capture behavior.
+- Emitted `benchmarks/results/mtp-gguf-iter291-llamacpp-hidden-in-capture-harness-compile.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_compile_hidden_in_harness.py \
+  --build-result benchmarks/results/mtp-gguf-iter289-llamacpp-build-result-amdclang.json \
+  --output benchmarks/results/mtp-gguf-iter291-llamacpp-hidden-in-capture-harness-compile.json \
+  --output-dir /tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness \
+  --harness-kind capture \
+  --timeout-seconds 180 \
+  --iteration 291
+# status=compiled
+# compiler=/home/lhl/miniforge3/envs/therock/bin/amdclang++
+# harness_kind=capture
+# executable=/tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture
+# probe_rc=null
+# next_action=run_hidden_in_capture_harness_with_model_prompt_layer_position
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_compile_hidden_in_harness.py \
+  tests/test_llamacpp_mtp_run_build.py
+# ............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter291-llamacpp-hidden-in-capture-harness-compile.json \
+  >/tmp/mtp-gguf-iter291-hidden-in-capture-harness-compile.json
+
+LD_LIBRARY_PATH=/tmp/hipengine-llamacpp-mtp-iter288-build/bin:${LD_LIBRARY_PATH:-} \
+  /tmp/hipengine-llamacpp-mtp-iter291-hidden-in-capture-harness/llamacpp_hidden_in_capture \
+  >/tmp/mtp-gguf-iter291-capture-usage.out \
+  2>/tmp/mtp-gguf-iter291-capture-usage.err
+# rc=2, usage text contains --model MODEL.gguf
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The capture harness compiled successfully against the isolated patched `libllama.so` with `/home/lhl/miniforge3/envs/therock/bin/amdclang++`.
+- Artifact records `status=compiled`, `harness_kind=capture`, executable size 20216 bytes, and `probe_run.stderr_tail=compile_only_capture_harness` because this iteration intentionally did not run the full model.
+- The generated source contains the expected load/tokenize/decode/capture API path: `llama_model_load_from_file`, `llama_model_get_vocab`, `llama_tokenize`, `llama_init_from_model`, `llama_set_embeddings_layer_inp`, `llama_decode`, `llama_get_embeddings_layer_inp`, and `llama_model_n_embd`.
+- Usage smoke returns rc=2 and prints the expected `--model MODEL.gguf` usage, proving the executable is runnable/linkable without loading the model yet.
+- Next action: run the capture harness with the greeting prompt, layer 3, position 16, and the MTP GGUF path, then hash/compare the emitted `.f32` row against the hipEngine `hidden_in_f32` checkpoint.

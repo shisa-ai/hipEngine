@@ -7,6 +7,7 @@ from pathlib import Path
 from scripts.llamacpp_mtp_compile_hidden_in_harness import (
     build_compile_command,
     compile_hidden_in_harness,
+    hidden_in_capture_harness_source,
     hidden_in_harness_source,
     validate_headers,
 )
@@ -20,6 +21,26 @@ def test_hidden_in_harness_source_links_extension_symbols() -> None:
     assert "llama_set_embeddings_layer_inp" in source
     assert "llama_get_embeddings_layer_inp" in source
     assert "linked_layer_input_api" in source
+
+
+def test_capture_harness_source_loads_decodes_and_writes_hidden_in() -> None:
+    source = hidden_in_capture_harness_source()
+
+    required = [
+        "llama_model_load_from_file",
+        "llama_model_get_vocab",
+        "llama_tokenize",
+        "llama_init_from_model",
+        "llama_set_embeddings_layer_inp",
+        "llama_decode",
+        "llama_get_embeddings_layer_inp",
+        "llama_model_n_embd",
+        "captured_hidden_in",
+    ]
+    for needle in required:
+        assert needle in source
+    assert "--model MODEL.gguf" in source
+    assert "--output-prefix PATH" in source
 
 
 def test_build_compile_command_has_expected_include_and_link_flags(tmp_path: Path) -> None:
@@ -62,6 +83,28 @@ def test_compile_hidden_in_harness_with_fake_compiler(tmp_path: Path) -> None:
     assert artifact["outputs"]["executable_exists"] is True
     assert "extend_harness" in artifact["next_action"]
     json.dumps(artifact)
+
+
+def test_compile_capture_harness_skips_probe_run(tmp_path: Path) -> None:
+    build_result_path, _, _ = _write_build_result(tmp_path)
+    compiler = _write_fake_compiler(tmp_path, fail=False)
+
+    artifact = compile_hidden_in_harness(
+        build_result_path=build_result_path,
+        output_dir=tmp_path / "harness",
+        compiler=str(compiler),
+        harness_kind="capture",
+        timeout_seconds=30,
+        env={"PATH": _prepend_path(compiler.parent)},
+    )
+
+    assert artifact["status"] == "compiled"
+    assert artifact["harness_kind"] == "capture"
+    assert artifact["probe_run"]["returncode"] is None
+    assert "compile_only_capture_harness" in artifact["probe_run"]["stderr_tail"]
+    assert artifact["next_action"] == (
+        "run_hidden_in_capture_harness_with_model_prompt_layer_position"
+    )
 
 
 def test_compile_hidden_in_harness_reports_compile_failure(tmp_path: Path) -> None:
