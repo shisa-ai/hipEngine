@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture GGUF resident linear-attention post-FFN layer diagnostics."""
+"""Capture GGUF resident post-FFN layer diagnostics."""
 
 from __future__ import annotations
 
@@ -141,7 +141,7 @@ def capture_linear_layer(
         session.reset()
         for pos, token_id in enumerate(tokens[:position]):
             session._run_token_to_final_hidden(int(token_id), position=pos)  # noqa: SLF001
-        capture = session.capture_linear_attention_layer(
+        capture = session.capture_attention_layer(
             int(tokens[position]),
             position=position,
             layer_id=layer,
@@ -156,6 +156,7 @@ def capture_linear_layer(
         iteration=iteration,
     )
     artifact["capture_summary"] = capture.as_summary_dict()
+    artifact["layer_type"] = str(capture.layer_type)
     captured_arrays = {
         "hidden_in_f32": capture.hidden_in_f32,
         "attn_out_f32": capture.attn_out_f32,
@@ -200,7 +201,7 @@ def _plan_artifact(
 ) -> dict[str, Any]:
     return {
         "schema": 1,
-        "kind": "mtp_gguf_linear_attention_layer_capture",
+        "kind": "mtp_gguf_attention_layer_capture",
         "date": "2026-06-20",
         "loop": "mtp-gguf/run-20260615-103738",
         "iteration": int(iteration),
@@ -211,10 +212,10 @@ def _plan_artifact(
         "token_id": int(tokens[position]),
         "prompt_tokens": list(tokens),
         "warmup_tokens": list(tokens[:position]),
-        "api": "Qwen35GGUFResidentSession.capture_linear_attention_layer",
+        "api": "Qwen35GGUFResidentSession.capture_attention_layer",
         "note": (
             "Processes prompt tokens before position through the normal resident full-stack decode "
-            "path, then captures the selected token after the requested linear-attention layer."
+            "path, then captures the selected token after the requested attention layer."
         ),
     }
 

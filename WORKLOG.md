@@ -103234,3 +103234,99 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-1 post-attention RMSNorm matches CPU direct-weight GGUF RMSNorm within BF16-scale tolerance: `post_norm_vs_cpu_bf16.max_abs_diff=0.015625`.
 - Layer-1 MoE/shared-expert combine is bit-exact against the fused-kernel CPU formula: `layer_out_vs_cpu.max_abs_diff=0.0`, `rms_abs_diff=0.0`.
 - Layer-0 and layer-1 post-attention paths are now explained by CPU oracles; target AR parity is still not fixed. Continue toward the first full-attention layer, recurrent state propagation, or final output head.
+
+## 2026-06-20 — GGUF first full-attention layer post-attention path matches CPU oracles
+
+### Change
+- Continued iteration 278 by generalizing the reusable full-layer capture tap from linear-only to linear/full attention (`Qwen35GGUFResidentSession.capture_attention_layer`) while keeping `capture_linear_attention_layer` as a linear-only compatibility wrapper.
+- Updated `scripts/gguf_linear_layer_capture.py` metadata to emit generic attention-layer capture artifacts and added a unit test proving the full-attention dispatch path calls `_run_full_attention_layer` with the selected position.
+- Captured the first full-attention layer for the final greeting token. Metadata says `full_attention_interval=4`, so the first full-attention layer is layer 3.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json`
+  - `benchmarks/results/mtp-gguf-iter278-layer3-full-attn-residual-norm-compare.json`
+  - `benchmarks/results/mtp-gguf-iter278-layer3-full-attn-moe-combine-compare.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.qwen35_gguf import FULL_ATTENTION, build_qwen35_gguf_tensor_map
+reader = GGUFReader('/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf')
+model = build_qwen35_gguf_tensor_map(reader.info)
+full = [i for i, t in enumerate(model.config.layer_types) if t == FULL_ATTENTION]
+print({'full_attention_interval': model.config.full_attention_interval, 'first_full': full[:5]})
+PY
+# {'full_attention_interval': 4, 'first_full': [3, 7, 11, 15, 19]}
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_linear_layer_capture.py \
+  --iteration 278 --layer 3 --include-arrays \
+  --output benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json
+# status=captured position=16 token_id=271 layer_id=3 layer_type=full_attention
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_residual_norm_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter278-layer3-full-attn-residual-norm-compare.json \
+  --layer 3 --iteration 278
+# residual_max_abs=0.0
+# post_norm_max_abs=0.015625
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_moe_combine_compare.py \
+  --capture benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter278-layer3-full-attn-moe-combine-compare.json \
+  --iteration 278
+# layer_out_max_abs=0.0
+# layer_out_rms=0.0
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_linear_layer_capture.py \
+  scripts/gguf_layer_residual_norm_compare.py \
+  scripts/gguf_layer_moe_combine_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_linear_layer_capture_script.py \
+  tests/test_gguf_layer_residual_norm_compare.py \
+  tests/test_gguf_layer_moe_combine_compare.py
+# ......................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json \
+  >/tmp/iter278-layer3-full-routing.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter278-layer3-full-attn-residual-norm-compare.json \
+  >/tmp/iter278-layer3-full-resnorm.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter278-layer3-full-attn-moe-combine-compare.json \
+  >/tmp/iter278-layer3-full-moe.pretty
+
+git diff --check -- \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_linear_layer_capture.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_linear_layer_capture_script.py \
+  benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json \
+  benchmarks/results/mtp-gguf-iter278-layer3-full-attn-residual-norm-compare.json \
+  benchmarks/results/mtp-gguf-iter278-layer3-full-attn-moe-combine-compare.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-3 (`full_attention`) residual add is bit-exact: `residual_vs_cpu_bf16.max_abs_diff=0.0`.
+- Layer-3 post-attention RMSNorm matches CPU direct-weight GGUF RMSNorm within BF16-scale tolerance: `post_norm_vs_cpu_bf16.max_abs_diff=0.015625`.
+- Layer-3 MoE/shared-expert combine is bit-exact against the fused-kernel CPU formula: `layer_out_vs_cpu.max_abs_diff=0.0`, `rms_abs_diff=0.0`.
+- The first full-attention layer's post-attention FFN/MoE half is now explained; if AR parity remains off, the next likely boundary is the full-attention attention output/KV-cache state itself, later cross-layer propagation, or final output head.

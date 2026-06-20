@@ -371,9 +371,10 @@ class Qwen35GGUFLinearAttentionBoundaryCapture:
 
 @dataclass(frozen=True)
 class Qwen35GGUFLinearAttentionLayerCapture:
-    """Host-visible diagnostic snapshot for a full linear-attention layer."""
+    """Host-visible diagnostic snapshot for a full attention layer."""
 
     layer_id: int
+    layer_type: str
     token_id: int
     position: int
     hidden_size: int
@@ -404,6 +405,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
             )
         return {
             "layer_id": int(self.layer_id),
+            "layer_type": str(self.layer_type),
             "token_id": int(self.token_id),
             "position": int(self.position),
             "hidden_size": int(self.hidden_size),
@@ -425,7 +427,9 @@ class Qwen35GGUFLinearAttentionLayerCapture:
                 else list(self.moe_routing_weights_f32.shape)
             ),
             "moe_shared_gate_shape": (
-                None if self.moe_shared_gate_f32 is None else list(self.moe_shared_gate_f32.shape)
+                None
+                if self.moe_shared_gate_f32 is None
+                else list(self.moe_shared_gate_f32.shape)
             ),
             "moe_selected_experts_shape": (
                 None
@@ -3628,7 +3632,7 @@ class Qwen35GGUFResidentSession:
             ),
         )
 
-    def capture_linear_attention_layer(
+    def capture_attention_layer(
         self,
         token_id: int,
         *,
@@ -3636,7 +3640,7 @@ class Qwen35GGUFResidentSession:
         layer_id: int = 0,
         stream: int = 0,
     ) -> Qwen35GGUFLinearAttentionLayerCapture:
-        """Run one full linear-attention layer and copy post-FFN boundary buffers."""
+        """Run one full attention layer and copy post-FFN boundary buffers."""
 
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -3647,20 +3651,31 @@ class Qwen35GGUFResidentSession:
         layer_types = self.runner.weights.config.layer_types
         if layer_id < 0 or layer_id >= len(layer_types):
             raise ValueError(f"layer_id {layer_id} outside resident layer range")
-        if layer_types[layer_id] != LINEAR_ATTENTION:
-            raise ValueError(f"layer {layer_id} is not a linear_attention layer")
+        layer_type = str(layer_types[layer_id])
+        if layer_type not in (LINEAR_ATTENTION, FULL_ATTENTION):
+            raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
 
         runtime = self.runtime or get_hip_runtime()
         self._hidden_seed_fp32_populated = False
         self._set_full_attention_position_device(position, stream=stream)
         self._set_token_id_device(int(token_id), stream=stream)
-        self.runner._run_linear_attention_layer(
-            layer_id,
-            self._hidden_a.ptr,
-            self._hidden_b.ptr,
-            self.scratch,
-            stream=stream,
-        )
+        if layer_type == LINEAR_ATTENTION:
+            self.runner._run_linear_attention_layer(
+                layer_id,
+                self._hidden_a.ptr,
+                self._hidden_b.ptr,
+                self.scratch,
+                stream=stream,
+            )
+        else:
+            self.runner._run_full_attention_layer(
+                layer_id,
+                self._hidden_a.ptr,
+                self._hidden_b.ptr,
+                self.scratch,
+                position=position,
+                stream=stream,
+            )
         if stream:
             runtime.stream_synchronize(stream)
         else:
@@ -3695,6 +3710,7 @@ class Qwen35GGUFResidentSession:
 
         return Qwen35GGUFLinearAttentionLayerCapture(
             layer_id=int(layer_id),
+            layer_type=layer_type,
             token_id=int(token_id),
             position=int(position),
             hidden_size=hidden_size,
@@ -3722,6 +3738,30 @@ class Qwen35GGUFResidentSession:
             moe_routing_weights_f32=moe_routing_weights,
             moe_shared_gate_f32=moe_shared_gate,
             moe_selected_experts_i64=moe_selected_experts,
+        )
+
+    def capture_linear_attention_layer(
+        self,
+        token_id: int,
+        *,
+        position: int,
+        layer_id: int = 0,
+        stream: int = 0,
+    ) -> Qwen35GGUFLinearAttentionLayerCapture:
+        """Run one full linear-attention layer and copy post-FFN boundary buffers."""
+
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        layer_types = self.runner.weights.config.layer_types
+        if layer_id < 0 or layer_id >= len(layer_types):
+            raise ValueError(f"layer_id {layer_id} outside resident layer range")
+        if layer_types[layer_id] != LINEAR_ATTENTION:
+            raise ValueError(f"layer {layer_id} is not a linear_attention layer")
+        return self.capture_attention_layer(
+            token_id,
+            position=position,
+            layer_id=layer_id,
+            stream=stream,
         )
 
     def _run_current_hidden_to_final_hidden(

@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_layer_moe_combine_cpu_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 278,
+  "source_capture": "benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json",
+  "source_iteration": 278,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 3,
+  "position": 16,
+  "token_id": 271,
+  "top_k": 8,
+  "selected_experts": [
+    225,
+    113,
+    199,
+    25,
+    75,
+    178,
+    174,
+    210
+  ],
+  "routing_weights": [
+    0.3746035397052765,
+    0.16363903880119324,
+    0.10138696432113647,
+    0.08027002960443497,
+    0.07173874974250793,
+    0.07141044735908508,
+    0.07135355472564697,
+    0.06559759378433228
+  ],
+  "shared_gate_logit": [
+    -1.5386395454406738
+  ],
+  "shared_gate_sigmoid": 0.1767331212759018,
+  "weighted_selected_vs_bf16": {
+    "count": 2048,
+    "max_abs_diff": 0.00012192875146865845,
+    "rms_abs_diff": 2.400272205704823e-05,
+    "mean_abs_diff": 1.5968322259141132e-05,
+    "reference_rms": 0.014037499204277992,
+    "candidate_rms": 0.014037280343472958
+  },
+  "layer_out_vs_cpu": {
+    "count": 2048,
+    "max_abs_diff": 0.0,
+    "rms_abs_diff": 0.0,
+    "mean_abs_diff": 0.0,
+    "reference_rms": 0.18273913860321045,
+    "candidate_rms": 0.18273913860321045
+  },
+  "samples": {
+    "cpu_layer_out": [
+      0.03369140625,
+      -0.1279296875,
+      -0.390625,
+      0.05810546875,
+      -0.043701171875,
+      -0.03515625,
+      0.2099609375,
+      0.14453125
+    ],
+    "device_layer_out": [
+      0.03369140625,
+      -0.1279296875,
+      -0.390625,
+      0.05810546875,
+      -0.043701171875,
+      -0.03515625,
+      0.2099609375,
+      0.14453125
+    ],
+    "weighted_selected_bf16": [
+      0.00909423828125,
+      -0.019775390625,
+      -0.0234375,
+      0.0026397705078125,
+      0.0191650390625,
+      -0.003875732421875,
+      0.00604248046875,
+      0.009033203125
+    ]
+  },
+  "within_tolerance": true,
+  "conclusion": "Layer-3 MoE/shared-expert combine is bit-exact against the CPU kernel formula: BF16(weighted selected experts) + sigmoid(shared_gate)*shared + residual. Layer-3 final output is now explained; continue to later layers or final head."
+}

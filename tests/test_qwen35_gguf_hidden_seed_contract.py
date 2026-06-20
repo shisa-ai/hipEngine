@@ -546,6 +546,7 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
     assert not session._hidden_seed_fp32_populated
     assert capture.as_summary_dict() == {
         "layer_id": 0,
+        "layer_type": gguf_runner.LINEAR_ATTENTION,
         "token_id": 17,
         "position": 3,
         "hidden_size": 4,
@@ -580,6 +581,89 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         ("copy_bf16", 1100, 4, runtime),
         ("copy_bf16", 1200, 4, runtime),
         ("copy_bf16", 1300, 12, runtime),
+        ("copy_bf16", 200, 4, runtime),
+    ]
+
+
+def test_attention_layer_capture_runs_full_attention_layer_for_full_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class FakeRuntime:
+        def device_synchronize(self) -> None:
+            calls.append(("device_synchronize",))
+
+    def fake_position(position: int, *, stream: int = 0) -> None:
+        calls.append(("position", position, stream))
+
+    def fake_token(token_id: int, *, stream: int = 0) -> None:
+        calls.append(("token", token_id, stream))
+
+    def fake_full_attention_layer(
+        layer_id: int,
+        src_ptr: int,
+        dst_ptr: int,
+        scratch: object,
+        **kwargs: object,
+    ) -> None:
+        calls.append(
+            ("full_layer", layer_id, src_ptr, dst_ptr, kwargs["position"], kwargs["stream"])
+        )
+
+    def fake_copy_bf16(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
+        calls.append(("copy_bf16", ptr, elements, runtime))
+        payloads = {
+            100: np.asarray([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            200: np.asarray([6.0, 6.1, 6.2, 6.3], dtype=np.float32),
+            1000: np.asarray([1.0, 1.1, 1.2, 1.3], dtype=np.float32),
+            1100: np.asarray([2.0, 2.1, 2.2, 2.3], dtype=np.float32),
+            1200: np.asarray([3.0, 3.1, 3.2, 3.3], dtype=np.float32),
+            1500: np.asarray([4.0, 4.1, 4.2, 4.3], dtype=np.float32),
+        }
+        return payloads[int(ptr)]
+
+    monkeypatch.setattr(gguf_runner, "_copy_bf16_ptr_to_host_f32", fake_copy_bf16)
+
+    runtime = FakeRuntime()
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runtime = runtime
+    session._hidden_a = SimpleNamespace(ptr=100)
+    session._hidden_b = SimpleNamespace(ptr=200)
+    session._hidden_seed_fp32_populated = True
+    session._set_full_attention_position_device = fake_position
+    session._set_token_id_device = fake_token
+    cfg = SimpleNamespace(
+        layer_types=(gguf_runner.FULL_ATTENTION,),
+        is_moe=False,
+        expert_used_count=1,
+    )
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=cfg),
+        hidden_size=4,
+        _run_full_attention_layer=fake_full_attention_layer,
+    )
+    session.scratch = SimpleNamespace(
+        attn_out=SimpleNamespace(ptr=1000),
+        post_norm=SimpleNamespace(ptr=1100),
+        residual=SimpleNamespace(ptr=1200),
+        ffn_down=SimpleNamespace(ptr=1500),
+    )
+
+    capture = session.capture_attention_layer(17, position=3, layer_id=0)
+
+    assert capture.as_summary_dict()["layer_type"] == gguf_runner.FULL_ATTENTION
+    np.testing.assert_allclose(capture.layer_out_f32, [6.0, 6.1, 6.2, 6.3])
+    assert calls == [
+        ("position", 3, 0),
+        ("token", 17, 0),
+        ("full_layer", 0, 100, 200, 3, 0),
+        ("device_synchronize",),
+        ("copy_bf16", 100, 4, runtime),
+        ("copy_bf16", 1000, 4, runtime),
+        ("copy_bf16", 1100, 4, runtime),
+        ("copy_bf16", 1200, 4, runtime),
+        ("copy_bf16", 1500, 4, runtime),
         ("copy_bf16", 200, 4, runtime),
     ]
 

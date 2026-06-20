@@ -46,11 +46,11 @@ def test_linear_layer_capture_dry_run_writes_plan_artifact(tmp_path: Path) -> No
         "token_id": 11,
         "layer_id": 0,
     }
-    assert artifact["kind"] == "mtp_gguf_linear_attention_layer_capture"
+    assert artifact["kind"] == "mtp_gguf_attention_layer_capture"
     assert artifact["iteration"] == 1001
     assert artifact["prompt_tokens"] == [10, 11, 12]
     assert artifact["warmup_tokens"] == [10]
-    assert artifact["api"] == "Qwen35GGUFResidentSession.capture_linear_attention_layer"
+    assert artifact["api"] == "Qwen35GGUFResidentSession.capture_attention_layer"
 
 
 def test_linear_layer_capture_requires_include_arrays_for_array_keys(tmp_path: Path) -> None:
