@@ -106654,3 +106654,62 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-0 post-attention residual/add and post-attention RMSNorm now match the CPU oracle exactly at the original warm position-16 boundary.
 - This removes another candidate source of the layer-0 mismatch: after the already-verified warm `attn_out`, both `BF16(hidden_in + attn_out)` and `BF16(rmsnorm(hidden_in + attn_out, post_attention_norm.weight))` are exact vs hipEngine.
 - Next bisection should move into the MoE/FFN path starting from `post_norm_f32`, first auditing router logits/top-k/shared-gate metadata and then selected expert/shared outputs.
+
+## 2026-06-20 — validated layer-0 MoE router/shared gate
+
+### Change
+- Continued iteration 328 by adding `scripts/llamacpp_mtp_audit_layer0_moe_router_oracle.py`.
+- The script warms hipEngine to the layer-0 position-16 full-layer capture, starts from the already-verified `post_norm_f32`, reloads GGUF `ffn_gate_inp.weight` and `ffn_gate_inp_shexp.weight`, applies the resident BF16 contraction used by current router kernels, and recomputes:
+  - expert router logits
+  - selected top-k expert IDs
+  - softmax routing weights over selected experts
+  - raw shared-gate logit (`sigmoid` is applied later by the combine kernel)
+- Added `tests/test_llamacpp_mtp_audit_layer0_moe_router_oracle.py` covering router dot-product reduction order, top-k/softmax semantics, mismatch classification, injected artifact generation, and BF16 resident router-weight loading.
+- Emitted `benchmarks/results/mtp-gguf-iter328-layer0-moe-router-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_moe_router_oracle.py
+# ....... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_audit_layer0_moe_router_oracle.py \
+  --post-attn-artifact benchmarks/results/mtp-gguf-iter327-layer0-post-attn-residual-oracle.json \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --output benchmarks/results/mtp-gguf-iter328-layer0-moe-router-oracle.json \
+  --iteration 328
+# status=ready
+# classification=layer0_moe_router_matches_oracle_within_tolerance
+# selected_experts_i64: exact [200, 140, 67, 81, 192, 177, 194, 86]
+# routing_weights_f32: within tolerance, max_abs=7.450580596923828e-09, rmse=2.9451006078318187e-09
+# shared_gate_logit_f32: exact, max_abs=0.0, rmse=0.0
+# next_action=audit_layer0_moe_selected_and_shared_expert_outputs
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer0_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# .............................................. [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-0 MoE router/top-k/shared-gate now matches the CPU oracle at the original warm position-16 boundary.
+- Selected experts match exactly: `[200, 140, 67, 81, 192, 177, 194, 86]`.
+- Routing weights match within `7.450580596923828e-09` max abs.
+- Raw shared-gate logit matches exactly; this is intentionally raw because `weighted_sum_shared_gate_combine_residual_out_bf16_f32w` applies `sigmoid` during final combine.
+- Next bisection should audit selected expert outputs and the shared expert branch from the verified router selection/gate.
