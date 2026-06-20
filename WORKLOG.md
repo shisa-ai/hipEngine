@@ -106773,3 +106773,61 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Selected experts remain `[200, 140, 67, 81, 192, 177, 194, 86]` from the verified router artifact.
 - This removes the layer-0 MoE FFN as the source of the current bisection mismatch for the captured warm boundary.
 - Next bisection should compare the full layer-0 `layer_out_f32` against the corresponding llama.cpp trace boundary or move to the next layer boundary.
+
+## 2026-06-20 — closed layer-0 BF16-oracle bisection summary
+
+### Change
+- Continued iteration 330 by adding `scripts/llamacpp_mtp_layer0_bisection_conclusion.py`.
+- The script does not rerun kernels; it validates and summarizes the existing layer-0 bisection artifacts:
+  - direct llama.cpp `h_nextn_layer_out` vs hipEngine `capture_attention_layer.layer_out_f32` mismatch from iteration 316
+  - input embedding BF16-roundtrip explanation from iteration 318
+  - attn_norm dtype explanation from iteration 321
+  - BF16-contracted projection/conv-GDN/post-attn/router/expert-output oracle chain from iterations 323 and 326-329
+- Added `tests/test_llamacpp_mtp_layer0_bisection_conclusion.py` covering prerequisite validation, boundary consistency, conclusion classification, and injected artifact generation.
+- Emitted compact summary artifact `benchmarks/results/mtp-gguf-iter330-layer0-bisection-conclusion.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_bisection_conclusion.py
+# ...... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_layer0_bisection_conclusion.py \
+  --output benchmarks/results/mtp-gguf-iter330-layer0-bisection-conclusion.json \
+  --iteration 330
+# status=ready
+# classification=layer0_runtime_matches_bf16_oracle_chain_after_llamacpp_f32_split
+# layer_compare_rmse=0.012114962719327636
+# layer_compare_max_abs=0.045740051893517375
+# internal_layer_out_max_abs=0.0
+# next_action=advance_bisection_to_layer1_or_next_layer_boundary_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_layer0_bisection_conclusion.py \
+  tests/test_llamacpp_mtp_audit_layer0_moe_expert_outputs_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_post_attn_residual_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_warm_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer0_position0_conv_gdn_oracle.py \
+  tests/test_llamacpp_mtp_layer0_conv_gdn_plan.py \
+  tests/test_llamacpp_mtp_audit_layer0_projection_oracle.py \
+  tests/test_llamacpp_mtp_layer0_dtype_oracle_policy.py
+# ........................................................... [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The direct layer-0 llama.cpp-vs-hipEngine boundary still mismatches (`rmse=0.012114962719327636`, `max_abs=0.045740051893517375`).
+- The hipEngine internal layer-0 BF16-contracted oracle chain through MoE combine is exact at the same boundary (`layer_out_f32` max abs `0.0`).
+- Conclusion: the retained layer-0 mismatch is the known llama.cpp F32 activation versus hipEngine resident-BF16 activation split, not an uncovered hipEngine layer-0 arithmetic error in the audited chain.
+- Next action: advance the bisection to layer 1 or the next layer boundary under the BF16 contract.
