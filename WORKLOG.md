@@ -108154,3 +108154,57 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Layer-3 source `layer_out_f32` hash matches the validated layer-3 expert-output artifact at warm position 16/token 271.
 - Layer-4 `hidden_in_f32` is bit-exact to layer-3 `layer_out_f32` (`max_abs=0.0`, `rmse=0.0`).
 - This validates the layer-3→layer-4 BF16 handoff and clears the next bisection step: layer-4 attention norm or the next MTP-specific boundary.
+
+## 2026-06-20 — validated layer-4 attention norm oracle
+
+### Change
+- Continued iteration 355 by adding `scripts/llamacpp_mtp_audit_layer4_attn_norm_oracle.py`.
+- The script starts from the exact layer-4 BF16 handoff artifact, hash-checks live `hidden_in_f32`, reloads `blk.4.attn_norm.weight`, and mirrors resident BF16 RMSNorm as `BF16(RMSNorm(hidden_in_f32, attn_norm.weight, eps))`.
+- Added `tests/test_llamacpp_mtp_audit_layer4_attn_norm_oracle.py` covering layer-4 handoff validation, input hash guards, linear-attention metadata checks, exact/mismatch classification, and unavailable-capture paths.
+- Emitted `benchmarks/results/mtp-gguf-iter355-layer4-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer4_attn_norm_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer4_attn_norm_oracle.py \
+  --layer4-handoff benchmarks/results/mtp-gguf-iter354-layer4-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter355-layer4-attn-norm-oracle.json
+# status=ready
+# classification=layer4_attn_norm_matches_bf16_oracle_exactly
+# layer=4 position=16 token=271
+# input_classification=layer4_attn_norm_input_matches_handoff_artifact
+# attn_norm_delta exact, max_abs=0.0 rmse=0.0
+# weight=blk.4.attn_norm.weight F32 [2048]
+# next_action=audit_layer4_projection_or_conv_gdn_under_bf16_contract
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer4_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer4_attn_norm_oracle.py
+# pass
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer4_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer4_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer3_moe_expert_outputs_oracle.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Layer-4 attention-norm input `hidden_in_f32` hash matches the exact layer-4 BF16 handoff artifact at warm position 16/token 271.
+- Layer-4 `attn_norm_f32` is bit-exact to the resident-BF16 CPU RMSNorm oracle (`max_abs=0.0`, `rmse=0.0`).
+- This validates the layer-4 attention-norm boundary and clears the next bisection step: layer-4 projection or conv/GDN under the BF16 contract.
