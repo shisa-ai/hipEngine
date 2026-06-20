@@ -102522,3 +102522,56 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 ### Result
 - The extended layer-0 capture now has an exact vector artifact suitable for CPU-side GDN/`attn_out` and BF16-cast error comparisons, not just summary statistics.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF recurrent BF16 cast error is exact host-rounding
+
+### Change
+- Continued iteration 266 by adding `scripts/gguf_boundary_cast_error.py` and `tests/test_gguf_boundary_cast_error.py`.
+- The script consumes a full-array boundary capture and compares `recurrent_out_f32` with device-captured `recurrent_bf16_f32` against host BF16 rounding.
+- Emitted `benchmarks/results/mtp-gguf-iter266-recurrent-bf16-cast-error.json` from the iteration-265 full-array capture.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  scripts/gguf_boundary_cast_error.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_gguf_boundary_cast_error.py
+# ... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/gguf_boundary_cast_error.py \
+  --input benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter266-recurrent-bf16-cast-error.json \
+  --iteration 266
+# device_matches_expected_bf16=True
+# max_abs_cast_error=0.0033036470413208008
+# rms_abs_cast_error=5.343606244423427e-05
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter266-recurrent-bf16-cast-error.json \
+  >/tmp/iter266-cast-error.pretty && echo cast-error-json-ok
+# cast-error-json-ok
+
+git diff --check -- scripts/gguf_boundary_cast_error.py \
+  tests/test_gguf_boundary_cast_error.py \
+  benchmarks/results/mtp-gguf-iter266-recurrent-bf16-cast-error.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Device `recurrent_bf16` exactly matches host BF16 rounding of `recurrent_out`; the cast contributes max_abs=0.00330365 and rms_abs=5.34e-05 but is not a device/host mismatch.
+- The active layer-0 mismatch search should move to `ssm_out` input/weight precision or earlier GDN math, not the `f32_to_bf16` cast itself.
+- No runtime math or target AR parity changed in this iteration.
