@@ -114299,3 +114299,69 @@ PY
 - Layer-17 `hidden_in_f32` matches layer-16 `layer_out_f32` exactly (`max_abs=0.0`, `rmse=0.0`).
 - Source and target captures both use the linear-attention MoE path (`top_k=8`), with `preceding_layer_count=16` and `17` respectively.
 - This clears the next bisection step: layer-17 attention-norm under the BF16 contract / MTP boundary.
+
+## 2026-06-20 — validated layer-17 attention-norm oracle
+
+### Change
+- Continued iteration 453 by adding `scripts/llamacpp_mtp_audit_layer17_attn_norm_oracle.py`.
+- The script starts from the layer-17 BF16 handoff artifact, hash-checks live `hidden_in_f32`, materializes `blk.17.attn_norm.weight`, and validates `attn_norm_f32` against the resident-BF16 RMSNorm oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer17_attn_norm_oracle.py` covering handoff artifact validation, hidden-input hash guards, exact / mismatch / unavailable classifications, wrong layer/type metadata, and preceding-layer metadata checks.
+- Emitted `benchmarks/results/mtp-gguf-iter453-layer17-attn-norm-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer17_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer17_attn_norm_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer17_attn_norm_oracle.py
+# ........... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer17_attn_norm_oracle.py \
+  --layer17-handoff benchmarks/results/mtp-gguf-iter452-layer17-bf16-handoff.json \
+  --output benchmarks/results/mtp-gguf-iter453-layer17-attn-norm-oracle.json
+# status=ready
+# classification=layer17_attn_norm_matches_bf16_oracle_exactly
+# input_classification=layer17_attn_norm_input_matches_handoff_artifact
+# attn_norm exact: max_abs=0.0 rmse=0.0
+# weight=blk.17.attn_norm.weight F32 shape=[2048]
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=17
+# next_action=audit_layer17_projection_or_conv_gdn_under_bf16_contract
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer17_attn_norm_oracle.py \
+  tests/test_llamacpp_mtp_layer17_bf16_handoff_audit.py \
+  tests/test_llamacpp_mtp_audit_layer16_attn_norm_oracle.py
+# ................................ [100%]
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-17 attention RMSNorm oracle/test
+# only; no torch or dispatch branches; no attention/KV ABI changed; focused
+# RED-style tests cover handoff source validation, hidden_in hash guard, exact,
+# mismatch, unavailable paths, and wrong layer/type/preceding metadata; layer-17
+# hidden_in source hash matches handoff artifact; attn_norm matches resident-BF16
+# RMSNorm oracle exactly (max_abs=0.0, rmse=0.0); compact artifact contains
+# summaries/hashes only; no performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-17 `hidden_in_f32` preflight hash matches the iteration-452 handoff artifact.
+- Layer-17 attention RMSNorm is exact vs the resident-BF16 oracle (`max_abs=0.0`, `rmse=0.0`) using `blk.17.attn_norm.weight` (`F32`, shape `[2048]`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=17`.
+- This clears the next bisection step: layer-17 projection / conv-GDN under the BF16 contract.
