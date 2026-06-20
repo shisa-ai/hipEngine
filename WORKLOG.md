@@ -114645,3 +114645,70 @@ PY
   - Best warm prompt remains `count` with warm speedup `1.235x` and warm accept/draft `0.25`.
   - Greeting remains candidate-set/parity blocked: llama.cpp accepted traced drafts while native depth-1 top-k omitted the target token.
 - The report marks `performance_claim=false`; it is a consolidated diagnostic status snapshot, not a promoted performance row.
+
+## 2026-06-20 — validated layer-17 MoE router oracle
+
+### Change
+- Continued iteration 458 by adding `scripts/llamacpp_mtp_audit_layer17_moe_router_oracle.py`.
+- The script starts from the exact iteration-456 layer-17 post-attention artifact, hash-checks live `post_norm_f32`, materializes `blk.17.ffn_gate_inp.weight` and `blk.17.ffn_gate_inp_shexp.weight`, and validates selected experts, routing weights, and shared-gate logit against the BF16-contracted CPU router oracle.
+- Added `tests/test_llamacpp_mtp_audit_layer17_moe_router_oracle.py` covering source artifact validation, post-norm hash match/mismatch, exact/tolerance/mismatch router classifications, wrong preceding-layer metadata, and unavailable capture fixtures.
+- Emitted `benchmarks/results/mtp-gguf-iter458-layer17-moe-router-oracle.json`.
+
+### Evidence
+```bash
+python3 -m py_compile \
+  scripts/llamacpp_mtp_audit_layer17_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer17_moe_router_oracle.py
+# pass; line-length check passed
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_llamacpp_mtp_audit_layer17_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer16_moe_router_oracle.py \
+  tests/test_llamacpp_mtp_audit_layer17_post_attn_residual_oracle.py
+# ............................... [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python \
+  scripts/llamacpp_mtp_audit_layer17_moe_router_oracle.py \
+  --post-attn-artifact benchmarks/results/mtp-gguf-iter456-layer17-post-attn-residual-oracle.json \
+  --output benchmarks/results/mtp-gguf-iter458-layer17-moe-router-oracle.json
+# status=ready
+# classification=layer17_moe_router_matches_oracle_within_tolerance
+# position=16
+# post_norm_input_classification=layer17_moe_router_input_matches_post_attn_artifact
+# selected_experts_i64 exact
+# routing_weights_f32 within tolerance: max_abs=1.4901161193847656e-08, rmse=6.4523919540704355e-09
+# shared_gate_logit_f32 exact: max_abs=0.0, rmse=0.0
+# weights: blk.17.ffn_gate_inp.weight and blk.17.ffn_gate_inp_shexp.weight
+# target layer type=linear_attention is_moe=True top_k=8 preceding_layer_count=17
+# next_action=audit_layer17_moe_selected_and_shared_expert_outputs
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+python3 - <<'PY'
+# Prompt verifier: scoped diagnostic layer-17 MoE router oracle/test only; no
+# torch or dispatch branches; no attention/KV ABI changed; focused tests cover
+# source post-norm validation, input hash match/mismatch, exact/tolerance/
+# mismatch/unavailable paths; real artifact uses verified layer-17 post_norm
+# from iter456, selected experts and shared gate are exact, routing weights are
+# within tolerance; compact artifact contains summaries/hashes only; no
+# performance claim changed.
+PY
+# prompt verifier passed
+```
+
+### Result
+- Layer-17 `post_norm_f32` preflight hash matches the iteration-456 post-attention artifact.
+- Layer-17 selected experts match the CPU router oracle exactly.
+- Layer-17 routing weights match within tolerance (`max_abs=1.49e-08`, `rmse=6.45e-09`).
+- Layer-17 shared-gate logit matches exactly (`max_abs=0.0`, `rmse=0.0`).
+- The capture used the linear-attention MoE path with `top_k=8` and `preceding_layer_count=17`.
+- This clears the next bisection step: layer-17 selected/shared expert outputs.
