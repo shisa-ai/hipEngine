@@ -102275,3 +102275,44 @@ git diff --check -- \
 - Device-captured layer-0 `ssm_alpha` and `ssm_beta` BF16-side samples exactly match the CPU precision probe's hipEngine-side samples for final greeting token 271.
 - This moves the active mismatch search downstream of aux projection materialization into GDN/`ssm_out`/later-layer math, or into a scoped experiment that tests whether retaining F32 aux projections changes downstream target AR.
 - No target runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF llama.cpp raw-prompt oracle preserved
+
+### Change
+- Continued iteration 261 by preserving completed background task `bg-1` as a structured oracle artifact.
+- The probe launched `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server` with `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `--reasoning off`, greedy settings, and the exact raw 17-token prompt used by the native parity lane.
+- Emitted `benchmarks/results/mtp-gguf-iter261-llamacpp-raw-prompt-probe.json`.
+
+### Evidence
+```bash
+# bg-1 output summary
+# server health: {"status":"ok"}
+# prompt: <|im_start|>user\nWrite a short greeting.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n
+# prompt_tokens_evaluated=17, tokens_predicted=6, stop_type=limit
+# content="Hello! I hope you're"
+# generation: seed=12345, temperature=0.0, top_k=1, top_p=1.0, speculative.types=none
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter261-llamacpp-raw-prompt-probe.json \
+  >/tmp/iter261-llamacpp-raw-prompt.pretty && echo raw-prompt-artifact-json-ok
+# raw-prompt-artifact-json-ok
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+
+git diff --check -- \
+  benchmarks/results/mtp-gguf-iter261-llamacpp-raw-prompt-probe.json WORKLOG.md
+# no output
+```
+
+### Result
+- llama.cpp's raw-prompt server path confirms the exact prompt wrapper is not the cause of the native first-token mismatch: the oracle still starts with `Hello`, while the current native target AR path has been observed returning token 271/newline.
+- The active mismatch search remains downstream of the matched layer-0 aux projections: GDN/`ssm_out`, later-layer math, or a scoped F32 aux-projection experiment.

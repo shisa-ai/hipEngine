@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_llamacpp_raw_prompt_probe",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 261,
+  "source": "background task bg-1: /tmp/llamacpp_raw_prompt_probe.py",
+  "server_command": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --host 127.0.0.1 --port 8094 -c 4096 -ngl 999 --no-webui --reasoning off --log-verbosity 2 --no-log-prefix --no-log-timestamps",
+  "server_exit": 0,
+  "server_log": "/tmp/llamacpp-raw-prompt-probe.log",
+  "health": {
+    "status": "ok"
+  },
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt": "<|im_start|>user\nWrite a short greeting.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+  "prompt_tokens_evaluated": 17,
+  "tokens_predicted": 6,
+  "content": "Hello! I hope you're",
+  "first_text": "Hello",
+  "stop": true,
+  "stop_type": "limit",
+  "tokens_cached": 22,
+  "generation_settings": {
+    "seed": 12345,
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "repeat_penalty": 1.0,
+    "n_predict": 6,
+    "chat_format": "Content-only",
+    "reasoning_format": "deepseek",
+    "reasoning_in_content": false,
+    "speculative.types": "none"
+  },
+  "timings": {
+    "prompt_n": 17,
+    "prompt_ms": 137.228,
+    "prompt_per_second": 123.88142361617162,
+    "predicted_n": 6,
+    "predicted_ms": 106.21,
+    "predicted_per_second": 56.491855757461636
+  },
+  "conclusion": "llama.cpp raw-prompt server path confirms the exact 17-token prompt generates a Hello-prefixed response, so hipEngine target AR returning token 271/newline remains a native runtime mismatch rather than a prompt-wrapper mismatch."
+}
