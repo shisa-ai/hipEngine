@@ -370,6 +370,58 @@ class Qwen35GGUFLinearAttentionBoundaryCapture:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFLinearAttentionLayerCapture:
+    """Host-visible diagnostic snapshot for a full linear-attention layer."""
+
+    layer_id: int
+    token_id: int
+    position: int
+    hidden_size: int
+    is_moe: bool
+    top_k: int
+    hidden_in_f32: np.ndarray
+    attn_out_f32: np.ndarray
+    post_norm_f32: np.ndarray
+    residual_f32: np.ndarray
+    ffn_or_moe_down_f32: np.ndarray
+    layer_out_f32: np.ndarray
+    moe_shared_out_f32: np.ndarray | None = None
+
+    def as_summary_dict(self) -> dict[str, object]:
+        optional_finite = True
+        if self.moe_shared_out_f32 is not None:
+            optional_finite = bool(np.all(np.isfinite(self.moe_shared_out_f32)))
+        return {
+            "layer_id": int(self.layer_id),
+            "token_id": int(self.token_id),
+            "position": int(self.position),
+            "hidden_size": int(self.hidden_size),
+            "is_moe": bool(self.is_moe),
+            "top_k": int(self.top_k),
+            "hidden_in_shape": list(self.hidden_in_f32.shape),
+            "attn_out_shape": list(self.attn_out_f32.shape),
+            "post_norm_shape": list(self.post_norm_f32.shape),
+            "residual_shape": list(self.residual_f32.shape),
+            "ffn_or_moe_down_shape": list(self.ffn_or_moe_down_f32.shape),
+            "moe_shared_out_shape": (
+                None
+                if self.moe_shared_out_f32 is None
+                else list(self.moe_shared_out_f32.shape)
+            ),
+            "layer_out_shape": list(self.layer_out_f32.shape),
+            "finite": bool(
+                np.all(np.isfinite(self.hidden_in_f32))
+                and np.all(np.isfinite(self.attn_out_f32))
+                and np.all(np.isfinite(self.post_norm_f32))
+                and np.all(np.isfinite(self.residual_f32))
+                and np.all(np.isfinite(self.ffn_or_moe_down_f32))
+                and np.all(np.isfinite(self.layer_out_f32))
+                and optional_finite
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFDecodeGraphWeightRole:
     """Small, serialisable description of one resident weight's decode role."""
 
@@ -3552,6 +3604,85 @@ class Qwen35GGUFResidentSession:
             ),
         )
 
+    def capture_linear_attention_layer(
+        self,
+        token_id: int,
+        *,
+        position: int,
+        layer_id: int = 0,
+        stream: int = 0,
+    ) -> Qwen35GGUFLinearAttentionLayerCapture:
+        """Run one full linear-attention layer and copy post-FFN boundary buffers."""
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._hidden_a is None or self._hidden_b is None:
+            raise RuntimeError("GGUF resident session buffers are closed")
+        if position < 0:
+            raise ValueError("position must be non-negative")
+        layer_types = self.runner.weights.config.layer_types
+        if layer_id < 0 or layer_id >= len(layer_types):
+            raise ValueError(f"layer_id {layer_id} outside resident layer range")
+        if layer_types[layer_id] != LINEAR_ATTENTION:
+            raise ValueError(f"layer {layer_id} is not a linear_attention layer")
+
+        runtime = self.runtime or get_hip_runtime()
+        self._hidden_seed_fp32_populated = False
+        self._set_full_attention_position_device(position, stream=stream)
+        self._set_token_id_device(int(token_id), stream=stream)
+        self.runner._run_linear_attention_layer(
+            layer_id,
+            self._hidden_a.ptr,
+            self._hidden_b.ptr,
+            self.scratch,
+            stream=stream,
+        )
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+
+        cfg = self.runner.weights.config
+        hidden_size = int(self.runner.hidden_size)
+        top_k = int(cfg.expert_used_count) if cfg.is_moe else 1
+        down_ptr = int(
+            self.scratch.moe_down_out.ptr if cfg.is_moe else self.scratch.ffn_down.ptr
+        )
+        down_elements = hidden_size * top_k if cfg.is_moe else hidden_size
+        moe_shared_out = None
+        if cfg.is_moe:
+            moe_shared_out = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.moe_shared_out.ptr), hidden_size, runtime=runtime
+            )
+
+        return Qwen35GGUFLinearAttentionLayerCapture(
+            layer_id=int(layer_id),
+            token_id=int(token_id),
+            position=int(position),
+            hidden_size=hidden_size,
+            is_moe=bool(cfg.is_moe),
+            top_k=top_k,
+            hidden_in_f32=_copy_bf16_ptr_to_host_f32(
+                int(self._hidden_a.ptr), hidden_size, runtime=runtime
+            ),
+            attn_out_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.attn_out.ptr), hidden_size, runtime=runtime
+            ),
+            post_norm_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.post_norm.ptr), hidden_size, runtime=runtime
+            ),
+            residual_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.residual.ptr), hidden_size, runtime=runtime
+            ),
+            ffn_or_moe_down_f32=_copy_bf16_ptr_to_host_f32(
+                down_ptr, down_elements, runtime=runtime
+            ),
+            layer_out_f32=_copy_bf16_ptr_to_host_f32(
+                int(self._hidden_b.ptr), hidden_size, runtime=runtime
+            ),
+            moe_shared_out_f32=moe_shared_out,
+        )
+
     def _run_current_hidden_to_final_hidden(
         self,
         *,
@@ -6243,6 +6374,7 @@ __all__ = [
     "Qwen35GGUFDecodeGraphWeightRole",
     "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFLinearAttentionBoundaryCapture",
+    "Qwen35GGUFLinearAttentionLayerCapture",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFHiddenSeedContract",
     "Qwen35GGUFMTPDraftSeed",

@@ -102912,3 +102912,57 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Combined with iterations 266–270, the entire captured layer-0 linear-attention branch from `attn_norm` through `attn_out` is now explained by CPU oracles.
 - Remaining native-vs-llama.cpp first-token mismatch should move outside this branch: state entering layer 0, residual/add ordering after `attn_out`, later layers, MoE/full-attn layers, output_norm/lm_head accumulation, or prompt-state alignment.
 - No runtime math or target AR parity changed in this iteration.
+
+## 2026-06-20 — GGUF layer-0 post-attention capture added
+
+### Change
+- Continued iteration 273 by adding diagnostic-only `Qwen35GGUFResidentSession.capture_linear_attention_layer(...)` and `Qwen35GGUFLinearAttentionLayerCapture`.
+- The tap runs one full linear-attention layer for a selected token/layer, then copies `hidden_in`, already-verified `attn_out`, `post_norm`, `residual`, selected expert/down-output buffer, optional shared-expert output, and `layer_out` as fp32 host arrays.
+- Added mocked no-GPU test coverage in `tests/test_qwen35_gguf_hidden_seed_contract.py`.
+- Emitted compact real-device summary artifact `benchmarks/results/mtp-gguf-iter273-linear-layer-post-attn-capture.json` for the final greeting token at position 16/layer 0.
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_hidden_seed_contract.py
+# .............. [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python - <<'PY'
+# Run Qwen35GGUFResidentSession on the captured 17-token greeting prompt,
+# warm positions 0..15 through the normal path, then call
+# capture_linear_attention_layer(token_id=271, position=16, layer_id=0).
+PY
+# finite=True
+# layer_out_rms=0.017914628610014915
+# post_norm_rms=0.7008966207504272
+# residual_rms=0.01305458601564169
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter273-linear-layer-post-attn-capture.json \
+  >/tmp/iter273-layer-capture.pretty && echo layer-capture-json-ok
+# layer-capture-json-ok
+
+git diff --check -- hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  benchmarks/results/mtp-gguf-iter273-linear-layer-post-attn-capture.json \
+  WORKLOG.md
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- The next boundary outside the verified attention branch is now capturable on device; the first compact capture is finite and records layer-0 post-attention residual/MoE combine inputs and layer output for final token 271.
+- This remains diagnostic-only and does not change generation math or target AR parity.
