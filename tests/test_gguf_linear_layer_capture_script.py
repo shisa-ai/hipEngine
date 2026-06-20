@@ -27,6 +27,7 @@ def test_linear_layer_capture_dry_run_writes_plan_artifact(tmp_path: Path) -> No
             "0",
             "--iteration",
             "1001",
+            "--run-preceding-layers",
             "--output",
             str(out),
         ],
@@ -50,6 +51,7 @@ def test_linear_layer_capture_dry_run_writes_plan_artifact(tmp_path: Path) -> No
     assert artifact["iteration"] == 1001
     assert artifact["prompt_tokens"] == [10, 11, 12]
     assert artifact["warmup_tokens"] == [10]
+    assert artifact["run_preceding_layers"] is True
     assert artifact["api"] == "Qwen35GGUFResidentSession.capture_attention_layer"
 
 
@@ -92,10 +94,12 @@ def test_linear_layer_capture_plan_records_selected_position() -> None:
         layer=1,
         status="dry_run",
         iteration=42,
+        run_preceding_layers=True,
     )
 
     assert artifact["position"] == 2
     assert artifact["token_id"] == 9
     assert artifact["layer_id"] == 1
     assert artifact["warmup_tokens"] == [7, 8]
+    assert artifact["run_preceding_layers"] is True
     assert np.isfinite(float(artifact["schema"]))

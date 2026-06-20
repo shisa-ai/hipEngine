@@ -61,6 +61,11 @@ def main() -> None:
     parser.add_argument("--max-sequence-length", type=int)
     parser.add_argument("--include-arrays", action="store_true")
     parser.add_argument("--array-keys")
+    parser.add_argument(
+        "--run-preceding-layers",
+        action="store_true",
+        help="Run selected token through layers [0, layer) before capturing layer.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -78,6 +83,7 @@ def main() -> None:
             layer=args.layer,
             status="dry_run",
             iteration=args.iteration,
+            run_preceding_layers=bool(args.run_preceding_layers),
         )
     elif not _hip_available():
         artifact = _plan_artifact(
@@ -87,6 +93,7 @@ def main() -> None:
             layer=args.layer,
             status="skipped_no_hip_runtime",
             iteration=args.iteration,
+            run_preceding_layers=bool(args.run_preceding_layers),
         )
     else:
         artifact = capture_linear_layer(
@@ -100,6 +107,7 @@ def main() -> None:
             iteration=args.iteration,
             include_arrays=bool(args.include_arrays),
             array_keys=array_keys,
+            run_preceding_layers=bool(args.run_preceding_layers),
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -130,6 +138,7 @@ def capture_linear_layer(
     iteration: int = 274,
     include_arrays: bool = False,
     array_keys: tuple[str, ...] | None = None,
+    run_preceding_layers: bool = False,
 ) -> dict[str, Any]:
     max_seq = int(max_sequence_length or max(len(tokens) + 8, 32))
     with Qwen35GGUFResidentSession(
@@ -145,6 +154,7 @@ def capture_linear_layer(
             int(tokens[position]),
             position=position,
             layer_id=layer,
+            run_preceding_layers=bool(run_preceding_layers),
         )
 
     artifact = _plan_artifact(
@@ -154,9 +164,11 @@ def capture_linear_layer(
         layer=layer,
         status="captured",
         iteration=iteration,
+        run_preceding_layers=bool(run_preceding_layers),
     )
     artifact["capture_summary"] = capture.as_summary_dict()
     artifact["layer_type"] = str(capture.layer_type)
+    artifact["run_preceding_layers"] = bool(run_preceding_layers)
     captured_arrays = {
         "hidden_in_f32": capture.hidden_in_f32,
         "attn_out_f32": capture.attn_out_f32,
@@ -198,6 +210,7 @@ def _plan_artifact(
     layer: int,
     status: str,
     iteration: int,
+    run_preceding_layers: bool = False,
 ) -> dict[str, Any]:
     return {
         "schema": 1,
@@ -212,6 +225,7 @@ def _plan_artifact(
         "token_id": int(tokens[position]),
         "prompt_tokens": list(tokens),
         "warmup_tokens": list(tokens[:position]),
+        "run_preceding_layers": bool(run_preceding_layers),
         "api": "Qwen35GGUFResidentSession.capture_attention_layer",
         "note": (
             "Processes prompt tokens before position through the normal resident full-stack decode "

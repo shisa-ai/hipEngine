@@ -380,6 +380,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
     hidden_size: int
     is_moe: bool
     top_k: int
+    preceding_layer_count: int
     hidden_in_f32: np.ndarray
     attn_out_f32: np.ndarray
     post_norm_f32: np.ndarray
@@ -411,6 +412,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
             "hidden_size": int(self.hidden_size),
             "is_moe": bool(self.is_moe),
             "top_k": int(self.top_k),
+            "preceding_layer_count": int(self.preceding_layer_count),
             "hidden_in_shape": list(self.hidden_in_f32.shape),
             "attn_out_shape": list(self.attn_out_f32.shape),
             "post_norm_shape": list(self.post_norm_f32.shape),
@@ -3639,8 +3641,15 @@ class Qwen35GGUFResidentSession:
         position: int,
         layer_id: int = 0,
         stream: int = 0,
+        run_preceding_layers: bool = False,
     ) -> Qwen35GGUFLinearAttentionLayerCapture:
-        """Run one full attention layer and copy post-FFN boundary buffers."""
+        """Run one full attention layer and copy post-FFN boundary buffers.
+
+        When ``run_preceding_layers`` is true, the selected token is first run
+        through layers ``[0, layer_id)`` so the captured boundary reflects the
+        in-stack path instead of applying ``layer_id`` directly to the token
+        embedding.
+        """
 
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -3659,19 +3668,45 @@ class Qwen35GGUFResidentSession:
         self._hidden_seed_fp32_populated = False
         self._set_full_attention_position_device(position, stream=stream)
         self._set_token_id_device(int(token_id), stream=stream)
+        src = self._hidden_a
+        dst = self._hidden_b
+        if run_preceding_layers:
+            for prev_layer_id, prev_layer_type in enumerate(layer_types[:layer_id]):
+                if prev_layer_type == LINEAR_ATTENTION:
+                    self.runner._run_linear_attention_layer(
+                        prev_layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        self.scratch,
+                        stream=stream,
+                    )
+                elif prev_layer_type == FULL_ATTENTION:
+                    self.runner._run_full_attention_layer(
+                        prev_layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        self.scratch,
+                        position=position,
+                        stream=stream,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {prev_layer_type!r}")
+                src, dst = dst, src
+        target_src_ptr = int(src.ptr)
+        target_dst_ptr = int(dst.ptr)
         if layer_type == LINEAR_ATTENTION:
             self.runner._run_linear_attention_layer(
                 layer_id,
-                self._hidden_a.ptr,
-                self._hidden_b.ptr,
+                target_src_ptr,
+                target_dst_ptr,
                 self.scratch,
                 stream=stream,
             )
         else:
             self.runner._run_full_attention_layer(
                 layer_id,
-                self._hidden_a.ptr,
-                self._hidden_b.ptr,
+                target_src_ptr,
+                target_dst_ptr,
                 self.scratch,
                 position=position,
                 stream=stream,
@@ -3716,8 +3751,9 @@ class Qwen35GGUFResidentSession:
             hidden_size=hidden_size,
             is_moe=bool(cfg.is_moe),
             top_k=top_k,
+            preceding_layer_count=int(layer_id) if run_preceding_layers else 0,
             hidden_in_f32=_copy_bf16_ptr_to_host_f32(
-                int(self._hidden_a.ptr), hidden_size, runtime=runtime
+                target_src_ptr, hidden_size, runtime=runtime
             ),
             attn_out_f32=_copy_bf16_ptr_to_host_f32(
                 int(self.scratch.attn_out.ptr), hidden_size, runtime=runtime
@@ -3732,7 +3768,7 @@ class Qwen35GGUFResidentSession:
                 down_ptr, down_elements, runtime=runtime
             ),
             layer_out_f32=_copy_bf16_ptr_to_host_f32(
-                int(self._hidden_b.ptr), hidden_size, runtime=runtime
+                target_dst_ptr, hidden_size, runtime=runtime
             ),
             moe_shared_out_f32=moe_shared_out,
             moe_routing_weights_f32=moe_routing_weights,

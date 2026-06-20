@@ -103385,3 +103385,113 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
 - Full-vocab device-vs-CPU logit diff is tiny: `max_abs_diff=4.76837158203125e-06`, `rms_abs_diff=6.850778504485788e-07`.
 - The MTP fp32 hidden-seed tap differs from the BF16 hidden consumed by the AR lm_head by `max_abs=0.045429229736328125`, as expected from fp32-vs-BF16 output_norm precision; the lm_head replay intentionally uses the exact BF16 device input.
 - Since layer-0, layer-1, first full-attention post-FFN path, and final lm_head now match CPU oracles, target AR parity is still not fixed and the next likely boundary is full-attention attention output/KV-cache state or later cross-layer propagation.
+
+## 2026-06-20 — GGUF actual in-stack layer-3 capture stays locally correct
+
+### Change
+- Continued iteration 280 by adding `run_preceding_layers` support to `Qwen35GGUFResidentSession.capture_attention_layer()` and `scripts/gguf_linear_layer_capture.py`.
+- The existing layer tap applied the requested layer directly to the selected token embedding; this new mode first runs the selected token through layers `[0, layer_id)` so the capture reflects the actual in-stack boundary.
+- Added `scripts/gguf_layer_capture_diff.py` and `tests/test_gguf_layer_capture_diff.py` to quantify direct-layer vs actual in-stack capture differences.
+- Emitted:
+  - `benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json`
+  - `benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-residual-norm-compare.json`
+  - `benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-moe-combine-compare.json`
+  - `benchmarks/results/mtp-gguf-iter280-layer3-direct-vs-actual-diff.json`
+
+### Evidence
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_linear_layer_capture.py \
+  scripts/gguf_layer_capture_diff.py \
+  scripts/gguf_layer_residual_norm_compare.py \
+  scripts/gguf_layer_moe_combine_compare.py
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_linear_layer_capture_script.py \
+  tests/test_gguf_layer_capture_diff.py \
+  tests/test_gguf_layer_residual_norm_compare.py \
+  tests/test_gguf_layer_moe_combine_compare.py
+# ............................ [100%]
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_linear_layer_capture.py \
+  --iteration 280 --layer 3 --run-preceding-layers --include-arrays \
+  --output benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json
+# status=captured position=16 token_id=271 layer_id=3
+# layer_type=full_attention run_preceding_layers=True preceding_layer_count=3
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_residual_norm_compare.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --capture benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-residual-norm-compare.json \
+  --layer 3 --iteration 280
+# residual_max_abs=0.0
+# post_norm_max_abs=0.015625
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_moe_combine_compare.py \
+  --capture benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-moe-combine-compare.json \
+  --iteration 280
+# layer_out_max_abs=0.0
+# layer_out_rms=0.0
+# within_tolerance=True
+
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_layer_capture_diff.py \
+  --reference benchmarks/results/mtp-gguf-iter278-layer3-full-attn-routing-full-arrays.json \
+  --candidate benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  --output benchmarks/results/mtp-gguf-iter280-layer3-direct-vs-actual-diff.json \
+  --iteration 280
+# hidden_in_f32.max_abs_diff=0.55712890625
+# attn_out_f32.max_abs_diff=3.0224609375
+# layer_out_f32.max_abs_diff=2.59375
+
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  >/tmp/iter280-layer3-actual-routing.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-residual-norm-compare.json \
+  >/tmp/iter280-layer3-actual-resnorm.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-moe-combine-compare.json \
+  >/tmp/iter280-layer3-actual-moe.pretty
+/home/lhl/miniforge3/envs/therock/bin/python -m json.tool \
+  benchmarks/results/mtp-gguf-iter280-layer3-direct-vs-actual-diff.json \
+  >/tmp/iter280-layer3-direct-vs-actual.pretty
+
+git diff --check -- \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_linear_layer_capture.py \
+  scripts/gguf_layer_capture_diff.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_linear_layer_capture_script.py \
+  tests/test_gguf_layer_capture_diff.py \
+  benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-routing-full-arrays.json \
+  benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-residual-norm-compare.json \
+  benchmarks/results/mtp-gguf-iter280-layer3-full-attn-actual-moe-combine-compare.json \
+  benchmarks/results/mtp-gguf-iter280-layer3-direct-vs-actual-diff.json
+# no output
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py >/tmp/mtp-gguf-verify.log && echo 1 || \
+  { cat /tmp/mtp-gguf-verify.log >&2; echo 0; }'
+# 1
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Actual in-stack layer-3 (`full_attention`) local math remains correct:
+  - residual add `max_abs=0.0`
+  - post-attention RMSNorm `max_abs=0.015625` within BF16-scale tolerance
+  - MoE/shared combine `max_abs=0.0`, `rms=0.0`
+- Direct layer-3 capture from iteration 278 and actual in-stack layer-3 capture intentionally differ because layers 0-2 are now applied before layer 3:
+  - hidden_in `max_abs=0.55712890625`
+  - attn_out `max_abs=3.0224609375`
+  - layer_out `max_abs=2.59375`
+- This corrects the diagnostic interpretation: prior layer-N captures were local kernel/formula checks, while `--run-preceding-layers` captures the actual in-stack boundary. AR parity remains unresolved; next useful boundary is comparing actual in-stack checkpoints against a llama.cpp trace or drilling into full-attention attn_out/KV values with an external oracle.
