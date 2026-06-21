@@ -19,7 +19,7 @@ Examples:
 
 ## 2026-06-21
 
-- [diagnostic refresh] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 GPU0 README final current-tree sweep: prefill `2198.4/2436.7/2453.3/1833.7/1412.5/973.8 -> 1698.0/1932.8/1954.9/1555.9/1246.5/897.7 tok/s` (-22.8/-20.7/-20.3/-15.1/-11.8/-7.8%) while decode `106.7/96.2/97.7/84.7/72.5/57.3 -> 107.8/97.1/98.3/85.3/72.9/57.5 tok/s` (+1.0/+0.9/+0.7/+0.7/+0.5/+0.4%), stable IDs `318/220/220/332/22/63`, tracked peak flat `24.985 GiB`; current snapshot after GGUF host-token/INT8-KV diagnostics, not a prefill win; `benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`.
+- [diagnostic refresh] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 GPU0 README final current-tree sweep: corrected the first non-hermetic rerun by using the full TheRock `env -i` wrapper from `scripts/run_w7900_readme_refresh.sh`; prefill `2198.4/2436.7/2453.3/1833.7/1412.5/973.8 -> 2109.6/2331.3/2332.8/1799.8/1398.1/971.1 tok/s` (-4.0/-4.3/-4.9/-1.8/-1.0/-0.3%) and decode `106.7/96.2/97.7/84.7/72.5/57.3 -> 106.5/95.8/97.1/84.9/72.4/57.2 tok/s` (-0.2/-0.4/-0.6/+0.2/-0.1/-0.1%), stable IDs `318/220/220/332/22/63`, tracked peak flat `24.985 GiB`; `benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`.
 
 ## 2026-06-18
 

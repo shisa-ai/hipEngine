@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-21 (W7900/GPU0 GGUF Q4_K_M final current-tree rerun: stable IDs and flat `24.985 GiB` peak, decode moved `+0.4..+1.0%` versus the 2026-06-17 row while prefill measured `-7.8..-22.8%`; artifact `benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`.)
+Last updated: 2026-06-21 (W7900/GPU0 GGUF Q4_K_M final current-tree rerun corrected to the hermetic TheRock wrapper: stable IDs and flat `24.985 GiB` peak, prefill now within `-0.3..-4.9%` and decode within `-0.6..+0.2%` of the 2026-06-17 row; artifact `benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`.)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -109,11 +109,14 @@ Also record the exact hipEngine commit, llama.cpp HIP/Vulkan commits and
 `llama-bench --version`, GPU VBIOS, VRAM size/vendor, power limit, and any
 undervolt/overdrive settings (`OD_SCLK`, `OD_MCLK`, `OD_VDDGFX_OFFSET`).
 
-For the 2026-06-14 W7900 PARO/GGUF topline refresh, retained hipEngine JIT runs
-used a clean TheRock ROCm 7.13 environment. The same stack should be preferred
-for comparable W7900 README rows; the system `/opt/rocm` 7.2 stack is useful as
-a diagnostic, but GGUF prefill is compiler/runtime-sensitive and should not be
-mixed into the retained comparison table.
+For W7900 PARO/GGUF topline refreshes, retained hipEngine JIT runs must use the
+hermetic TheRock ROCm 7.13 wrapper in `scripts/run_w7900_readme_refresh.sh`
+(or an exact `env -i` equivalent). Using only the TheRock Python plus a cached
+compiler-version file is not enough: on 2026-06-21, a non-hermetic direct shell
+GGUF Q4_K_M run reproduced the known W7900 symptom where prefill fell by
+`~8–23%` while decode and IDs stayed in-family. The system `/opt/rocm` 7.2 stack
+is useful as a diagnostic, but GGUF prefill is compiler/runtime-sensitive and
+must not be mixed into retained comparison tables.
 
 A follow-up ROCm 7.14 nightly diagnostic (`HIP version:
 7.14.60850-1b2a555677`) is recorded but not promoted: PARO changed within a
@@ -142,7 +145,16 @@ subset with existing llama.cpp rows (`512/128`, `4K/128`, `32K/128`,
 `128K/128`). HipEngine sweeps should load each resident model once for the whole
 shape family and run 5 measured repetitions per shape, llama-bench style. Include
 max-context compressed-KV rows (`64K/128`, `128K/128`) for hipEngine PARO INT8
-KV and llama.cpp `Q8_0` KV when available.
+KV and llama.cpp `Q8_0` KV when available. For retained W7900 hipEngine rows,
+prefer the wrapper command below over hand-copying snippets:
+
+```bash
+RUN_TAG=$(date -u +%Y%m%d-%H%M%S) scripts/run_w7900_readme_refresh.sh hipengine
+```
+
+The lower-level commands that follow are useful for shape-specific diagnostics,
+but they must be run inside the same hermetic `THEROCK_ENV` wrapper from that
+script before their numbers can replace README/rollup rows.
 
 hipEngine PARO BF16 KV:
 
@@ -318,30 +330,30 @@ git diff --check
 | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |
 | Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | `hip_gfx1100` RX 7900 XTX scheduler native compact batch | c=8 512/128 retained native E2E | 2647.181 | 212.093 | 20.499 | generated-token equality vs independent c=1 `[137×8]`; primitive c=8 GPU correctness passed; rocprof provenance, c=1/serial scaling, projection dispatch, observed buckets, and stable block-id gates passed | [`benchmarks/results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json`](results/2026-06-02-hipengine-qwen35-native-c8-exact-profile/profiled-retained-c8.json) | 2026-06-02 | First accepted native c>1 retained PARO row. Exact `HIP_VISIBLE_DEVICES=1` c=8 command on RX 7900 XTX; per-request decode `26.512 tok/s`; aggregate decode is `1.584×` c=1 and `2.031×` serial bridge. Graph replay evidence is not required here because `replay_kernel_hits=0`. |
 | Qwen3.6-35B-A3B PARO | w4_paro BF16 KV | `hip_gfx1100` RX 7900 XTX scheduler native compact batch | c=4 512/128 retained native E2E | 3043.701 | 155.987 | 19.143 | generated-token equality vs independent c=1 `[137×4]`; primitive c=4 GPU correctness passed; rocprof provenance, c=1/serial scaling, projection dispatch, observed buckets, and stable block-id gates passed | [`benchmarks/results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json`](results/2026-06-02-hipengine-qwen35-native-c4-profiler-preflight/native-diagnostic-c4.json) | 2026-06-02 | Exact `HIP_VISIBLE_DEVICES=1` c=4 command on RX 7900 XTX; per-request decode `38.997 tok/s`; aggregate decode is `1.172×` c=1 and `1.414×` serial bridge. Projection dispatch uses c=4 `batch` evidence at `1.183×` row-GEMV. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 512/128 README sweep WMMA prefill + GEMV decode | 1698.0 | 107.8 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[318]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Final current-tree W7900 rerun under TheRock 7.13, 2 warmups + 5 measured. Decode `106.7 -> 107.8 tok/s` (+1.0%) vs the 2026-06-17 row; prefill `2198.4 -> 1698.0 tok/s` (-22.8%), so this is a current snapshot rather than a prefill win; tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 1K/128 README sweep WMMA prefill + GEMV decode | 1932.8 | 97.1 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[220]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Decode `96.2 -> 97.1 tok/s` (+0.9%) vs 2026-06-17; prefill `2436.7 -> 1932.8 tok/s` (-20.7%); tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 4K/128 README sweep WMMA prefill + GEMV decode | 1954.9 | 98.3 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[220]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Decode `97.7 -> 98.3 tok/s` (+0.7%) vs 2026-06-17; prefill `2453.3 -> 1954.9 tok/s` (-20.3%); tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 32K/128 README sweep auto-tune chunked prefill | 1555.9 | 85.3 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[332]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Decode `84.7 -> 85.3 tok/s` (+0.7%) vs 2026-06-17; prefill `1833.7 -> 1555.9 tok/s` (-15.1%); tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 64K/128 README sweep auto-tune chunked prefill | 1246.5 | 72.9 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[22]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Decode `72.5 -> 72.9 tok/s` (+0.5%) vs 2026-06-17; prefill `1412.5 -> 1246.5 tok/s` (-11.8%); tracked peak flat `24.985 GiB`. |
-| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 128K/128 README sweep auto-tune chunked prefill | 897.7 | 57.5 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[63]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Decode `57.3 -> 57.5 tok/s` (+0.4%) vs 2026-06-17; prefill `973.8 -> 897.7 tok/s` (-7.8%); tracked peak flat `24.985 GiB`. |
+| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 512/128 README sweep WMMA prefill + GEMV decode | 2109.6 | 106.5 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[318]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Corrected final current-tree W7900 rerun under the hermetic TheRock 7.13 wrapper, 2 warmups + 5 measured. Prefill `2198.4 -> 2109.6 tok/s` (-4.0%) and decode `106.7 -> 106.5 tok/s` (-0.2%) vs the 2026-06-17 row; tracked peak flat `24.985 GiB`. |
+| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 1K/128 README sweep WMMA prefill + GEMV decode | 2331.3 | 95.8 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[220]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `2436.7 -> 2331.3 tok/s` (-4.3%) and decode `96.2 -> 95.8 tok/s` (-0.4%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
+| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 4K/128 README sweep WMMA prefill + GEMV decode | 2332.8 | 97.1 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[220]*5`; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `2453.3 -> 2332.8 tok/s` (-4.9%) and decode `97.7 -> 97.1 tok/s` (-0.6%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
+| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 32K/128 README sweep auto-tune chunked prefill | 1799.8 | 84.9 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[332]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `1833.7 -> 1799.8 tok/s` (-1.8%) and decode `84.7 -> 84.9 tok/s` (+0.2%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
+| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 64K/128 README sweep auto-tune chunked prefill | 1398.1 | 72.4 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[22]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `1412.5 -> 1398.1 tok/s` (-1.0%) and decode `72.5 -> 72.4 tok/s` (-0.1%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
+| Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | `hip_gfx1100` W7900 TheRock 7.13 GGUF resident decode-repack session | 128K/128 README sweep auto-tune chunked prefill | 971.1 | 57.2 | 24.985 | Effective WMMA prefill + GEMV decode true; decode-repack on; stable final IDs `[63]*5`; auto-tune chunked prefill; `performance_claim=false` | [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json) | 2026-06-21 | Prefill `973.8 -> 971.1 tok/s` (-0.3%) and decode `57.3 -> 57.2 tok/s` (-0.1%) vs 2026-06-17; tracked peak flat `24.985 GiB`. |
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 512/128 | 3279.030 | 179.044 | 0.937 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +33.8% vs Qwen3.6 packed PARO comparison row (`2451.2 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 4K/128 | 3599.717 | 85.702 | 1.608 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +35.0% vs Qwen3.6 packed PARO comparison row (`2666.7 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
 
 ## hipEngine vs llama.cpp HIP/Vulkan Q4_K_M comparison (W7900 GPU0, same model)
 
 Same Qwen3.6-35B-A3B `UD-Q4_K_M.gguf` on the same AMD Radeon Pro W7900 (48 GiB).
-hipEngine: decode-repack + WMMA prefill + GEMV decode, TheRock 7.13, 2 warmups + 5 measured runs (2026-06-21 final current-tree rerun; tracked peak 24.985 GiB).
+hipEngine: decode-repack + WMMA prefill + GEMV decode, hermetic TheRock 7.13 wrapper, 2 warmups + 5 measured runs (2026-06-21 corrected final current-tree rerun; tracked peak 24.985 GiB).
 llama.cpp HIP: ngl=99, flash-attn=1, f16 KV cache, build `263cc04a5`.
 llama.cpp Vulkan: ngl=99, flash-attn=1, f16 KV cache, RADV NAVI31.
 
 | Workload | hipEngine PF | llama HIP PF | llama VK PF | hipEngine DC | llama HIP DC | llama VK DC |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 1698 | 2516 (-32.5%) | **2823** (-39.8%) | **107.8** | 79.6 (+35.5%) | 106.2 (+1.5%) |
-| 1K/128 | 1933 | 2431 (-20.5%) | **2711** (-28.7%) | 97.1 | 79.3 (+22.5%) | **106.2** (-8.6%) |
-| 4K/128 | 1955 | 2303 (-15.1%) | **2582** (-24.3%) | 98.3 | 78.7 (+24.9%) | **102.6** (-4.1%) |
-| 32K/128 | 1556 | 1685 (-7.7%) | **1969** (-21.0%) | 85.3 | 71.8 (+18.7%) | **91.6** (-7.0%) |
-| 64K/128 | 1247 | 1325 (-5.9%) | **1412** (-11.7%) | 72.9 | 66.5 (+9.7%) | **83.3** (-12.5%) |
-| 128K/128 | 898 | 918 (-2.2%) | **1082** (-17.0%) | 57.5 | 57.7 (-0.4%) | **70.5** (-18.4%) |
+| 512/128 | 2110 | 2516 (-16.1%) | **2823** (-25.3%) | **106.5** | 79.6 (+33.8%) | 106.2 (+0.2%) |
+| 1K/128 | 2331 | 2431 (-4.1%) | **2711** (-14.0%) | 95.8 | 79.3 (+20.9%) | **106.2** (-9.8%) |
+| 4K/128 | 2333 | 2303 (+1.3%) | **2582** (-9.6%) | 97.1 | 78.7 (+23.4%) | **102.6** (-5.3%) |
+| 32K/128 | 1800 | 1685 (+6.8%) | **1969** (-8.6%) | 84.9 | 71.8 (+18.1%) | **91.6** (-7.4%) |
+| 64K/128 | 1398 | 1325 (+5.5%) | **1412** (-1.0%) | 72.4 | 66.5 (+9.0%) | **83.3** (-13.1%) |
+| 128K/128 | 971 | 918 (+5.8%) | **1082** (-10.2%) | 57.2 | 57.7 (-0.9%) | **70.5** (-18.8%) |
 
 Artifacts:
 - hipEngine: [`2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`](results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json)

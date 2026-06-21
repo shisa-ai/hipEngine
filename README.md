@@ -142,29 +142,29 @@ With `-ub 512`:
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation is competitive with current local llama.cpp builds on the same W7900/GPU0 host. The W7900 table below combines the hipEngine PARO refresh from `2026-06-14`, the hipEngine GGUF Q4_K_M final current-tree rerun from `2026-06-21`, and the llama.cpp Q4_K_M HIP/Vulkan sweeps from `2026-06-16`. All hipEngine rows use clean TheRock ROCm 7.13 (`HIP version: 7.13.26162-1140233ffe`) and one resident max-context session for 2 warmups + 5 measured in-session repetitions per shape. llama.cpp rows use Q4_K_M GGUF split prefill/decode with f16 KV and one `llama-bench` repetition per phase while sampling W7900 whole-card VRAM. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The GGUF AR loader accepts current MTP-bearing GGUF files by ignoring trailing `blk.40.nextn.*` predictor tensors while keeping strict mapping for the 40 executable AR layers.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation is competitive with current local llama.cpp builds on the same W7900/GPU0 host. The W7900 table below combines the hipEngine PARO refresh from `2026-06-14`, the hipEngine GGUF Q4_K_M final current-tree rerun from `2026-06-21`, and the llama.cpp Q4_K_M HIP/Vulkan sweeps from `2026-06-16`. All hipEngine rows use the hermetic TheRock ROCm 7.13 wrapper from `scripts/run_w7900_readme_refresh.sh` (`HIP version: 7.13.26162-1140233ffe`) and one resident max-context session for 2 warmups + 5 measured in-session repetitions per shape. Direct non-hermetic W7900 shell runs can under-report GGUF prefill while leaving decode in-family, so retained rows must use the wrapper. llama.cpp rows use Q4_K_M GGUF split prefill/decode with f16 KV and one `llama-bench` repetition per phase while sampling W7900 whole-card VRAM. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The GGUF AR loader accepts current MTP-bearing GGUF files by ignoring trailing `blk.40.nextn.*` predictor tensors while keeping strict mapping for the 40 executable AR layers.
 
 ### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 2729.701 | 1698.0 | 2515.628 | **2822.688** |
-| 1K/128 | **2906.950** | 1932.8 | 2430.947 | 2710.994 |
-| 4K/128 | **2879.578** | 1954.9 | 2303.237 | 2581.819 |
-| 32K/128 | **2079.424** | 1555.9 | 1685.089 | 1968.760 |
-| 64K/128 | **1559.096** | 1246.5 | 1324.775 | 1411.790 |
-| 128K/128 | 1053.919 | 897.7 | 918.128 | **1081.646** |
+| 512/128 | 2729.701 | 2109.6 | 2515.628 | **2822.688** |
+| 1K/128 | **2906.950** | 2331.3 | 2430.947 | 2710.994 |
+| 4K/128 | **2879.578** | 2332.8 | 2303.237 | 2581.819 |
+| 32K/128 | **2079.424** | 1799.8 | 1685.089 | 1968.760 |
+| 64K/128 | **1559.096** | 1398.1 | 1324.775 | 1411.790 |
+| 128K/128 | 1053.919 | 971.1 | 918.128 | **1081.646** |
 
 ### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.227** | 107.8 | 79.568 | 106.235 |
-| 1K/128 | 102.927 | 97.1 | 79.256 | **106.204** |
-| 4K/128 | **105.253** | 98.3 | 78.688 | 102.556 |
-| 32K/128 | **91.965** | 85.3 | 71.842 | 91.644 |
-| 64K/128 | 77.666 | 72.9 | 66.453 | **83.326** |
-| 128K/128 | 60.349 | 57.5 | 57.713 | **70.476** |
+| 512/128 | **115.227** | 106.5 | 79.568 | 106.235 |
+| 1K/128 | 102.927 | 95.8 | 79.256 | **106.204** |
+| 4K/128 | **105.253** | 97.1 | 78.688 | 102.556 |
+| 32K/128 | **91.965** | 84.9 | 71.842 | 91.644 |
+| 64K/128 | 77.666 | 72.4 | 66.453 | **83.326** |
+| 128K/128 | 60.349 | 57.2 | 57.713 | **70.476** |
 
 ### Peak GiB (lower is better)
 
@@ -177,7 +177,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 | 64K/128 | **22.082** | 24.985 | 22.910 | 22.512 |
 | 128K/128 | **22.124** | 24.985 | 24.103 | 23.824 |
 
-W7900 row sources: PARO from the prior `2026-06-14` refresh, GGUF from the `2026-06-21` final Q4_K_M current-tree rerun ([hipEngine GGUF](benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json)), llama.cpp from the `2026-06-16` Q4_K_M sweep ([HIP](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json), [Vulkan](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`). The GGUF peak memory includes a recent chunk-outer loop prefill rewrite that reduced scratch by ~1.3 GiB (from 26.3 to 25.0 GiB). The final GGUF rerun kept stable IDs and slightly improved decode versus the `2026-06-17` row, but current prefill measured lower; all GGUF columns use Q4_K_M, while PARO is a different quant/format (`w4_paro`).
+W7900 row sources: PARO from the prior `2026-06-14` refresh, GGUF from the corrected hermetic `2026-06-21` final Q4_K_M current-tree rerun ([hipEngine GGUF](benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json)), llama.cpp from the `2026-06-16` Q4_K_M sweep ([HIP](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json), [Vulkan](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`). The GGUF peak memory includes a recent chunk-outer loop prefill rewrite that reduced scratch by ~1.3 GiB (from 26.3 to 25.0 GiB). The corrected final GGUF rerun kept stable IDs and stayed near the `2026-06-17` row; all GGUF columns use Q4_K_M, while PARO is a different quant/format (`w4_paro`).
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 

@@ -78,6 +78,25 @@ hipcc --version
 python3 -c "import torch; print(torch.__version__, torch.version.hip)" 2>/dev/null || echo "(no torch)"
 ```
 
+### W7900 hipEngine README rows: use the hermetic TheRock wrapper
+
+For retained W7900 hipEngine PARO/GGUF README rows, run
+`scripts/run_w7900_readme_refresh.sh hipengine` or reproduce its `THEROCK_ENV`
+`env -i` wrapper exactly. Do not promote numbers from a hand-assembled shell
+that merely points at the TheRock Python or a cached compiler-version file.
+
+Known failure mode: a 2026-06-21 direct-shell GGUF Q4_K_M rerun used the right
+Python and HIP compiler cache key but inherited the ambient ROCm environment; it
+made W7900 GGUF prefill look `~8–23%` slower while decode and token IDs stayed
+in-family. The corrected hermetic rerun recovered prefill to within
+`~0–5%` of the prior retained row. If a W7900 GGUF result shows "prefill down
+hard, decode normal," first rerun through the wrapper before blaming kernels.
+
+The wrapper also captures the TheRock root and compiler version used to key JIT
+caches. Artifact notes may show TheRock HIP `hipMemGetInfo` totals that differ
+from `rocm-smi`; use hipEngine tracked/owned allocation peaks for per-session
+rollups and keep sampled HIP memory as auxiliary evidence.
+
 ## Baselines to Beat
 
 These numbers are measured on the shared `/home/lhl/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for hipEngine on the same hardware. When hipEngine claims a win, the claim is per-column vs the row it beats.

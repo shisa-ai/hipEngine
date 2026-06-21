@@ -2,10 +2,13 @@
 # Reproduce the W7900/GPU0 README performance refresh.
 #
 # This script intentionally pins local paths, GPU device selectors, model paths,
-# and benchmark flags used by the README comparison tables. Run it from a clean
-# worktree when producing retained/diagnostic rows. When running from a detached
-# worktree, set OUTDIR=/home/lhl/hipEngine/benchmarks/results if artifacts should
-# be written back to the main checkout.
+# benchmark flags, and the hermetic TheRock ROCm runtime environment used by the
+# README comparison tables. Use this wrapper for retained W7900 hipEngine rows:
+# direct shell runs that only point at the TheRock Python can silently inherit the
+# ambient ROCm stack and under-report GGUF prefill while decode stays normal. Run
+# it from a clean worktree when producing retained/diagnostic rows. When running
+# from a detached worktree, set OUTDIR=/home/lhl/hipEngine/benchmarks/results if
+# artifacts should be written back to the main checkout.
 
 set -euo pipefail
 
