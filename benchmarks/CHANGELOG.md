@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-22
+
+- [reference retained] Qwen3.6-35B-A3B / llama.cpp HIP MTP UD-Q4_K_M / gfx1151 category suite (`code`, `general_en`, `general_ja`, `mixed_ja_en`, 10 prompts, max 512 tokens): off decode `50.13 tok/s`; fastest total is B2 `67.29 tok/s` (`1.342x` AR) while best total accepted/output is B5 `0.7096`; category speed winners are code B3 and general_en/general_ja/mixed_ja_en B2; `benchmarks/results/2026-06-22-llamacpp-35b-mtp-category-off-b1-b5-gfx1151.json`.
+
 ## 2026-06-21
 
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B5 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: best accepted/output `0.7619 -> 0.7674` (+0.7%) and B5 accepted drafts `32 -> 33` via final-cycle depth-4 token-1510 rerank for top3 `[96288,1510,96035]` layered on retained B5 reranks; final cycle now fully accepts, B1/B2 unchanged, now `+0.0243` above llama.cpp HIP B4 `0.7431` but speed remains below AR, so retained as prompt-specific acceptance diagnostic only; `benchmarks/results/2026-06-21-native-gguf-mtp-b5-final-depth4-1510-rerank-diagnostic.json`.

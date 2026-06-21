@@ -115758,3 +115758,36 @@ bash -lc '<loop verify command: scripts/gguf_mtp_bench.py --draft-n-max {3,4,5} 
 - Loop metric best(B3/B4/B5): `0.7619 -> 0.7674` (+0.7% relative).
 - Final cycle is now fully accepted; B1/B2 regression check unchanged: B1 accepted/output `0.4118`; B2 `0.6552`.
 - This is `+0.0243` above llama.cpp HIP B4 reference `0.7431`, but speed remains below AR-visible, so this is retained as a prompt-specific acceptance diagnostic, not a speed row.
+
+
+## 2026-06-22 — llama.cpp HIP MTP category matrix off/B1..B5 retained
+
+### Scope
+- Task: #20/#21 full MTP category benchmark matrix and rollup evidence.
+- Engine: llama.cpp HIP server `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`.
+- Model/quant: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (MTP-bearing Unsloth GGUF, UD-Q4_K_M).
+- Hardware: gfx1151 / AMD RYZEN AI MAX+ 395 w/ Radeon 8060S.
+- Prompt suite: `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, 10 prompts across `code`, `general_en`, `general_ja`, `mixed_ja_en`; `max_tokens=512`, deterministic sampling (`seed=12345`, temp/top-k/top-p/min-p = greedy settings).
+
+### Commands
+```bash
+# Base/off
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_mtp_bench.py   --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b   --host 127.0.0.1 --port 8021 --ctx-size 8192 --gpu-layers 99   --flash-attn on --cache-type-k f16 --cache-type-v f16 --protocol natural   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --max-tokens 512 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0   --server-start-timeout 600 --request-timeout 900 --mode base   --output /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-off.json   --log-dir /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/logs-off
+
+# MTP budgets B1..B5: same command with --mode mtp --draft-max {1,2,3,4,5}
+# and outputs /tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/llamacpp-b{B}.json.
+```
+
+### Result
+- Compact artifact: `benchmarks/results/2026-06-22-llamacpp-35b-mtp-category-off-b1-b5-gfx1151.json`.
+- Raw root: `/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/` with `llamacpp-off.json`, `llamacpp-b1.json` … `llamacpp-b5.json`, server logs, and `summary-category-off-b1-b5.{json,csv,md}`.
+- Total weighted decode tok/s vs AR:
+  - off `50.13` (`1.000x`)
+  - B1 `63.09` (`1.259x`, accepted/output `0.4557`)
+  - B2 `67.29` (`1.342x`, accepted/output `0.5984`) — fastest total
+  - B3 `65.71` (`1.311x`, accepted/output `0.6621`)
+  - B4 `61.37` (`1.224x`, accepted/output `0.6934`)
+  - B5 `56.89` (`1.135x`, accepted/output `0.7096`) — best acceptance/output
+- Category speed winners: `code` B3 (`72.59 tok/s`, `1.448x` AR); `general_en` B2 (`63.83 tok/s`, `1.272x`); `general_ja` B2 (`62.25 tok/s`, `1.245x`); `mixed_ja_en` B2 (`67.27 tok/s`, `1.339x`).
+- Category accepted/output winner is B5 for all four categories: code `0.7407`, general_en `0.6689`, general_ja `0.6689`, mixed_ja_en `0.7285`.
+- Validation: all six JSONs parsed; each run has 10 rows and all four category summaries; compact artifact passed `python3 -m json.tool`.
