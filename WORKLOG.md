@@ -115330,3 +115330,22 @@ Raw run root: `/tmp/20260621-native-gguf-b1-b5-local-dirty`.
 | B5 | 15.83 | 0.3778 | 0.6538 | 0.8076x |
 
 Interpretation: restored local prediction still reproduces the previous fixed-prompt B2 best (`accepted/output=0.6552` total, `0.6538` warm). Increasing B beyond 2 does not add visible accepted tokens on this prompt; it only lowers accept/draft and speed. Next acceptance work should target the persistent llama.cpp-style GGUF MTP context / trace parity gap rather than budget depth alone.
+
+
+## 2026-06-21 — Native GGUF MTP B1-B5 clean-current verification
+
+After reverting the no-improvement iteration-29 selector scratch, reran native hipEngine GGUF fixed-prompt B1-B5 on local gfx1151 to distinguish current code from the restored-dirty verification artifact.
+
+Artifact: `benchmarks/results/2026-06-21-native-gguf-mtp-b1-b5-gfx1151-clean-current-verification.json`.
+Raw run root: `/tmp/20260621-native-gguf-b1-b5-current-clean`.
+Command pattern: `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max {1..5} --cycles 10 --output /tmp/20260621-native-gguf-b1-b5-current-clean/b{B}.json`.
+
+| Budget | total accepted/output | total accept/draft | total tok/s | warm accepted/output | warm accept/draft | warm tok/s | warm vs AR-visible |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| B1 | 0.4118 | 0.7000 | 15.96 | 0.4000 | 0.6667 | 17.80 | 0.9200x |
+| B2 | 0.6552 | 0.9500 | 16.95 | 0.6538 | 0.9444 | 18.23 | 0.9131x |
+| B3 | 0.6154 | 0.5333 | 16.37 | 0.6087 | 0.5185 | 17.28 | 0.8589x |
+| B4 | 0.6154 | 0.4000 | 15.58 | 0.6087 | 0.3889 | 16.53 | 0.8205x |
+| B5 | 0.6552 | 0.3800 | 15.16 | 0.6538 | 0.3778 | 15.84 | 0.8144x |
+
+Interpretation: current clean native GGUF still verifies the B2 best (`0.6552` total / `0.6538` warm). B5 ties accepted/output but wastes draft budget; all rows remain below AR-visible speed. The next acceptance loop target remains persistent llama.cpp-style GGUF MTP context/trace parity, not budget depth alone.

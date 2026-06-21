@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "status": "diagnostic_recorded_not_retained_perf_row",
+  "performance_claim": false,
+  "kind": "native_hipengine_gguf_mtp_b1_b5_gfx1151_clean_current_verification",
+  "date": "2026-06-21",
+  "purpose": "Clean-current B1-B5 native hipEngine GGUF fixed-prompt verification after reverting iteration-29 scratch selector edits.",
+  "hardware": "gfx1151 / AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt": "What is the capital of France?",
+  "cycles": 10,
+  "head_commit": "2b9c9ab6496f1f5c11e57e78f66ef0f8e55afe55",
+  "relevant_git_diff": [],
+  "raw_run_root": "/tmp/20260621-native-gguf-b1-b5-current-clean",
+  "commands": {
+    "sweep": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max {1..5} --cycles 10 --output /tmp/20260621-native-gguf-b1-b5-current-clean/b{B}.json"
+  },
+  "rows": [
+    {
+      "budget": 1,
+      "artifact": "/tmp/20260621-native-gguf-b1-b5-current-clean/b1.json",
+      "total_tokens_per_sec": 15.96,
+      "total_accept_per_draft": 0.7,
+      "total_accepted_per_output": 0.4118,
+      "total_speedup_vs_ar_visible": 0.8368,
+      "warm_tokens_per_sec": 17.8,
+      "warm_accept_per_draft": 0.6667,
+      "warm_accepted_per_output": 0.4,
+      "warm_speedup_vs_ar_visible": 0.92,
+      "total_accepted": 7,
+      "total_drafts": 10,
+      "total_output_tokens": 17
+    },
+    {
+      "budget": 2,
+      "artifact": "/tmp/20260621-native-gguf-b1-b5-current-clean/b2.json",
+      "total_tokens_per_sec": 16.95,
+      "total_accept_per_draft": 0.95,
+      "total_accepted_per_output": 0.6552,
+      "total_speedup_vs_ar_visible": 0.8622,
+      "warm_tokens_per_sec": 18.23,
+      "warm_accept_per_draft": 0.9444,
+      "warm_accepted_per_output": 0.6538,
+      "warm_speedup_vs_ar_visible": 0.9131,
+      "total_accepted": 19,
+      "total_drafts": 20,
+      "total_output_tokens": 29
+    },
+    {
+      "budget": 3,
+      "artifact": "/tmp/20260621-native-gguf-b1-b5-current-clean/b3.json",
+      "total_tokens_per_sec": 16.37,
+      "total_accept_per_draft": 0.5333,
+      "total_accepted_per_output": 0.6154,
+      "total_speedup_vs_ar_visible": 0.8131,
+      "warm_tokens_per_sec": 17.28,
+      "warm_accept_per_draft": 0.5185,
+      "warm_accepted_per_output": 0.6087,
+      "warm_speedup_vs_ar_visible": 0.8589,
+      "total_accepted": 16,
+      "total_drafts": 30,
+      "total_output_tokens": 26
+    },
+    {
+      "budget": 4,
+      "artifact": "/tmp/20260621-native-gguf-b1-b5-current-clean/b4.json",
+      "total_tokens_per_sec": 15.58,
+      "total_accept_per_draft": 0.4,
+      "total_accepted_per_output": 0.6154,
+      "total_speedup_vs_ar_visible": 0.7749,
+      "warm_tokens_per_sec": 16.53,
+      "warm_accept_per_draft": 0.3889,
+      "warm_accepted_per_output": 0.6087,
+      "warm_speedup_vs_ar_visible": 0.8205,
+      "total_accepted": 16,
+      "total_drafts": 40,
+      "total_output_tokens": 26
+    },
+    {
+      "budget": 5,
+      "artifact": "/tmp/20260621-native-gguf-b1-b5-current-clean/b5.json",
+      "total_tokens_per_sec": 15.16,
+      "total_accept_per_draft": 0.38,
+      "total_accepted_per_output": 0.6552,
+      "total_speedup_vs_ar_visible": 0.7761,
+      "warm_tokens_per_sec": 15.84,
+      "warm_accept_per_draft": 0.3778,
+      "warm_accepted_per_output": 0.6538,
+      "warm_speedup_vs_ar_visible": 0.8144,
+      "total_accepted": 19,
+      "total_drafts": 50,
+      "total_output_tokens": 29
+    }
+  ],
+  "interpretation": {
+    "best_total_accepted_per_output": "B2 and B5 tie at 0.6552 total; warm tie at 0.6538",
+    "best_warm_tokens_per_sec": "B2 at 18.23 tok/s among B2/B5 accepted-output ties; B1 is 17.80 but lower accepted/output",
+    "all_budgets_below_ar_visible": true,
+    "next_loop_target": "Persistent llama.cpp-style GGUF MTP context/trace parity; simple B-depth increase is insufficient."
+  }
+}
