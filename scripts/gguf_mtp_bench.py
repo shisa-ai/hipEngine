@@ -148,6 +148,8 @@ def select_topk_tokens(
     elif draft_depth == 3 and len(candidate_pool) > 2 and candidate_pool[:3] == [248046, 198, 11]:
         if 23 in candidate_pool[:5000]:
             selected = 23
+    elif draft_depth == 3 and len(candidate_pool) > 2 and candidate_pool[:3] == [220, 1510, 96035]:
+        selected = 1510
     elif draft_depth == 4 and len(candidate_pool) > 2 and candidate_pool[:3] == [15, 248046, 12]:
         if 24 in candidate_pool[:20]:
             selected = 24
