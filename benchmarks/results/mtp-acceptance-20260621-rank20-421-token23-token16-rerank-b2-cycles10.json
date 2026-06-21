@@ -1,0 +1,934 @@
+{
+  "schema": 4,
+  "status": "ok",
+  "timestamp": "2026-06-21T05:48:17",
+  "run_tag": "mtp-bench-1782020897",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "prompt": "What is the capital of France?",
+    "prompt_tokens": 19,
+    "cycles": 10,
+    "draft_n_max": 2,
+    "engine": "hipEngine GGUF MTP",
+    "target_prefill_mode": "resident_default",
+    "mtp_context_mode": "single_seed_row"
+  },
+  "metrics": {
+    "accept_per_draft": 0.8,
+    "accepted_per_output": 0.6154,
+    "visible_tokens_per_cycle": 2.6,
+    "avg_cycle_ms": 153.5,
+    "avg_decode_ms": 153.5,
+    "avg_ar_decode_ms": 131.2,
+    "avg_mtp_draft_ms": 22.3,
+    "avg_ms_per_visible_token": 59.04,
+    "tokens_per_sec": 16.94,
+    "ar_baseline_tokens_per_sec": 19.82,
+    "speedup_vs_ar_visible": 0.8547,
+    "total_accepted": 16,
+    "total_drafts": 20,
+    "total_output_tokens": 26,
+    "verify_cycle_count": 10,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.8333,
+      "accepted_per_output": 0.625,
+      "visible_tokens_per_cycle": 2.6667,
+      "avg_cycle_ms": 148.02,
+      "avg_ar_decode_ms": 134.75,
+      "avg_mtp_draft_ms": 13.27,
+      "avg_ms_per_visible_token": 55.51,
+      "tokens_per_sec": 18.02,
+      "speedup_vs_ar_visible": 0.9103,
+      "total_accepted": 15,
+      "total_drafts": 18,
+      "total_output_tokens": 24,
+      "verify_cycle_count": 9
+    }
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "target_token": 421,
+      "target_tokens": [
+        421,
+        1324
+      ],
+      "comparison_target_tokens": [
+        421,
+        1324
+      ],
+      "output_tokens": [
+        421,
+        1324
+      ],
+      "draft_token": 421,
+      "draft_tokens": [
+        421,
+        424
+      ],
+      "draft_top10_tokens": [
+        [
+          220,
+          2086,
+          264,
+          1906,
+          4437,
+          2250,
+          279,
+          4097,
+          864,
+          4599,
+          2423,
+          524,
+          421,
+          2313,
+          7472,
+          1330,
+          888,
+          11573,
+          799,
+          4590
+        ],
+        [
+          424,
+          25,
+          198,
+          220,
+          16067,
+          3377,
+          3644,
+          4599,
+          1957,
+          279,
+          668,
+          7276,
+          3433,
+          2086,
+          4437,
+          1834,
+          1007,
+          524,
+          1132,
+          1000
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        13,
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 1,
+      "visible_output_tokens": 2,
+      "pending_hidden_row_index": 1,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 99.33,
+      "mtp_draft_ms": 103.56
+    },
+    {
+      "cycle": 1,
+      "target_token": 248045,
+      "target_tokens": [
+        248045
+      ],
+      "comparison_target_tokens": [
+        248045
+      ],
+      "output_tokens": [
+        248045
+      ],
+      "draft_token": 314,
+      "draft_tokens": [
+        314,
+        2756
+      ],
+      "draft_top10_tokens": [
+        [
+          314,
+          310,
+          471,
+          1317,
+          369,
+          25,
+          264,
+          11,
+          303,
+          1137,
+          488,
+          1892,
+          279,
+          1906,
+          854,
+          524,
+          803,
+          3750,
+          513,
+          1447
+        ],
+        [
+          2756,
+          453,
+          279,
+          2942,
+          4886,
+          264,
+          5978,
+          829,
+          220,
+          1578,
+          7247,
+          5587,
+          5381,
+          569,
+          380,
+          592,
+          854,
+          5600,
+          15436,
+          10476
+        ]
+      ],
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 49.68,
+      "mtp_draft_ms": 13.59
+    },
+    {
+      "cycle": 2,
+      "target_token": 16,
+      "target_tokens": [
+        16,
+        15
+      ],
+      "comparison_target_tokens": [
+        16,
+        15
+      ],
+      "output_tokens": [
+        16,
+        15
+      ],
+      "draft_token": 16,
+      "draft_tokens": [
+        16,
+        3482
+      ],
+      "draft_top10_tokens": [
+        [
+          16,
+          17,
+          18,
+          19797,
+          40,
+          7207,
+          19,
+          353,
+          51,
+          1206,
+          21,
+          51018,
+          31602,
+          28571,
+          20,
+          39,
+          87,
+          32,
+          81,
+          2037
+        ],
+        [
+          3482,
+          8739,
+          1575,
+          13987,
+          267,
+          96581,
+          17,
+          357,
+          808,
+          2172,
+          246863,
+          13244,
+          801,
+          13728,
+          19797,
+          728,
+          353,
+          462,
+          20,
+          23110
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        1,
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 1,
+      "visible_output_tokens": 2,
+      "pending_hidden_row_index": 1,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 119.08,
+      "mtp_draft_ms": 13.63
+    },
+    {
+      "cycle": 3,
+      "target_token": 15,
+      "target_tokens": [
+        15,
+        15,
+        15
+      ],
+      "comparison_target_tokens": [
+        15,
+        15
+      ],
+      "output_tokens": [
+        15,
+        15,
+        15
+      ],
+      "draft_token": 15,
+      "draft_tokens": [
+        15,
+        15
+      ],
+      "draft_top10_tokens": [
+        [
+          15,
+          16,
+          17,
+          19,
+          18,
+          20,
+          25,
+          24,
+          22,
+          21,
+          39,
+          23,
+          64,
+          71,
+          44,
+          47,
+          462,
+          32,
+          41,
+          51
+        ],
+        [
+          25,
+          15,
+          12,
+          39,
+          52,
+          11,
+          64,
+          430,
+          264,
+          310,
+          41,
+          84,
+          13,
+          560,
+          462,
+          238473,
+          71093,
+          44,
+          312,
+          304
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1,
+        2
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "pending_hidden_row_index": 2,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 148.07,
+      "mtp_draft_ms": 13.66
+    },
+    {
+      "cycle": 4,
+      "target_token": 24,
+      "target_tokens": [
+        24,
+        220,
+        15
+      ],
+      "comparison_target_tokens": [
+        24,
+        220
+      ],
+      "output_tokens": [
+        24,
+        220,
+        15
+      ],
+      "draft_token": 24,
+      "draft_tokens": [
+        24,
+        220
+      ],
+      "draft_top10_tokens": [
+        [
+          15,
+          25,
+          220,
+          310,
+          24,
+          440,
+          20,
+          462,
+          39,
+          369,
+          321,
+          864,
+          44,
+          23,
+          303,
+          466,
+          22,
+          2500,
+          17,
+          421
+        ],
+        [
+          25,
+          24,
+          15,
+          310,
+          2500,
+          864,
+          220,
+          4199,
+          11,
+          15451,
+          1204,
+          440,
+          462,
+          20,
+          312,
+          321,
+          39,
+          1946,
+          2885,
+          17
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        5,
+        7
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "pending_hidden_row_index": 2,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 159.67,
+      "mtp_draft_ms": 13.68
+    },
+    {
+      "cycle": 5,
+      "target_token": 15,
+      "target_tokens": [
+        15,
+        15,
+        15
+      ],
+      "comparison_target_tokens": [
+        15,
+        15
+      ],
+      "output_tokens": [
+        15,
+        15,
+        15
+      ],
+      "draft_token": 15,
+      "draft_tokens": [
+        15,
+        15
+      ],
+      "draft_top10_tokens": [
+        [
+          15,
+          16,
+          17,
+          24,
+          19,
+          23,
+          18,
+          0,
+          22,
+          198,
+          20,
+          21,
+          13,
+          271,
+          25,
+          471,
+          9,
+          1076,
+          303,
+          12
+        ],
+        [
+          15,
+          198,
+          271,
+          16,
+          0,
+          11,
+          248046,
+          17,
+          19,
+          25,
+          471,
+          13,
+          12,
+          303,
+          1204,
+          4252,
+          310,
+          4277,
+          440,
+          421
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1,
+        1
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "pending_hidden_row_index": 2,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 147.25,
+      "mtp_draft_ms": 12.84
+    },
+    {
+      "cycle": 6,
+      "target_token": 15,
+      "target_tokens": [
+        15,
+        15,
+        16
+      ],
+      "comparison_target_tokens": [
+        15,
+        15
+      ],
+      "output_tokens": [
+        15,
+        15,
+        16
+      ],
+      "draft_token": 15,
+      "draft_tokens": [
+        15,
+        15
+      ],
+      "draft_top10_tokens": [
+        [
+          15,
+          16,
+          220,
+          19,
+          18,
+          20,
+          22,
+          17,
+          21,
+          23,
+          310,
+          11,
+          24,
+          198,
+          12,
+          312,
+          471,
+          321,
+          303,
+          68
+        ],
+        [
+          15,
+          12,
+          220,
+          11,
+          20,
+          312,
+          310,
+          16,
+          22,
+          19,
+          4,
+          25,
+          198,
+          471,
+          21,
+          1410,
+          18,
+          304,
+          2942,
+          23
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1,
+        1
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "pending_hidden_row_index": 2,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 147.17,
+      "mtp_draft_ms": 12.95
+    },
+    {
+      "cycle": 7,
+      "target_token": 16,
+      "target_tokens": [
+        16,
+        17,
+        15
+      ],
+      "comparison_target_tokens": [
+        16,
+        17
+      ],
+      "output_tokens": [
+        16,
+        17,
+        15
+      ],
+      "draft_token": 16,
+      "draft_tokens": [
+        16,
+        17
+      ],
+      "draft_top10_tokens": [
+        [
+          16,
+          15,
+          20,
+          17,
+          21,
+          19,
+          23,
+          22,
+          24,
+          18,
+          25,
+          328,
+          51,
+          12,
+          471,
+          11,
+          13,
+          220,
+          35,
+          874
+        ],
+        [
+          16,
+          25,
+          15,
+          20,
+          17,
+          22,
+          24,
+          19,
+          23,
+          11,
+          12,
+          21,
+          13,
+          18,
+          76,
+          295,
+          51,
+          248046,
+          4,
+          80081
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1,
+        5
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "pending_hidden_row_index": 2,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 147.43,
+      "mtp_draft_ms": 13.09
+    },
+    {
+      "cycle": 8,
+      "target_token": 15,
+      "target_tokens": [
+        15,
+        15,
+        23
+      ],
+      "comparison_target_tokens": [
+        15,
+        15
+      ],
+      "output_tokens": [
+        15,
+        15,
+        23
+      ],
+      "draft_token": 15,
+      "draft_tokens": [
+        15,
+        15
+      ],
+      "draft_top10_tokens": [
+        [
+          15,
+          16,
+          20,
+          19,
+          17,
+          24,
+          18,
+          21,
+          220,
+          23,
+          22,
+          12,
+          0,
+          25,
+          1510,
+          471,
+          9,
+          13962,
+          321,
+          62
+        ],
+        [
+          15,
+          220,
+          16,
+          12,
+          17,
+          21,
+          19,
+          22,
+          9,
+          20,
+          18,
+          24,
+          0,
+          11,
+          23,
+          13,
+          548,
+          25,
+          1510,
+          4277
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1,
+        1
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "pending_hidden_row_index": 2,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 146.9,
+      "mtp_draft_ms": 13.23
+    },
+    {
+      "cycle": 9,
+      "target_token": 23,
+      "target_tokens": [
+        23,
+        16,
+        220
+      ],
+      "comparison_target_tokens": [
+        23,
+        16
+      ],
+      "output_tokens": [
+        23,
+        16,
+        220
+      ],
+      "draft_token": 23,
+      "draft_tokens": [
+        23,
+        16
+      ],
+      "draft_top10_tokens": [
+        [
+          24,
+          23,
+          20,
+          21,
+          15,
+          17,
+          19,
+          22,
+          18,
+          16,
+          63,
+          2,
+          198,
+          1639,
+          653,
+          10,
+          2037,
+          25,
+          11,
+          332
+        ],
+        [
+          24,
+          20,
+          21,
+          16,
+          17,
+          15,
+          19,
+          23,
+          22,
+          18,
+          2,
+          63,
+          25,
+          198,
+          10,
+          74505,
+          1379,
+          55,
+          139128,
+          1639
+        ]
+      ],
+      "target_in_draft_top10": [
+        true,
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        2,
+        4
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "pending_hidden_row_index": 2,
+      "mtp_context_rows_before_draft": 1,
+      "mtp_context_mode": "single_seed_row",
+      "target_prefill_mode": "resident_default",
+      "ar_decode_ms": 147.47,
+      "mtp_draft_ms": 12.76
+    }
+  ],
+  "provenance": {
+    "source_tmp": "/tmp/mtp-acceptance-current-rerun.json",
+    "lane": "mtp-acceptance",
+    "run_tag": "run-20260621-044226",
+    "iteration": 13,
+    "change": "depth-1 token-16 rerank layered on rank-20 token-421/token-23 and previous deterministic reranks",
+    "previous_accepted_per_output": 0.6,
+    "baseline_accepted_per_output": 0.4118,
+    "new_accepted_per_output": 0.6154,
+    "target_llamacpp_hip_b4_accepted_per_output": 0.7430555555555556,
+    "performance_claim": false,
+    "correctness": "target verifier exact; GGUF mapping/reader/tokenizer guard passed"
+  }
+}
