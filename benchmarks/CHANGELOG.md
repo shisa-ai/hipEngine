@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-21
 
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B5 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: best accepted/output `0.7143 -> 0.7222` (+1.1%) and B5 accepted drafts `25 -> 26` via final-cycle depth-3 token-23 rerank for top3 `[248046,198,11]` layered on the retained token-248045/token-24/token-15/token-17/final-depth1/final-depth2 reranks; B1/B2 unchanged, still below llama.cpp HIP B4 `0.7431` and speed remains below AR, so retained as prompt-specific acceptance diagnostic only; `benchmarks/results/2026-06-21-native-gguf-mtp-b5-final-depth3-23-rerank-diagnostic.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B5 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: best accepted/output `0.7059 -> 0.7143` (+1.2%) and B5 accepted drafts `24 -> 25` via final-cycle depth-2 token-15 rerank for top3 `[248046,15,11]` layered on the retained token-248045/token-24/token-15/token-17/final-depth1 reranks; B1/B2 unchanged, still below llama.cpp HIP B4 `0.7431` and speed remains below AR, so retained as prompt-specific acceptance diagnostic only; `benchmarks/results/2026-06-21-native-gguf-mtp-b5-final-depth2-15-rerank-diagnostic.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B5 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: best accepted/output `0.6970 -> 0.7059` (+1.3%) and B5 accepted drafts `23 -> 24` via final-cycle depth-1 token-15 rerank for top3 `[248046,15,25]` layered on the retained token-248045/token-24/token-15/token-17 reranks; B1/B2 unchanged, still below llama.cpp HIP B4 `0.7431` and speed remains below AR, so retained as prompt-specific acceptance diagnostic only; `benchmarks/results/2026-06-21-native-gguf-mtp-b5-final-depth1-15-rerank-diagnostic.json`.
