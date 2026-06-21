@@ -9,7 +9,17 @@
     "best_budget_decode_tok_s_weighted": 153.64961100094138,
     "best_budget_decode_speedup_vs_ar": 1.9067759082177174,
     "best_budget_accepted_per_output": 0.7430555555555556,
-    "note": "scripts/mtp-bench.py client against llama.cpp HIP GGUF server; diagnostic external server row, not hipEngine-native GGUF runtime acceptance."
+    "note": "scripts/mtp-bench.py client against llama.cpp HIP GGUF server; diagnostic external server row, not hipEngine-native GGUF runtime acceptance.",
+    "llama_cpp_reference_columns": {
+      "llama_cpp_ar_decode_tok_s": 80.58,
+      "llama_cpp_ar_client_wall_tok_s": 57.37,
+      "llama_cpp_mtp_budget": "B4",
+      "llama_cpp_mtp_decode_tok_s": 153.65,
+      "llama_cpp_mtp_client_wall_tok_s": 83.24,
+      "llama_cpp_mtp_speedup_vs_ar": 1.907,
+      "llama_cpp_mtp_accept_per_draft": 0.9224,
+      "llama_cpp_mtp_accepted_per_output": 0.7431
+    }
   },
   "hardware": {
     "target_gpu": "AMD Radeon Pro W7900 (ROCR_VISIBLE_DEVICES=0, HIP_VISIBLE_DEVICES=0)",
@@ -818,5 +828,111 @@
     "decode_tok_s_weighted uses server timings.predicted_per_second and generated token counts; client_wall_tok_s includes HTTP/prefill overhead.",
     "accepted_per_output = draft_n_accepted / predicted_n; accept_per_draft = draft_n_accepted / draft_n.",
     "The in-tree hipEngine-native GGUF MTP smoke currently implements B1/B2 only; this artifact uses llama.cpp HIP server to exercise B1-B4 through scripts/mtp-bench.py."
-  ]
+  ],
+  "llama_cpp_reference_columns": {
+    "status": "same_run_llama_cpp_reference",
+    "note": "This artifact was produced by scripts/mtp-bench.py against a llama.cpp HIP GGUF server. The reference columns below are therefore the same measured llama.cpp AR and best MTP rows, included explicitly for future hipEngine-native GGUF MTP comparison tables.",
+    "total": {
+      "llama_cpp_ar_decode_tok_s": 80.58,
+      "llama_cpp_ar_client_wall_tok_s": 57.37,
+      "llama_cpp_mtp_budget": "B4",
+      "llama_cpp_mtp_decode_tok_s": 153.65,
+      "llama_cpp_mtp_client_wall_tok_s": 83.24,
+      "llama_cpp_mtp_speedup_vs_ar": 1.907,
+      "llama_cpp_mtp_accept_per_draft": 0.9224,
+      "llama_cpp_mtp_accepted_per_output": 0.7431
+    },
+    "per_prediction_type": [
+      {
+        "prediction_type": "code_python",
+        "category": "code_generation",
+        "llama_cpp_ar_decode_tok_s": 79.64,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 139.48,
+        "llama_cpp_mtp_speedup_vs_ar": 1.7514,
+        "llama_cpp_mtp_accept_per_draft": 0.8889,
+        "llama_cpp_mtp_accepted_per_output": 0.75
+      },
+      {
+        "prediction_type": "code_cpp",
+        "category": "code_generation",
+        "llama_cpp_ar_decode_tok_s": 80.12,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 158.16,
+        "llama_cpp_mtp_speedup_vs_ar": 1.974,
+        "llama_cpp_mtp_accept_per_draft": 0.96,
+        "llama_cpp_mtp_accepted_per_output": 0.75
+      },
+      {
+        "prediction_type": "explain_concept",
+        "category": "explanation",
+        "llama_cpp_ar_decode_tok_s": 80.87,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 165.21,
+        "llama_cpp_mtp_speedup_vs_ar": 2.0429,
+        "llama_cpp_mtp_accept_per_draft": 1.0,
+        "llama_cpp_mtp_accepted_per_output": 0.75
+      },
+      {
+        "prediction_type": "summarize",
+        "category": "summarization",
+        "llama_cpp_ar_decode_tok_s": 80.95,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 154.12,
+        "llama_cpp_mtp_speedup_vs_ar": 1.9039,
+        "llama_cpp_mtp_accept_per_draft": 0.8571,
+        "llama_cpp_mtp_accepted_per_output": 0.75
+      },
+      {
+        "prediction_type": "qa_factual",
+        "category": "factual_qa",
+        "llama_cpp_ar_decode_tok_s": 81.0,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 164.08,
+        "llama_cpp_mtp_speedup_vs_ar": 2.0257,
+        "llama_cpp_mtp_accept_per_draft": 1.0,
+        "llama_cpp_mtp_accepted_per_output": 0.75
+      },
+      {
+        "prediction_type": "translation",
+        "category": "translation",
+        "llama_cpp_ar_decode_tok_s": 80.86,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 158.39,
+        "llama_cpp_mtp_speedup_vs_ar": 1.9588,
+        "llama_cpp_mtp_accept_per_draft": 0.96,
+        "llama_cpp_mtp_accepted_per_output": 0.75
+      },
+      {
+        "prediction_type": "creative_short",
+        "category": "creative_writing",
+        "llama_cpp_ar_decode_tok_s": 80.99,
+        "llama_cpp_mtp_budget": "B3",
+        "llama_cpp_mtp_decode_tok_s": 142.15,
+        "llama_cpp_mtp_speedup_vs_ar": 1.7552,
+        "llama_cpp_mtp_accept_per_draft": 0.9167,
+        "llama_cpp_mtp_accepted_per_output": 0.6875
+      },
+      {
+        "prediction_type": "stepwise_math",
+        "category": "math_reasoning",
+        "llama_cpp_ar_decode_tok_s": 80.41,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 143.18,
+        "llama_cpp_mtp_speedup_vs_ar": 1.7806,
+        "llama_cpp_mtp_accept_per_draft": 0.8214,
+        "llama_cpp_mtp_accepted_per_output": 0.7188
+      },
+      {
+        "prediction_type": "long_code_review",
+        "category": "code_review",
+        "llama_cpp_ar_decode_tok_s": 80.41,
+        "llama_cpp_mtp_budget": "B4",
+        "llama_cpp_mtp_decode_tok_s": 164.56,
+        "llama_cpp_mtp_speedup_vs_ar": 2.0465,
+        "llama_cpp_mtp_accept_per_draft": 1.0,
+        "llama_cpp_mtp_accepted_per_output": 0.75
+      }
+    ]
+  }
 }

@@ -115146,3 +115146,8 @@ python3 scripts/mtp-bench.py \
 
 - Optimum on this run is B4 by aggregate decode tok/s, client wall tok/s, and accepted/output. B4 accepts fewer drafted tokens fractionally than B1/B2, but the higher visible-token density wins.
 - Per-prediction-type best is B4 for all prompts except `creative_short`, where B3 narrowly beat B4 (`142.17` vs `141.39` tok/s).
+
+
+### Reference-column clarification
+- Added explicit `llama_cpp_reference_columns` to the diagnostic artifact. The measured `AR` and `B1..B4` rows in this artifact are already llama.cpp HIP GGUF server rows; the new section makes the llama.cpp AR / best-MTP reference columns explicit for future hipEngine-native GGUF comparison tables.
+- Current reference columns for the total row: llama.cpp AR `80.58` decode tok/s; llama.cpp MTP best `B4` at `153.65` decode tok/s, `1.907x` vs AR, accept/draft `0.9224`, accepted/output `0.7431`.
