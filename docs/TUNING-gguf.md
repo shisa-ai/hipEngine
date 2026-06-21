@@ -373,6 +373,31 @@ Current focused lanes from evidence:
    live-state work must beat the remaining 256-VGPR cap without extra decode
    noise.
 
+2026-06-21 return-plan update after the corrected W7900 final sweep:
+
+- **Do not do more blind GGUF micro-tuning.** The apparent final-sweep prefill
+  regression was a non-hermetic W7900 environment artifact, not a kernel change.
+  Retained W7900 rows must use `scripts/run_w7900_readme_refresh.sh hipengine`
+  or its exact `THEROCK_ENV`; if GGUF prefill falls while decode and IDs stay
+  normal, rerun hermetically before blaming kernels.
+- **Primary next goal: make GGUF INT8 KV correct.** Short explicit
+  `--kv-storage int8_per_token_head` sessions now use a BF16 mirror and match the
+  BF16 gate IDs/logits, but the long `128K/128` capacity path remains INT8-only
+  and has not passed a quality/correctness promotion gate. This work is required
+  irrespective of whether INT8 KV becomes the default memory policy.
+- **Refresh attribution before the next optimization pass.** Before touching more
+  kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
+  current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the
+  next change from the largest current bucket, not from stale Q4_K_S traces or
+  launch-count intuition.
+- **Likely optimization lanes once INT8 correctness is understood:** prefill
+  remains the more plausible c=1 target than decode (dense Q8_0 WMMA, GDN
+  recurrent prefill, selected Q4/Q5 WMMA, and long-context full-attn/chunk
+  policy); memory/residency work is still valuable but must be split into
+  oracle-backed candidates because the bundled raw-Q8/fused-selected experiment
+  caused ID drift; true c>N GGUF batching or MTP/spec decode may yield larger
+  user-visible throughput than further c=1 decode micro-tuning.
+
 llama.cpp HIP/Vulkan codepath detour (2026-06-16):
 
 - Reviewed local llama.cpp source trees: HIP `~/llama.cpp/llama.cpp-hip`
