@@ -115296,3 +115296,37 @@ git worktree add --detach /tmp/hipengine-mtp-compare-20260621-155344/after 95b5b
 - On the same gfx1151 prompt suite, llama.cpp GGUF MTP is faster than AR and scales through B4.
 - hipEngine PARO sidecar MTP remains slower than AR despite exact B1/B3 rows; its B3 improves accepted/output vs B1 but verifier cost dominates.
 - This reinforces the GGUF-MTP plan: reproduce llama.cpp's integrated GGUF NextN path in hipEngine; do not tune PARO sidecar economics as if it were the winning path.
+
+
+## 2026-06-21 — Native GGUF MTP B1-B5 local verification after rebase
+
+### Scope
+- Verified the merged `25d2c19b` B1-B5 diagnostic support plus restored local `scripts/gguf_mtp_bench.py` selector edits before resuming `mtp-acceptance`.
+- This is native hipEngine GGUF (`scripts/gguf_mtp_bench.py`), not llama.cpp server. Hardware here is gfx1151 / Radeon 8060S, not the W7900 artifact host.
+- Relevant worktree caveat: `scripts/gguf_mtp_bench.py` remains dirty with restored acceptance-rerank edits relative to `25d2c19b`; other dirty/untracked files were left untouched.
+
+### Validation
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_bench.py
+git diff --check -- scripts/gguf_mtp_bench.py
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q   tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_bench_prompt.py   tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py   tests/test_qwen35_gguf_tokenizer.py
+# ...................................s.sss.s [100%]
+```
+
+### Native GGUF fixed-prompt sweep
+Command pattern:
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --draft-n-max {1..5} --cycles 10   --output /tmp/20260621-native-gguf-b1-b5-local-dirty/b{B}-cycles10.json
+```
+Artifact: `benchmarks/results/2026-06-21-native-gguf-mtp-b1-b5-gfx1151-dirty-verification.json`.
+Raw run root: `/tmp/20260621-native-gguf-b1-b5-local-dirty`.
+
+| Budget | warm tok/s | warm accept/draft | warm accepted/output | warm vs AR-visible |
+| ---: | ---: | ---: | ---: | ---: |
+| B1 | 18.57 | 0.8889 | 0.4706 | 0.9293x |
+| B2 | 16.66 | 0.9444 | 0.6538 | 0.9176x |
+| B3 | 17.08 | 0.6296 | 0.6538 | 0.8789x |
+| B4 | 16.87 | 0.4722 | 0.6538 | 0.8423x |
+| B5 | 15.83 | 0.3778 | 0.6538 | 0.8076x |
+
+Interpretation: restored local prediction still reproduces the previous fixed-prompt B2 best (`accepted/output=0.6552` total, `0.6538` warm). Increasing B beyond 2 does not add visible accepted tokens on this prompt; it only lowers accept/draft and speed. Next acceptance work should target the persistent llama.cpp-style GGUF MTP context / trace parity gap rather than budget depth alone.
