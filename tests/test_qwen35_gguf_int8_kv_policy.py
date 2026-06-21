@@ -99,6 +99,38 @@ def test_gguf_int8_full_attention_prefill_uses_bf16_oracle_and_retained_int8_cac
     assert layer_scratch.append_spans.storage_dtype is DType.BF16
 
 
+def test_gguf_int8_short_prefill_prefers_bf16_mirror_cache_when_available() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    oracle_key = _Buffer(0x5000, 32)
+    oracle_value = _Buffer(0x6000, 32)
+    mirror_key = _Buffer(0x6100, 64)
+    mirror_value = _Buffer(0x6200, 64)
+    retained_key = _Buffer(0x7000, 16)
+    retained_value = _Buffer(0x8000, 16)
+    metadata = _scale_metadata()
+    session.scratch = type(
+        "Scratch",
+        (),
+        {
+            "full_cache": lambda self, layer_id: (retained_key, retained_value),
+            "full_bf16_mirror_cache": lambda self, layer_id: (mirror_key, mirror_value),
+            "full_scale_metadata": lambda self, layer_id: metadata,
+        },
+    )()
+    bulk = _BulkScratch(key_cache=oracle_key, value_cache=oracle_value, append_spans=_bf16_append_spans())
+
+    layer_scratch = session._full_attention_prefill_scratch_for_layer(bulk, 7)
+
+    assert layer_scratch.key_cache is mirror_key
+    assert layer_scratch.value_cache is mirror_value
+    assert layer_scratch.retained_key_cache is retained_key
+    assert layer_scratch.retained_value_cache is retained_value
+    assert layer_scratch.retained_append_spans is not None
+    assert layer_scratch.retained_append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
+    assert layer_scratch.retained_append_spans.scale_metadata is metadata
+
+
 def test_gguf_decode_scratch_breakdown_reports_int8_kv_scales_separately() -> None:
     key = _Buffer(0x1000, 100)
     value = _Buffer(0x2000, 100)

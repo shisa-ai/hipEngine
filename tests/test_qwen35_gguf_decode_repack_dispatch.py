@@ -65,7 +65,13 @@ def _runner(*, is_moe: bool = True) -> Qwen35GGUFFullStackRunner:
     return runner
 
 
-def _scratch(*, position: int, max_positions: int, kv_storage_dtype: DType = DType.BF16) -> SimpleNamespace:
+def _scratch(
+    *,
+    position: int,
+    max_positions: int,
+    kv_storage_dtype: DType = DType.BF16,
+    bf16_mirror: bool = False,
+) -> SimpleNamespace:
     block_size = 256
     if kv_storage_dtype is DType.INT8_PER_TOKEN_HEAD:
         scale_metadata = SimpleNamespace(k_scale=_Tensor(0x2130), v_scale=_Tensor(0x2140))
@@ -103,7 +109,11 @@ def _scratch(*, position: int, max_positions: int, kv_storage_dtype: DType = DTy
     )
     key_cache = _Tensor(0x2110)
     value_cache = _Tensor(0x2120)
+    mirror_key_cache = _Tensor(0x2150)
+    mirror_value_cache = _Tensor(0x2160)
     scratch.full_cache = lambda layer_id: (key_cache, value_cache)
+    if bf16_mirror:
+        scratch.full_bf16_mirror_cache = lambda layer_id: (mirror_key_cache, mirror_value_cache)
     scratch.append_spans_for_layer = lambda layer_id: append_spans
     scratch.decode_spans_for_layer = lambda layer_id: decode_spans
     return scratch
@@ -229,6 +239,44 @@ def test_int8_kv_routes_full_attention_through_int8_append_and_split_k(monkeypat
         scratch.full_attn_split_l.ptr,
     )
     assert split_args[11:21] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_int8_short_bf16_mirror_routes_decode_through_bf16_cache(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1048576")
+    runner = _runner(is_moe=True)
+    scratch = _scratch(
+        position=4095,
+        max_positions=4096,
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        bf16_mirror=True,
+    )
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=4095, stream=5)
+
+    names = [name for name, _, _ in calls]
+    assert "kv_write_int8" in names
+    assert "kv_write" in names
+    assert "split_k_int8_gate" not in names
+    assert "attention_context" in names
+    assert "attention_gate" in names
+
+    mirror_write_args = [args for name, args, _ in calls if name == "kv_write"][-1]
+    assert mirror_write_args[:5] == (
+        scratch.full_key.ptr,
+        scratch.full_v.ptr,
+        0x2150,
+        0x2160,
+        scratch.append_spans,
+    )
+    attn_args = next(args for name, args, _ in calls if name == "attention_context")
+    assert attn_args[:5] == (
+        scratch.full_query.ptr,
+        0x2150,
+        0x2160,
+        scratch.full_attn_context.ptr,
+        scratch.decode_spans,
+    )
 
 
 def test_short_context_keeps_unfused_full_attention_gate(monkeypatch) -> None:
