@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-22
 
+- [diagnostic comparison retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP vs llama.cpp HIP MTP UD-Q4_K_M / gfx1151 category suite: hipEngine native AR `19.45 tok/s` is `0.388x` llama.cpp AR `50.13`; hipEngine best MTP speed is B1 `15.49 tok/s` (`0.796x` native AR, `0.230x` llama.cpp best B2 `67.29`), and code B3 is `12.56 tok/s` vs llama.cpp code B3 `72.59` (`0.173x`); caveat native path is 10-cycle verifier diagnostic vs llama.cpp 512-token server; `benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp-category-gfx1151.json`.
+
 - [reference retained] Qwen3.6-35B-A3B / llama.cpp HIP MTP UD-Q4_K_M / gfx1151 category suite (`code`, `general_en`, `general_ja`, `mixed_ja_en`, 10 prompts, max 512 tokens): off decode `50.13 tok/s`; fastest total is B2 `67.29 tok/s` (`1.342x` AR) while best total accepted/output is B5 `0.7096`; category speed winners are code B3 and general_en/general_ja/mixed_ja_en B2; `benchmarks/results/2026-06-22-llamacpp-35b-mtp-category-off-b1-b5-gfx1151.json`.
 
 ## 2026-06-21

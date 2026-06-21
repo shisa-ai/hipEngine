@@ -115812,3 +115812,36 @@ python3 -m json.tool /tmp/hipengine-gguf-mtp-category-dryrun.json
 python3 -m json.tool /tmp/hipengine-gguf-mtp-category-smoke/summary.json
 ```
 - Smoke completed and produced total rows for `off` and `b1`.
+
+
+## 2026-06-22 — hipEngine native GGUF-MTP vs llama.cpp category comparison retained
+
+### Scope
+- Task #24: compare hipEngine native GGUF-MTP category matrix against the llama.cpp HIP category baseline.
+- Model/quant: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (UD-Q4_K_M with MTP blocks).
+- Hardware: gfx1151 / AMD RYZEN AI MAX+ 395 w/ Radeon 8060S.
+- Prompt suite: `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, categories `code`, `general_en`, `general_ja`, `mixed_ja_en`.
+
+### Artifacts
+- Comparison artifact: `benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp-category-gfx1151.json` plus `.csv` and `.md`.
+- hipEngine raw root: `/tmp/hipengine-gguf-mtp-category-20260622-082221/`.
+- llama.cpp raw root: `/tmp/mtpbench-llamacpp-35b-gfx1151-20260622-075215/`.
+
+### Caveat
+- This is a directional gap comparison, not an identical workload claim: llama.cpp is a 512-token server run; hipEngine is the 10-cycle native verifier diagnostic wrapper around `scripts/gguf_mtp_bench.py`.
+- hipEngine `off` is derived from B1 target-AR verifier timing because there is not yet a standalone native GGUF category-suite AR server harness.
+
+### Headline results
+- AR/off: hipEngine `19.45 tok/s` vs llama.cpp `50.13 tok/s` = `0.388x`.
+- Best MTP speed: hipEngine B1 `15.49 tok/s` vs llama.cpp B2 `67.29 tok/s` = `0.230x`.
+- Same-budget B2: hipEngine `14.09 tok/s` vs llama.cpp `67.29 tok/s` = `0.209x`.
+- hipEngine MTP is slower than its native AR on every budget: B1 `0.796x`, B2 `0.724x`, B3 `0.680x`, B4 `0.655x`, B5 `0.613x`.
+- Acceptance/output gap: hipEngine B5 `0.2481` vs llama.cpp B5 `0.7096`.
+- Code B3: hipEngine `12.56 tok/s` vs llama.cpp `72.59 tok/s` = `0.173x`; accepted/output `0.1304` vs `0.6963`.
+- Interpretation: the fixed-France prompt acceptance tuning did not generalize to the category suite; native GGUF-MTP currently needs parity/acceptance work before speed optimization.
+
+### Validation
+```bash
+python3 -m json.tool benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp-category-gfx1151.json
+```
+- Comparison JSON parsed successfully; markdown and CSV emitted from the same JSON.
