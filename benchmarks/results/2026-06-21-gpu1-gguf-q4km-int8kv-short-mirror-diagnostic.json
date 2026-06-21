@@ -1,0 +1,163 @@
+{
+  "commands": {
+    "logits_probe": "python3 /tmp/gguf_int8_logits_probe.py --storage int8_per_token_head --scale-dtype fp16 --out /tmp/gguf-int8-correctness-int8fp16-mirror.json",
+    "new_int8_short_mirror_3run": "python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 512/128 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-gpu1-gguf-q4km-int8kv-short-mirror-512-4k-3run.json",
+    "targeted_tests": "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_int8_kv_policy.py tests/test_qwen35_gguf_decode_repack_dispatch.py && python3 -m ruff check hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_int8_kv_policy.py tests/test_qwen35_gguf_decode_repack_dispatch.py && python3 -m pytest tests/test_qwen35_gguf_int8_kv_policy.py tests/test_qwen35_gguf_decode_repack_dispatch.py -q"
+  },
+  "correctness": {
+    "logits_probe": {
+      "path": "/tmp/gguf-int8-correctness-int8fp16-mirror.json",
+      "prompt_lengths": {
+        "4096": {
+          "decode1_token": 11048,
+          "note": "Compared externally against /tmp/gguf-int8-correctness-bf16.json: KL=0 and max_abs=0 for prefill and first decode after BF16 mirror.",
+          "prefill_token": 40218
+        },
+        "512": {
+          "decode1_token": 318,
+          "note": "Compared externally against /tmp/gguf-int8-correctness-bf16.json: KL=0 and max_abs=0 for prefill and first decode after BF16 mirror.",
+          "prefill_token": 168156
+        }
+      }
+    },
+    "short_gate_final_ids_match_prior_bf16": {
+      "4K/128": true,
+      "512/128": true
+    },
+    "targeted_tests_passed": true,
+    "targeted_tests_result": "py_compile passed; ruff passed; pytest targeted -> 9 passed"
+  },
+  "current_bf16_one_run_decode_sanity": {
+    "4K/128": {
+      "decode_seconds_excluding_graph_capture": 1.1271406197920442,
+      "decode_tok_s": 113.56169563263173,
+      "final_token_id": 220,
+      "graph_capture_seconds": 20.444322105962783,
+      "prefill_seconds": 122.797313968651,
+      "prefill_tok_s": 33.35577845819714,
+      "tracked_peak_allocated_gib": 22.487057745456696,
+      "warmup_decode_seconds": 20.515406381804496
+    },
+    "512/128": {
+      "decode_seconds_excluding_graph_capture": 1.0276531791314483,
+      "decode_tok_s": 124.55564055976843,
+      "final_token_id": 318,
+      "graph_capture_seconds": 20.474468660075217,
+      "prefill_seconds": 36.95626506302506,
+      "prefill_tok_s": 13.854213869470776,
+      "tracked_peak_allocated_gib": 21.34128976613283,
+      "warmup_decode_seconds": 20.536901871673763
+    },
+    "note": "Current same-session BF16 one-runs were used only as decode sanity. Absolute ungraphed prefill/warmup timings in this shell were launch-path contaminated and are not retained prefill claims."
+  },
+  "date": "2026-06-21",
+  "decision": {
+    "prefill_note": "The post-mirror 3-run raw JSON shows very slow absolute prefill/warmup values in this shell for both BF16 sanity and INT8. Treat those prefill numbers as contaminated diagnostics; compare decode replay and IDs only until the launch-path anomaly is isolated.",
+    "reason": "Short-gate correctness is restored and graph decode is within about 0.4-1.2% of the prior BF16 baseline, so no immediate short-gate decode optimization is required. The path remains opt-in/no-hold because the 8192-token BF16 mirror is a correctness guard and the long-context INT8-only path still needs a separate correctness gate before promotion.",
+    "retained_default": false,
+    "status": "diagnostic_no_hold"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIP_VISIBLE_DEVICES": "1",
+    "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe"
+  },
+  "git_commit": "e65a483fd949daab9fcd4919f91295cfb80dd821",
+  "hardware": "AMD Radeon RX 7900 XTX / gfx1100 / 24 GiB-class (HIP_VISIBLE_DEVICES=1)",
+  "label": "gpu1_gguf_q4km_int8_short_bf16_mirror_diagnostic",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quant": "gguf_q4_k_m",
+  "raw_json_paths": {
+    "current_bf16_4k_one_run": "/tmp/hipengine-gguf-bf16-4k-manualchunk-1run.json",
+    "current_bf16_512_one_run": "/tmp/hipengine-current-bf16-512-128-one.json",
+    "new_int8_short_mirror_3run": "/tmp/hipengine-gpu1-gguf-q4km-int8kv-short-mirror-512-4k-3run.json",
+    "prior_bf16_default_3run": "/tmp/hipengine-gpu1-gguf-q4km-default-after-int8kv-512-4k-3run.json",
+    "prior_int8_before_mirror_3run": "/tmp/hipengine-gpu1-gguf-q4km-int8kv-short-512-4k-3run.json"
+  },
+  "schema": 1,
+  "status": "diagnostic_no_hold",
+  "workloads": {
+    "4K/128": {
+      "new_int8_decode_delta_vs_prior_bf16_pct": -1.1928285825313356,
+      "new_int8_peak_delta_vs_prior_bf16_gib": 0.050128936767578125,
+      "new_int8_short_bf16_mirror_3run": {
+        "decode_tok_s_median": 112.63179402399219,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 33.26586332481562,
+        "tracked_peak_allocated_gib_median": 22.537186682224274
+      },
+      "old_to_new_ids_fixed": true,
+      "old_to_new_int8_decode_delta_pct": -0.24421873405020555,
+      "prior_bf16_default_3run": {
+        "decode_tok_s_median": 113.9915174255048,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2630.5402381230756,
+        "tracked_peak_allocated_gib_median": 22.487057745456696
+      },
+      "prior_int8_before_mirror_3run": {
+        "decode_tok_s_median": 112.9075353775385,
+        "final_token_ids": [
+          34105,
+          34105,
+          34105
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2632.9554043974795,
+        "tracked_peak_allocated_gib_median": 22.454178869724274
+      }
+    },
+    "512/128": {
+      "new_int8_decode_delta_vs_prior_bf16_pct": -0.42816691964683296,
+      "new_int8_peak_delta_vs_prior_bf16_gib": 0.050128936767578125,
+      "new_int8_short_bf16_mirror_3run": {
+        "decode_tok_s_median": 123.19658403030778,
+        "final_token_ids": [
+          318,
+          318,
+          318
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 13.774198789773063,
+        "tracked_peak_allocated_gib_median": 22.537186682224274
+      },
+      "old_to_new_ids_fixed": true,
+      "old_to_new_int8_decode_delta_pct": 9.690457051320012,
+      "prior_bf16_default_3run": {
+        "decode_tok_s_median": 123.72633928602052,
+        "final_token_ids": [
+          318,
+          318,
+          318
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2275.168527577922,
+        "tracked_peak_allocated_gib_median": 22.487057745456696
+      },
+      "prior_int8_before_mirror_3run": {
+        "decode_tok_s_median": 112.31294621433545,
+        "final_token_ids": [
+          220,
+          220,
+          220
+        ],
+        "final_token_ids_stable": true,
+        "prefill_tok_s_median": 2285.7396937690023,
+        "tracked_peak_allocated_gib_median": 22.454178869724274
+      }
+    }
+  }
+}
