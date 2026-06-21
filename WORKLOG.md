@@ -115151,3 +115151,32 @@ python3 scripts/mtp-bench.py \
 ### Reference-column clarification
 - Added explicit `llama_cpp_reference_columns` to the diagnostic artifact. The measured `AR` and `B1..B4` rows in this artifact are already llama.cpp HIP GGUF server rows; the new section makes the llama.cpp AR / best-MTP reference columns explicit for future hipEngine-native GGUF comparison tables.
 - Current reference columns for the total row: llama.cpp AR `80.58` decode tok/s; llama.cpp MTP best `B4` at `153.65` decode tok/s, `1.907x` vs AR, accept/draft `0.9224`, accepted/output `0.7431`.
+
+
+## 2026-06-21 — hipEngine-native GGUF MTP fixed-prompt B1/B2 smoke clarification
+
+### Context
+- Clarified after the llama.cpp server sweep that the previous B1-B4 `scripts/mtp-bench.py` table was a llama.cpp HIP GGUF reference, not a hipEngine-native GGUF MTP result.
+- The current hipEngine-native GGUF MTP runtime entry point is `scripts/gguf_mtp_bench.py`; it supports only `--draft-n-max 1` and `2` today and rejects B3/B4 to avoid mislabeled artifacts.
+
+### Evidence
+```bash
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/gguf_mtp_bench.py --draft-n-max 1 --cycles 10 \
+  --output /tmp/gguf-mtp-b1-smoke-w7900.json
+
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+  python3 scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 10 \
+  --output /tmp/gguf-mtp-b2-smoke-w7900.json
+```
+
+### Result
+- Compact artifact: `benchmarks/results/2026-06-21-hipengine-native-gguf-mtp-b1-b2-fixed-prompt-diagnostic.json`.
+- Scope: fixed prompt `What is the capital of France?`, 10 speculate/verify cycles; this is not the `scripts/mtp-bench.py` 9-prompt suite.
+- B1 including cold first cycle: `2.75 tok/s`, `0.295x` vs script AR baseline, accept/draft `0.200`, accepted/output `0.1667`.
+- B1 warm excluding cycle0: `8.75 tok/s`, `0.939x`, accept/draft `0.222`, accepted/output `0.1818`.
+- B2 including cold first cycle: `7.47 tok/s`, `0.788x`, accept/draft `0.100`, accepted/output `0.1667`.
+- B2 warm excluding cycle0: `8.42 tok/s`, `0.886x`, accept/draft `0.111`, accepted/output `0.1818`.
+- B3/B4 hipEngine-native GGUF MTP are not wired yet; llama.cpp B4 remains the reference target (`153.65 tok/s`, accepted/output `0.7431` on the 9-prompt `scripts/mtp-bench.py` run).
