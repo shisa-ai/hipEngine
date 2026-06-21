@@ -115271,3 +115271,28 @@ git worktree add --detach /tmp/hipengine-mtp-compare-20260621-155344/after 95b5b
 ### Interpretation
 - The `~0.17 -> 0.65` shorthand mixes two scopes. The old broad sweep was `0.1667`; current broad sweep is `0.4231`. The retained `0.6552` is the fixed capital prompt, cycles=10.
 - Acceptance improved substantially, but this GGUF diagnostic path is still not a retained speed row: target verification is serial and draft overhead keeps MTP below the script's AR-visible baseline.
+
+
+## 2026-06-21 — gfx1151 llama.cpp vs hipEngine MTP B-sweep comparison
+
+### Scope
+- User asked for B sweeps for llama.cpp and comparison against hipEngine results on gfx1151.
+- Current local attempts on PARO/gfx1151 were recorded as a partial diagnostic, but not used as a performance claim: B4 is unsupported in native `ChainDraftCompiler` (`allowed_budgets=(1,2,3,5)`), and B2/B5 can hit exact-AR mismatch on `explain_concept` in the local `decode_batched` suite.
+- Found the retained 2026-06-15 gfx1151 diagnostics that already ran the complete llama.cpp HIP/Vulkan B1-B4 sweep against the same 9-prompt `mtp-bench` suite and compared it to hipEngine PARO exact rows. Wrote a compact derived summary instead of rerunning the long server matrix.
+
+### Artifacts
+- New partial local-run diagnostic: `benchmarks/results/2026-06-21-paro-mtp-category-budget-comparison-gfx1151-diagnostic.json`.
+- New derived comparison: `benchmarks/results/2026-06-21-gfx1151-llamacpp-vs-hipengine-mtp-bsweep-summary.json`.
+- Source retained artifacts:
+  - `benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json`
+  - `benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-summary.json`
+
+### Headline comparison (gfx1151 / Radeon 8060S, 9 prompts, D32)
+- llama.cpp HIP `UD-Q4_K_M` GGUF: AR `50.90` mean decode tok/s; B1 `68.42` (`1.344x`, accepted/output `0.469`); B2 `78.14` (`1.535x`, `0.622`); B3 `85.38` (`1.677x`, `0.705`); B4 `91.11` (`1.790x`, `0.743`). B4 is best.
+- llama.cpp Vulkan `UD-Q4_K_M` GGUF: AR `62.87`; B1 `83.05` (`1.321x`, `0.469`); B2 `95.74` (`1.523x`, `0.622`); B3 `103.71` (`1.650x`, `0.705`); B4 `108.96` (`1.733x`, `0.747`). B4 is best.
+- hipEngine PARO+MTP exact fallback rows: B1 exact `59.72` vs AR `65.21` (`0.916x`, accepted/output `0.344`); B3 exact `47.64` vs AR `65.29` (`0.730x`, accepted/output `0.455`). B2 is blocked by exact mismatch; native B4 unsupported.
+
+### Interpretation
+- On the same gfx1151 prompt suite, llama.cpp GGUF MTP is faster than AR and scales through B4.
+- hipEngine PARO sidecar MTP remains slower than AR despite exact B1/B3 rows; its B3 improves accepted/output vs B1 but verifier cost dominates.
+- This reinforces the GGUF-MTP plan: reproduce llama.cpp's integrated GGUF NextN path in hipEngine; do not tune PARO sidecar economics as if it were the winning path.
