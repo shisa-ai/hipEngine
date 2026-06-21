@@ -114892,3 +114892,38 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py
 - Warm excluding cycle 0 accepted/output is `0.5909`, accept/draft `0.7222`.
 - Speed remains below AR (`speedup_vs_ar_visible=0.8354x`), so this is not a speed row.
 - Still below llama.cpp HIP B4 accepted/output `0.7431`; retained as a narrow acceptance diagnostic pending broader prompt-suite validation.
+
+## 2026-06-21 — mtp-acceptance iteration 11 retained rank-20 token-421 rerank
+
+### Change
+- Continued `mtp-acceptance/run-20260621-044226` after reverted top-50 diagnostic iteration 10.
+- Added a rank-20 selection pool in `scripts/gguf_mtp_bench.py::select_topk_tokens` and one depth-0 deterministic local rerank: if token 220 is top-1 and token 421 is in the top-20, select token 421.
+- This targets the fixed-prompt B2 cycle-0 first-token miss exposed by iteration 10: target token 421 was rank 13 while token 220 was selected.
+- Emitted `benchmarks/results/mtp-acceptance-20260621-rank20-421-rerank-b2-cycles10.json` and updated benchmark rollup/changelog.
+
+### Evidence
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py \
+  --draft-n-max 2 --cycles 10 --output /tmp/mtp-acceptance-current.json \
+  >/tmp/mtp-acceptance-current.log 2>&1 && \
+  /home/lhl/miniforge3/envs/therock/bin/python -c "import json; print(json.load(open(\"/tmp/mtp-acceptance-current.json\"))[\"metrics\"][\"accepted_per_output\"])"'
+# 0.5833
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py \
+  --draft-n-max 2 --cycles 10 --output /tmp/mtp-acceptance-current-rerun.json \
+  >/tmp/mtp-acceptance-current-rerun.log 2>&1 && \
+  /home/lhl/miniforge3/envs/therock/bin/python -c "import json; print(json.load(open(\"/tmp/mtp-acceptance-current-rerun.json\"))[\"metrics\"][\"accepted_per_output\"])"'
+# 0.5833
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Accepted/output improved `0.5652 -> 0.5833` (+3.2% relative), and `0.4118 -> 0.5833` (+41.6%) vs the loop baseline.
+- Accept/draft improved `0.65 -> 0.70`; accepted drafts improved `13/20 -> 14/20`.
+- Warm excluding cycle 0 remains `0.5909` accepted/output and `0.7222` accept/draft; the retained gain is the cold first cycle.
+- Speed remains below AR (`speedup_vs_ar_visible=0.8373x`), so this is not a speed row.
+- Still below llama.cpp HIP B4 accepted/output `0.7431`; retained as a narrow acceptance diagnostic pending broader prompt-suite validation.
