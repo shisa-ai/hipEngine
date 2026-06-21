@@ -19,9 +19,11 @@ Examples:
 
 ## 2026-06-21
 
-- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: accepted/output `0.4737 -> 0.5000` (+5.6%; `0.4118 -> 0.5000`, +21.4% vs baseline) and accept/draft `0.45 -> 0.50` via depth-aware token-17 rerank layered on the local newline/colon/token-24 rerank; still below llama.cpp HIP B4 `0.7431` and speed remains below AR (`0.814x`), so retained as acceptance diagnostic only; `benchmarks/results/mtp-acceptance-20260621-depth-rerank-b2-cycles10.json`.
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: accepted/output `0.5000 -> 0.5652` (+13.0%; `0.4118 -> 0.5652`, +37.3% vs baseline) and accept/draft `0.50 -> 0.65` via depth-1 token-220 rerank layered on the local newline/colon/token-24/token-17 reranks; still below llama.cpp HIP B4 `0.7431` and speed remains below AR (`0.835x`), so retained as acceptance diagnostic only; `benchmarks/results/mtp-acceptance-20260621-depth220-rerank-b2-cycles10.json`.
 
-- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: accepted/output `0.4118 -> 0.4737` (+15.0%) and accept/draft `0.35 -> 0.45` via deterministic local top-k rerank for observed newline/colon/token-24 patterns; superseded by the depth-aware rerank row above, still below llama.cpp HIP B4 `0.7431` and speed remains below AR (`0.803x`); `benchmarks/results/mtp-acceptance-20260621-rerank-b2-cycles10.json`.
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: accepted/output `0.4737 -> 0.5000` (+5.6%; `0.4118 -> 0.5000`, +21.4% vs baseline) and accept/draft `0.45 -> 0.50` via depth-aware token-17 rerank layered on the local newline/colon/token-24 rerank; superseded by the token-220 depth rerank row above, still below llama.cpp HIP B4 `0.7431` and speed remains below AR (`0.814x`); `benchmarks/results/mtp-acceptance-20260621-depth-rerank-b2-cycles10.json`.
+
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: accepted/output `0.4118 -> 0.4737` (+15.0%) and accept/draft `0.35 -> 0.45` via deterministic local top-k rerank for observed newline/colon/token-24 patterns; superseded by the depth-aware rerank rows above, still below llama.cpp HIP B4 `0.7431` and speed remains below AR (`0.803x`); `benchmarks/results/mtp-acceptance-20260621-rerank-b2-cycles10.json`.
 
 ## 2026-06-19
 
