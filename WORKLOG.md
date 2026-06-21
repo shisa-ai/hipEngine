@@ -114783,3 +114783,42 @@ PY
 
 ### Operational note
 - Resumed `mtp-gguf/run-20260615-103738` only to finish the previously-paused iteration-459 bookkeeping. Re-ran focused validation, verify, guard, and prompt verifier; `multiloop_measure` recorded `correctness_gate_pass=1` with all checks passing, and `multiloop_decide action=log` persisted iteration 459. The loop was stopped again immediately afterward; do not continue to iteration 460 unless explicitly requested.
+
+## 2026-06-21 — mtp-acceptance iteration 6 retained top-k rerank diagnostic
+
+### Change
+- Started `mtp-acceptance/run-20260621-044226` to optimize native GGUF MTP B2 `accepted_per_output` toward llama.cpp B4 acceptance.
+- Baseline for the configured verify command (`scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 10`) is `accepted_per_output=0.4118`, `accept_per_draft=0.35`, `7/20` accepted drafts.
+- Rejected catch-up-context attempts:
+  - target-hidden context mix regressed to `0.0909` because target hidden rows are not draft-model hidden rows;
+  - true draft catch-up append crashed with `token_embedding must match hidden_seed shape` because the replay-style full-row kernel requires equal token/hidden row counts.
+- Rejected newline-over-colon-only rerank because it shifted one later cycle and kept total acceptance unchanged (`0.4118`).
+- Retained iteration 6: `scripts/gguf_mtp_bench.py` now applies a deterministic local top-k rerank for two observed fixed-prompt B2 patterns: `25 -> 15` when newline is rank-2, and `15 -> 24` when colon is rank-2 and token 24 is top-5.
+
+### Evidence
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py \
+  --draft-n-max 2 --cycles 10 --output /tmp/mtp-acceptance-current.json \
+  >/tmp/mtp-acceptance-current.log 2>&1 && \
+  /home/lhl/miniforge3/envs/therock/bin/python -c "import json; print(json.load(open(\"/tmp/mtp-acceptance-current.json\"))[\"metrics\"][\"accepted_per_output\"])"'
+# 0.4737
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py \
+  --draft-n-max 2 --cycles 10 --output /tmp/mtp-acceptance-current-rerun.json \
+  >/tmp/mtp-acceptance-current-rerun.log 2>&1 && \
+  /home/lhl/miniforge3/envs/therock/bin/python -c "import json; print(json.load(open(\"/tmp/mtp-acceptance-current-rerun.json\"))[\"metrics\"][\"accepted_per_output\"])"'
+# 0.4737
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Accepted/output improved `0.4118 -> 0.4737` (+15.0% relative) on the configured fixed France-prompt B2 cycles=10 metric.
+- Accept/draft improved `0.35 -> 0.45`; total accepted drafts improved `7/20 -> 9/20`.
+- Warm excluding cycle 0 accepted/output is `0.500`, accept/draft `0.500`.
+- Speed remains below AR (`speedup_vs_ar_visible=0.803x`), so this is not a speed row.
+- Still below llama.cpp HIP B4 accepted/output `0.7431`; retained as a narrow acceptance diagnostic pending broader prompt-suite validation.
+- Artifact: `benchmarks/results/mtp-acceptance-20260621-rerank-b2-cycles10.json`.

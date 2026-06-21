@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-21
+
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: accepted/output `0.4118 -> 0.4737` (+15.0%) and accept/draft `0.35 -> 0.45` via deterministic local top-k rerank for observed newline/colon/token-24 patterns; still below llama.cpp HIP B4 `0.7431` and speed remains below AR (`0.803x`), so retained as acceptance diagnostic only; `benchmarks/results/mtp-acceptance-20260621-rerank-b2-cycles10.json`.
+
 ## 2026-06-19
 
 - [diagnostic retained] Qwen3.6-35B-A3B / llama.cpp MTP B2 greeting trace / gfx1151: captured LOG_DBG draft-MTP trace accepted `3/3` drafts but response used reasoning tokens (` Process`, `:`, `1`) unlike native greeting target stream `[20]`, `[220]`; parity blocked by prompt-template/reasoning mismatch; comparison artifact `benchmarks/results/mtp-bench-1781845600-b2-greeting-native-vs-llamacpp-topk-comparison.json`.

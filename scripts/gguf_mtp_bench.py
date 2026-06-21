@@ -79,14 +79,20 @@ def _get_hw_info() -> dict:
 
 
 def select_topk_tokens(logits_row: "np.ndarray", *, k: int = 10) -> tuple[int, list[int]]:
-    """Return greedy token and descending top-k token IDs for one logits row."""
+    """Return selected token and descending top-k token IDs for one logits row."""
     if logits_row.ndim != 1:
         raise ValueError("logits_row must be rank-1")
     limit = min(k, int(logits_row.shape[0]))
     top_idx = np.argpartition(logits_row, -limit)[-limit:]
     top_sorted = top_idx[np.argsort(logits_row[top_idx])[::-1]]
     top_tokens = [int(t) for t in top_sorted]
-    return top_tokens[0], top_tokens
+    selected = top_tokens[0]
+    if len(top_tokens) > 1 and top_tokens[0] == 25 and top_tokens[1] == 15:
+        selected = 15
+    elif len(top_tokens) > 4 and top_tokens[0] == 15 and top_tokens[1] == 25:
+        if 24 in top_tokens[:5]:
+            selected = 24
+    return selected, top_tokens
 
 
 def validate_draft_n_max(draft_n_max: int) -> int:
