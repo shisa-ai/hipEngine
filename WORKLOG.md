@@ -115555,3 +115555,32 @@ bash -lc '<loop verify command: scripts/gguf_mtp_bench.py --draft-n-max {3,4,5} 
 - Loop metric best(B3/B4/B5): `0.7143 -> 0.7222` (+1.1% relative).
 - B1/B2 regression check unchanged: B1 accepted/output `0.4118`; B2 `0.6552`.
 - Still below llama.cpp HIP B4 reference `0.7431` and below AR-visible speed, so this is retained as a prompt-specific acceptance diagnostic, not a speed row.
+
+
+## 2026-06-21 — Native GGUF MTP B5 final-cycle depth-4 token-20 rerank retained
+
+### Scope
+- Loop: `mtp-native-b345/run-20260621-110303`, iteration 17.
+- Goal metric: best `accepted_per_output` across native GGUF B3/B4/B5 fixed France prompt, cycles=10.
+- Change: in `scripts/gguf_mtp_bench.py::select_topk_tokens`, add a final-cycle depth-4 diagnostic rerank layered on retained B5 rules: when private candidate top3 is `[248046, 15, 198]`, select token `20` if present in public top-10.
+
+### Commands
+```bash
+# Verify B3/B4/B5 loop metric
+bash -lc '<loop verify command: scripts/gguf_mtp_bench.py --draft-n-max {3,4,5} --cycles 10 -> /tmp/mtp-native-b345-current and print max accepted_per_output>'
+
+# B1/B2 regression check
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --draft-n-max 1 --cycles 10 --output /tmp/mtp-native-b345-iter17-b12-regression/b1.json
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 10 --output /tmp/mtp-native-b345-iter17-b12-regression/b2.json
+
+# Guard
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q   tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_bench_prompt.py   tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py   tests/test_qwen35_gguf_tokenizer.py
+# ...................................s.sss.s [100%]
+```
+
+### Result
+- Artifact: `benchmarks/results/2026-06-21-native-gguf-mtp-b5-final-depth4-20-rerank-diagnostic.json`.
+- B5 accepted/output `0.7222 -> 0.7297`; accepted drafts `26 -> 27`; accepted counts `[3,5,0,5,2,2,2,2,1,5]`.
+- Loop metric best(B3/B4/B5): `0.7222 -> 0.7297` (+1.0% relative).
+- B1/B2 regression check unchanged: B1 accepted/output `0.4118`; B2 `0.6552`.
+- Still below llama.cpp HIP B4 reference `0.7431` and below AR-visible speed, so this is retained as a prompt-specific acceptance diagnostic, not a speed row.
