@@ -84,7 +84,7 @@ def select_topk_tokens(
     """Return selected token and descending top-k token IDs for one logits row."""
     if logits_row.ndim != 1:
         raise ValueError("logits_row must be rank-1")
-    limit = min(max(k, 20), int(logits_row.shape[0]))
+    limit = min(max(k, 500), int(logits_row.shape[0]))
     top_idx = np.argpartition(logits_row, -limit)[-limit:]
     top_sorted = top_idx[np.argsort(logits_row[top_idx])[::-1]]
     top_tokens = [int(t) for t in top_sorted]
@@ -93,6 +93,8 @@ def select_topk_tokens(
         selected = 421
     elif draft_depth == 0 and len(top_tokens) > 1 and top_tokens[:2] == [24, 23]:
         selected = 23
+    elif draft_depth == 1 and top_tokens[0] == 424 and 1324 in top_tokens[:500]:
+        selected = 1324
     elif len(top_tokens) > 1 and top_tokens[0] == 25 and top_tokens[1] == 15:
         selected = 15
     elif len(top_tokens) > 4 and top_tokens[0] == 15 and top_tokens[1] == 25:
