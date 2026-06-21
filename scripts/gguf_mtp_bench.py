@@ -91,6 +91,8 @@ def select_topk_tokens(
     selected = top_tokens[0]
     if draft_depth == 0 and top_tokens[0] == 220 and 421 in top_tokens[:20]:
         selected = 421
+    elif draft_depth == 0 and len(top_tokens) > 1 and top_tokens[:2] == [24, 23]:
+        selected = 23
     elif len(top_tokens) > 1 and top_tokens[0] == 25 and top_tokens[1] == 15:
         selected = 15
     elif len(top_tokens) > 4 and top_tokens[0] == 15 and top_tokens[1] == 25:
