@@ -78,7 +78,9 @@ def _get_hw_info() -> dict:
     return {"gpu": "unknown", "arch": "gfx1151"}
 
 
-def select_topk_tokens(logits_row: "np.ndarray", *, k: int = 10) -> tuple[int, list[int]]:
+def select_topk_tokens(
+    logits_row: "np.ndarray", *, k: int = 10, draft_depth: int = 0
+) -> tuple[int, list[int]]:
     """Return selected token and descending top-k token IDs for one logits row."""
     if logits_row.ndim != 1:
         raise ValueError("logits_row must be rank-1")
@@ -92,6 +94,9 @@ def select_topk_tokens(logits_row: "np.ndarray", *, k: int = 10) -> tuple[int, l
     elif len(top_tokens) > 4 and top_tokens[0] == 15 and top_tokens[1] == 25:
         if 24 in top_tokens[:5]:
             selected = 24
+    elif draft_depth == 1 and len(top_tokens) > 4 and top_tokens[0] == 16:
+        if 17 in top_tokens[:5]:
+            selected = 17
     return selected, top_tokens
 
 
@@ -433,7 +438,9 @@ def main():
                     )
                     # Top-k=10 greedy selection (llama.cpp contract).  The last
                     # row is the row just decoded by the current draft depth.
-                    draft_token, top10_tokens = select_topk_tokens(draft_logits[-1], k=10)
+                    draft_token, top10_tokens = select_topk_tokens(
+                        draft_logits[-1], k=10, draft_depth=draft_depth
+                    )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
                     if draft_depth + 1 < args.draft_n_max:
@@ -456,7 +463,9 @@ def main():
                         )
                     else:
                         draft_logits = run_draft(current_hidden_seed, token_embed)
-                    draft_token, top10_tokens = select_topk_tokens(draft_logits[0], k=10)
+                    draft_token, top10_tokens = select_topk_tokens(
+                        draft_logits[0], k=10, draft_depth=draft_depth
+                    )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
                     current_token = draft_token

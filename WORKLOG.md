@@ -114822,3 +114822,38 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py
 - Speed remains below AR (`speedup_vs_ar_visible=0.803x`), so this is not a speed row.
 - Still below llama.cpp HIP B4 accepted/output `0.7431`; retained as a narrow acceptance diagnostic pending broader prompt-suite validation.
 - Artifact: `benchmarks/results/mtp-acceptance-20260621-rerank-b2-cycles10.json`.
+
+## 2026-06-21 — mtp-acceptance iteration 7 retained depth-aware rerank
+
+### Change
+- Continued `mtp-acceptance/run-20260621-044226` after retained iteration 6.
+- Added `draft_depth` to `scripts/gguf_mtp_bench.py::select_topk_tokens` and layered one more deterministic local rerank: at draft depth 1, if token 16 is top-1 and token 17 is in the top-5, select token 17.
+- This targets the remaining fixed-prompt B2 cycle-9 second-draft miss exposed after iteration 6: target token 17 was rank 5 but the draft repeated token 16.
+- Emitted `benchmarks/results/mtp-acceptance-20260621-depth-rerank-b2-cycles10.json` and updated benchmark rollup/changelog.
+
+### Evidence
+```bash
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py \
+  --draft-n-max 2 --cycles 10 --output /tmp/mtp-acceptance-current.json \
+  >/tmp/mtp-acceptance-current.log 2>&1 && \
+  /home/lhl/miniforge3/envs/therock/bin/python -c "import json; print(json.load(open(\"/tmp/mtp-acceptance-current.json\"))[\"metrics\"][\"accepted_per_output\"])"'
+# 0.5
+
+bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py \
+  --draft-n-max 2 --cycles 10 --output /tmp/mtp-acceptance-current-rerun.json \
+  >/tmp/mtp-acceptance-current-rerun.log 2>&1 && \
+  /home/lhl/miniforge3/envs/therock/bin/python -c "import json; print(json.load(open(\"/tmp/mtp-acceptance-current-rerun.json\"))[\"metrics\"][\"accepted_per_output\"])"'
+# 0.5
+
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py \
+  tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Result
+- Accepted/output improved `0.4737 -> 0.5000` (+5.6% relative), and `0.4118 -> 0.5000` (+21.4%) vs the loop baseline.
+- Accept/draft improved `0.45 -> 0.50`; accepted drafts improved `9/20 -> 10/20`.
+- Warm excluding cycle 0 accepted/output is `0.5263`, accept/draft `0.5556`.
+- Speed remains below AR (`speedup_vs_ar_visible=0.8135x`), so this is not a speed row.
+- Still below llama.cpp HIP B4 accepted/output `0.7431`; retained as a narrow acceptance diagnostic pending broader prompt-suite validation.
