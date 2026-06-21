@@ -53,11 +53,13 @@ def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
     assert top3 == [1, 4, 3]
 
 
-def test_validate_draft_n_max_accepts_b1_and_b2_only() -> None:
-    assert validate_draft_n_max(1) == 1
-    assert validate_draft_n_max(2) == 2
-    with pytest.raises(ValueError, match="B3-B4"):
-        validate_draft_n_max(3)
+def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
+    for budget in range(1, 6):
+        assert validate_draft_n_max(budget) == budget
+    with pytest.raises(ValueError, match="1..5"):
+        validate_draft_n_max(0)
+    with pytest.raises(ValueError, match="1..5"):
+        validate_draft_n_max(6)
 
 
 def test_llama_cpp_mtp_catchup_rows_shift_target_hidden_right() -> None:

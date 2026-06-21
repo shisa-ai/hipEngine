@@ -1011,6 +1011,12 @@ is now answered by the M1 required/optional table.)
       accepted-per-draft/output denominator labels, and captured
       llama.cpp draft-trace oracle provenance/denominator checks; B1 runtime
       execution remains in the next backlog row.
+- [x] Wire `scripts/gguf_mtp_bench.py` fixed-prompt native diagnostic for
+      `--draft-n-max 1..5`. This is a local chained-draft acceptance smoke, not
+      the prompt-suite persistent GGUF MTP context; artifacts label
+      `mtp_context_mode` so B3-B5 diagnostic rows are not mistaken for retained
+      performance parity. B5 prompt-suite preflight fixtures/oracles remain a
+      separate follow-up if we decide to compare llama.cpp `--spec-draft-n-max 5`.
 - [x] Gate Parity Preconditions (token-id + sampling parity) before comparison;
       `scripts/gguf_mtp_parity_precheck.py` now provides the fail-fast gate,
       `benchmarks/fixtures/gguf_mtp_b1_sampling_greedy_seed12345.json` pins the

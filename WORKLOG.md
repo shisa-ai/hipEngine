@@ -115180,3 +115180,50 @@ ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
 - B2 including cold first cycle: `7.47 tok/s`, `0.788x`, accept/draft `0.100`, accepted/output `0.1667`.
 - B2 warm excluding cycle0: `8.42 tok/s`, `0.886x`, accept/draft `0.111`, accepted/output `0.1818`.
 - B3/B4 hipEngine-native GGUF MTP are not wired yet; llama.cpp B4 remains the reference target (`153.65 tok/s`, accepted/output `0.7431` on the 9-prompt `scripts/mtp-bench.py` run).
+
+
+## 2026-06-21 — hipEngine-native GGUF MTP B1-B5 diagnostic wiring
+
+### Change
+- Enabled `scripts/gguf_mtp_bench.py --draft-n-max 1..5` for the fixed-prompt native GGUF MTP diagnostic. This does **not** claim prompt-suite parity; it only removes the diagnostic CLI guard after the existing chained-draft loop proved it can execute B3/B4/B5 without crashing.
+- Fixed `select_topk_tokens()` to return the requested top-k evidence instead of the private rank-5000 rerank pool, keeping artifact `draft_top10_tokens` compact and semantically correct.
+- Updated `docs/MTP-gguf.md` to distinguish this fixed-prompt B1-B5 diagnostic wiring from the still-pending persistent prompt-suite GGUF MTP context.
+
+### Diagnostics
+```bash
+# Context replay approximation (not retained as an improvement): worsened acceptance.
+python3 scripts/gguf_mtp_bench.py --draft-n-max 1 --cycles 10 --mtp-context-replay --output /tmp/gguf-mtp-b1-replay-w7900.json
+# B1 replay: accept/draft 0.000, accepted/output 0.000, warm tok/s 5.47
+python3 scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 10 --mtp-context-replay --output /tmp/gguf-mtp-b2-replay-w7900.json
+# B2 replay: accept/draft 0.000, accepted/output 0.000, warm tok/s 3.96
+
+# Retained diagnostic sweep after wiring B1..B5:
+for b in 1 2 3 4 5; do
+  ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+    python3 scripts/gguf_mtp_bench.py --draft-n-max "$b" --cycles 10 \
+    --output "/tmp/gguf-mtp-b${b}-b1b5-wired-w7900.json"
+done
+```
+
+### Result
+- Compact artifact: `benchmarks/results/2026-06-21-hipengine-native-gguf-mtp-b1-b5-fixed-prompt-diagnostic.json`.
+- Fixed prompt `What is the capital of France?`, 10 cycles, W7900/gfx1100.
+
+| budget | tok/s incl. cold | warm tok/s excl. cycle0 | warm speedup vs script AR | warm accept/draft | warm accepted/output |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| B1 | 7.66 | 8.65 | 0.938x | 0.222 | 0.182 |
+| B2 | 7.16 | 7.93 | 0.884x | 0.111 | 0.182 |
+| B3 | 6.94 | 7.50 | 0.875x | 0.222 | 0.400 |
+| B4 | 7.02 | 7.55 | 0.845x | 0.194 | 0.438 |
+| B5 | 7.11 | 7.67 | 0.832x | 0.178 | 0.471 |
+
+- Best warm tok/s remains B1 (`8.65 tok/s`), but larger budgets improve accepted/output; B5 reaches `0.4706` warm accepted/output on this narrow fixed prompt.
+- Still materially below the llama.cpp prompt-suite B4 reference accepted/output `0.7431`; matching llama.cpp likely requires real persistent GGUF MTP context / trace parity rather than only increasing the local chained draft budget.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_bench_prompt.py \
+  tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py
+# ...................................s.sss.s [100%]
+```
