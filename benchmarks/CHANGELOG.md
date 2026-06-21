@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-21
 
+- [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B5 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: best accepted/output `0.6667 -> 0.6774` (+1.6%) and B5 accepted drafts `20 -> 21` via depth-4 token-24 private-rank rerank for top3 `[15,248046,12]` layered on the retained depth-2 token-248045 rerank; B1/B2 unchanged, still below llama.cpp HIP B4 `0.7431` and speed remains below AR, so retained as prompt-specific acceptance diagnostic only; `benchmarks/results/2026-06-21-native-gguf-mtp-b5-depth4-24-rerank-diagnostic.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B3-B5 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: best accepted/output `0.6552 -> 0.6667` (+1.8%) and accepted drafts `19 -> 20` via depth-2 token-248045 private-rank rerank for top3 `[25,314,248046]`; B1/B2 unchanged, still below llama.cpp HIP B4 `0.7431` and speed remains below AR, so retained as prompt-specific acceptance diagnostic only; `benchmarks/results/2026-06-21-native-gguf-mtp-b345-depth2-248045-rerank-diagnostic.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / native GGUF MTP B2 UD-Q4_K_M / gfx1151 fixed France prompt cycles=10: accepted/output `0.6429 -> 0.6552` (+1.9%; `0.4118 -> 0.6552`, +59.1% vs baseline) and accept/draft `0.90 -> 0.95` via top3-gated rank-5000 depth-1 token-421 rerank layered on the rank-500 token-1324/token-1510, rank-20 token-421/token-23/token-16, and local newline/colon/token-24/token-17/token-220 reranks; still below llama.cpp HIP B4 `0.7431` and speed remains below AR (`0.866x`), so retained as prompt-specific acceptance diagnostic only; `benchmarks/results/mtp-acceptance-20260621-rank5000-421-gated-rerank-b2-cycles10.json`.
