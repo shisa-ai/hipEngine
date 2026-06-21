@@ -51,7 +51,7 @@ numbers below.
 - INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
 - The OpenAI-compatible server now has resident context/KV preallocation, startup warmup, max-prompt scratch probing, bounded chat-shaped startup smoke, `/ready` diagnostics, request context admission, and `max_tokens=auto` defaults for chat requests that omit an output cap.
 - `LLM.stream()` and `stream=true` chat completions run token-level resident decode, with Qwen/DeepSeek-style `<think>...</think>` spans split into `reasoning_content` in both streaming and non-streaming responses.
-- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_M sweep is in [Performance](#performance) alongside packed PARO and llama.cpp HIP/Vulkan Q4_K_M baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
+- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_S.gguf) GGUF support has landed (W7900 Q4_K_M sweep is in [Performance](#performance) alongside packed PARO and llama.cpp HIP/Vulkan Q4_K_M baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is the lower-memory secondary file; Q4_K_M is the active 1:1 llama.cpp comparison target and current 24 GiB BF16-KV support is mid-context unless a lower-memory KV/weight policy is enabled. GGUF also has a higher per-session load cost (~60 s vs ~38 s for PARO packed on the same W7900/TheRock stack) for the same decode-repack reason.
 - Current gfx1100 and gfx1151 performance snapshots are summarized in [Performance](#performance) with hardware-separated tables and recent llama.cpp baselines.
 
 
@@ -357,10 +357,25 @@ Current caveats:
 - PARO models take ~24s to load on the W7900 test host; GGUF currently takes
   about 60s because decode-repack happens on load. On-disk caching could reduce
   startup time later, but would require additional storage for repacked layouts.
-- GGUF has higher resident memory than packed PARO. In the current W7900 README
-  sweep, the max-context Q4_K_S session peaks at ~25.1 GiB tracked, so 128K is
-  W7900/48 GiB territory; on 24 GiB cards, expect roughly 64K context with
-  Q4_K_S.
+- GGUF has higher base weight residency than packed PARO before KV cache is the
+  deciding factor. The full-attention KV slope is the same 10-layer Qwen3.6
+  shape; the 24 GiB long-context gap is mostly the loaded-weight baseline.
+  Packed PARO is ~19.07 GiB on disk, while the local GGUF tensor payloads are:
+
+  | GGUF tensor family | Q4_K_M GiB | Q4_K_M mix | Q4_K_S GiB | Q4_K_S mix | Q4_K_S - Q4_K_M |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | Q4_K | 11.531 | 54.7% | 16.875 | 84.8% | +5.344 |
+  | Q5_K | 6.531 | 31.0% | 0.000 | 0.0% | -6.531 |
+  | Q8_0 | 1.932 | 9.2% | 1.932 | 9.7% | +0.000 |
+  | Q6_K | 1.004 | 4.8% | 1.004 | 5.0% | +0.000 |
+  | F32/BF16 metadata | 0.098 | 0.5% | 0.098 | 0.5% | +0.000 |
+  | **Total tensor payload** | **21.097** | **100.0%** | **19.909** | **100.0%** | **-1.188** |
+
+  In other words, `Q4_K_S` saves ~1.19 GiB versus `Q4_K_M` by replacing the
+  selected-MoE `Q5_K` expert-down payload with `Q4_K`; it still starts above
+  packed PARO, and hipEngine's resident T16/pack8 decode layouts add their own
+  allocator shape. On 24 GiB cards, current `Q4_K_M` BF16-KV support is a
+  mid-context path unless a lower-memory KV/weight policy is explicitly enabled.
 - GGUF is close enough to PARO to share some high-level scheduling ideas, but in
   practice it needs substantial GGUF-only kernels and dispatch. The goal for
   future releases is to keep closing the remaining PARO/GGUF speed gap.
