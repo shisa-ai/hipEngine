@@ -115103,3 +115103,46 @@ bash -lc '/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py
 - Warm excluding cycle 0 accepted/output is `0.6538`, accept/draft `0.9444`.
 - Speed remains below AR (`speedup_vs_ar_visible=0.8661x`), so this is not a speed row.
 - Still below llama.cpp HIP B4 accepted/output `0.7431`; retained as a narrow, rank-5000 prompt-specific acceptance diagnostic pending broader prompt-suite validation.
+
+
+## 2026-06-21 — GGUF MTP mtp-bench W7900 B1-B4 diagnostic
+
+### Run
+- User clarified this sweep should be GGUF-MTP, not the PARO `hipengine-current` wrapper.
+- Ran `scripts/mtp-bench.py` as the llama.cpp-compatible client against a local llama.cpp HIP GGUF server on GPU0/W7900 with `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+- This is an external GGUF server diagnostic (`performance_claim=false`), not a hipEngine-native GGUF MTP runtime acceptance row; the native in-tree `scripts/gguf_mtp_bench.py` path still guards B3/B4 as not wired.
+
+### Commands
+```bash
+# Common server command; MTP rows add --spec-type draft-mtp --spec-draft-n-max {1,2,3,4}
+ROCR_VISIBLE_DEVICES=0 HIP_VISIBLE_DEVICES=0 \
+/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 \
+  --host 127.0.0.1 --port 18080 --alias llama --no-cache-prompt
+
+python3 scripts/mtp-bench.py \
+  --url http://127.0.0.1:18080 \
+  --max-tokens 32 \
+  --temperature 0 \
+  --no-cache-prompt \
+  --extra-payload '{"top_k":1,"top_p":1.0,"min_p":0.0,"stream":false,"cache_prompt":false}' \
+  --timeout 900 \
+  --out /tmp/gguf-mtp-w7900-mtp-bench-20260621/<ar|b1|b2|b3|b4>.json
+```
+
+### Result
+- Compact artifact: `benchmarks/results/2026-06-21-gguf-mtp-mtp-bench-w7900-b1-b4-diagnostic.json`.
+- Workload: 9 `benchmarks/fixtures/llamacpp_mtp_bench_prompts.json` prompts, `max_tokens=32`, total predicted tokens per mode `288`, W7900/gfx1100, f16 K/V, flash attention on.
+- Decode-timing weighted tok/s and acceptance:
+
+| mode | decode tok/s | speedup vs AR | client wall tok/s | accept/draft | accepted/output |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| AR | 80.58 | 1.000x | 57.37 | n/a | 0.000 |
+| B1 | 110.53 | 1.372x | 69.06 | 0.985 | 0.469 |
+| B2 | 127.51 | 1.582x | 75.39 | 0.962 | 0.622 |
+| B3 | 144.40 | 1.792x | 80.67 | 0.927 | 0.705 |
+| B4 | 153.65 | 1.907x | 83.24 | 0.922 | 0.743 |
+
+- Optimum on this run is B4 by aggregate decode tok/s, client wall tok/s, and accepted/output. B4 accepts fewer drafted tokens fractionally than B1/B2, but the higher visible-token density wins.
+- Per-prediction-type best is B4 for all prompts except `creative_short`, where B3 narrowly beat B4 (`142.17` vs `141.39` tok/s).
