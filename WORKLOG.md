@@ -115791,3 +115791,24 @@ bash -lc '<loop verify command: scripts/gguf_mtp_bench.py --draft-n-max {3,4,5} 
 - Category speed winners: `code` B3 (`72.59 tok/s`, `1.448x` AR); `general_en` B2 (`63.83 tok/s`, `1.272x`); `general_ja` B2 (`62.25 tok/s`, `1.245x`); `mixed_ja_en` B2 (`67.27 tok/s`, `1.339x`).
 - Category accepted/output winner is B5 for all four categories: code `0.7407`, general_en `0.6689`, general_ja `0.6689`, mixed_ja_en `0.7285`.
 - Validation: all six JSONs parsed; each run has 10 rows and all four category summaries; compact artifact passed `python3 -m json.tool`.
+
+
+## 2026-06-22 — hipEngine GGUF-MTP category wrapper added
+
+### Scope
+- Task #22: prepare a direct hipEngine GGUF-MTP category benchmark after the llama.cpp-only matrix was mistakenly treated as the requested native run.
+- Added `scripts/gguf_mtp_category_bench.py`, a thin wrapper around the existing native `scripts/gguf_mtp_bench.py` diagnostic path.
+- The wrapper runs `benchmarks/prompts/mtpbench-code-general-ja.jsonl` over B1..B5, stores each child JSON/log under a raw root, and emits total/category weighted decode tok/s, accepted/output, draft acceptance, and MTP-vs-native-AR ratios.
+- Important limitation recorded in wrapper artifacts: the `off` row is derived from B1 target-AR verifier timing because there is not yet a standalone native GGUF category-suite AR server path; cycles are verifier cycles, not llama.cpp `max_tokens`.
+
+### Validation
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python -m py_compile scripts/gguf_mtp_category_bench.py
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_category_bench.py   --limit 2 --budgets 1,2 --cycles 2 --dry-run   --output /tmp/hipengine-gguf-mtp-category-dryrun.json   --raw-root /tmp/hipengine-gguf-mtp-category-dryrun
+python3 -m json.tool /tmp/hipengine-gguf-mtp-category-dryrun.json
+
+# Real smoke: one prompt, B1, one verifier cycle
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_category_bench.py   --limit 1 --budgets 1 --cycles 1   --raw-root /tmp/hipengine-gguf-mtp-category-smoke   --output /tmp/hipengine-gguf-mtp-category-smoke/summary.json
+python3 -m json.tool /tmp/hipengine-gguf-mtp-category-smoke/summary.json
+```
+- Smoke completed and produced total rows for `off` and `b1`.
