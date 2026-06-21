@@ -115227,3 +115227,47 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_be
   tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py
 # ...................................s.sss.s [100%]
 ```
+## 2026-06-21 — GGUF MTP before/after acceptance benchmark diagnostic
+
+### Scope
+- User asked whether the GGUF MTP acceptance work moved benchmark-visible performance; the active `mtp-acceptance` loop was paused, so no multiloop actions were run.
+- Main worktree was dirty with paused-loop scratch edits in `scripts/gguf_mtp_bench.py`; measurements used detached clean worktrees instead:
+  - before fixed-prompt rerank-loop baseline: `9e81f7a5b00c06cea04b0789058e6f36620ed78d`
+  - after retained best: `95b5b16b5472c7125b38638bfdfdf1c32ffef1c8`
+- Run root: `/tmp/hipengine-mtp-compare-20260621-155344`.
+- Artifact: `benchmarks/results/2026-06-21-gguf-mtp-before-after-acceptance-diagnostic.json`.
+
+### Commands
+```bash
+# Worktrees
+git worktree add --detach /tmp/hipengine-mtp-compare-20260621-155344/before 9e81f7a5b00c06cea04b0789058e6f36620ed78d
+git worktree add --detach /tmp/hipengine-mtp-compare-20260621-155344/after 95b5b16b5472c7125b38638bfdfdf1c32ffef1c8
+
+# Fixed prompt, cycles=10, B1/B2 on both commits
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --draft-n-max {1,2} --cycles 10 --output <json>
+
+# Current retained three-prompt sweep, cycles=5, B1/B2
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --draft-n-max {1,2} --cycles 5 --prompt <capital|count|greeting> --output <json>
+
+# B3-B5 support probe on current retained code
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --draft-n-max {3,4,5} --cycles 10 --output <json>
+
+# Guard
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q   tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py   tests/test_qwen35_gguf_tokenizer.py
+# ......................s.sss.s [100%]
+```
+
+### Results
+- Fixed prompt (`What is the capital of France?`, cycles=10):
+  - B1 accepted/output `0.3333 -> 0.4118`; speedup_vs_ar_visible `0.8323x -> 0.8503x`.
+  - B2 accepted/output `0.4118 -> 0.6552` (+59.1% rel); accept/draft `0.35 -> 0.95`; visible tokens/cycle `1.7 -> 2.9`; tok/s `15.60 -> 17.25`; speedup_vs_ar_visible `0.7769x -> 0.8646x`.
+- Old 2026-06-20 three-prompt B2 sweep (`benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json`) vs current retained rerun:
+  - Aggregate B2 accepted/output `0.1667 -> 0.4231` (+153.8% rel); accept/draft `0.10 -> 0.3667`; accepted drafts `3/30 -> 11/30`.
+  - Current per-prompt B2 accepted/output: capital `0.6429`, count `0.2857`, greeting `0.0000`.
+  - Current aggregate B2 speed remains below AR: mean cold speedup_vs_ar_visible `0.7067x`, mean warm `0.8457x`.
+- Current retained B1 three-prompt aggregate: accepted/output `0.2857`, accept/draft `0.40`, mean cold speedup_vs_ar_visible `0.7461x`.
+- B3/B4/B5 are unsupported in `scripts/gguf_mtp_bench.py` and fail fast with rc=2: only B1/B2 target-attached GGUF MTP is wired.
+
+### Interpretation
+- The `~0.17 -> 0.65` shorthand mixes two scopes. The old broad sweep was `0.1667`; current broad sweep is `0.4231`. The retained `0.6552` is the fixed capital prompt, cycles=10.
+- Acceptance improved substantially, but this GGUF diagnostic path is still not a retained speed row: target verification is serial and draft overhead keeps MTP below the script's AR-visible baseline.
