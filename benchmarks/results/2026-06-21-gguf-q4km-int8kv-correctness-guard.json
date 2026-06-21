@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "date": "2026-06-21",
+  "label": "gguf_q4km_int8_kv_correctness_guard",
+  "status": "blocked_long_int8_only_guarded",
+  "performance_claim": false,
+  "git_commit_before_change": "046024daf759c72bd435370aad6970cc53679350",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "decision": {
+    "default_behavior": "BF16 KV remains the GGUF default. Explicit int8_per_token_head is correctness-admitted only for rounded max contexts <=8192 where the BF16 mirror is retained.",
+    "long_context_behavior": "Rounded max contexts >8192 are blocked by default; set HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 only to reproduce old INT8-only capacity diagnostics.",
+    "reason": "The INT8-only no-mirror GGUF path failed a BF16-vs-INT8 logit gate even at 4K on W7900, so it is not safe to expose silently as a correctness path."
+  },
+  "primitive_int8_accuracy": {
+    "source_json": "/tmp/hipengine-gguf-int8-primitive-64-520.json",
+    "status": "accepted",
+    "passed": true,
+    "command": "python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --seed 1234 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-gguf-int8-primitive-64-520.json",
+    "contexts": [
+      64,
+      520
+    ],
+    "max_quantization_kl": 2.3352905641751685e-07,
+    "min_quantization_top1": 1.0
+  },
+  "short_mirror_correctness": {
+    "source_artifact": "benchmarks/results/2026-06-21-gpu1-gguf-q4km-int8kv-short-mirror-diagnostic.json",
+    "status": "diagnostic_no_hold",
+    "targeted_tests_passed": true,
+    "short_gate_final_ids_match_prior_bf16": {
+      "4K/128": true,
+      "512/128": true
+    },
+    "logits_probe": {
+      "path": "/tmp/gguf-int8-correctness-int8fp16-mirror.json",
+      "prompt_lengths": {
+        "4096": {
+          "decode1_token": 11048,
+          "note": "Compared externally against /tmp/gguf-int8-correctness-bf16.json: KL=0 and max_abs=0 for prefill and first decode after BF16 mirror.",
+          "prefill_token": 40218
+        },
+        "512": {
+          "decode1_token": 318,
+          "note": "Compared externally against /tmp/gguf-int8-correctness-bf16.json: KL=0 and max_abs=0 for prefill and first decode after BF16 mirror.",
+          "prefill_token": 168156
+        }
+      }
+    }
+  },
+  "w7900_no_mirror_logit_gate": {
+    "source_json": "/tmp/hipengine-gguf-int8-kv-correctness-4k-nomirror-w7900.json",
+    "status": "rejected_correctness",
+    "passed": false,
+    "command": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 4K --decode-steps 1 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-gguf-int8-kv-correctness-4k-nomirror-w7900.json",
+    "environment": {
+      "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+      "hip_visible_devices": "0",
+      "hipengine_hip_arch": "gfx1100",
+      "rocm_path": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel"
+    },
+    "prompt_length": 4096,
+    "require_no_bf16_mirror": true,
+    "candidate_mirror_cache_count": 0,
+    "metrics": {
+      "first_top1_mismatch_index": 1,
+      "kl_max": 0.5515616710573051,
+      "kl_mean": 0.27578083552865257,
+      "passed": false,
+      "top1_agreement": 0.5,
+      "top1_mismatch_count": 1
+    },
+    "reference_top1_token_ids": [
+      40218,
+      11048
+    ],
+    "candidate_top1_token_ids": [
+      40218,
+      246834
+    ],
+    "correctness_failures": [
+      "prompt=4096: KL/top1 gate failed: kl_mean=0.275781 <= 0.05, top1=0.5 >= 0.9"
+    ],
+    "rerun_with_current_code_requires_env": "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1"
+  },
+  "validation": {
+    "py_compile": "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_int8_kv_policy.py tests/test_qwen35_gguf_decode_repack_dispatch.py scripts/qwen35_gguf_int8_kv_correctness.py",
+    "ruff": "python3 -m ruff check hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_int8_kv_policy.py tests/test_qwen35_gguf_decode_repack_dispatch.py scripts/qwen35_gguf_int8_kv_correctness.py",
+    "pytest": "python3 -m pytest tests/test_qwen35_gguf_int8_kv_policy.py tests/test_qwen35_gguf_decode_repack_dispatch.py -q"
+  },
+  "notes": [
+    "Primitive HIP INT8 writer/decode accuracy is green on synthetic contexts 64 and 520, so the GGUF rejection is model/logit quality of the current per-token/head INT8-only route, not a basic wrapper failure.",
+    "The 4K no-mirror run used max_sequence_length=131202 to force the same no-BF16-mirror path that long contexts would use.",
+    "Earlier 128K and 32K same-script W7900 attempts timed out before artifact write; they are superseded by the faster 4K no-mirror rejection because the unmirrored path already fails the relaxed logit gate.",
+    "The no-mirror logit-gate command was captured immediately before adding the fail-fast guard; with current code, set HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 to reproduce the same INT8-only path instead of the new admission error."
+  ]
+}

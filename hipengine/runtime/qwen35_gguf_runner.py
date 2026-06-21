@@ -2699,9 +2699,11 @@ _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
-# Keep explicit INT8-KV short gates on the exact BF16 decode path.  Longer
-# contexts still use the retained INT8 cache for capacity.
+# Keep explicit INT8-KV short gates on the exact BF16 decode path. Longer
+# contexts are correctness-blocked by default; the env below exists only for
+# reproducing capacity/quality diagnostics of the unverified INT8-only path.
 _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS = 8192
+_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
@@ -2757,6 +2759,22 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
 
 def _gguf_host_token_embedding_requested() -> bool:
     return _env_flag(_GGUF_HOST_TOKEN_EMBEDDING_ENV, False)
+
+
+def _validate_gguf_int8_kv_context(*, kv_storage_dtype: DType, max_positions: int) -> None:
+    if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        return
+    if int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS:
+        return
+    if _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False):
+        return
+    raise ValueError(
+        "GGUF int8_per_token_head KV is correctness-admitted only for rounded max contexts "
+        f"<= {_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS} where the BF16 mirror is retained; "
+        f"got rounded max context {int(max_positions)}. The INT8-only long-context path failed "
+        "BF16-vs-INT8 logit gates and is diagnostic-only. Set "
+        f"{_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV}=1 only to reproduce blocked capacity diagnostics."
+    )
 
 
 def _q8_0_embedding_rows_to_bf16(
@@ -3006,6 +3024,12 @@ class Qwen35GGUFResidentSession:
             raise ValueError("GGUF resident INT8 KV scales must use fp16 or fp32")
         if self.kv_scale_granularity != "per_token_head":
             raise ValueError("GGUF resident INT8 KV scale granularity must be per_token_head")
+        requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
+        rounded_positions = min(
+            int(self.runner.weights.config.context_length),
+            ((requested_positions + 255) // 256) * 256,
+        )
+        _validate_gguf_int8_kv_context(kv_storage_dtype=self.kv_storage_dtype, max_positions=rounded_positions)
         runtime = self.runtime or get_hip_runtime()
         if _gguf_host_token_embedding_requested():
             self._offload_token_embedding_to_host(runtime=runtime)

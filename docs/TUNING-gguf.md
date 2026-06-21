@@ -135,14 +135,20 @@ is a capacity proof, **not** a promoted path. A follow-up explicit
 `--kv-storage int8_per_token_head` diagnostic kept graph-class decode and fit
 `128K/128` on GPU1 (`760.724` prefill / `64.923` decode tok/s, `22.911 GiB`
 tracked / `23.472 GiB` sampled) via INT8 full-attention KV plus a temporary
-BF16 prefill-oracle cache, but it is also **not** promoted: primary short gates
-drifted IDs (`512/128` `318 -> 220`, `4K/128` `220 -> 34105`) and `512/128`
-decode regressed (`123.726 -> 112.313 tok/s`) versus the default BF16 rerun.
-Artifact: `benchmarks/results/2026-06-18-gpu1-gguf-q4km-int8kv-128k-diagnostic.json`.
-Do not promote or claim 24 GiB-class `128K/128` Q4_K_M support until a passing
-exact artifact preserves primary-gate IDs/logits and graph-class decode, or the
-human lead explicitly accepts the host-embedding/INT8-KV decode/accuracy tradeoff,
-a lower max-context, or a Q4_K_S fallback policy.
+BF16 prefill-oracle cache, but it is also **not** promoted: the initial short
+primary gates drifted IDs (`512/128` `318 -> 220`, `4K/128` `220 -> 34105`) and
+`512/128` decode regressed (`123.726 -> 112.313 tok/s`) versus the default BF16
+rerun. Artifact:
+`benchmarks/results/2026-06-18-gpu1-gguf-q4km-int8kv-128k-diagnostic.json`.
+The 2026-06-21 short BF16 mirror fixes short-gate IDs/logits, but the unmirrored
+INT8-only route still fails BF16-vs-INT8 logits (`4K` no-mirror W7900 gate:
+`KL=0.275781`, top-1 `0.5`). Long GGUF INT8 contexts therefore fail fast by
+default unless `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` is set for
+capacity reproduction. Do not promote or claim 24 GiB-class `128K/128` Q4_K_M
+support until a calibrated INT8 format/kernel passes the logit gate while
+retaining graph-class decode, or the human lead explicitly accepts the
+host-embedding/INT8-KV decode/accuracy tradeoff, a lower max-context, or a
+Q4_K_S fallback policy.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -382,9 +388,12 @@ Current focused lanes from evidence:
   normal, rerun hermetically before blaming kernels.
 - **Primary next goal: make GGUF INT8 KV correct.** Short explicit
   `--kv-storage int8_per_token_head` sessions now use a BF16 mirror and match the
-  BF16 gate IDs/logits, but the long `128K/128` capacity path remains INT8-only
-  and has not passed a quality/correctness promotion gate. This work is required
-  irrespective of whether INT8 KV becomes the default memory policy.
+  BF16 gate IDs/logits. The unmirrored INT8-only path is not correctness-green:
+  a W7900 BF16-vs-INT8 no-mirror `4K` logit gate rejected it (`KL=0.275781`,
+  top-1 agreement `0.5`), so long GGUF INT8 contexts now fail fast by default
+  unless `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` is set for reproducing
+  old capacity diagnostics. A future useful INT8 path needs a calibrated
+  accuracy-safe KV format/kernel, not silent use of the current INT8-only route.
 - **Refresh attribution before the next optimization pass.** Before touching more
   kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
   current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the

@@ -224,6 +224,18 @@ python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
   --require-cached-build --json /tmp/hipengine-int8-kv-e2e-fixture-gate.json
 ```
 
+For GGUF Qwen3.6, add the resident BF16-vs-INT8 logit gate. Short contexts are
+expected to pass via the BF16 mirror; unmirrored long contexts must not be used
+for correctness claims unless this gate passes with `--require-no-bf16-mirror`:
+
+```bash
+python3 scripts/qwen35_gguf_int8_kv_correctness.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-lengths 512,4K --decode-steps 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-gguf-int8-kv-correctness.json
+```
+
 Required benchmark/profiler evidence for retained or blocked K1 rows:
 
 - exact benchmark command with model, quant, backend, hardware, prompt/decode

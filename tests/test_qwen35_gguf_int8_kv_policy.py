@@ -6,7 +6,11 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from hipengine.runtime.qwen35_gguf_runner import (
+    _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV,
+    Qwen35GGUFResidentSession,
+    _validate_gguf_int8_kv_context,
+)
 from scripts.qwen35_gguf_bench import _decode_scratch_breakdown
 
 
@@ -129,6 +133,41 @@ def test_gguf_int8_short_prefill_prefers_bf16_mirror_cache_when_available() -> N
     assert layer_scratch.retained_append_spans is not None
     assert layer_scratch.retained_append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
     assert layer_scratch.retained_append_spans.scale_metadata is metadata
+
+
+def test_gguf_int8_context_guard_allows_short_mirror_without_env(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+
+    _validate_gguf_int8_kv_context(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=8192,
+    )
+
+
+def test_gguf_int8_context_guard_blocks_unverified_long_without_env(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+
+    try:
+        _validate_gguf_int8_kv_context(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=8448,
+        )
+    except ValueError as exc:
+        message = str(exc)
+    else:  # pragma: no cover - assertion clarity
+        raise AssertionError("expected long GGUF INT8 KV context to be blocked")
+
+    assert "diagnostic-only" in message
+    assert _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV in message
+
+
+def test_gguf_int8_context_guard_allows_long_diagnostic_with_env(monkeypatch) -> None:
+    monkeypatch.setenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, "1")
+
+    _validate_gguf_int8_kv_context(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=131328,
+    )
 
 
 def test_gguf_decode_scratch_breakdown_reports_int8_kv_scales_separately() -> None:
