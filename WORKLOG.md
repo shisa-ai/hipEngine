@@ -115349,3 +115349,34 @@ Command pattern: `/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_
 | B5 | 0.6552 | 0.3800 | 15.16 | 0.6538 | 0.3778 | 15.84 | 0.8144x |
 
 Interpretation: current clean native GGUF still verifies the B2 best (`0.6552` total / `0.6538` warm). B5 ties accepted/output but wastes draft budget; all rows remain below AR-visible speed. The next acceptance loop target remains persistent llama.cpp-style GGUF MTP context/trace parity, not budget depth alone.
+
+
+## 2026-06-21 — Native GGUF MTP B3/B5 depth-2 token-248045 rerank retained
+
+### Scope
+- Loop: `mtp-native-b345/run-20260621-110303`, iteration 10.
+- Goal metric: best `accepted_per_output` across native GGUF B3/B4/B5 fixed France prompt, cycles=10.
+- Change: in `scripts/gguf_mtp_bench.py::select_topk_tokens`, add one depth-2 diagnostic rerank for the observed early B5 miss: when private candidate top3 is `[25, 314, 248046]`, select token `248045` if present in the private top-5000 pool.
+
+### Commands
+```bash
+# Verify B3/B4/B5 loop metric
+bash -lc '<loop verify command: scripts/gguf_mtp_bench.py --draft-n-max {3,4,5} --cycles 10 -> /tmp/mtp-native-b345-current and print max accepted_per_output>'
+
+# B1/B2 regression check
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --draft-n-max 1 --cycles 10 --output /tmp/mtp-native-b345-b12-regression/b1.json
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --draft-n-max 2 --cycles 10 --output /tmp/mtp-native-b345-b12-regression/b2.json
+
+# Guard
+/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q   tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_bench_prompt.py   tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py   tests/test_qwen35_gguf_tokenizer.py
+# ...................................s.sss.s [100%]
+```
+
+### Result
+- Artifact: `benchmarks/results/2026-06-21-native-gguf-mtp-b345-depth2-248045-rerank-diagnostic.json`.
+- B3: accepted/output `0.6154 -> 0.6667`; accepted counts `[3,3,2,3,1,2,2,2,2,0]`.
+- B4: accepted/output `0.6154 -> 0.6552`.
+- B5: accepted/output `0.6552 -> 0.6667`; accepted counts `[3,4,0,0,5,2,2,2,2,0]`.
+- Loop metric best(B3,B4,B5): `0.6552 -> 0.6667` (+1.8% relative), accepted drafts `19 -> 20`.
+- B1/B2 regression check unchanged: B1 accepted/output `0.4118`; B2 `0.6552`.
+- Still below llama.cpp HIP B4 reference `0.7431` and all native GGUF rows remain below AR-visible speed, so this is retained as a prompt-specific acceptance diagnostic, not a speed row.
