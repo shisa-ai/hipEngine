@@ -103,7 +103,11 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
             if not isinstance(raw_category, str) or not raw_category:
                 raise BenchError(f"{path}:{line_no}: category must be a non-empty string")
             category = raw_category
-            if "prompt" in raw:
+            has_prompt = "prompt" in raw
+            has_messages = "messages" in raw
+            if has_prompt and has_messages:
+                raise BenchError(f"{path}:{line_no}: expected exactly one of prompt or messages[]")
+            if has_prompt:
                 prompt_text = raw["prompt"]
                 if not isinstance(prompt_text, str):
                     raise BenchError(f"{path}:{line_no}: prompt text must be a string")

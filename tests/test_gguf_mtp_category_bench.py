@@ -571,6 +571,15 @@ def test_default_prompt_fixture_keeps_one_heldout_per_category() -> None:
         ({"id": "code_1", "category": 123, "prompt": "write code"}, "category must be a non-empty string"),
         ({"id": "code_1", "category": "code", "prompt": 123}, "prompt text must be a string"),
         (
+            {
+                "id": "code_1",
+                "category": "code",
+                "prompt": "write code",
+                "messages": [{"role": "user", "content": "write different code"}],
+            },
+            r"expected exactly one of prompt or messages\[\]",
+        ),
+        (
             {"id": "code_1", "category": "code", "messages": [{"content": "write code"}]},
             r"messages\[0\]\.role must be a non-empty string",
         ),

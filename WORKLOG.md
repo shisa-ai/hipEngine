@@ -118813,3 +118813,26 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 104: require one prompt text source
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 104.
+- Focused prompt fixture provenance contract: each prompt fixture row must provide exactly one prompt text source.
+
+### Change
+- `load_prompt_rows()` now rejects rows that contain both `prompt` and `messages[]` instead of silently using `prompt` and ignoring conflicting messages.
+- Added a regression for a row containing direct `prompt` text plus a different `messages[]` user prompt.
+- Updated `docs/BENCHMARK.md` to document exactly-one prompt text source per fixture row.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no valid-fixture split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
