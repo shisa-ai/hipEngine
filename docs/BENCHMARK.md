@@ -93,9 +93,15 @@ in-family. The corrected hermetic rerun recovered prefill to within
 hard, decode normal," first rerun through the wrapper before blaming kernels.
 
 The wrapper also captures the TheRock root and compiler version used to key JIT
-caches. Artifact notes may show TheRock HIP `hipMemGetInfo` totals that differ
-from `rocm-smi`; use hipEngine tracked/owned allocation peaks for per-session
-rollups and keep sampled HIP memory as auxiliary evidence.
+caches. If reproducing manually, set both the CLI `--compiler-version-file` and
+the environment cache-key guard (`HIPENGINE_COMPILER_VERSION_FILE=/tmp/...`; for
+HIPCC-specific wrappers also set `HIPENGINE_HIPCC_VERSION_FILE=/tmp/...`). Some
+lazy helper kernels are reached below the session constructor and rely on the
+environment variable rather than the top-level CLI flag; without it, long runs
+can appear to hang in `hipcc --version` probing instead of executing kernels.
+Artifact notes may show TheRock HIP `hipMemGetInfo` totals that differ from
+`rocm-smi`; use hipEngine tracked/owned allocation peaks for per-session rollups
+and keep sampled HIP memory as auxiliary evidence.
 
 ## Baselines to Beat
 

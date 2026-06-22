@@ -150,11 +150,14 @@ default: 3 BF16-primary full-attention layers followed by 7 INT8 layers with
 effective FP32 scales. The W7900 forced-long `4K` BF16-vs-hybrid gate passes
 (`KL mean=0.014025`, `KL max=0.028051`, top-1 `1.0`, no BF16 mirror); pure
 INT8-only reproduction still requires `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`.
-Do not promote or claim a throughput row for 24 GiB-class `128K/128` Q4_K_M until
-a full benchmark completes; GPU1 allocation of the hybrid `131328`-position
-session fits (`25,008,050,176` tracked bytes), but the attempted `128K/128`
-throughput run timed out before artifact. Evidence:
-`benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`.
+A follow-up GPU1 `128K/128` diagnostic completed after adding the required
+`HIPENGINE_COMPILER_VERSION_FILE`/`HIPENGINE_HIPCC_VERSION_FILE` environment cache
+keys: `756.715` prefill / `66.053` decode tok/s, final ID `13`, finite logits,
+tracked peak `23.291 GiB`. Keep this as a capacity/throughput diagnostic rather
+than a promoted README row until a long-context BF16-vs-hybrid quality gate is
+accepted; current correctness evidence is the W7900 forced-long `4K` logit gate.
+Evidence: `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`
+and `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -398,8 +401,9 @@ Current focused lanes from evidence:
   by default they keep a 3-layer BF16 full-attention prefix, use INT8 for the
   remaining 7 full-attention layers, and promote scales to FP32. The forced-long
   W7900 `4K` BF16-vs-hybrid gate passes (`KL mean=0.014025`, top-1 `1.0`, no
-  BF16 mirror). Continue with full `128K/128` capacity/throughput validation
-  before promoting any 24 GiB benchmark row.
+  BF16 mirror). GPU1 `128K/128` now runs as a diagnostic (`756.715/66.053 tok/s`,
+  `23.291 GiB` tracked); promote only after long-context quality evidence, not
+  from allocation/finite-logit sanity alone.
 - **Refresh attribution before the next optimization pass.** Before touching more
   kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
   current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the

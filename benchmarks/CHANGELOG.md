@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-23
+
+- [diagnostic capacity] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 24GB hybrid INT8 KV 128K/128: prior run timed out while lazily probing `hipcc --version` without `HIPENGINE_COMPILER_VERSION_FILE`; with compiler-version env guards set, run completes in `252s` at `756.715/66.053 tok/s`, final ID `13`, finite logits, tracked peak `23.291 GiB`; not a promoted README row pending long-context BF16-vs-hybrid quality evidence; `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`.
+
 ## 2026-06-22
 
 - [correctness diagnostic] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 forced-long INT8 KV: rejected pure INT8-only `4K` gate (`KL=0.275781`, top-1 `0.5`) -> accepted hybrid 3-BF16/7-INT8 layout with effective FP32 scales (`KL mean=0.014025`, `KL max=0.028051`, top-1 `1.0`, no BF16 mirror); GPU1 `131328`-position allocation smoke fits at `25,008,050,176` tracked bytes, but no throughput row is promoted; `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`.

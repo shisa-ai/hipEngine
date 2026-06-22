@@ -232,6 +232,8 @@ while pure INT8-only remains a diagnostic reproduction path behind
 `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`:
 
 ```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
 python3 scripts/qwen35_gguf_int8_kv_correctness.py \
   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
   --prompt-lengths 4K --decode-steps 1 --max-sequence-length 131202 \

@@ -1,0 +1,157 @@
+{
+  "capacity_claim": true,
+  "command": "cd /home/lhl/hipEngine && env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=screen PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib HIP_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_LIB_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib HIP_INCLUDE_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt PYTHONPATH=. PYTHONUNBUFFERED=1 /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --workloads 128K/128 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/20260623-gguf-hybrid-128k-gpu1c.json",
+  "correctness_gate_source": "benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json (W7900 forced-long 4K BF16-vs-hybrid KL mean 0.014025, top-1 1.0, no BF16 mirror)",
+  "date": "2026-06-23",
+  "effective_runtime": {
+    "effective_use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "host_token_embedding_enabled": false,
+    "kv_storage_dtype": "int8_per_token_head",
+    "note": "Memory census reports kv_scale_dtype=fp32 in decode_scratch because the long hybrid guard promotes requested fp16 scales to effective fp32.",
+    "prefill_chunk_sizes_session": {
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 1025,
+      "full_attn_post": 768,
+      "full_attn_query": 768,
+      "full_attn_rope": 768,
+      "linear": 768,
+      "moe": 768
+    },
+    "requested_kv_policy": {
+      "block_size": 256,
+      "int8_admission_gated": false,
+      "int8_explicit": true,
+      "policy_class": "FixedPagedKVPolicy",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "requested_storage": "int8_per_token_head",
+      "resolved_storage_dtype": "int8_per_token_head",
+      "scale_metadata_format": {
+        "granularity": "per_token_head",
+        "k_scale": "per_token_head",
+        "present": true,
+        "scale_dtype": "fp16",
+        "v_scale": "per_token_head"
+      },
+      "selection_reason": "explicit_int8",
+      "spans_mode": "uniform",
+      "storage_dtype": "int8_per_token_head"
+    }
+  },
+  "environment": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "hip_visible_devices": "1",
+    "hipengine_hip_arch": "gfx1100",
+    "required_manual_env": [
+      "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt",
+      "HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt"
+    ],
+    "rocm": "TheRock ROCm 7.13"
+  },
+  "hardware": "AMD Radeon RX 7900 XTX 24GB / gfx1100 GPU1",
+  "launcher_tmp_script": "/tmp/20260623-gguf-hybrid-128k-gpu1c.sh",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quant": "gguf_q4_k_m",
+  "raw_tmp_json": "/tmp/20260623-gguf-hybrid-128k-gpu1c.json",
+  "run": {
+    "correctness_sanity": {
+      "final_logit": 11.387835502624512,
+      "final_token_id": 13,
+      "finite_final_logits": true,
+      "generated_count_including_prefill_sample_and_warmup": 3,
+      "generated_preview_token_ids": [
+        16,
+        17,
+        13
+      ],
+      "generated_tail_token_ids": [
+        16,
+        17,
+        13
+      ]
+    },
+    "decode_graph_reused": false,
+    "memory": {
+      "hip_used_peak_sampled_bytes": 25634799616,
+      "hip_used_peak_sampled_gib": 23.874267578125,
+      "notes": [
+        "tracked_* covers hipENGINE allocations through hipengine.core.memory.malloc and keeps a high-water mark.",
+        "hip_used_peak_sampled_* is sampled via hipMemGetInfo at phase boundaries, not a continuous device-wide peak.",
+        "owned_session_* sums resident weights, scratch, KV/state, and per-session buffers owned by the GGUF session."
+      ],
+      "owned_session_peak_bytes": 25008050176,
+      "owned_session_peak_gib": 23.29056167602539,
+      "tracked_current_allocated_bytes_after_close": 0,
+      "tracked_current_allocated_bytes_before_close": 25008050176,
+      "tracked_current_allocated_gib_after_close": 0.0,
+      "tracked_current_allocated_gib_before_close": 23.29056167602539,
+      "tracked_peak_allocated_bytes": 25008050176,
+      "tracked_peak_allocated_gib": 23.29056167602539
+    },
+    "prefill_chunk_sizes": {
+      "attn_aotriton_min_tokens": 512,
+      "auto_tune": true,
+      "chunk_tune_min_tokens": 1025,
+      "full_attn_post": 768,
+      "full_attn_query": 768,
+      "full_attn_rope": 768,
+      "linear": 768,
+      "moe": 768
+    },
+    "throughput": {
+      "decode_ms_per_token": 15.139420920604607,
+      "decode_tok_s": 66.05272455560103,
+      "prefill_tok_s": 756.7147865358072
+    },
+    "timings": {
+      "decode_seconds_excluding_graph_capture": 1.9378458778373897,
+      "graph_capture_seconds": 0.11585452407598495,
+      "load_seconds": 75.37003183923662,
+      "load_seconds_is_shared_session": true,
+      "prefill_seconds": 173.2118921582587,
+      "wall_seconds_excluding_load": 175.3551409370266,
+      "warmup_decode_seconds": 0.08954837685450912
+    }
+  },
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "summary": {
+    "decode_tok_s": {
+      "count": 1,
+      "max": 66.05272455560103,
+      "mean": 66.05272455560103,
+      "median": 66.05272455560103,
+      "min": 66.05272455560103,
+      "stdev": 0.0
+    },
+    "final_token_ids": [
+      13
+    ],
+    "final_token_ids_stable": true,
+    "prefill_tok_s": {
+      "count": 1,
+      "max": 756.7147865358072,
+      "mean": 756.7147865358072,
+      "median": 756.7147865358072,
+      "min": 756.7147865358072,
+      "stdev": 0.0
+    },
+    "tracked_peak_allocated_gib": {
+      "count": 1,
+      "max": 23.29056167602539,
+      "mean": 23.29056167602539,
+      "median": 23.29056167602539,
+      "min": 23.29056167602539,
+      "stdev": 0.0
+    }
+  },
+  "timeout_fix": {
+    "failed_log": "/tmp/20260623-gguf-hybrid-128k1-faulthandler.log",
+    "root_cause": "Detached 128K run without HIPENGINE_COMPILER_VERSION_FILE stalled in a lazy build_hip compiler_version_text(hipcc --version) probe from paro_silu during bulk prefill; setting the compiler-version env made the run complete in 252s."
+  },
+  "workload": "128K/128"
+}
