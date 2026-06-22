@@ -154,9 +154,11 @@ acceptance loops.
    - `decode_tok_s_weighted`;
    - `mtp_vs_true_ar_decode_ratio`.
 
-   A train-only gain is not a win. Heldout and full-suite acceptance must not
-   regress, and MTP/true-AR ratio must be computed from the attached true-AR
-   split baseline rather than `off`/`B0` verifier telemetry.
+   Category objective rows are also reported for every present category. A
+   train-only gain is not a win. Heldout, full-suite, and per-category
+   acceptance must not regress, and MTP/true-AR ratio must be computed from the
+   attached true-AR split/category baseline rather than `off`/`B0` verifier
+   telemetry.
 
 4. **Use the guarded objective CLI for loop metrics.** Future optimize loops
    must consume objective metrics through the harness gate, not ad-hoc JSON paths:
@@ -174,7 +176,7 @@ acceptance loops.
    provenance including default prompt hashes/categories/lengths plus category
    budget-row scalar fields, token counts, and
    prompt counts, protocol provenance, prompt-hash provenance, and true-AR finite-logit
-   evidence. The returned JSON contains
+   evidence. The returned JSON contains compact `category_metrics` rows plus
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, positive `decode_ms`, finite non-negative
    `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`, each with a
@@ -236,9 +238,10 @@ acceptance loops.
      --compare-require-pass
    ```
 
-   With `--compare-require-pass`, the command exits non-zero when full or heldout
-   `accepted_per_output`, `draft_acceptance`, or `mtp_vs_true_ar_decode_ratio`
-   regress. Train deltas are reported but are not sufficient for a keep decision.
+   With `--compare-require-pass`, the command exits non-zero when full, heldout,
+   or any category `accepted_per_output`, `draft_acceptance`, or
+   `mtp_vs_true_ar_decode_ratio` regress. Train deltas are reported but are not
+   sufficient for a keep decision.
 
 5. **Promotion remains separate from diagnostics.** The category diagnostic is
    not a retained speed claim even when a true-AR baseline is attached. To promote

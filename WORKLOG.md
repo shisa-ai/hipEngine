@@ -117810,3 +117810,31 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 67: gate category-level objective regressions
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 67.
+- Focused category comparator contract: aggregate full/heldout wins must not hide a prompt-category regression.
+
+### Change
+- `objective_metrics_for_budget()` now returns compact `category_metrics` rows for each present prompt category.
+- `compare_objective_metrics()` now reports `category_deltas` alongside split deltas.
+- The guarded comparator now rejects per-category regressions in:
+  - `accepted_per_output`;
+  - `draft_acceptance`;
+  - `mtp_vs_true_ar_decode_ratio`.
+- Added a regression where full and heldout accepted/output improve while the `code` category regresses, proving aggregate-hidden category regressions fail the comparator.
+- Added objective output assertions for `category_metrics` and updated `docs/BENCHMARK.md` to document category-level reporting/gating.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 149 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

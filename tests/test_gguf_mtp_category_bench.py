@@ -648,6 +648,10 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["summary_prompts"]["prompt_categories"]["code_merge_intervals"] == "code"
     assert metrics["summary_prompts"]["prompt_chars"]["code_merge_intervals"] == len(load_prompt_rows(DEFAULT_PROMPTS)[0]["prompt"])
     assert metrics["summary_categories"] == {"code": 4, "general_en": 2, "general_ja": 2, "mixed_ja_en": 2}
+    assert metrics["category_metrics"]["code"]["prompts"] == 4
+    assert metrics["category_metrics"]["code"]["total_output_tokens"] == 40
+    assert metrics["category_metrics"]["code"]["accepted_per_output"] == pytest.approx(10 / 40)
+    assert metrics["category_metrics"]["code"]["decode_ms"] == pytest.approx(440.0)
     assert metrics["summary_totals"]["prompts"] == 10
     assert metrics["summary_totals"]["total_output_tokens"] == 100
     assert metrics["summary_totals"]["total_accepted"] == 55
@@ -1283,6 +1287,8 @@ def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(t
     assert comparison["deltas"]["full"]["accepted_per_output"] > 0
     assert comparison["deltas"]["heldout"]["accepted_per_output"] > 0
     assert comparison["deltas"]["full"]["mtp_vs_true_ar_decode_ratio"] > 0
+    assert comparison["category_deltas"]["code"]["accepted_per_output"] > 0
+    assert "every category" in comparison["decision_rule"]
     assert "train deltas are report-only" in comparison["decision_rule"]
 
 
@@ -1337,6 +1343,25 @@ def test_compare_objective_metrics_rejects_true_ar_ratio_regression(tmp_path: Pa
         regression["field"] == "mtp_vs_true_ar_decode_ratio" and regression["split"] in {"full", "heldout"}
         for regression in comparison["regressions"]
     )
+
+
+def test_compare_objective_metrics_rejects_category_regression_hidden_by_aggregates(tmp_path: Path) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[0, 0, 0, 0, 2, 2, 2, 2, 2, 2], draft_ms=10.0)
+
+    comparison = compare_objective_metrics(baseline, candidate, "b1")
+
+    assert comparison["deltas"]["full"]["accepted_per_output"] > 0
+    assert comparison["deltas"]["heldout"]["accepted_per_output"] > 0
+    assert comparison["category_deltas"]["code"]["accepted_per_output"] < 0
+    assert comparison["passed"] is False
+    assert {
+        "category": "code",
+        "field": "accepted_per_output",
+        "baseline": comparison["baseline"]["category_metrics"]["code"]["accepted_per_output"],
+        "candidate": comparison["candidate"]["category_metrics"]["code"]["accepted_per_output"],
+        "delta": comparison["category_deltas"]["code"]["accepted_per_output"],
+    } in comparison["regressions"]
 
 
 def test_objective_metrics_cli_prints_guarded_metrics(tmp_path: Path) -> None:

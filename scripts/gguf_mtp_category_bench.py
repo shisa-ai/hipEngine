@@ -480,13 +480,14 @@ def validate_summary_category_budget_metrics(
     budget_label: str,
     category_counts: dict[str, int],
     true_ar: dict[str, Any],
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict[str, dict[str, Any]]]:
     categories_payload = summary.get("categories")
     if not isinstance(categories_payload, dict):
         raise BenchError(f"{label} requires category summary metadata")
     true_ar_categories = true_ar.get("categories")
     if not isinstance(true_ar_categories, dict):
         raise BenchError("objective metrics require attached true_ar_baseline.categories")
+    category_metrics: dict[str, dict[str, Any]] = {}
     for category, expected_count in sorted(category_counts.items()):
         table = categories_payload.get(category)
         if not isinstance(table, dict):
@@ -537,7 +538,7 @@ def validate_summary_category_budget_metrics(
         if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
             raise BenchError(f"objective metrics require {label} category {category}.{budget_label}.draft_acceptance to match category counts")
         decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{label} category {category}.{budget_label}.decode_tok_s_weighted")
-        validate_decode_tps_from_ms(
+        decode_ms = validate_decode_tps_from_ms(
             output=output,
             decode_ms_value=row["decode_ms"],
             decode_tok_s=decode_tok_s,
@@ -553,7 +554,18 @@ def validate_summary_category_budget_metrics(
             raise BenchError(
                 f"objective metrics require category {category}.{budget_label}.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.categories.{category}"
             )
-    return dict(sorted(category_counts.items()))
+        category_metrics[category] = {
+            "accepted_per_output": accepted_per_output,
+            "draft_acceptance": draft_acceptance,
+            "decode_tok_s_weighted": decode_tok_s,
+            "mtp_vs_true_ar_decode_ratio": ratio,
+            "prompts": prompts_count,
+            "total_output_tokens": output,
+            "total_accepted": accepted,
+            "total_drafts": drafts,
+            "decode_ms": decode_ms,
+        }
+    return dict(sorted(category_counts.items())), dict(sorted(category_metrics.items()))
 
 
 def normalize_protocol_path(value: Any) -> str:
@@ -1161,7 +1173,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     summary_commands = validate_command_provenance(summary, label="objective summary")
     true_ar_commands = validate_command_provenance(true_ar, label="attached true_ar_baseline")
     true_ar_protocol = validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline")
-    summary_categories = validate_summary_category_budget_metrics(
+    summary_categories, category_metrics = validate_summary_category_budget_metrics(
         summary,
         label="objective summary",
         budget_label=label,
@@ -1202,6 +1214,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "summary_prompts": summary_prompts,
         "summary_categories": summary_categories,
+        "category_metrics": category_metrics,
         "true_ar_totals": true_ar_totals,
         "summary_commands": summary_commands,
         "true_ar_commands": true_ar_commands,
@@ -1386,6 +1399,18 @@ def compare_objective_metrics(
             field: float(candidate[split_name][field]) - float(baseline[split_name][field])
             for field in fields
         }
+    baseline_categories = baseline.get("category_metrics")
+    candidate_categories = candidate.get("category_metrics")
+    if not isinstance(baseline_categories, dict) or not isinstance(candidate_categories, dict):
+        raise BenchError("objective comparison requires category_metrics")
+    if set(baseline_categories) != set(candidate_categories):
+        raise BenchError("objective comparison requires identical category_metrics keys")
+    category_deltas: dict[str, dict[str, float]] = {}
+    for category in sorted(baseline_categories):
+        category_deltas[category] = {
+            field: float(candidate_categories[category][field]) - float(baseline_categories[category][field])
+            for field in fields
+        }
 
     regressions: list[dict[str, Any]] = []
     gated_fields = ("accepted_per_output", "draft_acceptance", "mtp_vs_true_ar_decode_ratio")
@@ -1402,6 +1427,19 @@ def compare_objective_metrics(
                         "delta": delta,
                     }
                 )
+    for category in sorted(baseline_categories):
+        for field in gated_fields:
+            delta = category_deltas[category][field]
+            if delta < -tolerance:
+                regressions.append(
+                    {
+                        "category": category,
+                        "field": field,
+                        "baseline": float(baseline_categories[category][field]),
+                        "candidate": float(candidate_categories[category][field]),
+                        "delta": delta,
+                    }
+                )
 
     return {
         "budget": baseline["budget"],
@@ -1413,8 +1451,9 @@ def compare_objective_metrics(
         "baseline": baseline,
         "candidate": candidate,
         "deltas": deltas,
+        "category_deltas": category_deltas,
         "decision_rule": (
-            "full and heldout accepted_per_output, draft_acceptance, and "
+            "full, heldout, and every category accepted_per_output, draft_acceptance, and "
             "mtp_vs_true_ar_decode_ratio must not regress; train deltas are report-only"
         ),
     }
