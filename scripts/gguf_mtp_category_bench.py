@@ -957,30 +957,77 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def validate_prompt_rows_for_summary(prompts: list[dict[str, Any]], *, label: str = "prompt suite") -> list[dict[str, Any]]:
+    if not isinstance(prompts, list) or not prompts:
+        raise BenchError(f"{label} requires non-empty prompt rows")
+    for index, row in enumerate(prompts):
+        if not isinstance(row, dict):
+            raise BenchError(f"{label} prompts[{index}] must be an object")
+        prompt_id = row.get("id")
+        if not isinstance(prompt_id, str) or not prompt_id:
+            raise BenchError(f"{label} prompts[{index}].id must be a non-empty string")
+        category = row.get("category")
+        if not isinstance(category, str) or not category:
+            raise BenchError(f"{label} prompt {prompt_id}.category must be a non-empty string")
+        prompt_text = row.get("prompt")
+        if not isinstance(prompt_text, str) or not prompt_text:
+            raise BenchError(f"{label} prompt {prompt_id}.prompt must be a non-empty string")
+    return prompts
+
+
+def raw_row_prompt_id(row: dict[str, Any], *, label: str) -> str:
+    for field in ("suite_id", "prompt_id", "id"):
+        value = row.get(field)
+        if value is None or value == "":
+            continue
+        if not isinstance(value, str):
+            raise BenchError(f"{label} {field} must be a non-empty string")
+        return value
+    raise BenchError(f"{label} contains row without prompt id")
+
+
+def raw_row_category(row: dict[str, Any], *, label: str, prompt_id: str) -> str:
+    value = row.get("suite_category")
+    if value is None or value == "":
+        value = row.get("category")
+    if not isinstance(value, str) or not value:
+        raise BenchError(f"{label} category for {prompt_id} must be a non-empty string")
+    return value
+
+
 def row_prompt_id(row: dict[str, Any]) -> str:
-    return str(row.get("suite_id") or row.get("prompt_id") or row.get("id") or "")
+    for field in ("suite_id", "prompt_id", "id"):
+        value = row.get(field)
+        if isinstance(value, str) and value:
+            return value
+    return ""
 
 
 def row_category(row: dict[str, Any]) -> str:
-    return str(row.get("suite_category") or row.get("category") or "")
+    value = row.get("suite_category")
+    if value is None or value == "":
+        value = row.get("category")
+    return value if isinstance(value, str) else ""
 
 
 def validate_raw_prompt_coverage(*, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]]) -> None:
-    expected_ids = [str(row["id"]) for row in prompts]
+    prompts = validate_prompt_rows_for_summary(prompts)
+    expected_ids = [row["id"] for row in prompts]
     expected_set = set(expected_ids)
-    expected_category = {str(row["id"]): str(row["category"]) for row in prompts}
+    expected_category = {row["id"]: row["category"] for row in prompts}
     if not raw:
         raise BenchError("category summary requires at least one MTP budget")
     for budget, rows in sorted(raw.items()):
         seen: dict[str, int] = {}
-        for row in rows:
-            prompt_id = row_prompt_id(row)
-            if not prompt_id:
-                raise BenchError(f"budget b{budget} contains row without prompt id")
+        for row_index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                raise BenchError(f"budget b{budget} rows[{row_index}] must be an object")
+            row_label = f"budget b{budget} rows[{row_index}]"
+            prompt_id = raw_row_prompt_id(row, label=row_label)
             seen[prompt_id] = seen.get(prompt_id, 0) + 1
             if prompt_id not in expected_set:
                 raise BenchError(f"budget b{budget} contains unexpected prompt id: {prompt_id}")
-            category = row_category(row)
+            category = raw_row_category(row, label=row_label, prompt_id=prompt_id)
             if category != expected_category[prompt_id]:
                 raise BenchError(
                     f"budget b{budget} category mismatch for {prompt_id}: {category!r} != {expected_category[prompt_id]!r}"
@@ -994,12 +1041,13 @@ def validate_raw_prompt_coverage(*, prompts: list[dict[str, Any]], raw: dict[int
 
 
 def build_split_contract(prompts: list[dict[str, Any]]) -> dict[str, Any]:
-    prompt_ids = [str(row["id"]) for row in prompts]
-    categories = sorted({str(row["category"]) for row in prompts})
+    prompts = validate_prompt_rows_for_summary(prompts)
+    prompt_ids = [row["id"] for row in prompts]
+    categories = sorted({row["category"] for row in prompts})
     heldout_ids = [prompt_id for prompt_id in prompt_ids if prompt_id in DEFAULT_HELDOUT_PROMPT_IDS]
     train_ids = [prompt_id for prompt_id in prompt_ids if prompt_id not in DEFAULT_HELDOUT_PROMPT_IDS]
-    prompt_by_id = {str(row["id"]): row for row in prompts}
-    heldout_categories = sorted({str(prompt_by_id[prompt_id]["category"]) for prompt_id in heldout_ids})
+    prompt_by_id = {row["id"]: row for row in prompts}
+    heldout_categories = sorted({prompt_by_id[prompt_id]["category"] for prompt_id in heldout_ids})
     missing_default_heldouts = sorted(DEFAULT_HELDOUT_PROMPT_IDS.difference(prompt_ids))
     missing_default_full_ids = [prompt_id for prompt_id in DEFAULT_FULL_PROMPT_IDS if prompt_id not in prompt_ids]
     extra_vs_default_full_ids = [prompt_id for prompt_id in prompt_ids if prompt_id not in DEFAULT_FULL_PROMPT_IDS]

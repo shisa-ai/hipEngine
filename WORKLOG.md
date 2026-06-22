@@ -118184,3 +118184,35 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 80: validate strict build-summary prompt identity
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 80.
+- Focused pre-aggregation identity contract: in-memory prompt rows and raw per-prompt MTP rows must not seed split contracts or aggregates through Python `str()` coercion.
+
+### Change
+- Added `validate_prompt_rows_for_summary()` in `scripts/gguf_mtp_category_bench.py`.
+- `validate_raw_prompt_coverage()` and `build_split_contract()` now require strict non-empty string prompt IDs, categories, and prompt text for in-memory prompt rows.
+- Added `raw_row_prompt_id()` and `raw_row_category()` helpers.
+- Raw per-prompt MTP rows now require strict non-empty string prompt/category identity before prompt coverage checks.
+- `row_prompt_id()` / `row_category()` no longer coerce non-string values to strings for downstream filtering.
+- Added regressions for:
+  - numeric in-memory prompt ID;
+  - numeric in-memory prompt category;
+  - numeric in-memory prompt text;
+  - numeric raw row `prompt_id`;
+  - numeric raw row `suite_category`.
+- Updated `docs/BENCHMARK.md` to document strict in-memory prompt and raw row identity typing before aggregation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 201 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

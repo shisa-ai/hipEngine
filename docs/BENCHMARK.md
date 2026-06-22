@@ -184,12 +184,13 @@ acceptance loops.
    JSON integers, not booleans), explicit true-no-MTP / same-prompt-suite /
    same-timing-protocol true-AR flags, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt/category
-   provenance including strict prompt fixture typing, default prompt
-   hashes/categories/lengths plus category budget-row scalar fields, strict JSON-integer token counts and prompt counts
+   provenance including strict prompt fixture and raw row identity typing,
+   default prompt hashes/categories/lengths plus category budget-row scalar fields, strict JSON-integer token counts and prompt counts
    (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
    fields, repo provenance including strict integer `git_untracked_count`,
    protocol provenance, prompt-hash provenance, and true-AR finite-logit
-   evidence. Raw per-prompt MTP rows are checked with the same strict count and
+   evidence. In-memory prompt rows and raw per-prompt MTP rows are checked with
+   strict string prompt/category identity plus the same strict count and
    timing typing before aggregation. Scalar metric fields must be strict JSON
    numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows
    plus full/train/heldout finite [0, 1] `accepted_per_output` and

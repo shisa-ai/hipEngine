@@ -220,6 +220,52 @@ def test_category_summary_rejects_non_integer_raw_metric_counts(field: str, valu
 
 
 @pytest.mark.parametrize(
+    ("prompt_update", "message"),
+    [
+        ({"id": 123}, r"prompt suite prompts\[0\]\.id must be a non-empty string"),
+        ({"category": 123}, "prompt suite prompt code_1.category must be a non-empty string"),
+        ({"prompt": 123}, "prompt suite prompt code_1.prompt must be a non-empty string"),
+    ],
+)
+def test_category_summary_rejects_non_string_input_prompt_rows(prompt_update: dict[str, object], message: str) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompt = {"id": "code_1", "category": "code", "prompt": "write code"}
+    prompt.update(prompt_update)
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=[prompt], raw=raw, commands=[])
+
+
+@pytest.mark.parametrize(
+    ("row_update", "message"),
+    [
+        ({"prompt_id": 123}, r"budget b1 rows\[0\] prompt_id must be a non-empty string"),
+        ({"suite_category": 123}, r"budget b1 rows\[0\] category for code_1 must be a non-empty string"),
+    ],
+)
+def test_category_summary_rejects_non_string_raw_row_identity(row_update: dict[str, object], message: str) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    row.update(row_update)
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+@pytest.mark.parametrize(
     ("raw_rows", "message"),
     [
         (
