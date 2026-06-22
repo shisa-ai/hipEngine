@@ -117562,3 +117562,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 58: validate attached true-AR totals
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 58.
+- Focused true-AR aggregate provenance contract: guarded objective extraction must ensure attached true-AR totals are internally consistent with the attached full split and category aggregates.
+
+### Change
+- Added `validate_true_ar_totals_consistency()` in `scripts/gguf_mtp_category_bench.py`.
+- `objective_metrics_for_budget()` now validates that attached `true_ar_baseline.totals` has positive prompt/output/timing fields and internally consistent `decode_tok_s_weighted`.
+- Attached true-AR totals must match `true_ar_baseline.splits.full` counts/timing.
+- Attached true-AR totals must also match summed category prompt counts, output-token counts, and decode time.
+- Objective output now exposes canonical `true_ar_totals`.
+- Added regressions for missing true-AR totals, total tok/s mismatch, full-split total mismatch, and category-sum mismatch.
+- Updated `docs/BENCHMARK.md` to document attached true-AR totals consistency.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 125 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

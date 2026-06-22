@@ -176,7 +176,8 @@ acceptance loops.
    The gate also verifies each split and category
    `mtp_vs_true_ar_decode_ratio` against the attached true-AR
    split/category `decode_tok_s_weighted` and matching prompt count / prompt-id
-   list length where applicable.
+   list length where applicable, and checks attached true-AR totals against the
+   full split plus category sums.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
    and request one split/field explicitly:

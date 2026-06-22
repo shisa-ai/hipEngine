@@ -250,6 +250,75 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
     }
 
 
+def metric_int(value: Any, *, label: str) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError) as exc:
+        raise BenchError(f"objective metrics require positive {label}") from exc
+    if result <= 0:
+        raise BenchError(f"objective metrics require positive {label}")
+    return result
+
+
+def validate_true_ar_totals_consistency(true_ar: dict[str, Any]) -> dict[str, Any]:
+    totals = true_ar.get("totals")
+    if not isinstance(totals, dict):
+        raise BenchError("objective metrics require attached true_ar_baseline.totals")
+    splits = true_ar.get("splits")
+    if not isinstance(splits, dict) or not isinstance(splits.get("full"), dict):
+        raise BenchError("objective metrics require attached true_ar_baseline.splits.full")
+    categories = true_ar.get("categories")
+    if not isinstance(categories, dict) or not categories:
+        raise BenchError("objective metrics require attached true_ar_baseline.categories")
+
+    total_prompts = metric_int(totals.get("prompts"), label="attached true_ar_baseline.totals.prompts")
+    total_output = metric_int(totals.get("total_output_tokens"), label="attached true_ar_baseline.totals.total_output_tokens")
+    total_decode_ms = finite_positive_objective(totals.get("decode_ms"), label="attached true_ar_baseline.totals.decode_ms")
+    total_decode_tps = finite_positive_objective(
+        totals.get("decode_tok_s_weighted"),
+        label="attached true_ar_baseline.totals.decode_tok_s_weighted",
+    )
+    expected_total_tps = 1000.0 * total_output / total_decode_ms
+    if not math.isclose(total_decode_tps, expected_total_tps, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError("objective metrics require attached true_ar_baseline.totals.decode_tok_s_weighted to match totals output/decode_ms")
+
+    full = splits["full"]
+    full_prompts = metric_int(full.get("prompts"), label="attached true_ar_baseline.splits.full.prompts")
+    full_output = metric_int(full.get("total_output_tokens"), label="attached true_ar_baseline.splits.full.total_output_tokens")
+    full_decode_ms = finite_positive_objective(full.get("decode_ms"), label="attached true_ar_baseline.splits.full.decode_ms")
+    full_decode_tps = finite_positive_objective(
+        full.get("decode_tok_s_weighted"),
+        label="attached true_ar_baseline.splits.full.decode_tok_s_weighted",
+    )
+    if full_prompts != total_prompts or full_output != total_output:
+        raise BenchError("objective metrics require attached true_ar_baseline.totals to match splits.full counts")
+    if not math.isclose(full_decode_ms, total_decode_ms, rel_tol=1e-9, abs_tol=1e-12) or not math.isclose(full_decode_tps, total_decode_tps, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError("objective metrics require attached true_ar_baseline.totals to match splits.full timing")
+
+    category_prompts = 0
+    category_output = 0
+    category_decode_ms = 0.0
+    for category, row in categories.items():
+        if not isinstance(row, dict):
+            raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}")
+        category_prompts += metric_int(row.get("prompts"), label=f"attached true_ar_baseline.categories.{category}.prompts")
+        category_output += metric_int(row.get("total_output_tokens"), label=f"attached true_ar_baseline.categories.{category}.total_output_tokens")
+        category_decode_ms += finite_positive_objective(
+            row.get("decode_ms"),
+            label=f"attached true_ar_baseline.categories.{category}.decode_ms",
+        )
+    if category_prompts != total_prompts or category_output != total_output:
+        raise BenchError("objective metrics require attached true_ar_baseline.totals to match category count sums")
+    if not math.isclose(category_decode_ms, total_decode_ms, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError("objective metrics require attached true_ar_baseline.totals.decode_ms to match category sum")
+    return {
+        "prompts": total_prompts,
+        "total_output_tokens": total_output,
+        "decode_ms": total_decode_ms,
+        "decode_tok_s_weighted": total_decode_tps,
+    }
+
+
 def validate_summary_category_budget_metrics(
     summary: dict[str, Any],
     *,
@@ -904,6 +973,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         category_counts=summary_prompts["category_counts"],
         true_ar=true_ar,
     )
+    true_ar_totals = validate_true_ar_totals_consistency(true_ar)
     splits = summary.get("splits")
     if not isinstance(splits, dict):
         raise BenchError("objective metrics require splits")
@@ -936,6 +1006,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "summary_prompts": summary_prompts,
         "summary_categories": summary_categories,
+        "true_ar_totals": true_ar_totals,
         "summary_commands": summary_commands,
         "true_ar_commands": true_ar_commands,
         "true_ar_protocol": true_ar_protocol,
