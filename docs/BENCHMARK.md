@@ -145,7 +145,7 @@ acceptance loops.
    appear only in a separate `vs true AR` column. Any future retained summary with
    `speed_claim_eligible=true` must pass the same current-schema checks for the
    MTP summary, attached true-AR artifact identity, and guarded objective
-   extraction for every MTP budget row. `performance_claim=true` is invalid
+   extraction for every canonical positive `bN` MTP budget row. `performance_claim=true` is invalid
    unless `speed_claim_eligible=true`, and both claim flags must be JSON
    booleans (not truthy strings or integers).
 
@@ -163,7 +163,10 @@ acceptance loops.
    telemetry.
 
 4. **Use the guarded objective CLI for loop metrics.** Future optimize loops
-   must consume objective metrics through the harness gate, not ad-hoc JSON paths:
+   must consume objective metrics through the harness gate, not ad-hoc JSON paths.
+   Objective budget labels are canonical positive `bN` labels (`b1`, `b5`, …);
+   `off`, `b0`, leading-zero labels such as `b01`, and other `b*` strings are
+   invalid:
 
    ```bash
    python3 scripts/gguf_mtp_category_bench.py \
@@ -231,7 +234,7 @@ acceptance loops.
    Scalar mode still calls the guarded objective extractor first; it is not a way
    to read verifier-derived `off`/`B0` telemetry or partial prompt suites. Any
    artifact that flips `speed_claim_eligible=true` must also pass this guarded
-   extractor for every MTP budget before the contract accepts it. Any artifact
+   extractor for every canonical positive `bN` MTP budget before the contract accepts it. Any artifact
    that flips `performance_claim=true` must also flip `speed_claim_eligible=true`
    and pass the same guarded eligibility checks.
 

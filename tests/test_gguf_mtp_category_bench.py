@@ -408,6 +408,15 @@ def test_speed_claim_contract_rejects_malformed_guarded_objective_metrics(tmp_pa
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_noncanonical_mtp_budget_row(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "speed-claim", accepted=[1] * 10, draft_ms=10.0)
+    summary["speed_claim_eligible"] = True
+    summary["totals"]["b0"] = dict(summary["totals"]["b1"])
+
+    with pytest.raises(BenchError, match="speed_claim_eligible=true requires guarded objective metrics for b0: objective budget must be a positive MTP budget label like b5"):
+        validate_speed_claim_contract(summary)
+
+
 def test_speed_claim_contract_rejects_missing_summary_schema() -> None:
     summary = _speed_claim_summary(drop_summary=("schema",))
 
@@ -695,6 +704,22 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
         "general_ja_explain",
         "mixed_ja_en_review",
     ]
+
+
+@pytest.mark.parametrize("budget_label", [0, "0", "b0", "b01", "banana", "off"])
+def test_objective_metrics_for_budget_rejects_noncanonical_budget_label(tmp_path: Path, budget_label: str | int) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+
+    with pytest.raises(BenchError, match="objective budget must be a positive MTP budget label like b5"):
+        objective_metrics_for_budget(summary, budget_label)
+
+
+def test_objective_metrics_for_budget_canonicalizes_numeric_string_budget(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+
+    metrics = objective_metrics_for_budget(summary, "01")
+
+    assert metrics["budget"] == "b1"
 
 
 def test_objective_metrics_for_budget_rejects_non_boolean_claim_flags(tmp_path: Path) -> None:

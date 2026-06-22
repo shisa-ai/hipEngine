@@ -117920,3 +117920,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 71: canonicalize objective budget labels
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 71.
+- Focused budget-label contract: guarded objective/speed-eligibility paths must accept only positive canonical MTP budget labels, not verifier-style `off`/`b0` or malformed `b*` labels.
+
+### Change
+- Added `canonical_mtp_budget_label()` in `scripts/gguf_mtp_category_bench.py`.
+- `objective_metrics_for_budget()` now rejects invalid objective budget labels before touching artifact metrics:
+  - `off`;
+  - `0` / `b0`;
+  - leading-zero `bN` labels such as `b01`;
+  - non-budget strings such as `banana`.
+- Numeric convenience input still canonicalizes to positive `bN` labels (for example, `"01"` becomes `b1`).
+- Added objective regressions for invalid labels and numeric-string canonicalization.
+- Added a speed-eligibility regression proving `speed_claim_eligible=true` rejects a malformed `b0` totals row.
+- Updated `docs/BENCHMARK.md` to document canonical positive `bN` objective budget labels.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 167 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

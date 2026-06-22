@@ -179,6 +179,22 @@ def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str
     return {field: repo.get(field) for field in REPO_PROVENANCE_FIELDS}
 
 
+def canonical_mtp_budget_label(budget_label: str | int) -> str:
+    if isinstance(budget_label, int):
+        if budget_label <= 0:
+            raise BenchError(f"objective budget must be a positive MTP budget label like b5, got {budget_label!r}")
+        return f"b{budget_label}"
+    text = str(budget_label)
+    if text.isdigit():
+        value = int(text)
+        if value <= 0:
+            raise BenchError(f"objective budget must be a positive MTP budget label like b5, got {budget_label!r}")
+        return f"b{value}"
+    if text.startswith("b") and text[1:].isdigit() and not text[1:].startswith("0"):
+        return text
+    raise BenchError(f"objective budget must be a positive MTP budget label like b5, got {budget_label!r}")
+
+
 def validate_claim_flags(payload: dict[str, Any], *, label: str) -> dict[str, bool]:
     performance_claim = payload.get("performance_claim", False)
     speed_claim_eligible = payload.get("speed_claim_eligible", False)
@@ -1190,9 +1206,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     coverage, so verifier-derived ``off`` / ``B0`` rows cannot become the speed
     denominator by accident.
     """
-    label = f"b{budget_label}" if isinstance(budget_label, int) or str(budget_label).isdigit() else str(budget_label)
-    if label == "off" or not label.startswith("b"):
-        raise BenchError(f"objective budget must be an MTP budget label like b5, got {budget_label!r}")
+    label = canonical_mtp_budget_label(budget_label)
     summary_artifact = validate_category_summary_schema(summary, label="objective summary")
     claim_flags = validate_claim_flags(summary, label="objective summary")
     validate_repo_provenance(summary, label="objective summary")
