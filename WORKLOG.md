@@ -120477,3 +120477,49 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Sibling-K10 adds candidates but no focused/full/train/heldout/category accepted-output improvement, and draft acceptance regresses.
 - Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 161: branch redraft retained
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 161.
+- Tested a generic branch-reset proposal: after one exact-verified top-k branch accept, redraft the remaining B-window from the accepted target token and accept only subsequent argmax redraft matches. This avoids using child drafts that were generated under the wrong argmax branch.
+
+### Change retained
+- Added `--topk-branch-redraft` / `--no-topk-branch-redraft` and enabled branch redraft by default.
+- Current default policy is now: `root_topk_accept=5`, `root_tail_max_prev_accepted=1`, `sibling_topk_accept=9`, `sibling_topk_max_depth=3`, `topk_branch_redraft=true`.
+- The redraft is generic and model-state based: it uses the exact target hidden seed after the accepted branch token, then drafts the remaining B-window from that accepted token. It does not inspect prompt text or token IDs.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-default-iter161-b5-20.json
+```
+- Focused accepted/output stayed `0.5000`.
+- Candidate accounting vs prior default: `20/660 -> 20/682`, `accept_per_draft 0.0303 -> 0.0293`.
+- Redraft path was exercised (`6` branch redrafts; branch depths `{0: 4, 1: 2}` in focused run).
+- Diagnostic tok/s `13.58`, `speedup_vs_ar_visible=0.688x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-full-20260623-045422/raw --output /tmp/hipengine-branch-redraft-full-20260623-045422/summary.json --extra-arg=--topk-branch-redraft
+```
+- Full accepted/output improved over prior adaptive root-K5/tail-prev≤1/sibling-K9/depth≤3: `0.444444 -> 0.502488`.
+- Train improved `0.381443 -> 0.454545`; heldout improved `0.518072 -> 0.560440`.
+- Per-category accepted/output improved/non-regressed: code `0.344262 -> 0.420290`, general_en `0.512195 -> 0.591837`, general_ja `0.428571 -> 0.487179`, mixed_ja_en `0.534884 -> 0.545455`.
+- Full draft acceptance improved `0.024242 -> 0.029040` (`80/3300 -> 101/3478`). Mixed category draft acceptance was effectively flat/slightly lower (`0.034848 -> 0.034732`) but accepted/output improved.
+- Diagnostic weighted decode tok/s changed `13.0816 -> 12.9009` and verifier-derived ratio `0.6781 -> 0.6488`. Retained as an acceptance/correctness tradeoff only; no true no-MTP AR speed claim retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: branch redraft is a generic exact-verification continuation policy. It does not hardcode prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Retained. Current default is branch-redraft adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.5025`, heldout `0.5604`, categories non-regressive.
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-category-gfx1151.json`.

@@ -472,6 +472,23 @@ def main():
             "are accepted only if the previous cycle accepted at most this many draft tokens (default: 1)."
         ),
     )
+    parser.add_argument(
+        "--topk-branch-redraft",
+        dest="topk_branch_redraft",
+        action="store_true",
+        default=True,
+        help=(
+            "Diagnostic branch-reset proposal: after one exact-verified top-k branch accept, "
+            "redraft the remaining B-window from the accepted target token and only accept "
+            "subsequent argmax redraft matches (default: enabled)."
+        ),
+    )
+    parser.add_argument(
+        "--no-topk-branch-redraft",
+        dest="topk_branch_redraft",
+        action="store_false",
+        help="Disable branch-reset redrafting after a top-k branch accept.",
+    )
     args = parser.parse_args()
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
@@ -764,6 +781,11 @@ def main():
             verify_input_token = cycle_prev_token
             topk_branch_accepted = False
             topk_branch_depth: int | None = None
+            pending_branch_redraft = False
+            redraft_tokens: list[int] = []
+            redraft_top10_tokens: list[list[int]] = []
+            redraft_start_depth: int | None = None
+            redraft_ms = 0.0
             while True:
                 t0 = time.perf_counter()
                 target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
@@ -775,9 +797,68 @@ def main():
                 target_hidden_seeds.append(target_hidden_seed)
 
                 depth = len(target_tokens) - 1
-                if topk_branch_accepted:
+                if (
+                    pending_branch_redraft
+                    and args.topk_branch_redraft
+                    and redraft_start_depth is None
+                    and depth > 0
+                    and depth < args.draft_n_max
+                ):
+                    t_redraft0 = time.perf_counter()
+                    current_hidden_seed = np.ascontiguousarray(target_hidden_seed, dtype=np.float32)
+                    current_token = int(target_tokens[depth - 1])
+                    current_pos = seq_position + depth
+                    remaining_drafts = args.draft_n_max - depth
+                    for redraft_depth in range(remaining_drafts):
+                        token_embed = token_embd_f32[current_token:current_token + 1].copy()
+                        need_next_seed = redraft_depth + 1 < remaining_drafts
+                        pos_arr = np.asarray([current_pos], dtype=np.int64)
+                        rope_cos_slice = _rope_cos[pos_arr]
+                        rope_sin_slice = _rope_sin[pos_arr]
+                        if need_next_seed:
+                            draft_logits, current_hidden_seed = run_draft(
+                                current_hidden_seed,
+                                token_embed,
+                                return_hidden_seed=True,
+                                positions=pos_arr,
+                                rope_cos=rope_cos_slice,
+                                rope_sin=rope_sin_slice,
+                                rotary_dim=rope_dim,
+                            )
+                        else:
+                            draft_logits = run_draft(
+                                current_hidden_seed,
+                                token_embed,
+                                positions=pos_arr,
+                                rope_cos=rope_cos_slice,
+                                rope_sin=rope_sin_slice,
+                                rotary_dim=rope_dim,
+                            )
+                        redraft_token, redraft_top10 = select_topk_tokens(
+                            draft_logits[0], k=10, draft_depth=depth + redraft_depth
+                        )
+                        redraft_tokens.append(redraft_token)
+                        redraft_top10_tokens.append(redraft_top10)
+                        current_token = redraft_token
+                        current_pos += 1
+                        if args.draft_p_min > 0.0 and redraft_depth + 1 < remaining_drafts:
+                            if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
+                                break
+                    redraft_ms += (time.perf_counter() - t_redraft0) * 1000
+                    redraft_start_depth = depth
+                    pending_branch_redraft = False
+                if topk_branch_accepted and redraft_start_depth is None:
                     break
-                if depth < len(draft_tokens) and target_token == draft_tokens[depth]:
+
+                proposal_tokens = draft_tokens
+                proposal_top10_tokens = draft_top10_tokens
+                proposal_depth = depth
+                if redraft_start_depth is not None and depth >= redraft_start_depth:
+                    proposal_tokens = redraft_tokens
+                    proposal_top10_tokens = redraft_top10_tokens
+                    proposal_depth = depth - redraft_start_depth
+
+                if proposal_depth < len(proposal_tokens) and target_token == proposal_tokens[proposal_depth]:
                     verify_input_token = target_token
                     continue
                 topk_limit = (
@@ -790,22 +871,39 @@ def main():
                     and args.root_tail_max_prev_accepted >= 0
                     and topk_limit > 4
                     and previous_cycle_accepted > args.root_tail_max_prev_accepted
-                    and depth < len(draft_top10_tokens)
-                    and target_token in draft_top10_tokens[depth][4:topk_limit]
+                    and proposal_depth < len(proposal_top10_tokens)
+                    and target_token in proposal_top10_tokens[proposal_depth][4:topk_limit]
                 ):
                     topk_limit = 4
                 if (
-                    depth < len(draft_top10_tokens)
+                    not topk_branch_accepted
+                    and proposal_depth < len(proposal_top10_tokens)
                     and topk_limit > 1
-                    and target_token in draft_top10_tokens[depth][:topk_limit]
+                    and target_token in proposal_top10_tokens[proposal_depth][:topk_limit]
                 ):
                     topk_branch_accepted = True
                     topk_branch_depth = depth
+                    pending_branch_redraft = args.topk_branch_redraft and depth + 1 < args.draft_n_max
                     verify_input_token = target_token
                     continue
                 break
 
-            if topk_branch_accepted:
+            draft_ms += redraft_ms
+            if redraft_start_depth is not None:
+                accepted_draft_tokens_for_redraft = len(target_tokens) - 1
+                if accepted_draft_tokens_for_redraft < 0:
+                    raise RuntimeError("top-k branch redraft produced no target samples")
+                if len(target_hidden_seeds) <= accepted_draft_tokens_for_redraft:
+                    raise RuntimeError("top-k branch redraft missing corrective target hidden seed")
+                acceptance = {
+                    "accepted_draft_tokens": accepted_draft_tokens_for_redraft,
+                    "visible_output_tokens": accepted_draft_tokens_for_redraft + 1,
+                    "output_tokens": target_tokens[:accepted_draft_tokens_for_redraft + 1],
+                    "comparison_target_tokens": target_tokens[:accepted_draft_tokens_for_redraft + 1],
+                    "pending_hidden_row_index": accepted_draft_tokens_for_redraft,
+                    "topk_branch_depth": topk_branch_depth,
+                }
+            elif topk_branch_accepted:
                 acceptance = sibling_topk_acceptance_from_target_samples(
                     draft_tokens,
                     draft_top10_tokens,
@@ -849,7 +947,7 @@ def main():
                 root_topk_accept=args.root_topk_accept,
                 sibling_topk_accept=args.sibling_topk_accept,
                 sibling_topk_max_depth=args.sibling_topk_max_depth,
-            )
+            ) + len(redraft_tokens)
             total_drafts += draft_candidate_count
             visible_output_tokens = int(acceptance["visible_output_tokens"])
             total_output_tokens += visible_output_tokens
@@ -857,8 +955,21 @@ def main():
             seq_position += visible_output_tokens
             accepted = accepted_draft_tokens == len(draft_tokens)
 
+            reported_draft_tokens = draft_tokens
+            reported_draft_top10_tokens = draft_top10_tokens
+            if redraft_start_depth is not None and topk_branch_depth is not None:
+                reported_draft_tokens = (
+                    draft_tokens[:topk_branch_depth]
+                    + [int(target_tokens[topk_branch_depth])]
+                    + redraft_tokens
+                )
+                reported_draft_top10_tokens = (
+                    draft_top10_tokens[:topk_branch_depth + 1]
+                    + redraft_top10_tokens
+                )
+
             target_in_draft_top10, target_rank_in_draft_top10 = target_membership_in_draft_topk(
-                comparison_target_tokens, draft_top10_tokens
+                comparison_target_tokens, reported_draft_top10_tokens
             )
 
             cycle_details.append({
@@ -867,9 +978,12 @@ def main():
                 "target_tokens": target_tokens,
                 "comparison_target_tokens": comparison_target_tokens,
                 "output_tokens": output_tokens,
-                "draft_token": draft_tokens[0],
-                "draft_tokens": draft_tokens,
-                "draft_top10_tokens": draft_top10_tokens,
+                "draft_token": reported_draft_tokens[0],
+                "draft_tokens": reported_draft_tokens,
+                "draft_top10_tokens": reported_draft_top10_tokens,
+                "initial_draft_tokens": draft_tokens,
+                "redraft_tokens": redraft_tokens,
+                "redraft_start_depth": redraft_start_depth,
                 "target_in_draft_top10": target_in_draft_top10,
                 "target_rank_in_draft_top10": target_rank_in_draft_top10,
                 "accepted": accepted,
@@ -879,6 +993,8 @@ def main():
                 "sibling_topk_accept": args.sibling_topk_accept,
                 "sibling_topk_max_depth": args.sibling_topk_max_depth,
                 "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
+                "topk_branch_redraft": args.topk_branch_redraft,
+                "redraft_candidate_count": len(redraft_tokens),
                 "previous_cycle_accepted": previous_cycle_accepted_for_record,
                 "topk_branch_accepted": topk_branch_accepted,
                 "topk_branch_depth": topk_branch_depth,
@@ -918,6 +1034,7 @@ def main():
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
     print(f"Sibling top-k max depth: {args.sibling_topk_max_depth}")
     print(f"Root tail max previous accepted: {args.root_tail_max_prev_accepted}")
+    print(f"Top-k branch redraft: {args.topk_branch_redraft}")
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
     print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
@@ -959,6 +1076,7 @@ def main():
             "sibling_topk_accept": args.sibling_topk_accept,
             "sibling_topk_max_depth": args.sibling_topk_max_depth,
             "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
+            "topk_branch_redraft": args.topk_branch_redraft,
             "engine": "hipEngine GGUF MTP",
             "target_prefill_mode": target_prefill_mode,
             "mtp_context_mode": mtp_context_mode,
