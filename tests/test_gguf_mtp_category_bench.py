@@ -990,6 +990,38 @@ def test_objective_metrics_for_budget_rejects_non_positive_prompt_count(tmp_path
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_missing_split_count_field(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["splits"]["train"]["metrics"]["b1"]["total_output_tokens"]
+
+    with pytest.raises(BenchError, match="objective metrics missing .*total_output_tokens.* for train.b1"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_split_accepted_per_output_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["heldout"]["metrics"]["b1"]["accepted_per_output"] = 0.01
+
+    with pytest.raises(BenchError, match="objective metrics require heldout.b1.accepted_per_output to match split counts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_split_draft_acceptance_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["train"]["metrics"]["b1"]["draft_acceptance"] = 0.01
+
+    with pytest.raises(BenchError, match="objective metrics require train.b1.draft_acceptance to match split counts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_split_accepted_exceeds_drafts(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["train"]["metrics"]["b1"]["total_drafts"] = 1
+
+    with pytest.raises(BenchError, match="objective metrics require train.b1.total_accepted <= total_drafts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_split_metric_prompt_count_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["heldout"]["metrics"]["b1"]["prompts"] = len(summary["splits"]["heldout"]["prompt_ids"]) + 1

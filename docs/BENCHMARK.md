@@ -171,13 +171,14 @@ acceptance loops.
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and
    `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count matching the
-   split `prompt_ids` length, split `prompt_ids` matching `splits.contract`, and
-   the fixed heldout/train split described above.
+   split `prompt_ids` length, split `prompt_ids` matching `splits.contract`,
+   count-derived split acceptance ratios, and the fixed heldout/train split described above.
    The gate also verifies each split and category
    `mtp_vs_true_ar_decode_ratio` against the attached true-AR
    split/category `decode_tok_s_weighted` and matching prompt count / prompt-id
-   list length where applicable, checks MTP summary totals against the full split
-   and category sums, and checks attached true-AR totals against the full split
+   list length where applicable, checks split acceptance ratios against split
+   token counts, checks MTP summary totals against the full split and category
+   sums, and checks attached true-AR totals against the full split
    plus category sums.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates

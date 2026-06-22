@@ -117651,3 +117651,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 61: validate split count-derived acceptance ratios
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 61.
+- Focused split metric count/scalar contract: guarded objective extraction must ensure full/train/heldout split acceptance ratios are derived from split row token counts.
+
+### Change
+- `objective_metrics_for_budget()` now requires each split metric row to include:
+  - `total_output_tokens`;
+  - `total_accepted`;
+  - `total_drafts`.
+- Split `total_accepted` must not exceed `total_output_tokens` or `total_drafts`.
+- Split `accepted_per_output` must equal `total_accepted / total_output_tokens`.
+- Split `draft_acceptance` must equal `total_accepted / total_drafts`.
+- Added regressions for missing split count fields, split accepted/output mismatch, split draft-acceptance mismatch, and accepted-drafts ordering.
+- Updated `docs/BENCHMARK.md` to document count-derived split acceptance ratios and split token-count provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 138 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

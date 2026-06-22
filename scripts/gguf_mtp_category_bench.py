@@ -1157,6 +1157,9 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             "decode_tok_s_weighted",
             "mtp_vs_true_ar_decode_ratio",
             "prompts",
+            "total_output_tokens",
+            "total_accepted",
+            "total_drafts",
         )
         missing = [field for field in required if field not in row or row[field] is None]
         if missing:
@@ -1169,6 +1172,19 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts")
         if prompts_count != split_prompt_count:
             raise BenchError(f"objective metrics require {split_name}.{label}.prompts to match splits.{split_name}.prompt_ids length")
+        output = metric_int(row.get("total_output_tokens"), label=f"{split_name}.{label}.total_output_tokens")
+        accepted = metric_nonnegative_int(row.get("total_accepted"), label=f"{split_name}.{label}.total_accepted")
+        drafts = metric_int(row.get("total_drafts"), label=f"{split_name}.{label}.total_drafts")
+        if accepted > output:
+            raise BenchError(f"objective metrics require {split_name}.{label}.total_accepted <= total_output_tokens")
+        if accepted > drafts:
+            raise BenchError(f"objective metrics require {split_name}.{label}.total_accepted <= total_drafts")
+        accepted_per_output = finite_unit_interval_objective(row["accepted_per_output"], label=f"{split_name}.{label}.accepted_per_output")
+        draft_acceptance = finite_unit_interval_objective(row["draft_acceptance"], label=f"{split_name}.{label}.draft_acceptance")
+        if not math.isclose(accepted_per_output, accepted / output, rel_tol=1e-9, abs_tol=1e-12):
+            raise BenchError(f"objective metrics require {split_name}.{label}.accepted_per_output to match split counts")
+        if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
+            raise BenchError(f"objective metrics require {split_name}.{label}.draft_acceptance to match split counts")
         true_ar_split = true_ar_splits.get(split_name)
         if not isinstance(true_ar_split, dict):
             raise BenchError(f"objective metrics require attached true_ar_baseline.splits.{split_name}")
@@ -1196,8 +1212,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
                 f"objective metrics require {split_name}.{label}.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.splits.{split_name}"
             )
         out[split_name] = {
-            "accepted_per_output": finite_unit_interval_objective(row["accepted_per_output"], label=f"{split_name}.{label}.accepted_per_output"),
-            "draft_acceptance": finite_unit_interval_objective(row["draft_acceptance"], label=f"{split_name}.{label}.draft_acceptance"),
+            "accepted_per_output": accepted_per_output,
+            "draft_acceptance": draft_acceptance,
             "decode_tok_s_weighted": decode_tok_s,
             "mtp_vs_true_ar_decode_ratio": ratio,
             "prompts": prompts_count,
