@@ -120781,3 +120781,50 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained. Current default is branch-redraft root-K7/sibling-K9/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5215`, heldout `0.5876`, categories non-regressive.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-ungated-rootk7-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 168: root-K8 retained under branch-redraft ungated root tail
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 168.
+- Tested wider root search (`root_topk_accept=8`) after the retained branch-redraft + ungated-root-tail root-K7 policy. Rank-8 root branches can redraft from the accepted branch token, while exact target verification rejects incorrect candidates.
+
+### Change retained
+- Changed the default `--root-topk-accept` from `7` to `8` while keeping `root_tail_max_prev_accepted=-1`, `sibling_topk_accept=9`, `sibling_topk_max_depth=3`, and `topk_branch_redraft=true`.
+- This remains a generic rank/top-k proposal under exact target verification; it does not inspect prompt text, token IDs, candidate-token patterns, or fixture/category IDs.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 8 --output /tmp/hipengine-mtp-branch-redraft-ungated-rootk8-iter168-b5-20.json
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-ungated-rootk8-default-iter168-b5-20.json
+```
+- Focused accepted/output matched the prior root-K7 default: `0.5349`.
+- Candidate accounting regressed slightly: `23/730 -> 23/750`, `accept_per_draft 0.0315 -> 0.0307`.
+- Branch/redraft counts unchanged (`8` branch accepts/redrafts; branch depths `{0: 6, 1: 2}`).
+- Default run after the code change printed `Root top-k accept: 8`.
+- Diagnostic focused timing varied (`13.79 tok/s` explicit run, `11.42 tok/s` default run); no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-ungated-rootk8-full-20260623-053240/raw --output /tmp/hipengine-branch-redraft-ungated-rootk8-full-20260623-053240/summary.json --extra-arg=--root-topk-accept --extra-arg=8
+```
+- Full accepted/output improved over prior branch-redraft ungated-root-tail root-K7 default: `0.521531 -> 0.547511`.
+- Train improved `0.464286 -> 0.495798`; heldout improved `0.587629 -> 0.607843`.
+- Per-category accepted/output improved/non-regressed: code `0.428571 -> 0.444444`, general_en `0.642857 -> 0.642857`, general_ja `0.487179 -> 0.487179`, mixed_ja_en `0.545455 -> 0.629630`.
+- Full draft acceptance improved `0.029515 -> 0.031734` (`109/3693 -> 121/3813`).
+- Diagnostic weighted decode tok/s `12.8840 -> 12.9623`, verifier-derived ratio `0.6547 -> 0.6629`. Still no true no-MTP AR speed claim retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: this widens a generic root top-k threshold under exact verification and branch redraft. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Retained. Current default is branch-redraft root-K8/sibling-K9/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5475`, heldout `0.6078`, categories non-regressive.
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-ungated-rootk8-category-gfx1151.json`.
