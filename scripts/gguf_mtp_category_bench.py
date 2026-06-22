@@ -1335,7 +1335,7 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
         raise BenchError("true AR baseline artifact requires prompt_hashes metadata")
     normalized_hashes: dict[str, str] = {}
     for prompt_id, value in prompt_hashes.items():
-        if not isinstance(prompt_id, str) or not prompt_id:
+        if not isinstance(prompt_id, str) or not prompt_id.strip():
             raise BenchError("true AR prompt_hashes keys must be non-empty strings")
         normalized_hashes[prompt_id] = validate_sha256_hex(value, label=f"true AR prompt_hashes.{prompt_id}")
     if normalized_hashes != expected_hashes:
@@ -1371,7 +1371,7 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
             value = row.get(field)
             if value is None or value == "":
                 continue
-            if not isinstance(value, str):
+            if not isinstance(value, str) or not value.strip():
                 raise BenchError(f"true AR prompt_metrics[{index}].{field} must be a non-empty string")
             prompt_id = value
             break
@@ -1383,7 +1383,7 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
             raise BenchError(f"true AR prompt id not in selected prompt suite: {prompt_id}")
         category = row.get("category")
         expected_category = prompt_by_id[prompt_id]["category"]
-        if not isinstance(category, str) or not category:
+        if not isinstance(category, str) or not category.strip():
             raise BenchError(f"true AR prompt_metrics row category for {prompt_id} must be a non-empty string")
         if category != expected_category:
             raise BenchError(f"true AR category mismatch for {prompt_id}: {category!r} != {expected_category!r}")

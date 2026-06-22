@@ -2868,11 +2868,23 @@ def test_category_summary_rejects_true_ar_baseline_without_row_prompt_hash(tmp_p
             "true AR prompt_hashes.code_1 requires 64-character SHA-256 hex",
         ),
         (
+            lambda payload: payload["prompt_hashes"].__setitem__("   ", payload["prompt_hashes"].pop("code_1")),
+            "true AR prompt_hashes keys must be non-empty strings",
+        ),
+        (
             lambda payload: payload["prompt_metrics"][0].__setitem__("id", 123),
             r"true AR prompt_metrics\[0\]\.id must be a non-empty string",
         ),
         (
+            lambda payload: payload["prompt_metrics"][0].__setitem__("id", "   "),
+            r"true AR prompt_metrics\[0\]\.id must be a non-empty string",
+        ),
+        (
             lambda payload: payload["prompt_metrics"][0].__setitem__("category", 123),
+            "true AR prompt_metrics row category for code_1 must be a non-empty string",
+        ),
+        (
+            lambda payload: payload["prompt_metrics"][0].__setitem__("category", "   "),
             "true AR prompt_metrics row category for code_1 must be a non-empty string",
         ),
         (

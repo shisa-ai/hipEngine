@@ -119199,3 +119199,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 120: require non-blank true-AR prompt identity
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 120.
+- Focused attached true-AR baseline provenance contract: true-AR prompt hash keys and `prompt_metrics` identity/category fields must contain non-whitespace content before baseline attachment and objective extraction.
+
+### Change
+- `validate_true_ar_prompt_rows()` now rejects whitespace-only `prompt_hashes` keys.
+- `validate_true_ar_prompt_rows()` now rejects whitespace-only `prompt_metrics[].id` / `prompt_metrics[].prompt_id` values.
+- `validate_true_ar_prompt_rows()` now rejects whitespace-only `prompt_metrics[].category` values.
+- Added guarded baseline regressions for whitespace-only true-AR prompt hash key, prompt metric ID, and prompt metric category.
+- Updated `docs/BENCHMARK.md` to document non-blank true-AR prompt identity/category metadata.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes for valid artifacts, no speed formula changes, no split construction policy changes for valid rows, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
