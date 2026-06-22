@@ -118216,3 +118216,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 81: validate strict true-AR prompt provenance
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 81.
+- Focused true-AR prompt provenance contract: prompt hashes and prompt metric identities must not pass validation through Python `str()` coercion.
+
+### Change
+- `validate_true_ar_prompt_rows()` now validates selected prompt rows through the strict prompt-row helper.
+- true-AR `prompt_hashes` keys must be non-empty strings and values must be valid SHA-256 hex.
+- true-AR `prompt_metrics[]` rows must be objects with strict string `id`/`prompt_id`, `category`, and `prompt_sha256` fields.
+- Added regressions for:
+  - numeric `prompt_hashes` value;
+  - numeric `prompt_metrics[].id`;
+  - numeric `prompt_metrics[].category`;
+  - numeric `prompt_metrics[].prompt_sha256`.
+- Updated `docs/BENCHMARK.md` to document strict true-AR prompt hash / prompt metric provenance typing.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 205 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

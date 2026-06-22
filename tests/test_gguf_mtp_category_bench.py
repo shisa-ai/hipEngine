@@ -2333,6 +2333,55 @@ def test_category_summary_rejects_true_ar_baseline_without_row_prompt_hash(tmp_p
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda payload: payload["prompt_hashes"].__setitem__("code_1", 123),
+            "true AR prompt_hashes.code_1 requires 64-character SHA-256 hex",
+        ),
+        (
+            lambda payload: payload["prompt_metrics"][0].__setitem__("id", 123),
+            r"true AR prompt_metrics\[0\]\.id must be a non-empty string",
+        ),
+        (
+            lambda payload: payload["prompt_metrics"][0].__setitem__("category", 123),
+            "true AR prompt_metrics row category for code_1 must be a non-empty string",
+        ),
+        (
+            lambda payload: payload["prompt_metrics"][0].__setitem__("prompt_sha256", 123),
+            "true AR prompt_metrics row code_1 requires 64-character SHA-256 hex",
+        ),
+    ],
+)
+def test_category_summary_rejects_true_ar_prompt_provenance_coercion(
+    tmp_path: Path,
+    mutate: object,
+    message: str,
+) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+    )
+    payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+    mutate(payload)
+    baseline_path.write_text(json.dumps(payload), encoding="utf-8")
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_flag(tmp_path: Path) -> None:
     baseline_path = tmp_path / "true-ar.json"
     _write_true_ar_baseline(

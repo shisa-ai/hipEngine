@@ -188,7 +188,8 @@ acceptance loops.
    default prompt hashes/categories/lengths plus category budget-row scalar fields, strict JSON-integer token counts and prompt counts
    (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
    fields, repo provenance including strict integer `git_untracked_count`,
-   protocol provenance, prompt-hash provenance, and true-AR finite-logit
+   protocol provenance, strict true-AR `prompt_hashes` / `prompt_metrics`
+   prompt identity and hash typing, and true-AR finite-logit
    evidence. In-memory prompt rows and raw per-prompt MTP rows are checked with
    strict string prompt/category identity plus the same strict count and
    timing typing before aggregation. Scalar metric fields must be strict JSON
