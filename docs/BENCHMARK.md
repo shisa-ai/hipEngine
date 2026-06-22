@@ -200,7 +200,7 @@ acceptance loops.
    Summary and attached true-AR category map keys must be strict
    non-empty strings. In-memory prompt rows and raw per-prompt MTP rows are checked with
    unique strict string prompt IDs, non-blank in-memory prompt text, agreeing raw prompt/category identity fields, and the same strict count and
-   timing typing before aggregation; raw per-cycle visible output counts are required and must sum to total output tokens; raw per-cycle timing keys are required, timing values must be non-negative,
+   timing typing before aggregation; raw per-cycle visible output counts are required and must sum to total output tokens; raw per-cycle generated/accepted draft counts are required and must sum to total draft/accepted counts; raw per-cycle timing keys are required, timing values must be non-negative,
    present `total_cycle_ms` must match the sum of cycle timings, proposed-draft denominators must be positive, accepted counts cannot exceed output tokens or proposed drafts, and present falsy timing values such as `false` or `""` are rejected rather than zero-coerced. Scalar metric fields must be strict JSON
    numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows
    plus full/train/heldout finite [0, 1] `accepted_per_output` and

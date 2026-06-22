@@ -81,6 +81,8 @@ def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: i
         "cycles": [
             {
                 "visible_output_tokens": output,
+                "generated_draft_tokens": drafts,
+                "accepted_draft_tokens": accepted,
                 "ar_decode_ms": ar_ms,
                 "mtp_draft_ms": draft_ms,
             }
@@ -249,6 +251,54 @@ def test_category_summary_rejects_total_output_tokens_not_matching_cycle_sum() -
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_total_drafts_not_matching_cycle_sum() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=2, ar_ms=100.0, draft_ms=10.0)
+    row["cycles"][0]["generated_draft_tokens"] = 1
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match="metrics.total_drafts for code_1 must match sum of cycle generated_draft_tokens"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_total_accepted_not_matching_cycle_sum() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=2, ar_ms=100.0, draft_ms=10.0)
+    row["cycles"][0]["accepted_draft_tokens"] = 0
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match="metrics.total_accepted for code_1 must match sum of cycle accepted_draft_tokens"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_cycle_accepted_drafts_exceeding_generated_drafts() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=2, drafts=2, ar_ms=100.0, draft_ms=10.0)
+    row["cycles"][0]["generated_draft_tokens"] = 1
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match="cycle 0 for code_1 accepted_draft_tokens exceeds generated_draft_tokens"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
@@ -281,6 +331,8 @@ def test_category_summary_rejects_invalid_cycle_timings(field: str, value: objec
     ("field", "message"),
     [
         ("visible_output_tokens", "cycle 0 for code_1 missing visible_output_tokens"),
+        ("generated_draft_tokens", "cycle 0 for code_1 missing generated_draft_tokens"),
+        ("accepted_draft_tokens", "cycle 0 for code_1 missing accepted_draft_tokens"),
         ("ar_decode_ms", "cycle 0 for code_1 missing ar_decode_ms"),
         ("mtp_draft_ms", "cycle 0 for code_1 missing mtp_draft_ms"),
     ],

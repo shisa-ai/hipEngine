@@ -118977,3 +118977,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 111: validate raw cycle draft counts
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 111.
+- Focused raw acceptance/draft provenance contract: per-cycle generated/accepted draft counts must be explicit and sum to raw `metrics.total_drafts` / `metrics.total_accepted` before aggregation derives acceptance ratios.
+
+### Change
+- `validate_metric_row()` now requires each raw cycle to contain positive integer `generated_draft_tokens` and non-negative integer `accepted_draft_tokens`.
+- The validator rejects cycles where `accepted_draft_tokens > generated_draft_tokens`.
+- The validator sums per-cycle generated/accepted draft counts and rejects rows where those sums differ from `metrics.total_drafts` / `metrics.total_accepted`.
+- Updated the test row helper to emit per-cycle draft counts.
+- Added regressions for missing per-cycle draft counts, forged total draft/accepted count mismatches, and per-cycle accepted>generated inconsistencies.
+- Updated `docs/BENCHMARK.md` to document raw per-cycle draft count validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes for valid rows, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
