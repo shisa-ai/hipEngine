@@ -116184,3 +116184,37 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 26 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 11: attached MTP/true-AR smoke
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 11.
+- Validation-only readiness step: prove the guarded evidence flow works end-to-end by attaching a true no-MTP AR artifact to a tiny native GGUF-MTP category run.
+
+### Commands
+```bash
+python3 scripts/gguf_mtp_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --limit 1   --budgets 1   --cycles 1   --raw-root /tmp/hipengine-mtp-category-attach-smoke-20260622-132933/raw   --output /tmp/hipengine-mtp-category-attach-smoke-20260622-132933/summary.json   --true-ar-baseline-json /tmp/hipengine-true-ar-category-smoke-20260622-132643/true-ar-baseline.json
+python3 -m json.tool /tmp/hipengine-mtp-category-attach-smoke-20260622-132933/summary.json
+```
+
+### Result
+- Artifact: `/tmp/hipengine-mtp-category-attach-smoke-20260622-132933/summary.json` plus `.md` and raw B1 child JSON/log.
+- Prompt: `code_merge_intervals`.
+- `speed_claim_eligible=true` only because `true_ar_baseline` is attached; `performance_claim=false` remains.
+- True AR baseline: `20.017672808082626 tok/s` from `/tmp/hipengine-true-ar-category-smoke-20260622-132643/true-ar-baseline.json`.
+- B1 MTP diagnostic: `6.818956699624959 tok/s`.
+- B1 vs true AR: `0.3406468256825358x`.
+- B1 accepted/output: `0.0`; draft acceptance: `0.0`.
+- Markdown labels validated: `vs verifier off | vs true AR`; no ambiguous `| vs AR |` header.
+
+### Guardrail status
+- Validation-only; no repo code changes, no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, and no kernel edits.
+- This is a one-prompt smoke/provenance check, not a retained speed claim. Next step is full-suite true-AR + MTP category evidence using the same guarded attachment path.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 26 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
