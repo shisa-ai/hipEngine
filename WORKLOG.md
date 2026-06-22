@@ -116594,3 +116594,46 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 37 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 24: current-schema objective CLI validation
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 24.
+- Validation-only readiness step: prove the current summary schema (`full_suite_matches_default`, objective bundle, and objective CLIs) works on fresh real full-suite artifacts.
+
+### True AR command
+```bash
+python3 scripts/gguf_true_ar_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --decode-tokens 1   --warmup-decode-tokens 0   --raw-root /tmp/hipengine-true-ar-category-fullsuite-d1-current-20260622-141926   --output /tmp/hipengine-true-ar-category-fullsuite-d1-current-20260622-141926/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-true-ar-category-fullsuite-d1-current-20260622-141926/true-ar-baseline.json`.
+- Covers all 10 prompts with `true_autoregressive_path=true`, `same_prompt_suite=true`, `same_timing_protocol=true`.
+- Total true AR: `16.19764509650631 tok/s` for the `decode_tokens=1` smoke.
+
+### Attached MTP command
+```bash
+python3 scripts/gguf_mtp_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --budgets 1   --cycles 1   --raw-root /tmp/hipengine-mtp-category-b1-c1-current-20260622-142000/raw   --output /tmp/hipengine-mtp-category-b1-c1-current-20260622-142000/summary.json   --true-ar-baseline-json /tmp/hipengine-true-ar-category-fullsuite-d1-current-20260622-141926/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-mtp-category-b1-c1-current-20260622-142000/summary.json` plus `.md` and raw B1 children.
+- `performance_claim=false`; `speed_claim_eligible=false`; `true_ar_comparison_available=true`; `objective_metrics_available=true`; `full_suite_matches_default=true`.
+- Objective B1 full: accepted/output `0.09090909090909091`, draft acceptance `0.1`, MTP/true-AR `0.42664429983374264`.
+- Objective B1 train accepted/output: `0.0`; heldout accepted/output: `0.2`.
+
+### Objective CLI validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py   --objective-summary-json /tmp/hipengine-mtp-category-b1-c1-current-20260622-142000/summary.json   --objective-budget b1
+python3 scripts/gguf_mtp_category_bench.py   --compare-baseline-summary-json /tmp/hipengine-mtp-category-b1-c1-current-20260622-142000/summary.json   --compare-candidate-summary-json /tmp/hipengine-mtp-category-b1-c1-current-20260622-142000/summary.json   --compare-budget b1   --compare-require-pass
+```
+- Objective extraction parsed and reported the full/train/heldout metrics above.
+- Self-compare passed with `passed=true`, `regressions=[]`, and zero full/train/heldout deltas.
+
+### Guardrail status
+- Validation-only; no repo code changes, no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+- This is a `decode_tokens=1` / `cycles=1` smoke, not retained speed evidence.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 37 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
