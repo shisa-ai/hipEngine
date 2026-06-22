@@ -120082,3 +120082,39 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 
 ### Result
 - Not retained. Root-K5/K6 variants improve aggregate full/train/heldout but consistently regress mixed_ja_en, violating per-category non-regression. Current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 151: root-K5/sibling-K8 rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 151.
+- Evaluated whether lowering the deeper sibling top-k from K10 to K8 makes the aggregate-improving root-K5 policy category-safe. The selector remains generic exact target verification over draft top-k sets, with no prompt/token/candidate-pattern hardcoding.
+
+### Category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling8-full-20260623-035337/raw --output /tmp/hipengine-rootk5-sibling8-full-20260623-035337/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=8
+```
+- Aggregate metrics matched root-K5/sibling-K9 and K10: full accepted/output `0.441341`, train `0.375000`, heldout `0.518072`.
+- Per-category accepted/output: code `0.344262`, general_en `0.512195`, general_ja `0.428571`, mixed_ja_en `0.523810`.
+- The mixed_ja_en category still regressed versus the retained root-K4/sibling-K10 policy (`0.534884 -> 0.523810`), so the candidate violates per-category non-regression and is not retained.
+- Draft acceptance improved versus root-K5/K9-K10 and is higher than retained root-K4/sibling-K10 on candidate accounting (`0.021351` vs `0.017273`), but the mixed_ja_en category regression blocks retention.
+
+### Retained path check
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-iteration151-retained-b5-20.json
+# accepted_per_output=0.5000, accept_per_draft=0.0227, total_accepted=20/880, tokens_per_sec=12.44, speedup_vs_ar_visible=0.727x
+```
+- Current default remains root-K4/sibling-K10.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 320 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 320 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated only generic root/deeper sibling top-k widths under exact verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Root-K5/sibling-K8 improves aggregate full/train/heldout over root-K4 but still regresses mixed_ja_en, so current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
