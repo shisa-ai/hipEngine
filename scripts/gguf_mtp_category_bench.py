@@ -260,6 +260,107 @@ def metric_int(value: Any, *, label: str) -> int:
     return result
 
 
+def metric_nonnegative_int(value: Any, *, label: str) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError) as exc:
+        raise BenchError(f"objective metrics require non-negative {label}") from exc
+    if result < 0:
+        raise BenchError(f"objective metrics require non-negative {label}")
+    return result
+
+
+def validate_summary_budget_totals_consistency(
+    summary: dict[str, Any],
+    *,
+    budget_label: str,
+    full_row: dict[str, Any],
+    true_ar_totals: dict[str, Any],
+) -> dict[str, Any]:
+    totals = summary.get("totals")
+    if not isinstance(totals, dict):
+        raise BenchError("objective metrics require summary totals")
+    row = totals.get(budget_label)
+    if not isinstance(row, dict):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}")
+    categories = summary.get("categories")
+    if not isinstance(categories, dict):
+        raise BenchError("objective metrics require category summary metadata")
+
+    required = (
+        "prompts",
+        "total_output_tokens",
+        "total_accepted",
+        "total_drafts",
+        "decode_tok_s_weighted",
+        "accepted_per_output",
+        "draft_acceptance",
+        "mtp_vs_true_ar_decode_ratio",
+        "true_ar_decode_tok_s_weighted",
+    )
+    missing = [field for field in required if field not in row or row[field] is None]
+    if missing:
+        raise BenchError(f"objective metrics require summary totals.{budget_label} fields: {missing}")
+
+    prompts = metric_int(row.get("prompts"), label=f"summary totals.{budget_label}.prompts")
+    output = metric_int(row.get("total_output_tokens"), label=f"summary totals.{budget_label}.total_output_tokens")
+    accepted = metric_nonnegative_int(row.get("total_accepted"), label=f"summary totals.{budget_label}.total_accepted")
+    drafts = metric_int(row.get("total_drafts"), label=f"summary totals.{budget_label}.total_drafts")
+    if accepted > output:
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.total_accepted <= total_output_tokens")
+    if accepted > drafts:
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.total_accepted <= total_drafts")
+    accepted_per_output = finite_unit_interval_objective(row.get("accepted_per_output"), label=f"summary totals.{budget_label}.accepted_per_output")
+    draft_acceptance = finite_unit_interval_objective(row.get("draft_acceptance"), label=f"summary totals.{budget_label}.draft_acceptance")
+    if not math.isclose(accepted_per_output, accepted / output, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.accepted_per_output to match total counts")
+    if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.draft_acceptance to match total counts")
+    decode_tok_s = finite_nonnegative_objective(row.get("decode_tok_s_weighted"), label=f"summary totals.{budget_label}.decode_tok_s_weighted")
+    ratio = finite_nonnegative_objective(row.get("mtp_vs_true_ar_decode_ratio"), label=f"summary totals.{budget_label}.mtp_vs_true_ar_decode_ratio")
+    true_ar_tps = finite_positive_objective(row.get("true_ar_decode_tok_s_weighted"), label=f"summary totals.{budget_label}.true_ar_decode_tok_s_weighted")
+    if not math.isclose(true_ar_tps, float(true_ar_totals["decode_tok_s_weighted"]), rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.true_ar_decode_tok_s_weighted to match attached true-AR totals")
+    if not math.isclose(ratio, decode_tok_s / true_ar_tps, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.mtp_vs_true_ar_decode_ratio to match attached true-AR totals")
+
+    full_prompts = metric_int(full_row.get("prompts"), label=f"full.{budget_label}.prompts")
+    full_output = metric_int(full_row.get("total_output_tokens"), label=f"full.{budget_label}.total_output_tokens")
+    full_accepted = metric_nonnegative_int(full_row.get("total_accepted"), label=f"full.{budget_label}.total_accepted")
+    full_drafts = metric_int(full_row.get("total_drafts"), label=f"full.{budget_label}.total_drafts")
+    full_decode_tok_s = finite_nonnegative_objective(full_row.get("decode_tok_s_weighted"), label=f"full.{budget_label}.decode_tok_s_weighted")
+    if (prompts, output, accepted, drafts) != (full_prompts, full_output, full_accepted, full_drafts):
+        raise BenchError(f"objective metrics require summary totals.{budget_label} counts to match splits.full")
+    if not math.isclose(decode_tok_s, full_decode_tok_s, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.decode_tok_s_weighted to match splits.full")
+
+    category_prompts = 0
+    category_output = 0
+    category_accepted = 0
+    category_drafts = 0
+    for category, table in categories.items():
+        if not isinstance(table, dict) or not isinstance(table.get(budget_label), dict):
+            raise BenchError(f"objective metrics require category {category}.{budget_label} metrics")
+        category_row = table[budget_label]
+        category_prompts += metric_int(category_row.get("prompts"), label=f"category {category}.{budget_label}.prompts")
+        category_output += metric_int(category_row.get("total_output_tokens"), label=f"category {category}.{budget_label}.total_output_tokens")
+        category_accepted += metric_nonnegative_int(category_row.get("total_accepted"), label=f"category {category}.{budget_label}.total_accepted")
+        category_drafts += metric_int(category_row.get("total_drafts"), label=f"category {category}.{budget_label}.total_drafts")
+    if (category_prompts, category_output, category_accepted, category_drafts) != (prompts, output, accepted, drafts):
+        raise BenchError(f"objective metrics require summary totals.{budget_label} counts to match category sums")
+    return {
+        "prompts": prompts,
+        "total_output_tokens": output,
+        "total_accepted": accepted,
+        "total_drafts": drafts,
+        "decode_tok_s_weighted": decode_tok_s,
+        "accepted_per_output": accepted_per_output,
+        "draft_acceptance": draft_acceptance,
+        "mtp_vs_true_ar_decode_ratio": ratio,
+        "true_ar_decode_tok_s_weighted": true_ar_tps,
+    }
+
+
 def validate_true_ar_totals_consistency(true_ar: dict[str, Any]) -> dict[str, Any]:
     totals = true_ar.get("totals")
     if not isinstance(totals, dict):
@@ -1016,6 +1117,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     true_ar_splits = true_ar.get("splits")
     if not isinstance(true_ar_splits, dict):
         raise BenchError("objective metrics require attached true_ar_baseline.splits")
+    full_budget_row: dict[str, Any] | None = None
     split_contract_keys = {"full": "full_ids", "train": "train_ids", "heldout": "heldout_ids"}
     for split_name in ("full", "train", "heldout"):
         split = splits.get(split_name)
@@ -1033,6 +1135,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         if not isinstance(metrics, dict) or label not in metrics:
             raise BenchError(f"objective metrics missing {label} for split {split_name}")
         row = metrics[label]
+        if split_name == "full":
+            full_budget_row = row
         required = (
             "accepted_per_output",
             "draft_acceptance",
@@ -1084,6 +1188,14 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             "mtp_vs_true_ar_decode_ratio": ratio,
             "prompts": prompts_count,
         }
+    if full_budget_row is None:
+        raise BenchError(f"objective metrics missing {label} for split full")
+    out["summary_totals"] = validate_summary_budget_totals_consistency(
+        summary,
+        budget_label=label,
+        full_row=full_budget_row,
+        true_ar_totals=true_ar_totals,
+    )
     return out
 
 

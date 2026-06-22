@@ -633,6 +633,11 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["summary_prompts"]["prompt_ids"] == list(DEFAULT_FULL_PROMPT_IDS)
     assert metrics["summary_prompts"]["prompt_hashes"]["code_merge_intervals"] == prompt_sha256(load_prompt_rows(DEFAULT_PROMPTS)[0]["prompt"])
     assert metrics["summary_categories"] == {"code": 4, "general_en": 2, "general_ja": 2, "mixed_ja_en": 2}
+    assert metrics["summary_totals"]["prompts"] == 10
+    assert metrics["summary_totals"]["total_output_tokens"] == 100
+    assert metrics["summary_totals"]["total_accepted"] == 55
+    assert metrics["summary_totals"]["total_drafts"] == 55
+    assert metrics["summary_totals"]["decode_tok_s_weighted"] == pytest.approx(100.0 / 1100.0 * 1000.0)
     assert metrics["true_ar_totals"]["prompts"] == 10
     assert metrics["true_ar_totals"]["total_output_tokens"] == 100
     assert metrics["true_ar_totals"]["decode_tok_s_weighted"] == pytest.approx(100.0)
@@ -790,6 +795,46 @@ def test_objective_metrics_for_budget_rejects_category_true_ar_ratio_mismatch(tm
     summary["categories"]["mixed_ja_en"]["b1"]["mtp_vs_true_ar_decode_ratio"] = 123.0
 
     with pytest.raises(BenchError, match="objective metrics require category mixed_ja_en.b1.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.categories.mixed_ja_en"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_summary_total_budget_row(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["totals"]["b1"]
+
+    with pytest.raises(BenchError, match="objective metrics require summary totals.b1"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_summary_total_ratio_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["totals"]["b1"]["accepted_per_output"] = 0.99
+
+    with pytest.raises(BenchError, match="summary totals.b1.accepted_per_output to match total counts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_summary_total_full_split_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["totals"]["b1"]["prompts"] = 9
+
+    with pytest.raises(BenchError, match="summary totals.b1 counts to match splits.full"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_summary_total_category_sum_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["code"]["b1"]["total_drafts"] += 1
+
+    with pytest.raises(BenchError, match="summary totals.b1 counts to match category sums"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_summary_total_true_ar_tps_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["totals"]["b1"]["true_ar_decode_tok_s_weighted"] = 101.0
+
+    with pytest.raises(BenchError, match="summary totals.b1.true_ar_decode_tok_s_weighted to match attached true-AR totals"):
         objective_metrics_for_budget(summary, "b1")
 
 
