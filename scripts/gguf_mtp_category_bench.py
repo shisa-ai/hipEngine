@@ -101,6 +101,36 @@ def prompt_sha256(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
+def git_output(args: list[str]) -> str | None:
+    completed = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
+def repo_provenance() -> dict[str, Any]:
+    tracked_dirty = None
+    diff = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    staged = subprocess.run(["git", "-C", str(REPO_ROOT), "diff", "--cached", "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    if diff.returncode in {0, 1} and staged.returncode in {0, 1}:
+        tracked_dirty = diff.returncode == 1 or staged.returncode == 1
+    untracked = git_output(["ls-files", "--others", "--exclude-standard"])
+    untracked_count = None if untracked is None else len([line for line in untracked.splitlines() if line.strip()])
+    return {
+        "repo_root": str(REPO_ROOT),
+        "git_commit": git_output(["rev-parse", "HEAD"]),
+        "git_branch": git_output(["rev-parse", "--abbrev-ref", "HEAD"]),
+        "git_tracked_dirty": tracked_dirty,
+        "git_untracked_count": untracked_count,
+    }
+
+
 def run_one(
     *,
     python: str,
@@ -759,6 +789,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
             "cycles is verify-cycle count, not llama.cpp max_tokens; accepted drafts add visible output tokens.",
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "repo": repo_provenance(),
         "model": str(args.model),
         "quant": "UD-Q4_K_M GGUF with MTP blocks",
         "prompt_file": str(args.prompts),

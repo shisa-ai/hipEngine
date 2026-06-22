@@ -77,6 +77,8 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
     assert summary["status"] == "diagnostic_retained"
+    assert summary["repo"]["repo_root"]
+    assert set(summary["repo"]) == {"repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count"}
     assert summary["performance_claim"] is False
     assert summary["speed_claim_eligible"] is False
     assert summary["true_ar_comparison_available"] is False
@@ -856,6 +858,8 @@ def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
     artifact = build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=prompt_metrics, commands=["cmd"])
 
     assert artifact["kind"] == "hipengine_gguf_true_ar_category_baseline"
+    assert artifact["repo"]["repo_root"]
+    assert set(artifact["repo"]) == {"repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count"}
     assert artifact["performance_claim"] is False
     assert artifact["true_autoregressive_path"] is True
     assert artifact["same_timing_protocol"] is True

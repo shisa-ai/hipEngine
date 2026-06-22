@@ -29,7 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.gguf_mtp_bench import build_chat_prompt
-from scripts.gguf_mtp_category_bench import DEFAULT_MODEL, DEFAULT_PROMPTS, BenchError, load_prompt_rows, prompt_sha256, safe_name
+from scripts.gguf_mtp_category_bench import DEFAULT_MODEL, DEFAULT_PROMPTS, BenchError, load_prompt_rows, prompt_sha256, repo_provenance, safe_name
 
 
 def exact_command_payload(argv: Sequence[object]) -> dict[str, Any]:
@@ -78,6 +78,7 @@ def build_true_ar_artifact(
         "same_timing_protocol": True,
         "same_prompt_suite": True,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "repo": repo_provenance(),
         "model": str(args.model),
         "quant": "UD-Q4_K_M GGUF",
         "prompt_file": str(args.prompts),
