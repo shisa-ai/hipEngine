@@ -2193,9 +2193,19 @@ def main() -> int:
     if args.compare_baseline_summary_json is not None or args.compare_candidate_summary_json is not None:
         if args.compare_baseline_summary_json is None or args.compare_candidate_summary_json is None or args.compare_budget is None:
             raise BenchError("compare mode requires --compare-baseline-summary-json, --compare-candidate-summary-json, and --compare-budget")
-        baseline = json.loads(args.compare_baseline_summary_json.read_text(encoding="utf-8"))
-        candidate = json.loads(args.compare_candidate_summary_json.read_text(encoding="utf-8"))
+        baseline_path = args.compare_baseline_summary_json
+        candidate_path = args.compare_candidate_summary_json
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
         comparison = compare_objective_metrics(baseline, candidate, args.compare_budget, tolerance=args.compare_tolerance)
+        comparison["comparison_sources"] = {
+            "baseline_summary_json": str(baseline_path),
+            "baseline_summary_json_resolved": str(baseline_path.expanduser().resolve(strict=False)),
+            "candidate_summary_json": str(candidate_path),
+            "candidate_summary_json_resolved": str(candidate_path.expanduser().resolve(strict=False)),
+        }
+        comparison["comparison_command"] = quote_command([sys.executable, *sys.argv])
+        comparison["comparison_cwd"] = str(Path.cwd())
         print(json.dumps(comparison, indent=2, sort_keys=True))
         if args.compare_require_guarded_improvement and (not comparison["passed"] or not comparison["guarded_improved"]):
             return 2

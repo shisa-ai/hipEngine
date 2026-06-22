@@ -2383,6 +2383,17 @@ def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None
     assert comparison["passed"] is True
     assert comparison["regressions"] == []
     assert comparison["deltas"]["full"]["accepted_per_output"] > 0
+    assert comparison["comparison_sources"] == {
+        "baseline_summary_json": str(baseline_path),
+        "baseline_summary_json_resolved": str(baseline_path.resolve(strict=False)),
+        "candidate_summary_json": str(candidate_path),
+        "candidate_summary_json_resolved": str(candidate_path.resolve(strict=False)),
+    }
+    assert comparison["comparison_cwd"] == str(repo_root)
+    assert "--compare-baseline-summary-json" in comparison["comparison_command"]
+    assert str(baseline_path) in comparison["comparison_command"]
+    assert "--compare-candidate-summary-json" in comparison["comparison_command"]
+    assert str(candidate_path) in comparison["comparison_command"]
 
 
 def test_compare_objective_metrics_cli_can_require_guarded_improvement(tmp_path: Path) -> None:

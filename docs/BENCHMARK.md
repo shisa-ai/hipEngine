@@ -290,7 +290,10 @@ acceptance loops.
    `--compare-tolerance` applies a finite non-negative absolute tolerance to
    guarded regressions and improvements; its default is `0.0` for exact
    non-regression. NaN/Inf tolerances are invalid because they can mask
-   regressions.
+   regressions. Compare-mode JSON also records `comparison_sources` (baseline and
+   candidate summary paths plus resolved paths), `comparison_command`, and
+   `comparison_cwd`; keep these fields with any loop decision artifact so the
+   exact command and compared summaries remain auditable.
 
 5. **Promotion remains separate from diagnostics.** The category diagnostic is
    not a retained speed claim even when a true-AR baseline is attached. To promote

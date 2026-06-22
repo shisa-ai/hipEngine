@@ -119324,3 +119324,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 125: add compare CLI provenance fields
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 125.
+- Focused acceptance-review harness readiness: make guarded comparison artifacts self-contained enough to audit which baseline/candidate summaries and command produced the decision JSON.
+
+### Change
+- Compare CLI mode now augments comparison JSON with `comparison_sources`, containing baseline/candidate summary paths and resolved paths.
+- Compare CLI mode now records `comparison_command` and `comparison_cwd` in the JSON output.
+- Added CLI assertions for artifact-path, cwd, and command provenance.
+- Updated `docs/BENCHMARK.md` to require retaining these provenance fields with loop decision artifacts.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no raw metric schema changes, no acceptance computation semantics changes, no objective extraction formula changes, no comparator pass/fail behavior changes, no CLI exit behavior changes, no true-AR baseline eligibility changes, no speed-claim promotion changes, and no kernel edits.
+- The provenance fields are added after the same guarded objective extraction/comparison and do not affect the measured/computed objective values.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
