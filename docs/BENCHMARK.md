@@ -127,7 +127,8 @@ acceptance loops.
    `prompt_sha256`) matching `splits.contract.full_ids`, include category
    summary metadata whose keys match prompt categories, with a category row for
    each objective budget, bounded acceptance ratios, finite non-negative speed
-   fields, and prompt counts matching the prompt metadata, and carry attached
+   fields, prompt counts matching the prompt metadata, and per-category true-AR
+   ratios matching the attached true-AR category baselines, and carry attached
    true-AR `artifact_schema`/`artifact_kind` plus `protocol` metadata matching
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
@@ -172,10 +173,10 @@ acceptance loops.
    `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count matching the
    split `prompt_ids` length, split `prompt_ids` matching `splits.contract`, and
    the fixed heldout/train split described above.
-   The gate also verifies each
+   The gate also verifies each split and category
    `mtp_vs_true_ar_decode_ratio` against the attached true-AR
-   split `decode_tok_s_weighted` and matching split prompt count / prompt-id
-   list length.
+   split/category `decode_tok_s_weighted` and matching prompt count / prompt-id
+   list length where applicable.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
    and request one split/field explicitly:

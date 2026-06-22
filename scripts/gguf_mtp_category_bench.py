@@ -256,10 +256,14 @@ def validate_summary_category_budget_metrics(
     label: str,
     budget_label: str,
     category_counts: dict[str, int],
+    true_ar: dict[str, Any],
 ) -> dict[str, int]:
     categories_payload = summary.get("categories")
     if not isinstance(categories_payload, dict):
         raise BenchError(f"{label} requires category summary metadata")
+    true_ar_categories = true_ar.get("categories")
+    if not isinstance(true_ar_categories, dict):
+        raise BenchError("objective metrics require attached true_ar_baseline.categories")
     for category, expected_count in sorted(category_counts.items()):
         table = categories_payload.get(category)
         if not isinstance(table, dict):
@@ -267,6 +271,9 @@ def validate_summary_category_budget_metrics(
         row = table.get(budget_label)
         if not isinstance(row, dict):
             raise BenchError(f"{label} category {category} requires {budget_label} metrics")
+        true_ar_category = true_ar_categories.get(category)
+        if not isinstance(true_ar_category, dict):
+            raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}")
         required = (
             "accepted_per_output",
             "draft_acceptance",
@@ -283,10 +290,25 @@ def validate_summary_category_budget_metrics(
             raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata") from exc
         if prompts_count != expected_count:
             raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata")
+        try:
+            true_ar_prompts_count = int(true_ar_category.get("prompts"))
+        except (TypeError, ValueError) as exc:
+            raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}.prompts to match prompt metadata") from exc
+        if true_ar_prompts_count != expected_count:
+            raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}.prompts to match prompt metadata")
         finite_unit_interval_objective(row["accepted_per_output"], label=f"{label} category {category}.{budget_label}.accepted_per_output")
         finite_unit_interval_objective(row["draft_acceptance"], label=f"{label} category {category}.{budget_label}.draft_acceptance")
-        finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{label} category {category}.{budget_label}.decode_tok_s_weighted")
-        finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{label} category {category}.{budget_label}.mtp_vs_true_ar_decode_ratio")
+        decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{label} category {category}.{budget_label}.decode_tok_s_weighted")
+        ratio = finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{label} category {category}.{budget_label}.mtp_vs_true_ar_decode_ratio")
+        true_ar_tok_s = finite_positive_objective(
+            true_ar_category.get("decode_tok_s_weighted"),
+            label=f"attached true_ar_baseline.categories.{category}.decode_tok_s_weighted",
+        )
+        expected_ratio = decode_tok_s / true_ar_tok_s
+        if not math.isclose(ratio, expected_ratio, rel_tol=1e-9, abs_tol=1e-12):
+            raise BenchError(
+                f"objective metrics require category {category}.{budget_label}.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.categories.{category}"
+            )
     return dict(sorted(category_counts.items()))
 
 
@@ -880,6 +902,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         label="objective summary",
         budget_label=label,
         category_counts=summary_prompts["category_counts"],
+        true_ar=true_ar,
     )
     splits = summary.get("splits")
     if not isinstance(splits, dict):

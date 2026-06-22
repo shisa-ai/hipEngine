@@ -117535,3 +117535,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 57: validate category true-AR ratios
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 57.
+- Focused category true-AR consistency contract: guarded objective extraction must not trust per-category `mtp_vs_true_ar_decode_ratio` scalars without checking attached true-AR category baselines.
+
+### Change
+- `validate_summary_category_budget_metrics()` now requires attached `true_ar_baseline.categories` metadata.
+- Each prompt category must have an attached true-AR category row with:
+  - prompt count matching prompt metadata category count;
+  - positive `decode_tok_s_weighted`.
+- Each category budget row `mtp_vs_true_ar_decode_ratio` must equal MTP category `decode_tok_s_weighted / attached true-AR category decode_tok_s_weighted`.
+- Added regressions for missing attached true-AR category metadata, true-AR category prompt-count mismatch, non-positive true-AR category tok/s, and forged category true-AR ratio.
+- Updated `docs/BENCHMARK.md` to document category true-AR ratio validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 121 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

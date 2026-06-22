@@ -758,6 +758,38 @@ def test_objective_metrics_for_budget_rejects_category_negative_true_ar_ratio(tm
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_missing_true_ar_category(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["true_ar_baseline"]["categories"]["code"]
+
+    with pytest.raises(BenchError, match="objective metrics require attached true_ar_baseline.categories.code"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_true_ar_category_prompt_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"]["categories"]["general_en"]["prompts"] = 3
+
+    with pytest.raises(BenchError, match="objective metrics require attached true_ar_baseline.categories.general_en.prompts to match prompt metadata"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_non_positive_true_ar_category_tps(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"]["categories"]["general_ja"]["decode_tok_s_weighted"] = 0.0
+
+    with pytest.raises(BenchError, match="objective metrics require positive attached true_ar_baseline.categories.general_ja.decode_tok_s_weighted"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_category_true_ar_ratio_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["mixed_ja_en"]["b1"]["mtp_vs_true_ar_decode_ratio"] = 123.0
+
+    with pytest.raises(BenchError, match="objective metrics require category mixed_ja_en.b1.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.categories.mixed_ja_en"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_non_default_heldout_contract(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["contract"]["heldout_ids"] = [
