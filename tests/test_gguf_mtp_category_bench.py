@@ -632,6 +632,8 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["summary_prompts"]["prompt_count"] == 10
     assert metrics["summary_prompts"]["prompt_ids"] == list(DEFAULT_FULL_PROMPT_IDS)
     assert metrics["summary_prompts"]["prompt_hashes"]["code_merge_intervals"] == prompt_sha256(load_prompt_rows(DEFAULT_PROMPTS)[0]["prompt"])
+    assert metrics["summary_prompts"]["prompt_categories"]["code_merge_intervals"] == "code"
+    assert metrics["summary_prompts"]["prompt_chars"]["code_merge_intervals"] == len(load_prompt_rows(DEFAULT_PROMPTS)[0]["prompt"])
     assert metrics["summary_categories"] == {"code": 4, "general_en": 2, "general_ja": 2, "mixed_ja_en": 2}
     assert metrics["summary_totals"]["prompts"] == 10
     assert metrics["summary_totals"]["total_output_tokens"] == 100
@@ -707,6 +709,32 @@ def test_objective_metrics_for_budget_rejects_summary_prompt_id_mismatch(tmp_pat
     summary["prompts"][0]["id"] = "renamed_prompt"
 
     with pytest.raises(BenchError, match="objective summary prompt ids must match splits.contract.full_ids"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_default_prompt_hash_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["prompts"][0]["prompt_sha256"] = prompt_sha256("changed prompt text")
+
+    with pytest.raises(BenchError, match="objective metrics require prompt code_merge_intervals hash to match the default prompt fixture"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_default_prompt_length_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["prompts"][0]["prompt_chars"] += 1
+
+    with pytest.raises(BenchError, match="objective metrics require prompt code_merge_intervals length to match the default prompt fixture"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_default_prompt_category_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    by_id = {row["id"]: row for row in summary["prompts"]}
+    by_id["code_merge_intervals"]["category"] = "general_en"
+    by_id["general_en_plan"]["category"] = "code"
+
+    with pytest.raises(BenchError, match="objective metrics require prompt code_merge_intervals category to match the default prompt fixture"):
         objective_metrics_for_budget(summary, "b1")
 
 
@@ -1180,8 +1208,6 @@ def test_compare_objective_metrics_rejects_changed_true_ar_baseline(tmp_path: Pa
     "mutate",
     [
         lambda summary: summary.update({"cycles": 2}),
-        lambda summary: summary["prompts"][0].update({"prompt_chars": summary["prompts"][0]["prompt_chars"] + 1}),
-        lambda summary: summary["prompts"][0].update({"prompt_sha256": "0" * 64}),
     ],
 )
 def test_compare_objective_metrics_rejects_changed_protocol_metadata(tmp_path: Path, mutate) -> None:

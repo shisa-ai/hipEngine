@@ -124,7 +124,8 @@ acceptance loops.
    The summary must set `schema=1`,
    `kind=hipengine_gguf_mtp_category_matrix`, include non-empty `commands`,
    include per-prompt metadata (`id`, `category`, positive `prompt_chars`, and
-   `prompt_sha256`) matching `splits.contract.full_ids`, include category
+   `prompt_sha256`) matching `splits.contract.full_ids` and the default prompt
+   fixture text/category/length, include category
    summary metadata whose keys match prompt categories, with a category row for
    each objective budget, count-derived bounded acceptance ratios, finite
    non-negative speed fields, prompt counts matching the prompt metadata, and per-category true-AR
@@ -165,7 +166,8 @@ acceptance loops.
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
    artifacts without current schema/kind metadata, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt/category
-   provenance including category budget-row scalar fields, token counts, and
+   provenance including default prompt hashes/categories/lengths plus category
+   budget-row scalar fields, token counts, and
    prompt counts, protocol provenance, prompt-hash provenance, and true-AR finite-logit
    evidence. The returned JSON contains
    full/train/heldout finite [0, 1] `accepted_per_output` and

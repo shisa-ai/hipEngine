@@ -203,6 +203,8 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
         raise BenchError(f"{label} requires non-empty prompt metadata")
     prompt_ids: list[str] = []
     prompt_hashes: dict[str, str] = {}
+    prompt_categories: dict[str, str] = {}
+    prompt_chars_by_id: dict[str, int] = {}
     categories: list[str] = []
     category_counts: dict[str, int] = defaultdict(int)
     seen: set[str] = set()
@@ -224,6 +226,8 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
         prompt_hash = validate_sha256_hex(row.get("prompt_sha256"), label=f"{label} prompt {prompt_id}")
         prompt_ids.append(prompt_id)
         prompt_hashes[prompt_id] = prompt_hash
+        prompt_categories[prompt_id] = category
+        prompt_chars_by_id[prompt_id] = prompt_chars
         categories.append(category)
         category_counts[category] += 1
 
@@ -245,9 +249,28 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
         "prompt_count": len(prompt_ids),
         "prompt_ids": prompt_ids,
         "prompt_hashes": prompt_hashes,
+        "prompt_categories": prompt_categories,
+        "prompt_chars": prompt_chars_by_id,
         "categories": sorted(set(categories)),
         "category_counts": dict(sorted(category_counts.items())),
     }
+
+
+def validate_default_prompt_fixture_metadata(prompt_metadata: dict[str, Any]) -> None:
+    expected_rows = load_prompt_rows(DEFAULT_PROMPTS)
+    expected_ids = [str(row["id"]) for row in expected_rows]
+    if prompt_metadata.get("prompt_ids") != expected_ids:
+        raise BenchError("objective metrics require summary prompts to match the default prompt fixture order")
+    for row in expected_rows:
+        prompt_id = str(row["id"])
+        expected_prompt = str(row["prompt"])
+        expected_category = str(row["category"])
+        if prompt_metadata["prompt_categories"].get(prompt_id) != expected_category:
+            raise BenchError(f"objective metrics require prompt {prompt_id} category to match the default prompt fixture")
+        if prompt_metadata["prompt_chars"].get(prompt_id) != len(expected_prompt):
+            raise BenchError(f"objective metrics require prompt {prompt_id} length to match the default prompt fixture")
+        if prompt_metadata["prompt_hashes"].get(prompt_id) != prompt_sha256(expected_prompt):
+            raise BenchError(f"objective metrics require prompt {prompt_id} hash to match the default prompt fixture")
 
 
 def metric_int(value: Any, *, label: str) -> int:
@@ -1109,6 +1132,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     actual_train_ids = [str(prompt_id) for prompt_id in contract.get("train_ids") or []]
     if actual_train_ids != expected_train_ids:
         raise BenchError("objective metrics require train prompt IDs to be the default full-minus-heldout complement")
+    validate_default_prompt_fixture_metadata(summary_prompts)
 
     out: dict[str, Any] = {
         "budget": label,

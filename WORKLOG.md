@@ -117680,3 +117680,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 62: validate default prompt fixture metadata
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 62.
+- Focused prompt fixture provenance contract: guarded objective extraction must ensure summary prompt metadata matches the default mtp-bench prompt fixture, not just the default prompt IDs.
+
+### Change
+- `validate_summary_prompt_metadata()` now exposes canonical `prompt_categories` and `prompt_chars` maps alongside prompt IDs and hashes.
+- Added `validate_default_prompt_fixture_metadata()`.
+- `objective_metrics_for_budget()` now validates that summary prompt IDs/order, categories, prompt lengths, and SHA-256 hashes match `DEFAULT_PROMPTS` once the deterministic split contract is established.
+- Added regressions for default prompt hash mismatch, prompt length mismatch, and prompt category mismatch.
+- Adjusted the comparator protocol-metadata regression because invalid prompt hash/length now fails objective extraction before compare-protocol diffing.
+- Updated `docs/BENCHMARK.md` to document default prompt fixture hash/category/length validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 139 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
