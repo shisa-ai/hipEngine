@@ -20,6 +20,44 @@ Every retained performance number must carry:
 
 Claims without a correctness gate are disallowed. A perf win that regresses correctness is reverted. Raw terminal output is not evidence — retain a compact JSON artifact per the schema at the bottom of this doc.
 
+## Anti-gaming
+
+A benchmark measures the model/kernels. Tuning a number to the specific inputs
+being measured measures nothing and is **INVALID** — it is never a retainable
+win, regardless of how the metric moved.
+
+Hard rules:
+
+- **No input-conditioned shortcuts.** Do not add code that detects the prompt,
+  token sequence, candidate-id pattern, logits shape, or any fixture-specific
+  signal and changes the output to make a metric look better. Examples that are
+  banned: hardcoding token IDs or candidate-pool-prefix reranks to force draft
+  "acceptance", special-casing a known fixture's expected tokens, or branching on
+  the prompt text. Optimize the drafter/kernel/sampler so it is genuinely better
+  on inputs it has never seen.
+- **Multi-prompt validation is mandatory for acceptance/quality metrics.**
+  Speculative-decode acceptance, sampling quality, and any prompt-sensitive
+  metric must be measured on the full multi-prompt **mtp-bench category suite**
+  (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, covering `code`,
+  `general_en`, `general_ja`, `mixed_ja_en`). A single fixed prompt (e.g. the
+  `gguf_mtp_bench.py` `"capital of France?"` default) is a smoke input only and
+  its acceptance/quality numbers are **not retainable**.
+- **Greedy selection stays greedy.** Draft/target token selection in benchmark
+  harnesses is pure argmax/top-k. The guard test
+  `tests/test_gguf_mtp_bench_metrics.py::test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`
+  fails if a prompt-specific override is reintroduced; do not weaken it.
+- **Cleanup, not just rejection.** When gaming is found, strip the offending code
+  and mark every WORKLOG/README/CHANGELOG row and `benchmarks/results/` artifact
+  that cited the gamed numbers as `INVALID` (gamed) so they are never reused as a
+  baseline. Real, input-agnostic engine wins measured alongside the gaming (e.g.
+  draft-compute `ms` reductions) survive on their own evidence.
+
+History: the `mtp-gguf` branch accumulated ~25 hardcoded token-id reranks in
+`scripts/gguf_mtp_bench.py::select_topk_tokens` overfit to the France prompt,
+inflating "acceptance" with no real drafter improvement; the category suite
+exposed it (acceptance collapsed, every MTP budget slower than AR). Those
+acceptance rows are INVALID.
+
 ## Benchmark Output Contract
 
 A benchmark artifact must answer five questions without rereading raw logs:
