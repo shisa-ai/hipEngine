@@ -118743,3 +118743,26 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 101: require strict prompt message roles
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 101.
+- Focused prompt fixture provenance contract: `messages[]` prompt fixtures must carry explicit strict message roles before prompt text extraction.
+
+### Change
+- `load_prompt_rows()` now rejects `messages[]` items with missing, empty, or non-string `role` values.
+- Added regressions for missing message role and non-string message role prompt fixtures.
+- Updated `docs/BENCHMARK.md` to document strict message roles/content in prompt fixture rows.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no valid-fixture split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

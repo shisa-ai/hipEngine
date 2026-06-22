@@ -138,7 +138,7 @@ acceptance loops.
    `true_ar_comparison_available=true`, boolean `performance_claim=false`,
    boolean `speed_claim_eligible=false`, `splits.full`,
    `splits.train`, and `splits.heldout`; prompt fixture rows must use explicit unique strict
-   string IDs (no `name` or line-number fallback), explicit categories (no `uncategorized` fallback), prompt text, and message content before split
+   string IDs (no `name` or line-number fallback), explicit categories (no `uncategorized` fallback), prompt text, and message roles/content before split
    construction; split contract and per-split `prompt_ids` lists must contain strict non-empty strings,
    `splits.contract.heldout_ids` must be the fixed set
    `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,

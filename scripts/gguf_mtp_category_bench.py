@@ -115,6 +115,8 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
                     if not isinstance(msg, dict):
                         raise BenchError(f"{path}:{line_no}: messages[{msg_index}] must be an object")
                     role = msg.get("role")
+                    if not isinstance(role, str) or not role:
+                        raise BenchError(f"{path}:{line_no}: messages[{msg_index}].role must be a non-empty string")
                     if role == "user":
                         content = msg.get("content", "")
                         if not isinstance(content, str):
