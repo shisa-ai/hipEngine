@@ -117451,3 +117451,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 54: require summary category metadata
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 54.
+- Focused full category-suite provenance contract: guarded objective and future speed-claim artifacts must include category summary metadata, not just prompt-level categories.
+
+### Change
+- `validate_summary_prompt_metadata()` now requires a non-empty `summary["categories"]` object.
+- The category keys must exactly match the categories declared in `summary["prompts"]`.
+- Added objective regressions for missing and mismatched summary category metadata.
+- Added speed-claim regressions for missing and mismatched summary category metadata.
+- Updated `docs/BENCHMARK.md` to document summary category provenance as part of the guarded objective contract.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 111 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

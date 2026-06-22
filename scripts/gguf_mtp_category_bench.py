@@ -226,7 +226,9 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
         categories.append(category)
 
     summary_categories = summary.get("categories")
-    if isinstance(summary_categories, dict) and set(categories) != set(map(str, summary_categories.keys())):
+    if not isinstance(summary_categories, dict) or not summary_categories:
+        raise BenchError(f"{label} requires category summary metadata")
+    if set(categories) != set(map(str, summary_categories.keys())):
         raise BenchError(f"{label} prompt categories do not match category summary keys")
     split_contract = (summary.get("splits") or {}).get("contract") if isinstance(summary.get("splits"), dict) else None
     if isinstance(split_contract, dict) and "full_ids" in split_contract:

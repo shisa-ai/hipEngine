@@ -349,6 +349,7 @@ def _speed_claim_summary(
         "repo": dict(TEST_REPO_PROVENANCE),
         "commands": list(TEST_SUMMARY_COMMANDS),
         "prompts": [dict(row) for row in TEST_SUMMARY_PROMPTS],
+        "categories": {"code": {}},
         "true_ar_baseline": true_ar,
     }
     if summary_overrides:
@@ -405,6 +406,20 @@ def test_speed_claim_contract_rejects_bad_prompt_hash() -> None:
     summary["prompts"][0]["prompt_sha256"] = "not-a-sha"
 
     with pytest.raises(BenchError, match="speed-claim summary prompt code_merge_intervals requires 64-character SHA-256 hex"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_missing_category_metadata() -> None:
+    summary = _speed_claim_summary(drop_summary=("categories",))
+
+    with pytest.raises(BenchError, match="speed-claim summary requires category summary metadata"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_prompt_category_summary_mismatch() -> None:
+    summary = _speed_claim_summary(summary_overrides={"categories": {"general_en": {}}})
+
+    with pytest.raises(BenchError, match="speed-claim summary prompt categories do not match category summary keys"):
         validate_speed_claim_contract(summary)
 
 
@@ -676,6 +691,22 @@ def test_objective_metrics_for_budget_rejects_summary_prompt_id_mismatch(tmp_pat
     summary["prompts"][0]["id"] = "renamed_prompt"
 
     with pytest.raises(BenchError, match="objective summary prompt ids must match splits.contract.full_ids"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_summary_category_metadata(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["categories"]
+
+    with pytest.raises(BenchError, match="objective summary requires category summary metadata"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_prompt_category_summary_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"] = {"code": summary["categories"]["code"]}
+
+    with pytest.raises(BenchError, match="objective summary prompt categories do not match category summary keys"):
         objective_metrics_for_budget(summary, "b1")
 
 
