@@ -439,10 +439,10 @@ def main():
     parser.add_argument(
         "--root-topk-accept",
         type=int,
-        default=11,
+        default=12,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 11; use 1 for linear argmax path)."
+            "the first K root candidates (default: 12; use 1 for linear argmax path)."
         ),
     )
     parser.add_argument(
@@ -504,8 +504,8 @@ def main():
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
         parser.error(str(exc))
-    if args.root_topk_accept < 1 or args.root_topk_accept > 11:
-        parser.error("--root-topk-accept must be in 1..11")
+    if args.root_topk_accept < 1 or args.root_topk_accept > 12:
+        parser.error("--root-topk-accept must be in 1..12")
     if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 10:
         parser.error("--sibling-topk-accept must be in 1..10")
     if args.sibling_topk_max_depth < 0:
