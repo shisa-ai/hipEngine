@@ -439,10 +439,10 @@ def main():
     parser.add_argument(
         "--root-topk-accept",
         type=int,
-        default=5,
+        default=6,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 5; use 1 for linear argmax path)."
+            "the first K root candidates (default: 6; use 1 for linear argmax path)."
         ),
     )
     parser.add_argument(
