@@ -116131,3 +116131,25 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 25 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 9: require same-prompt-suite AR artifacts
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 9.
+- Focused guardrail change: make external true-AR baseline artifacts self-describing before they can be attached to MTP category summaries.
+
+### Change
+- `scripts/gguf_mtp_category_bench.py::true_ar_rows_from_artifact()` now requires attached true-AR artifacts to declare `same_prompt_suite=true`, in addition to `true_autoregressive_path=true` and `same_timing_protocol=true`.
+- Added a regression test rejecting an otherwise prompt-matching true-AR artifact that omits `same_prompt_suite=true`.
+
+### Guardrail status
+- No selector/proposal-policy changes; no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, and no kernel edits.
+- This strengthens true-AR provenance before any speed-eligible artifact can be produced.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 26 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

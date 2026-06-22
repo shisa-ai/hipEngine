@@ -243,6 +243,8 @@ def true_ar_rows_from_artifact(path: Path) -> list[dict[str, Any]]:
         raise BenchError("true AR baseline artifact must be a JSON object")
     if artifact.get("true_autoregressive_path") is not True:
         raise BenchError("true AR baseline artifact must set true_autoregressive_path=true")
+    if artifact.get("same_prompt_suite") is not True:
+        raise BenchError("true AR baseline artifact must set same_prompt_suite=true")
     if artifact.get("same_timing_protocol") is not True:
         raise BenchError("true AR baseline artifact must set same_timing_protocol=true")
     rows = artifact.get("prompt_metrics")

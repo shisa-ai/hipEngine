@@ -180,20 +180,16 @@ def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
     assert validate_speed_claim_contract(summary) is summary
 
 
-def _write_true_ar_baseline(path: Path, rows: list[dict]) -> None:
-    path.write_text(
-        json.dumps(
-            {
-                "kind": "hipengine_gguf_true_ar_category_baseline",
-                "true_autoregressive_path": True,
-                "same_timing_protocol": True,
-                "prompt_metrics": rows,
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+def _write_true_ar_baseline(path: Path, rows: list[dict], *, same_prompt_suite: bool | None = True) -> None:
+    payload = {
+        "kind": "hipengine_gguf_true_ar_category_baseline",
+        "true_autoregressive_path": True,
+        "same_timing_protocol": True,
+        "prompt_metrics": rows,
+    }
+    if same_prompt_suite is not None:
+        payload["same_prompt_suite"] = same_prompt_suite
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> None:
@@ -234,6 +230,38 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["totals"]["b1"]["true_ar_decode_tok_s_weighted"] == 100.0
     assert summary["totals"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((30.0 / 330.0 * 1000.0) / 100.0)
     assert summary["categories"]["code"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((10.0 / 110.0 * 1000.0) / 100.0)
+
+
+def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_flag(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [
+            {"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
+            {"id": "general_1", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+        ],
+        same_prompt_suite=None,
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [
+        {"id": "code_1", "category": "code", "prompt": "write code"},
+        {"id": "general_1", "category": "general_en", "prompt": "explain"},
+    ]
+    raw = {
+        1: [
+            _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
+            _row("general_1", "general_en", output=20, accepted=2, drafts=1, ar_ms=200.0, draft_ms=20.0),
+        ]
+    }
+
+    with pytest.raises(BenchError, match="same_prompt_suite=true"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
 def test_category_summary_rejects_true_ar_baseline_with_missing_prompt(tmp_path: Path) -> None:
