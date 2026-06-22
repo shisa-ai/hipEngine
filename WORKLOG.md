@@ -119458,3 +119458,36 @@ python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipe
 ### Result
 - This is a stateful-context unblocker, not an acceptance win in the current single-seed diagnostic. The B5 accepted/output metric stayed `0.355` because `scripts/gguf_mtp_bench.py` still has no resident MTP K/V owner or append path.
 - Next concrete blocker: expose/materialize MTP K/V rows (including the current row) so the existing paged attention path has an actual llama.cpp-style draft context to attend over.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 135: p_min gate evaluation
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 135.
+- Evaluated whether the existing llama.cpp-style `--draft-p-min` probability gate can improve honest B5 `accepted_per_output` by stopping low-confidence draft tails from the current single-seed GGUF MTP drafter.
+
+### Measurement
+```bash
+for p in 0 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.50; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --draft-p-min "$p" --output /tmp/hipengine-mtp-pmin-${p//./_}.json
+done
+```
+- France B5 20-cycle `accepted_per_output` stayed `0.3548` for every threshold.
+- `accept_per_draft` improved from `0.1100` at `p_min=0` to `0.3235` at `p_min=0.50`, total drafts dropped `100 -> 34`, and diagnostic tok/s rose `12.95 -> 16.37`, but the guarded accepted/output objective did not move.
+
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --limit 1 --raw-root /tmp/hipengine-pmin-cat-*/raw --output /tmp/hipengine-pmin-cat-*/summary.json --extra-arg=--draft-p-min --extra-arg=0.5
+```
+- One-prompt `code_merge_intervals` smoke: `accepted_per_output=0.1666666667`, `draft_acceptance=0.1666666667`, `total_accepted=2`, `total_drafts=12`, `total_output_tokens=12`; no accepted/output gain over the earlier one-prompt diagnostic.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+```
+- Prompt verifier passed: this iteration evaluated numeric thresholds only, with no prompt/token/candidate-pattern hardcoding and no retained speed claim.
+
+### Result
+- Not retained as an accepted/output improvement. `--draft-p-min` is useful for reducing wasted draft work and improving `accept_per_draft`, but with the current single-seed drafter it did not increase accepted draft count or visible accepted/output.
+- Next acceptance work should return to the real llama.cpp gap: stateful MTP draft context/KV materialization rather than confidence gating.
