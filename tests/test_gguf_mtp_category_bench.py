@@ -192,6 +192,7 @@ def test_category_summary_rejects_non_positive_total_cycle_ms() -> None:
     ("field", "value", "message"),
     [
         ("ar_decode_ms", -1.0, "negative timing"),
+        ("mtp_draft_ms", -1.0, "negative timing"),
         ("mtp_draft_ms", float("nan"), "non-finite timing"),
         ("ar_decode_ms", True, "non-numeric timing"),
         ("ar_decode_ms", False, "non-numeric timing"),

@@ -965,6 +965,8 @@ def finite_float(value: Any, *, prompt_id: str, field: str) -> float:
     result = float(value)
     if not math.isfinite(result):
         raise BenchError(f"non-finite timing field {field} for {prompt_id}: {value!r}")
+    if result < 0.0:
+        raise BenchError(f"negative timing field {field} for {prompt_id}: {value!r}")
     return result
 
 

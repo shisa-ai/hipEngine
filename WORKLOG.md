@@ -118672,3 +118672,26 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 98: reject negative raw cycle timings
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 98.
+- Focused raw timing provenance contract: raw MTP per-cycle timing values must be explicit, numeric, finite, and non-negative before aggregation derives decode_ms/tok/s.
+
+### Change
+- `finite_float()` now rejects negative raw timing values after numeric/finite checks.
+- Added missing negative `mtp_draft_ms` coverage alongside the existing negative `ar_decode_ms` regression.
+- Updated `docs/BENCHMARK.md` to document non-negative raw per-cycle timing values.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes for valid rows, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
