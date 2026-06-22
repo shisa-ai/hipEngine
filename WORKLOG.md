@@ -116082,3 +116082,25 @@ python3 scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-
 python3 -m json.tool /tmp/hipengine-true-ar-category-dryrun-20260622-131717/true-ar-baseline.json
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 7: markdown speed-label guard
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 7.
+- Focused guardrail change: prevent human-facing MTP category tables from reintroducing ambiguous `vs AR` labels.
+
+### Change
+- Added regression tests around `write_markdown()`:
+  - diagnostic-only summaries must label verifier-derived ratios as `vs verifier off` and must not emit a plain `| vs AR |` header;
+  - true-AR-attached summaries must show a separate `vs true AR` column while retaining `vs verifier off` for diagnostic telemetry.
+
+### Guardrail status
+- Test-only change; no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, and no speed math changes.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 24 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

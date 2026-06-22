@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.gguf_mtp_category_bench import DEFAULT_HELDOUT_PROMPT_IDS, BenchError, build_summary, validate_speed_claim_contract
+from scripts.gguf_mtp_category_bench import DEFAULT_HELDOUT_PROMPT_IDS, BenchError, build_summary, validate_speed_claim_contract, write_markdown
 from scripts.gguf_true_ar_category_bench import build_true_ar_artifact
 
 
@@ -312,3 +312,50 @@ def test_true_ar_category_artifact_rejects_prompt_order_mismatch() -> None:
 
     with pytest.raises(BenchError, match="order/ids must match"):
         build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=prompt_metrics, commands=[])
+
+
+def test_markdown_labels_verifier_off_as_diagnostic_not_plain_ar(tmp_path: Path) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+    markdown_path = tmp_path / "summary.md"
+    write_markdown(summary, markdown_path)
+    markdown = markdown_path.read_text(encoding="utf-8")
+
+    assert "Diagnostic only" in markdown
+    assert "vs verifier off" in markdown
+    assert "vs true AR" not in markdown
+    assert "| vs AR |" not in markdown
+
+
+def test_markdown_separates_true_ar_from_verifier_off(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+    markdown_path = tmp_path / "summary.md"
+    write_markdown(summary, markdown_path)
+    markdown = markdown_path.read_text(encoding="utf-8")
+
+    assert "True no-MTP AR baseline attached" in markdown
+    assert "vs verifier off | vs true AR" in markdown
+    assert "| vs AR |" not in markdown
