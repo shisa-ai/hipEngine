@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-23
 
+- [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output `0.548 -> 0.605` (+10.5%) via allowing up to two exact-verified top-k branch redrafts per B-window (`topk_branch_redraft_max_branches=2`); train `0.496 -> 0.568`, heldout `0.608 -> 0.649`, categories non-regressive; speed remains verifier-derived diagnostic (`0.690x` AR, weighted tok/s `13.01 -> 13.56`), not a true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-max2-category-gfx1151.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output unchanged at `0.548` while draft acceptance improves `0.0344 -> 0.0377` (+9.3%) via reducing sibling top-k under ungated exact-verification branch redraft (`sibling_topk_accept=7`); train/heldout/categories accepted-output non-regressive; speed remains verifier-derived diagnostic (`0.660x` AR, weighted tok/s `13.13 -> 13.01`), not a true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk8-sibling7-category-gfx1151.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output unchanged at `0.548` while draft acceptance improves `0.0317 -> 0.0344` (+8.5%) via reducing sibling top-k under ungated exact-verification branch redraft (`sibling_topk_accept=8`); train/heldout/categories accepted-output non-regressive; speed remains verifier-derived diagnostic (`0.660x` AR, weighted tok/s `12.96 -> 13.13`), not a true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk8-sibling8-category-gfx1151.json`.

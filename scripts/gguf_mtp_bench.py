@@ -490,6 +490,15 @@ def main():
         action="store_false",
         help="Disable branch-reset redrafting after a top-k branch accept.",
     )
+    parser.add_argument(
+        "--topk-branch-redraft-max-branches",
+        type=int,
+        default=2,
+        help=(
+            "Maximum exact-verified top-k branch accepts allowed within one B-window when "
+            "branch redraft is enabled (default: 2)."
+        ),
+    )
     args = parser.parse_args()
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
@@ -503,6 +512,8 @@ def main():
         parser.error("--sibling-topk-max-depth must be non-negative")
     if args.root_tail_max_prev_accepted < -1:
         parser.error("--root-tail-max-prev-accepted must be >= -1")
+    if args.topk_branch_redraft_max_branches < 1:
+        parser.error("--topk-branch-redraft-max-branches must be positive")
 
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
@@ -782,9 +793,14 @@ def main():
             verify_input_token = cycle_prev_token
             topk_branch_accepted = False
             topk_branch_depth: int | None = None
+            topk_branch_depths: list[int] = []
+            topk_branch_accept_count = 0
             pending_branch_redraft = False
+            stop_after_branch_corrective = False
             redraft_tokens: list[int] = []
             redraft_top10_tokens: list[list[int]] = []
+            redraft_tokens_by_depth: list[int] = list(draft_tokens)
+            redraft_top10_by_depth: list[list[int]] = list(draft_top10_tokens)
             redraft_start_depth: int | None = None
             redraft_ms = 0.0
             while True:
@@ -801,7 +817,6 @@ def main():
                 if (
                     pending_branch_redraft
                     and args.topk_branch_redraft
-                    and redraft_start_depth is None
                     and depth > 0
                     and depth < args.draft_n_max
                 ):
@@ -810,6 +825,8 @@ def main():
                     current_token = int(target_tokens[depth - 1])
                     current_pos = seq_position + depth
                     remaining_drafts = args.draft_n_max - depth
+                    branch_redraft_tokens: list[int] = []
+                    branch_redraft_top10: list[list[int]] = []
                     for redraft_depth in range(remaining_drafts):
                         token_embed = token_embd_f32[current_token:current_token + 1].copy()
                         need_next_seed = redraft_depth + 1 < remaining_drafts
@@ -838,26 +855,37 @@ def main():
                         redraft_token, redraft_top10 = select_topk_tokens(
                             draft_logits[0], k=10, draft_depth=depth + redraft_depth
                         )
-                        redraft_tokens.append(redraft_token)
-                        redraft_top10_tokens.append(redraft_top10)
+                        branch_redraft_tokens.append(redraft_token)
+                        branch_redraft_top10.append(redraft_top10)
                         current_token = redraft_token
                         current_pos += 1
                         if args.draft_p_min > 0.0 and redraft_depth + 1 < remaining_drafts:
                             if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
                                 break
+                    redraft_tokens.extend(branch_redraft_tokens)
+                    redraft_top10_tokens.extend(branch_redraft_top10)
+                    for redraft_depth, redraft_token in enumerate(branch_redraft_tokens):
+                        absolute_depth = depth + redraft_depth
+                        if absolute_depth < len(redraft_tokens_by_depth):
+                            redraft_tokens_by_depth[absolute_depth] = redraft_token
+                        else:
+                            redraft_tokens_by_depth.append(redraft_token)
+                    for redraft_depth, redraft_top10 in enumerate(branch_redraft_top10):
+                        absolute_depth = depth + redraft_depth
+                        if absolute_depth < len(redraft_top10_by_depth):
+                            redraft_top10_by_depth[absolute_depth] = redraft_top10
+                        else:
+                            redraft_top10_by_depth.append(redraft_top10)
                     redraft_ms += (time.perf_counter() - t_redraft0) * 1000
-                    redraft_start_depth = depth
+                    if redraft_start_depth is None:
+                        redraft_start_depth = depth
                     pending_branch_redraft = False
-                if topk_branch_accepted and redraft_start_depth is None:
+                if stop_after_branch_corrective:
                     break
 
-                proposal_tokens = draft_tokens
-                proposal_top10_tokens = draft_top10_tokens
+                proposal_tokens = redraft_tokens_by_depth
+                proposal_top10_tokens = redraft_top10_by_depth
                 proposal_depth = depth
-                if redraft_start_depth is not None and depth >= redraft_start_depth:
-                    proposal_tokens = redraft_tokens
-                    proposal_top10_tokens = redraft_top10_tokens
-                    proposal_depth = depth - redraft_start_depth
 
                 if proposal_depth < len(proposal_tokens) and target_token == proposal_tokens[proposal_depth]:
                     verify_input_token = target_token
@@ -876,15 +904,35 @@ def main():
                     and target_token in proposal_top10_tokens[proposal_depth][4:topk_limit]
                 ):
                     topk_limit = 4
-                if (
-                    not topk_branch_accepted
-                    and proposal_depth < len(proposal_top10_tokens)
+                can_accept_topk_branch = (
+                    proposal_depth < len(proposal_top10_tokens)
                     and topk_limit > 1
                     and target_token in proposal_top10_tokens[proposal_depth][:topk_limit]
-                ):
+                    and (
+                        not topk_branch_accepted
+                        or (
+                            args.topk_branch_redraft
+                            and topk_branch_accept_count < args.topk_branch_redraft_max_branches
+                        )
+                    )
+                )
+                if can_accept_topk_branch:
                     topk_branch_accepted = True
-                    topk_branch_depth = depth
-                    pending_branch_redraft = args.topk_branch_redraft and depth + 1 < args.draft_n_max
+                    topk_branch_accept_count += 1
+                    if topk_branch_depth is None:
+                        topk_branch_depth = depth
+                    topk_branch_depths.append(depth)
+                    if depth < len(redraft_tokens_by_depth):
+                        redraft_tokens_by_depth[depth] = target_token
+                    else:
+                        redraft_tokens_by_depth.append(target_token)
+                    can_redraft_after_branch = (
+                        args.topk_branch_redraft
+                        and topk_branch_accept_count < args.topk_branch_redraft_max_branches
+                        and depth + 1 < args.draft_n_max
+                    )
+                    pending_branch_redraft = can_redraft_after_branch
+                    stop_after_branch_corrective = not can_redraft_after_branch
                     verify_input_token = target_token
                     continue
                 break
@@ -959,15 +1007,8 @@ def main():
             reported_draft_tokens = draft_tokens
             reported_draft_top10_tokens = draft_top10_tokens
             if redraft_start_depth is not None and topk_branch_depth is not None:
-                reported_draft_tokens = (
-                    draft_tokens[:topk_branch_depth]
-                    + [int(target_tokens[topk_branch_depth])]
-                    + redraft_tokens
-                )
-                reported_draft_top10_tokens = (
-                    draft_top10_tokens[:topk_branch_depth + 1]
-                    + redraft_top10_tokens
-                )
+                reported_draft_tokens = redraft_tokens_by_depth
+                reported_draft_top10_tokens = redraft_top10_by_depth
 
             target_in_draft_top10, target_rank_in_draft_top10 = target_membership_in_draft_topk(
                 comparison_target_tokens, reported_draft_top10_tokens
@@ -995,6 +1036,9 @@ def main():
                 "sibling_topk_max_depth": args.sibling_topk_max_depth,
                 "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
                 "topk_branch_redraft": args.topk_branch_redraft,
+                "topk_branch_redraft_max_branches": args.topk_branch_redraft_max_branches,
+                "topk_branch_accept_count": topk_branch_accept_count,
+                "topk_branch_depths": topk_branch_depths,
                 "redraft_candidate_count": len(redraft_tokens),
                 "previous_cycle_accepted": previous_cycle_accepted_for_record,
                 "topk_branch_accepted": topk_branch_accepted,
@@ -1036,6 +1080,7 @@ def main():
     print(f"Sibling top-k max depth: {args.sibling_topk_max_depth}")
     print(f"Root tail max previous accepted: {args.root_tail_max_prev_accepted}")
     print(f"Top-k branch redraft: {args.topk_branch_redraft}")
+    print(f"Top-k branch redraft max branches: {args.topk_branch_redraft_max_branches}")
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
     print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
@@ -1078,6 +1123,7 @@ def main():
             "sibling_topk_max_depth": args.sibling_topk_max_depth,
             "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
             "topk_branch_redraft": args.topk_branch_redraft,
+            "topk_branch_redraft_max_branches": args.topk_branch_redraft_max_branches,
             "engine": "hipEngine GGUF MTP",
             "target_prefill_mode": target_prefill_mode,
             "mtp_context_mode": mtp_context_mode,
