@@ -191,7 +191,7 @@ acceptance loops.
    fields, repo provenance including strict integer `git_untracked_count` and
    same-repo root/commit checks between the summary and attached true-AR baseline,
    protocol provenance including attached true-AR protocol self-normalization and
-   summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`
+   strict summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`
    prompt identity and hash typing, and true-AR finite-logit
    evidence. CLI `--budgets` values must be unique and cannot contain empty
    comma-separated entries. Build-summary model/prompt/raw-root/cycle arguments, raw MTP

@@ -1679,6 +1679,17 @@ def test_objective_metrics_for_budget_rejects_attached_protocol_mismatch(
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_non_string_summary_quant_even_if_protocol_matches(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["quant"] = 123
+    summary["true_ar_baseline"]["protocol"]["quant"] = "123"
+    summary["true_ar_baseline"]["protocol"]["quant_normalized"] = "123"
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match="objective metrics require summary quant to be a non-empty string"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_missing_summary_command_provenance(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["commands"] = []

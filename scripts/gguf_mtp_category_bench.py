@@ -857,6 +857,8 @@ def validate_attached_true_ar_protocol_matches_summary(
     if true_ar_protocol["model_normalized"] != normalize_protocol_path(summary_model):
         raise BenchError("objective metrics require attached true_ar_baseline.protocol.model to match summary model")
     summary_quant = summary.get("quant")
+    if not isinstance(summary_quant, str) or not summary_quant:
+        raise BenchError("objective metrics require summary quant to be a non-empty string")
     if true_ar_protocol["quant_normalized"] != normalize_quant_label(summary_quant):
         raise BenchError("objective metrics require attached true_ar_baseline.protocol.quant to match summary quant")
     summary_prompt_file = summary.get("prompt_file")
