@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.gguf_mtp_category_bench import DEFAULT_HELDOUT_PROMPT_IDS, BenchError, build_summary, validate_speed_claim_contract
+from scripts.gguf_true_ar_category_bench import build_true_ar_artifact
 
 
 def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: int, ar_ms: float, draft_ms: float) -> dict:
@@ -261,3 +262,53 @@ def test_category_summary_rejects_true_ar_baseline_with_missing_prompt(tmp_path:
 
     with pytest.raises(BenchError, match="must exactly match selected prompts"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        decode_tokens=32,
+        warmup_decode_tokens=1,
+    )
+    prompts = [
+        {"id": "code_1", "category": "code", "prompt": "write code"},
+        {"id": "general_1", "category": "general_en", "prompt": "explain"},
+    ]
+    prompt_metrics = [
+        {"id": "code_1", "category": "code", "output_tokens": 32, "decode_ms": 640.0},
+        {"id": "general_1", "category": "general_en", "output_tokens": 32, "decode_ms": 320.0},
+    ]
+
+    artifact = build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=prompt_metrics, commands=["cmd"])
+
+    assert artifact["kind"] == "hipengine_gguf_true_ar_category_baseline"
+    assert artifact["performance_claim"] is False
+    assert artifact["true_autoregressive_path"] is True
+    assert artifact["same_timing_protocol"] is True
+    assert artifact["same_prompt_suite"] is True
+    assert artifact["prompt_ids"] == ["code_1", "general_1"]
+    assert artifact["totals"]["decode_tok_s_weighted"] == pytest.approx(64 / 0.960)
+    assert artifact["categories"]["code"]["decode_tok_s_weighted"] == pytest.approx(50.0)
+    assert artifact["categories"]["general_en"]["decode_tok_s_weighted"] == pytest.approx(100.0)
+    assert artifact["prompt_metrics"] is prompt_metrics
+
+
+def test_true_ar_category_artifact_rejects_prompt_order_mismatch() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        decode_tokens=32,
+        warmup_decode_tokens=1,
+    )
+    prompts = [
+        {"id": "code_1", "category": "code", "prompt": "write code"},
+        {"id": "general_1", "category": "general_en", "prompt": "explain"},
+    ]
+    prompt_metrics = [
+        {"id": "general_1", "category": "general_en", "output_tokens": 32, "decode_ms": 320.0},
+        {"id": "code_1", "category": "code", "output_tokens": 32, "decode_ms": 640.0},
+    ]
+
+    with pytest.raises(BenchError, match="order/ids must match"):
+        build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=prompt_metrics, commands=[])

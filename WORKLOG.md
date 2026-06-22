@@ -116049,3 +116049,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 20 passed
 ```
 - Same command also ran as loop verify and loop guard; prompt verifier passed for both iterations.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 6: true no-MTP AR category producer
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 6.
+- Focused readiness change: produce the true no-MTP AR baseline artifact consumed by `gguf_mtp_category_bench.py --true-ar-baseline-json`.
+
+### Change
+- Added `scripts/gguf_true_ar_category_bench.py`.
+- The script uses the resident GGUF autoregressive path only; no draft/proposal/MTP kernels are invoked.
+- It uses `scripts.gguf_mtp_bench.build_chat_prompt()` so prompt tokenization/formatting matches the native GGUF-MTP diagnostic.
+- Output artifact schema:
+  - `kind=hipengine_gguf_true_ar_category_baseline`;
+  - `true_autoregressive_path=true`;
+  - `same_timing_protocol=true`;
+  - prompt-level `prompt_metrics[]` with exact suite `id`, `category`, `output_tokens`, and `decode_ms`;
+  - weighted totals and per-category decode tok/s.
+- Added CPU tests for artifact schema and prompt-order validation.
+
+### Guardrail status
+- No selector/proposal-policy changes; no token IDs, prompt text matching, candidate-pattern branches, fixture shortcuts, or MTP kernel edits.
+- The artifact has `performance_claim=false`; it is an input for guarded MTP/true-AR comparisons, not a speed win.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 22 passed
+python3 -m py_compile scripts/gguf_true_ar_category_bench.py
+python3 scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --limit 1 --decode-tokens 4 --raw-root /tmp/hipengine-true-ar-category-dryrun-20260622-131717 --output /tmp/hipengine-true-ar-category-dryrun-20260622-131717/true-ar-baseline.json --dry-run
+python3 -m json.tool /tmp/hipengine-true-ar-category-dryrun-20260622-131717/true-ar-baseline.json
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
