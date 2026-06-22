@@ -117784,3 +117784,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 66: require guarded objective metrics for speed eligibility
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 66.
+- Focused promotion-gate contract: `speed_claim_eligible=true` must not rely on shallow true-AR metadata checks alone; every MTP budget row must pass the guarded objective extractor.
+
+### Change
+- `validate_speed_claim_contract()` now collects all `b*` MTP budget rows from summary totals when `speed_claim_eligible=true`.
+- The speed-claim contract rejects artifacts with no guarded MTP objective budget rows.
+- For each MTP budget, `validate_speed_claim_contract()` now calls `objective_metrics_for_budget()` and wraps failures with speed-claim context.
+- Updated the positive speed-claim contract regression to use a full default objective fixture.
+- Added a malformed guarded-objective regression proving a forged split throughput row is rejected even when true-AR metadata/provenance is present.
+- Updated `docs/BENCHMARK.md` to document that speed eligibility requires guarded objective extraction for every MTP budget.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 148 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

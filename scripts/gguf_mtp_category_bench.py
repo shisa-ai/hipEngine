@@ -1125,6 +1125,14 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_command_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_attached_true_ar_protocol(true_ar, label="speed-claim true_ar_baseline")
+    budget_labels = sorted(str(label) for label in (summary.get("totals") or {}) if str(label).startswith("b"))
+    if not budget_labels:
+        raise BenchError("speed_claim_eligible=true requires at least one guarded MTP objective budget")
+    for budget_label in budget_labels:
+        try:
+            objective_metrics_for_budget(summary, budget_label)
+        except BenchError as exc:
+            raise BenchError(f"speed_claim_eligible=true requires guarded objective metrics for {budget_label}: {exc}") from exc
     return summary
 
 

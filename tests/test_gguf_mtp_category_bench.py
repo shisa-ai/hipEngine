@@ -374,10 +374,23 @@ def test_speed_claim_contract_rejects_verifier_derived_ar_baseline() -> None:
         validate_speed_claim_contract(summary)
 
 
-def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
-    summary = _speed_claim_summary()
+def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "speed-claim", accepted=[1] * 10, draft_ms=10.0)
+    summary["speed_claim_eligible"] = True
 
     assert validate_speed_claim_contract(summary) is summary
+
+
+def test_speed_claim_contract_rejects_malformed_guarded_objective_metrics(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "speed-claim", accepted=[1] * 10, draft_ms=10.0)
+    summary["speed_claim_eligible"] = True
+    summary["splits"]["heldout"]["metrics"]["b1"]["decode_tok_s_weighted"] = 123.0
+    summary["splits"]["heldout"]["metrics"]["b1"]["mtp_vs_true_ar_decode_ratio"] = (
+        123.0 / summary["true_ar_baseline"]["splits"]["heldout"]["decode_tok_s_weighted"]
+    )
+
+    with pytest.raises(BenchError, match="speed_claim_eligible=true requires guarded objective metrics for b1"):
+        validate_speed_claim_contract(summary)
 
 
 def test_speed_claim_contract_rejects_missing_summary_schema() -> None:

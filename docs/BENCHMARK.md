@@ -144,7 +144,8 @@ acceptance loops.
    verifier-derived denominator as `vs verifier off`; same-protocol speed ratios
    appear only in a separate `vs true AR` column. Any future retained summary with
    `speed_claim_eligible=true` must pass the same current-schema checks for the
-   MTP summary and attached true-AR artifact identity.
+   MTP summary, attached true-AR artifact identity, and guarded objective
+   extraction for every MTP budget row.
 
 3. **Optimization decisions use all three views.** Report full-suite, train, and
    heldout metrics for every budget:
@@ -221,7 +222,9 @@ acceptance loops.
    ```
 
    Scalar mode still calls the guarded objective extractor first; it is not a way
-   to read verifier-derived `off`/`B0` telemetry or partial prompt suites.
+   to read verifier-derived `off`/`B0` telemetry or partial prompt suites. Any
+   artifact that flips `speed_claim_eligible=true` must also pass this guarded
+   extractor for every MTP budget before the contract accepts it.
 
    Baseline-vs-candidate comparisons should use the guarded comparator:
 
