@@ -318,10 +318,16 @@ def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, di
         "categories": category_metrics,
         "splits": split_metrics,
     }
-    summary["speed_claim_eligible"] = True
-    summary["promotion_blocker"] = None
+    summary["true_ar_comparison_available"] = True
+    summary["speed_claim_eligible"] = False
+    summary["promotion_blocker"] = (
+        "true_ar_baseline is attached and mtp_vs_true_ar_decode_ratio is available, "
+        "but this diagnostic category artifact is not a retained speed claim. "
+        "Promotion still requires the retained benchmark protocol: full validation shape, "
+        "hermetic/warm timing, and benchmark rollup evidence."
+    )
     summary["diagnostic_notes"].append(
-        "A true no-MTP AR baseline artifact was attached; use mtp_vs_true_ar_decode_ratio for same-protocol speed ratios."
+        "A true no-MTP AR baseline artifact was attached; mtp_vs_true_ar_decode_ratio is available for same-protocol diagnostics, but speed_claim_eligible remains false until the retained benchmark protocol is satisfied."
     )
 
     true_ar_tps = full_metric["decode_tok_s_weighted"]
@@ -429,6 +435,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         "status": "diagnostic_retained",
         "performance_claim": False,
         "speed_claim_eligible": False,
+        "true_ar_comparison_available": False,
         "promotion_blocker": (
             "off/AR is derived from B1 target-verifier timing, not a true no-MTP "
             "autoregressive generation path. MTP speed promotion requires a separate "
@@ -490,12 +497,12 @@ def write_markdown(summary: dict[str, Any], path: Path) -> None:
     lines.append("# hipEngine GGUF-MTP category matrix")
     lines.append("")
     lines.append(f"Raw root: `{summary['raw_root']}`")
-    if not summary.get("speed_claim_eligible", True):
+    if has_true_ar:
+        lines.append("")
+        lines.append("> **Diagnostic only:** true no-MTP AR baseline attached, so `vs true AR` is available for same-protocol diagnostics. This artifact is still not a retained speed claim unless `speed_claim_eligible=true` and `performance_claim=true`; `vs verifier off` remains diagnostic telemetry.")
+    elif not summary.get("speed_claim_eligible", True):
         lines.append("")
         lines.append("> **Diagnostic only:** the `off` row is derived from B1 target-verifier timing, not a true no-MTP autoregressive run. Do not use `vs verifier off` as a retained MTP speedup claim until a true AR baseline is measured by this harness.")
-    elif has_true_ar:
-        lines.append("")
-        lines.append("> True no-MTP AR baseline attached. Use `vs true AR` for same-protocol MTP speed ratios; `vs verifier off` remains diagnostic telemetry.")
     splits = summary.get("splits") or {}
     contract = splits.get("contract") or {}
     if contract:

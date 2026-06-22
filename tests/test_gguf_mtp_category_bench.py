@@ -74,6 +74,7 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     assert summary["status"] == "diagnostic_retained"
     assert summary["performance_claim"] is False
     assert summary["speed_claim_eligible"] is False
+    assert summary["true_ar_comparison_available"] is False
     assert "true AR baseline" in summary["promotion_blocker"]
     assert summary["ar_baseline_contract"] == {
         "required_for_speed_claims": "true_no_mtp_autoregressive_generation",
@@ -248,8 +249,9 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
 
     summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
-    assert summary["speed_claim_eligible"] is True
-    assert summary["promotion_blocker"] is None
+    assert summary["speed_claim_eligible"] is False
+    assert summary["true_ar_comparison_available"] is True
+    assert "not a retained speed claim" in summary["promotion_blocker"]
     assert summary["true_ar_baseline"]["available"] is True
     assert summary["true_ar_baseline"]["same_prompt_suite"] is True
     assert summary["true_ar_baseline"]["same_timing_protocol"] is True
@@ -413,7 +415,8 @@ def test_markdown_separates_true_ar_from_verifier_off(tmp_path: Path) -> None:
     write_markdown(summary, markdown_path)
     markdown = markdown_path.read_text(encoding="utf-8")
 
-    assert "True no-MTP AR baseline attached" in markdown
+    assert "true no-MTP AR baseline attached" in markdown
+    assert "not a retained speed claim" in markdown
     assert "vs verifier off | vs true AR" in markdown
     assert "| vs AR |" not in markdown
 

@@ -116287,3 +116287,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 27 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 14: comparison vs promotion semantics
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 14.
+- Focused guardrail change: avoid over-promoting smoke/diagnostic artifacts once a true AR baseline is attached.
+
+### Change
+- `scripts/gguf_mtp_category_bench.py::attach_true_ar_baseline()` now sets `true_ar_comparison_available=true` when a valid true no-MTP AR baseline is attached.
+- It no longer automatically sets `speed_claim_eligible=true` or clears `promotion_blocker`.
+- Attached artifacts still emit `mtp_vs_true_ar_decode_ratio`, but remain `speed_claim_eligible=false` and `performance_claim=false` until a future retained benchmark protocol/hermeticity gate is explicitly satisfied.
+- Markdown now says true-AR ratios are available for same-protocol diagnostics, but the artifact is not a retained speed claim unless both `speed_claim_eligible=true` and `performance_claim=true`.
+- Tests updated to assert the safer comparison-vs-promotion split.
+
+### Guardrail status
+- No selector/proposal-policy changes; no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 27 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
