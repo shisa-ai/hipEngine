@@ -57,6 +57,7 @@ MTP_CATEGORY_KIND = "hipengine_gguf_mtp_category_matrix"
 TRUE_AR_SCHEMA = 1
 TRUE_AR_KIND = "hipengine_gguf_true_ar_category_baseline"
 TRUE_AR_PROTOCOL_FIELDS = ("model", "quant", "prompt_file", "prompt_count", "decode_tokens", "warmup_decode_tokens")
+PROMPT_MESSAGE_ROLES = frozenset({"system", "user", "assistant"})
 
 
 class BenchError(RuntimeError):
@@ -117,6 +118,8 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
                     role = msg.get("role")
                     if not isinstance(role, str) or not role:
                         raise BenchError(f"{path}:{line_no}: messages[{msg_index}].role must be a non-empty string")
+                    if role not in PROMPT_MESSAGE_ROLES:
+                        raise BenchError(f"{path}:{line_no}: messages[{msg_index}].role must be one of {sorted(PROMPT_MESSAGE_ROLES)}")
                     content = msg.get("content")
                     if not isinstance(content, str):
                         raise BenchError(f"{path}:{line_no}: messages[{msg_index}].content must be a string")
