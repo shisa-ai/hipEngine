@@ -395,7 +395,9 @@ def test_category_summary_rejects_non_integer_raw_metric_counts(field: str, valu
     ("prompt_update", "message"),
     [
         ({"id": 123}, r"prompt suite prompts\[0\]\.id must be a non-empty string"),
+        ({"id": "   "}, r"prompt suite prompts\[0\]\.id must be a non-empty string"),
         ({"category": 123}, "prompt suite prompt code_1.category must be a non-empty string"),
+        ({"category": "   "}, "prompt suite prompt code_1.category must be a non-empty string"),
         ({"prompt": 123}, "prompt suite prompt code_1.prompt must be a non-empty string"),
         ({"prompt": "   "}, "prompt suite prompt code_1.prompt must be a non-empty string"),
     ],

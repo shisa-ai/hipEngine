@@ -1136,13 +1136,13 @@ def validate_prompt_rows_for_summary(prompts: list[dict[str, Any]], *, label: st
         if not isinstance(row, dict):
             raise BenchError(f"{label} prompts[{index}] must be an object")
         prompt_id = row.get("id")
-        if not isinstance(prompt_id, str) or not prompt_id:
+        if not isinstance(prompt_id, str) or not prompt_id.strip():
             raise BenchError(f"{label} prompts[{index}].id must be a non-empty string")
         if prompt_id in seen_ids:
             raise BenchError(f"{label} contains duplicate prompt id: {prompt_id}")
         seen_ids.add(prompt_id)
         category = row.get("category")
-        if not isinstance(category, str) or not category:
+        if not isinstance(category, str) or not category.strip():
             raise BenchError(f"{label} prompt {prompt_id}.category must be a non-empty string")
         prompt_text = row.get("prompt")
         if not isinstance(prompt_text, str) or not prompt_text.strip():
