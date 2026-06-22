@@ -873,6 +873,18 @@ def main() -> int:
         help="Budget label for --objective-summary-json, e.g. b5 or 5.",
     )
     parser.add_argument(
+        "--objective-split",
+        choices=("full", "train", "heldout"),
+        default=None,
+        help="With --objective-summary-json, print only one numeric metric from this split instead of JSON.",
+    )
+    parser.add_argument(
+        "--objective-field",
+        choices=("accepted_per_output", "draft_acceptance", "decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio"),
+        default=None,
+        help="With --objective-split, print this numeric objective field as a scalar.",
+    )
+    parser.add_argument(
         "--compare-baseline-summary-json",
         type=Path,
         default=None,
@@ -909,9 +921,14 @@ def main() -> int:
     if args.objective_summary_json is not None:
         if args.objective_budget is None:
             raise BenchError("--objective-summary-json requires --objective-budget")
+        if (args.objective_split is None) != (args.objective_field is None):
+            raise BenchError("--objective-split and --objective-field must be provided together")
         summary = json.loads(args.objective_summary_json.read_text(encoding="utf-8"))
         metrics = objective_metrics_for_budget(summary, args.objective_budget)
-        print(json.dumps(metrics, indent=2, sort_keys=True))
+        if args.objective_split is not None and args.objective_field is not None:
+            print(metrics[args.objective_split][args.objective_field])
+        else:
+            print(json.dumps(metrics, indent=2, sort_keys=True))
         return 0
 
     budgets = parse_budgets(args.budgets)

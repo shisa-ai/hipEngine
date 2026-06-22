@@ -557,6 +557,60 @@ def test_objective_metrics_cli_prints_guarded_metrics(tmp_path: Path) -> None:
     assert metrics["speed_claim_eligible"] is False
 
 
+def test_objective_metrics_cli_can_print_scalar_metric(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], draft_ms=10.0)
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--objective-summary-json",
+            str(summary_path),
+            "--objective-budget",
+            "b1",
+            "--objective-split",
+            "heldout",
+            "--objective-field",
+            "accepted_per_output",
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert float(completed.stdout.strip()) == pytest.approx(28 / 40)
+
+
+def test_objective_metrics_cli_requires_scalar_split_and_field_together(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--objective-summary-json",
+            str(summary_path),
+            "--objective-budget",
+            "b1",
+            "--objective-split",
+            "full",
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode != 0
+    assert "--objective-split and --objective-field must be provided together" in completed.stderr
+
+
 def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=20.0)

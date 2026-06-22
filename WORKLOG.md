@@ -116842,3 +116842,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 49 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 32: scalar objective CLI
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 32.
+- Focused metric-command readiness change: future optimize loops often need a single numeric metric from the guarded objective summary.
+
+### Change
+- Extended `scripts/gguf_mtp_category_bench.py --objective-summary-json` mode with:
+  - `--objective-split {full,train,heldout}`;
+  - `--objective-field {accepted_per_output,draft_acceptance,decode_tok_s_weighted,mtp_vs_true_ar_decode_ratio}`.
+- When both are provided, the CLI prints only the selected numeric scalar.
+- If only one of split/field is provided, the CLI rejects the invocation.
+- Added subprocess tests for scalar output and invalid split/field pairing.
+
+### Guardrail status
+- Scalar output still calls `objective_metrics_for_budget()` first, so true-AR/full-suite/heldout gates remain enforced.
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 51 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
