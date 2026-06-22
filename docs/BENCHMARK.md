@@ -142,7 +142,7 @@ acceptance loops.
 
    A train-only gain is not a win. Heldout and full-suite acceptance must not
    regress, and MTP/true-AR ratio must be computed from the attached true-AR
-   artifact rather than `off`/`B0` verifier telemetry.
+   split baseline rather than `off`/`B0` verifier telemetry.
 
 4. **Use the guarded objective CLI for loop metrics.** Future optimize loops
    must consume objective metrics through the harness gate, not ad-hoc JSON paths:
@@ -159,7 +159,9 @@ acceptance loops.
    protocol provenance, and prompt-hash provenance. The returned JSON contains
    full/train/heldout finite non-negative `accepted_per_output`,
    `draft_acceptance`, `decode_tok_s_weighted`, and
-   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count.
+   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count. The gate
+   also verifies each `mtp_vs_true_ar_decode_ratio` against the attached true-AR
+   split `decode_tok_s_weighted` and matching split prompt count.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
    and request one split/field explicitly:

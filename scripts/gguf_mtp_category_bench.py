@@ -413,6 +413,13 @@ def finite_nonnegative_objective(value: Any, *, label: str) -> float:
     return result
 
 
+def finite_positive_objective(value: Any, *, label: str) -> float:
+    result = finite_nonnegative_objective(value, label=label)
+    if result <= 0.0:
+        raise BenchError(f"objective metrics require positive {label}")
+    return result
+
+
 def validate_metric_row(row: dict[str, Any]) -> None:
     metrics = row.get("metrics")
     if not isinstance(metrics, dict):
@@ -824,6 +831,9 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "heldout_ids": list(contract.get("heldout_ids", [])),
         "train_ids": list(contract.get("train_ids", [])),
     }
+    true_ar_splits = true_ar.get("splits")
+    if not isinstance(true_ar_splits, dict):
+        raise BenchError("objective metrics require attached true_ar_baseline.splits")
     for split_name in ("full", "train", "heldout"):
         split = splits.get(split_name)
         if not isinstance(split, dict):
@@ -848,11 +858,33 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts") from exc
         if prompts_count <= 0:
             raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts")
+        true_ar_split = true_ar_splits.get(split_name)
+        if not isinstance(true_ar_split, dict):
+            raise BenchError(f"objective metrics require attached true_ar_baseline.splits.{split_name}")
+        try:
+            true_ar_prompts_count = int(true_ar_split.get("prompts"))
+        except (TypeError, ValueError) as exc:
+            raise BenchError(f"objective metrics require positive attached true_ar_baseline.splits.{split_name}.prompts") from exc
+        if true_ar_prompts_count != prompts_count:
+            raise BenchError(
+                f"objective metrics require {split_name}.{label}.prompts to match attached true_ar_baseline.splits.{split_name}.prompts"
+            )
+        decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{split_name}.{label}.decode_tok_s_weighted")
+        ratio = finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{split_name}.{label}.mtp_vs_true_ar_decode_ratio")
+        true_ar_tok_s = finite_positive_objective(
+            true_ar_split.get("decode_tok_s_weighted"),
+            label=f"attached true_ar_baseline.splits.{split_name}.decode_tok_s_weighted",
+        )
+        expected_ratio = decode_tok_s / true_ar_tok_s
+        if not math.isclose(ratio, expected_ratio, rel_tol=1e-9, abs_tol=1e-12):
+            raise BenchError(
+                f"objective metrics require {split_name}.{label}.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.splits.{split_name}"
+            )
         out[split_name] = {
             "accepted_per_output": finite_nonnegative_objective(row["accepted_per_output"], label=f"{split_name}.{label}.accepted_per_output"),
             "draft_acceptance": finite_nonnegative_objective(row["draft_acceptance"], label=f"{split_name}.{label}.draft_acceptance"),
-            "decode_tok_s_weighted": finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{split_name}.{label}.decode_tok_s_weighted"),
-            "mtp_vs_true_ar_decode_ratio": finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{split_name}.{label}.mtp_vs_true_ar_decode_ratio"),
+            "decode_tok_s_weighted": decode_tok_s,
+            "mtp_vs_true_ar_decode_ratio": ratio,
             "prompts": prompts_count,
         }
     return out

@@ -697,6 +697,38 @@ def test_objective_metrics_for_budget_rejects_non_positive_prompt_count(tmp_path
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_true_ar_ratio_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["full"]["metrics"]["b1"]["mtp_vs_true_ar_decode_ratio"] = 123.0
+
+    with pytest.raises(BenchError, match="full.b1.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_true_ar_split(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["true_ar_baseline"]["splits"]["heldout"]
+
+    with pytest.raises(BenchError, match="objective metrics require attached true_ar_baseline.splits.heldout"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_true_ar_split_prompt_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"]["splits"]["train"]["prompts"] = 5
+
+    with pytest.raises(BenchError, match="train.b1.prompts to match attached true_ar_baseline.splits.train.prompts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_non_positive_true_ar_split_tps(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"]["splits"]["full"]["decode_tok_s_weighted"] = 0.0
+
+    with pytest.raises(BenchError, match="objective metrics require positive attached true_ar_baseline.splits.full.decode_tok_s_weighted"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_missing_summary_repo_provenance(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     del summary["repo"]

@@ -117272,3 +117272,31 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 47: validate objective ratios against true-AR splits
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 47.
+- Focused true-AR ratio consistency contract: guarded objective extraction must not trust an arbitrary `mtp_vs_true_ar_decode_ratio` scalar from summary JSON.
+
+### Change
+- `objective_metrics_for_budget()` now requires attached `true_ar_baseline.splits` metadata for `full`, `train`, and `heldout`.
+- Each objective split now validates:
+  - attached true-AR split metadata exists;
+  - attached true-AR split prompt count matches the MTP split prompt count;
+  - attached true-AR split `decode_tok_s_weighted` is positive;
+  - `mtp_vs_true_ar_decode_ratio` equals MTP split `decode_tok_s_weighted / attached true-AR split decode_tok_s_weighted`.
+- Added regressions for forged ratio values, missing attached true-AR split metadata, true-AR split prompt-count mismatch, and non-positive true-AR split tok/s.
+- Updated `docs/BENCHMARK.md` to document true-AR split ratio validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 93 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
