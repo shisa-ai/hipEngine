@@ -160,10 +160,12 @@ acceptance loops.
    protocol provenance, and prompt-hash provenance. The returned JSON contains
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and
-   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count and split
-   `prompt_ids` matching `splits.contract`. The gate also verifies each
+   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count matching the
+   split `prompt_ids` length and split `prompt_ids` matching `splits.contract`.
+   The gate also verifies each
    `mtp_vs_true_ar_decode_ratio` against the attached true-AR
-   split `decode_tok_s_weighted` and matching split prompt count.
+   split `decode_tok_s_weighted` and matching split prompt count / prompt-id
+   list length.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
    and request one split/field explicitly:

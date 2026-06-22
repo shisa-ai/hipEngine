@@ -117350,3 +117350,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 50: validate split prompt counts against prompt IDs
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 50.
+- Focused split provenance/count contract: guarded objective extraction must ensure reported split prompt counts match the prompt-id lists they summarize.
+
+### Change
+- `objective_metrics_for_budget()` now validates that each full/train/heldout MTP split metric row `prompts` count equals `len(splits.<split>.prompt_ids)`.
+- The same objective gate now validates that each attached true-AR split `prompts` count equals the same split prompt-id list length.
+- Added regressions for MTP split metric prompt-count/list mismatch and attached true-AR split prompt-count/list mismatch.
+- Updated `docs/BENCHMARK.md` to document prompt-count / prompt-id-list consistency.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 99 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

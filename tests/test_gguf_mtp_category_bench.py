@@ -729,6 +729,22 @@ def test_objective_metrics_for_budget_rejects_non_positive_prompt_count(tmp_path
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_split_metric_prompt_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["heldout"]["metrics"]["b1"]["prompts"] = len(summary["splits"]["heldout"]["prompt_ids"]) + 1
+
+    with pytest.raises(BenchError, match="objective metrics require heldout.b1.prompts to match splits.heldout.prompt_ids length"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_true_ar_split_prompt_count_list_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"]["splits"]["full"]["prompts"] = len(summary["splits"]["full"]["prompt_ids"]) + 1
+
+    with pytest.raises(BenchError, match="objective metrics require attached true_ar_baseline.splits.full.prompts to match splits.full.prompt_ids length"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_true_ar_ratio_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["full"]["metrics"]["b1"]["mtp_vs_true_ar_decode_ratio"] = 123.0
@@ -749,7 +765,7 @@ def test_objective_metrics_for_budget_rejects_true_ar_split_prompt_count_mismatc
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["true_ar_baseline"]["splits"]["train"]["prompts"] = 5
 
-    with pytest.raises(BenchError, match="train.b1.prompts to match attached true_ar_baseline.splits.train.prompts"):
+    with pytest.raises(BenchError, match="attached true_ar_baseline.splits.train.prompts to match splits.train.prompt_ids length"):
         objective_metrics_for_budget(summary, "b1")
 
 

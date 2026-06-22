@@ -853,6 +853,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         split_prompt_ids = split.get("prompt_ids")
         if not isinstance(split_prompt_ids, list) or [str(prompt_id) for prompt_id in split_prompt_ids] != [str(prompt_id) for prompt_id in expected_split_ids]:
             raise BenchError(f"objective metrics require splits.{split_name}.prompt_ids to match splits.contract.{contract_key}")
+        split_prompt_count = len(split_prompt_ids)
         metrics = split.get("metrics")
         if not isinstance(metrics, dict) or label not in metrics:
             raise BenchError(f"objective metrics missing {label} for split {split_name}")
@@ -873,6 +874,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts") from exc
         if prompts_count <= 0:
             raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts")
+        if prompts_count != split_prompt_count:
+            raise BenchError(f"objective metrics require {split_name}.{label}.prompts to match splits.{split_name}.prompt_ids length")
         true_ar_split = true_ar_splits.get(split_name)
         if not isinstance(true_ar_split, dict):
             raise BenchError(f"objective metrics require attached true_ar_baseline.splits.{split_name}")
@@ -880,6 +883,10 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             true_ar_prompts_count = int(true_ar_split.get("prompts"))
         except (TypeError, ValueError) as exc:
             raise BenchError(f"objective metrics require positive attached true_ar_baseline.splits.{split_name}.prompts") from exc
+        if true_ar_prompts_count <= 0:
+            raise BenchError(f"objective metrics require positive attached true_ar_baseline.splits.{split_name}.prompts")
+        if true_ar_prompts_count != split_prompt_count:
+            raise BenchError(f"objective metrics require attached true_ar_baseline.splits.{split_name}.prompts to match splits.{split_name}.prompt_ids length")
         if true_ar_prompts_count != prompts_count:
             raise BenchError(
                 f"objective metrics require {split_name}.{label}.prompts to match attached true_ar_baseline.splits.{split_name}.prompts"
