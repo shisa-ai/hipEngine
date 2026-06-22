@@ -365,11 +365,11 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["categories"]["code"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((10.0 / 110.0 * 1000.0) / 100.0)
 
 
-def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int], draft_ms: float) -> dict:
+def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int], draft_ms: float, true_ar_name: str = "shared") -> dict:
     prompts = load_prompt_rows(DEFAULT_PROMPTS)
     assert [row["id"] for row in prompts] == list(DEFAULT_FULL_PROMPT_IDS)
     assert len(accepted) == len(prompts)
-    baseline_path = tmp_path / f"{name}-true-ar.json"
+    baseline_path = tmp_path / f"{true_ar_name}-true-ar.json"
     _write_true_ar_baseline(
         baseline_path,
         [
@@ -472,6 +472,14 @@ def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(t
     assert comparison["deltas"]["heldout"]["accepted_per_output"] > 0
     assert comparison["deltas"]["full"]["mtp_vs_true_ar_decode_ratio"] > 0
     assert "train deltas are report-only" in comparison["decision_rule"]
+
+
+def test_compare_objective_metrics_rejects_changed_true_ar_baseline(tmp_path: Path) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0, true_ar_name="baseline-ar")
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0, true_ar_name="candidate-ar")
+
+    with pytest.raises(BenchError, match="identical attached true_ar_baseline"):
+        compare_objective_metrics(baseline, candidate, "b1")
 
 
 def test_compare_objective_metrics_rejects_heldout_acceptance_regression(tmp_path: Path) -> None:

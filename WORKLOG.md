@@ -116745,3 +116745,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 46 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 29: lock comparison AR denominator
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 29.
+- Focused comparison-provenance guard: prevent future baseline-vs-candidate comparisons from changing the true no-MTP AR denominator.
+
+### Change
+- Added `true_ar_baseline_signature(summary)` in `scripts/gguf_mtp_category_bench.py`.
+- `compare_objective_metrics()` now rejects comparisons unless baseline and candidate summaries have identical attached true-AR baseline metadata:
+  - `source`;
+  - prompt count;
+  - totals;
+  - categories;
+  - splits.
+- Added a regression test that rejects candidate summaries using a different attached true-AR baseline source, even when the candidate acceptance improves.
+- Updated test helper to share the same true-AR source by default when comparisons are meant to be valid.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+- This blocks a future candidate from improving `mtp_vs_true_ar_decode_ratio` by attaching a slower or different AR artifact.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 47 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

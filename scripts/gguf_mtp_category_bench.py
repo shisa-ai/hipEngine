@@ -543,6 +543,19 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     return out
 
 
+def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
+    true_ar = summary.get("true_ar_baseline")
+    if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
+        raise BenchError("objective comparison requires attached true_ar_baseline metadata")
+    return {
+        "source": true_ar.get("source"),
+        "prompt_count": true_ar.get("prompt_count"),
+        "totals": true_ar.get("totals"),
+        "categories": true_ar.get("categories"),
+        "splits": true_ar.get("splits"),
+    }
+
+
 def compare_objective_metrics(
     baseline_summary: dict[str, Any],
     candidate_summary: dict[str, Any],
@@ -565,6 +578,10 @@ def compare_objective_metrics(
         raise BenchError("objective comparison requires identical heldout_ids")
     if baseline["train_ids"] != candidate["train_ids"]:
         raise BenchError("objective comparison requires identical train_ids")
+    baseline_true_ar = true_ar_baseline_signature(baseline_summary)
+    candidate_true_ar = true_ar_baseline_signature(candidate_summary)
+    if baseline_true_ar != candidate_true_ar:
+        raise BenchError("objective comparison requires identical attached true_ar_baseline metadata")
 
     fields = ("accepted_per_output", "draft_acceptance", "decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio")
     deltas: dict[str, dict[str, float]] = {}
@@ -595,6 +612,7 @@ def compare_objective_metrics(
         "passed": not regressions,
         "regressions": regressions,
         "tolerance": tolerance,
+        "true_ar_baseline": baseline_true_ar,
         "baseline": baseline,
         "candidate": candidate,
         "deltas": deltas,
