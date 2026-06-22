@@ -93,14 +93,14 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
             if not isinstance(raw, dict):
                 raise BenchError(f"{path}:{line_no}: prompt row must be an object")
             raw_id = raw.get("id")
-            if not isinstance(raw_id, str) or not raw_id:
+            if not isinstance(raw_id, str) or not raw_id.strip():
                 raise BenchError(f"{path}:{line_no}: prompt id must be a non-empty string")
             prompt_id = raw_id
             if prompt_id in seen_ids:
                 raise BenchError(f"{path}:{line_no}: duplicate prompt id: {prompt_id}")
             seen_ids.add(prompt_id)
             raw_category = raw.get("category")
-            if not isinstance(raw_category, str) or not raw_category:
+            if not isinstance(raw_category, str) or not raw_category.strip():
                 raise BenchError(f"{path}:{line_no}: category must be a non-empty string")
             category = raw_category
             has_prompt = "prompt" in raw
