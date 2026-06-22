@@ -137,8 +137,9 @@ acceptance loops.
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, boolean `performance_claim=false`,
    boolean `speed_claim_eligible=false`, `splits.full`,
-   `splits.train`, and `splits.heldout`; split contract and per-split
-   `prompt_ids` lists must contain strict non-empty strings,
+   `splits.train`, and `splits.heldout`; prompt fixture rows must use strict
+   string IDs, categories, prompt text, and message content before split
+   construction; split contract and per-split `prompt_ids` lists must contain strict non-empty strings,
    `splits.contract.heldout_ids` must be the fixed set
    `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,
    `train_ids` must be the default full-minus-heldout complement, and each split
@@ -183,8 +184,8 @@ acceptance loops.
    JSON integers, not booleans), explicit true-no-MTP / same-prompt-suite /
    same-timing-protocol true-AR flags, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt/category
-   provenance including default prompt hashes/categories/lengths plus category
-   budget-row scalar fields, strict JSON-integer token counts and prompt counts
+   provenance including strict prompt fixture typing, default prompt
+   hashes/categories/lengths plus category budget-row scalar fields, strict JSON-integer token counts and prompt counts
    (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
    fields, repo provenance including strict integer `git_untracked_count`,
    protocol provenance, prompt-hash provenance, and true-AR finite-logit

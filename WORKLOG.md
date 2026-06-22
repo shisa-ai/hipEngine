@@ -118153,3 +118153,34 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 79: validate strict prompt fixture fields
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 79.
+- Focused prompt-suite fixture contract: prompt IDs/categories/text must not seed split contracts or prompt hashes through Python `str()` coercion of malformed JSON values.
+
+### Change
+- `load_prompt_rows()` now requires each JSONL prompt row to be an object.
+- Prompt IDs and categories must be strict non-empty strings when present.
+- Direct `prompt` text must be a string.
+- Chat-style `messages[]` entries must be objects and user `content` fields must be strings.
+- Added prompt-loader regressions for:
+  - non-object prompt rows;
+  - numeric prompt IDs;
+  - numeric categories;
+  - numeric direct prompt text;
+  - numeric user message content.
+- Updated `docs/BENCHMARK.md` to document strict prompt fixture typing before split construction.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

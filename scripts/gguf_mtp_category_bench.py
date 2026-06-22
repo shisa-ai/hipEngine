@@ -81,16 +81,36 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
             if not line:
                 continue
             raw = json.loads(line)
-            prompt_id = str(raw.get("id") or raw.get("name") or f"prompt_{line_no}")
-            category = str(raw.get("category") or "uncategorized")
+            if not isinstance(raw, dict):
+                raise BenchError(f"{path}:{line_no}: prompt row must be an object")
+            raw_id = raw.get("id", raw.get("name", f"prompt_{line_no}"))
+            if not isinstance(raw_id, str) or not raw_id:
+                raise BenchError(f"{path}:{line_no}: prompt id must be a non-empty string")
+            prompt_id = raw_id
+            raw_category = raw.get("category", "uncategorized")
+            if not isinstance(raw_category, str) or not raw_category:
+                raise BenchError(f"{path}:{line_no}: category must be a non-empty string")
+            category = raw_category
             if "prompt" in raw:
-                prompt_text = str(raw["prompt"])
+                prompt_text = raw["prompt"]
+                if not isinstance(prompt_text, str):
+                    raise BenchError(f"{path}:{line_no}: prompt text must be a string")
             else:
                 messages = raw.get("messages")
                 if not isinstance(messages, list) or not messages:
                     raise BenchError(f"{path}:{line_no}: expected prompt or messages[]")
-                user_parts = [str(msg.get("content", "")) for msg in messages if msg.get("role") == "user"]
-                prompt_text = "\n\n".join(part for part in user_parts if part)
+                user_parts: list[str] = []
+                for msg_index, msg in enumerate(messages):
+                    if not isinstance(msg, dict):
+                        raise BenchError(f"{path}:{line_no}: messages[{msg_index}] must be an object")
+                    role = msg.get("role")
+                    if role == "user":
+                        content = msg.get("content", "")
+                        if not isinstance(content, str):
+                            raise BenchError(f"{path}:{line_no}: messages[{msg_index}].content must be a string")
+                        if content:
+                            user_parts.append(content)
+                prompt_text = "\n\n".join(user_parts)
             if not prompt_text:
                 raise BenchError(f"{path}:{line_no}: prompt text is empty")
             rows.append({"id": prompt_id, "category": category, "prompt": prompt_text, "source": raw})

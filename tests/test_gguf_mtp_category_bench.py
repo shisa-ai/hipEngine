@@ -348,6 +348,27 @@ def test_default_prompt_fixture_keeps_one_heldout_per_category() -> None:
     assert contract["heldout_categories"] == ["code", "general_en", "general_ja", "mixed_ja_en"]
 
 
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [
+        (["not", "an", "object"], "prompt row must be an object"),
+        ({"id": 123, "category": "code", "prompt": "write code"}, "prompt id must be a non-empty string"),
+        ({"id": "code_1", "category": 123, "prompt": "write code"}, "category must be a non-empty string"),
+        ({"id": "code_1", "category": "code", "prompt": 123}, "prompt text must be a string"),
+        (
+            {"id": "code_1", "category": "code", "messages": [{"role": "user", "content": 123}]},
+            r"messages\[0\]\.content must be a string",
+        ),
+    ],
+)
+def test_load_prompt_rows_rejects_non_string_prompt_fixture_fields(tmp_path: Path, row: object, message: str) -> None:
+    prompt_path = tmp_path / "prompts.jsonl"
+    prompt_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    with pytest.raises(BenchError, match=message):
+        load_prompt_rows(prompt_path)
+
+
 def _speed_claim_summary(
     *,
     true_ar_overrides: dict | None = None,
