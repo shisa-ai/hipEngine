@@ -116387,3 +116387,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 27 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 17: objective metric extractor
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 17.
+- Focused harness-readiness change: provide a compact, machine-checkable objective view for future optimize loops.
+
+### Change
+- Added `scripts.gguf_mtp_category_bench.objective_metrics_for_budget(summary, budget_label)`.
+- The extractor rejects verifier-only summaries and requires:
+  - `true_ar_comparison_available=true`;
+  - attached `true_ar_baseline`;
+  - split contract with heldout coverage for every present category;
+  - budget metrics for `full`, `train`, and `heldout`.
+- For each split it returns:
+  - `accepted_per_output`;
+  - `draft_acceptance`;
+  - `decode_tok_s_weighted`;
+  - `mtp_vs_true_ar_decode_ratio`;
+  - prompt count.
+- Added tests for a valid train+heldout mini-suite and rejection of verifier-only summaries.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, and no kernel edits.
+- The first test run caught a bad expected denominator in the new test (`accepted/(output+accepted)`); fixed the expectation to match existing artifact semantics: `accepted_per_output = accepted / visible_output_tokens`.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 29 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

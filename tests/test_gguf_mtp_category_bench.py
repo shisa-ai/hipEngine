@@ -15,6 +15,7 @@ from scripts.gguf_mtp_category_bench import (
     build_split_contract,
     build_summary,
     load_prompt_rows,
+    objective_metrics_for_budget,
     validate_speed_claim_contract,
     write_markdown,
 )
@@ -259,6 +260,71 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["totals"]["b1"]["true_ar_decode_tok_s_weighted"] == 100.0
     assert summary["totals"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((30.0 / 330.0 * 1000.0) / 100.0)
     assert summary["categories"]["code"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((10.0 / 110.0 * 1000.0) / 100.0)
+
+
+def test_objective_metrics_for_budget_requires_true_ar_and_reports_splits(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [
+            {"id": "code_merge_intervals", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
+            {"id": "code_markdown_table", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
+            {"id": "general_en_plan", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+            {"id": "general_en_explain", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+        ],
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [
+        {"id": "code_merge_intervals", "category": "code", "prompt": "write code"},
+        {"id": "code_markdown_table", "category": "code", "prompt": "write table"},
+        {"id": "general_en_plan", "category": "general_en", "prompt": "plan"},
+        {"id": "general_en_explain", "category": "general_en", "prompt": "explain"},
+    ]
+    raw = {
+        1: [
+            _row("code_merge_intervals", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
+            _row("code_markdown_table", "code", output=10, accepted=2, drafts=1, ar_ms=100.0, draft_ms=10.0),
+            _row("general_en_plan", "general_en", output=20, accepted=3, drafts=1, ar_ms=200.0, draft_ms=20.0),
+            _row("general_en_explain", "general_en", output=20, accepted=4, drafts=1, ar_ms=200.0, draft_ms=20.0),
+        ]
+    }
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+    metrics = objective_metrics_for_budget(summary, 1)
+
+    assert metrics["budget"] == "b1"
+    assert metrics["true_ar_comparison_available"] is True
+    assert metrics["speed_claim_eligible"] is False
+    assert metrics["performance_claim"] is False
+    assert metrics["full"]["accepted_per_output"] == pytest.approx(10 / 60)
+    assert metrics["full"]["draft_acceptance"] == pytest.approx(10 / 4)
+    assert metrics["full"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((60.0 / 660.0 * 1000.0) / 100.0)
+    assert metrics["train"]["prompts"] == 2
+    assert metrics["train"]["accepted_per_output"] == pytest.approx(4 / 30)
+    assert metrics["heldout"]["prompts"] == 2
+    assert metrics["heldout"]["accepted_per_output"] == pytest.approx(6 / 30)
+    assert metrics["heldout_ids"] == ["code_markdown_table", "general_en_explain"]
+
+
+def test_objective_metrics_for_budget_rejects_verifier_only_summary() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+    with pytest.raises(BenchError, match="true_ar_comparison_available=true"):
+        objective_metrics_for_budget(summary, "b1")
 
 
 def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_flag(tmp_path: Path) -> None:

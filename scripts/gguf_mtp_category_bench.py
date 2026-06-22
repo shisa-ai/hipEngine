@@ -377,6 +377,65 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | int) -> dict[str, Any]:
+    """Extract honest optimization metrics for one MTP budget.
+
+    Future optimization loops should consume this compact view instead of ad-hoc
+    JSON paths. It deliberately requires true-AR comparison metadata and heldout
+    coverage, so verifier-derived ``off`` / ``B0`` rows cannot become the speed
+    denominator by accident.
+    """
+    label = f"b{budget_label}" if isinstance(budget_label, int) or str(budget_label).isdigit() else str(budget_label)
+    if label == "off" or not label.startswith("b"):
+        raise BenchError(f"objective budget must be an MTP budget label like b5, got {budget_label!r}")
+    if summary.get("true_ar_comparison_available") is not True:
+        raise BenchError("objective metrics require true_ar_comparison_available=true")
+    true_ar = summary.get("true_ar_baseline")
+    if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
+        raise BenchError("objective metrics require an attached true_ar_baseline")
+    splits = summary.get("splits")
+    if not isinstance(splits, dict):
+        raise BenchError("objective metrics require splits")
+    contract = splits.get("contract")
+    if not isinstance(contract, dict) or contract.get("heldout_has_all_present_categories") is not True:
+        raise BenchError("objective metrics require heldout coverage for all present categories")
+
+    out: dict[str, Any] = {
+        "budget": label,
+        "true_ar_comparison_available": True,
+        "speed_claim_eligible": bool(summary.get("speed_claim_eligible", False)),
+        "performance_claim": bool(summary.get("performance_claim", False)),
+        "heldout_ids": list(contract.get("heldout_ids", [])),
+        "train_ids": list(contract.get("train_ids", [])),
+    }
+    for split_name in ("full", "train", "heldout"):
+        split = splits.get(split_name)
+        if not isinstance(split, dict):
+            raise BenchError(f"objective metrics require splits.{split_name}")
+        metrics = split.get("metrics")
+        if not isinstance(metrics, dict) or label not in metrics:
+            raise BenchError(f"objective metrics missing {label} for split {split_name}")
+        row = metrics[label]
+        required = (
+            "accepted_per_output",
+            "draft_acceptance",
+            "decode_tok_s_weighted",
+            "mtp_vs_true_ar_decode_ratio",
+            "prompts",
+        )
+        missing = [field for field in required if field not in row or row[field] is None]
+        if missing:
+            raise BenchError(f"objective metrics missing {missing} for {split_name}.{label}")
+        out[split_name] = {
+            "accepted_per_output": float(row["accepted_per_output"]),
+            "draft_acceptance": float(row["draft_acceptance"]),
+            "decode_tok_s_weighted": float(row["decode_tok_s_weighted"]),
+            "mtp_vs_true_ar_decode_ratio": float(row["mtp_vs_true_ar_decode_ratio"]),
+            "prompts": int(row["prompts"]),
+        }
+    return out
+
+
 def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]], commands: list[str]) -> dict[str, Any]:
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
