@@ -695,6 +695,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     """
     if not summary.get("speed_claim_eligible", False):
         return summary
+    validate_category_summary_schema(summary, label="speed-claim summary")
     validate_repo_provenance(summary, label="speed-claim summary")
     validate_command_provenance(summary, label="speed-claim summary")
     true_ar = summary.get("true_ar_baseline")
@@ -706,6 +707,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
         raise BenchError("speed_claim_eligible=true requires true AR measured on the same prompt suite")
     if true_ar.get("same_timing_protocol") is not True:
         raise BenchError("speed_claim_eligible=true requires true AR measured with the same timing protocol")
+    validate_attached_true_ar_artifact_schema(true_ar, label="speed-claim true_ar_baseline")
     validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_command_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_attached_true_ar_protocol(true_ar, label="speed-claim true_ar_baseline")

@@ -127,7 +127,9 @@ acceptance loops.
    `speed_claim_eligible=false`, `splits.full`,
    `splits.train`, and `splits.heldout`. Markdown tables must label the old
    verifier-derived denominator as `vs verifier off`; same-protocol speed ratios
-   appear only in a separate `vs true AR` column.
+   appear only in a separate `vs true AR` column. Any future retained summary with
+   `speed_claim_eligible=true` must pass the same current-schema checks for the
+   MTP summary and attached true-AR artifact identity.
 
 3. **Optimization decisions use all three views.** Report full-suite, train, and
    heldout metrics for every budget:
@@ -150,7 +152,8 @@ acceptance loops.
    ```
 
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
-   artifacts without a same-protocol true-AR baseline, repo provenance, and
+   artifacts without current schema/kind metadata, a same-protocol true-AR
+   baseline, repo provenance, command provenance, protocol provenance, and
    prompt-hash provenance. The returned JSON contains
    full/train/heldout `accepted_per_output`, `draft_acceptance`,
    `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.

@@ -117188,3 +117188,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 44: require current schema for speed claims
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 44.
+- Focused retained-speed-claim provenance contract: current-schema artifact identity should be required for speed-claim-eligible summaries, not just objective extraction.
+
+### Change
+- `validate_speed_claim_contract()` now requires speed-claim-eligible summaries to pass MTP category summary `schema=1` / `kind=hipengine_gguf_mtp_category_matrix` validation.
+- The same speed-claim path now requires attached true-AR baseline `artifact_schema=1` / `artifact_kind=hipengine_gguf_true_ar_category_baseline` validation before repo/command/protocol validation can pass.
+- Refactored speed-claim tests around a current-schema fixture helper.
+- Added regressions for missing speed-claim summary schema and missing attached true-AR artifact schema.
+- Updated `docs/BENCHMARK.md` to state that future retained speed claims must pass the same current-schema artifact identity checks.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 81 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

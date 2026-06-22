@@ -49,6 +49,11 @@ TEST_TRUE_AR_PROTOCOL = {
     "warmup_decode_tokens": 1,
     "prompt_count": 10,
 }
+TEST_SUMMARY_ARTIFACT = {"schema": 1, "kind": "hipengine_gguf_mtp_category_matrix"}
+TEST_ATTACHED_TRUE_AR_ARTIFACT = {
+    "artifact_schema": 1,
+    "artifact_kind": "hipengine_gguf_true_ar_category_baseline",
+}
 
 
 def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: int, ar_ms: float, draft_ms: float) -> dict:
@@ -308,99 +313,93 @@ def test_default_prompt_fixture_keeps_one_heldout_per_category() -> None:
     assert contract["heldout_categories"] == ["code", "general_en", "general_ja", "mixed_ja_en"]
 
 
-def test_speed_claim_contract_rejects_verifier_derived_ar_baseline() -> None:
+def _speed_claim_summary(
+    *,
+    true_ar_overrides: dict | None = None,
+    summary_overrides: dict | None = None,
+    drop_summary: tuple[str, ...] = (),
+    drop_true_ar: tuple[str, ...] = (),
+) -> dict:
+    true_ar = {
+        "available": True,
+        "true_autoregressive_path": True,
+        "same_prompt_suite": True,
+        "same_timing_protocol": True,
+        "source": "future true AR harness artifact",
+        **TEST_ATTACHED_TRUE_AR_ARTIFACT,
+        "repo": dict(TEST_REPO_PROVENANCE),
+        "commands": list(TEST_TRUE_AR_COMMANDS),
+        "protocol": dict(TEST_TRUE_AR_PROTOCOL),
+    }
+    if true_ar_overrides:
+        true_ar.update(true_ar_overrides)
+    for key in drop_true_ar:
+        true_ar.pop(key, None)
     summary = {
         "speed_claim_eligible": True,
+        **TEST_SUMMARY_ARTIFACT,
         "repo": dict(TEST_REPO_PROVENANCE),
         "commands": list(TEST_SUMMARY_COMMANDS),
-        "true_ar_baseline": {
+        "true_ar_baseline": true_ar,
+    }
+    if summary_overrides:
+        summary.update(summary_overrides)
+    for key in drop_summary:
+        summary.pop(key, None)
+    return summary
+
+
+def test_speed_claim_contract_rejects_verifier_derived_ar_baseline() -> None:
+    summary = _speed_claim_summary(
+        true_ar_overrides={
             "available": False,
             "true_autoregressive_path": False,
             "same_prompt_suite": False,
             "same_timing_protocol": False,
             "source": None,
-            "repo": dict(TEST_REPO_PROVENANCE),
-            "commands": list(TEST_TRUE_AR_COMMANDS),
-        },
-    }
+        }
+    )
 
     with pytest.raises(BenchError, match="true no-MTP autoregressive baseline"):
         validate_speed_claim_contract(summary)
 
 
 def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
-    summary = {
-        "speed_claim_eligible": True,
-        "repo": dict(TEST_REPO_PROVENANCE),
-        "commands": list(TEST_SUMMARY_COMMANDS),
-        "true_ar_baseline": {
-            "available": True,
-            "true_autoregressive_path": True,
-            "same_prompt_suite": True,
-            "same_timing_protocol": True,
-            "source": "future true AR harness artifact",
-            "repo": dict(TEST_REPO_PROVENANCE),
-            "commands": list(TEST_TRUE_AR_COMMANDS),
-            "protocol": dict(TEST_TRUE_AR_PROTOCOL),
-        },
-    }
+    summary = _speed_claim_summary()
 
     assert validate_speed_claim_contract(summary) is summary
 
 
+def test_speed_claim_contract_rejects_missing_summary_schema() -> None:
+    summary = _speed_claim_summary(drop_summary=("schema",))
+
+    with pytest.raises(BenchError, match="speed-claim summary requires schema=1"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_missing_attached_true_ar_schema() -> None:
+    summary = _speed_claim_summary(drop_true_ar=("artifact_schema",))
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires schema=1"):
+        validate_speed_claim_contract(summary)
+
+
 def test_speed_claim_contract_rejects_missing_command_provenance() -> None:
-    summary = {
-        "speed_claim_eligible": True,
-        "repo": dict(TEST_REPO_PROVENANCE),
-        "true_ar_baseline": {
-            "available": True,
-            "true_autoregressive_path": True,
-            "same_prompt_suite": True,
-            "same_timing_protocol": True,
-            "source": "future true AR harness artifact",
-            "repo": dict(TEST_REPO_PROVENANCE),
-            "commands": list(TEST_TRUE_AR_COMMANDS),
-        },
-    }
+    summary = _speed_claim_summary(drop_summary=("commands",))
 
     with pytest.raises(BenchError, match="speed-claim summary requires non-empty commands provenance"):
         validate_speed_claim_contract(summary)
 
 
 def test_speed_claim_contract_rejects_missing_true_ar_command_provenance() -> None:
-    summary = {
-        "speed_claim_eligible": True,
-        "repo": dict(TEST_REPO_PROVENANCE),
-        "commands": list(TEST_SUMMARY_COMMANDS),
-        "true_ar_baseline": {
-            "available": True,
-            "true_autoregressive_path": True,
-            "same_prompt_suite": True,
-            "same_timing_protocol": True,
-            "source": "future true AR harness artifact",
-            "repo": dict(TEST_REPO_PROVENANCE),
-        },
-    }
+    summary = _speed_claim_summary(drop_true_ar=("commands",))
 
     with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires non-empty commands provenance"):
         validate_speed_claim_contract(summary)
 
 
 def test_speed_claim_contract_rejects_missing_true_ar_protocol() -> None:
-    summary = {
-        "speed_claim_eligible": True,
-        "repo": dict(TEST_REPO_PROVENANCE),
-        "commands": list(TEST_SUMMARY_COMMANDS),
-        "true_ar_baseline": {
-            "available": True,
-            "true_autoregressive_path": True,
-            "same_prompt_suite": True,
-            "same_timing_protocol": True,
-            "source": "future true AR harness artifact",
-            "repo": dict(TEST_REPO_PROVENANCE),
-            "commands": list(TEST_TRUE_AR_COMMANDS),
-        },
-    }
+    summary = _speed_claim_summary(drop_true_ar=("protocol",))
 
     with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires true AR protocol metadata"):
         validate_speed_claim_contract(summary)
@@ -409,21 +408,7 @@ def test_speed_claim_contract_rejects_missing_true_ar_protocol() -> None:
 def test_speed_claim_contract_rejects_attached_protocol_without_quant() -> None:
     protocol = dict(TEST_TRUE_AR_PROTOCOL)
     del protocol["quant_normalized"]
-    summary = {
-        "speed_claim_eligible": True,
-        "repo": dict(TEST_REPO_PROVENANCE),
-        "commands": list(TEST_SUMMARY_COMMANDS),
-        "true_ar_baseline": {
-            "available": True,
-            "true_autoregressive_path": True,
-            "same_prompt_suite": True,
-            "same_timing_protocol": True,
-            "source": "future true AR harness artifact",
-            "repo": dict(TEST_REPO_PROVENANCE),
-            "commands": list(TEST_TRUE_AR_COMMANDS),
-            "protocol": protocol,
-        },
-    }
+    summary = _speed_claim_summary(true_ar_overrides={"protocol": protocol})
 
     with pytest.raises(BenchError, match="speed-claim true_ar_baseline protocol metadata requires non-empty quant_normalized"):
         validate_speed_claim_contract(summary)
@@ -432,21 +417,7 @@ def test_speed_claim_contract_rejects_attached_protocol_without_quant() -> None:
 def test_speed_claim_contract_rejects_attached_protocol_without_decode_tokens() -> None:
     protocol = dict(TEST_TRUE_AR_PROTOCOL)
     del protocol["decode_tokens"]
-    summary = {
-        "speed_claim_eligible": True,
-        "repo": dict(TEST_REPO_PROVENANCE),
-        "commands": list(TEST_SUMMARY_COMMANDS),
-        "true_ar_baseline": {
-            "available": True,
-            "true_autoregressive_path": True,
-            "same_prompt_suite": True,
-            "same_timing_protocol": True,
-            "source": "future true AR harness artifact",
-            "repo": dict(TEST_REPO_PROVENANCE),
-            "commands": list(TEST_TRUE_AR_COMMANDS),
-            "protocol": protocol,
-        },
-    }
+    summary = _speed_claim_summary(true_ar_overrides={"protocol": protocol})
 
     with pytest.raises(BenchError, match="speed-claim true_ar_baseline protocol metadata requires positive decode_tokens"):
         validate_speed_claim_contract(summary)
