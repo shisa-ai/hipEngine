@@ -120242,3 +120242,39 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 
 ### Result
 - Not retained. Depth≤2 improves focused candidate accounting but regresses full/heldout/mixed accepted/output. Current default remains root-K4/sibling-K9/depth≤3 with focused B5 `0.5000` and full-suite B5 `0.4318`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 155: root-K5 with depth cap rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 155.
+- Evaluated whether combining root-K5 with the retained sibling-K9/depth≤3 cap removes the mixed_ja_en regression seen by earlier root-K5 variants while preserving the aggregate accepted/output gain.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling9-depth3-full-20260623-041623/raw --output /tmp/hipengine-rootk5-sibling9-depth3-full-20260623-041623/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=9 --extra-arg=--sibling-topk-max-depth --extra-arg=3
+```
+- Aggregate full/train/heldout improved versus retained root-K4/sibling-K9/depth≤3: full `0.431818 -> 0.441341`, train `0.368421 -> 0.375000`, heldout `0.506173 -> 0.518072`.
+- Per-category accepted/output: code `0.310345 -> 0.344262`, general_en `0.512195 -> 0.512195`, general_ja `0.411765 -> 0.428571`, mixed_ja_en `0.534884 -> 0.523810`.
+- The mixed_ja_en regression persists, so this violates per-category non-regression and is not retained.
+- Draft acceptance improved slightly (`0.023750 -> 0.023939`) but the category regression blocks retention.
+
+### Retained path check
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-iteration155-retained-b5-20.json
+# accepted_per_output=0.5000, accept_per_draft=0.0312, total_accepted=20/640, tokens_per_sec=12.45, speedup_vs_ar_visible=0.726x
+```
+- Current default remains root-K4/sibling-K9/depth≤3.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated only generic root/deeper sibling top-k widths and depth cap under exact verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Root-K5/sibling-K9/depth≤3 improves aggregate full/train/heldout but still regresses mixed_ja_en. Current default remains root-K4/sibling-K9/depth≤3 with focused B5 `0.5000` and full-suite B5 `0.4318`.
