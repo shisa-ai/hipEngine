@@ -493,10 +493,10 @@ def main():
     parser.add_argument(
         "--topk-branch-redraft-max-branches",
         type=int,
-        default=4,
+        default=5,
         help=(
             "Maximum exact-verified top-k branch accepts allowed within one B-window when "
-            "branch redraft is enabled (default: 4)."
+            "branch redraft is enabled (default: 5)."
         ),
     )
     args = parser.parse_args()
