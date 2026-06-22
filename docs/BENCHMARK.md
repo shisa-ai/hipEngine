@@ -145,6 +145,35 @@ acceptance loops.
    full/train/heldout `accepted_per_output`, `draft_acceptance`,
    `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.
 
+   When an optimize loop needs a single scalar verify metric, keep the same gates
+   and request one split/field explicitly:
+
+   ```bash
+   # Primary acceptance metric candidate: full-suite B5 accepted/output.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split full \
+     --objective-field accepted_per_output
+
+   # Heldout monitor: reject train-only wins when this regresses.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split heldout \
+     --objective-field accepted_per_output
+
+   # Speed-ratio monitor: same-protocol MTP/true-AR ratio.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split full \
+     --objective-field mtp_vs_true_ar_decode_ratio
+   ```
+
+   Scalar mode still calls the guarded objective extractor first; it is not a way
+   to read verifier-derived `off`/`B0` telemetry or partial prompt suites.
+
    Baseline-vs-candidate comparisons should use the guarded comparator:
 
    ```bash

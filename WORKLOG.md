@@ -116868,3 +116868,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 51 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 33: scalar objective CLI docs
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 33.
+- Focused docs/readiness change: document scalar objective CLI usage for future optimize-loop verify metrics.
+
+### Change
+- Updated `docs/BENCHMARK.md` objective CLI section with scalar examples for:
+  - full-suite B5 `accepted_per_output`;
+  - heldout B5 `accepted_per_output` monitor;
+  - full-suite B5 `mtp_vs_true_ar_decode_ratio` monitor.
+- The docs explicitly state scalar mode still calls the guarded objective extractor first and is not a way to read verifier-derived `off`/`B0` telemetry or partial prompt suites.
+
+### Guardrail status
+- Docs-only; no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 51 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
