@@ -119760,3 +119760,52 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Retained as an honest accepted/output improvement. Focused B5 default moved `0.4286 -> 0.4872`; full category B5 moved `0.3243 -> 0.3902` with train/heldout/per-category accepted/output non-regressive.
 - Caveat: accept-per-draft regresses under candidate accounting, so the next improvement should reduce the candidate budget (or add true branch-specific MTP rows/KV) while preserving the accepted/output gains.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 143: root top-3 retained with sibling top-10
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 143.
+- Evaluated whether the retained deeper sibling top-k policy changed the best root top-k. The selector remains generic: exact target verification may accept tokens only from draft top-k sets, with no prompt/token/candidate-pattern hardcoding.
+
+### Focused B5 sweep
+```bash
+for k in 1 2 3 4 5 8 10; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept "$k" --sibling-topk-accept 10 --output /tmp/hipengine-mtp-rootk${k}-sibling10-iter143-b5-20.json
+done
+```
+- Accepted/output by root K with deeper sibling K10: K1 `0.4444`, K2 `0.4872`, K3 `0.5000`, K4 `0.5000`, K5 `0.5000`, K8 `0.5000`, K10 `0.5000`.
+- K3 is the best accepted/output/candidate tradeoff among the max-acceptance settings: `20/860` candidates (`accept_per_draft=0.0233`) vs K4 `20/880`, K5 `20/900`, K8 `20/960`, K10 `20/1000`.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk3-sibling10-full-20260623-025603/raw --output /tmp/hipengine-rootk3-sibling10-full-20260623-025603/summary.json --extra-arg=--root-topk-accept --extra-arg=3 --extra-arg=--sibling-topk-accept --extra-arg=10
+```
+- Full accepted/output improved over current root-K2/sibling-K10: `0.390244 -> 0.425287`.
+- Train `0.333333 -> 0.354839`; heldout `0.459459 -> 0.506173`.
+- Per-category accepted/output: code `0.259259 -> 0.285714`, general_en `0.444444 -> 0.512195`, general_ja `0.411765 -> 0.411765`, mixed_ja_en `0.500000 -> 0.534884`.
+- Draft acceptance by candidate accounting improved slightly full `0.015238 -> 0.017209`; diagnostic verifier-derived tok/s `12.4475 -> 12.8512`. No true-AR speed claim is retained.
+
+### Change retained
+- Promoted `--root-topk-accept` default from `2` to `3`; `--root-topk-accept 1` still restores linear argmax root behavior.
+- Focused default confirmation:
+  ```bash
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-rootk3-sibling10-default-b5-20.json
+  # accepted_per_output=0.5000, accept_per_draft=0.0233, total_accepted=20/860, total_output_tokens=40, tokens_per_sec=13.73
+  ```
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk3-sibling10-category-gfx1151.json`.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: no prompt text checks, no token IDs, no candidate-pattern branches, no depth-specific target-token rescue, no fixture IDs, no benchmark detection; exact target verification and finite logits retained.
+
+### Result
+- Retained as an accepted/output improvement. Focused default B5 moved `0.4872 -> 0.5000`; full category B5 moved `0.3902 -> 0.4253`; train/heldout/category metrics are non-regressive.
+- Next work should reduce the large candidate budget or implement true branch-specific MTP rows/KV so deeper top-k acceptance does not require counting every exposed sibling candidate.

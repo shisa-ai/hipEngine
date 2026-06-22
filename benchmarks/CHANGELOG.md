@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-23
+
+- [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output `0.390 -> 0.425` (+9.0%) via generic exact-verification root-K3/deeper-sibling-K10 top-k proposal; train `0.333 -> 0.355`, heldout `0.459 -> 0.506`, categories non-regressive; speed remains verifier-derived diagnostic (`0.673x` AR), not a retained true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk3-sibling10-category-gfx1151.json`.
+
 ## 2026-06-22
 
 - [diagnostic comparison retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP vs llama.cpp HIP MTP UD-Q4_K_M / gfx1151 category suite: hipEngine native AR `19.45 tok/s` is `0.388x` llama.cpp AR `50.13`; hipEngine best MTP speed is B1 `15.49 tok/s` (`0.796x` native AR, `0.230x` llama.cpp best B2 `67.29`), and code B3 is `12.56 tok/s` vs llama.cpp code B3 `72.59` (`0.173x`); caveat native path is 10-cycle verifier diagnostic vs llama.cpp 512-token server; `benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp-category-gfx1151.json`.
