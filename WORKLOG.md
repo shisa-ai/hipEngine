@@ -117950,3 +117950,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 72: validate summary totals label set
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 72.
+- Focused artifact-shape contract: summary `totals` keys must be `off` plus canonical positive `bN` rows before objective population or speed eligibility can accept the artifact.
+
+### Change
+- Added `summary_mtp_budget_labels()` in `scripts/gguf_mtp_category_bench.py`.
+- `populate_objective_metrics()` and `validate_speed_claim_contract()` now share the same totals-label discovery/validation path.
+- Summary `totals` now rejects unexpected or noncanonical keys including:
+  - bare numeric total keys such as `1`;
+  - `b0`;
+  - leading-zero `bN` labels such as `b01`;
+  - garbage labels such as `banana`.
+- `canonical_mtp_budget_label()` now rejects boolean input explicitly instead of treating `True`/`False` as integers.
+- Added speed-claim regressions for noncanonical `totals` rows and an objective-population regression for an unexpected total label.
+- Updated `docs/BENCHMARK.md` to document that the summary `totals` key set is restricted to `off` plus canonical positive `bN` rows.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 172 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

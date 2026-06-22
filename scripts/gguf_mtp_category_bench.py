@@ -180,6 +180,8 @@ def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str
 
 
 def canonical_mtp_budget_label(budget_label: str | int) -> str:
+    if type(budget_label) is bool:
+        raise BenchError(f"objective budget must be a positive MTP budget label like b5, got {budget_label!r}")
     if isinstance(budget_label, int):
         if budget_label <= 0:
             raise BenchError(f"objective budget must be a positive MTP budget label like b5, got {budget_label!r}")
@@ -193,6 +195,22 @@ def canonical_mtp_budget_label(budget_label: str | int) -> str:
     if text.startswith("b") and text[1:].isdigit() and not text[1:].startswith("0"):
         return text
     raise BenchError(f"objective budget must be a positive MTP budget label like b5, got {budget_label!r}")
+
+
+def summary_mtp_budget_labels(summary: dict[str, Any], *, label: str) -> list[str]:
+    totals = summary.get("totals")
+    if not isinstance(totals, dict):
+        raise BenchError(f"{label} requires summary totals")
+    budget_labels: list[str] = []
+    for raw_label in totals:
+        text = str(raw_label)
+        if text == "off":
+            continue
+        canonical = canonical_mtp_budget_label(raw_label)
+        if text != canonical:
+            raise BenchError(f"{label} totals row {raw_label!r} must use canonical positive MTP budget label {canonical}")
+        budget_labels.append(canonical)
+    return sorted(budget_labels, key=lambda item: int(item[1:]))
 
 
 def validate_claim_flags(payload: dict[str, Any], *, label: str) -> dict[str, bool]:
@@ -1187,7 +1205,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_command_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_attached_true_ar_protocol(true_ar, label="speed-claim true_ar_baseline")
-    budget_labels = sorted(str(label) for label in (summary.get("totals") or {}) if str(label).startswith("b"))
+    budget_labels = summary_mtp_budget_labels(summary, label="speed_claim_eligible=true")
     if not budget_labels:
         raise BenchError("speed_claim_eligible=true requires at least one guarded MTP objective budget")
     for budget_label in budget_labels:
@@ -1533,7 +1551,11 @@ def populate_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
     summary["objective_metrics_available"] = False
     summary["objective_metrics_blocker"] = None
     summary["objectives"] = {}
-    labels = [label for label in summary.get("totals", {}) if str(label).startswith("b")]
+    try:
+        labels = summary_mtp_budget_labels(summary, label="objective metrics")
+    except BenchError as exc:
+        summary["objective_metrics_blocker"] = str(exc)
+        return summary
     for label in labels:
         try:
             summary["objectives"][label] = objective_metrics_for_budget(summary, label)

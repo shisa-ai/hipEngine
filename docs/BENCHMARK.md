@@ -165,8 +165,10 @@ acceptance loops.
 4. **Use the guarded objective CLI for loop metrics.** Future optimize loops
    must consume objective metrics through the harness gate, not ad-hoc JSON paths.
    Objective budget labels are canonical positive `bN` labels (`b1`, `b5`, …);
-   `off`, `b0`, leading-zero labels such as `b01`, and other `b*` strings are
-   invalid:
+   the summary `totals` key set must be only `off` plus canonical positive `bN`
+   rows. `off`, `b0`, leading-zero labels such as `b01`, bare numeric totals
+   keys such as `1`, and other malformed strings are invalid as objective
+   budgets:
 
    ```bash
    python3 scripts/gguf_mtp_category_bench.py \

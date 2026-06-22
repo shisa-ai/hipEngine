@@ -19,6 +19,7 @@ from scripts.gguf_mtp_category_bench import (
     compare_objective_metrics,
     load_prompt_rows,
     objective_metrics_for_budget,
+    populate_objective_metrics,
     prompt_sha256,
     validate_speed_claim_contract,
     write_markdown,
@@ -408,12 +409,13 @@ def test_speed_claim_contract_rejects_malformed_guarded_objective_metrics(tmp_pa
         validate_speed_claim_contract(summary)
 
 
-def test_speed_claim_contract_rejects_noncanonical_mtp_budget_row(tmp_path: Path) -> None:
+@pytest.mark.parametrize("bad_label", ["b0", "b01", "banana", "1"])
+def test_speed_claim_contract_rejects_noncanonical_mtp_budget_row(tmp_path: Path, bad_label: str) -> None:
     summary = _default_objective_summary(tmp_path, "speed-claim", accepted=[1] * 10, draft_ms=10.0)
     summary["speed_claim_eligible"] = True
-    summary["totals"]["b0"] = dict(summary["totals"]["b1"])
+    summary["totals"][bad_label] = dict(summary["totals"]["b1"])
 
-    with pytest.raises(BenchError, match="speed_claim_eligible=true requires guarded objective metrics for b0: objective budget must be a positive MTP budget label like b5"):
+    with pytest.raises(BenchError, match="positive MTP budget label"):
         validate_speed_claim_contract(summary)
 
 
@@ -706,7 +708,7 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     ]
 
 
-@pytest.mark.parametrize("budget_label", [0, "0", "b0", "b01", "banana", "off"])
+@pytest.mark.parametrize("budget_label", [0, True, "0", "b0", "b01", "banana", "off"])
 def test_objective_metrics_for_budget_rejects_noncanonical_budget_label(tmp_path: Path, budget_label: str | int) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
 
@@ -720,6 +722,17 @@ def test_objective_metrics_for_budget_canonicalizes_numeric_string_budget(tmp_pa
     metrics = objective_metrics_for_budget(summary, "01")
 
     assert metrics["budget"] == "b1"
+
+
+def test_populate_objective_metrics_rejects_unexpected_total_label(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["totals"]["banana"] = dict(summary["totals"]["b1"])
+
+    populate_objective_metrics(summary)
+
+    assert summary["objective_metrics_available"] is False
+    assert "positive MTP budget label" in summary["objective_metrics_blocker"]
+    assert summary["objectives"] == {}
 
 
 def test_objective_metrics_for_budget_rejects_non_boolean_claim_flags(tmp_path: Path) -> None:
