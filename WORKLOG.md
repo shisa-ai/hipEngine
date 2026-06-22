@@ -117424,3 +117424,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 53: validate true-AR row/protocol token counts
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 53.
+- Focused true-AR protocol consistency contract: attached true-AR prompt rows must use the same decode/warmup token counts declared at artifact level.
+
+### Change
+- `validate_true_ar_prompt_rows()` now requires each attached true-AR `prompt_metrics[]` row to have:
+  - `output_tokens == artifact["decode_tokens"]`;
+  - `warmup_decode_tokens == artifact["warmup_decode_tokens"]`.
+- Updated true-AR fixture rows to emit per-row `warmup_decode_tokens` by default.
+- Updated true-AR dry-run rows to include `warmup_decode_tokens` and `finite_final_logits=true`, keeping dry-run artifact shape aligned with the guarded attachment contract.
+- Added regressions for decode-token mismatch, missing row warmup-token metadata, and warmup-token mismatch.
+- Updated `docs/BENCHMARK.md` to document row/protocol token-count consistency.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 107 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

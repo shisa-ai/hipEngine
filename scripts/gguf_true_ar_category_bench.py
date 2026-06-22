@@ -209,6 +209,8 @@ def main() -> int:
                 "output_tokens": int(args.decode_tokens),
                 "decode_ms": 1.0,
                 "decode_tok_s": 1000.0 * int(args.decode_tokens),
+                "warmup_decode_tokens": int(args.warmup_decode_tokens),
+                "finite_final_logits": True,
                 "dry_run": True,
             }
             for row in prompts

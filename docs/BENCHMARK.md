@@ -102,8 +102,9 @@ acceptance loops.
    `prompt_file`, `prompt_count`, positive `decode_tokens`, and non-negative
    `warmup_decode_tokens`); include top-level
    `prompt_hashes`; and contain one `prompt_metrics[]` row per selected prompt
-   with `prompt_sha256`, `finite_final_logits=true`, positive `output_tokens`,
-   and positive `decode_ms`.
+   with `prompt_sha256`, `finite_final_logits=true`, `output_tokens` matching
+   artifact `decode_tokens`, `warmup_decode_tokens` matching artifact
+   `warmup_decode_tokens`, and positive `decode_ms`.
 
 2. **Attach AR to the MTP category matrix.** Run the MTP diagnostic over the same
    prompts/budgets and attach the AR artifact:

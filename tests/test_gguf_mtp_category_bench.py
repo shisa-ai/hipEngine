@@ -457,6 +457,7 @@ def _write_true_ar_baseline(
     include_prompt_hashes: bool = True,
     include_row_hashes: bool = True,
     include_finite_logits: bool = True,
+    include_row_warmup_tokens: bool = True,
     include_commands: bool = True,
     model: str = TEST_MODEL,
     prompt_file: str = TEST_PROMPTS,
@@ -476,6 +477,8 @@ def _write_true_ar_baseline(
             row_copy.setdefault("prompt_sha256", prompt_hashes[prompt_id])
         if include_finite_logits:
             row_copy.setdefault("finite_final_logits", True)
+        if include_row_warmup_tokens and isinstance(warmup_decode_tokens, int):
+            row_copy.setdefault("warmup_decode_tokens", warmup_decode_tokens)
         metric_rows.append(row_copy)
     payload = {
         "true_autoregressive_path": True,
@@ -516,7 +519,7 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
         baseline_path,
         [
             {"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
-            {"id": "general_1", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+            {"id": "general_1", "category": "general_en", "output_tokens": 10, "decode_ms": 100.0},
         ],
         prompt_text_by_id={row["id"]: row["prompt"] for row in prompts},
     )
@@ -1186,6 +1189,70 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_true_ar_baseline_decode_token_mismatch(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 9, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="output_tokens must match artifact decode_tokens"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_without_row_warmup_tokens(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        include_row_warmup_tokens=False,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="warmup_decode_tokens must match artifact warmup_decode_tokens"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_row_warmup_token_mismatch(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0, "warmup_decode_tokens": 2}],
+        prompt_text_by_id={"code_1": "write code"},
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="warmup_decode_tokens must match artifact warmup_decode_tokens"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_rejects_true_ar_baseline_without_finite_logits_evidence(tmp_path: Path) -> None:
     baseline_path = tmp_path / "true-ar.json"
     _write_true_ar_baseline(
@@ -1612,8 +1679,8 @@ def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
         {"id": "general_1", "category": "general_en", "prompt": "explain"},
     ]
     prompt_metrics = [
-        {"id": "code_1", "category": "code", "output_tokens": 32, "decode_ms": 640.0},
-        {"id": "general_1", "category": "general_en", "output_tokens": 32, "decode_ms": 320.0},
+        {"id": "code_1", "category": "code", "output_tokens": 32, "decode_ms": 640.0, "warmup_decode_tokens": 1, "finite_final_logits": True},
+        {"id": "general_1", "category": "general_en", "output_tokens": 32, "decode_ms": 320.0, "warmup_decode_tokens": 1, "finite_final_logits": True},
     ]
 
     artifact = build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=prompt_metrics, commands=["cmd"])
@@ -1628,6 +1695,8 @@ def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
     assert artifact["prompt_ids"] == ["code_1", "general_1"]
     assert artifact["prompt_hashes"] == {"code_1": prompt_sha256("write code"), "general_1": prompt_sha256("explain")}
     assert artifact["prompt_metrics"][0]["prompt_sha256"] == prompt_sha256("write code")
+    assert artifact["prompt_metrics"][0]["warmup_decode_tokens"] == 1
+    assert artifact["prompt_metrics"][0]["finite_final_logits"] is True
     assert artifact["prompt_metrics"][1]["prompt_sha256"] == prompt_sha256("explain")
     assert artifact["totals"]["decode_tok_s_weighted"] == pytest.approx(64 / 0.960)
     assert artifact["categories"]["code"]["decode_tok_s_weighted"] == pytest.approx(50.0)

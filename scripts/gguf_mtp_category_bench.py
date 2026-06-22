@@ -644,6 +644,12 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
             f"missing={missing}, extra={extra}, mismatched={mismatched}"
         )
 
+    expected_decode_tokens = artifact.get("decode_tokens")
+    if not isinstance(expected_decode_tokens, int) or expected_decode_tokens <= 0:
+        raise BenchError("true AR baseline artifact protocol metadata requires positive decode_tokens")
+    expected_warmup_decode_tokens = artifact.get("warmup_decode_tokens")
+    if not isinstance(expected_warmup_decode_tokens, int) or expected_warmup_decode_tokens < 0:
+        raise BenchError("true AR baseline artifact protocol metadata requires non-negative warmup_decode_tokens")
     rows = artifact.get("prompt_metrics")
     if not isinstance(rows, list) or not rows:
         raise BenchError("true AR baseline artifact must contain non-empty prompt_metrics[]")
@@ -668,9 +674,14 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
         if row.get("finite_final_logits") is not True:
             raise BenchError(f"true AR prompt_metrics row requires finite_final_logits=true for {prompt_id}")
         output_tokens = int(row.get("output_tokens") or 0)
-        decode_ms = finite_float(row.get("decode_ms"), prompt_id=prompt_id, field="true_ar.prompt_metrics[].decode_ms")
         if output_tokens <= 0:
             raise BenchError(f"true AR row for {prompt_id} must have positive output_tokens")
+        if output_tokens != expected_decode_tokens:
+            raise BenchError(f"true AR row for {prompt_id} output_tokens must match artifact decode_tokens")
+        warmup_decode_tokens = row.get("warmup_decode_tokens")
+        if not isinstance(warmup_decode_tokens, int) or warmup_decode_tokens != expected_warmup_decode_tokens:
+            raise BenchError(f"true AR row for {prompt_id} warmup_decode_tokens must match artifact warmup_decode_tokens")
+        decode_ms = finite_float(row.get("decode_ms"), prompt_id=prompt_id, field="true_ar.prompt_metrics[].decode_ms")
         if decode_ms <= 0.0:
             raise BenchError(f"true AR row for {prompt_id} must have positive decode_ms")
         seen[prompt_id] = {"id": prompt_id, "category": category, "output_tokens": output_tokens, "decode_ms": decode_ms}
