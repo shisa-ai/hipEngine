@@ -125,7 +125,8 @@ acceptance loops.
    `kind=hipengine_gguf_mtp_category_matrix`, include non-empty `commands`,
    include per-prompt metadata (`id`, `category`, positive `prompt_chars`, and
    `prompt_sha256`) matching `splits.contract.full_ids`, include category
-   summary metadata whose keys match prompt categories, and carry attached
+   summary metadata whose keys match prompt categories, with a category row for
+   each objective budget and prompt counts matching the prompt metadata, and carry attached
    true-AR `artifact_schema`/`artifact_kind` plus `protocol` metadata matching
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
@@ -162,7 +163,8 @@ acceptance loops.
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
    artifacts without current schema/kind metadata, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt/category
-   provenance, protocol provenance, prompt-hash provenance, and true-AR finite-logit
+   provenance including category budget-row prompt counts, protocol provenance,
+   prompt-hash provenance, and true-AR finite-logit
    evidence. The returned JSON contains
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and

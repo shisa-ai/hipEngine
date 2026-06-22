@@ -117476,3 +117476,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 55: validate summary category budget rows
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 55.
+- Focused category matrix provenance contract: guarded objective artifacts must prove the category matrix contains the requested objective budget and category prompt counts matching prompt metadata.
+
+### Change
+- `validate_summary_prompt_metadata()` now requires each summary category payload to be a non-empty metrics table.
+- Added `validate_summary_category_budget_metrics()`.
+- `objective_metrics_for_budget()` now validates that every prompt category has the requested budget row and that each category row `prompts` count matches the prompt metadata category count.
+- Objective output now exposes canonical `summary_categories` prompt counts.
+- Added objective regressions for missing category budget row and category prompt-count mismatch.
+- Added a speed-claim regression for empty category metrics.
+- Updated `docs/BENCHMARK.md` to document category budget-row prompt-count provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 114 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

@@ -204,6 +204,7 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
     prompt_ids: list[str] = []
     prompt_hashes: dict[str, str] = {}
     categories: list[str] = []
+    category_counts: dict[str, int] = defaultdict(int)
     seen: set[str] = set()
     for index, row in enumerate(prompts):
         if not isinstance(row, dict):
@@ -224,12 +225,17 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
         prompt_ids.append(prompt_id)
         prompt_hashes[prompt_id] = prompt_hash
         categories.append(category)
+        category_counts[category] += 1
 
     summary_categories = summary.get("categories")
     if not isinstance(summary_categories, dict) or not summary_categories:
         raise BenchError(f"{label} requires category summary metadata")
     if set(categories) != set(map(str, summary_categories.keys())):
         raise BenchError(f"{label} prompt categories do not match category summary keys")
+    for category in sorted(set(categories)):
+        category_payload = summary_categories.get(category)
+        if not isinstance(category_payload, dict) or not category_payload:
+            raise BenchError(f"{label} requires non-empty category metrics for {category}")
     split_contract = (summary.get("splits") or {}).get("contract") if isinstance(summary.get("splits"), dict) else None
     if isinstance(split_contract, dict) and "full_ids" in split_contract:
         full_ids = [str(prompt_id) for prompt_id in split_contract.get("full_ids") or []]
@@ -240,7 +246,34 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
         "prompt_ids": prompt_ids,
         "prompt_hashes": prompt_hashes,
         "categories": sorted(set(categories)),
+        "category_counts": dict(sorted(category_counts.items())),
     }
+
+
+def validate_summary_category_budget_metrics(
+    summary: dict[str, Any],
+    *,
+    label: str,
+    budget_label: str,
+    category_counts: dict[str, int],
+) -> dict[str, int]:
+    categories_payload = summary.get("categories")
+    if not isinstance(categories_payload, dict):
+        raise BenchError(f"{label} requires category summary metadata")
+    for category, expected_count in sorted(category_counts.items()):
+        table = categories_payload.get(category)
+        if not isinstance(table, dict):
+            raise BenchError(f"{label} requires category summary metadata for {category}")
+        row = table.get(budget_label)
+        if not isinstance(row, dict):
+            raise BenchError(f"{label} category {category} requires {budget_label} metrics")
+        try:
+            prompts_count = int(row.get("prompts"))
+        except (TypeError, ValueError) as exc:
+            raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata") from exc
+        if prompts_count != expected_count:
+            raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata")
+    return dict(sorted(category_counts.items()))
 
 
 def normalize_protocol_path(value: Any) -> str:
@@ -818,6 +851,12 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     summary_artifact = validate_category_summary_schema(summary, label="objective summary")
     validate_repo_provenance(summary, label="objective summary")
     summary_prompts = validate_summary_prompt_metadata(summary, label="objective summary")
+    summary_categories = validate_summary_category_budget_metrics(
+        summary,
+        label="objective summary",
+        budget_label=label,
+        category_counts=summary_prompts["category_counts"],
+    )
     if summary.get("true_ar_comparison_available") is not True:
         raise BenchError("objective metrics require true_ar_comparison_available=true")
     true_ar = summary.get("true_ar_baseline")
@@ -859,6 +898,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "summary_repo": validate_repo_provenance(summary, label="objective summary"),
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "summary_prompts": summary_prompts,
+        "summary_categories": summary_categories,
         "summary_commands": summary_commands,
         "true_ar_commands": true_ar_commands,
         "true_ar_protocol": true_ar_protocol,

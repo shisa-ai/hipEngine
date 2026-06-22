@@ -349,7 +349,7 @@ def _speed_claim_summary(
         "repo": dict(TEST_REPO_PROVENANCE),
         "commands": list(TEST_SUMMARY_COMMANDS),
         "prompts": [dict(row) for row in TEST_SUMMARY_PROMPTS],
-        "categories": {"code": {}},
+        "categories": {"code": {"b1": {"prompts": 1}}},
         "true_ar_baseline": true_ar,
     }
     if summary_overrides:
@@ -417,9 +417,16 @@ def test_speed_claim_contract_rejects_missing_category_metadata() -> None:
 
 
 def test_speed_claim_contract_rejects_prompt_category_summary_mismatch() -> None:
-    summary = _speed_claim_summary(summary_overrides={"categories": {"general_en": {}}})
+    summary = _speed_claim_summary(summary_overrides={"categories": {"general_en": {"b1": {"prompts": 1}}}})
 
     with pytest.raises(BenchError, match="speed-claim summary prompt categories do not match category summary keys"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_empty_category_metrics() -> None:
+    summary = _speed_claim_summary(summary_overrides={"categories": {"code": {}}})
+
+    with pytest.raises(BenchError, match="speed-claim summary requires non-empty category metrics for code"):
         validate_speed_claim_contract(summary)
 
 
@@ -625,6 +632,7 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["summary_prompts"]["prompt_count"] == 10
     assert metrics["summary_prompts"]["prompt_ids"] == list(DEFAULT_FULL_PROMPT_IDS)
     assert metrics["summary_prompts"]["prompt_hashes"]["code_merge_intervals"] == prompt_sha256(load_prompt_rows(DEFAULT_PROMPTS)[0]["prompt"])
+    assert metrics["summary_categories"] == {"code": 4, "general_en": 2, "general_ja": 2, "mixed_ja_en": 2}
     assert metrics["true_ar_protocol"]["model"] == TEST_MODEL
     assert metrics["true_ar_protocol"]["quant"] == "UD-Q4_K_M GGUF"
     assert metrics["true_ar_protocol"]["quant_normalized"] == "UD-Q4_K_M GGUF"
@@ -707,6 +715,22 @@ def test_objective_metrics_for_budget_rejects_prompt_category_summary_mismatch(t
     summary["categories"] = {"code": summary["categories"]["code"]}
 
     with pytest.raises(BenchError, match="objective summary prompt categories do not match category summary keys"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_category_budget_row(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["categories"]["code"]["b1"]
+
+    with pytest.raises(BenchError, match="objective summary category code requires b1 metrics"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_category_prompt_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["general_en"]["b1"]["prompts"] = 3
+
+    with pytest.raises(BenchError, match="objective summary category general_en.b1.prompts must match prompt metadata"):
         objective_metrics_for_budget(summary, "b1")
 
 
