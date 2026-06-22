@@ -1042,10 +1042,13 @@ def validate_metric_row(row: dict[str, Any]) -> None:
     if total_ar_ms <= 0.0:
         raise BenchError(f"non-positive total ar_decode_ms for {prompt_id}: {total_ar_ms}")
 
+    expected_total_cycle_ms = total_ar_ms + total_mtp_ms
     total_cycle_raw = metrics.get("total_cycle_ms")
-    total_cycle_ms = finite_float(total_cycle_raw, prompt_id=prompt_id, field="metrics.total_cycle_ms") if total_cycle_raw is not None else total_ar_ms + total_mtp_ms
+    total_cycle_ms = finite_float(total_cycle_raw, prompt_id=prompt_id, field="metrics.total_cycle_ms") if total_cycle_raw is not None else expected_total_cycle_ms
     if total_cycle_ms <= 0.0:
         raise BenchError(f"non-positive total_cycle_ms for {prompt_id}: {total_cycle_ms}")
+    if not math.isclose(total_cycle_ms, expected_total_cycle_ms, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"metrics.total_cycle_ms for {prompt_id} must match sum of cycle timings")
 
 
 def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None) -> dict[str, Any]:

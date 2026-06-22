@@ -118859,3 +118859,26 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 106: validate raw total cycle timing
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 106.
+- Focused raw timing denominator contract: present raw `metrics.total_cycle_ms` must match the validated per-cycle AR+draft timing sum before aggregation derives decode_ms/tok/s.
+
+### Change
+- `validate_metric_row()` now compares present `metrics.total_cycle_ms` against `sum(cycle.ar_decode_ms + cycle.mtp_draft_ms)` after strict per-cycle timing validation.
+- Added a regression for a forged `metrics.total_cycle_ms` denominator that previously could alter aggregate `decode_ms`/tok/s while cycle timings remained intact.
+- Updated `docs/BENCHMARK.md` to document raw `total_cycle_ms` consistency with per-cycle timings.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes for valid rows, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

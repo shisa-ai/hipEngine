@@ -201,7 +201,7 @@ acceptance loops.
    non-empty strings. In-memory prompt rows and raw per-prompt MTP rows are checked with
    unique strict string prompt IDs, agreeing raw prompt/category identity fields, and the same strict count and
    timing typing before aggregation; raw per-cycle timing keys are required, timing values must be non-negative,
-   and present falsy timing values such as `false` or `""` are rejected rather than zero-coerced. Scalar metric fields must be strict JSON
+   present `total_cycle_ms` must match the sum of cycle timings, and present falsy timing values such as `false` or `""` are rejected rather than zero-coerced. Scalar metric fields must be strict JSON
    numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows
    plus full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, positive `decode_ms`, finite non-negative
