@@ -184,7 +184,10 @@ acceptance loops.
    list length where applicable, checks split acceptance ratios against split
    token counts, checks MTP summary totals against the full split and category
    sums, and checks attached true-AR totals against the full split
-   plus category sums.
+   plus category sums. Attached true-AR total, split, and category
+   `decode_tok_s_weighted` rows must also equal `1000 * total_output_tokens /
+   decode_ms`, so forged denominators cannot pass by adjusting MTP ratios around
+   them.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
    and request one split/field explicitly:

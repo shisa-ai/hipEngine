@@ -117733,3 +117733,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 64: validate true-AR aggregate row throughput
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 64.
+- Focused true-AR denominator integrity contract: attached true-AR total/split/category throughput rows must be derived from their own token counts and decode time.
+
+### Change
+- Added `validate_true_ar_aggregate_row()` in `scripts/gguf_mtp_category_bench.py`.
+- Reused it for attached true-AR totals, category rows, and post-contract split rows.
+- Objective extraction now rejects forged attached true-AR `decode_tok_s_weighted` denominators unless each row satisfies `decode_tok_s_weighted = 1000 * total_output_tokens / decode_ms`.
+- Added regressions for forged train-split and category true-AR `decode_tok_s_weighted`; the category regression also adjusts the MTP ratio so the new denominator guard is what catches it.
+- Updated `docs/BENCHMARK.md` to document count/time-derived attached true-AR total, split, and category throughput rows.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

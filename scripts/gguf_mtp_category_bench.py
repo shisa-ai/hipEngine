@@ -384,6 +384,22 @@ def validate_summary_budget_totals_consistency(
     }
 
 
+def validate_true_ar_aggregate_row(row: dict[str, Any], *, label: str) -> dict[str, Any]:
+    prompts = metric_int(row.get("prompts"), label=f"{label}.prompts")
+    output = metric_int(row.get("total_output_tokens"), label=f"{label}.total_output_tokens")
+    decode_ms = finite_positive_objective(row.get("decode_ms"), label=f"{label}.decode_ms")
+    decode_tps = finite_positive_objective(row.get("decode_tok_s_weighted"), label=f"{label}.decode_tok_s_weighted")
+    expected_tps = 1000.0 * output / decode_ms
+    if not math.isclose(decode_tps, expected_tps, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require {label}.decode_tok_s_weighted to match output/decode_ms")
+    return {
+        "prompts": prompts,
+        "total_output_tokens": output,
+        "decode_ms": decode_ms,
+        "decode_tok_s_weighted": decode_tps,
+    }
+
+
 def validate_true_ar_totals_consistency(true_ar: dict[str, Any]) -> dict[str, Any]:
     totals = true_ar.get("totals")
     if not isinstance(totals, dict):
@@ -395,25 +411,18 @@ def validate_true_ar_totals_consistency(true_ar: dict[str, Any]) -> dict[str, An
     if not isinstance(categories, dict) or not categories:
         raise BenchError("objective metrics require attached true_ar_baseline.categories")
 
-    total_prompts = metric_int(totals.get("prompts"), label="attached true_ar_baseline.totals.prompts")
-    total_output = metric_int(totals.get("total_output_tokens"), label="attached true_ar_baseline.totals.total_output_tokens")
-    total_decode_ms = finite_positive_objective(totals.get("decode_ms"), label="attached true_ar_baseline.totals.decode_ms")
-    total_decode_tps = finite_positive_objective(
-        totals.get("decode_tok_s_weighted"),
-        label="attached true_ar_baseline.totals.decode_tok_s_weighted",
-    )
-    expected_total_tps = 1000.0 * total_output / total_decode_ms
-    if not math.isclose(total_decode_tps, expected_total_tps, rel_tol=1e-9, abs_tol=1e-12):
-        raise BenchError("objective metrics require attached true_ar_baseline.totals.decode_tok_s_weighted to match totals output/decode_ms")
+    total_row = validate_true_ar_aggregate_row(totals, label="attached true_ar_baseline.totals")
+    total_prompts = total_row["prompts"]
+    total_output = total_row["total_output_tokens"]
+    total_decode_ms = total_row["decode_ms"]
+    total_decode_tps = total_row["decode_tok_s_weighted"]
 
     full = splits["full"]
-    full_prompts = metric_int(full.get("prompts"), label="attached true_ar_baseline.splits.full.prompts")
-    full_output = metric_int(full.get("total_output_tokens"), label="attached true_ar_baseline.splits.full.total_output_tokens")
-    full_decode_ms = finite_positive_objective(full.get("decode_ms"), label="attached true_ar_baseline.splits.full.decode_ms")
-    full_decode_tps = finite_positive_objective(
-        full.get("decode_tok_s_weighted"),
-        label="attached true_ar_baseline.splits.full.decode_tok_s_weighted",
-    )
+    full_row = validate_true_ar_aggregate_row(full, label="attached true_ar_baseline.splits.full")
+    full_prompts = full_row["prompts"]
+    full_output = full_row["total_output_tokens"]
+    full_decode_ms = full_row["decode_ms"]
+    full_decode_tps = full_row["decode_tok_s_weighted"]
     if full_prompts != total_prompts or full_output != total_output:
         raise BenchError("objective metrics require attached true_ar_baseline.totals to match splits.full counts")
     if not math.isclose(full_decode_ms, total_decode_ms, rel_tol=1e-9, abs_tol=1e-12) or not math.isclose(full_decode_tps, total_decode_tps, rel_tol=1e-9, abs_tol=1e-12):
@@ -425,12 +434,10 @@ def validate_true_ar_totals_consistency(true_ar: dict[str, Any]) -> dict[str, An
     for category, row in categories.items():
         if not isinstance(row, dict):
             raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}")
-        category_prompts += metric_int(row.get("prompts"), label=f"attached true_ar_baseline.categories.{category}.prompts")
-        category_output += metric_int(row.get("total_output_tokens"), label=f"attached true_ar_baseline.categories.{category}.total_output_tokens")
-        category_decode_ms += finite_positive_objective(
-            row.get("decode_ms"),
-            label=f"attached true_ar_baseline.categories.{category}.decode_ms",
-        )
+        category_row = validate_true_ar_aggregate_row(row, label=f"attached true_ar_baseline.categories.{category}")
+        category_prompts += category_row["prompts"]
+        category_output += category_row["total_output_tokens"]
+        category_decode_ms += category_row["decode_ms"]
     if category_prompts != total_prompts or category_output != total_output:
         raise BenchError("objective metrics require attached true_ar_baseline.totals to match category count sums")
     if not math.isclose(category_decode_ms, total_decode_ms, rel_tol=1e-9, abs_tol=1e-12):
@@ -1234,12 +1241,10 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             raise BenchError(
                 f"objective metrics require {split_name}.{label}.prompts to match attached true_ar_baseline.splits.{split_name}.prompts"
             )
+        true_ar_split_row = validate_true_ar_aggregate_row(true_ar_split, label=f"attached true_ar_baseline.splits.{split_name}")
         decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{split_name}.{label}.decode_tok_s_weighted")
         ratio = finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{split_name}.{label}.mtp_vs_true_ar_decode_ratio")
-        true_ar_tok_s = finite_positive_objective(
-            true_ar_split.get("decode_tok_s_weighted"),
-            label=f"attached true_ar_baseline.splits.{split_name}.decode_tok_s_weighted",
-        )
+        true_ar_tok_s = true_ar_split_row["decode_tok_s_weighted"]
         expected_ratio = decode_tok_s / true_ar_tok_s
         if not math.isclose(ratio, expected_ratio, rel_tol=1e-9, abs_tol=1e-12):
             raise BenchError(

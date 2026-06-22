@@ -933,7 +933,25 @@ def test_objective_metrics_for_budget_rejects_true_ar_total_tps_mismatch(tmp_pat
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["true_ar_baseline"]["totals"]["decode_tok_s_weighted"] = 123.0
 
-    with pytest.raises(BenchError, match="totals.decode_tok_s_weighted to match totals output/decode_ms"):
+    with pytest.raises(BenchError, match="totals.decode_tok_s_weighted to match output/decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_true_ar_split_tps_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"]["splits"]["train"]["decode_tok_s_weighted"] = 123.0
+
+    with pytest.raises(BenchError, match="splits.train.decode_tok_s_weighted to match output/decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_true_ar_category_tps_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    category_row = summary["categories"]["code"]["b1"]
+    summary["true_ar_baseline"]["categories"]["code"]["decode_tok_s_weighted"] = 123.0
+    category_row["mtp_vs_true_ar_decode_ratio"] = category_row["decode_tok_s_weighted"] / 123.0
+
+    with pytest.raises(BenchError, match="categories.code.decode_tok_s_weighted to match output/decode_ms"):
         objective_metrics_for_budget(summary, "b1")
 
 
@@ -947,7 +965,11 @@ def test_objective_metrics_for_budget_rejects_true_ar_total_full_split_mismatch(
 
 def test_objective_metrics_for_budget_rejects_true_ar_total_category_sum_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
-    summary["true_ar_baseline"]["categories"]["code"]["total_output_tokens"] += 10
+    true_ar_category = summary["true_ar_baseline"]["categories"]["code"]
+    true_ar_category["total_output_tokens"] += 10
+    true_ar_category["decode_tok_s_weighted"] = 1000.0 * true_ar_category["total_output_tokens"] / true_ar_category["decode_ms"]
+    category_row = summary["categories"]["code"]["b1"]
+    category_row["mtp_vs_true_ar_decode_ratio"] = category_row["decode_tok_s_weighted"] / true_ar_category["decode_tok_s_weighted"]
 
     with pytest.raises(BenchError, match="true_ar_baseline.totals to match category count sums"):
         objective_metrics_for_budget(summary, "b1")
