@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import time
@@ -154,6 +155,16 @@ def cycle_sum(row: dict[str, Any], key: str) -> float:
     return float(sum(float(c.get(key, 0.0) or 0.0) for c in row.get("cycles", [])))
 
 
+def finite_float(value: Any, *, prompt_id: str, field: str) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise BenchError(f"non-numeric timing field {field} for {prompt_id}: {value!r}") from exc
+    if not math.isfinite(result):
+        raise BenchError(f"non-finite timing field {field} for {prompt_id}: {value!r}")
+    return result
+
+
 def validate_metric_row(row: dict[str, Any]) -> None:
     metrics = row.get("metrics")
     if not isinstance(metrics, dict):
@@ -162,10 +173,34 @@ def validate_metric_row(row: dict[str, Any]) -> None:
     total_output = int(metrics.get("total_output_tokens") or 0)
     total_accepted = int(metrics.get("total_accepted") or 0)
     total_drafts = int(metrics.get("total_drafts") or 0)
-    if total_output < 0 or total_accepted < 0 or total_drafts < 0:
-        raise BenchError(f"negative metric in row {prompt_id}: output={total_output}, accepted={total_accepted}, drafts={total_drafts}")
+    if total_output <= 0:
+        raise BenchError(f"non-positive output token count for {prompt_id}: {total_output}")
+    if total_accepted < 0 or total_drafts < 0:
+        raise BenchError(f"negative metric in row {prompt_id}: accepted={total_accepted}, drafts={total_drafts}")
     if total_accepted > total_drafts:
         raise BenchError(f"accepted draft tokens exceed proposed drafts for {prompt_id}: {total_accepted} > {total_drafts}")
+
+    cycles = row.get("cycles")
+    if not isinstance(cycles, list) or not cycles:
+        raise BenchError(f"category row missing non-empty cycles for {prompt_id}")
+    total_ar_ms = 0.0
+    total_mtp_ms = 0.0
+    for index, cycle in enumerate(cycles):
+        if not isinstance(cycle, dict):
+            raise BenchError(f"cycle {index} for {prompt_id} is not an object")
+        ar_ms = finite_float(cycle.get("ar_decode_ms", 0.0) or 0.0, prompt_id=prompt_id, field=f"cycles[{index}].ar_decode_ms")
+        mtp_ms = finite_float(cycle.get("mtp_draft_ms", 0.0) or 0.0, prompt_id=prompt_id, field=f"cycles[{index}].mtp_draft_ms")
+        if ar_ms < 0.0 or mtp_ms < 0.0:
+            raise BenchError(f"negative timing in row {prompt_id}: ar_decode_ms={ar_ms}, mtp_draft_ms={mtp_ms}")
+        total_ar_ms += ar_ms
+        total_mtp_ms += mtp_ms
+    if total_ar_ms <= 0.0:
+        raise BenchError(f"non-positive total ar_decode_ms for {prompt_id}: {total_ar_ms}")
+
+    total_cycle_raw = metrics.get("total_cycle_ms")
+    total_cycle_ms = finite_float(total_cycle_raw, prompt_id=prompt_id, field="metrics.total_cycle_ms") if total_cycle_raw is not None else total_ar_ms + total_mtp_ms
+    if total_cycle_ms <= 0.0:
+        raise BenchError(f"non-positive total_cycle_ms for {prompt_id}: {total_cycle_ms}")
 
 
 def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None) -> dict[str, Any]:
@@ -193,6 +228,8 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None) 
 
 
 def aggregate_off_from_b1(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    for row in rows:
+        validate_metric_row(row)
     total_output = sum(int(row["metrics"]["total_output_tokens"]) for row in rows)
     total_ar_ms = sum(cycle_sum(row, "ar_decode_ms") for row in rows)
     return {

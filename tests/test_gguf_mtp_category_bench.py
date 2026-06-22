@@ -110,6 +110,45 @@ def test_category_summary_rejects_impossible_acceptance_metrics() -> None:
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_non_positive_total_cycle_ms() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    row["metrics"]["total_cycle_ms"] = 0.0
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match="non-positive total_cycle_ms"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("ar_decode_ms", -1.0, "negative timing"),
+        ("mtp_draft_ms", float("nan"), "non-finite timing"),
+    ],
+)
+def test_category_summary_rejects_invalid_cycle_timings(field: str, value: float, message: str) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    row["cycles"][0][field] = value
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_reports_train_heldout_and_full_suite_metrics() -> None:
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

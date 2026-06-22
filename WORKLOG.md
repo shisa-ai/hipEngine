@@ -116663,3 +116663,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 38 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 26: timing integrity guard
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 26.
+- Focused artifact-integrity guard: prevent future objective loops from consuming malformed child rows with impossible timing values that could inflate tok/s or true-AR ratios.
+
+### Change
+- Added timing validation in `scripts/gguf_mtp_category_bench.py` before aggregation:
+  - rows must have positive output tokens;
+  - rows must have non-empty `cycles`;
+  - per-cycle `ar_decode_ms` and `mtp_draft_ms` must be finite and non-negative;
+  - total `ar_decode_ms` must be positive;
+  - `metrics.total_cycle_ms` must be finite and positive when present.
+- `aggregate_off_from_b1()` now validates rows before deriving verifier-off telemetry.
+- Added regression tests for:
+  - non-positive `total_cycle_ms`;
+  - negative `ar_decode_ms`;
+  - non-finite `mtp_draft_ms`.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 41 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
