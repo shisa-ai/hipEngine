@@ -120399,3 +120399,42 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Depth≤4 does not improve focused/full/train/heldout/category accepted/output over depth≤3 and worsens draft/candidate efficiency.
 - Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 159: root-tail threshold 2 rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 159.
+- Tested whether loosening the retained adaptive root-K5 tail gate from `root_tail_max_prev_accepted=1` to `2` admits additional safe root-rank tail candidates under exact target verification.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 5 --sibling-topk-accept 9 --sibling-topk-max-depth 3 --root-tail-max-prev-accepted 2 --output /tmp/hipengine-mtp-rootk5-tailprev2-iter159-b5-20.json
+```
+- Focused accepted/output matched the current tail-prev≤1 default: `0.5000`.
+- Candidate accounting also matched: `20/660`, `accept_per_draft=0.0303`.
+- Branch count/depths were unchanged (`8` branch accepts; depths `{0: 4, 1: 3, 2: 1}`).
+- Diagnostic tok/s `14.68`, `speedup_vs_ar_visible=0.7264x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling9-depth3-tailprev2-full-20260623-044029/raw --output /tmp/hipengine-rootk5-sibling9-depth3-tailprev2-full-20260623-044029/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=9 --extra-arg=--sibling-topk-max-depth --extra-arg=3 --extra-arg=--root-tail-max-prev-accepted --extra-arg=2
+```
+- Accepted/output exactly matched the retained tail-prev≤1 default and did not improve it: full `0.444444`, train `0.381443`, heldout `0.518072`.
+- Draft acceptance and candidate counts also matched: full `80/3300 = 0.024242`, train `37/1980 = 0.018687`, heldout `43/1320 = 0.032576`.
+- Per-category accepted/output matched current default: code `0.344262`, general_en `0.512195`, general_ja `0.428571`, mixed_ja_en `0.534884`.
+- Diagnostic verifier-derived tok/s `13.4763`, ratio `0.6811`; speed remains diagnostic only and is not a true no-MTP AR claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated a generic previous-accepted threshold under exact verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Tail-prev≤2 is equivalent to the current tail-prev≤1 policy on the focused/full category suite and provides no accepted/output or draft-acceptance improvement.
+- Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
