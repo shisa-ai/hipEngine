@@ -639,6 +639,7 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["summary_totals"]["total_output_tokens"] == 100
     assert metrics["summary_totals"]["total_accepted"] == 55
     assert metrics["summary_totals"]["total_drafts"] == 55
+    assert metrics["summary_totals"]["decode_ms"] == pytest.approx(1100.0)
     assert metrics["summary_totals"]["decode_tok_s_weighted"] == pytest.approx(100.0 / 1100.0 * 1000.0)
     assert metrics["true_ar_totals"]["prompts"] == 10
     assert metrics["true_ar_totals"]["total_output_tokens"] == 100
@@ -650,6 +651,7 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["true_ar_protocol"]["prompt_count"] == 10
     assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
     assert metrics["full"]["draft_acceptance"] == pytest.approx(1.0)
+    assert metrics["full"]["decode_ms"] == pytest.approx(1100.0)
     assert metrics["full"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((100.0 / 1100.0 * 1000.0) / 100.0)
     assert metrics["train"]["prompts"] == 6
     assert metrics["train"]["accepted_per_output"] == pytest.approx(27 / 60)
@@ -879,6 +881,16 @@ def test_objective_metrics_for_budget_rejects_category_true_ar_ratio_mismatch(tm
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_category_mtp_tps_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    category_row = summary["categories"]["code"]["b1"]
+    category_row["decode_tok_s_weighted"] = 123.0
+    category_row["mtp_vs_true_ar_decode_ratio"] = 123.0 / summary["true_ar_baseline"]["categories"]["code"]["decode_tok_s_weighted"]
+
+    with pytest.raises(BenchError, match="objective summary category code.b1.decode_tok_s_weighted to match output/decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_missing_summary_total_budget_row(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     del summary["totals"]["b1"]
@@ -908,6 +920,7 @@ def test_objective_metrics_for_budget_rejects_summary_total_category_sum_mismatc
     category_row = summary["categories"]["code"]["b1"]
     category_row["total_output_tokens"] += 10
     category_row["accepted_per_output"] = category_row["total_accepted"] / category_row["total_output_tokens"]
+    category_row["decode_ms"] = 1000.0 * category_row["total_output_tokens"] / category_row["decode_tok_s_weighted"]
 
     with pytest.raises(BenchError, match="summary totals.b1 counts to match category sums"):
         objective_metrics_for_budget(summary, "b1")
@@ -919,6 +932,16 @@ def test_objective_metrics_for_budget_rejects_summary_total_true_ar_tps_mismatch
 
     with pytest.raises(BenchError, match="summary totals.b1.true_ar_decode_tok_s_weighted to match attached true-AR totals"):
         objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_summary_total_mtp_tps_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["totals"]["b1"]["decode_tok_s_weighted"] = 123.0
+    summary["totals"]["b1"]["mtp_vs_true_ar_decode_ratio"] = 123.0 / summary["true_ar_baseline"]["totals"]["decode_tok_s_weighted"]
+
+    with pytest.raises(BenchError, match="summary totals.b1.decode_tok_s_weighted to match output/decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
 
 
 def test_objective_metrics_for_budget_rejects_missing_true_ar_totals(tmp_path: Path) -> None:
@@ -1083,6 +1106,17 @@ def test_objective_metrics_for_budget_rejects_split_draft_acceptance_count_misma
 
     with pytest.raises(BenchError, match="objective metrics require train.b1.draft_acceptance to match split counts"):
         objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_split_mtp_tps_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    row = summary["splits"]["train"]["metrics"]["b1"]
+    row["decode_tok_s_weighted"] = 123.0
+    row["mtp_vs_true_ar_decode_ratio"] = 123.0 / summary["true_ar_baseline"]["splits"]["train"]["decode_tok_s_weighted"]
+
+    with pytest.raises(BenchError, match="train.b1.decode_tok_s_weighted to match output/decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
 
 
 def test_objective_metrics_for_budget_rejects_split_accepted_exceeds_drafts(tmp_path: Path) -> None:

@@ -127,8 +127,9 @@ acceptance loops.
    `prompt_sha256`) matching `splits.contract.full_ids` and the default prompt
    fixture text/category/length, include category
    summary metadata whose keys match prompt categories, with a category row for
-   each objective budget, count-derived bounded acceptance ratios, finite
-   non-negative speed fields, prompt counts matching the prompt metadata, and per-category true-AR
+   each objective budget, count-derived bounded acceptance ratios, positive
+   `decode_ms`, finite non-negative speed fields derived from output tokens and
+   decode time, prompt counts matching the prompt metadata, and per-category true-AR
    ratios matching the attached true-AR category baselines, and carry attached
    true-AR `true_autoregressive_path=true`, `same_prompt_suite=true`,
    `same_timing_protocol=true`, `artifact_schema`/`artifact_kind`, plus
@@ -174,8 +175,9 @@ acceptance loops.
    prompt counts, protocol provenance, prompt-hash provenance, and true-AR finite-logit
    evidence. The returned JSON contains
    full/train/heldout finite [0, 1] `accepted_per_output` and
-   `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and
-   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count matching the
+   `draft_acceptance`, positive `decode_ms`, finite non-negative
+   `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`, each with a
+   positive prompt count matching the
    split `prompt_ids` length, split `prompt_ids` matching `splits.contract`,
    count-derived split acceptance ratios, and the fixed heldout/train split described above.
    The gate also verifies each split and category
@@ -187,7 +189,10 @@ acceptance loops.
    plus category sums. Attached true-AR total, split, and category
    `decode_tok_s_weighted` rows must also equal `1000 * total_output_tokens /
    decode_ms`, so forged denominators cannot pass by adjusting MTP ratios around
-   them.
+   them. MTP summary total, split, and category rows must likewise carry
+   positive `decode_ms` and satisfy `decode_tok_s_weighted = 1000 *
+   total_output_tokens / decode_ms`, so numerator-side speed forgeries are
+   caught before any compare decision.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
    and request one split/field explicitly:

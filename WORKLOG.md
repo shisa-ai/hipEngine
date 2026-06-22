@@ -117758,3 +117758,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 65: validate MTP aggregate row throughput
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 65.
+- Focused MTP numerator integrity contract: MTP total/split/category throughput rows must be derived from their own token counts and decode time, mirroring the true-AR denominator checks.
+
+### Change
+- Added `decode_ms` to MTP aggregate rows from `aggregate_rows()` and to verifier-derived `off` rows for provenance.
+- Added `validate_decode_tps_from_ms()` for objective-time count/time throughput validation.
+- Objective extraction now requires MTP summary total, split, and category rows to carry positive `decode_ms` and satisfy `decode_tok_s_weighted = 1000 * total_output_tokens / decode_ms`.
+- Summary totals also require `decode_ms` to match `splits.full` and category `decode_ms` sums.
+- Added regressions for forged MTP total, split, and category `decode_tok_s_weighted` numerators where the associated true-AR ratio is adjusted to hide the forgery.
+- Updated `docs/BENCHMARK.md` to document MTP numerator `decode_ms` provenance and count/time-derived throughput validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 147 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

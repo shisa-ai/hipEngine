@@ -293,6 +293,14 @@ def metric_nonnegative_int(value: Any, *, label: str) -> int:
     return result
 
 
+def validate_decode_tps_from_ms(*, output: int, decode_ms_value: Any, decode_tok_s: float, label: str) -> float:
+    decode_ms = finite_positive_objective(decode_ms_value, label=f"{label}.decode_ms")
+    expected_tps = 1000.0 * output / decode_ms
+    if not math.isclose(decode_tok_s, expected_tps, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require {label}.decode_tok_s_weighted to match output/decode_ms")
+    return decode_ms
+
+
 def validate_summary_budget_totals_consistency(
     summary: dict[str, Any],
     *,
@@ -315,6 +323,7 @@ def validate_summary_budget_totals_consistency(
         "total_output_tokens",
         "total_accepted",
         "total_drafts",
+        "decode_ms",
         "decode_tok_s_weighted",
         "accepted_per_output",
         "draft_acceptance",
@@ -340,6 +349,12 @@ def validate_summary_budget_totals_consistency(
     if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
         raise BenchError(f"objective metrics require summary totals.{budget_label}.draft_acceptance to match total counts")
     decode_tok_s = finite_nonnegative_objective(row.get("decode_tok_s_weighted"), label=f"summary totals.{budget_label}.decode_tok_s_weighted")
+    decode_ms = validate_decode_tps_from_ms(
+        output=output,
+        decode_ms_value=row.get("decode_ms"),
+        decode_tok_s=decode_tok_s,
+        label=f"summary totals.{budget_label}",
+    )
     ratio = finite_nonnegative_objective(row.get("mtp_vs_true_ar_decode_ratio"), label=f"summary totals.{budget_label}.mtp_vs_true_ar_decode_ratio")
     true_ar_tps = finite_positive_objective(row.get("true_ar_decode_tok_s_weighted"), label=f"summary totals.{budget_label}.true_ar_decode_tok_s_weighted")
     if not math.isclose(true_ar_tps, float(true_ar_totals["decode_tok_s_weighted"]), rel_tol=1e-9, abs_tol=1e-12):
@@ -352,15 +367,19 @@ def validate_summary_budget_totals_consistency(
     full_accepted = metric_nonnegative_int(full_row.get("total_accepted"), label=f"full.{budget_label}.total_accepted")
     full_drafts = metric_int(full_row.get("total_drafts"), label=f"full.{budget_label}.total_drafts")
     full_decode_tok_s = finite_nonnegative_objective(full_row.get("decode_tok_s_weighted"), label=f"full.{budget_label}.decode_tok_s_weighted")
+    full_decode_ms = finite_positive_objective(full_row.get("decode_ms"), label=f"full.{budget_label}.decode_ms")
     if (prompts, output, accepted, drafts) != (full_prompts, full_output, full_accepted, full_drafts):
         raise BenchError(f"objective metrics require summary totals.{budget_label} counts to match splits.full")
     if not math.isclose(decode_tok_s, full_decode_tok_s, rel_tol=1e-9, abs_tol=1e-12):
         raise BenchError(f"objective metrics require summary totals.{budget_label}.decode_tok_s_weighted to match splits.full")
+    if not math.isclose(decode_ms, full_decode_ms, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.decode_ms to match splits.full")
 
     category_prompts = 0
     category_output = 0
     category_accepted = 0
     category_drafts = 0
+    category_decode_ms = 0.0
     for category, table in categories.items():
         if not isinstance(table, dict) or not isinstance(table.get(budget_label), dict):
             raise BenchError(f"objective metrics require category {category}.{budget_label} metrics")
@@ -369,13 +388,17 @@ def validate_summary_budget_totals_consistency(
         category_output += metric_int(category_row.get("total_output_tokens"), label=f"category {category}.{budget_label}.total_output_tokens")
         category_accepted += metric_nonnegative_int(category_row.get("total_accepted"), label=f"category {category}.{budget_label}.total_accepted")
         category_drafts += metric_int(category_row.get("total_drafts"), label=f"category {category}.{budget_label}.total_drafts")
+        category_decode_ms += finite_positive_objective(category_row.get("decode_ms"), label=f"category {category}.{budget_label}.decode_ms")
     if (category_prompts, category_output, category_accepted, category_drafts) != (prompts, output, accepted, drafts):
         raise BenchError(f"objective metrics require summary totals.{budget_label} counts to match category sums")
+    if not math.isclose(category_decode_ms, decode_ms, rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require summary totals.{budget_label}.decode_ms to match category sum")
     return {
         "prompts": prompts,
         "total_output_tokens": output,
         "total_accepted": accepted,
         "total_drafts": drafts,
+        "decode_ms": decode_ms,
         "decode_tok_s_weighted": decode_tok_s,
         "accepted_per_output": accepted_per_output,
         "draft_acceptance": draft_acceptance,
@@ -477,6 +500,7 @@ def validate_summary_category_budget_metrics(
         required = (
             "accepted_per_output",
             "draft_acceptance",
+            "decode_ms",
             "decode_tok_s_weighted",
             "mtp_vs_true_ar_decode_ratio",
             "prompts",
@@ -513,6 +537,12 @@ def validate_summary_category_budget_metrics(
         if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
             raise BenchError(f"objective metrics require {label} category {category}.{budget_label}.draft_acceptance to match category counts")
         decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{label} category {category}.{budget_label}.decode_tok_s_weighted")
+        validate_decode_tps_from_ms(
+            output=output,
+            decode_ms_value=row["decode_ms"],
+            decode_tok_s=decode_tok_s,
+            label=f"{label} category {category}.{budget_label}",
+        )
         ratio = finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{label} category {category}.{budget_label}.mtp_vs_true_ar_decode_ratio")
         true_ar_tok_s = finite_positive_objective(
             true_ar_category.get("decode_tok_s_weighted"),
@@ -774,6 +804,7 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None) 
         "total_output_tokens": total_output,
         "total_accepted": total_accepted,
         "total_drafts": total_drafts,
+        "decode_ms": total_cycle_ms,
         "decode_tok_s_weighted": decode_tps,
         "ar_baseline_tok_s_weighted_for_this_budget": ar_tps,
         "mtp_vs_ar_decode_ratio": decode_tps / off_tps if off_tps else (decode_tps / ar_tps if ar_tps else None),
@@ -791,6 +822,7 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "prompts": len(rows),
         "total_output_tokens": total_output,
+        "decode_ms": total_ar_ms,
         "decode_tok_s_weighted": 1000.0 * total_output / total_ar_ms if total_ar_ms > 0 else 0.0,
         "source": "B1 native target-AR verifier time over the same prompt rows",
         "baseline_kind": "verifier_derived_from_b1_target_ar",
@@ -1195,6 +1227,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         required = (
             "accepted_per_output",
             "draft_acceptance",
+            "decode_ms",
             "decode_tok_s_weighted",
             "mtp_vs_true_ar_decode_ratio",
             "prompts",
@@ -1243,6 +1276,12 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             )
         true_ar_split_row = validate_true_ar_aggregate_row(true_ar_split, label=f"attached true_ar_baseline.splits.{split_name}")
         decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{split_name}.{label}.decode_tok_s_weighted")
+        decode_ms = validate_decode_tps_from_ms(
+            output=output,
+            decode_ms_value=row["decode_ms"],
+            decode_tok_s=decode_tok_s,
+            label=f"{split_name}.{label}",
+        )
         ratio = finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{split_name}.{label}.mtp_vs_true_ar_decode_ratio")
         true_ar_tok_s = true_ar_split_row["decode_tok_s_weighted"]
         expected_ratio = decode_tok_s / true_ar_tok_s
@@ -1256,6 +1295,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             "decode_tok_s_weighted": decode_tok_s,
             "mtp_vs_true_ar_decode_ratio": ratio,
             "prompts": prompts_count,
+            "decode_ms": decode_ms,
         }
     if full_budget_row is None:
         raise BenchError(f"objective metrics missing {label} for split full")
