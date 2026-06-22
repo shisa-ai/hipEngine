@@ -119491,3 +119491,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Result
 - Not retained as an accepted/output improvement. `--draft-p-min` is useful for reducing wasted draft work and improving `accept_per_draft`, but with the current single-seed drafter it did not increase accepted draft count or visible accepted/output.
 - Next acceptance work should return to the real llama.cpp gap: stateful MTP draft context/KV materialization rather than confidence gating.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 136: dense output-context replay rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 136.
+- Tested whether replaying accumulated committed output MTP rows through the dense causal NextN path could approximate llama.cpp's resident draft context/KV and improve B5 accepted/output.
+
+### Attempt
+- Temporarily changed `--mtp-context-replay` to build each draft step from `mtp_context_hidden_rows + current_hidden_seed`, `mtp_context_tokens + current_token`, and absolute RoPE positions, then use the last row's logits/`h_nextn` as the proposed draft state.
+- This mechanical context-construction change did not inspect prompts, token IDs, candidate patterns, fixture IDs, or target tokens.
+
+### Measurement
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --mtp-context-replay --output /tmp/hipengine-mtp-dense-output-replay-b5-20.json
+```
+- Regressed badly: `accepted_per_output=0.0476190476`, `accept_per_draft=0.010`, `total_accepted=1/100`, `tokens_per_sec=3.55`, `speedup_vs_ar_visible=0.189x`.
+- The temporary code was reverted before validation/commit. Current retained path remains the single-seed replay diagnostic at `~0.355` accepted/output.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+```
+- Prompt verifier passed: no hardcoding and no retained speed/acceptance claim.
+
+### Result
+- Not retained. Naive dense replay of committed output rows is not equivalent to llama.cpp's resident MTP KV context and corrupts draft logits.
+- Next viable path should materialize true MTP K/V rows at the attention boundary or compare first draft logits against llama.cpp with the same prompt/catch-up state, not recompute a synthetic dense context from mixed target/MTP rows.
