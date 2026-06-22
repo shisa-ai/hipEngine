@@ -357,13 +357,13 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
         if not isinstance(row, dict):
             raise BenchError(f"{label} prompts[{index}] must be an object")
         prompt_id = row.get("id")
-        if not isinstance(prompt_id, str) or not prompt_id:
+        if not isinstance(prompt_id, str) or not prompt_id.strip():
             raise BenchError(f"{label} prompts[{index}] requires non-empty id")
         if prompt_id in seen:
             raise BenchError(f"{label} contains duplicate prompt id: {prompt_id}")
         seen.add(prompt_id)
         category = row.get("category")
-        if not isinstance(category, str) or not category:
+        if not isinstance(category, str) or not category.strip():
             raise BenchError(f"{label} prompt {prompt_id} requires non-empty category")
         prompt_chars = row.get("prompt_chars")
         if type(prompt_chars) is not int or prompt_chars <= 0:

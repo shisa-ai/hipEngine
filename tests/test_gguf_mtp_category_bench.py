@@ -1381,6 +1381,22 @@ def test_objective_metrics_for_budget_rejects_bad_summary_prompt_hash(tmp_path: 
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_blank_summary_prompt_id(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["prompts"][0]["id"] = "   "
+
+    with pytest.raises(BenchError, match=r"objective summary prompts\[0\] requires non-empty id"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_blank_summary_prompt_category(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["prompts"][0]["category"] = "   "
+
+    with pytest.raises(BenchError, match="objective summary prompt code_merge_intervals requires non-empty category"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_summary_prompt_id_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["prompts"][0]["id"] = "renamed_prompt"

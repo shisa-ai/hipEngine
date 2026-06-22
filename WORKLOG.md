@@ -119149,3 +119149,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 118: require non-blank summary prompt metadata
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 118.
+- Focused objective artifact prompt provenance contract: summary prompt metadata `id` and `category` fields must contain non-whitespace content before category map, split contract, default fixture, and objective checks.
+
+### Change
+- `validate_summary_prompt_metadata()` now rejects prompt metadata `id` values that are empty after stripping whitespace.
+- `validate_summary_prompt_metadata()` now rejects prompt metadata `category` values that are empty after stripping whitespace.
+- Added guarded objective regressions for whitespace-only summary prompt `id` and whitespace-only summary prompt `category`.
+- Updated `docs/BENCHMARK.md` to document non-blank summary prompt metadata IDs/categories.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes for valid artifacts, no speed formula changes, no split construction policy changes for valid rows, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
