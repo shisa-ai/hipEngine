@@ -121121,3 +121121,42 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Root-K9 with tail-prev≤1 fails focused, full, heldout, general_en, mixed_ja_en, and draft-efficiency non-regression despite improving train/general_ja.
 - Current default remains branch-redraft root-K8/sibling-K7/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5475`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 176: sibling depth≤4 rejected under branch-redraft root-K8 sibling-K7
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 176.
+- Tested increasing sibling top-k eligibility depth from `sibling_topk_max_depth=3` to `4` under the retained branch-redraft root-K8 / sibling-K7 / ungated-root-tail policy. Goal was to check whether one deeper sibling level could recover additional honest acceptances now that sibling width is lower.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --sibling-topk-max-depth 4 --output /tmp/hipengine-mtp-branch-redraft-rootk8-sibling7-depth4-iter176-b5-20.json
+```
+- Focused accepted/output matched the current depth≤3 default: `0.5349`.
+- Candidate accounting regressed: `23/630 -> 23/750`, `accept_per_draft 0.0365 -> 0.0307`.
+- Branch/redraft counts unchanged (`8` branch accepts/redrafts; branch depths `{0: 6, 1: 2}`).
+- Diagnostic tok/s `13.73`, `speedup_vs_ar_visible=0.6925x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk8-sibling7-depth4-full-20260623-062335/raw --output /tmp/hipengine-branch-redraft-rootk8-sibling7-depth4-full-20260623-062335/summary.json --extra-arg=--sibling-topk-max-depth --extra-arg=4
+```
+- Full/train/heldout accepted/output exactly matched the current depth≤3 default: full `0.547511`, train `0.495798`, heldout `0.607843`.
+- Per-category accepted/output also matched: code `0.444444`, general_en `0.642857`, general_ja `0.487179`, mixed_ja_en `0.629630`.
+- Full draft acceptance regressed `0.037660 -> 0.031734` (`121/3213 -> 121/3813`); train `0.030649 -> 0.025821`; heldout `0.048137 -> 0.040576`.
+- Diagnostic weighted decode tok/s `13.0062 -> 12.9689`; verifier-derived ratio `0.6604 -> 0.6589`. Speed remains diagnostic only and is not a true no-MTP AR claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: this evaluates a generic sibling top-k maximum depth under exact verification and branch redraft. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Not retained. Depth≤4 gives no focused/full/train/heldout/category accepted-output improvement and worsens draft/candidate efficiency.
+- Current default remains branch-redraft root-K8/sibling-K7/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5475`.
