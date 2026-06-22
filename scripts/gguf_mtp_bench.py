@@ -439,10 +439,10 @@ def main():
     parser.add_argument(
         "--root-topk-accept",
         type=int,
-        default=4,
+        default=5,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 4; use 1 for linear argmax path)."
+            "the first K root candidates (default: 5; use 1 for linear argmax path)."
         ),
     )
     parser.add_argument(
@@ -463,6 +463,15 @@ def main():
             "(default: 3; root depth 0 is controlled by --root-topk-accept)."
         ),
     )
+    parser.add_argument(
+        "--root-tail-max-prev-accepted",
+        type=int,
+        default=1,
+        help=(
+            "Diagnostic adaptive root policy: when non-negative, root candidates below rank 4 "
+            "are accepted only if the previous cycle accepted at most this many draft tokens (default: 1)."
+        ),
+    )
     args = parser.parse_args()
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
@@ -474,6 +483,8 @@ def main():
         parser.error("--sibling-topk-accept must be in 1..10")
     if args.sibling_topk_max_depth < 0:
         parser.error("--sibling-topk-max-depth must be non-negative")
+    if args.root_tail_max_prev_accepted < -1:
+        parser.error("--root-tail-max-prev-accepted must be >= -1")
 
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
@@ -646,6 +657,7 @@ def main():
         total_output_tokens = 0
         cycle_details = []
         decode_times = []
+        previous_cycle_accepted = 0
 
         for cycle in range(args.cycles):
             cycle_prev_token = int(prev_token)
@@ -774,6 +786,15 @@ def main():
                     else 1
                 )
                 if (
+                    depth == 0
+                    and args.root_tail_max_prev_accepted >= 0
+                    and topk_limit > 4
+                    and previous_cycle_accepted > args.root_tail_max_prev_accepted
+                    and depth < len(draft_top10_tokens)
+                    and target_token in draft_top10_tokens[depth][4:topk_limit]
+                ):
+                    topk_limit = 4
+                if (
                     depth < len(draft_top10_tokens)
                     and topk_limit > 1
                     and target_token in draft_top10_tokens[depth][:topk_limit]
@@ -820,6 +841,8 @@ def main():
                     axis=0,
                 )
             prev_token = int(output_tokens[-1])
+            previous_cycle_accepted_for_record = previous_cycle_accepted
+            previous_cycle_accepted = accepted_draft_tokens
 
             draft_candidate_count = count_topk_draft_candidates(
                 len(draft_tokens),
@@ -855,6 +878,8 @@ def main():
                 "root_topk_accept": args.root_topk_accept,
                 "sibling_topk_accept": args.sibling_topk_accept,
                 "sibling_topk_max_depth": args.sibling_topk_max_depth,
+                "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
+                "previous_cycle_accepted": previous_cycle_accepted_for_record,
                 "topk_branch_accepted": topk_branch_accepted,
                 "topk_branch_depth": topk_branch_depth,
                 "accepted_draft_tokens": accepted_draft_tokens,
@@ -892,6 +917,7 @@ def main():
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
     print(f"Sibling top-k max depth: {args.sibling_topk_max_depth}")
+    print(f"Root tail max previous accepted: {args.root_tail_max_prev_accepted}")
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
     print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
@@ -932,6 +958,7 @@ def main():
             "root_topk_accept": args.root_topk_accept,
             "sibling_topk_accept": args.sibling_topk_accept,
             "sibling_topk_max_depth": args.sibling_topk_max_depth,
+            "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
             "engine": "hipEngine GGUF MTP",
             "target_prefill_mode": target_prefill_mode,
             "mtp_context_mode": mtp_context_mode,

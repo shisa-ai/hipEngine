@@ -120278,3 +120278,46 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 
 ### Result
 - Not retained. Root-K5/sibling-K9/depth≤3 improves aggregate full/train/heldout but still regresses mixed_ja_en. Current default remains root-K4/sibling-K9/depth≤3 with focused B5 `0.5000` and full-suite B5 `0.4318`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 156: adaptive root tail retained
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 156.
+- Root-K5 improves aggregate metrics but previously regressed mixed_ja_en. Added a generic adaptive root-tail gate: root candidates below rank 4 are accepted only when the previous cycle accepted at most `N` draft tokens. This is a rank/previous-acceptance heuristic, not prompt/token/candidate-pattern hardcoding.
+
+### Change retained
+- Added `--root-tail-max-prev-accepted` (default `1`) and promoted root top-k default from K4 to adaptive K5 (`root_topk_accept=5`, `root_tail_max_prev_accepted=1`, `sibling_topk_accept=9`, `sibling_topk_max_depth=3`).
+- The gate only affects root candidates in ranks 5+; root ranks 1-4 and deeper sibling top-k behavior remain unchanged.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-rootk5-tailprev1-default-b5-20.json
+```
+- Focused accepted/output stayed `0.5000`.
+- Candidate accounting: `20/660`, `accept_per_draft=0.0303`; this is slightly worse than root-K4/sibling-K9/depth≤3 `20/640`, but better than ungated root-K5 variants.
+- Diagnostic tok/s `12.17`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling9-depth3-tailprev1-full-20260623-042628/raw --output /tmp/hipengine-rootk5-sibling9-depth3-tailprev1-full-20260623-042628/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=9 --extra-arg=--sibling-topk-max-depth --extra-arg=3 --extra-arg=--root-tail-max-prev-accepted --extra-arg=1
+```
+- Full accepted/output improved over retained root-K4/sibling-K9/depth≤3: `0.431818 -> 0.444444`.
+- Train improved `0.368421 -> 0.381443`; heldout improved `0.506173 -> 0.518072`.
+- Per-category accepted/output: code `0.310345 -> 0.344262`, general_en `0.512195 -> 0.512195`, general_ja `0.411765 -> 0.428571`, mixed_ja_en `0.534884 -> 0.534884`.
+- Draft acceptance improved full `0.023750 -> 0.024242`; diagnostic verifier-derived tok/s `12.8224 -> 13.0816`. No true-AR speed claim retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: generic root-rank/previous-accepted heuristic under exact verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Retained as an accepted/output improvement. Current default is adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`, heldout `0.5181`, mixed_ja_en non-regressive.
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk5-tailprev1-sibling9-depth3-category-gfx1151.json`.
