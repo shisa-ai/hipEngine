@@ -439,10 +439,10 @@ def main():
     parser.add_argument(
         "--root-topk-accept",
         type=int,
-        default=10,
+        default=11,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 10; use 1 for linear argmax path)."
+            "the first K root candidates (default: 11; use 1 for linear argmax path)."
         ),
     )
     parser.add_argument(
@@ -504,8 +504,8 @@ def main():
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
         parser.error(str(exc))
-    if args.root_topk_accept < 1 or args.root_topk_accept > 10:
-        parser.error("--root-topk-accept must be in 1..10")
+    if args.root_topk_accept < 1 or args.root_topk_accept > 11:
+        parser.error("--root-topk-accept must be in 1..11")
     if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 10:
         parser.error("--sibling-topk-accept must be in 1..10")
     if args.sibling_topk_max_depth < 0:
@@ -518,6 +518,7 @@ def main():
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
+    topk_candidate_count = max(10, args.root_topk_accept, args.sibling_topk_accept)
     if not Path(args.model).exists():
         print(f"ERROR: Model file not found: {args.model}", file=sys.stderr)
         sys.exit(1)
@@ -731,7 +732,7 @@ def main():
                             rotary_dim=rope_dim,
                         )
                     draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits[0], k=10, draft_depth=draft_depth
+                        draft_logits[0], k=topk_candidate_count, draft_depth=draft_depth
                     )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
@@ -770,7 +771,7 @@ def main():
                             rotary_dim=rope_dim,
                         )
                     draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits[0], k=10, draft_depth=draft_depth
+                        draft_logits[0], k=topk_candidate_count, draft_depth=draft_depth
                     )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
@@ -853,7 +854,7 @@ def main():
                                 rotary_dim=rope_dim,
                             )
                         redraft_token, redraft_top10 = select_topk_tokens(
-                            draft_logits[0], k=10, draft_depth=depth + redraft_depth
+                            draft_logits[0], k=topk_candidate_count, draft_depth=depth + redraft_depth
                         )
                         branch_redraft_tokens.append(redraft_token)
                         branch_redraft_top10.append(redraft_top10)
