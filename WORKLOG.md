@@ -119560,3 +119560,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Result
 - No accepted/output improvement retained. Dense recomputation remains the wrong abstraction; the viable llama.cpp-parity path needs resident MTP K/V materialization or a direct llama.cpp first-draft-logit oracle at the same catch-up boundary.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 138: draft RoPE position offset rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 138.
+- Tested whether the current single-seed GGUF MTP drafter was using an off-by-one RoPE position for draft rows.
+
+### Attempt
+- Temporarily added a diagnostic `--draft-position-offset` integer option that shifts draft RoPE positions uniformly for all draft rows.
+- This was a generic position-semantics test only: no prompt/token/candidate-pattern hardcoding and no target-token rescue logic.
+
+### Measurement
+```bash
+for off in -2 -1 0 1 2; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --draft-position-offset "$off" --output /tmp/hipengine-mtp-posoff-${off//-/m}-b5-20.json
+done
+```
+- All offsets measured the same B5 result: `accepted_per_output=0.3548`, `accept_per_draft=0.110`, `total_accepted=11/100`.
+- Diagnostic tok/s varied only by noise (`13.05`-`13.24` tok/s in the sweep).
+- The temporary option was reverted before validation/commit.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+```
+- Prompt verifier passed: numeric RoPE offset only, no hardcoding, no retained speed claim.
+
+### Result
+- Not retained. Single-row draft attention has only one key/value row, so shifting the shared Q/K RoPE position is effectively invariant for the current path.
+- The finding reinforces that the real acceptance blocker is missing multi-row/resident MTP context, not a scalar RoPE cursor offset.
