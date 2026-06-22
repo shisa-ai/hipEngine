@@ -29,7 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.gguf_mtp_bench import build_chat_prompt
-from scripts.gguf_mtp_category_bench import DEFAULT_MODEL, DEFAULT_PROMPTS, BenchError, load_prompt_rows, prompt_sha256, repo_provenance, safe_name
+from scripts.gguf_mtp_category_bench import DEFAULT_MODEL, DEFAULT_PROMPTS, BenchError, load_prompt_rows, prompt_sha256, repo_provenance, safe_name, validate_command_provenance
 
 
 def exact_command_payload(argv: Sequence[object]) -> dict[str, Any]:
@@ -69,6 +69,7 @@ def build_true_ar_artifact(
     for prompt_row, metric_row in zip(prompts, prompt_metrics, strict=True):
         metric_row.setdefault("prompt_chars", len(str(prompt_row["prompt"])))
         metric_row.setdefault("prompt_sha256", prompt_sha256(str(prompt_row["prompt"])))
+    commands = validate_command_provenance({"commands": commands}, label="true AR artifact")
     return {
         "schema": 1,
         "kind": "hipengine_gguf_true_ar_category_baseline",

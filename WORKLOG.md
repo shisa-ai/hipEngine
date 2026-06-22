@@ -117051,3 +117051,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 39: require command provenance for objective artifacts
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 39.
+- Focused current-schema command provenance contract: objective extraction and speed-claim eligibility must not accept artifacts without exact command provenance.
+
+### Change
+- Added `validate_command_provenance()` to `scripts/gguf_mtp_category_bench.py`.
+- True-AR attachment now validates non-empty `commands` in the source true-AR artifact and carries them into `summary["true_ar_baseline"]["commands"]`.
+- `objective_metrics_for_budget()` now requires non-empty commands on both the MTP summary and attached true-AR baseline, and exposes `summary_commands` / `true_ar_commands` in objective output.
+- `validate_speed_claim_contract()` now requires command provenance on speed-claim-eligible summaries and their true-AR baselines.
+- `build_true_ar_artifact()` now validates non-empty command provenance before emitting an artifact.
+- Added regressions for missing summary commands, missing attached true-AR commands, missing true-AR artifact commands, and speed-claim command omissions.
+- Updated `docs/BENCHMARK.md` to document non-empty command provenance in the current true-AR/category artifact contract.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 63 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

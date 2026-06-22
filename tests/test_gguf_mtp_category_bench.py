@@ -33,6 +33,8 @@ TEST_REPO_PROVENANCE = {
     "git_tracked_dirty": False,
     "git_untracked_count": 0,
 }
+TEST_SUMMARY_COMMANDS = ["python3 scripts/gguf_mtp_category_bench.py --budgets 1 --output summary.json"]
+TEST_TRUE_AR_COMMANDS = ["python3 scripts/gguf_true_ar_category_bench.py --output true-ar.json"]
 
 
 def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: int, ar_ms: float, draft_ms: float) -> dict:
@@ -296,6 +298,7 @@ def test_speed_claim_contract_rejects_verifier_derived_ar_baseline() -> None:
     summary = {
         "speed_claim_eligible": True,
         "repo": dict(TEST_REPO_PROVENANCE),
+        "commands": list(TEST_SUMMARY_COMMANDS),
         "true_ar_baseline": {
             "available": False,
             "true_autoregressive_path": False,
@@ -303,6 +306,7 @@ def test_speed_claim_contract_rejects_verifier_derived_ar_baseline() -> None:
             "same_timing_protocol": False,
             "source": None,
             "repo": dict(TEST_REPO_PROVENANCE),
+            "commands": list(TEST_TRUE_AR_COMMANDS),
         },
     }
 
@@ -314,6 +318,45 @@ def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
     summary = {
         "speed_claim_eligible": True,
         "repo": dict(TEST_REPO_PROVENANCE),
+        "commands": list(TEST_SUMMARY_COMMANDS),
+        "true_ar_baseline": {
+            "available": True,
+            "true_autoregressive_path": True,
+            "same_prompt_suite": True,
+            "same_timing_protocol": True,
+            "source": "future true AR harness artifact",
+            "repo": dict(TEST_REPO_PROVENANCE),
+            "commands": list(TEST_TRUE_AR_COMMANDS),
+        },
+    }
+
+    assert validate_speed_claim_contract(summary) is summary
+
+
+def test_speed_claim_contract_rejects_missing_command_provenance() -> None:
+    summary = {
+        "speed_claim_eligible": True,
+        "repo": dict(TEST_REPO_PROVENANCE),
+        "true_ar_baseline": {
+            "available": True,
+            "true_autoregressive_path": True,
+            "same_prompt_suite": True,
+            "same_timing_protocol": True,
+            "source": "future true AR harness artifact",
+            "repo": dict(TEST_REPO_PROVENANCE),
+            "commands": list(TEST_TRUE_AR_COMMANDS),
+        },
+    }
+
+    with pytest.raises(BenchError, match="speed-claim summary requires non-empty commands provenance"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_missing_true_ar_command_provenance() -> None:
+    summary = {
+        "speed_claim_eligible": True,
+        "repo": dict(TEST_REPO_PROVENANCE),
+        "commands": list(TEST_SUMMARY_COMMANDS),
         "true_ar_baseline": {
             "available": True,
             "true_autoregressive_path": True,
@@ -324,7 +367,8 @@ def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
         },
     }
 
-    assert validate_speed_claim_contract(summary) is summary
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires non-empty commands provenance"):
+        validate_speed_claim_contract(summary)
 
 
 def _write_true_ar_baseline(
@@ -336,6 +380,7 @@ def _write_true_ar_baseline(
     include_repo: bool = True,
     include_prompt_hashes: bool = True,
     include_row_hashes: bool = True,
+    include_commands: bool = True,
 ) -> None:
     prompt_hashes = {str(prompt_id): prompt_sha256(text) for prompt_id, text in prompt_text_by_id.items()}
     metric_rows = []
@@ -353,6 +398,8 @@ def _write_true_ar_baseline(
     }
     if include_prompt_hashes:
         payload["prompt_hashes"] = prompt_hashes
+    if include_commands:
+        payload["commands"] = list(TEST_TRUE_AR_COMMANDS)
     if include_repo:
         payload["repo"] = dict(TEST_REPO_PROVENANCE)
     if same_prompt_suite is not None:
@@ -388,7 +435,7 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
         ]
     }
 
-    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=list(TEST_SUMMARY_COMMANDS))
 
     assert summary["speed_claim_eligible"] is False
     assert summary["true_ar_comparison_available"] is True
@@ -432,7 +479,7 @@ def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int]
             for row, acc in zip(prompts, accepted, strict=True)
         ]
     }
-    return build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+    return build_summary(args=args, prompts=prompts, raw=raw, commands=list(TEST_SUMMARY_COMMANDS))
 
 
 def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path) -> None:
@@ -447,6 +494,8 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["true_ar_comparison_available"] is True
     assert metrics["speed_claim_eligible"] is False
     assert metrics["performance_claim"] is False
+    assert metrics["summary_commands"] == TEST_SUMMARY_COMMANDS
+    assert metrics["true_ar_commands"] == TEST_TRUE_AR_COMMANDS
     assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
     assert metrics["full"]["draft_acceptance"] == pytest.approx(1.0)
     assert metrics["full"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((100.0 / 1100.0 * 1000.0) / 100.0)
@@ -475,6 +524,24 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_repo_prov
     del summary["true_ar_baseline"]["repo"]
 
     with pytest.raises(BenchError, match="attached true_ar_baseline requires repo provenance metadata"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_summary_command_provenance(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["commands"] = []
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match="objective summary requires non-empty commands provenance"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_command_provenance(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["true_ar_baseline"]["commands"]
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match="attached true_ar_baseline requires non-empty commands provenance"):
         objective_metrics_for_budget(summary, "b1")
 
 
@@ -509,7 +576,7 @@ def test_objective_metrics_for_budget_rejects_partial_suite_even_with_present_ca
             for row in prompts
         ]
     }
-    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=list(TEST_SUMMARY_COMMANDS))
 
     assert summary["splits"]["contract"]["heldout_has_all_present_categories"] is True
     assert summary["splits"]["contract"]["full_suite_matches_default"] is False
@@ -808,6 +875,28 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_without_command_provenance(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        include_commands=False,
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR baseline artifact requires non-empty commands provenance"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

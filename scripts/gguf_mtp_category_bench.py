@@ -153,6 +153,18 @@ def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str
     return {field: repo.get(field) for field in REPO_PROVENANCE_FIELDS}
 
 
+def validate_command_provenance(payload: dict[str, Any], *, label: str) -> list[str]:
+    commands = payload.get("commands")
+    if not isinstance(commands, list) or not commands:
+        raise BenchError(f"{label} requires non-empty commands provenance")
+    out: list[str] = []
+    for index, command in enumerate(commands):
+        if not isinstance(command, str) or not command.strip():
+            raise BenchError(f"{label} commands[{index}] must be a non-empty string")
+        out.append(command)
+    return out
+
+
 def run_one(
     *,
     python: str,
@@ -487,7 +499,7 @@ def aggregate_true_ar_rows(rows_by_id: dict[str, dict[str, Any]], prompt_ids: li
     }
 
 
-def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path, repo: dict[str, Any]) -> dict[str, Any]:
+def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path, repo: dict[str, Any], commands: list[str]) -> dict[str, Any]:
     prompt_ids = [str(row["id"]) for row in summary["prompts"]]
     full_metric = aggregate_true_ar_rows(rows_by_id, prompt_ids)
     category_metrics = {
@@ -507,6 +519,7 @@ def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, di
         "same_timing_protocol": True,
         "source": str(source),
         "repo": repo,
+        "commands": commands,
         "prompt_count": len(prompt_ids),
         "totals": full_metric,
         "categories": category_metrics,
@@ -560,6 +573,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     if not summary.get("speed_claim_eligible", False):
         return summary
     validate_repo_provenance(summary, label="speed-claim summary")
+    validate_command_provenance(summary, label="speed-claim summary")
     true_ar = summary.get("true_ar_baseline")
     if not isinstance(true_ar, dict):
         raise BenchError("speed_claim_eligible=true requires true_ar_baseline metadata")
@@ -570,6 +584,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     if true_ar.get("same_timing_protocol") is not True:
         raise BenchError("speed_claim_eligible=true requires true AR measured with the same timing protocol")
     validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
+    validate_command_provenance(true_ar, label="speed-claim true_ar_baseline")
     return summary
 
 
@@ -591,6 +606,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
         raise BenchError("objective metrics require an attached true_ar_baseline")
     validate_repo_provenance(true_ar, label="attached true_ar_baseline")
+    summary_commands = validate_command_provenance(summary, label="objective summary")
+    true_ar_commands = validate_command_provenance(true_ar, label="attached true_ar_baseline")
     splits = summary.get("splits")
     if not isinstance(splits, dict):
         raise BenchError("objective metrics require splits")
@@ -607,6 +624,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "performance_claim": bool(summary.get("performance_claim", False)),
         "summary_repo": validate_repo_provenance(summary, label="objective summary"),
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
+        "summary_commands": summary_commands,
+        "true_ar_commands": true_ar_commands,
         "heldout_ids": list(contract.get("heldout_ids", [])),
         "train_ids": list(contract.get("train_ids", [])),
     }
@@ -659,6 +678,7 @@ def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
     return {
         "source": true_ar.get("source"),
         "repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
+        "commands": validate_command_provenance(true_ar, label="attached true_ar_baseline"),
         "prompt_count": true_ar.get("prompt_count"),
         "totals": true_ar.get("totals"),
         "categories": true_ar.get("categories"),
@@ -866,8 +886,9 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         true_ar_path = Path(true_ar_baseline_json)
         true_ar_artifact = true_ar_artifact_from_path(true_ar_path)
         true_ar_repo = validate_repo_provenance(true_ar_artifact, label="true AR baseline artifact")
+        true_ar_commands = validate_command_provenance(true_ar_artifact, label="true AR baseline artifact")
         rows_by_id = validate_true_ar_prompt_rows(artifact=true_ar_artifact, prompts=prompts)
-        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo)
+        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo, commands=true_ar_commands)
     return validate_speed_claim_contract(summary)
 
 
