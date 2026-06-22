@@ -119680,3 +119680,32 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Retained. The default focused B5 path now moves from the prior linear default `0.3548` to `0.4286` accepted/output, while preserving the full-suite train/heldout/category non-regression measured for root top-2.
 - Next improvement direction: implement branch-specific deeper draft rows for the accepted non-argmax root sibling or true resident MTP K/V so root siblings can continue beyond one accepted token.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 141: root branch child rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 141.
+- Tested a one-level branch-child extension for the retained root top-2 tree proposal. For each non-argmax root sibling, the temporary code ran the same MTP NextN step with the sibling token to produce a depth-1 child proposal; exact target verification could then accept that child before emitting the corrective target token.
+
+### Measurement
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-branch-child --output /tmp/hipengine-mtp-root-branch-child-b5-20.json
+```
+- Result: `accepted_per_output=0.4286`, `accept_per_draft=0.1071`, `total_accepted=15/140`, `total_output_tokens=35`, `tokens_per_sec=12.73`, `speedup_vs_ar_visible=0.6617x`.
+- The temporary branch-child path found three non-argmax root accepts and one child accept, but total accepted/output stayed equal to the current default root top-2 result while candidate count and wall time worsened.
+- Temporary code was reverted before validation/commit.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: the temporary proposal was a generic tree extension using precomputed sibling children and exact target verification; it did not inspect prompt text, hardcode token IDs, branch on candidate-token patterns, rescue depth-specific target tokens, use fixture IDs, or detect benchmarks. No speed claim retained.
+
+### Result
+- Not retained. Root branch-child drafting did not improve accepted/output over the current default `0.4286` and reduced draft acceptance/throughput diagnostics.
+- Next candidate should either build a true resident MTP K/V tree so branch children have the correct context, or evaluate a different generic proposal shape that improves heldout/full metrics rather than only moving draft-count denominators.
