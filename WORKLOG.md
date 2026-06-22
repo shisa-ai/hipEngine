@@ -116218,3 +116218,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 26 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 12: real fixture heldout guard
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 12.
+- Focused guardrail change: protect the train/category-heldout policy against future prompt fixture drift.
+
+### Change
+- Added a CPU-only test that loads the actual default prompt fixture `benchmarks/prompts/mtpbench-code-general-ja.jsonl`.
+- The test verifies:
+  - 10 prompts total;
+  - fixed heldout IDs: `code_markdown_table`, `general_en_explain`, `general_ja_explain`, `mixed_ja_en_review`;
+  - one heldout per present category (`code`, `general_en`, `general_ja`, `mixed_ja_en`);
+  - train size 6;
+  - no missing default heldout IDs.
+
+### Guardrail status
+- Test-only change; no benchmark math changes, no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed ratio changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 27 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

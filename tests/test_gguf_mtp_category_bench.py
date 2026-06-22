@@ -8,7 +8,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.gguf_mtp_category_bench import DEFAULT_HELDOUT_PROMPT_IDS, BenchError, build_summary, validate_speed_claim_contract, write_markdown
+from scripts.gguf_mtp_category_bench import (
+    DEFAULT_HELDOUT_PROMPT_IDS,
+    DEFAULT_PROMPTS,
+    BenchError,
+    build_split_contract,
+    build_summary,
+    load_prompt_rows,
+    validate_speed_claim_contract,
+    write_markdown,
+)
 from scripts.gguf_true_ar_category_bench import build_true_ar_artifact
 
 
@@ -147,6 +156,24 @@ def test_category_summary_reports_train_heldout_and_full_suite_metrics() -> None
     assert summary["splits"]["train"]["metrics"]["b5"]["accepted_per_output"] == 0.1
     assert summary["splits"]["heldout"]["metrics"]["b5"]["accepted_per_output"] == 0.2
     assert summary["splits"]["full"]["metrics"]["b5"]["accepted_per_output"] == 0.14
+
+
+def test_default_prompt_fixture_keeps_one_heldout_per_category() -> None:
+    prompts = load_prompt_rows(DEFAULT_PROMPTS)
+    contract = build_split_contract(prompts)
+
+    assert len(prompts) == 10
+    assert set(contract["heldout_ids"]) == DEFAULT_HELDOUT_PROMPT_IDS
+    assert contract["heldout_ids"] == [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+    ]
+    assert len(contract["train_ids"]) == 6
+    assert contract["heldout_has_all_present_categories"] is True
+    assert contract["missing_default_heldout_ids"] == []
+    assert contract["heldout_categories"] == ["code", "general_en", "general_ja", "mixed_ja_en"]
 
 
 def test_speed_claim_contract_rejects_verifier_derived_ar_baseline() -> None:
