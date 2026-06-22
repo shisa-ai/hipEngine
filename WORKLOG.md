@@ -120321,3 +120321,42 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained as an accepted/output improvement. Current default is adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`, heldout `0.5181`, mixed_ja_en non-regressive.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk5-tailprev1-sibling9-depth3-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 157: adaptive root-K6 rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 157.
+- Tested whether extending the retained generic adaptive root-tail policy from K5 to K6 (`root_tail_max_prev_accepted=1`, sibling K9, depth≤3) captures additional safe root candidates without prompt/token hardcoding.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 6 --sibling-topk-accept 9 --sibling-topk-max-depth 3 --root-tail-max-prev-accepted 1 --output /tmp/hipengine-mtp-rootk6-tailprev1-iter157-b5-20.json
+```
+- Focused accepted/output stayed `0.5000`.
+- Candidate accounting regressed versus current adaptive root-K5 default: `20/660 -> 20/680`, `accept_per_draft 0.0303 -> 0.0294`.
+- Branch count/depths were unchanged (`8` branch accepts; depths `{0: 4, 1: 3, 2: 1}`), so K6 did not add focused acceptances.
+- Diagnostic tok/s `14.16`, `speedup_vs_ar_visible=0.733x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk6-sibling9-depth3-tailprev1-full-20260623-043240/raw --output /tmp/hipengine-rootk6-sibling9-depth3-tailprev1-full-20260623-043240/summary.json --extra-arg=--root-topk-accept --extra-arg=6 --extra-arg=--sibling-topk-accept --extra-arg=9 --extra-arg=--sibling-topk-max-depth --extra-arg=3 --extra-arg=--root-tail-max-prev-accepted --extra-arg=1
+```
+- Accepted/output matched current adaptive K5 default, but did not improve it: full `0.444444`, train `0.381443`, heldout `0.518072`.
+- Per-category accepted/output matched current default: code `0.344262`, general_en `0.512195`, general_ja `0.428571`, mixed_ja_en `0.534884`.
+- Draft acceptance regressed versus current default: full `0.024242 -> 0.023529`, train `0.018462 -> 0.018137`, heldout `0.032143 -> 0.031618`.
+- Diagnostic verifier-derived tok/s `13.5843`, ratio `0.6801`; speed remains diagnostic only.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated a generic root top-k width under the existing rank/previous-acceptance gate; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Adaptive root-K6 does not improve focused/full/train/heldout/category accepted/output over adaptive root-K5 and worsens draft/candidate efficiency.
+- Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
