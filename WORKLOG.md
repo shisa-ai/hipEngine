@@ -118552,3 +118552,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 93: tie true-AR aggregate counts to decode tokens
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 93.
+- Focused denominator/provenance contract: attached true-AR total/split/category aggregate `total_output_tokens` must be derivable from the same protocol `decode_tokens` and prompt count.
+
+### Change
+- `validate_true_ar_aggregate_row()` now accepts `expected_decode_tokens` and rejects aggregate true-AR rows where `total_output_tokens != prompts * protocol.decode_tokens`.
+- `objective_metrics_for_budget()` threads attached protocol `decode_tokens` through true-AR totals, split, and category aggregate validation.
+- Added a regression that shifts true-AR train/heldout output counts while preserving full sums and MTP/true-AR ratios; the guard now rejects it via the protocol decode-token product check.
+- Adjusted downstream consistency regressions so they still exercise full/split/category decode-ms and count checks under the stricter output-token invariant.
+- Updated `docs/BENCHMARK.md` to document attached true-AR aggregate output count validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

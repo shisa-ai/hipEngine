@@ -188,7 +188,7 @@ acceptance loops.
    provenance including strict prompt fixture and raw row identity typing,
    default prompt hashes/categories/lengths plus category budget-row scalar fields, strict JSON-integer token counts and prompt counts
    (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
-   fields, repo provenance including strict integer `git_untracked_count` and
+   fields, attached true-AR total/split/category output counts matching `prompts * protocol.decode_tokens`, repo provenance including strict integer `git_untracked_count` and
    same-repo root/commit checks between the summary and attached true-AR baseline,
    protocol provenance including attached true-AR protocol self-normalization and
    strict summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`

@@ -1336,15 +1336,31 @@ def test_objective_metrics_for_budget_rejects_true_ar_split_tps_mismatch(tmp_pat
         objective_metrics_for_budget(summary, "b1")
 
 
-def test_objective_metrics_for_budget_rejects_true_ar_split_partition_count_mismatch(tmp_path: Path) -> None:
+def test_objective_metrics_for_budget_rejects_true_ar_split_output_count_not_matching_decode_tokens(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    train_true_ar = summary["true_ar_baseline"]["splits"]["train"]
+    heldout_true_ar = summary["true_ar_baseline"]["splits"]["heldout"]
+    train_true_ar["total_output_tokens"] += 10
+    heldout_true_ar["total_output_tokens"] -= 10
+    for split_name in ("train", "heldout"):
+        true_ar_split = summary["true_ar_baseline"]["splits"][split_name]
+        true_ar_split["decode_tok_s_weighted"] = 1000.0 * true_ar_split["total_output_tokens"] / true_ar_split["decode_ms"]
+        mtp_split = summary["splits"][split_name]["metrics"]["b1"]
+        mtp_split["mtp_vs_true_ar_decode_ratio"] = mtp_split["decode_tok_s_weighted"] / true_ar_split["decode_tok_s_weighted"]
+
+    with pytest.raises(BenchError, match=r"attached true_ar_baseline\.splits\.train\.total_output_tokens to match prompts\*protocol\.decode_tokens"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_true_ar_split_partition_decode_ms_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     true_ar_train = summary["true_ar_baseline"]["splits"]["train"]
-    true_ar_train["total_output_tokens"] += 10
+    true_ar_train["decode_ms"] += 10.0
     true_ar_train["decode_tok_s_weighted"] = 1000.0 * true_ar_train["total_output_tokens"] / true_ar_train["decode_ms"]
     split_row = summary["splits"]["train"]["metrics"]["b1"]
     split_row["mtp_vs_true_ar_decode_ratio"] = split_row["decode_tok_s_weighted"] / true_ar_train["decode_tok_s_weighted"]
 
-    with pytest.raises(BenchError, match="attached true_ar_baseline.splits.total_output_tokens train\\+heldout sum to match full"):
+    with pytest.raises(BenchError, match="attached true_ar_baseline.splits.decode_ms train\\+heldout sum to match full"):
         objective_metrics_for_budget(summary, "b1")
 
 
@@ -1369,21 +1385,24 @@ def test_objective_metrics_for_budget_rejects_non_string_true_ar_category_key(tm
 
 def test_objective_metrics_for_budget_rejects_true_ar_total_full_split_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
-    summary["true_ar_baseline"]["totals"]["prompts"] = 9
+    totals = summary["true_ar_baseline"]["totals"]
+    totals["prompts"] = 9
+    totals["total_output_tokens"] = 90
+    totals["decode_tok_s_weighted"] = 1000.0 * totals["total_output_tokens"] / totals["decode_ms"]
 
     with pytest.raises(BenchError, match="true_ar_baseline.totals to match splits.full counts"):
         objective_metrics_for_budget(summary, "b1")
 
 
-def test_objective_metrics_for_budget_rejects_true_ar_total_category_sum_mismatch(tmp_path: Path) -> None:
+def test_objective_metrics_for_budget_rejects_true_ar_total_category_decode_ms_sum_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     true_ar_category = summary["true_ar_baseline"]["categories"]["code"]
-    true_ar_category["total_output_tokens"] += 10
+    true_ar_category["decode_ms"] += 10.0
     true_ar_category["decode_tok_s_weighted"] = 1000.0 * true_ar_category["total_output_tokens"] / true_ar_category["decode_ms"]
     category_row = summary["categories"]["code"]["b1"]
     category_row["mtp_vs_true_ar_decode_ratio"] = category_row["decode_tok_s_weighted"] / true_ar_category["decode_tok_s_weighted"]
 
-    with pytest.raises(BenchError, match="true_ar_baseline.totals to match category count sums"):
+    with pytest.raises(BenchError, match="true_ar_baseline.totals.decode_ms to match category sum"):
         objective_metrics_for_budget(summary, "b1")
 
 
