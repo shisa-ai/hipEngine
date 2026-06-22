@@ -133,7 +133,7 @@ acceptance loops.
    ratios matching the attached true-AR category baselines, and carry attached
    true-AR `true_autoregressive_path=true`, `same_prompt_suite=true`,
    `same_timing_protocol=true`, `artifact_schema`/`artifact_kind` with strict
-   integer schema fields, plus `protocol` metadata matching
+   integer schema fields, plus self-consistent `protocol` metadata matching
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, boolean `performance_claim=false`,
    boolean `speed_claim_eligible=false`, `splits.full`,
@@ -188,7 +188,8 @@ acceptance loops.
    default prompt hashes/categories/lengths plus category budget-row scalar fields, strict JSON-integer token counts and prompt counts
    (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
    fields, repo provenance including strict integer `git_untracked_count`,
-   protocol provenance, strict true-AR `prompt_hashes` / `prompt_metrics`
+   protocol provenance including attached true-AR protocol self-normalization and
+   summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`
    prompt identity and hash typing, and true-AR finite-logit
    evidence. In-memory prompt rows and raw per-prompt MTP rows are checked with
    strict string prompt/category identity plus the same strict count and

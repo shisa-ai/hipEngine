@@ -118245,3 +118245,35 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 82: validate attached true-AR protocol match
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 82.
+- Focused same-protocol denominator contract: attached true-AR metadata must not rely only on `same_prompt_suite=true` / `same_timing_protocol=true`; its protocol fields must self-normalize and match the MTP summary protocol.
+
+### Change
+- `validate_attached_true_ar_protocol()` now verifies:
+  - `model_normalized` matches normalized `model`;
+  - `quant_normalized` matches normalized `quant`;
+  - `prompt_file_normalized` matches normalized `prompt_file`.
+- Added `validate_attached_true_ar_protocol_matches_summary()`.
+- `objective_metrics_for_budget()` now requires attached true-AR protocol metadata to match the MTP summary:
+  - model path;
+  - quant family;
+  - prompt file;
+  - prompt count.
+- Added regressions for normalized-field inconsistencies and summary model/quant/prompt-file/prompt-count mismatches.
+- Updated `docs/BENCHMARK.md` to document attached true-AR protocol self-normalization and summary protocol matching.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 212 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

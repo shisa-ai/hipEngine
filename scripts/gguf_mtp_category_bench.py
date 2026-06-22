@@ -757,6 +757,15 @@ def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -
     for field in ("model", "model_normalized", "quant", "quant_normalized", "prompt_file", "prompt_file_normalized"):
         if not isinstance(protocol.get(field), str) or not protocol[field]:
             raise BenchError(f"{label} protocol metadata requires non-empty {field}")
+    model_normalized = normalize_protocol_path(protocol["model"])
+    if protocol["model_normalized"] != model_normalized:
+        raise BenchError(f"{label} protocol metadata model_normalized must match model")
+    quant_normalized = normalize_quant_label(protocol["quant"])
+    if protocol["quant_normalized"] != quant_normalized:
+        raise BenchError(f"{label} protocol metadata quant_normalized must match quant")
+    prompt_file_normalized = normalize_protocol_path(protocol["prompt_file"])
+    if protocol["prompt_file_normalized"] != prompt_file_normalized:
+        raise BenchError(f"{label} protocol metadata prompt_file_normalized must match prompt_file")
     prompt_count = require_positive_int(
         protocol.get("prompt_count"),
         message=f"{label} protocol metadata requires positive prompt_count",
@@ -771,15 +780,38 @@ def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -
     )
     return {
         "model": protocol["model"],
-        "model_normalized": protocol["model_normalized"],
+        "model_normalized": model_normalized,
         "quant": protocol["quant"],
-        "quant_normalized": protocol["quant_normalized"],
+        "quant_normalized": quant_normalized,
         "prompt_file": protocol["prompt_file"],
-        "prompt_file_normalized": protocol["prompt_file_normalized"],
+        "prompt_file_normalized": prompt_file_normalized,
         "decode_tokens": decode_tokens,
         "warmup_decode_tokens": warmup_decode_tokens,
         "prompt_count": prompt_count,
     }
+
+
+def validate_attached_true_ar_protocol_matches_summary(
+    summary: dict[str, Any],
+    *,
+    summary_prompts: dict[str, Any],
+    true_ar_protocol: dict[str, Any],
+) -> None:
+    summary_model = summary.get("model")
+    if not isinstance(summary_model, str) or not summary_model:
+        raise BenchError("objective metrics require summary model to be a non-empty string")
+    if true_ar_protocol["model_normalized"] != normalize_protocol_path(summary_model):
+        raise BenchError("objective metrics require attached true_ar_baseline.protocol.model to match summary model")
+    summary_quant = summary.get("quant")
+    if true_ar_protocol["quant_normalized"] != normalize_quant_label(summary_quant):
+        raise BenchError("objective metrics require attached true_ar_baseline.protocol.quant to match summary quant")
+    summary_prompt_file = summary.get("prompt_file")
+    if not isinstance(summary_prompt_file, str) or not summary_prompt_file:
+        raise BenchError("objective metrics require summary prompt_file to be a non-empty string")
+    if true_ar_protocol["prompt_file_normalized"] != normalize_protocol_path(summary_prompt_file):
+        raise BenchError("objective metrics require attached true_ar_baseline.protocol.prompt_file to match summary prompt_file")
+    if true_ar_protocol["prompt_count"] != summary_prompts["prompt_count"]:
+        raise BenchError("objective metrics require attached true_ar_baseline.protocol.prompt_count to match summary prompt count")
 
 
 def run_one(
@@ -1360,6 +1392,11 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     summary_commands = validate_command_provenance(summary, label="objective summary")
     true_ar_commands = validate_command_provenance(true_ar, label="attached true_ar_baseline")
     true_ar_protocol = validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline")
+    validate_attached_true_ar_protocol_matches_summary(
+        summary,
+        summary_prompts=summary_prompts,
+        true_ar_protocol=true_ar_protocol,
+    )
     summary_categories, category_metrics = validate_summary_category_budget_metrics(
         summary,
         label="objective summary",

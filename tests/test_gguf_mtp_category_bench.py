@@ -1494,6 +1494,52 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_protocol(
         objective_metrics_for_budget(summary, "b1")
 
 
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda summary: summary["true_ar_baseline"]["protocol"].__setitem__("model_normalized", "/tmp/wrong-model.gguf"),
+            "attached true_ar_baseline protocol metadata model_normalized must match model",
+        ),
+        (
+            lambda summary: summary["true_ar_baseline"]["protocol"].__setitem__("quant_normalized", "wrong-quant"),
+            "attached true_ar_baseline protocol metadata quant_normalized must match quant",
+        ),
+        (
+            lambda summary: summary["true_ar_baseline"]["protocol"].__setitem__("prompt_file_normalized", "/tmp/wrong-prompts.jsonl"),
+            "attached true_ar_baseline protocol metadata prompt_file_normalized must match prompt_file",
+        ),
+        (
+            lambda summary: summary.__setitem__("model", "/models/gguf/other.gguf"),
+            "objective metrics require attached true_ar_baseline.protocol.model to match summary model",
+        ),
+        (
+            lambda summary: summary.__setitem__("quant", "different quant"),
+            "objective metrics require attached true_ar_baseline.protocol.quant to match summary quant",
+        ),
+        (
+            lambda summary: summary.__setitem__("prompt_file", "benchmarks/prompts/other.jsonl"),
+            "objective metrics require attached true_ar_baseline.protocol.prompt_file to match summary prompt_file",
+        ),
+        (
+            lambda summary: summary["true_ar_baseline"]["protocol"].__setitem__("prompt_count", 9),
+            "objective metrics require attached true_ar_baseline.protocol.prompt_count to match summary prompt count",
+        ),
+    ],
+)
+def test_objective_metrics_for_budget_rejects_attached_protocol_mismatch(
+    tmp_path: Path,
+    mutate,
+    message: str,
+) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    mutate(summary)
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match=message):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_missing_summary_command_provenance(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["commands"] = []
