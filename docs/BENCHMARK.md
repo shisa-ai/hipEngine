@@ -135,8 +135,8 @@ acceptance loops.
    `same_timing_protocol=true`, `artifact_schema`/`artifact_kind`, plus
    `protocol` metadata matching
    the MTP `model`, quant family, `prompt_file`, and prompt count,
-   `true_ar_comparison_available=true`, `performance_claim=false`,
-   `speed_claim_eligible=false`, `splits.full`,
+   `true_ar_comparison_available=true`, boolean `performance_claim=false`,
+   boolean `speed_claim_eligible=false`, `splits.full`,
    `splits.train`, and `splits.heldout`; `splits.contract.heldout_ids` must be
    the fixed set `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,
    `train_ids` must be the default full-minus-heldout complement, and each split
@@ -145,7 +145,9 @@ acceptance loops.
    appear only in a separate `vs true AR` column. Any future retained summary with
    `speed_claim_eligible=true` must pass the same current-schema checks for the
    MTP summary, attached true-AR artifact identity, and guarded objective
-   extraction for every MTP budget row.
+   extraction for every MTP budget row. `performance_claim=true` is invalid
+   unless `speed_claim_eligible=true`, and both claim flags must be JSON
+   booleans (not truthy strings or integers).
 
 3. **Optimization decisions use all three views.** Report full-suite, train, and
    heldout metrics for every budget:
@@ -229,7 +231,9 @@ acceptance loops.
    Scalar mode still calls the guarded objective extractor first; it is not a way
    to read verifier-derived `off`/`B0` telemetry or partial prompt suites. Any
    artifact that flips `speed_claim_eligible=true` must also pass this guarded
-   extractor for every MTP budget before the contract accepts it.
+   extractor for every MTP budget before the contract accepts it. Any artifact
+   that flips `performance_claim=true` must also flip `speed_claim_eligible=true`
+   and pass the same guarded eligibility checks.
 
    Baseline-vs-candidate comparisons should use the guarded comparator:
 

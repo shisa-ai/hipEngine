@@ -117871,3 +117871,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 69: validate performance claim flags
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 69.
+- Focused claim-flag contract: diagnostic artifacts must not masquerade as retained performance claims via truthy strings or `performance_claim=true` without speed eligibility.
+
+### Change
+- Added `validate_claim_flags()` in `scripts/gguf_mtp_category_bench.py`.
+- `validate_speed_claim_contract()` and `objective_metrics_for_budget()` now require `performance_claim` and `speed_claim_eligible` to be JSON booleans when present.
+- Both paths now reject `performance_claim=true` unless `speed_claim_eligible=true`.
+- Added speed-claim contract regressions for non-boolean claim flags and `performance_claim=true` without speed eligibility.
+- Added objective extraction regressions for non-boolean claim flags and `performance_claim=true` without speed eligibility, plus positive coverage for `performance_claim=true` when speed eligibility is also true.
+- Updated `docs/BENCHMARK.md` to document strict claim-flag typing and the `performance_claim => speed_claim_eligible` invariant.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 156 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

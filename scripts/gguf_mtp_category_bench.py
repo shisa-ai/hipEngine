@@ -179,6 +179,21 @@ def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str
     return {field: repo.get(field) for field in REPO_PROVENANCE_FIELDS}
 
 
+def validate_claim_flags(payload: dict[str, Any], *, label: str) -> dict[str, bool]:
+    performance_claim = payload.get("performance_claim", False)
+    speed_claim_eligible = payload.get("speed_claim_eligible", False)
+    if type(performance_claim) is not bool:
+        raise BenchError(f"{label}.performance_claim must be boolean")
+    if type(speed_claim_eligible) is not bool:
+        raise BenchError(f"{label}.speed_claim_eligible must be boolean")
+    if performance_claim and not speed_claim_eligible:
+        raise BenchError(f"{label} performance_claim=true requires speed_claim_eligible=true")
+    return {
+        "performance_claim": performance_claim,
+        "speed_claim_eligible": speed_claim_eligible,
+    }
+
+
 def validate_command_provenance(payload: dict[str, Any], *, label: str) -> list[str]:
     commands = payload.get("commands")
     if not isinstance(commands, list) or not commands:
@@ -1136,7 +1151,8 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     machine-checkable invariant so future harness edits cannot accidentally flip
     ``speed_claim_eligible`` back on without adding the true baseline evidence.
     """
-    if not summary.get("speed_claim_eligible", False):
+    claim_flags = validate_claim_flags(summary, label="speed-claim summary")
+    if not claim_flags["speed_claim_eligible"]:
         return summary
     validate_category_summary_schema(summary, label="speed-claim summary")
     validate_repo_provenance(summary, label="speed-claim summary")
@@ -1178,6 +1194,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     if label == "off" or not label.startswith("b"):
         raise BenchError(f"objective budget must be an MTP budget label like b5, got {budget_label!r}")
     summary_artifact = validate_category_summary_schema(summary, label="objective summary")
+    claim_flags = validate_claim_flags(summary, label="objective summary")
     validate_repo_provenance(summary, label="objective summary")
     summary_prompts = validate_summary_prompt_metadata(summary, label="objective summary")
     if summary.get("true_ar_comparison_available") is not True:
@@ -1224,8 +1241,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     out: dict[str, Any] = {
         "budget": label,
         "true_ar_comparison_available": True,
-        "speed_claim_eligible": bool(summary.get("speed_claim_eligible", False)),
-        "performance_claim": bool(summary.get("performance_claim", False)),
+        "speed_claim_eligible": claim_flags["speed_claim_eligible"],
+        "performance_claim": claim_flags["performance_claim"],
         "summary_artifact": summary_artifact,
         "true_ar_artifact": true_ar_artifact,
         "summary_repo": validate_repo_provenance(summary, label="objective summary"),
