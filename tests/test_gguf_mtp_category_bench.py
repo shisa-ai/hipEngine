@@ -21,6 +21,7 @@ from scripts.gguf_mtp_category_bench import (
     objective_metrics_for_budget,
     populate_objective_metrics,
     prompt_sha256,
+    repo_provenance,
     validate_speed_claim_contract,
     write_markdown,
 )
@@ -722,7 +723,7 @@ def _write_true_ar_baseline(
     if include_commands:
         payload["commands"] = list(TEST_TRUE_AR_COMMANDS)
     if include_repo:
-        payload["repo"] = dict(TEST_REPO_PROVENANCE)
+        payload["repo"] = repo_provenance()
     if same_prompt_suite is not None:
         payload["same_prompt_suite"] = same_prompt_suite
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -766,7 +767,7 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["true_ar_baseline"]["same_timing_protocol"] is True
     assert summary["true_ar_baseline"]["artifact_schema"] == 1
     assert summary["true_ar_baseline"]["artifact_kind"] == "hipengine_gguf_true_ar_category_baseline"
-    assert summary["true_ar_baseline"]["repo"] == TEST_REPO_PROVENANCE
+    assert summary["true_ar_baseline"]["repo"] == summary["repo"]
     assert summary["true_ar_baseline"]["protocol"]["model"] == TEST_MODEL
     assert summary["true_ar_baseline"]["protocol"]["quant"] == "UD-Q4_K_M GGUF"
     assert summary["true_ar_baseline"]["protocol"]["quant_normalized"] == "UD-Q4_K_M GGUF"
@@ -1524,6 +1525,39 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_repo_prov
     del summary["true_ar_baseline"]["repo"]
 
     with pytest.raises(BenchError, match="attached true_ar_baseline requires repo provenance metadata"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda summary: summary["true_ar_baseline"]["repo"].__setitem__("repo_root", "/tmp/other-repo"),
+            "objective metrics require attached true_ar_baseline.repo.repo_root to match summary repo_root",
+        ),
+        (
+            lambda summary: summary["true_ar_baseline"]["repo"].__setitem__("git_commit", "other-commit"),
+            "objective metrics require attached true_ar_baseline.repo.git_commit to match summary git_commit",
+        ),
+        (
+            lambda summary: summary["repo"].__setitem__("git_commit", None),
+            "objective metrics require summary and attached true_ar_baseline repo git_commit to be non-empty strings",
+        ),
+        (
+            lambda summary: summary["true_ar_baseline"]["repo"].__setitem__("git_commit", None),
+            "objective metrics require summary and attached true_ar_baseline repo git_commit to be non-empty strings",
+        ),
+    ],
+)
+def test_objective_metrics_for_budget_rejects_attached_true_ar_repo_mismatch(
+    tmp_path: Path,
+    mutate,
+    message: str,
+) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    mutate(summary)
+
+    with pytest.raises(BenchError, match=message):
         objective_metrics_for_budget(summary, "b1")
 
 

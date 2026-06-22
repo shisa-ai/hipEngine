@@ -118339,3 +118339,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 85: validate same-repo true-AR provenance
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 85.
+- Focused same-repo provenance contract: objective true-AR denominators must come from the same repo root/commit as the MTP summary, not merely carry standalone repo metadata.
+
+### Change
+- Added `validate_attached_true_ar_repo_matches_summary()` in `scripts/gguf_mtp_category_bench.py`.
+- `objective_metrics_for_budget()` now requires:
+  - attached `true_ar_baseline.repo.repo_root` matches summary `repo.repo_root`;
+  - summary and attached true-AR `git_commit` are non-empty strings;
+  - attached true-AR `git_commit` matches summary `git_commit`.
+- Branch, dirty, and untracked-count fields remain provenance-only and are not required to match.
+- Test true-AR fixture writer now stamps live `repo_provenance()` by default so generated summaries and attached baselines share repo provenance.
+- Added regressions for attached repo-root mismatch, attached commit mismatch, null summary commit, and null attached true-AR commit.
+- Updated `docs/BENCHMARK.md` to document same-repo root/commit validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

@@ -214,6 +214,17 @@ def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str
     return {field: repo.get(field) for field in REPO_PROVENANCE_FIELDS}
 
 
+def validate_attached_true_ar_repo_matches_summary(summary_repo: dict[str, Any], true_ar_repo: dict[str, Any]) -> None:
+    if true_ar_repo["repo_root"] != summary_repo["repo_root"]:
+        raise BenchError("objective metrics require attached true_ar_baseline.repo.repo_root to match summary repo_root")
+    summary_commit = summary_repo.get("git_commit")
+    true_ar_commit = true_ar_repo.get("git_commit")
+    if not isinstance(summary_commit, str) or not summary_commit or not isinstance(true_ar_commit, str) or not true_ar_commit:
+        raise BenchError("objective metrics require summary and attached true_ar_baseline repo git_commit to be non-empty strings")
+    if true_ar_commit != summary_commit:
+        raise BenchError("objective metrics require attached true_ar_baseline.repo.git_commit to match summary git_commit")
+
+
 def canonical_mtp_budget_label(budget_label: str | int) -> str:
     if type(budget_label) is bool:
         raise BenchError(f"objective budget must be a positive MTP budget label like b5, got {budget_label!r}")
@@ -1411,7 +1422,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     label = canonical_mtp_budget_label(budget_label)
     summary_artifact = validate_category_summary_schema(summary, label="objective summary")
     claim_flags = validate_claim_flags(summary, label="objective summary")
-    validate_repo_provenance(summary, label="objective summary")
+    summary_repo = validate_repo_provenance(summary, label="objective summary")
     summary_prompts = validate_summary_prompt_metadata(summary, label="objective summary")
     if summary.get("true_ar_comparison_available") is not True:
         raise BenchError("objective metrics require true_ar_comparison_available=true")
@@ -1420,7 +1431,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         raise BenchError("objective metrics require an attached true_ar_baseline")
     validate_attached_true_ar_baseline_flags(true_ar)
     true_ar_artifact = validate_attached_true_ar_artifact_schema(true_ar, label="attached true_ar_baseline")
-    validate_repo_provenance(true_ar, label="attached true_ar_baseline")
+    true_ar_repo = validate_repo_provenance(true_ar, label="attached true_ar_baseline")
+    validate_attached_true_ar_repo_matches_summary(summary_repo, true_ar_repo)
     summary_commands = validate_command_provenance(summary, label="objective summary")
     true_ar_commands = validate_command_provenance(true_ar, label="attached true_ar_baseline")
     true_ar_protocol = validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline")

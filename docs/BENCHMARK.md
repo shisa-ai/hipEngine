@@ -183,11 +183,13 @@ acceptance loops.
    artifacts without current schema/kind metadata (schema fields must be strict
    JSON integers, not booleans), explicit true-no-MTP / same-prompt-suite /
    same-timing-protocol true-AR flags, a same-protocol true-AR
-   baseline, repo provenance, command provenance, summary prompt/category
+   baseline, repo provenance including matching summary / attached true-AR
+   `repo_root` and non-null `git_commit`, command provenance, summary prompt/category
    provenance including strict prompt fixture and raw row identity typing,
    default prompt hashes/categories/lengths plus category budget-row scalar fields, strict JSON-integer token counts and prompt counts
    (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
-   fields, repo provenance including strict integer `git_untracked_count`,
+   fields, repo provenance including strict integer `git_untracked_count` and
+   same-repo root/commit checks between the summary and attached true-AR baseline,
    protocol provenance including attached true-AR protocol self-normalization and
    summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`
    prompt identity and hash typing, and true-AR finite-logit
