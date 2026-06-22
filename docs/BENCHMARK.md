@@ -137,8 +137,10 @@ acceptance loops.
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, boolean `performance_claim=false`,
    boolean `speed_claim_eligible=false`, `splits.full`,
-   `splits.train`, and `splits.heldout`; `splits.contract.heldout_ids` must be
-   the fixed set `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,
+   `splits.train`, and `splits.heldout`; split contract and per-split
+   `prompt_ids` lists must contain strict non-empty strings,
+   `splits.contract.heldout_ids` must be the fixed set
+   `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,
    `train_ids` must be the default full-minus-heldout complement, and each split
    `prompt_ids` list must match its `splits.contract` counterpart. Markdown tables must label the old
    verifier-derived denominator as `vs verifier off`; same-protocol speed ratios
@@ -193,8 +195,8 @@ acceptance loops.
    `draft_acceptance`, positive `decode_ms`, finite non-negative
    `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`, each with a
    positive prompt count matching the
-   split `prompt_ids` length, split `prompt_ids` matching `splits.contract`,
-   count-derived split acceptance ratios, and the fixed heldout/train split described above.
+   split `prompt_ids` length, strict string split `prompt_ids` matching
+   `splits.contract`, count-derived split acceptance ratios, and the fixed heldout/train split described above.
    Train+heldout split aggregate counts and `decode_ms` must sum back to the
    full split for both MTP rows and attached true-AR rows, so forged split
    payloads cannot pass by preserving only local ratios.

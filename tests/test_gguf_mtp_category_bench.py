@@ -782,6 +782,23 @@ def test_objective_metrics_for_budget_canonicalizes_numeric_string_budget(tmp_pa
     assert metrics["budget"] == "b1"
 
 
+def test_objective_metrics_for_budget_rejects_non_string_contract_prompt_id(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["contract"]["train_ids"][0] = True
+
+    with pytest.raises(BenchError, match=r"splits.contract.train_ids\[0\] must be a non-empty string"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_non_string_split_prompt_id(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["train"]["prompt_ids"] = list(summary["splits"]["train"]["prompt_ids"])
+    summary["splits"]["train"]["prompt_ids"][0] = True
+
+    with pytest.raises(BenchError, match=r"splits.train.prompt_ids\[0\] must be a non-empty string"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_populate_objective_metrics_rejects_unexpected_total_label(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["totals"]["banana"] = dict(summary["totals"]["b1"])
@@ -1231,7 +1248,7 @@ def test_objective_metrics_for_budget_rejects_missing_split_prompt_ids(tmp_path:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     del summary["splits"]["full"]["prompt_ids"]
 
-    with pytest.raises(BenchError, match="objective metrics require splits.full.prompt_ids to match splits.contract.full_ids"):
+    with pytest.raises(BenchError, match="splits.full.prompt_ids requires a non-empty prompt id list"):
         objective_metrics_for_budget(summary, "b1")
 
 

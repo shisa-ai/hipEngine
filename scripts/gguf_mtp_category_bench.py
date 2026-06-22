@@ -261,6 +261,17 @@ def validate_sha256_hex(value: Any, *, label: str) -> str:
     return value.lower()
 
 
+def validate_prompt_id_list(value: Any, *, label: str) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise BenchError(f"{label} requires a non-empty prompt id list")
+    out: list[str] = []
+    for index, prompt_id in enumerate(value):
+        if not isinstance(prompt_id, str) or not prompt_id:
+            raise BenchError(f"{label}[{index}] must be a non-empty string")
+        out.append(prompt_id)
+    return out
+
+
 def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> dict[str, Any]:
     prompts = summary.get("prompts")
     if not isinstance(prompts, list) or not prompts:
@@ -306,7 +317,7 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
             raise BenchError(f"{label} requires non-empty category metrics for {category}")
     split_contract = (summary.get("splits") or {}).get("contract") if isinstance(summary.get("splits"), dict) else None
     if isinstance(split_contract, dict) and "full_ids" in split_contract:
-        full_ids = [str(prompt_id) for prompt_id in split_contract.get("full_ids") or []]
+        full_ids = validate_prompt_id_list(split_contract.get("full_ids"), label=f"{label} splits.contract.full_ids")
         if prompt_ids != full_ids:
             raise BenchError(f"{label} prompt ids must match splits.contract.full_ids")
     return {
@@ -1280,15 +1291,15 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     if contract.get("full_suite_matches_default") is not True:
         raise BenchError("objective metrics require the full default mtp-bench category prompt suite")
     expected_full_ids = list(DEFAULT_FULL_PROMPT_IDS)
-    actual_full_ids = [str(prompt_id) for prompt_id in contract.get("full_ids") or []]
+    actual_full_ids = validate_prompt_id_list(contract.get("full_ids"), label="splits.contract.full_ids")
     if actual_full_ids != expected_full_ids:
         raise BenchError("objective metrics require splits.contract.full_ids to match the default full prompt order")
     expected_heldout_ids = [prompt_id for prompt_id in expected_full_ids if prompt_id in DEFAULT_HELDOUT_PROMPT_IDS]
-    actual_heldout_ids = [str(prompt_id) for prompt_id in contract.get("heldout_ids") or []]
+    actual_heldout_ids = validate_prompt_id_list(contract.get("heldout_ids"), label="splits.contract.heldout_ids")
     if actual_heldout_ids != expected_heldout_ids:
         raise BenchError("objective metrics require the fixed default heldout prompt IDs")
     expected_train_ids = [prompt_id for prompt_id in expected_full_ids if prompt_id not in DEFAULT_HELDOUT_PROMPT_IDS]
-    actual_train_ids = [str(prompt_id) for prompt_id in contract.get("train_ids") or []]
+    actual_train_ids = validate_prompt_id_list(contract.get("train_ids"), label="splits.contract.train_ids")
     if actual_train_ids != expected_train_ids:
         raise BenchError("objective metrics require train prompt IDs to be the default full-minus-heldout complement")
     validate_default_prompt_fixture_metadata(summary_prompts)
@@ -1309,8 +1320,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "summary_commands": summary_commands,
         "true_ar_commands": true_ar_commands,
         "true_ar_protocol": true_ar_protocol,
-        "heldout_ids": list(contract.get("heldout_ids", [])),
-        "train_ids": list(contract.get("train_ids", [])),
+        "heldout_ids": actual_heldout_ids,
+        "train_ids": actual_train_ids,
     }
     true_ar_splits = true_ar.get("splits")
     if not isinstance(true_ar_splits, dict):
@@ -1324,11 +1335,9 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         if not isinstance(split, dict):
             raise BenchError(f"objective metrics require splits.{split_name}")
         contract_key = split_contract_keys[split_name]
-        expected_split_ids = contract.get(contract_key)
-        if not isinstance(expected_split_ids, list) or not expected_split_ids:
-            raise BenchError(f"objective metrics require splits.contract.{contract_key}")
-        split_prompt_ids = split.get("prompt_ids")
-        if not isinstance(split_prompt_ids, list) or [str(prompt_id) for prompt_id in split_prompt_ids] != [str(prompt_id) for prompt_id in expected_split_ids]:
+        expected_split_ids = validate_prompt_id_list(contract.get(contract_key), label=f"splits.contract.{contract_key}")
+        split_prompt_ids = validate_prompt_id_list(split.get("prompt_ids"), label=f"splits.{split_name}.prompt_ids")
+        if split_prompt_ids != expected_split_ids:
             raise BenchError(f"objective metrics require splits.{split_name}.prompt_ids to match splits.contract.{contract_key}")
         split_prompt_count = len(split_prompt_ids)
         metrics = split.get("metrics")

@@ -118123,3 +118123,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 78: validate strict split prompt-id lists
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 78.
+- Focused split prompt provenance contract: split contract and per-split prompt-id lists must not pass validation through `str()` coercion of non-string values.
+
+### Change
+- Added `validate_prompt_id_list()` in `scripts/gguf_mtp_category_bench.py`.
+- `validate_summary_prompt_metadata()` now validates `splits.contract.full_ids` as a strict non-empty string list before comparing to summary prompt IDs.
+- `objective_metrics_for_budget()` now validates:
+  - `splits.contract.full_ids`;
+  - `splits.contract.train_ids`;
+  - `splits.contract.heldout_ids`;
+  - each split's `prompt_ids` list.
+- Objective output now returns validated `heldout_ids` and `train_ids` lists.
+- Added regressions for non-string `splits.contract.train_ids` and non-string `splits.train.prompt_ids` entries.
+- Updated the missing split prompt-id regression to expect the new strict helper error and updated `docs/BENCHMARK.md`.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
