@@ -226,10 +226,14 @@ python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
 
 For GGUF Qwen3.6, add the resident BF16-vs-INT8 logit gate. Short contexts are
 expected to pass via the BF16 mirror. Long contexts must pass with
-`--require-no-bf16-mirror`; the default admitted long layout is a hybrid
+`--require-no-bf16-mirror`; the default long diagnostic layout is a hybrid
 3-layer BF16 full-attention prefix plus 7 INT8 layers with effective FP32 scales,
 while pure INT8-only remains a diagnostic reproduction path behind
-`HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`:
+`HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`. The `4K` forced-long gate below
+is a quick guard; promotion of a 24GB `128K/128` row also requires the same gate
+at `--prompt-lengths 128K --decode-steps 128 --max-sequence-length 131202` (the
+2026-06-23 run rejected the 3-BF16/7-INT8 hybrid at `KL mean=3.849`, top-1
+`0.1628`):
 
 ```bash
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \

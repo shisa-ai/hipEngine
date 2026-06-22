@@ -19,7 +19,8 @@ Examples:
 
 ## 2026-06-23
 
-- [diagnostic capacity] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 24GB hybrid INT8 KV 128K/128: prior run timed out while lazily probing `hipcc --version` without `HIPENGINE_COMPILER_VERSION_FILE`; with compiler-version env guards set, run completes in `252s` at `756.715/66.053 tok/s`, final ID `13`, finite logits, tracked peak `23.291 GiB`; not a promoted README row pending long-context BF16-vs-hybrid quality evidence; `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`.
+- [diagnostic capacity] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / GPU1 24GB hybrid INT8 KV 128K/128: prior run timed out while lazily probing `hipcc --version` without `HIPENGINE_COMPILER_VERSION_FILE`; with compiler-version env guards set, run completes in `252s` at `756.715/66.053 tok/s`, final ID `13`, finite logits, tracked peak `23.291 GiB`; not a promoted README row, and the follow-up W7900 long quality gate rejected it; `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`.
+- [quality rejection] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 hybrid INT8 KV 128K/128: 3-BF16/7-INT8 hybrid quality gate fails vs BF16 (`KL mean=3.849`, `KL max=12.298`, top-1 `0.1628`, first mismatch at prefill) despite finite logits and no BF16 mirror; candidate peak `24.372 GiB` vs BF16 `24.985 GiB`; diagnostic remains unpromoted; `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`.
 
 ## 2026-06-22
 
