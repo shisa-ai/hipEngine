@@ -426,8 +426,22 @@ def test_speed_claim_contract_rejects_missing_summary_schema() -> None:
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_boolean_summary_schema() -> None:
+    summary = _speed_claim_summary(summary_overrides={"schema": True})
+
+    with pytest.raises(BenchError, match="speed-claim summary requires schema=1"):
+        validate_speed_claim_contract(summary)
+
+
 def test_speed_claim_contract_rejects_missing_attached_true_ar_schema() -> None:
     summary = _speed_claim_summary(drop_true_ar=("artifact_schema",))
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires schema=1"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_boolean_attached_true_ar_schema() -> None:
+    summary = _speed_claim_summary(true_ar_overrides={"artifact_schema": True})
 
     with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires schema=1"):
         validate_speed_claim_contract(summary)
@@ -2031,6 +2045,28 @@ def test_category_summary_rejects_true_ar_baseline_without_decode_tokens(tmp_pat
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match=r"protocol metadata missing fields: \['decode_tokens'\]"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_boolean_schema(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        schema=True,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR baseline artifact requires schema=1"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

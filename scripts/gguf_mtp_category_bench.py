@@ -140,7 +140,8 @@ def repo_provenance() -> dict[str, Any]:
 def validate_artifact_schema(payload: dict[str, Any], *, label: str, kind: str, schema: int) -> dict[str, Any]:
     if payload.get("kind") != kind:
         raise BenchError(f"{label} requires kind={kind!r}")
-    if payload.get("schema") != schema:
+    actual_schema = payload.get("schema")
+    if type(actual_schema) is not int or actual_schema != schema:
         raise BenchError(f"{label} requires schema={schema}")
     return {"schema": schema, "kind": kind}
 
