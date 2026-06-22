@@ -119809,3 +119809,48 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Retained as an accepted/output improvement. Focused default B5 moved `0.4872 -> 0.5000`; full category B5 moved `0.3902 -> 0.4253`; train/heldout/category metrics are non-regressive.
 - Next work should reduce the large candidate budget or implement true branch-specific MTP rows/KV so deeper top-k acceptance does not require counting every exposed sibling candidate.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 144: wider sibling top-k rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 144.
+- Tested whether broadening the generic exact-verification sibling top-k proposal beyond K10 improves honest B5 accepted/output. Temporary code allowed root/sibling top-k up to 50 and used the requested top-k candidate list size from draft logits.
+
+### Focused sweep
+```bash
+for k in 10 15 20 30 50; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 3 --sibling-topk-accept "$k" --output /tmp/hipengine-mtp-sibling-topk-${k}-iter144-b5-20.json
+done
+```
+- Focused B5 accepted/output: K10 `0.5000`, K15 `0.5238`, K20 `0.5238`, K30 `0.5238`, K50 `0.5238`.
+- K15 was best by candidate budget among the wider max-acceptance settings: K15 `22/1260`, K20 `22/1660`, K30 `22/2460`, K50 `22/4060`.
+- Root sweep with sibling K15 showed root K3 was still the best candidate-budget point among max-acceptance settings.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk3-sibling15-full-20260623-030856/raw --output /tmp/hipengine-rootk3-sibling15-full-20260623-030856/summary.json --extra-arg=--root-topk-accept --extra-arg=3 --extra-arg=--sibling-topk-accept --extra-arg=15
+```
+- Full accepted/output did **not** improve over current root-K3/sibling-K10: `0.425287` unchanged.
+- Train `0.354839` unchanged; heldout `0.506173` unchanged; categories code `0.285714`, general_en `0.512195`, general_ja `0.411765`, mixed_ja_en `0.534884` unchanged.
+- Draft acceptance regressed by candidate accounting: full `0.017209 -> 0.011746`.
+
+### Retained path check
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-iteration144-retained-b5-20.json
+# accepted_per_output=0.5000, accept_per_draft=0.0233, total_accepted=20/860, tokens_per_sec=13.78
+```
+- Temporary wider-top-k code was reverted before validation/commit.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: the temporary change only broadened generic draft top-k proposal width; no prompt/token/candidate-pattern hardcoding, no depth-specific target rescue, no fixture IDs, and no benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Wider sibling K improves the single focused France prompt but does not improve the full/train/heldout/category suite and worsens draft acceptance. Current default remains root-K3/sibling-K10 at focused B5 `0.5000` and full-suite B5 `0.4253` accepted/output.
