@@ -136,7 +136,7 @@ acceptance loops.
 3. **Optimization decisions use all three views.** Report full-suite, train, and
    heldout metrics for every budget:
 
-   - `accepted_per_output` and `draft_acceptance`;
+   - `accepted_per_output` and `draft_acceptance` (finite, bounded to [0, 1]);
    - `decode_tok_s_weighted`;
    - `mtp_vs_true_ar_decode_ratio`.
 
@@ -157,8 +157,8 @@ acceptance loops.
    artifacts without current schema/kind metadata, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt provenance,
    protocol provenance, and prompt-hash provenance. The returned JSON contains
-   full/train/heldout finite non-negative `accepted_per_output`,
-   `draft_acceptance`, `decode_tok_s_weighted`, and
+   full/train/heldout finite [0, 1] `accepted_per_output` and
+   `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and
    `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count. The gate
    also verifies each `mtp_vs_true_ar_decode_ratio` against the attached true-AR
    split `decode_tok_s_weighted` and matching split prompt count.

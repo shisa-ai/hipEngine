@@ -689,6 +689,22 @@ def test_objective_metrics_for_budget_rejects_negative_scalar_metric(tmp_path: P
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_accepted_per_output_over_one(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["full"]["metrics"]["b1"]["accepted_per_output"] = 1.01
+
+    with pytest.raises(BenchError, match="objective metrics require 0<= full.b1.accepted_per_output <=1"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_draft_acceptance_over_one(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["heldout"]["metrics"]["b1"]["draft_acceptance"] = 1.01
+
+    with pytest.raises(BenchError, match="objective metrics require 0<= heldout.b1.draft_acceptance <=1"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_non_positive_prompt_count(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["train"]["metrics"]["b1"]["prompts"] = 0

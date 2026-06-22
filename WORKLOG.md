@@ -117300,3 +117300,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 48: bound objective acceptance ratios
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 48.
+- Focused objective-scalar contract: guarded objective extraction must reject impossible acceptance ratios above 1.0.
+
+### Change
+- Added `finite_unit_interval_objective()` in `scripts/gguf_mtp_category_bench.py`.
+- `objective_metrics_for_budget()` now requires `accepted_per_output` and `draft_acceptance` to be finite values in `[0, 1]` for each full/train/heldout split.
+- Added regressions for `accepted_per_output > 1` and `draft_acceptance > 1` in summary JSON.
+- Updated `docs/BENCHMARK.md` to document bounded acceptance objective ratios.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 95 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

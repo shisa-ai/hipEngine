@@ -420,6 +420,13 @@ def finite_positive_objective(value: Any, *, label: str) -> float:
     return result
 
 
+def finite_unit_interval_objective(value: Any, *, label: str) -> float:
+    result = finite_nonnegative_objective(value, label=label)
+    if result > 1.0:
+        raise BenchError(f"objective metrics require 0<= {label} <=1")
+    return result
+
+
 def validate_metric_row(row: dict[str, Any]) -> None:
     metrics = row.get("metrics")
     if not isinstance(metrics, dict):
@@ -881,8 +888,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
                 f"objective metrics require {split_name}.{label}.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.splits.{split_name}"
             )
         out[split_name] = {
-            "accepted_per_output": finite_nonnegative_objective(row["accepted_per_output"], label=f"{split_name}.{label}.accepted_per_output"),
-            "draft_acceptance": finite_nonnegative_objective(row["draft_acceptance"], label=f"{split_name}.{label}.draft_acceptance"),
+            "accepted_per_output": finite_unit_interval_objective(row["accepted_per_output"], label=f"{split_name}.{label}.accepted_per_output"),
+            "draft_acceptance": finite_unit_interval_objective(row["draft_acceptance"], label=f"{split_name}.{label}.draft_acceptance"),
             "decode_tok_s_weighted": decode_tok_s,
             "mtp_vs_true_ar_decode_ratio": ratio,
             "prompts": prompts_count,
