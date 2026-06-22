@@ -423,6 +423,24 @@ def validate_true_ar_aggregate_row(row: dict[str, Any], *, label: str) -> dict[s
     }
 
 
+def validate_split_partition_sums(
+    rows: dict[str, dict[str, Any]],
+    *,
+    label: str,
+    count_fields: tuple[str, ...],
+) -> None:
+    full = rows.get("full")
+    train = rows.get("train")
+    heldout = rows.get("heldout")
+    if not isinstance(full, dict) or not isinstance(train, dict) or not isinstance(heldout, dict):
+        raise BenchError(f"objective metrics require {label} full/train/heldout rows")
+    for field in count_fields:
+        if full[field] != train[field] + heldout[field]:
+            raise BenchError(f"objective metrics require {label}.{field} train+heldout sum to match full")
+    if not math.isclose(full["decode_ms"], train["decode_ms"] + heldout["decode_ms"], rel_tol=1e-9, abs_tol=1e-12):
+        raise BenchError(f"objective metrics require {label}.decode_ms train+heldout sum to match full")
+
+
 def validate_true_ar_totals_consistency(true_ar: dict[str, Any]) -> dict[str, Any]:
     totals = true_ar.get("totals")
     if not isinstance(totals, dict):
@@ -1226,6 +1244,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     if not isinstance(true_ar_splits, dict):
         raise BenchError("objective metrics require attached true_ar_baseline.splits")
     full_budget_row: dict[str, Any] | None = None
+    mtp_split_rows: dict[str, dict[str, Any]] = {}
+    true_ar_split_rows: dict[str, dict[str, Any]] = {}
     split_contract_keys = {"full": "full_ids", "train": "train_ids", "heldout": "heldout_ids"}
     for split_name in ("full", "train", "heldout"):
         split = splits.get(split_name)
@@ -1310,6 +1330,14 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             raise BenchError(
                 f"objective metrics require {split_name}.{label}.mtp_vs_true_ar_decode_ratio to match attached true_ar_baseline.splits.{split_name}"
             )
+        mtp_split_rows[split_name] = {
+            "prompts": prompts_count,
+            "total_output_tokens": output,
+            "total_accepted": accepted,
+            "total_drafts": drafts,
+            "decode_ms": decode_ms,
+        }
+        true_ar_split_rows[split_name] = true_ar_split_row
         out[split_name] = {
             "accepted_per_output": accepted_per_output,
             "draft_acceptance": draft_acceptance,
@@ -1318,6 +1346,16 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             "prompts": prompts_count,
             "decode_ms": decode_ms,
         }
+    validate_split_partition_sums(
+        mtp_split_rows,
+        label=f"MTP splits.{label}",
+        count_fields=("prompts", "total_output_tokens", "total_accepted", "total_drafts"),
+    )
+    validate_split_partition_sums(
+        true_ar_split_rows,
+        label="attached true_ar_baseline.splits",
+        count_fields=("prompts", "total_output_tokens"),
+    )
     if full_budget_row is None:
         raise BenchError(f"objective metrics missing {label} for split full")
     out["summary_totals"] = validate_summary_budget_totals_consistency(

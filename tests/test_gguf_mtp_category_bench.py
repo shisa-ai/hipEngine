@@ -985,6 +985,18 @@ def test_objective_metrics_for_budget_rejects_true_ar_split_tps_mismatch(tmp_pat
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_true_ar_split_partition_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    true_ar_train = summary["true_ar_baseline"]["splits"]["train"]
+    true_ar_train["total_output_tokens"] += 10
+    true_ar_train["decode_tok_s_weighted"] = 1000.0 * true_ar_train["total_output_tokens"] / true_ar_train["decode_ms"]
+    split_row = summary["splits"]["train"]["metrics"]["b1"]
+    split_row["mtp_vs_true_ar_decode_ratio"] = split_row["decode_tok_s_weighted"] / true_ar_train["decode_tok_s_weighted"]
+
+    with pytest.raises(BenchError, match="attached true_ar_baseline.splits.total_output_tokens train\\+heldout sum to match full"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_true_ar_category_tps_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     category_row = summary["categories"]["code"]["b1"]
@@ -1132,6 +1144,17 @@ def test_objective_metrics_for_budget_rejects_split_mtp_tps_mismatch(tmp_path: P
     row["mtp_vs_true_ar_decode_ratio"] = 123.0 / summary["true_ar_baseline"]["splits"]["train"]["decode_tok_s_weighted"]
 
     with pytest.raises(BenchError, match="train.b1.decode_tok_s_weighted to match output/decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_mtp_split_partition_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    row = summary["splits"]["train"]["metrics"]["b1"]
+    row["total_accepted"] -= 1
+    row["accepted_per_output"] = row["total_accepted"] / row["total_output_tokens"]
+    row["draft_acceptance"] = row["total_accepted"] / row["total_drafts"]
+
+    with pytest.raises(BenchError, match="MTP splits.b1.total_accepted train\\+heldout sum to match full"):
         objective_metrics_for_budget(summary, "b1")
 
 

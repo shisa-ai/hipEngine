@@ -117838,3 +117838,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 68: validate split partition sums
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 68.
+- Focused split partition contract: deterministic train+heldout split rows must sum back to the full-suite row for both MTP numerator rows and attached true-AR denominator rows.
+
+### Change
+- Added `validate_split_partition_sums()` in `scripts/gguf_mtp_category_bench.py`.
+- Objective extraction now requires MTP `full` split aggregate fields to equal `train + heldout` sums for:
+  - `prompts`;
+  - `total_output_tokens`;
+  - `total_accepted`;
+  - `total_drafts`;
+  - `decode_ms`.
+- Objective extraction now requires attached true-AR `full` split aggregate fields to equal `train + heldout` sums for:
+  - `prompts`;
+  - `total_output_tokens`;
+  - `decode_ms`.
+- Added regressions for internally consistent forged MTP split acceptance counts and forged attached true-AR split output counts.
+- Updated `docs/BENCHMARK.md` to document train+heldout partition-sum validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

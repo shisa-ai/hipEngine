@@ -183,6 +183,9 @@ acceptance loops.
    positive prompt count matching the
    split `prompt_ids` length, split `prompt_ids` matching `splits.contract`,
    count-derived split acceptance ratios, and the fixed heldout/train split described above.
+   Train+heldout split aggregate counts and `decode_ms` must sum back to the
+   full split for both MTP rows and attached true-AR rows, so forged split
+   payloads cannot pass by preserving only local ratios.
    The gate also verifies each split and category
    `mtp_vs_true_ar_decode_ratio` against the attached true-AR
    split/category `decode_tok_s_weighted` and matching prompt count / prompt-id
