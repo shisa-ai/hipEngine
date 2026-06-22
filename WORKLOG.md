@@ -119249,3 +119249,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 122: add guarded category scalar objective CLI
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 122.
+- Focused acceptance-review harness readiness: expose per-category objective metrics through the guarded scalar CLI path instead of requiring ad-hoc JSON traversal.
+
+### Change
+- Added `--objective-category` for `--objective-summary-json` scalar mode.
+- `--objective-category` is mutually exclusive with `--objective-split` and must be paired with `--objective-field`.
+- Category scalar output still calls `objective_metrics_for_budget()` first, so verifier-only summaries, partial prompt suites, missing true-AR provenance, malformed split/category metrics, and default heldout/full-suite violations remain rejected before any scalar is printed.
+- Added CLI coverage for category scalar output and scalar selector misuse.
+- Updated `docs/BENCHMARK.md` with a per-category monitor example and selector rules.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no raw metric schema changes, no acceptance computation semantics changes, no objective extraction formula changes, no true-AR baseline eligibility changes, no speed-claim promotion changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

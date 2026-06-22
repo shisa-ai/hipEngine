@@ -227,7 +227,7 @@ acceptance loops.
    caught before any compare decision.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
-   and request one split/field explicitly:
+   and request one split/field or category/field explicitly:
 
    ```bash
    # Primary acceptance metric candidate: full-suite B5 accepted/output.
@@ -250,9 +250,18 @@ acceptance loops.
      --objective-budget b5 \
      --objective-split full \
      --objective-field mtp_vs_true_ar_decode_ratio
+
+   # Per-category monitor: reject aggregate gains that hide category regressions.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-category code \
+     --objective-field accepted_per_output
    ```
 
-   Scalar mode still calls the guarded objective extractor first; it is not a way
+   `--objective-split` and `--objective-category` are mutually exclusive scalar
+   selectors; either selector must be paired with `--objective-field`. Scalar
+   mode still calls the guarded objective extractor first; it is not a way
    to read verifier-derived `off`/`B0` telemetry or partial prompt suites. Any
    artifact that flips `speed_claim_eligible=true` must also pass this guarded
    extractor for every canonical positive `bN` MTP budget before the contract accepts it. Any artifact

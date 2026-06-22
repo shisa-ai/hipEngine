@@ -2125,10 +2125,15 @@ def main() -> int:
         help="With --objective-summary-json, print only one numeric metric from this split instead of JSON.",
     )
     parser.add_argument(
+        "--objective-category",
+        default=None,
+        help="With --objective-summary-json, print only one numeric metric from this category instead of JSON.",
+    )
+    parser.add_argument(
         "--objective-field",
         choices=("accepted_per_output", "draft_acceptance", "decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio"),
         default=None,
-        help="With --objective-split, print this numeric objective field as a scalar.",
+        help="With --objective-split or --objective-category, print this numeric objective field as a scalar.",
     )
     parser.add_argument(
         "--compare-baseline-summary-json",
@@ -2173,12 +2178,23 @@ def main() -> int:
     if args.objective_summary_json is not None:
         if args.objective_budget is None:
             raise BenchError("--objective-summary-json requires --objective-budget")
-        if (args.objective_split is None) != (args.objective_field is None):
+        if args.objective_split is not None and args.objective_category is not None:
+            raise BenchError("--objective-split and --objective-category are mutually exclusive")
+        if args.objective_split is not None and args.objective_field is None:
             raise BenchError("--objective-split and --objective-field must be provided together")
+        if args.objective_category is not None and args.objective_field is None:
+            raise BenchError("--objective-category and --objective-field must be provided together")
+        if args.objective_field is not None and args.objective_split is None and args.objective_category is None:
+            raise BenchError("--objective-field requires --objective-split or --objective-category")
         summary = json.loads(args.objective_summary_json.read_text(encoding="utf-8"))
         metrics = objective_metrics_for_budget(summary, args.objective_budget)
         if args.objective_split is not None and args.objective_field is not None:
             print(metrics[args.objective_split][args.objective_field])
+        elif args.objective_category is not None and args.objective_field is not None:
+            category_metrics = metrics.get("category_metrics")
+            if not isinstance(category_metrics, dict) or args.objective_category not in category_metrics:
+                raise BenchError(f"--objective-category not found in guarded metrics: {args.objective_category}")
+            print(category_metrics[args.objective_category][args.objective_field])
         else:
             print(json.dumps(metrics, indent=2, sort_keys=True))
         return 0
