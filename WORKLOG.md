@@ -116153,3 +116153,34 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 26 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 10: true-AR GPU smoke
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 10.
+- Validation-only readiness step: prove the new true no-MTP AR category producer works on the real GGUF model, not just dry-run.
+
+### Command
+```bash
+python3 scripts/gguf_true_ar_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --limit 1   --decode-tokens 1   --warmup-decode-tokens 0   --raw-root /tmp/hipengine-true-ar-category-smoke-20260622-132643   --output /tmp/hipengine-true-ar-category-smoke-20260622-132643/true-ar-baseline.json
+python3 -m json.tool /tmp/hipengine-true-ar-category-smoke-20260622-132643/true-ar-baseline.json
+```
+
+### Result
+- Artifact: `/tmp/hipengine-true-ar-category-smoke-20260622-132643/true-ar-baseline.json`.
+- Prompt: `code_merge_intervals`.
+- `decode_ms=49.95585698634386`, `decode_tok_s=20.017672808082626`, `output_tokens=1`.
+- `finite_final_logits=true`.
+- Artifact fields validated: `kind=hipengine_gguf_true_ar_category_baseline`, `true_autoregressive_path=true`, `same_prompt_suite=true`, `same_timing_protocol=true`, `prompt_metrics` length 1.
+
+### Guardrail status
+- Validation-only; no repo code changes, no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, and no kernel edits.
+- This is a smoke/provenance check, not a retained speed claim. Next step is attaching this baseline to a small MTP category smoke, then running full-suite true-AR + MTP category evidence.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 26 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
