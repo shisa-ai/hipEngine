@@ -405,6 +405,29 @@ def test_speed_claim_contract_rejects_missing_true_ar_protocol() -> None:
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_attached_protocol_without_decode_tokens() -> None:
+    protocol = dict(TEST_TRUE_AR_PROTOCOL)
+    del protocol["decode_tokens"]
+    summary = {
+        "speed_claim_eligible": True,
+        "repo": dict(TEST_REPO_PROVENANCE),
+        "commands": list(TEST_SUMMARY_COMMANDS),
+        "true_ar_baseline": {
+            "available": True,
+            "true_autoregressive_path": True,
+            "same_prompt_suite": True,
+            "same_timing_protocol": True,
+            "source": "future true AR harness artifact",
+            "repo": dict(TEST_REPO_PROVENANCE),
+            "commands": list(TEST_TRUE_AR_COMMANDS),
+            "protocol": protocol,
+        },
+    }
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline protocol metadata requires positive decode_tokens"):
+        validate_speed_claim_contract(summary)
+
+
 def _write_true_ar_baseline(
     path: Path,
     rows: list[dict],
@@ -418,6 +441,8 @@ def _write_true_ar_baseline(
     model: str = TEST_MODEL,
     prompt_file: str = TEST_PROMPTS,
     prompt_count: int | None = None,
+    decode_tokens: object = 10,
+    warmup_decode_tokens: object = 1,
 ) -> None:
     prompt_hashes = {str(prompt_id): prompt_sha256(text) for prompt_id, text in prompt_text_by_id.items()}
     metric_rows = []
@@ -434,11 +459,13 @@ def _write_true_ar_baseline(
         "model": model,
         "quant": "UD-Q4_K_M GGUF",
         "prompt_file": prompt_file,
-        "decode_tokens": 10,
-        "warmup_decode_tokens": 1,
         "prompt_count": len(prompt_text_by_id) if prompt_count is None else prompt_count,
         "prompt_metrics": metric_rows,
     }
+    if decode_tokens is not None:
+        payload["decode_tokens"] = decode_tokens
+    if warmup_decode_tokens is not None:
+        payload["warmup_decode_tokens"] = warmup_decode_tokens
     if include_prompt_hashes:
         payload["prompt_hashes"] = prompt_hashes
     if include_commands:
@@ -999,6 +1026,50 @@ def test_category_summary_rejects_true_ar_baseline_prompt_count_mismatch(tmp_pat
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match="true AR prompt_count mismatch"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_without_decode_tokens(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        decode_tokens=None,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match=r"protocol metadata missing fields: \['decode_tokens'\]"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_invalid_warmup_decode_tokens(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        warmup_decode_tokens=-1,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="requires non-negative warmup_decode_tokens"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

@@ -52,7 +52,7 @@ DEFAULT_HELDOUT_PROMPT_IDS = frozenset(
     }
 )
 REPO_PROVENANCE_FIELDS = ("repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count")
-TRUE_AR_PROTOCOL_FIELDS = ("model", "prompt_file", "prompt_count")
+TRUE_AR_PROTOCOL_FIELDS = ("model", "prompt_file", "prompt_count", "decode_tokens", "warmup_decode_tokens")
 
 
 class BenchError(RuntimeError):
@@ -186,6 +186,12 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
     artifact_prompt_count = artifact.get("prompt_count")
     if not isinstance(artifact_prompt_count, int) or artifact_prompt_count <= 0:
         raise BenchError("true AR baseline artifact protocol metadata requires positive prompt_count")
+    decode_tokens = artifact.get("decode_tokens")
+    if not isinstance(decode_tokens, int) or decode_tokens <= 0:
+        raise BenchError("true AR baseline artifact protocol metadata requires positive decode_tokens")
+    warmup_decode_tokens = artifact.get("warmup_decode_tokens")
+    if not isinstance(warmup_decode_tokens, int) or warmup_decode_tokens < 0:
+        raise BenchError("true AR baseline artifact protocol metadata requires non-negative warmup_decode_tokens")
     if artifact_prompt_count != prompt_count:
         raise BenchError(f"true AR prompt_count mismatch: {artifact_prompt_count} != {prompt_count}")
     model_normalized = normalize_protocol_path(model)
@@ -202,8 +208,8 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
         "quant": artifact.get("quant"),
         "prompt_file": prompt_file,
         "prompt_file_normalized": prompt_file_normalized,
-        "decode_tokens": artifact.get("decode_tokens"),
-        "warmup_decode_tokens": artifact.get("warmup_decode_tokens"),
+        "decode_tokens": decode_tokens,
+        "warmup_decode_tokens": warmup_decode_tokens,
         "prompt_count": artifact_prompt_count,
     }
 
@@ -218,14 +224,20 @@ def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -
     prompt_count = protocol.get("prompt_count")
     if not isinstance(prompt_count, int) or prompt_count <= 0:
         raise BenchError(f"{label} protocol metadata requires positive prompt_count")
+    decode_tokens = protocol.get("decode_tokens")
+    if not isinstance(decode_tokens, int) or decode_tokens <= 0:
+        raise BenchError(f"{label} protocol metadata requires positive decode_tokens")
+    warmup_decode_tokens = protocol.get("warmup_decode_tokens")
+    if not isinstance(warmup_decode_tokens, int) or warmup_decode_tokens < 0:
+        raise BenchError(f"{label} protocol metadata requires non-negative warmup_decode_tokens")
     return {
         "model": protocol["model"],
         "model_normalized": protocol["model_normalized"],
         "quant": protocol.get("quant"),
         "prompt_file": protocol["prompt_file"],
         "prompt_file_normalized": protocol["prompt_file_normalized"],
-        "decode_tokens": protocol.get("decode_tokens"),
-        "warmup_decode_tokens": protocol.get("warmup_decode_tokens"),
+        "decode_tokens": decode_tokens,
+        "warmup_decode_tokens": warmup_decode_tokens,
         "prompt_count": prompt_count,
     }
 

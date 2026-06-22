@@ -98,7 +98,8 @@ acceptance loops.
    `true_autoregressive_path=true`, `same_prompt_suite=true`, and
    `same_timing_protocol=true`; include non-empty `commands`; include `repo`
    code-state provenance; include protocol metadata (`model`, `prompt_file`,
-   `prompt_count`, plus decode-token fields); include top-level
+   `prompt_count`, positive `decode_tokens`, and non-negative
+   `warmup_decode_tokens`); include top-level
    `prompt_hashes`; and contain one `prompt_metrics[]` row per selected prompt
    with `prompt_sha256` plus positive `output_tokens` and `decode_ms`.
 
