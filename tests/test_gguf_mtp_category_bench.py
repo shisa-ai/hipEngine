@@ -1708,6 +1708,16 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_command_p
         objective_metrics_for_budget(summary, "b1")
 
 
+@pytest.mark.parametrize("source", [None, "", 123])
+def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_source_provenance(tmp_path: Path, source: object) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"]["source"] = source
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match="attached true_ar_baseline requires non-empty source provenance"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_partial_suite_even_with_present_category_heldouts(tmp_path: Path) -> None:
     baseline_path = tmp_path / "partial-true-ar.json"
     prompts = [

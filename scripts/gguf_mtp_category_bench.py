@@ -186,6 +186,13 @@ def validate_attached_true_ar_artifact_schema(true_ar: dict[str, Any], *, label:
     return validate_true_ar_artifact_schema(payload, label=label)
 
 
+def validate_attached_true_ar_source(true_ar: dict[str, Any], *, label: str) -> str:
+    source = true_ar.get("source")
+    if not isinstance(source, str) or not source:
+        raise BenchError(f"{label} requires non-empty source provenance")
+    return source
+
+
 def require_positive_int(value: Any, *, message: str) -> int:
     if type(value) is not int or value <= 0:
         raise BenchError(message)
@@ -1422,6 +1429,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     if true_ar.get("same_timing_protocol") is not True:
         raise BenchError("speed_claim_eligible=true requires true AR measured with the same timing protocol")
     validate_attached_true_ar_artifact_schema(true_ar, label="speed-claim true_ar_baseline")
+    validate_attached_true_ar_source(true_ar, label="speed-claim true_ar_baseline")
     validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_command_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_attached_true_ar_protocol(true_ar, label="speed-claim true_ar_baseline")
@@ -1456,6 +1464,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         raise BenchError("objective metrics require an attached true_ar_baseline")
     validate_attached_true_ar_baseline_flags(true_ar)
     true_ar_artifact = validate_attached_true_ar_artifact_schema(true_ar, label="attached true_ar_baseline")
+    true_ar_source = validate_attached_true_ar_source(true_ar, label="attached true_ar_baseline")
     true_ar_repo = validate_repo_provenance(true_ar, label="attached true_ar_baseline")
     validate_attached_true_ar_repo_matches_summary(summary_repo, true_ar_repo)
     summary_commands = validate_command_provenance(summary, label="objective summary")
@@ -1503,6 +1512,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "performance_claim": claim_flags["performance_claim"],
         "summary_artifact": summary_artifact,
         "true_ar_artifact": true_ar_artifact,
+        "true_ar_source": true_ar_source,
         "summary_repo": validate_repo_provenance(summary, label="objective summary"),
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "summary_prompts": summary_prompts,
@@ -1653,7 +1663,7 @@ def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
         raise BenchError("objective comparison requires attached true_ar_baseline metadata")
     return {
-        "source": true_ar.get("source"),
+        "source": validate_attached_true_ar_source(true_ar, label="attached true_ar_baseline"),
         "artifact": validate_attached_true_ar_artifact_schema(true_ar, label="attached true_ar_baseline"),
         "repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "commands": validate_command_provenance(true_ar, label="attached true_ar_baseline"),

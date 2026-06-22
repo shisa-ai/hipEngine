@@ -118528,3 +118528,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 92: require attached true-AR source provenance
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 92.
+- Focused artifact provenance contract: an available attached true-AR baseline must carry a strict non-empty `source` before objective extraction, speed-claim validation, or compare signatures use it.
+
+### Change
+- Added `validate_attached_true_ar_source()` for strict non-empty string source provenance.
+- `objective_metrics_for_budget()`, `validate_speed_claim_contract()`, and `true_ar_baseline_signature()` now require attached `true_ar_baseline.source` instead of allowing missing/empty/non-string source values.
+- Added regressions for `source=None`, `source=""`, and `source=123` on guarded objective extraction.
+- Updated `docs/BENCHMARK.md` to document strict attached true-AR source provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
