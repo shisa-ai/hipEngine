@@ -448,10 +448,10 @@ def main():
     parser.add_argument(
         "--sibling-topk-accept",
         type=int,
-        default=9,
+        default=8,
         help=(
             "Diagnostic tree proposal: accept a non-argmax sibling at the first deeper "
-            "mismatch when the target token is in the first K candidates (default: 9; use 1 for root-only top-k)."
+            "mismatch when the target token is in the first K candidates (default: 8; use 1 for root-only top-k)."
         ),
     )
     parser.add_argument(
