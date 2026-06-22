@@ -1156,7 +1156,7 @@ def raw_row_prompt_id(row: dict[str, Any], *, label: str) -> str:
         value = row.get(field)
         if value is None or value == "":
             continue
-        if not isinstance(value, str):
+        if not isinstance(value, str) or not value.strip():
             raise BenchError(f"{label} {field} must be a non-empty string")
         identities.append((field, value))
     if not identities:

@@ -438,6 +438,7 @@ def test_category_summary_rejects_duplicate_input_prompt_ids() -> None:
     ("row_update", "message"),
     [
         ({"prompt_id": 123}, r"budget b1 rows\[0\] prompt_id must be a non-empty string"),
+        ({"prompt_id": "   "}, r"budget b1 rows\[0\] prompt_id must be a non-empty string"),
         ({"suite_category": 123}, r"budget b1 rows\[0\] suite_category for code_1 must be a non-empty string"),
         ({"category": 123}, r"budget b1 rows\[0\] category for code_1 must be a non-empty string"),
     ],
