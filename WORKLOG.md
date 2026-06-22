@@ -118882,3 +118882,26 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 107: require non-blank in-memory prompt text
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 107.
+- Focused prompt summary-boundary provenance contract: in-memory prompt rows passed to `build_summary()` must contain non-whitespace prompt text before hashing, split construction, and raw aggregation.
+
+### Change
+- `validate_prompt_rows_for_summary()` now rejects prompt text that is empty after stripping whitespace.
+- Added a `build_summary()` regression for whitespace-only in-memory prompt text.
+- Updated `docs/BENCHMARK.md` to document non-blank in-memory prompt text in the summary contract.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no valid-row split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

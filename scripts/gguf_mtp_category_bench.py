@@ -1109,7 +1109,7 @@ def validate_prompt_rows_for_summary(prompts: list[dict[str, Any]], *, label: st
         if not isinstance(category, str) or not category:
             raise BenchError(f"{label} prompt {prompt_id}.category must be a non-empty string")
         prompt_text = row.get("prompt")
-        if not isinstance(prompt_text, str) or not prompt_text:
+        if not isinstance(prompt_text, str) or not prompt_text.strip():
             raise BenchError(f"{label} prompt {prompt_id}.prompt must be a non-empty string")
     return prompts
 
