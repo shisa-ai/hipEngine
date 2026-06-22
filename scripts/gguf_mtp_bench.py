@@ -466,10 +466,11 @@ def main():
     parser.add_argument(
         "--root-tail-max-prev-accepted",
         type=int,
-        default=1,
+        default=-1,
         help=(
             "Diagnostic adaptive root policy: when non-negative, root candidates below rank 4 "
-            "are accepted only if the previous cycle accepted at most this many draft tokens (default: 1)."
+            "are accepted only if the previous cycle accepted at most this many draft tokens "
+            "(default: -1, disabled)."
         ),
     )
     parser.add_argument(

@@ -120640,3 +120640,50 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Sibling depth≤4 adds candidates but no focused/full/train/heldout/category accepted-output improvement, and draft acceptance regresses.
 - Current default remains branch-redraft adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.5025`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 165: ungated root tail retained under branch redraft
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 165.
+- Re-tested disabling the previous-accepted root-rank tail gate (`root_tail_max_prev_accepted=-1`) under the retained branch-redraft default. Branch redraft can reseed from an accepted root branch, so the original mixed_ja_en regression risk from ungated root-K5 needed re-evaluation.
+
+### Change retained
+- Changed the default `--root-tail-max-prev-accepted` from `1` to `-1` (disabled) while keeping `root_topk_accept=5`, `sibling_topk_accept=9`, `sibling_topk_max_depth=3`, and `topk_branch_redraft=true`.
+- The policy is generic rank/top-k + exact verification only; it does not inspect prompt text, token IDs, or fixture/category IDs.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-tail-max-prev-accepted -1 --output /tmp/hipengine-mtp-branch-redraft-ungated-root-tail-iter165-b5-20.json
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-ungated-root-tail-default-iter165-b5-20.json
+```
+- Focused accepted/output stayed `0.5000`.
+- Candidate accounting matched prior branch-redraft default: `20/682`, `accept_per_draft=0.0293`.
+- Branch/redraft counts matched (`6` branch accepts/redrafts; branch depths `{0: 4, 1: 2}`).
+- Default run after the code change printed `Root tail max previous accepted: -1`.
+- Diagnostic tok/s `13.44`, `speedup_vs_ar_visible=0.6946x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-ungated-root-tail-full-20260623-051351/raw --output /tmp/hipengine-branch-redraft-ungated-root-tail-full-20260623-051351/summary.json --extra-arg=--root-tail-max-prev-accepted --extra-arg=-1
+```
+- Full accepted/output improved over prior branch-redraft gated-root-tail default: `0.502488 -> 0.516908`.
+- Train non-regressive `0.454545 -> 0.454545`; heldout improved `0.560440 -> 0.587629`.
+- Per-category accepted/output improved/non-regressed: code `0.420290 -> 0.420290`, general_en `0.591837 -> 0.636364`, general_ja `0.487179 -> 0.487179`, mixed_ja_en `0.545455 -> 0.545455`.
+- Full draft acceptance improved `0.029040 -> 0.030703` (`101/3478 -> 107/3485`).
+- Diagnostic weighted decode tok/s `12.9009 -> 12.9666`, verifier-derived ratio `0.6488 -> 0.6560`. Still no true no-MTP AR speed claim retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: this disables a generic previous-acceptance root-tail gate under exact verification. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Retained. Current default is branch-redraft root-K5/sibling-K9/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5000`, full-suite B5 `0.5169`, heldout `0.5876`, categories non-regressive.
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-ungated-root-tail-category-gfx1151.json`.
