@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from scripts.gguf_mtp_category_bench import DEFAULT_HELDOUT_PROMPT_IDS, build_summary
+import pytest
+
+from scripts.gguf_mtp_category_bench import DEFAULT_HELDOUT_PROMPT_IDS, BenchError, build_summary, validate_speed_claim_contract
 
 
 def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: int, ar_ms: float, draft_ms: float) -> dict:
@@ -63,6 +65,13 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
         "required_for_speed_claims": "true_no_mtp_autoregressive_generation",
         "current_off_kind": "verifier_derived_from_b1_target_ar",
         "current_off_true_autoregressive_path": False,
+    }
+    assert summary["true_ar_baseline"] == {
+        "available": False,
+        "true_autoregressive_path": False,
+        "same_prompt_suite": False,
+        "same_timing_protocol": False,
+        "source": None,
     }
     assert summary["totals"]["off"]["baseline_kind"] == "verifier_derived_from_b1_target_ar"
     assert summary["totals"]["off"]["true_autoregressive_path"] is False
@@ -133,3 +142,34 @@ def test_category_summary_reports_train_heldout_and_full_suite_metrics() -> None
     assert summary["splits"]["train"]["metrics"]["b5"]["accepted_per_output"] == 0.1
     assert summary["splits"]["heldout"]["metrics"]["b5"]["accepted_per_output"] == 0.2
     assert summary["splits"]["full"]["metrics"]["b5"]["accepted_per_output"] == 0.14
+
+
+def test_speed_claim_contract_rejects_verifier_derived_ar_baseline() -> None:
+    summary = {
+        "speed_claim_eligible": True,
+        "true_ar_baseline": {
+            "available": False,
+            "true_autoregressive_path": False,
+            "same_prompt_suite": False,
+            "same_timing_protocol": False,
+            "source": None,
+        },
+    }
+
+    with pytest.raises(BenchError, match="true no-MTP autoregressive baseline"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
+    summary = {
+        "speed_claim_eligible": True,
+        "true_ar_baseline": {
+            "available": True,
+            "true_autoregressive_path": True,
+            "same_prompt_suite": True,
+            "same_timing_protocol": True,
+            "source": "future true AR harness artifact",
+        },
+    }
+
+    assert validate_speed_claim_contract(summary) is summary

@@ -115994,3 +115994,26 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 16 passed
 ```
 - Same command also ran as the loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 3: true-AR speed-claim contract
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 3.
+- Focused readiness change before adding the GPU AR runner: make speed-claim eligibility machine-checkable.
+
+### Change
+- `scripts/gguf_mtp_category_bench.py` now emits `true_ar_baseline` metadata, currently marked unavailable/false.
+- Added `validate_speed_claim_contract(summary)`: an artifact cannot set `speed_claim_eligible=true` unless it also has a true no-MTP AR baseline with `true_autoregressive_path=true`, `same_prompt_suite=true`, and `same_timing_protocol=true`.
+- Added tests that reject verifier-derived AR promotion and accept future same-protocol true-AR metadata.
+
+### Guardrail status
+- No selector/proposal-policy changes; no token IDs, prompt text matching, candidate-pattern branches, or fixture shortcuts added.
+- This directly prevents re-promoting verifier-derived `off`/`B0` timings as retained MTP speed claims.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 18 passed
+```
+- Same command also ran as the loop guard; prompt verifier passed in `multiloop_measure`.

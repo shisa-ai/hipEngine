@@ -237,6 +237,28 @@ def build_split_summaries(prompts: list[dict[str, Any]], raw: dict[int, list[dic
     }
 
 
+def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
+    """Ensure speed-promotable artifacts contain a real AR baseline.
+
+    Verifier-derived ``off`` rows are useful economics telemetry, but they are
+    not an independently measured no-MTP autoregressive path. Keep this as a
+    machine-checkable invariant so future harness edits cannot accidentally flip
+    ``speed_claim_eligible`` back on without adding the true baseline evidence.
+    """
+    if not summary.get("speed_claim_eligible", False):
+        return summary
+    true_ar = summary.get("true_ar_baseline")
+    if not isinstance(true_ar, dict):
+        raise BenchError("speed_claim_eligible=true requires true_ar_baseline metadata")
+    if true_ar.get("true_autoregressive_path") is not True:
+        raise BenchError("speed_claim_eligible=true requires a true no-MTP autoregressive baseline")
+    if true_ar.get("same_prompt_suite") is not True:
+        raise BenchError("speed_claim_eligible=true requires true AR measured on the same prompt suite")
+    if true_ar.get("same_timing_protocol") is not True:
+        raise BenchError("speed_claim_eligible=true requires true AR measured with the same timing protocol")
+    return summary
+
+
 def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]], commands: list[str]) -> dict[str, Any]:
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
@@ -287,7 +309,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
 
     split_summaries = build_split_summaries(prompts, raw)
 
-    return {
+    summary = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_category_matrix",
         "status": "diagnostic_retained",
@@ -302,6 +324,13 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
             "required_for_speed_claims": "true_no_mtp_autoregressive_generation",
             "current_off_kind": "verifier_derived_from_b1_target_ar",
             "current_off_true_autoregressive_path": False,
+        },
+        "true_ar_baseline": {
+            "available": False,
+            "true_autoregressive_path": False,
+            "same_prompt_suite": False,
+            "same_timing_protocol": False,
+            "source": None,
         },
         "diagnostic_notes": [
             "Native GGUF-MTP category wrapper around scripts/gguf_mtp_bench.py.",
@@ -327,6 +356,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
             for row in prompts
         ],
     }
+    return validate_speed_claim_contract(summary)
 
 
 def write_markdown(summary: dict[str, Any], path: Path) -> None:
