@@ -191,6 +191,56 @@ def validate_command_provenance(payload: dict[str, Any], *, label: str) -> list[
     return out
 
 
+def validate_sha256_hex(value: Any, *, label: str) -> str:
+    if not isinstance(value, str) or len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value.lower()):
+        raise BenchError(f"{label} requires 64-character SHA-256 hex")
+    return value.lower()
+
+
+def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> dict[str, Any]:
+    prompts = summary.get("prompts")
+    if not isinstance(prompts, list) or not prompts:
+        raise BenchError(f"{label} requires non-empty prompt metadata")
+    prompt_ids: list[str] = []
+    prompt_hashes: dict[str, str] = {}
+    categories: list[str] = []
+    seen: set[str] = set()
+    for index, row in enumerate(prompts):
+        if not isinstance(row, dict):
+            raise BenchError(f"{label} prompts[{index}] must be an object")
+        prompt_id = row.get("id")
+        if not isinstance(prompt_id, str) or not prompt_id:
+            raise BenchError(f"{label} prompts[{index}] requires non-empty id")
+        if prompt_id in seen:
+            raise BenchError(f"{label} contains duplicate prompt id: {prompt_id}")
+        seen.add(prompt_id)
+        category = row.get("category")
+        if not isinstance(category, str) or not category:
+            raise BenchError(f"{label} prompt {prompt_id} requires non-empty category")
+        prompt_chars = row.get("prompt_chars")
+        if type(prompt_chars) is not int or prompt_chars <= 0:
+            raise BenchError(f"{label} prompt {prompt_id} requires positive prompt_chars")
+        prompt_hash = validate_sha256_hex(row.get("prompt_sha256"), label=f"{label} prompt {prompt_id}")
+        prompt_ids.append(prompt_id)
+        prompt_hashes[prompt_id] = prompt_hash
+        categories.append(category)
+
+    summary_categories = summary.get("categories")
+    if isinstance(summary_categories, dict) and set(categories) != set(map(str, summary_categories.keys())):
+        raise BenchError(f"{label} prompt categories do not match category summary keys")
+    split_contract = (summary.get("splits") or {}).get("contract") if isinstance(summary.get("splits"), dict) else None
+    if isinstance(split_contract, dict) and "full_ids" in split_contract:
+        full_ids = [str(prompt_id) for prompt_id in split_contract.get("full_ids") or []]
+        if prompt_ids != full_ids:
+            raise BenchError(f"{label} prompt ids must match splits.contract.full_ids")
+    return {
+        "prompt_count": len(prompt_ids),
+        "prompt_ids": prompt_ids,
+        "prompt_hashes": prompt_hashes,
+        "categories": sorted(set(categories)),
+    }
+
+
 def normalize_protocol_path(value: Any) -> str:
     path = Path(str(value)).expanduser()
     if not path.is_absolute():
@@ -698,6 +748,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     validate_category_summary_schema(summary, label="speed-claim summary")
     validate_repo_provenance(summary, label="speed-claim summary")
     validate_command_provenance(summary, label="speed-claim summary")
+    validate_summary_prompt_metadata(summary, label="speed-claim summary")
     true_ar = summary.get("true_ar_baseline")
     if not isinstance(true_ar, dict):
         raise BenchError("speed_claim_eligible=true requires true_ar_baseline metadata")
@@ -727,6 +778,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         raise BenchError(f"objective budget must be an MTP budget label like b5, got {budget_label!r}")
     summary_artifact = validate_category_summary_schema(summary, label="objective summary")
     validate_repo_provenance(summary, label="objective summary")
+    summary_prompts = validate_summary_prompt_metadata(summary, label="objective summary")
     if summary.get("true_ar_comparison_available") is not True:
         raise BenchError("objective metrics require true_ar_comparison_available=true")
     true_ar = summary.get("true_ar_baseline")
@@ -755,6 +807,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "true_ar_artifact": true_ar_artifact,
         "summary_repo": validate_repo_provenance(summary, label="objective summary"),
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
+        "summary_prompts": summary_prompts,
         "summary_commands": summary_commands,
         "true_ar_commands": true_ar_commands,
         "true_ar_protocol": true_ar_protocol,

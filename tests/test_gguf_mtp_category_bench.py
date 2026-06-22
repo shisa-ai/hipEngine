@@ -54,6 +54,14 @@ TEST_ATTACHED_TRUE_AR_ARTIFACT = {
     "artifact_schema": 1,
     "artifact_kind": "hipengine_gguf_true_ar_category_baseline",
 }
+TEST_SUMMARY_PROMPTS = [
+    {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "prompt_chars": len("write code"),
+        "prompt_sha256": prompt_sha256("write code"),
+    }
+]
 
 
 def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: int, ar_ms: float, draft_ms: float) -> dict:
@@ -340,6 +348,7 @@ def _speed_claim_summary(
         **TEST_SUMMARY_ARTIFACT,
         "repo": dict(TEST_REPO_PROVENANCE),
         "commands": list(TEST_SUMMARY_COMMANDS),
+        "prompts": [dict(row) for row in TEST_SUMMARY_PROMPTS],
         "true_ar_baseline": true_ar,
     }
     if summary_overrides:
@@ -381,6 +390,21 @@ def test_speed_claim_contract_rejects_missing_attached_true_ar_schema() -> None:
     summary = _speed_claim_summary(drop_true_ar=("artifact_schema",))
 
     with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires schema=1"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_missing_prompt_metadata() -> None:
+    summary = _speed_claim_summary(drop_summary=("prompts",))
+
+    with pytest.raises(BenchError, match="speed-claim summary requires non-empty prompt metadata"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_bad_prompt_hash() -> None:
+    summary = _speed_claim_summary()
+    summary["prompts"][0]["prompt_sha256"] = "not-a-sha"
+
+    with pytest.raises(BenchError, match="speed-claim summary prompt code_merge_intervals requires 64-character SHA-256 hex"):
         validate_speed_claim_contract(summary)
 
 
@@ -577,6 +601,9 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["true_ar_artifact"] == {"schema": 1, "kind": "hipengine_gguf_true_ar_category_baseline"}
     assert metrics["summary_commands"] == TEST_SUMMARY_COMMANDS
     assert metrics["true_ar_commands"] == TEST_TRUE_AR_COMMANDS
+    assert metrics["summary_prompts"]["prompt_count"] == 10
+    assert metrics["summary_prompts"]["prompt_ids"] == list(DEFAULT_FULL_PROMPT_IDS)
+    assert metrics["summary_prompts"]["prompt_hashes"]["code_merge_intervals"] == prompt_sha256(load_prompt_rows(DEFAULT_PROMPTS)[0]["prompt"])
     assert metrics["true_ar_protocol"]["model"] == TEST_MODEL
     assert metrics["true_ar_protocol"]["quant"] == "UD-Q4_K_M GGUF"
     assert metrics["true_ar_protocol"]["quant_normalized"] == "UD-Q4_K_M GGUF"
@@ -619,6 +646,30 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_schema(tm
     summary["objectives"] = {}
 
     with pytest.raises(BenchError, match="attached true_ar_baseline requires schema=1"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_summary_prompt_metadata(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["prompts"]
+
+    with pytest.raises(BenchError, match="objective summary requires non-empty prompt metadata"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_bad_summary_prompt_hash(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["prompts"][0]["prompt_sha256"] = "0" * 63
+
+    with pytest.raises(BenchError, match="objective summary prompt code_merge_intervals requires 64-character SHA-256 hex"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_summary_prompt_id_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["prompts"][0]["id"] = "renamed_prompt"
+
+    with pytest.raises(BenchError, match="objective summary prompt ids must match splits.contract.full_ids"):
         objective_metrics_for_budget(summary, "b1")
 
 

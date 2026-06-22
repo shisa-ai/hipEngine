@@ -121,8 +121,10 @@ acceptance loops.
 
    The summary must set `schema=1`,
    `kind=hipengine_gguf_mtp_category_matrix`, include non-empty `commands`,
-   and carry attached true-AR `artifact_schema`/`artifact_kind` plus `protocol`
-   metadata matching the MTP `model`, quant family, `prompt_file`, and prompt count,
+   include per-prompt metadata (`id`, `category`, positive `prompt_chars`, and
+   `prompt_sha256`) matching `splits.contract.full_ids`, and carry attached
+   true-AR `artifact_schema`/`artifact_kind` plus `protocol` metadata matching
+   the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
    `speed_claim_eligible=false`, `splits.full`,
    `splits.train`, and `splits.heldout`. Markdown tables must label the old
@@ -153,8 +155,8 @@ acceptance loops.
 
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
    artifacts without current schema/kind metadata, a same-protocol true-AR
-   baseline, repo provenance, command provenance, protocol provenance, and
-   prompt-hash provenance. The returned JSON contains
+   baseline, repo provenance, command provenance, summary prompt provenance,
+   protocol provenance, and prompt-hash provenance. The returned JSON contains
    full/train/heldout `accepted_per_output`, `draft_acceptance`,
    `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.
 

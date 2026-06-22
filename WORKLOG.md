@@ -117213,3 +117213,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 45: require summary prompt metadata
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 45.
+- Focused prompt-suite provenance contract: objective and future speed-claim artifacts must not pass without machine-checkable summary prompt metadata.
+
+### Change
+- Added `validate_summary_prompt_metadata()` in `scripts/gguf_mtp_category_bench.py`.
+- Objective extraction now requires `summary["prompts"]` rows with:
+  - non-empty `id`;
+  - non-empty `category`;
+  - positive integer `prompt_chars`;
+  - 64-character `prompt_sha256`.
+- Objective extraction also checks prompt IDs against `splits.contract.full_ids` when available and exposes canonical `summary_prompts` in objective output.
+- Future speed-claim validation now requires the same summary prompt metadata.
+- Added regressions for missing summary prompt metadata, malformed prompt hashes, prompt-ID/split mismatch, and speed-claim prompt metadata omissions.
+- Updated `docs/BENCHMARK.md` to document per-prompt summary metadata and summary prompt provenance as part of the guarded objective contract.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 86 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
