@@ -257,6 +257,9 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["true_ar_baseline"]["same_prompt_suite"] is True
     assert summary["true_ar_baseline"]["same_timing_protocol"] is True
     assert summary["true_ar_baseline"]["totals"]["decode_tok_s_weighted"] == 100.0
+    assert summary["objective_metrics_available"] is False
+    assert "heldout coverage" in summary["objective_metrics_blocker"]
+    assert summary["objectives"] == {}
     assert summary["totals"]["b1"]["true_ar_decode_tok_s_weighted"] == 100.0
     assert summary["totals"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((30.0 / 330.0 * 1000.0) / 100.0)
     assert summary["categories"]["code"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((10.0 / 110.0 * 1000.0) / 100.0)
@@ -298,6 +301,9 @@ def test_objective_metrics_for_budget_requires_true_ar_and_reports_splits(tmp_pa
 
     metrics = objective_metrics_for_budget(summary, 1)
 
+    assert summary["objective_metrics_available"] is True
+    assert summary["objective_metrics_blocker"] is None
+    assert summary["objectives"]["b1"] == metrics
     assert metrics["budget"] == "b1"
     assert metrics["true_ar_comparison_available"] is True
     assert metrics["speed_claim_eligible"] is False
@@ -323,6 +329,9 @@ def test_objective_metrics_for_budget_rejects_verifier_only_summary() -> None:
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
     summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
+    assert summary["objective_metrics_available"] is False
+    assert summary["objective_metrics_blocker"] == "true AR comparison is not attached"
+    assert summary["objectives"] == {}
     with pytest.raises(BenchError, match="true_ar_comparison_available=true"):
         objective_metrics_for_budget(summary, "b1")
 

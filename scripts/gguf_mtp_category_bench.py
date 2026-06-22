@@ -352,7 +352,7 @@ def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, di
             if label != "off":
                 row["mtp_vs_true_ar_decode_ratio"] = row["decode_tok_s_weighted"] / split_tps if split_tps else None
 
-    return validate_speed_claim_contract(summary)
+    return validate_speed_claim_contract(populate_objective_metrics(summary))
 
 
 def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
@@ -436,6 +436,25 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     return out
 
 
+def populate_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
+    """Populate top-level objective metrics when all guardrails are satisfied."""
+    summary["objective_metrics_available"] = False
+    summary["objective_metrics_blocker"] = None
+    summary["objectives"] = {}
+    labels = [label for label in summary.get("totals", {}) if str(label).startswith("b")]
+    for label in labels:
+        try:
+            summary["objectives"][label] = objective_metrics_for_budget(summary, label)
+        except BenchError as exc:
+            summary["objectives"] = {}
+            summary["objective_metrics_blocker"] = str(exc)
+            return summary
+    summary["objective_metrics_available"] = bool(labels)
+    if not labels:
+        summary["objective_metrics_blocker"] = "no MTP budget rows available"
+    return summary
+
+
 def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]], commands: list[str]) -> dict[str, Any]:
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
@@ -495,6 +514,9 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         "performance_claim": False,
         "speed_claim_eligible": False,
         "true_ar_comparison_available": False,
+        "objective_metrics_available": False,
+        "objective_metrics_blocker": "true AR comparison is not attached",
+        "objectives": {},
         "promotion_blocker": (
             "off/AR is derived from B1 target-verifier timing, not a true no-MTP "
             "autoregressive generation path. MTP speed promotion requires a separate "

@@ -116420,3 +116420,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 29 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 18: artifact objective bundle
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 18.
+- Focused harness-readiness change: make future optimize loops consume honest metrics directly from the category artifact.
+
+### Change
+- `scripts/gguf_mtp_category_bench.py` now populates top-level objective metadata:
+  - `objective_metrics_available`;
+  - `objective_metrics_blocker`;
+  - `objectives` keyed by budget label.
+- The bundle is populated from `objective_metrics_for_budget()` only when the required gates pass:
+  - true-AR comparison is attached;
+  - heldout covers all present categories;
+  - full/train/heldout budget rows contain `accepted_per_output`, `draft_acceptance`, `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.
+- Partial/smoke prompt subsets that do not cover the heldout categories remain diagnostic with `objective_metrics_available=false` and a blocker explaining why.
+- Tests assert objective bundle availability for a valid train+heldout mini-suite and unavailability for verifier-only/partial summaries.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 29 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
