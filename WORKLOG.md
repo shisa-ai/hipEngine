@@ -121207,3 +121207,50 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained. Current default is branch-redraft root-K8/sibling-K7/depth≤3 with ungated root tail and up to two branch redrafts: focused B5 `0.5652`, full-suite B5 `0.6047`, heldout `0.6491`, categories non-regressive.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-max2-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 178: max-3 branch redraft retained
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 178.
+- Tested allowing up to three exact-verified top-k branch accepts within a B-window under the retained branch-redraft root-K8 / sibling-K7 / depth≤3 / ungated-root-tail policy. The prior default allowed two top-k branches; this checks whether a third generic verified branch after redraft recovers more honest B5 acceptances.
+
+### Change retained
+- Changed `--topk-branch-redraft-max-branches` default from `2` to `3`.
+- The branch policy remains generic and exact-verified: each top-k branch must contain the target token in the draft top-k at the current depth; after a non-final branch, the remaining B-window is redrafted from the accepted target token. No prompt text, token IDs, candidate-token patterns, fixture/category IDs, or depth-specific rescues are used.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --topk-branch-redraft-max-branches 3 --output /tmp/hipengine-mtp-branch-redraft-max3-iter178-b5-20.json
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-max3-default-iter178-b5-20.json
+```
+- Focused accepted/output matched the prior max-2 default: `0.5652`.
+- Accepted drafts/candidates changed `26/629 -> 26/633`, `accept_per_draft 0.0413 -> 0.0411`.
+- Top-k branch accepts were `11`, with `3` multi-branch cycles and `1` triple-branch cycle; branch-depth starts `{0: 5, 1: 2}`.
+- Default run after the code change printed `Top-k branch redraft max branches: 3`.
+- Diagnostic default tok/s `11.69`, `speedup_vs_ar_visible=0.7106x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-max3-full-20260623-064021/raw --output /tmp/hipengine-branch-redraft-max3-full-20260623-064021/summary.json --extra-arg=--topk-branch-redraft-max-branches --extra-arg=3
+```
+- Full accepted/output improved over current max-2 default: `0.604743 -> 0.644128`.
+- Train improved `0.568345 -> 0.605263`; heldout improved `0.649123 -> 0.689922`.
+- Per-category accepted/output improved/non-regressed: code `0.529412 -> 0.550562`, general_en `0.649123 -> 0.733333`, general_ja `0.583333 -> 0.615385`, mixed_ja_en `0.682540 -> 0.692308`.
+- Full draft acceptance improved `0.047693 -> 0.054915` (`153/3208 -> 181/3296`); train `0.041361 -> 0.046677`; heldout `0.057011 -> 0.067170`.
+- Diagnostic weighted decode tok/s `13.5636 -> 13.5967`; verifier-derived ratio `0.6903 -> 0.6913`. Still no true no-MTP AR speed claim retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: this only increases the generic maximum number of exact-verified top-k branch redrafts per B-window. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Retained. Current default is branch-redraft root-K8/sibling-K7/depth≤3 with ungated root tail and up to three branch redrafts: focused B5 `0.5652`, full-suite B5 `0.6441`, heldout `0.6899`, categories non-regressive.
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-max3-category-gfx1151.json`.
