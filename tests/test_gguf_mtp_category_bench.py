@@ -508,6 +508,24 @@ def test_speed_claim_contract_rejects_attached_protocol_without_decode_tokens() 
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_boolean_repo_untracked_count() -> None:
+    repo = dict(TEST_REPO_PROVENANCE)
+    repo["git_untracked_count"] = True
+    summary = _speed_claim_summary(summary_overrides={"repo": repo})
+
+    with pytest.raises(BenchError, match="speed-claim summary repo provenance git_untracked_count must be a non-negative integer or null"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_boolean_attached_protocol_count() -> None:
+    protocol = dict(TEST_TRUE_AR_PROTOCOL)
+    protocol["prompt_count"] = True
+    summary = _speed_claim_summary(true_ar_overrides={"protocol": protocol})
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline protocol metadata requires positive prompt_count"):
+        validate_speed_claim_contract(summary)
+
+
 def _write_true_ar_baseline(
     path: Path,
     rows: list[dict],
@@ -1710,6 +1728,8 @@ def test_objective_metrics_for_budget_rejects_verifier_only_summary() -> None:
     [
         ({"decode_ms": float("nan")}, "non-finite timing"),
         ({"output_tokens": 0}, "positive output_tokens"),
+        ({"output_tokens": "10"}, "positive output_tokens"),
+        ({"warmup_decode_tokens": True}, "warmup_decode_tokens must match artifact warmup_decode_tokens"),
     ],
 )
 def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path, row_patch: dict, message: str) -> None:
@@ -2011,6 +2031,28 @@ def test_category_summary_rejects_true_ar_baseline_without_decode_tokens(tmp_pat
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match=r"protocol metadata missing fields: \['decode_tokens'\]"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_boolean_decode_tokens(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        decode_tokens=True,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR baseline artifact protocol metadata requires positive decode_tokens"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

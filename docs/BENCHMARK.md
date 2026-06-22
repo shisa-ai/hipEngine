@@ -182,7 +182,9 @@ acceptance loops.
    baseline, repo provenance, command provenance, summary prompt/category
    provenance including default prompt hashes/categories/lengths plus category
    budget-row scalar fields, strict JSON-integer token counts and prompt counts
-   (not booleans, floats, or strings), protocol provenance, prompt-hash provenance, and true-AR finite-logit
+   (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
+   fields, repo provenance including strict integer `git_untracked_count`,
+   protocol provenance, prompt-hash provenance, and true-AR finite-logit
    evidence. Scalar metric fields must be strict JSON numbers (not booleans or
    numeric strings). The returned JSON contains compact `category_metrics` rows
    plus full/train/heldout finite [0, 1] `accepted_per_output` and

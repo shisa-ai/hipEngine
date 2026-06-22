@@ -158,6 +158,18 @@ def validate_attached_true_ar_artifact_schema(true_ar: dict[str, Any], *, label:
     return validate_true_ar_artifact_schema(payload, label=label)
 
 
+def require_positive_int(value: Any, *, message: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise BenchError(message)
+    return value
+
+
+def require_nonnegative_int(value: Any, *, message: str) -> int:
+    if type(value) is not int or value < 0:
+        raise BenchError(message)
+    return value
+
+
 def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str, Any]:
     repo = payload.get("repo")
     if not isinstance(repo, dict):
@@ -174,8 +186,10 @@ def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str
     if repo.get("git_tracked_dirty") is not None and not isinstance(repo.get("git_tracked_dirty"), bool):
         raise BenchError(f"{label} repo provenance git_tracked_dirty must be a bool or null")
     if repo.get("git_untracked_count") is not None:
-        if not isinstance(repo.get("git_untracked_count"), int) or repo["git_untracked_count"] < 0:
-            raise BenchError(f"{label} repo provenance git_untracked_count must be a non-negative integer or null")
+        require_nonnegative_int(
+            repo.get("git_untracked_count"),
+            message=f"{label} repo provenance git_untracked_count must be a non-negative integer or null",
+        )
     return {field: repo.get(field) for field in REPO_PROVENANCE_FIELDS}
 
 
@@ -660,15 +674,18 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
     prompt_file = artifact.get("prompt_file")
     if not isinstance(prompt_file, str) or not prompt_file:
         raise BenchError("true AR baseline artifact protocol metadata requires non-empty prompt_file")
-    artifact_prompt_count = artifact.get("prompt_count")
-    if not isinstance(artifact_prompt_count, int) or artifact_prompt_count <= 0:
-        raise BenchError("true AR baseline artifact protocol metadata requires positive prompt_count")
-    decode_tokens = artifact.get("decode_tokens")
-    if not isinstance(decode_tokens, int) or decode_tokens <= 0:
-        raise BenchError("true AR baseline artifact protocol metadata requires positive decode_tokens")
-    warmup_decode_tokens = artifact.get("warmup_decode_tokens")
-    if not isinstance(warmup_decode_tokens, int) or warmup_decode_tokens < 0:
-        raise BenchError("true AR baseline artifact protocol metadata requires non-negative warmup_decode_tokens")
+    artifact_prompt_count = require_positive_int(
+        artifact.get("prompt_count"),
+        message="true AR baseline artifact protocol metadata requires positive prompt_count",
+    )
+    decode_tokens = require_positive_int(
+        artifact.get("decode_tokens"),
+        message="true AR baseline artifact protocol metadata requires positive decode_tokens",
+    )
+    warmup_decode_tokens = require_nonnegative_int(
+        artifact.get("warmup_decode_tokens"),
+        message="true AR baseline artifact protocol metadata requires non-negative warmup_decode_tokens",
+    )
     if artifact_prompt_count != prompt_count:
         raise BenchError(f"true AR prompt_count mismatch: {artifact_prompt_count} != {prompt_count}")
     model_normalized = normalize_protocol_path(model)
@@ -708,15 +725,18 @@ def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -
     for field in ("model", "model_normalized", "quant", "quant_normalized", "prompt_file", "prompt_file_normalized"):
         if not isinstance(protocol.get(field), str) or not protocol[field]:
             raise BenchError(f"{label} protocol metadata requires non-empty {field}")
-    prompt_count = protocol.get("prompt_count")
-    if not isinstance(prompt_count, int) or prompt_count <= 0:
-        raise BenchError(f"{label} protocol metadata requires positive prompt_count")
-    decode_tokens = protocol.get("decode_tokens")
-    if not isinstance(decode_tokens, int) or decode_tokens <= 0:
-        raise BenchError(f"{label} protocol metadata requires positive decode_tokens")
-    warmup_decode_tokens = protocol.get("warmup_decode_tokens")
-    if not isinstance(warmup_decode_tokens, int) or warmup_decode_tokens < 0:
-        raise BenchError(f"{label} protocol metadata requires non-negative warmup_decode_tokens")
+    prompt_count = require_positive_int(
+        protocol.get("prompt_count"),
+        message=f"{label} protocol metadata requires positive prompt_count",
+    )
+    decode_tokens = require_positive_int(
+        protocol.get("decode_tokens"),
+        message=f"{label} protocol metadata requires positive decode_tokens",
+    )
+    warmup_decode_tokens = require_nonnegative_int(
+        protocol.get("warmup_decode_tokens"),
+        message=f"{label} protocol metadata requires non-negative warmup_decode_tokens",
+    )
     return {
         "model": protocol["model"],
         "model_normalized": protocol["model_normalized"],
@@ -1041,12 +1061,14 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
             f"missing={missing}, extra={extra}, mismatched={mismatched}"
         )
 
-    expected_decode_tokens = artifact.get("decode_tokens")
-    if not isinstance(expected_decode_tokens, int) or expected_decode_tokens <= 0:
-        raise BenchError("true AR baseline artifact protocol metadata requires positive decode_tokens")
-    expected_warmup_decode_tokens = artifact.get("warmup_decode_tokens")
-    if not isinstance(expected_warmup_decode_tokens, int) or expected_warmup_decode_tokens < 0:
-        raise BenchError("true AR baseline artifact protocol metadata requires non-negative warmup_decode_tokens")
+    expected_decode_tokens = require_positive_int(
+        artifact.get("decode_tokens"),
+        message="true AR baseline artifact protocol metadata requires positive decode_tokens",
+    )
+    expected_warmup_decode_tokens = require_nonnegative_int(
+        artifact.get("warmup_decode_tokens"),
+        message="true AR baseline artifact protocol metadata requires non-negative warmup_decode_tokens",
+    )
     rows = artifact.get("prompt_metrics")
     if not isinstance(rows, list) or not rows:
         raise BenchError("true AR baseline artifact must contain non-empty prompt_metrics[]")
@@ -1070,13 +1092,17 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
             raise BenchError(f"true AR prompt hash mismatch for {prompt_id}: {row_hash!r} != {expected_hashes[prompt_id]!r}")
         if row.get("finite_final_logits") is not True:
             raise BenchError(f"true AR prompt_metrics row requires finite_final_logits=true for {prompt_id}")
-        output_tokens = int(row.get("output_tokens") or 0)
-        if output_tokens <= 0:
-            raise BenchError(f"true AR row for {prompt_id} must have positive output_tokens")
+        output_tokens = require_positive_int(
+            row.get("output_tokens"),
+            message=f"true AR row for {prompt_id} must have positive output_tokens",
+        )
         if output_tokens != expected_decode_tokens:
             raise BenchError(f"true AR row for {prompt_id} output_tokens must match artifact decode_tokens")
-        warmup_decode_tokens = row.get("warmup_decode_tokens")
-        if not isinstance(warmup_decode_tokens, int) or warmup_decode_tokens != expected_warmup_decode_tokens:
+        warmup_decode_tokens = require_nonnegative_int(
+            row.get("warmup_decode_tokens"),
+            message=f"true AR row for {prompt_id} warmup_decode_tokens must match artifact warmup_decode_tokens",
+        )
+        if warmup_decode_tokens != expected_warmup_decode_tokens:
             raise BenchError(f"true AR row for {prompt_id} warmup_decode_tokens must match artifact warmup_decode_tokens")
         decode_ms = finite_float(row.get("decode_ms"), prompt_id=prompt_id, field="true_ar.prompt_metrics[].decode_ms")
         if decode_ms <= 0.0:

@@ -118032,3 +118032,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 75: validate strict true-AR/provenance counts
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 75.
+- Focused true-AR/provenance count-field contract: exact-target and provenance metadata must not pass validation through boolean or string integer coercion outside the objective rows.
+
+### Change
+- Added `require_positive_int()` and `require_nonnegative_int()` in `scripts/gguf_mtp_category_bench.py`.
+- Applied strict integer validation to:
+  - repo `git_untracked_count`;
+  - true-AR artifact protocol `prompt_count`, `decode_tokens`, and `warmup_decode_tokens`;
+  - attached true-AR protocol `prompt_count`, `decode_tokens`, and `warmup_decode_tokens`;
+  - true-AR prompt-row `output_tokens` and `warmup_decode_tokens`.
+- Added regressions for:
+  - boolean repo `git_untracked_count`;
+  - boolean attached true-AR protocol `prompt_count`;
+  - string true-AR prompt-row `output_tokens`;
+  - boolean true-AR prompt-row `warmup_decode_tokens`;
+  - boolean top-level true-AR `decode_tokens`.
+- Updated `docs/BENCHMARK.md` to document strict true-AR protocol / prompt-row count fields and strict integer `git_untracked_count` provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 181 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
