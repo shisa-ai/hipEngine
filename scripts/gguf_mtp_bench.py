@@ -283,6 +283,26 @@ def llama_cpp_acceptance_from_target_samples(
     }
 
 
+def _draft_top1_prob(logits_row: np.ndarray) -> float:
+    """Compute the softmax probability of the argmax token."""
+    shifted = logits_row - logits_row.max()
+    exp = np.exp(shifted)
+    return float(exp.max() / exp.sum())
+
+
+def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[np.ndarray, np.ndarray]:
+    """Compute split-half RoPE cos/sin tables (mirrors qwen35_gguf_runner._rope_tables)."""
+    positions = np.arange(max_positions, dtype=np.float32)[:, None]
+    dims = np.arange(rotary_dim // 2, dtype=np.float32)[None, :]
+    inv_freq = np.power(np.float32(base), -2.0 * dims / np.float32(rotary_dim))
+    freqs = positions * inv_freq
+    cos_half = np.cos(freqs).astype(np.float32, copy=False)
+    sin_half = np.sin(freqs).astype(np.float32, copy=False)
+    cos = np.concatenate([cos_half, cos_half], axis=1).astype(np.float32, copy=False)
+    sin = np.concatenate([sin_half, sin_half], axis=1).astype(np.float32, copy=False)
+    return np.ascontiguousarray(cos), np.ascontiguousarray(sin)
+
+
 def main():
     parser = argparse.ArgumentParser(description="MTP speculative decoding benchmark")
     parser.add_argument("--model", default=GGUF_PATH, help="GGUF model path")
@@ -296,6 +316,15 @@ def main():
         help=(
             "Diagnostic only: replay llama.cpp-style prompt catch-up rows through the MTP block. "
             "Slow and currently not the default because the bulk target path does not expose all hidden rows."
+        ),
+    )
+    parser.add_argument(
+        "--draft-p-min",
+        type=float,
+        default=0.0,
+        help=(
+            "Stop drafting when the top-1 probability falls below this threshold "
+            "(llama.cpp --spec-draft-p-min, default 0.0 = always draft to n_max)."
         ),
     )
     args = parser.parse_args()
@@ -337,6 +366,13 @@ def main():
 
     token_embd_f32 = dq("token_embd.weight")
 
+    # Extract RoPE parameters from model metadata for the MTP draft attention.
+    rope_dim = int(meta.get("qwen35moe.rope.dimension_count", 64))
+    rope_base = float(meta.get("qwen35moe.rope.freq_base", 10000000.0))
+    _rope_cos, _rope_sin = _rope_tables(
+        max_positions=262144, rotary_dim=rope_dim, base=rope_base
+    )
+
     # Build chat-formatted prompt
     prompt = build_chat_prompt(tok, args.prompt)
 
@@ -349,7 +385,8 @@ def main():
     print(f"Raw shared_head ({sh_qtype.name}): {sh_raw.nbytes/1e6:.0f}MB")
 
     # Build GPU kernel args
-    def run_draft(hidden_seed, token_embed, *, return_hidden_seed: bool = False):
+    def run_draft(hidden_seed, token_embed, *, return_hidden_seed: bool = False,
+                   positions=None, rope_cos=None, rope_sin=None, rotary_dim=None):
         gpu_args = [
             hidden_seed, token_embed,
             get("blk.40.nextn.eh_proj.weight"), get("blk.40.nextn.hnorm.weight"),
@@ -375,6 +412,13 @@ def main():
             shared_head_qtype=sh_qtype,
             return_hidden_seed=return_hidden_seed,
         )
+        if positions is not None:
+            gpu_kwargs["positions"] = positions
+            gpu_kwargs["context_counts"] = np.arange(1, len(positions) + 1, dtype=np.int64)
+        if rope_cos is not None and rope_sin is not None:
+            gpu_kwargs["rope_cos"] = rope_cos
+            gpu_kwargs["rope_sin"] = rope_sin
+            gpu_kwargs["rotary_dim"] = rotary_dim or rope_dim
         result = gpu_kernel(*gpu_args, **gpu_kwargs)
         if return_hidden_seed:
             logits, next_hidden_seed = result
@@ -427,17 +471,15 @@ def main():
             )
 
         if args.mtp_context_replay:
-            prefill_result, prompt_hidden_seeds = serial_prefill_with_hidden_trace()
+            # Use bulk prefill (correct SSM state) instead of serial prefill
+            # (which has an SSM conv state bug: token 2493 'might' vs 303 'in').
+            prefill_result = session.prefill(prompt, return_logits=False, capture_hidden_seed_fp32=True)
             prev_token = int(prefill_result.token_id)
-
-            # llama.cpp catch-up decodes prompt tokens into the MTP context with
-            # the target hidden rows shifted right: row0 gets an all-zero
-            # pending_h, row i gets target_h[i-1].  Current-cycle draft()
-            # appends ``prev_token`` with the carried pending target hidden row.
-            mtp_context_tokens, mtp_context_hidden_rows = llama_cpp_mtp_catchup_rows(prompt, prompt_hidden_seeds)
-            pending_hidden_seed = np.ascontiguousarray(prompt_hidden_seeds[-1:], dtype=np.float32)
-            target_prefill_mode = "serial_hidden_trace"
-            mtp_context_mode = "llamacpp_prompt_catchup_replay"
+            pending_hidden_seed = copy_pending_hidden_seed()
+            mtp_context_tokens = []
+            mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
+            target_prefill_mode = "bulk_prefill_seed_only"
+            mtp_context_mode = "bulk_prefill_single_seed_replay"
         else:
             prefill_result = session.prefill(prompt, return_logits=False, capture_hidden_seed_fp32=True)
             prev_token = int(prefill_result.token_id)
@@ -446,6 +488,16 @@ def main():
             mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
             target_prefill_mode = "resident_default"
             mtp_context_mode = "single_seed_row"
+
+        # Track the current sequence position for draft model RoPE.
+        # After prefill, session.position = len(prompt). The first sampled
+        # token (prev_token) will be verified at this position.
+        seq_position = int(session.position)
+        # Positions of the committed MTP context tokens (for replay mode).
+        if args.mtp_context_replay:
+            mtp_context_positions = list(range(len(mtp_context_tokens)))
+        else:
+            mtp_context_positions: list[int] = []
 
         total_drafts = 0
         total_accepted = 0
@@ -462,55 +514,88 @@ def main():
             draft_top10_tokens = []
             replay_tokens = [cycle_prev_token]
             if args.mtp_context_replay:
-                # MTP draft(s). Reconstruct the llama.cpp draft context by
-                # replaying all committed MTP rows plus the current ``prev_token``
-                # seed row.  This is intentionally correctness/acceptance-first
-                # and slow: it avoids optimizing speed before accepted/output
-                # parity is understood.
-                replay_tokens = list(mtp_context_tokens) + [cycle_prev_token]
-                replay_hidden_rows = np.concatenate([mtp_context_hidden_rows, cycle_pending_hidden_seed], axis=0)
-                for draft_depth in range(args.draft_n_max):
-                    token_embed = np.ascontiguousarray(
-                        token_embd_f32[np.asarray(replay_tokens, dtype=np.int64)], dtype=np.float32
-                    )
-                    draft_logits, replay_next_hidden = run_draft(
-                        replay_hidden_rows,
-                        token_embed,
-                        return_hidden_seed=True,
-                    )
-                    # Top-k=10 greedy selection (llama.cpp contract).  The last
-                    # row is the row just decoded by the current draft depth.
-                    draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits[-1], k=10, draft_depth=draft_depth
-                    )
-                    draft_tokens.append(draft_token)
-                    draft_top10_tokens.append(top10_tokens)
-                    if draft_depth + 1 < args.draft_n_max:
-                        replay_tokens.append(draft_token)
-                        replay_hidden_rows = np.concatenate(
-                            [replay_hidden_rows, np.ascontiguousarray(replay_next_hidden[-1:], dtype=np.float32)],
-                            axis=0,
-                        )
-            else:
+                # Use the same sequential single-seed draft approach as non-replay.
+                # The batch replay approach (processing all committed MTP rows at
+                # once) produces wrong draft logits because the MTP layer's
+                # self-attention over synthetic catch-up rows doesn't match
+                # llama.cpp's sequential KV-cache build-up.
                 current_hidden_seed = cycle_pending_hidden_seed
                 current_token = cycle_prev_token
+                current_pos = seq_position
                 for draft_depth in range(args.draft_n_max):
                     token_embed = token_embd_f32[current_token:current_token + 1].copy()
                     need_next_seed = draft_depth + 1 < args.draft_n_max
+                    pos_arr = np.asarray([current_pos], dtype=np.int64)
+                    rope_cos_slice = _rope_cos[pos_arr]
+                    rope_sin_slice = _rope_sin[pos_arr]
                     if need_next_seed:
                         draft_logits, current_hidden_seed = run_draft(
                             current_hidden_seed,
                             token_embed,
                             return_hidden_seed=True,
+                            positions=pos_arr,
+                            rope_cos=rope_cos_slice,
+                            rope_sin=rope_sin_slice,
+                            rotary_dim=rope_dim,
                         )
                     else:
-                        draft_logits = run_draft(current_hidden_seed, token_embed)
+                        draft_logits = run_draft(
+                            current_hidden_seed,
+                            token_embed,
+                            positions=pos_arr,
+                            rope_cos=rope_cos_slice,
+                            rope_sin=rope_sin_slice,
+                            rotary_dim=rope_dim,
+                        )
                     draft_token, top10_tokens = select_topk_tokens(
                         draft_logits[0], k=10, draft_depth=draft_depth
                     )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
                     current_token = draft_token
+                    current_pos += 1
+                    if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
+                        if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
+                            break
+            else:
+                current_hidden_seed = cycle_pending_hidden_seed
+                current_token = cycle_prev_token
+                current_pos = seq_position
+                for draft_depth in range(args.draft_n_max):
+                    token_embed = token_embd_f32[current_token:current_token + 1].copy()
+                    need_next_seed = draft_depth + 1 < args.draft_n_max
+                    pos_arr = np.asarray([current_pos], dtype=np.int64)
+                    rope_cos_slice = _rope_cos[pos_arr]
+                    rope_sin_slice = _rope_sin[pos_arr]
+                    if need_next_seed:
+                        draft_logits, current_hidden_seed = run_draft(
+                            current_hidden_seed,
+                            token_embed,
+                            return_hidden_seed=True,
+                            positions=pos_arr,
+                            rope_cos=rope_cos_slice,
+                            rope_sin=rope_sin_slice,
+                            rotary_dim=rope_dim,
+                        )
+                    else:
+                        draft_logits = run_draft(
+                            current_hidden_seed,
+                            token_embed,
+                            positions=pos_arr,
+                            rope_cos=rope_cos_slice,
+                            rope_sin=rope_sin_slice,
+                            rotary_dim=rope_dim,
+                        )
+                    draft_token, top10_tokens = select_topk_tokens(
+                        draft_logits[0], k=10, draft_depth=draft_depth
+                    )
+                    draft_tokens.append(draft_token)
+                    draft_top10_tokens.append(top10_tokens)
+                    current_token = draft_token
+                    current_pos += 1
+                    if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
+                        if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
+                            break
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
 
@@ -557,6 +642,8 @@ def main():
                 context_append_tokens = [cycle_prev_token] + [int(token) for token in output_tokens[:-1]]
                 context_append_hidden_rows = [cycle_pending_hidden_seed] + target_hidden_seeds[:accepted_draft_tokens]
                 mtp_context_tokens.extend(context_append_tokens)
+                context_append_positions = [seq_position + i for i in range(len(context_append_tokens))]
+                mtp_context_positions.extend(context_append_positions)
                 mtp_context_hidden_rows = np.concatenate(
                     [mtp_context_hidden_rows, np.concatenate(context_append_hidden_rows, axis=0)],
                     axis=0,
@@ -567,6 +654,7 @@ def main():
             visible_output_tokens = int(acceptance["visible_output_tokens"])
             total_output_tokens += visible_output_tokens
             total_accepted += accepted_draft_tokens
+            seq_position += visible_output_tokens
             accepted = accepted_draft_tokens == len(draft_tokens)
 
             target_in_draft_top10 = []

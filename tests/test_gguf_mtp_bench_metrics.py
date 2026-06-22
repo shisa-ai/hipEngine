@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 
 from scripts.gguf_mtp_bench import (
+    _draft_top1_prob,
+    _rope_tables,
     compute_speculative_metrics,
     llama_cpp_acceptance_from_target_samples,
     llama_cpp_mtp_catchup_rows,
@@ -165,6 +167,26 @@ def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
 
     assert greedy == 1
     assert top3 == [1, 4, 3]
+
+
+def test_draft_top1_prob_matches_softmax_argmax_probability() -> None:
+    logits = np.array([0.0, 2.0, 1.0], dtype=np.float32)
+
+    prob = _draft_top1_prob(logits)
+
+    expected = float(np.exp(2.0) / (np.exp(0.0) + np.exp(2.0) + np.exp(1.0)))
+    assert prob == pytest.approx(expected)
+
+
+def test_rope_tables_use_split_half_layout() -> None:
+    cos, sin = _rope_tables(max_positions=3, rotary_dim=4, base=10_000.0)
+
+    assert cos.shape == (3, 4)
+    assert sin.shape == (3, 4)
+    np.testing.assert_allclose(cos[:, :2], cos[:, 2:])
+    np.testing.assert_allclose(sin[:, :2], sin[:, 2:])
+    np.testing.assert_allclose(cos[0], np.ones(4, dtype=np.float32))
+    np.testing.assert_allclose(sin[0], np.zeros(4, dtype=np.float32))
 
 
 def test_select_topk_tokens_has_no_input_conditioned_rerank_branches() -> None:

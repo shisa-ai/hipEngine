@@ -119404,3 +119404,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-23 — GGUF MTP h_nextn recurrence parity follow-up
+
+### Scope
+- Continued the `mtp-honest-acceptance/run-20260622-040027` investigation after the benchmark driver gained RoPE plumbing, `--draft-p-min`, and bulk-prefill seed replay diagnostics.
+- Focused on one llama.cpp semantic mismatch: the recurrent draft hidden row must be the post-`nextn.shared_head_norm` `h_nextn`, not the pre-head-norm post-FFN row.
+
+### Change
+- `qwen35_gguf_mtp_shared_head_logits_f32(..., return_normed_hidden=True)` now returns both logits and the post-`shared_head_norm` hidden row.
+- `qwen35_gguf_mtp_nextn_layer_logits_f32(..., return_hidden_seed=True)` now feeds back that `h_nextn` row, matching llama.cpp `src/models/qwen35.cpp` where `res->t_h_nextn` is set immediately after the shared-head RMSNorm and before LM-head projection.
+- Updated the hidden-seed contract test to assert the llama.cpp `h_nextn` row, and added small metric-driver tests for the new draft top-1 probability helper and split-half RoPE table helper.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_mtp_nextn_hidden_seed_contract.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+# passed
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-hnextn-b5-20.json
+# accept_per_draft=0.110, accepted_per_output=0.355, total_accepted=11/100, speedup_vs_ar_visible=0.676x
+```
+
+### Result
+- The h_nextn recurrence fix is a correctness/parity fix but did not move the 20-cycle France B5 diagnostic; the remaining gap is still the missing stateful llama.cpp-style MTP draft context/KV catch-up rather than only the within-cycle recurrent row.

@@ -1365,10 +1365,13 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
     *,
     eps: float = 1e-6,
     shared_head_qtype: "GGMLQuantizationType | None" = None,
-) -> np.ndarray:
+    return_normed_hidden: bool = False,
+) -> "np.ndarray | tuple[np.ndarray, np.ndarray]":
     """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_shared_head_logits``.
 
-    RMSNorm (GPU) + LM-head linear ``normed @ head_weight.T`` (GPU).
+    RMSNorm (GPU) + LM-head linear ``normed @ head_weight.T`` (GPU).  When
+    ``return_normed_hidden`` is true, also returns the post-``shared_head_norm``
+    row that llama.cpp exposes as ``h_nextn`` and feeds into the next draft step.
     """
 
     from hipengine.quant.gguf import GGMLQuantizationType
@@ -1439,6 +1442,10 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         runtime.device_synchronize()
         out = np.empty((rows, vocab), dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+        if return_normed_hidden:
+            normed = np.empty((rows, hidden_size), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(normed), normed_dev, runtime=runtime)
+            return out, np.ascontiguousarray(normed, dtype=np.float32)
         return out
     finally:
         for buf in buffers:
@@ -1533,13 +1540,14 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
         shared_qtype, experts_used=experts_used, expert_weights_scale=expert_weights_scale,
         eps=eps,
     )
-    logits = qwen35_gguf_mtp_shared_head_logits_f32(
+    head_result = qwen35_gguf_mtp_shared_head_logits_f32(
         ffn_out, shared_head_norm_weight, shared_head_weight, eps=eps,
-        shared_head_qtype=shared_head_qtype,
+        shared_head_qtype=shared_head_qtype, return_normed_hidden=return_hidden_seed,
     )
     if return_hidden_seed:
-        return logits, np.ascontiguousarray(ffn_out, dtype=np.float32)
-    return logits
+        logits, h_nextn = head_result
+        return logits, np.ascontiguousarray(h_nextn, dtype=np.float32)
+    return head_result
 
 
 
