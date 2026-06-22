@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import math
 import sys
 import time
 from datetime import datetime, timezone
@@ -125,18 +126,58 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
     ``accepted_draft_tokens / visible_output_token_count`` rather than dividing
     by verify-cycle count. This follows docs/MTP-gguf.md's denominator contract.
     """
-    verify_cycle_count = len(cycles)
-    total_drafts = sum(int(c.get("generated_draft_tokens", 1)) for c in cycles)
-    total_accepted = sum(int(c.get("accepted_draft_tokens", int(bool(c.get("accepted"))))) for c in cycles)
-    visible_output_tokens = sum(
-        int(c.get("visible_output_tokens", 1 + int(c.get("accepted_draft_tokens", int(bool(c.get("accepted")))))))
-        for c in cycles
-    )
-    total_cycle_ms = sum(float(c.get("ar_decode_ms", 0.0)) + float(c.get("mtp_draft_ms", 0.0)) for c in cycles)
-    total_ar_ms = sum(float(c.get("ar_decode_ms", 0.0)) for c in cycles)
-    total_draft_ms = sum(float(c.get("mtp_draft_ms", 0.0)) for c in cycles)
+    if not cycles:
+        raise ValueError("cycles must be non-empty")
 
-    accept_per_draft = total_accepted / total_drafts if total_drafts > 0 else 0.0
+    def require_int(cycle: dict, index: int, field: str, *, positive: bool = False) -> int:
+        if field not in cycle:
+            raise ValueError(f"cycles[{index}].{field} is required")
+        value = cycle[field]
+        if type(value) is not int:
+            raise ValueError(f"cycles[{index}].{field} must be an integer")
+        if positive and value <= 0:
+            raise ValueError(f"cycles[{index}].{field} must be positive")
+        if not positive and value < 0:
+            raise ValueError(f"cycles[{index}].{field} must be non-negative")
+        return value
+
+    def require_timing(cycle: dict, index: int, field: str) -> float:
+        if field not in cycle:
+            raise ValueError(f"cycles[{index}].{field} is required")
+        value = cycle[field]
+        if type(value) not in (int, float):
+            raise ValueError(f"cycles[{index}].{field} must be numeric")
+        result = float(value)
+        if not math.isfinite(result):
+            raise ValueError(f"cycles[{index}].{field} must be finite")
+        if result < 0.0:
+            raise ValueError(f"cycles[{index}].{field} must be non-negative")
+        return result
+
+    verify_cycle_count = len(cycles)
+    total_drafts = 0
+    total_accepted = 0
+    visible_output_tokens = 0
+    total_ar_ms = 0.0
+    total_draft_ms = 0.0
+    for index, cycle in enumerate(cycles):
+        if not isinstance(cycle, dict):
+            raise ValueError(f"cycles[{index}] must be an object")
+        generated_drafts = require_int(cycle, index, "generated_draft_tokens", positive=True)
+        accepted_drafts = require_int(cycle, index, "accepted_draft_tokens")
+        visible_output = require_int(cycle, index, "visible_output_tokens", positive=True)
+        if accepted_drafts > generated_drafts:
+            raise ValueError(f"cycles[{index}].accepted_draft_tokens must be <= generated_draft_tokens")
+        if accepted_drafts > visible_output:
+            raise ValueError(f"cycles[{index}].accepted_draft_tokens must be <= visible_output_tokens")
+        total_drafts += generated_drafts
+        total_accepted += accepted_drafts
+        visible_output_tokens += visible_output
+        total_ar_ms += require_timing(cycle, index, "ar_decode_ms")
+        total_draft_ms += require_timing(cycle, index, "mtp_draft_ms")
+    total_cycle_ms = total_ar_ms + total_draft_ms
+
+    accept_per_draft = total_accepted / total_drafts
     accepted_per_output = total_accepted / visible_output_tokens if visible_output_tokens > 0 else 0.0
     visible_tokens_per_cycle = visible_output_tokens / verify_cycle_count if verify_cycle_count > 0 else 0.0
     avg_cycle_ms = total_cycle_ms / verify_cycle_count if verify_cycle_count > 0 else 0.0

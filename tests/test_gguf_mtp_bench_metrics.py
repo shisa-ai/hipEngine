@@ -18,11 +18,41 @@ from scripts.gguf_mtp_bench import (
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
     """Accepted draft tokens are visible outputs, not just diagnostic accepts."""
     cycles = [
-        {"accepted": False, "ar_decode_ms": 50.0, "mtp_draft_ms": 7.0},
-        {"accepted": True, "ar_decode_ms": 50.0, "mtp_draft_ms": 7.0},
-        {"accepted": False, "ar_decode_ms": 50.0, "mtp_draft_ms": 7.0},
-        {"accepted": False, "ar_decode_ms": 50.0, "mtp_draft_ms": 7.0},
-        {"accepted": False, "ar_decode_ms": 50.0, "mtp_draft_ms": 7.0},
+        {
+            "generated_draft_tokens": 1,
+            "accepted_draft_tokens": 0,
+            "visible_output_tokens": 1,
+            "ar_decode_ms": 50.0,
+            "mtp_draft_ms": 7.0,
+        },
+        {
+            "generated_draft_tokens": 1,
+            "accepted_draft_tokens": 1,
+            "visible_output_tokens": 2,
+            "ar_decode_ms": 50.0,
+            "mtp_draft_ms": 7.0,
+        },
+        {
+            "generated_draft_tokens": 1,
+            "accepted_draft_tokens": 0,
+            "visible_output_tokens": 1,
+            "ar_decode_ms": 50.0,
+            "mtp_draft_ms": 7.0,
+        },
+        {
+            "generated_draft_tokens": 1,
+            "accepted_draft_tokens": 0,
+            "visible_output_tokens": 1,
+            "ar_decode_ms": 50.0,
+            "mtp_draft_ms": 7.0,
+        },
+        {
+            "generated_draft_tokens": 1,
+            "accepted_draft_tokens": 0,
+            "visible_output_tokens": 1,
+            "ar_decode_ms": 50.0,
+            "mtp_draft_ms": 7.0,
+        },
     ]
 
     metrics = compute_speculative_metrics(cycles)
@@ -45,6 +75,87 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
         "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
         "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time",
     }
+
+
+@pytest.mark.parametrize(
+    ("cycle_update", "message"),
+    [
+        ({"generated_draft_tokens": None}, r"cycles\[0\]\.generated_draft_tokens must be an integer"),
+        ({"generated_draft_tokens": 0}, r"cycles\[0\]\.generated_draft_tokens must be positive"),
+        ({"accepted_draft_tokens": True}, r"cycles\[0\]\.accepted_draft_tokens must be an integer"),
+        ({"accepted_draft_tokens": -1}, r"cycles\[0\]\.accepted_draft_tokens must be non-negative"),
+        ({"visible_output_tokens": 0}, r"cycles\[0\]\.visible_output_tokens must be positive"),
+        ({"ar_decode_ms": False}, r"cycles\[0\]\.ar_decode_ms must be numeric"),
+        ({"mtp_draft_ms": float("nan")}, r"cycles\[0\]\.mtp_draft_ms must be finite"),
+        ({"mtp_draft_ms": -1.0}, r"cycles\[0\]\.mtp_draft_ms must be non-negative"),
+    ],
+)
+def test_compute_speculative_metrics_rejects_malformed_explicit_cycle_fields(
+    cycle_update: dict[str, object], message: str
+) -> None:
+    cycle = {
+        "generated_draft_tokens": 1,
+        "accepted_draft_tokens": 0,
+        "visible_output_tokens": 1,
+        "ar_decode_ms": 50.0,
+        "mtp_draft_ms": 7.0,
+    }
+    cycle.update(cycle_update)
+
+    with pytest.raises(ValueError, match=message):
+        compute_speculative_metrics([cycle])
+
+
+@pytest.mark.parametrize(
+    ("missing_field", "message"),
+    [
+        ("generated_draft_tokens", r"cycles\[0\]\.generated_draft_tokens is required"),
+        ("accepted_draft_tokens", r"cycles\[0\]\.accepted_draft_tokens is required"),
+        ("visible_output_tokens", r"cycles\[0\]\.visible_output_tokens is required"),
+        ("ar_decode_ms", r"cycles\[0\]\.ar_decode_ms is required"),
+        ("mtp_draft_ms", r"cycles\[0\]\.mtp_draft_ms is required"),
+    ],
+)
+def test_compute_speculative_metrics_rejects_missing_explicit_cycle_fields(missing_field: str, message: str) -> None:
+    cycle = {
+        "generated_draft_tokens": 1,
+        "accepted_draft_tokens": 0,
+        "visible_output_tokens": 1,
+        "ar_decode_ms": 50.0,
+        "mtp_draft_ms": 7.0,
+    }
+    del cycle[missing_field]
+
+    with pytest.raises(ValueError, match=message):
+        compute_speculative_metrics([cycle])
+
+
+def test_compute_speculative_metrics_rejects_legacy_accepted_boolean_fallback() -> None:
+    with pytest.raises(ValueError, match=r"cycles\[0\]\.generated_draft_tokens is required"):
+        compute_speculative_metrics([{"accepted": True, "ar_decode_ms": 50.0, "mtp_draft_ms": 7.0}])
+
+
+def test_compute_speculative_metrics_rejects_impossible_cycle_counts() -> None:
+    with pytest.raises(ValueError, match=r"accepted_draft_tokens must be <= generated_draft_tokens"):
+        compute_speculative_metrics([
+            {
+                "generated_draft_tokens": 1,
+                "accepted_draft_tokens": 2,
+                "visible_output_tokens": 2,
+                "ar_decode_ms": 50.0,
+                "mtp_draft_ms": 7.0,
+            }
+        ])
+    with pytest.raises(ValueError, match=r"accepted_draft_tokens must be <= visible_output_tokens"):
+        compute_speculative_metrics([
+            {
+                "generated_draft_tokens": 2,
+                "accepted_draft_tokens": 2,
+                "visible_output_tokens": 1,
+                "ar_decode_ms": 50.0,
+                "mtp_draft_ms": 7.0,
+            }
+        ])
 
 
 def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
