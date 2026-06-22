@@ -569,6 +569,13 @@ def test_speed_claim_contract_rejects_prompt_category_summary_mismatch() -> None
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_non_string_summary_category_key() -> None:
+    summary = _speed_claim_summary(summary_overrides={"categories": {123: {"b1": {"prompts": 1}}}})
+
+    with pytest.raises(BenchError, match="speed-claim summary categories category keys must be non-empty strings"):
+        validate_speed_claim_contract(summary)
+
+
 def test_speed_claim_contract_rejects_empty_category_metrics() -> None:
     summary = _speed_claim_summary(summary_overrides={"categories": {"code": {}}})
 
@@ -1124,7 +1131,7 @@ def test_objective_metrics_for_budget_rejects_missing_true_ar_category(tmp_path:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     del summary["true_ar_baseline"]["categories"]["code"]
 
-    with pytest.raises(BenchError, match="objective metrics require attached true_ar_baseline.categories.code"):
+    with pytest.raises(BenchError, match="objective metrics require attached true_ar_baseline.categories to match summary categories"):
         objective_metrics_for_budget(summary, "b1")
 
 
@@ -1258,6 +1265,15 @@ def test_objective_metrics_for_budget_rejects_true_ar_category_tps_mismatch(tmp_
     category_row["mtp_vs_true_ar_decode_ratio"] = category_row["decode_tok_s_weighted"] / 123.0
 
     with pytest.raises(BenchError, match="categories.code.decode_tok_s_weighted to match output/decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_non_string_true_ar_category_key(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    true_ar_categories = summary["true_ar_baseline"]["categories"]
+    true_ar_categories[123] = true_ar_categories.pop("code")
+
+    with pytest.raises(BenchError, match="attached true_ar_baseline.categories category keys must be non-empty strings"):
         objective_metrics_for_budget(summary, "b1")
 
 

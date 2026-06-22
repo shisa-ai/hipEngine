@@ -292,6 +292,15 @@ def validate_prompt_id_list(value: Any, *, label: str) -> list[str]:
     return out
 
 
+def validate_category_map_keys(value: dict[Any, Any], *, label: str) -> set[str]:
+    keys: set[str] = set()
+    for key in value:
+        if not isinstance(key, str) or not key:
+            raise BenchError(f"{label} category keys must be non-empty strings")
+        keys.add(key)
+    return keys
+
+
 def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> dict[str, Any]:
     prompts = summary.get("prompts")
     if not isinstance(prompts, list) or not prompts:
@@ -329,7 +338,7 @@ def validate_summary_prompt_metadata(summary: dict[str, Any], *, label: str) -> 
     summary_categories = summary.get("categories")
     if not isinstance(summary_categories, dict) or not summary_categories:
         raise BenchError(f"{label} requires category summary metadata")
-    if set(categories) != set(map(str, summary_categories.keys())):
+    if set(categories) != validate_category_map_keys(summary_categories, label=f"{label} categories"):
         raise BenchError(f"{label} prompt categories do not match category summary keys")
     for category in sorted(set(categories)):
         category_payload = summary_categories.get(category)
@@ -542,6 +551,7 @@ def validate_true_ar_totals_consistency(true_ar: dict[str, Any]) -> dict[str, An
     categories = true_ar.get("categories")
     if not isinstance(categories, dict) or not categories:
         raise BenchError("objective metrics require attached true_ar_baseline.categories")
+    validate_category_map_keys(categories, label="attached true_ar_baseline.categories")
 
     total_row = validate_true_ar_aggregate_row(totals, label="attached true_ar_baseline.totals")
     total_prompts = total_row["prompts"]
@@ -596,6 +606,10 @@ def validate_summary_category_budget_metrics(
     true_ar_categories = true_ar.get("categories")
     if not isinstance(true_ar_categories, dict):
         raise BenchError("objective metrics require attached true_ar_baseline.categories")
+    if set(category_counts) != validate_category_map_keys(categories_payload, label=f"{label} categories"):
+        raise BenchError(f"{label} prompt categories do not match category summary keys")
+    if set(category_counts) != validate_category_map_keys(true_ar_categories, label="attached true_ar_baseline.categories"):
+        raise BenchError("objective metrics require attached true_ar_baseline.categories to match summary categories")
     category_metrics: dict[str, dict[str, Any]] = {}
     for category, expected_count in sorted(category_counts.items()):
         table = categories_payload.get(category)
