@@ -80,6 +80,7 @@ def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: i
         },
         "cycles": [
             {
+                "visible_output_tokens": output,
                 "ar_decode_ms": ar_ms,
                 "mtp_draft_ms": draft_ms,
             }
@@ -232,6 +233,22 @@ def test_category_summary_rejects_total_cycle_ms_not_matching_cycle_sum() -> Non
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_total_output_tokens_not_matching_cycle_sum() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    row["cycles"][0]["visible_output_tokens"] = 9
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match="metrics.total_output_tokens for code_1 must match sum of cycle visible_output_tokens"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
@@ -263,6 +280,7 @@ def test_category_summary_rejects_invalid_cycle_timings(field: str, value: objec
 @pytest.mark.parametrize(
     ("field", "message"),
     [
+        ("visible_output_tokens", "cycle 0 for code_1 missing visible_output_tokens"),
         ("ar_decode_ms", "cycle 0 for code_1 missing ar_decode_ms"),
         ("mtp_draft_ms", "cycle 0 for code_1 missing mtp_draft_ms"),
     ],

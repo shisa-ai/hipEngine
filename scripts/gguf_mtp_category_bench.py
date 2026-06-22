@@ -1028,19 +1028,29 @@ def validate_metric_row(row: dict[str, Any]) -> None:
         raise BenchError(f"category row missing non-empty cycles for {prompt_id}")
     total_ar_ms = 0.0
     total_mtp_ms = 0.0
+    total_visible_output = 0
     for index, cycle in enumerate(cycles):
         if not isinstance(cycle, dict):
             raise BenchError(f"cycle {index} for {prompt_id} is not an object")
+        if "visible_output_tokens" not in cycle:
+            raise BenchError(f"cycle {index} for {prompt_id} missing visible_output_tokens")
         if "ar_decode_ms" not in cycle:
             raise BenchError(f"cycle {index} for {prompt_id} missing ar_decode_ms")
         if "mtp_draft_ms" not in cycle:
             raise BenchError(f"cycle {index} for {prompt_id} missing mtp_draft_ms")
+        visible_output = require_positive_int(
+            cycle.get("visible_output_tokens"),
+            message=f"cycle {index} for {prompt_id} visible_output_tokens must be a positive integer",
+        )
         ar_ms = finite_float(cycle.get("ar_decode_ms"), prompt_id=prompt_id, field=f"cycles[{index}].ar_decode_ms")
         mtp_ms = finite_float(cycle.get("mtp_draft_ms"), prompt_id=prompt_id, field=f"cycles[{index}].mtp_draft_ms")
         if ar_ms < 0.0 or mtp_ms < 0.0:
             raise BenchError(f"negative timing in row {prompt_id}: ar_decode_ms={ar_ms}, mtp_draft_ms={mtp_ms}")
+        total_visible_output += visible_output
         total_ar_ms += ar_ms
         total_mtp_ms += mtp_ms
+    if total_visible_output != total_output:
+        raise BenchError(f"metrics.total_output_tokens for {prompt_id} must match sum of cycle visible_output_tokens")
     if total_ar_ms <= 0.0:
         raise BenchError(f"non-positive total ar_decode_ms for {prompt_id}: {total_ar_ms}")
 
