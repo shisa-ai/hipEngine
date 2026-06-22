@@ -1121,12 +1121,20 @@ def raw_row_prompt_id(row: dict[str, Any], *, label: str) -> str:
 
 
 def raw_row_category(row: dict[str, Any], *, label: str, prompt_id: str) -> str:
-    value = row.get("suite_category")
-    if value is None or value == "":
-        value = row.get("category")
-    if not isinstance(value, str) or not value:
+    categories: list[tuple[str, str]] = []
+    for field in ("suite_category", "category"):
+        value = row.get(field)
+        if value is None or value == "":
+            continue
+        if not isinstance(value, str):
+            raise BenchError(f"{label} {field} for {prompt_id} must be a non-empty string")
+        categories.append((field, value))
+    if not categories:
         raise BenchError(f"{label} category for {prompt_id} must be a non-empty string")
-    return value
+    category = categories[0][1]
+    if any(value != category for _, value in categories[1:]):
+        raise BenchError(f"{label} raw category identity fields must agree for {prompt_id}")
+    return category
 
 
 def row_prompt_id(row: dict[str, Any]) -> str:
