@@ -317,6 +317,28 @@ def test_category_summary_rejects_malformed_build_summary_commands(commands: obj
 
 
 @pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ({0: []}, "raw MTP budget keys must be positive integers, got 0"),
+        ({True: []}, "raw MTP budget keys must be positive integers, got True"),
+        ({"1": []}, "raw MTP budget keys must be positive integers, got '1'"),
+        ({1: "not rows"}, "budget b1 rows must be a list"),
+    ],
+)
+def test_category_summary_rejects_malformed_raw_budget_map(raw: object, message: str) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+@pytest.mark.parametrize(
     ("raw_rows", "message"),
     [
         (

@@ -1089,14 +1089,26 @@ def row_category(row: dict[str, Any]) -> str:
     return value if isinstance(value, str) else ""
 
 
+def validate_raw_budget_map(raw: Any) -> dict[int, list[dict[str, Any]]]:
+    if not isinstance(raw, dict) or not raw:
+        raise BenchError("category summary requires at least one MTP budget")
+    out: dict[int, list[dict[str, Any]]] = {}
+    for budget, rows in raw.items():
+        if type(budget) is not int or budget <= 0:
+            raise BenchError(f"raw MTP budget keys must be positive integers, got {budget!r}")
+        if not isinstance(rows, list):
+            raise BenchError(f"budget b{budget} rows must be a list")
+        out[budget] = rows
+    return dict(sorted(out.items()))
+
+
 def validate_raw_prompt_coverage(*, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]]) -> None:
     prompts = validate_prompt_rows_for_summary(prompts)
     expected_ids = [row["id"] for row in prompts]
     expected_set = set(expected_ids)
     expected_category = {row["id"]: row["category"] for row in prompts}
-    if not raw:
-        raise BenchError("category summary requires at least one MTP budget")
-    for budget, rows in sorted(raw.items()):
+    raw = validate_raw_budget_map(raw)
+    for budget, rows in raw.items():
         seen: dict[str, int] = {}
         for row_index, row in enumerate(rows):
             if not isinstance(row, dict):
@@ -1771,6 +1783,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     raw_root_arg = build_summary_path_arg(getattr(args, "raw_root", None), field="raw_root")
     cycles_arg = build_summary_cycles_arg(getattr(args, "cycles", None))
     commands_arg = validate_command_list(commands, label="build summary", allow_empty=True)
+    raw = validate_raw_budget_map(raw)
     validate_raw_prompt_coverage(prompts=prompts, raw=raw)
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
