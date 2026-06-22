@@ -64,12 +64,13 @@ class BenchError(RuntimeError):
 
 
 def parse_budgets(text: str) -> list[int]:
+    parts = [part.strip() for part in text.split(",")]
+    if not parts or any(part == "" for part in parts):
+        raise BenchError("--budgets entries must be non-empty integers")
     try:
-        budgets = [int(part.strip()) for part in text.split(",") if part.strip()]
+        budgets = [int(part) for part in parts]
     except ValueError as exc:
         raise BenchError("--budgets entries must be integers") from exc
-    if not budgets:
-        raise BenchError("--budgets resolved to an empty list")
     bad = [b for b in budgets if b < 1 or b > 5]
     if bad:
         raise BenchError(f"budgets must be in 1..5 for gguf_mtp_bench.py: {bad}")

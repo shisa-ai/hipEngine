@@ -97,6 +97,12 @@ def test_parse_budgets_wraps_non_integer_values() -> None:
         parse_budgets("1,bad")
 
 
+@pytest.mark.parametrize("text", ["", " ", "1,", ",1", "1,,5"])
+def test_parse_budgets_rejects_empty_entries(text: str) -> None:
+    with pytest.raises(BenchError, match="--budgets entries must be non-empty integers"):
+        parse_budgets(text)
+
+
 def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     """A verifier-derived ``off`` row is not a true AR/no-MTP baseline.
 

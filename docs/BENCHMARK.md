@@ -193,7 +193,8 @@ acceptance loops.
    protocol provenance including attached true-AR protocol self-normalization and
    summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`
    prompt identity and hash typing, and true-AR finite-logit
-   evidence. CLI `--budgets` values must be unique. Build-summary model/prompt/raw-root/cycle arguments, raw MTP
+   evidence. CLI `--budgets` values must be unique and cannot contain empty
+   comma-separated entries. Build-summary model/prompt/raw-root/cycle arguments, raw MTP
    budget-map keys/row lists, and command provenance lists are checked before
    artifact construction rather than coerced with `str()` / `int()`.
    Summary and attached true-AR category map keys must be strict
