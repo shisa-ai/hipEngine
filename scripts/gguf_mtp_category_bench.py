@@ -1001,7 +1001,7 @@ def finite_unit_interval_objective(value: Any, *, label: str) -> float:
     return result
 
 
-def validate_metric_row(row: dict[str, Any]) -> None:
+def validate_metric_row(row: dict[str, Any], *, expected_cycles: int | None = None) -> None:
     metrics = row.get("metrics")
     if not isinstance(metrics, dict):
         raise BenchError("category row missing metrics")
@@ -1026,6 +1026,8 @@ def validate_metric_row(row: dict[str, Any]) -> None:
     cycles = row.get("cycles")
     if not isinstance(cycles, list) or not cycles:
         raise BenchError(f"category row missing non-empty cycles for {prompt_id}")
+    if expected_cycles is not None and len(cycles) != expected_cycles:
+        raise BenchError(f"raw row {prompt_id} cycles length must match build summary args.cycles={expected_cycles}")
     total_ar_ms = 0.0
     total_mtp_ms = 0.0
     total_visible_output = 0
@@ -1085,9 +1087,9 @@ def validate_metric_row(row: dict[str, Any]) -> None:
         raise BenchError(f"metrics.total_cycle_ms for {prompt_id} must match sum of cycle timings")
 
 
-def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None) -> dict[str, Any]:
+def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, expected_cycles: int | None = None) -> dict[str, Any]:
     for row in rows:
-        validate_metric_row(row)
+        validate_metric_row(row, expected_cycles=expected_cycles)
     total_output = sum(int(row["metrics"]["total_output_tokens"]) for row in rows)
     total_accepted = sum(int(row["metrics"]["total_accepted"]) for row in rows)
     total_drafts = sum(int(row["metrics"]["total_drafts"]) for row in rows)
@@ -1110,9 +1112,9 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None) 
     }
 
 
-def aggregate_off_from_b1(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def aggregate_off_from_b1(rows: list[dict[str, Any]], *, expected_cycles: int | None = None) -> dict[str, Any]:
     for row in rows:
-        validate_metric_row(row)
+        validate_metric_row(row, expected_cycles=expected_cycles)
     total_output = sum(int(row["metrics"]["total_output_tokens"]) for row in rows)
     total_ar_ms = sum(cycle_sum(row, "ar_decode_ms") for row in rows)
     return {
@@ -1274,17 +1276,17 @@ def filter_rows_by_prompt_ids(rows: list[dict[str, Any]], prompt_ids: set[str]) 
     return [row for row in rows if row_prompt_id(row) in prompt_ids]
 
 
-def aggregate_split(raw: dict[int, list[dict[str, Any]]], prompt_ids: list[str]) -> dict[str, Any]:
+def aggregate_split(raw: dict[int, list[dict[str, Any]]], prompt_ids: list[str], *, expected_cycles: int | None = None) -> dict[str, Any]:
     prompt_id_set = set(prompt_ids)
     b1_rows = filter_rows_by_prompt_ids(raw[min(raw)], prompt_id_set)
-    off = aggregate_off_from_b1(b1_rows)
+    off = aggregate_off_from_b1(b1_rows, expected_cycles=expected_cycles)
     metrics: dict[str, Any] = {"off": {"label": "off", "budget": 0, **off, "mtp_vs_ar_decode_ratio": 1.0}}
     for budget, rows in sorted(raw.items()):
         split_rows = filter_rows_by_prompt_ids(rows, prompt_id_set)
         metrics[f"b{budget}"] = {
             "label": f"b{budget}",
             "budget": budget,
-            **aggregate_rows(split_rows, off_tps=off["decode_tok_s_weighted"]),
+            **aggregate_rows(split_rows, off_tps=off["decode_tok_s_weighted"], expected_cycles=expected_cycles),
         }
     return {
         "prompt_ids": prompt_ids,
@@ -1292,13 +1294,13 @@ def aggregate_split(raw: dict[int, list[dict[str, Any]]], prompt_ids: list[str])
     }
 
 
-def build_split_summaries(prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]]) -> dict[str, Any]:
+def build_split_summaries(prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]], *, expected_cycles: int | None = None) -> dict[str, Any]:
     contract = build_split_contract(prompts)
     return {
         "contract": contract,
-        "full": aggregate_split(raw, contract["full_ids"]),
-        "train": aggregate_split(raw, contract["train_ids"]),
-        "heldout": aggregate_split(raw, contract["heldout_ids"]),
+        "full": aggregate_split(raw, contract["full_ids"], expected_cycles=expected_cycles),
+        "train": aggregate_split(raw, contract["train_ids"], expected_cycles=expected_cycles),
+        "heldout": aggregate_split(raw, contract["heldout_ids"], expected_cycles=expected_cycles),
     }
 
 
@@ -1901,7 +1903,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     raw = validate_raw_budget_map(raw)
     validate_raw_prompt_coverage(prompts=prompts, raw=raw)
     b1_rows = raw[min(raw)]
-    off_total = aggregate_off_from_b1(b1_rows)
+    off_total = aggregate_off_from_b1(b1_rows, expected_cycles=cycles_arg)
     categories = sorted({row["category"] for row in prompts})
     prompt_meta = {row["id"]: row for row in prompts}
 
@@ -1909,7 +1911,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     off_by_category: dict[str, dict[str, Any]] = {}
     for category in categories:
         b1_cat = [row for row in b1_rows if row["suite_category"] == category]
-        off_by_category[category] = aggregate_off_from_b1(b1_cat)
+        off_by_category[category] = aggregate_off_from_b1(b1_cat, expected_cycles=cycles_arg)
 
     category_summary: dict[str, dict[str, Any]] = {
         category: {
@@ -1927,14 +1929,14 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         totals[f"b{budget}"] = {
             "label": f"b{budget}",
             "budget": budget,
-            **aggregate_rows(rows, off_tps=off_total["decode_tok_s_weighted"]),
+            **aggregate_rows(rows, off_tps=off_total["decode_tok_s_weighted"], expected_cycles=cycles_arg),
         }
         for category in categories:
             cat_rows = [row for row in rows if row["suite_category"] == category]
             category_summary[category][f"b{budget}"] = {
                 "label": f"b{budget}",
                 "budget": budget,
-                **aggregate_rows(cat_rows, off_tps=off_by_category[category]["decode_tok_s_weighted"]),
+                **aggregate_rows(cat_rows, off_tps=off_by_category[category]["decode_tok_s_weighted"], expected_cycles=cycles_arg),
             }
 
     best = {
@@ -1947,7 +1949,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         best["categories_by_decode_tok_s"][category] = max((v for k, v in payload.items() if k != "off"), key=lambda x: x["decode_tok_s_weighted"])["label"]
         best["categories_by_accepted_per_output"][category] = max((v for k, v in payload.items() if k != "off"), key=lambda x: x["accepted_per_output"])["label"]
 
-    split_summaries = build_split_summaries(prompts, raw)
+    split_summaries = build_split_summaries(prompts, raw, expected_cycles=cycles_arg)
 
     true_ar_baseline_json = getattr(args, "true_ar_baseline_json", None)
 

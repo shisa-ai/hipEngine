@@ -119003,3 +119003,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 112: validate raw cycle count protocol
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 112.
+- Focused raw run-protocol contract: every raw row's `cycles[]` length must match the recorded `build_summary()` / CLI `cycles` argument before aggregation.
+
+### Change
+- `validate_metric_row()` now accepts an optional `expected_cycles` value and rejects raw rows whose `cycles[]` length differs.
+- Threaded `expected_cycles` through `aggregate_rows()`, `aggregate_off_from_b1()`, `aggregate_split()`, and `build_split_summaries()`.
+- `build_summary()` now passes `args.cycles` through off, total, category, and train/heldout/full split aggregation.
+- Added a regression for `args.cycles=2` with a one-cycle raw row.
+- Updated `docs/BENCHMARK.md` to document raw cycle-list length validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes for valid rows, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

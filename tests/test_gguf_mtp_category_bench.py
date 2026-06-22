@@ -299,6 +299,20 @@ def test_category_summary_rejects_cycle_accepted_drafts_exceeding_generated_draf
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_raw_cycle_count_mismatch() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=2,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="raw row code_1 cycles length must match build summary args.cycles=2"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
