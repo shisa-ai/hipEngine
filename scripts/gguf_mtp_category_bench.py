@@ -237,6 +237,116 @@ def build_split_summaries(prompts: list[dict[str, Any]], raw: dict[int, list[dic
     }
 
 
+def true_ar_rows_from_artifact(path: Path) -> list[dict[str, Any]]:
+    artifact = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(artifact, dict):
+        raise BenchError("true AR baseline artifact must be a JSON object")
+    if artifact.get("true_autoregressive_path") is not True:
+        raise BenchError("true AR baseline artifact must set true_autoregressive_path=true")
+    if artifact.get("same_timing_protocol") is not True:
+        raise BenchError("true AR baseline artifact must set same_timing_protocol=true")
+    rows = artifact.get("prompt_metrics")
+    if not isinstance(rows, list) or not rows:
+        raise BenchError("true AR baseline artifact must contain non-empty prompt_metrics[]")
+    return rows
+
+
+def validate_true_ar_prompt_rows(*, rows: list[dict[str, Any]], prompts: list[dict[str, Any]]) -> dict[str, Any]:
+    prompt_by_id = {str(row["id"]): row for row in prompts}
+    seen: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        prompt_id = str(row.get("id") or row.get("prompt_id") or "")
+        if not prompt_id:
+            raise BenchError("true AR prompt_metrics row missing id")
+        if prompt_id in seen:
+            raise BenchError(f"duplicate true AR prompt_metrics id: {prompt_id}")
+        if prompt_id not in prompt_by_id:
+            raise BenchError(f"true AR prompt id not in selected prompt suite: {prompt_id}")
+        category = str(row.get("category") or "")
+        expected_category = str(prompt_by_id[prompt_id]["category"])
+        if category != expected_category:
+            raise BenchError(f"true AR category mismatch for {prompt_id}: {category!r} != {expected_category!r}")
+        output_tokens = int(row.get("output_tokens") or 0)
+        decode_ms = float(row.get("decode_ms") or 0.0)
+        if output_tokens <= 0 or decode_ms <= 0.0:
+            raise BenchError(f"true AR row for {prompt_id} must have positive output_tokens and decode_ms")
+        seen[prompt_id] = {"id": prompt_id, "category": category, "output_tokens": output_tokens, "decode_ms": decode_ms}
+    expected_ids = set(prompt_by_id)
+    seen_ids = set(seen)
+    if seen_ids != expected_ids:
+        missing = sorted(expected_ids - seen_ids)
+        extra = sorted(seen_ids - expected_ids)
+        raise BenchError(f"true AR prompt_metrics must exactly match selected prompts; missing={missing}, extra={extra}")
+    return seen
+
+
+def aggregate_true_ar_rows(rows_by_id: dict[str, dict[str, Any]], prompt_ids: list[str]) -> dict[str, Any]:
+    rows = [rows_by_id[prompt_id] for prompt_id in prompt_ids]
+    output_tokens = sum(int(row["output_tokens"]) for row in rows)
+    decode_ms = sum(float(row["decode_ms"]) for row in rows)
+    return {
+        "prompts": len(rows),
+        "total_output_tokens": output_tokens,
+        "decode_ms": decode_ms,
+        "decode_tok_s_weighted": 1000.0 * output_tokens / decode_ms if decode_ms > 0 else 0.0,
+    }
+
+
+def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path) -> dict[str, Any]:
+    prompt_ids = [str(row["id"]) for row in summary["prompts"]]
+    full_metric = aggregate_true_ar_rows(rows_by_id, prompt_ids)
+    category_metrics = {
+        category: aggregate_true_ar_rows(rows_by_id, [row["id"] for row in summary["prompts"] if row["category"] == category])
+        for category in sorted(summary["categories"])
+    }
+    split_metrics = {
+        split_name: aggregate_true_ar_rows(rows_by_id, payload["prompt_ids"])
+        for split_name, payload in summary["splits"].items()
+        if split_name != "contract"
+    }
+
+    summary["true_ar_baseline"] = {
+        "available": True,
+        "true_autoregressive_path": True,
+        "same_prompt_suite": True,
+        "same_timing_protocol": True,
+        "source": str(source),
+        "prompt_count": len(prompt_ids),
+        "totals": full_metric,
+        "categories": category_metrics,
+        "splits": split_metrics,
+    }
+    summary["speed_claim_eligible"] = True
+    summary["promotion_blocker"] = None
+    summary["diagnostic_notes"].append(
+        "A true no-MTP AR baseline artifact was attached; use mtp_vs_true_ar_decode_ratio for same-protocol speed ratios."
+    )
+
+    true_ar_tps = full_metric["decode_tok_s_weighted"]
+    for label, row in summary["totals"].items():
+        row["true_ar_decode_tok_s_weighted"] = true_ar_tps
+        if label != "off":
+            row["mtp_vs_true_ar_decode_ratio"] = row["decode_tok_s_weighted"] / true_ar_tps if true_ar_tps else None
+
+    for category, payload in summary["categories"].items():
+        category_tps = category_metrics[category]["decode_tok_s_weighted"]
+        for label, row in payload.items():
+            row["true_ar_decode_tok_s_weighted"] = category_tps
+            if label != "off":
+                row["mtp_vs_true_ar_decode_ratio"] = row["decode_tok_s_weighted"] / category_tps if category_tps else None
+
+    for split_name, payload in summary["splits"].items():
+        if split_name == "contract":
+            continue
+        split_tps = split_metrics[split_name]["decode_tok_s_weighted"]
+        for label, row in payload["metrics"].items():
+            row["true_ar_decode_tok_s_weighted"] = split_tps
+            if label != "off":
+                row["mtp_vs_true_ar_decode_ratio"] = row["decode_tok_s_weighted"] / split_tps if split_tps else None
+
+    return validate_speed_claim_contract(summary)
+
+
 def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     """Ensure speed-promotable artifacts contain a real AR baseline.
 
@@ -309,6 +419,8 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
 
     split_summaries = build_split_summaries(prompts, raw)
 
+    true_ar_baseline_json = getattr(args, "true_ar_baseline_json", None)
+
     summary = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_category_matrix",
@@ -356,6 +468,10 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
             for row in prompts
         ],
     }
+    if true_ar_baseline_json:
+        true_ar_path = Path(true_ar_baseline_json)
+        rows_by_id = validate_true_ar_prompt_rows(rows=true_ar_rows_from_artifact(true_ar_path), prompts=prompts)
+        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path)
     return validate_speed_claim_contract(summary)
 
 
@@ -368,12 +484,16 @@ def write_markdown(summary: dict[str, Any], path: Path) -> None:
         return str(value)
 
     lines: list[str] = []
+    has_true_ar = (summary.get("true_ar_baseline") or {}).get("available") is True
     lines.append("# hipEngine GGUF-MTP category matrix")
     lines.append("")
     lines.append(f"Raw root: `{summary['raw_root']}`")
     if not summary.get("speed_claim_eligible", True):
         lines.append("")
-        lines.append("> **Diagnostic only:** the `off` row is derived from B1 target-verifier timing, not a true no-MTP autoregressive run. Do not use `vs AR` as a retained MTP speedup claim until a true AR baseline is measured by this harness.")
+        lines.append("> **Diagnostic only:** the `off` row is derived from B1 target-verifier timing, not a true no-MTP autoregressive run. Do not use `vs verifier off` as a retained MTP speedup claim until a true AR baseline is measured by this harness.")
+    elif has_true_ar:
+        lines.append("")
+        lines.append("> True no-MTP AR baseline attached. Use `vs true AR` for same-protocol MTP speed ratios; `vs verifier off` remains diagnostic telemetry.")
     splits = summary.get("splits") or {}
     contract = splits.get("contract") or {}
     if contract:
@@ -384,34 +504,41 @@ def write_markdown(summary: dict[str, Any], path: Path) -> None:
         lines.append(f"Heldout prompts: `{', '.join(contract.get('heldout_ids', []))}`")
         lines.append(f"Heldout covers all present categories: `{contract.get('heldout_has_all_present_categories')}`")
         lines.append("")
-        lines.append("| split | budget | decode tok/s | vs AR | draft accept | accepted/output | prompts |")
-        lines.append("|---|---|---:|---:|---:|---:|---:|")
+        true_ar_header = " | vs true AR" if has_true_ar else ""
+        true_ar_align = " |---:" if has_true_ar else ""
+        lines.append(f"| split | budget | decode tok/s | vs verifier off{true_ar_header} | draft accept | accepted/output | prompts |")
+        lines.append(f"|---|---|---:|---:{true_ar_align}|---:|---:|---:|")
         for split_name in ("full", "train", "heldout"):
             metrics = (splits.get(split_name) or {}).get("metrics") or {}
             for label, row in metrics.items():
                 if label == "off":
                     continue
+                true_ar_cell = f" | {fmt(row.get('mtp_vs_true_ar_decode_ratio'), 3)}" if has_true_ar else ""
                 lines.append(
-                    f"| {split_name} | {label} | {fmt(row['decode_tok_s_weighted'])} | {fmt(row['mtp_vs_ar_decode_ratio'], 3)} | "
+                    f"| {split_name} | {label} | {fmt(row['decode_tok_s_weighted'])} | {fmt(row['mtp_vs_ar_decode_ratio'], 3)}{true_ar_cell} | "
                     f"{fmt(row.get('draft_acceptance'), 4)} | {fmt(row.get('accepted_per_output'), 4)} | {row['prompts']} |"
                 )
     lines.append("")
     lines.append("## Total")
-    lines.append("| budget | decode tok/s | vs AR | draft accept | accepted/output | output tokens |")
-    lines.append("|---|---:|---:|---:|---:|---:|")
+    true_ar_header = " | vs true AR" if has_true_ar else ""
+    true_ar_align = " |---:" if has_true_ar else ""
+    lines.append(f"| budget | decode tok/s | vs verifier off{true_ar_header} | draft accept | accepted/output | output tokens |")
+    lines.append(f"|---|---:|---:{true_ar_align}|---:|---:|---:|")
     for label, row in summary["totals"].items():
+        true_ar_cell = f" | {fmt(row.get('mtp_vs_true_ar_decode_ratio'), 3)}" if has_true_ar else ""
         lines.append(
-            f"| {label} | {fmt(row['decode_tok_s_weighted'])} | {fmt(row['mtp_vs_ar_decode_ratio'], 3)} | "
+            f"| {label} | {fmt(row['decode_tok_s_weighted'])} | {fmt(row['mtp_vs_ar_decode_ratio'], 3)}{true_ar_cell} | "
             f"{fmt(row.get('draft_acceptance'), 4)} | {fmt(row.get('accepted_per_output'), 4)} | {row['total_output_tokens']} |"
         )
     for category, payload in sorted(summary["categories"].items()):
         lines.append("")
         lines.append(f"## {category}")
-        lines.append("| budget | decode tok/s | vs AR | draft accept | accepted/output | output tokens |")
-        lines.append("|---|---:|---:|---:|---:|---:|")
+        lines.append(f"| budget | decode tok/s | vs verifier off{true_ar_header} | draft accept | accepted/output | output tokens |")
+        lines.append(f"|---|---:|---:{true_ar_align}|---:|---:|---:|")
         for label, row in payload.items():
+            true_ar_cell = f" | {fmt(row.get('mtp_vs_true_ar_decode_ratio'), 3)}" if has_true_ar else ""
             lines.append(
-                f"| {label} | {fmt(row['decode_tok_s_weighted'])} | {fmt(row['mtp_vs_ar_decode_ratio'], 3)} | "
+                f"| {label} | {fmt(row['decode_tok_s_weighted'])} | {fmt(row['mtp_vs_ar_decode_ratio'], 3)}{true_ar_cell} | "
                 f"{fmt(row.get('draft_acceptance'), 4)} | {fmt(row.get('accepted_per_output'), 4)} | {row['total_output_tokens']} |"
             )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -428,6 +555,15 @@ def main() -> int:
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--extra-arg", action="append", default=[])
+    parser.add_argument(
+        "--true-ar-baseline-json",
+        type=Path,
+        default=None,
+        help=(
+            "Optional same-protocol true no-MTP AR baseline artifact with prompt_metrics[]. "
+            "When valid, the summary includes mtp_vs_true_ar_decode_ratio and may be speed-claim eligible."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

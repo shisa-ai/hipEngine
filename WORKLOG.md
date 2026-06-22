@@ -116017,3 +116017,35 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 18 passed
 ```
 - Same command also ran as the loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iterations 4–5: true-AR attachment path
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iterations 4 and 5.
+- Focused readiness work toward honest MTP/AR speed comparisons: allow the category artifact to attach a separately measured true no-MTP AR baseline, while keeping verifier-derived `off` telemetry clearly diagnostic.
+
+### Iteration 4 change
+- Added optional `--true-ar-baseline-json` to `scripts/gguf_mtp_category_bench.py`.
+- Expected true-AR artifact contract:
+  - `true_autoregressive_path=true`;
+  - `same_timing_protocol=true`;
+  - non-empty `prompt_metrics[]` with exact selected prompt IDs/categories;
+  - positive `output_tokens` and `decode_ms` per prompt.
+- When valid, the summary attaches `true_ar_baseline`, sets `speed_claim_eligible=true`, and emits weighted `mtp_vs_true_ar_decode_ratio` for totals/categories/splits.
+- Invalid/missing prompt rows are rejected before producing a speed-eligible artifact.
+
+### Iteration 5 change
+- Markdown tables now label verifier-derived ratios as `vs verifier off`.
+- When a true AR baseline is attached, markdown adds a separate `vs true AR` column and note so humans do not confuse diagnostic verifier telemetry with same-protocol speed ratios.
+
+### Guardrail status
+- No selector/proposal-policy changes; no token IDs, prompt text matching, candidate-pattern branches, fixture shortcuts, or kernel edits.
+- This enables future true-AR runner output to be consumed safely; it does not itself produce a speed claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 20 passed
+```
+- Same command also ran as loop verify and loop guard; prompt verifier passed for both iterations.
