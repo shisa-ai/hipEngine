@@ -116244,3 +116244,46 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 27 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 13: full-suite true-AR attach smoke
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 13.
+- Validation-only readiness step: prove the guarded evidence path works over the full 10-prompt category suite, with a minimal true no-MTP AR baseline attached to a minimal B1 MTP category run.
+
+### True AR command
+```bash
+python3 scripts/gguf_true_ar_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --decode-tokens 1   --warmup-decode-tokens 0   --raw-root /tmp/hipengine-true-ar-category-fullsuite-smoke-20260622-133406   --output /tmp/hipengine-true-ar-category-fullsuite-smoke-20260622-133406/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-true-ar-category-fullsuite-smoke-20260622-133406/true-ar-baseline.json`.
+- Covers all 10 prompts with `true_autoregressive_path=true`, `same_prompt_suite=true`, `same_timing_protocol=true`.
+- Total true AR: `17.22335756592579 tok/s` for `decode_tokens=1` smoke.
+- Category true AR tok/s: code `19.6896`, general_en `19.5903`, general_ja `19.6505`, mixed_ja_en `11.5218`.
+
+### Attached MTP command
+```bash
+python3 scripts/gguf_mtp_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --budgets 1   --cycles 1   --raw-root /tmp/hipengine-mtp-category-fullsuite-attach-smoke-20260622-133443/raw   --output /tmp/hipengine-mtp-category-fullsuite-attach-smoke-20260622-133443/summary.json   --true-ar-baseline-json /tmp/hipengine-true-ar-category-fullsuite-smoke-20260622-133406/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-mtp-category-fullsuite-attach-smoke-20260622-133443/summary.json` plus `.md` and raw B1 children.
+- Total B1 MTP: `6.897676110212323 tok/s`.
+- Total B1 vs true AR: `0.40048382458589216x`.
+- Total B1 accepted/output: `0.09090909090909091`; draft acceptance: `0.1`.
+- Train B1 accepted/output: `0.0`; heldout B1 accepted/output: `0.2`.
+- Category B1 accepted/output / draft acceptance:
+  - code: `0.0` / `0.0`;
+  - general_en: `0.0` / `0.0`;
+  - general_ja: `0.3333333333333333` / `0.5`;
+  - mixed_ja_en: `0.0` / `0.0`.
+- Markdown labels validated: `vs verifier off | vs true AR`; no ambiguous `| vs AR |` header.
+
+### Guardrail status
+- Validation-only; no repo code changes, no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, and no kernel edits.
+- `performance_claim=false`; this is a `decode_tokens=1` / `cycles=1` smoke, not a retained speed claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 27 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
