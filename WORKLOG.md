@@ -118928,3 +118928,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 109: require positive raw draft denominator
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 109.
+- Focused raw draft-denominator contract: budgeted MTP raw rows must have positive `metrics.total_drafts` before aggregation derives `draft_acceptance`.
+
+### Change
+- `validate_metric_row()` now requires `metrics.total_drafts` to be a positive integer instead of merely non-negative.
+- Added a regression where `drafts=0` and `accepted=0` previously passed raw validation and could yield `draft_acceptance=None` in diagnostic summaries.
+- Updated the malformed `total_drafts` regression expectation for the new positive-denominator guard.
+- Updated `docs/BENCHMARK.md` to document positive proposed-draft denominators.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes for valid rows, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

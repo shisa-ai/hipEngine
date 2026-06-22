@@ -1014,9 +1014,9 @@ def validate_metric_row(row: dict[str, Any]) -> None:
         metrics.get("total_accepted"),
         message=f"negative metric in row {prompt_id}: accepted={metrics.get('total_accepted')!r}, drafts={metrics.get('total_drafts')!r}",
     )
-    total_drafts = require_nonnegative_int(
+    total_drafts = require_positive_int(
         metrics.get("total_drafts"),
-        message=f"negative metric in row {prompt_id}: accepted={metrics.get('total_accepted')!r}, drafts={metrics.get('total_drafts')!r}",
+        message=f"non-positive draft token count in row {prompt_id}: drafts={metrics.get('total_drafts')!r}",
     )
     if total_accepted > total_output:
         raise BenchError(f"accepted draft tokens exceed output tokens for {prompt_id}: {total_accepted} > {total_output}")

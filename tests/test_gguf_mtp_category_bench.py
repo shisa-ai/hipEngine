@@ -186,6 +186,20 @@ def test_category_summary_rejects_accepted_tokens_exceeding_output_tokens() -> N
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_zero_draft_denominator() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=0, drafts=0, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="non-positive draft token count in row code_1"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_rejects_non_positive_total_cycle_ms() -> None:
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -274,7 +288,7 @@ def test_category_summary_rejects_missing_cycle_timing_fields(field: str, messag
     [
         ("total_output_tokens", "10", "non-positive output token count"),
         ("total_accepted", True, "negative metric in row"),
-        ("total_drafts", 1.5, "negative metric in row"),
+        ("total_drafts", 1.5, "non-positive draft token count in row"),
     ],
 )
 def test_category_summary_rejects_non_integer_raw_metric_counts(field: str, value: object, message: str) -> None:
