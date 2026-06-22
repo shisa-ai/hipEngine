@@ -468,6 +468,8 @@ def _write_true_ar_baseline(
     decode_tokens: object = 10,
     warmup_decode_tokens: object = 1,
     quant: str | None = "UD-Q4_K_M GGUF",
+    schema: int | None = 1,
+    kind: str | None = "hipengine_gguf_true_ar_category_baseline",
 ) -> None:
     prompt_hashes = {str(prompt_id): prompt_sha256(text) for prompt_id, text in prompt_text_by_id.items()}
     metric_rows = []
@@ -478,7 +480,6 @@ def _write_true_ar_baseline(
             row_copy.setdefault("prompt_sha256", prompt_hashes[prompt_id])
         metric_rows.append(row_copy)
     payload = {
-        "kind": "hipengine_gguf_true_ar_category_baseline",
         "true_autoregressive_path": True,
         "same_timing_protocol": True,
         "model": model,
@@ -486,6 +487,10 @@ def _write_true_ar_baseline(
         "prompt_count": len(prompt_text_by_id) if prompt_count is None else prompt_count,
         "prompt_metrics": metric_rows,
     }
+    if schema is not None:
+        payload["schema"] = schema
+    if kind is not None:
+        payload["kind"] = kind
     if quant is not None:
         payload["quant"] = quant
     if decode_tokens is not None:
@@ -539,6 +544,8 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["true_ar_baseline"]["available"] is True
     assert summary["true_ar_baseline"]["same_prompt_suite"] is True
     assert summary["true_ar_baseline"]["same_timing_protocol"] is True
+    assert summary["true_ar_baseline"]["artifact_schema"] == 1
+    assert summary["true_ar_baseline"]["artifact_kind"] == "hipengine_gguf_true_ar_category_baseline"
     assert summary["true_ar_baseline"]["repo"] == TEST_REPO_PROVENANCE
     assert summary["true_ar_baseline"]["protocol"]["model"] == TEST_MODEL
     assert summary["true_ar_baseline"]["protocol"]["quant"] == "UD-Q4_K_M GGUF"
@@ -595,6 +602,8 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["true_ar_comparison_available"] is True
     assert metrics["speed_claim_eligible"] is False
     assert metrics["performance_claim"] is False
+    assert metrics["summary_artifact"] == {"schema": 1, "kind": "hipengine_gguf_mtp_category_matrix"}
+    assert metrics["true_ar_artifact"] == {"schema": 1, "kind": "hipengine_gguf_true_ar_category_baseline"}
     assert metrics["summary_commands"] == TEST_SUMMARY_COMMANDS
     assert metrics["true_ar_commands"] == TEST_TRUE_AR_COMMANDS
     assert metrics["true_ar_protocol"]["model"] == TEST_MODEL
@@ -615,6 +624,31 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
         "general_ja_explain",
         "mixed_ja_en_review",
     ]
+
+
+def test_objective_metrics_for_budget_rejects_missing_summary_schema(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["schema"]
+
+    with pytest.raises(BenchError, match="objective summary requires schema=1"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_wrong_summary_kind(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["kind"] = "legacy_mtp_summary"
+
+    with pytest.raises(BenchError, match="objective summary requires kind='hipengine_gguf_mtp_category_matrix'"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_schema(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["true_ar_baseline"]["artifact_schema"]
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match="attached true_ar_baseline requires schema=1"):
+        objective_metrics_for_budget(summary, "b1")
 
 
 def test_objective_metrics_for_budget_rejects_missing_summary_repo_provenance(tmp_path: Path) -> None:
@@ -990,6 +1024,50 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_without_schema(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        schema=None,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR baseline artifact requires schema=1"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_wrong_kind(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        kind="legacy_true_ar",
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR baseline artifact requires kind='hipengine_gguf_true_ar_category_baseline'"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

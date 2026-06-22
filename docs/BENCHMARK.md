@@ -94,7 +94,8 @@ acceptance loops.
      --output "$AR_ROOT/true-ar-baseline.json"
    ```
 
-   The artifact must set `kind=hipengine_gguf_true_ar_category_baseline`,
+   The artifact must set `schema=1`,
+   `kind=hipengine_gguf_true_ar_category_baseline`,
    `true_autoregressive_path=true`, `same_prompt_suite=true`, and
    `same_timing_protocol=true`; include non-empty `commands`; include `repo`
    code-state provenance; include protocol metadata (`model`, matching `quant`,
@@ -118,7 +119,9 @@ acceptance loops.
      --true-ar-baseline-json "$AR_ROOT/true-ar-baseline.json"
    ```
 
-   The summary must include non-empty `commands`, attached true-AR `protocol`
+   The summary must set `schema=1`,
+   `kind=hipengine_gguf_mtp_category_matrix`, include non-empty `commands`,
+   and carry attached true-AR `artifact_schema`/`artifact_kind` plus `protocol`
    metadata matching the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
    `speed_claim_eligible=false`, `splits.full`,

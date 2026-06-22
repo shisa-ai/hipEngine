@@ -117160,3 +117160,31 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 43: require current artifact schema/kind
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 43.
+- Focused current-schema provenance contract: objective extraction and true-AR attachment should reject stale or ad-hoc JSON that lacks the current artifact `schema` / `kind` metadata.
+
+### Change
+- Added current-schema validators in `scripts/gguf_mtp_category_bench.py`:
+  - MTP category objective summaries must be `schema=1`, `kind=hipengine_gguf_mtp_category_matrix`.
+  - true-AR baseline artifacts must be `schema=1`, `kind=hipengine_gguf_true_ar_category_baseline`.
+- True-AR attachment now carries source artifact identity in `true_ar_baseline.artifact_schema` and `true_ar_baseline.artifact_kind`.
+- Objective extraction now exposes `summary_artifact` and `true_ar_artifact`.
+- Objective comparison signatures include summary schema and attached true-AR artifact identity.
+- Added regressions for missing/wrong MTP summary schema/kind, missing attached true-AR schema, and missing/wrong source true-AR artifact schema/kind.
+- Updated `docs/BENCHMARK.md` to document current-schema requirements for both artifact types.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 79 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

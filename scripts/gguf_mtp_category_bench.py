@@ -52,6 +52,10 @@ DEFAULT_HELDOUT_PROMPT_IDS = frozenset(
     }
 )
 REPO_PROVENANCE_FIELDS = ("repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count")
+MTP_CATEGORY_SCHEMA = 1
+MTP_CATEGORY_KIND = "hipengine_gguf_mtp_category_matrix"
+TRUE_AR_SCHEMA = 1
+TRUE_AR_KIND = "hipengine_gguf_true_ar_category_baseline"
 TRUE_AR_PROTOCOL_FIELDS = ("model", "quant", "prompt_file", "prompt_count", "decode_tokens", "warmup_decode_tokens")
 
 
@@ -131,6 +135,27 @@ def repo_provenance() -> dict[str, Any]:
         "git_tracked_dirty": tracked_dirty,
         "git_untracked_count": untracked_count,
     }
+
+
+def validate_artifact_schema(payload: dict[str, Any], *, label: str, kind: str, schema: int) -> dict[str, Any]:
+    if payload.get("kind") != kind:
+        raise BenchError(f"{label} requires kind={kind!r}")
+    if payload.get("schema") != schema:
+        raise BenchError(f"{label} requires schema={schema}")
+    return {"schema": schema, "kind": kind}
+
+
+def validate_category_summary_schema(summary: dict[str, Any], *, label: str) -> dict[str, Any]:
+    return validate_artifact_schema(summary, label=label, kind=MTP_CATEGORY_KIND, schema=MTP_CATEGORY_SCHEMA)
+
+
+def validate_true_ar_artifact_schema(artifact: dict[str, Any], *, label: str) -> dict[str, Any]:
+    return validate_artifact_schema(artifact, label=label, kind=TRUE_AR_KIND, schema=TRUE_AR_SCHEMA)
+
+
+def validate_attached_true_ar_artifact_schema(true_ar: dict[str, Any], *, label: str) -> dict[str, Any]:
+    payload = {"kind": true_ar.get("artifact_kind"), "schema": true_ar.get("artifact_schema")}
+    return validate_true_ar_artifact_schema(payload, label=label)
 
 
 def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str, Any]:
@@ -507,6 +532,7 @@ def true_ar_artifact_from_path(path: Path) -> dict[str, Any]:
     artifact = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(artifact, dict):
         raise BenchError("true AR baseline artifact must be a JSON object")
+    validate_true_ar_artifact_schema(artifact, label="true AR baseline artifact")
     if artifact.get("true_autoregressive_path") is not True:
         raise BenchError("true AR baseline artifact must set true_autoregressive_path=true")
     if artifact.get("same_prompt_suite") is not True:
@@ -593,7 +619,7 @@ def aggregate_true_ar_rows(rows_by_id: dict[str, dict[str, Any]], prompt_ids: li
     }
 
 
-def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path, repo: dict[str, Any], commands: list[str], protocol: dict[str, Any]) -> dict[str, Any]:
+def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path, artifact_schema: dict[str, Any], repo: dict[str, Any], commands: list[str], protocol: dict[str, Any]) -> dict[str, Any]:
     prompt_ids = [str(row["id"]) for row in summary["prompts"]]
     full_metric = aggregate_true_ar_rows(rows_by_id, prompt_ids)
     category_metrics = {
@@ -612,6 +638,8 @@ def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, di
         "same_prompt_suite": True,
         "same_timing_protocol": True,
         "source": str(source),
+        "artifact_schema": artifact_schema["schema"],
+        "artifact_kind": artifact_schema["kind"],
         "repo": repo,
         "commands": commands,
         "protocol": protocol,
@@ -695,12 +723,14 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     label = f"b{budget_label}" if isinstance(budget_label, int) or str(budget_label).isdigit() else str(budget_label)
     if label == "off" or not label.startswith("b"):
         raise BenchError(f"objective budget must be an MTP budget label like b5, got {budget_label!r}")
+    summary_artifact = validate_category_summary_schema(summary, label="objective summary")
     validate_repo_provenance(summary, label="objective summary")
     if summary.get("true_ar_comparison_available") is not True:
         raise BenchError("objective metrics require true_ar_comparison_available=true")
     true_ar = summary.get("true_ar_baseline")
     if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
         raise BenchError("objective metrics require an attached true_ar_baseline")
+    true_ar_artifact = validate_attached_true_ar_artifact_schema(true_ar, label="attached true_ar_baseline")
     validate_repo_provenance(true_ar, label="attached true_ar_baseline")
     summary_commands = validate_command_provenance(summary, label="objective summary")
     true_ar_commands = validate_command_provenance(true_ar, label="attached true_ar_baseline")
@@ -719,6 +749,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "true_ar_comparison_available": True,
         "speed_claim_eligible": bool(summary.get("speed_claim_eligible", False)),
         "performance_claim": bool(summary.get("performance_claim", False)),
+        "summary_artifact": summary_artifact,
+        "true_ar_artifact": true_ar_artifact,
         "summary_repo": validate_repo_provenance(summary, label="objective summary"),
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "summary_commands": summary_commands,
@@ -757,6 +789,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
 
 def summary_protocol_signature(summary: dict[str, Any]) -> dict[str, Any]:
     return {
+        "schema": summary.get("schema"),
         "kind": summary.get("kind"),
         "model": summary.get("model"),
         "quant": summary.get("quant"),
@@ -775,6 +808,7 @@ def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
         raise BenchError("objective comparison requires attached true_ar_baseline metadata")
     return {
         "source": true_ar.get("source"),
+        "artifact": validate_attached_true_ar_artifact_schema(true_ar, label="attached true_ar_baseline"),
         "repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "commands": validate_command_provenance(true_ar, label="attached true_ar_baseline"),
         "protocol": validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline"),
@@ -930,8 +964,8 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     true_ar_baseline_json = getattr(args, "true_ar_baseline_json", None)
 
     summary = {
-        "schema": 1,
-        "kind": "hipengine_gguf_mtp_category_matrix",
+        "schema": MTP_CATEGORY_SCHEMA,
+        "kind": MTP_CATEGORY_KIND,
         "status": "diagnostic_retained",
         "performance_claim": False,
         "speed_claim_eligible": False,
@@ -984,11 +1018,12 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     if true_ar_baseline_json:
         true_ar_path = Path(true_ar_baseline_json)
         true_ar_artifact = true_ar_artifact_from_path(true_ar_path)
+        true_ar_schema = validate_true_ar_artifact_schema(true_ar_artifact, label="true AR baseline artifact")
         true_ar_repo = validate_repo_provenance(true_ar_artifact, label="true AR baseline artifact")
         true_ar_commands = validate_command_provenance(true_ar_artifact, label="true AR baseline artifact")
         true_ar_protocol = validate_true_ar_protocol_metadata(artifact=true_ar_artifact, args=args, prompt_count=len(prompts), expected_quant=str(summary["quant"]))
         rows_by_id = validate_true_ar_prompt_rows(artifact=true_ar_artifact, prompts=prompts)
-        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo, commands=true_ar_commands, protocol=true_ar_protocol)
+        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, artifact_schema=true_ar_schema, repo=true_ar_repo, commands=true_ar_commands, protocol=true_ar_protocol)
     return validate_speed_claim_contract(summary)
 
 
