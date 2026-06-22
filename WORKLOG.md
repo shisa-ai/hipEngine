@@ -120523,3 +120523,42 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained. Current default is branch-redraft adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.5025`, heldout `0.5604`, categories non-regressive.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 162: branch-redraft sibling K10 rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 162.
+- Re-tested wider sibling search (`sibling_topk_accept=10`) under the new retained branch-redraft default, because branch redraft can make newly accepted sibling branches more valuable than they were before redrafting.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --sibling-topk-accept 10 --output /tmp/hipengine-mtp-branch-redraft-sibling10-iter162-b5-20.json
+```
+- Focused accepted/output matched the current branch-redraft sibling-K9 default: `0.5000`.
+- Candidate accounting regressed versus current default: `20/682 -> 20/742`, `accept_per_draft 0.0293 -> 0.0270`.
+- Branch/redraft counts were unchanged versus current default (`6` branch accepts/redrafts; branch depths `{0: 4, 1: 2}`).
+- Diagnostic tok/s `12.95`, `speedup_vs_ar_visible=0.7005x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-sibling10-full-20260623-050158/raw --output /tmp/hipengine-branch-redraft-sibling10-full-20260623-050158/summary.json --extra-arg=--sibling-topk-accept --extra-arg=10
+```
+- Accepted/output exactly matched current branch-redraft sibling-K9 default and did not improve it: full `0.502488`, train `0.454545`, heldout `0.560440`.
+- Per-category accepted/output matched current default: code `0.420290`, general_en `0.591837`, general_ja `0.487179`, mixed_ja_en `0.545455`.
+- Draft acceptance regressed versus current default: full `0.029040 -> 0.026734`, train `0.023992 -> 0.022085`, heldout `0.036585 -> 0.033686`; candidates increased in every split (`3478 -> 3778` full, `2084 -> 2264` train, `1394 -> 1514` heldout).
+- Diagnostic verifier-derived weighted tok/s `12.6193`, ratio `0.6542`; speed remains diagnostic only and is not a true no-MTP AR claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated a generic sibling top-k width under exact verification and branch redraft; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Sibling-K10 adds candidates but no focused/full/train/heldout/category accepted-output improvement, and full/train draft acceptance regresses.
+- Current default remains branch-redraft adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.5025`.
