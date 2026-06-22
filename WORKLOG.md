@@ -117324,3 +117324,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 49: validate split prompt IDs against contract
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 49.
+- Focused split provenance contract: guarded objective extraction must ensure the metrics in each split are tied to the split membership declared by `splits.contract`.
+
+### Change
+- `objective_metrics_for_budget()` now validates that:
+  - `splits.full.prompt_ids` exactly matches `splits.contract.full_ids`;
+  - `splits.train.prompt_ids` exactly matches `splits.contract.train_ids`;
+  - `splits.heldout.prompt_ids` exactly matches `splits.contract.heldout_ids`.
+- Added regressions for missing split `prompt_ids` and heldout/train prompt-id mismatch.
+- Updated `docs/BENCHMARK.md` to document the split prompt-id contract.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 97 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

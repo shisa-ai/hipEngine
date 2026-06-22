@@ -673,6 +673,22 @@ def test_objective_metrics_for_budget_rejects_summary_prompt_id_mismatch(tmp_pat
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_missing_split_prompt_ids(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["splits"]["full"]["prompt_ids"]
+
+    with pytest.raises(BenchError, match="objective metrics require splits.full.prompt_ids to match splits.contract.full_ids"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_split_prompt_id_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["heldout"]["prompt_ids"] = list(summary["splits"]["train"]["prompt_ids"])
+
+    with pytest.raises(BenchError, match="objective metrics require splits.heldout.prompt_ids to match splits.contract.heldout_ids"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_non_finite_scalar_metric(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["full"]["metrics"]["b1"]["accepted_per_output"] = float("nan")

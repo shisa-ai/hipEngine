@@ -127,7 +127,8 @@ acceptance loops.
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
    `speed_claim_eligible=false`, `splits.full`,
-   `splits.train`, and `splits.heldout`. Markdown tables must label the old
+   `splits.train`, and `splits.heldout`; each split `prompt_ids` list must
+   match its `splits.contract` counterpart. Markdown tables must label the old
    verifier-derived denominator as `vs verifier off`; same-protocol speed ratios
    appear only in a separate `vs true AR` column. Any future retained summary with
    `speed_claim_eligible=true` must pass the same current-schema checks for the
@@ -159,8 +160,9 @@ acceptance loops.
    protocol provenance, and prompt-hash provenance. The returned JSON contains
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and
-   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count. The gate
-   also verifies each `mtp_vs_true_ar_decode_ratio` against the attached true-AR
+   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count and split
+   `prompt_ids` matching `splits.contract`. The gate also verifies each
+   `mtp_vs_true_ar_decode_ratio` against the attached true-AR
    split `decode_tok_s_weighted` and matching split prompt count.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates

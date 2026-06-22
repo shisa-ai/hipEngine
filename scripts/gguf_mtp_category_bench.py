@@ -841,10 +841,18 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     true_ar_splits = true_ar.get("splits")
     if not isinstance(true_ar_splits, dict):
         raise BenchError("objective metrics require attached true_ar_baseline.splits")
+    split_contract_keys = {"full": "full_ids", "train": "train_ids", "heldout": "heldout_ids"}
     for split_name in ("full", "train", "heldout"):
         split = splits.get(split_name)
         if not isinstance(split, dict):
             raise BenchError(f"objective metrics require splits.{split_name}")
+        contract_key = split_contract_keys[split_name]
+        expected_split_ids = contract.get(contract_key)
+        if not isinstance(expected_split_ids, list) or not expected_split_ids:
+            raise BenchError(f"objective metrics require splits.contract.{contract_key}")
+        split_prompt_ids = split.get("prompt_ids")
+        if not isinstance(split_prompt_ids, list) or [str(prompt_id) for prompt_id in split_prompt_ids] != [str(prompt_id) for prompt_id in expected_split_ids]:
+            raise BenchError(f"objective metrics require splits.{split_name}.prompt_ids to match splits.contract.{contract_key}")
         metrics = split.get("metrics")
         if not isinstance(metrics, dict) or label not in metrics:
             raise BenchError(f"objective metrics missing {label} for split {split_name}")
