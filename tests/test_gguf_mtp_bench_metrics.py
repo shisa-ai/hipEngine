@@ -14,6 +14,7 @@ from scripts.gguf_mtp_bench import (
     llama_cpp_mtp_catchup_rows,
     root_topk_acceptance_from_target_samples,
     select_topk_tokens,
+    sibling_topk_acceptance_from_target_samples,
     validate_draft_n_max,
 )
 
@@ -289,6 +290,35 @@ def test_root_topk_acceptance_rejects_out_of_set_target() -> None:
         draft_topk_tokens=[[10, 20]],
         target_samples=[30, 99],
         root_topk_accept=2,
+    ) is None
+
+
+def test_sibling_topk_acceptance_accepts_deeper_non_argmax_sibling() -> None:
+    acceptance = sibling_topk_acceptance_from_target_samples(
+        draft_tokens=[10, 11, 12],
+        draft_topk_tokens=[[10, 20], [11, 21], [12, 22]],
+        target_samples=[10, 21, 99],
+        root_topk_accept=2,
+        sibling_topk_accept=2,
+    )
+
+    assert acceptance == {
+        "accepted_draft_tokens": 2,
+        "visible_output_tokens": 3,
+        "output_tokens": [10, 21, 99],
+        "comparison_target_tokens": [10, 21, 99],
+        "pending_hidden_row_index": 2,
+        "topk_branch_depth": 1,
+    }
+
+
+def test_sibling_topk_acceptance_rejects_deeper_branch_when_disabled() -> None:
+    assert sibling_topk_acceptance_from_target_samples(
+        draft_tokens=[10, 11, 12],
+        draft_topk_tokens=[[10, 20], [11, 21], [12, 22]],
+        target_samples=[10, 21, 99],
+        root_topk_accept=2,
+        sibling_topk_accept=1,
     ) is None
 
 

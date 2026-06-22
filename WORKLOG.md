@@ -119709,3 +119709,54 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Root branch-child drafting did not improve accepted/output over the current default `0.4286` and reduced draft acceptance/throughput diagnostics.
 - Next candidate should either build a true resident MTP K/V tree so branch children have the correct context, or evaluate a different generic proposal shape that improves heldout/full metrics rather than only moving draft-count denominators.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 142: deeper sibling top-k retained
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 142.
+- Extended the exact-verification tree proposal beyond the root: at the first mismatch after any already accepted linear prefix, the target may accept a non-argmax sibling if the target greedy token is in that row's draft top-k set. After one sibling accept, one corrective target token is emitted because branch-specific child rows are not generated.
+- This is a generic tree-shaped proposal. It does not inspect prompt text, token IDs, candidate-token patterns, fixture IDs, or benchmark identity.
+
+### Focused B5 sweep
+```bash
+for k in 1 2 3 5 10; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --sibling-topk-accept "$k" --output /tmp/hipengine-mtp-sibling-topk-${k}-iter142-b5-20.json
+done
+```
+- With root top-2 fixed, accepted/output by deeper sibling K: K1 `0.4286`, K2 `0.4286`, K3 `0.4286`, K5 `0.4737`, K10 `0.4872`.
+- Candidate-count draft acceptance drops sharply as K grows: K1 `15/120=0.125`, K5 `18/440=0.0409`, K10 `19/840=0.0226`.
+- Diagnostic tok/s stayed non-regressive in the focused prompt: K1 `13.31`, K5 `13.94`, K10 `14.03` tok/s.
+
+### Full category validation (B5, cycles=10)
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-sibling-topk10-full-20260623-024738/raw --output /tmp/hipengine-sibling-topk10-full-20260623-024738/summary.json --extra-arg=--sibling-topk-accept --extra-arg=10
+```
+- Full accepted/output improved over the current root-top2 default validation: `0.324324 -> 0.390244`.
+- Train accepted/output: `0.294118 -> 0.333333`; heldout accepted/output: `0.365079 -> 0.459459`.
+- Per-category accepted/output: code `0.230769 -> 0.259259`, general_en `0.333333 -> 0.444444`, general_ja `0.354839 -> 0.411765`, mixed_ja_en `0.428571 -> 0.500000`.
+- Draft acceptance regressed by candidate accounting: full `0.080000 -> 0.015238`; this is retained only as an accepted/output improvement, not as an accept-per-draft improvement.
+- Diagnostic verifier-derived tok/s was `12.4475` vs current root-top2 `12.3184`; no true-AR speed claim is retained.
+
+### Change retained
+- Added `sibling_topk_acceptance_from_target_samples` and `--sibling-topk-accept`.
+- Promoted the default deeper sibling top-k from `1` to `10`; use `--sibling-topk-accept 1` for the prior root-only top-k behavior.
+- Focused default confirmation:
+  ```bash
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-sibling-topk10-default-b5-20.json
+  # accepted_per_output=0.4872, accept_per_draft=0.0226, total_accepted=19/840, total_output_tokens=39, tokens_per_sec=13.81
+  ```
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: exact target verification chooses from generic draft top-k sets only; no hardcoded prompts/tokens/candidate patterns, no depth-specific target rescues, no fixture IDs, and no benchmark detection.
+
+### Result
+- Retained as an honest accepted/output improvement. Focused B5 default moved `0.4286 -> 0.4872`; full category B5 moved `0.3243 -> 0.3902` with train/heldout/per-category accepted/output non-regressive.
+- Caveat: accept-per-draft regresses under candidate accounting, so the next improvement should reduce the candidate budget (or add true branch-specific MTP rows/KV) while preserving the accepted/output gains.
