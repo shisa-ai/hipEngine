@@ -274,16 +274,20 @@ def validate_claim_flags(payload: dict[str, Any], *, label: str) -> dict[str, bo
     }
 
 
-def validate_command_provenance(payload: dict[str, Any], *, label: str) -> list[str]:
-    commands = payload.get("commands")
-    if not isinstance(commands, list) or not commands:
-        raise BenchError(f"{label} requires non-empty commands provenance")
+def validate_command_list(commands: Any, *, label: str, allow_empty: bool) -> list[str]:
+    if not isinstance(commands, list) or (not commands and not allow_empty):
+        requirement = "commands list" if allow_empty else "non-empty commands provenance"
+        raise BenchError(f"{label} requires {requirement}")
     out: list[str] = []
     for index, command in enumerate(commands):
         if not isinstance(command, str) or not command.strip():
             raise BenchError(f"{label} commands[{index}] must be a non-empty string")
         out.append(command)
     return out
+
+
+def validate_command_provenance(payload: dict[str, Any], *, label: str) -> list[str]:
+    return validate_command_list(payload.get("commands"), label=label, allow_empty=False)
 
 
 def validate_sha256_hex(value: Any, *, label: str) -> str:
@@ -1766,6 +1770,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     prompts_arg = build_summary_path_arg(getattr(args, "prompts", None), field="prompts")
     raw_root_arg = build_summary_path_arg(getattr(args, "raw_root", None), field="raw_root")
     cycles_arg = build_summary_cycles_arg(getattr(args, "cycles", None))
+    commands_arg = validate_command_list(commands, label="build summary", allow_empty=True)
     validate_raw_prompt_coverage(prompts=prompts, raw=raw)
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
@@ -1860,7 +1865,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         "cycles": cycles_arg,
         "budgets": sorted(raw),
         "raw_root": raw_root_arg,
-        "commands": commands,
+        "commands": commands_arg,
         "totals": totals,
         "categories": category_summary,
         "splits": split_summaries,

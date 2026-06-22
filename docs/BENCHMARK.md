@@ -193,8 +193,9 @@ acceptance loops.
    protocol provenance including attached true-AR protocol self-normalization and
    summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`
    prompt identity and hash typing, and true-AR finite-logit
-   evidence. Build-summary model/prompt/raw-root/cycle arguments are checked
-   before artifact construction rather than coerced with `str()` / `int()`.
+   evidence. Build-summary model/prompt/raw-root/cycle arguments and command
+   provenance lists are checked before artifact construction rather than coerced
+   with `str()` / `int()`.
    Summary and attached true-AR category map keys must be strict
    non-empty strings. In-memory prompt rows and raw per-prompt MTP rows are checked with
    strict string prompt/category identity plus the same strict count and
