@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.gguf_mtp_category_bench import (
+    DEFAULT_FULL_PROMPT_IDS,
     DEFAULT_HELDOUT_PROMPT_IDS,
     DEFAULT_PROMPTS,
     BenchError,
@@ -166,6 +167,9 @@ def test_default_prompt_fixture_keeps_one_heldout_per_category() -> None:
     contract = build_split_contract(prompts)
 
     assert len(prompts) == 10
+    assert contract["default_full_ids"] == list(DEFAULT_FULL_PROMPT_IDS)
+    assert contract["full_ids"] == list(DEFAULT_FULL_PROMPT_IDS)
+    assert contract["full_suite_matches_default"] is True
     assert set(contract["heldout_ids"]) == DEFAULT_HELDOUT_PROMPT_IDS
     assert contract["heldout_ids"] == [
         "code_markdown_table",
@@ -176,6 +180,8 @@ def test_default_prompt_fixture_keeps_one_heldout_per_category() -> None:
     assert len(contract["train_ids"]) == 6
     assert contract["heldout_has_all_present_categories"] is True
     assert contract["missing_default_heldout_ids"] == []
+    assert contract["missing_default_full_ids"] == []
+    assert contract["extra_vs_default_full_ids"] == []
     assert contract["heldout_categories"] == ["code", "general_en", "general_ja", "mixed_ja_en"]
 
 
@@ -266,15 +272,16 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["categories"]["code"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((10.0 / 110.0 * 1000.0) / 100.0)
 
 
-def test_objective_metrics_for_budget_requires_true_ar_and_reports_splits(tmp_path: Path) -> None:
-    baseline_path = tmp_path / "true-ar.json"
+def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int], draft_ms: float) -> dict:
+    prompts = load_prompt_rows(DEFAULT_PROMPTS)
+    assert [row["id"] for row in prompts] == list(DEFAULT_FULL_PROMPT_IDS)
+    assert len(accepted) == len(prompts)
+    baseline_path = tmp_path / f"{name}-true-ar.json"
     _write_true_ar_baseline(
         baseline_path,
         [
-            {"id": "code_merge_intervals", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
-            {"id": "code_markdown_table", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
-            {"id": "general_en_plan", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
-            {"id": "general_en_explain", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+            {"id": row["id"], "category": row["category"], "output_tokens": 10, "decode_ms": 100.0}
+            for row in prompts
         ],
     )
     args = SimpleNamespace(
@@ -284,21 +291,17 @@ def test_objective_metrics_for_budget_requires_true_ar_and_reports_splits(tmp_pa
         raw_root="/tmp/raw",
         true_ar_baseline_json=baseline_path,
     )
-    prompts = [
-        {"id": "code_merge_intervals", "category": "code", "prompt": "write code"},
-        {"id": "code_markdown_table", "category": "code", "prompt": "write table"},
-        {"id": "general_en_plan", "category": "general_en", "prompt": "plan"},
-        {"id": "general_en_explain", "category": "general_en", "prompt": "explain"},
-    ]
     raw = {
         1: [
-            _row("code_merge_intervals", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
-            _row("code_markdown_table", "code", output=10, accepted=2, drafts=1, ar_ms=100.0, draft_ms=10.0),
-            _row("general_en_plan", "general_en", output=20, accepted=3, drafts=1, ar_ms=200.0, draft_ms=20.0),
-            _row("general_en_explain", "general_en", output=20, accepted=4, drafts=1, ar_ms=200.0, draft_ms=20.0),
+            _row(row["id"], row["category"], output=10, accepted=acc, drafts=1, ar_ms=100.0, draft_ms=draft_ms)
+            for row, acc in zip(prompts, accepted, strict=True)
         ]
     }
-    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+    return build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], draft_ms=10.0)
 
     metrics = objective_metrics_for_budget(summary, 1)
 
@@ -309,25 +312,30 @@ def test_objective_metrics_for_budget_requires_true_ar_and_reports_splits(tmp_pa
     assert metrics["true_ar_comparison_available"] is True
     assert metrics["speed_claim_eligible"] is False
     assert metrics["performance_claim"] is False
-    assert metrics["full"]["accepted_per_output"] == pytest.approx(10 / 60)
-    assert metrics["full"]["draft_acceptance"] == pytest.approx(10 / 4)
-    assert metrics["full"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((60.0 / 660.0 * 1000.0) / 100.0)
-    assert metrics["train"]["prompts"] == 2
-    assert metrics["train"]["accepted_per_output"] == pytest.approx(4 / 30)
-    assert metrics["heldout"]["prompts"] == 2
-    assert metrics["heldout"]["accepted_per_output"] == pytest.approx(6 / 30)
-    assert metrics["heldout_ids"] == ["code_markdown_table", "general_en_explain"]
+    assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
+    assert metrics["full"]["draft_acceptance"] == pytest.approx(55 / 10)
+    assert metrics["full"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((100.0 / 1100.0 * 1000.0) / 100.0)
+    assert metrics["train"]["prompts"] == 6
+    assert metrics["train"]["accepted_per_output"] == pytest.approx(27 / 60)
+    assert metrics["heldout"]["prompts"] == 4
+    assert metrics["heldout"]["accepted_per_output"] == pytest.approx(28 / 40)
+    assert metrics["heldout_ids"] == [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+    ]
 
 
-def _objective_summary(tmp_path: Path, name: str, *, accepted: list[int], draft_ms: float) -> dict:
-    baseline_path = tmp_path / f"{name}-true-ar.json"
+def test_objective_metrics_for_budget_rejects_partial_suite_even_with_present_category_heldouts(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "partial-true-ar.json"
     _write_true_ar_baseline(
         baseline_path,
         [
             {"id": "code_merge_intervals", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
             {"id": "code_markdown_table", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
-            {"id": "general_en_plan", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
-            {"id": "general_en_explain", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+            {"id": "general_en_plan", "category": "general_en", "output_tokens": 10, "decode_ms": 100.0},
+            {"id": "general_en_explain", "category": "general_en", "output_tokens": 10, "decode_ms": 100.0},
         ],
     )
     args = SimpleNamespace(
@@ -343,20 +351,25 @@ def _objective_summary(tmp_path: Path, name: str, *, accepted: list[int], draft_
         {"id": "general_en_plan", "category": "general_en", "prompt": "plan"},
         {"id": "general_en_explain", "category": "general_en", "prompt": "explain"},
     ]
-    outputs = [10, 10, 20, 20]
-    ar_ms = [100.0, 100.0, 200.0, 200.0]
     raw = {
         1: [
-            _row(prompt["id"], prompt["category"], output=output, accepted=acc, drafts=1, ar_ms=ar, draft_ms=draft_ms)
-            for prompt, output, acc, ar in zip(prompts, outputs, accepted, ar_ms, strict=True)
+            _row(row["id"], row["category"], output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+            for row in prompts
         ]
     }
-    return build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+    assert summary["splits"]["contract"]["heldout_has_all_present_categories"] is True
+    assert summary["splits"]["contract"]["full_suite_matches_default"] is False
+    assert summary["objective_metrics_available"] is False
+    assert "full default" in summary["objective_metrics_blocker"]
+    with pytest.raises(BenchError, match="full default"):
+        objective_metrics_for_budget(summary, "b1")
 
 
 def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(tmp_path: Path) -> None:
-    baseline = _objective_summary(tmp_path, "baseline", accepted=[1, 2, 3, 4], draft_ms=20.0)
-    candidate = _objective_summary(tmp_path, "candidate", accepted=[2, 3, 4, 5], draft_ms=10.0)
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=20.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0)
 
     comparison = compare_objective_metrics(baseline, candidate, "b1")
 
@@ -369,8 +382,8 @@ def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(t
 
 
 def test_compare_objective_metrics_rejects_heldout_acceptance_regression(tmp_path: Path) -> None:
-    baseline = _objective_summary(tmp_path, "baseline", accepted=[1, 2, 3, 4], draft_ms=10.0)
-    candidate = _objective_summary(tmp_path, "candidate", accepted=[5, 1, 5, 1], draft_ms=10.0)
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2, 2, 2, 0, 2, 0, 2, 0, 2, 0], draft_ms=10.0)
 
     comparison = compare_objective_metrics(baseline, candidate, "b1")
 
@@ -386,8 +399,8 @@ def test_compare_objective_metrics_rejects_heldout_acceptance_regression(tmp_pat
 
 
 def test_compare_objective_metrics_rejects_true_ar_ratio_regression(tmp_path: Path) -> None:
-    baseline = _objective_summary(tmp_path, "baseline", accepted=[1, 2, 3, 4], draft_ms=10.0)
-    candidate = _objective_summary(tmp_path, "candidate", accepted=[1, 2, 3, 4], draft_ms=200.0)
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[1] * 10, draft_ms=200.0)
 
     comparison = compare_objective_metrics(baseline, candidate, "b1")
 

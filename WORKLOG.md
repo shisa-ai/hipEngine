@@ -116482,3 +116482,34 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 32 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 20: full-suite objective gating
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 20.
+- Focused guardrail change: future optimize-loop objective bundles must come from the exact full default 10-prompt mtp-bench category suite, not arbitrary partial/smoke prompt subsets.
+
+### Change
+- Added `DEFAULT_FULL_PROMPT_IDS` to `scripts/gguf_mtp_category_bench.py`.
+- `build_split_contract()` now records:
+  - `default_full_ids`;
+  - `full_suite_matches_default`;
+  - `missing_default_full_ids`;
+  - `extra_vs_default_full_ids`.
+- `objective_metrics_for_budget()` now rejects summaries unless `full_suite_matches_default=true`.
+- Updated tests so:
+  - the real prompt fixture is asserted to match the exact default full-suite IDs;
+  - objective metrics are available only for a full default-suite summary;
+  - partial/smoke summaries remain diagnostic even if they include heldouts for every present category;
+  - objective comparison tests use the full default suite.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 33 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

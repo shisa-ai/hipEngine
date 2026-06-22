@@ -29,6 +29,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "prompts" / "mtpbench-code-general-ja.jsonl"
 DEFAULT_BUDGETS = "1,2,3,4,5"
+DEFAULT_FULL_PROMPT_IDS = (
+    "code_merge_intervals",
+    "code_topological_sort",
+    "code_lru_cache",
+    "code_markdown_table",
+    "general_en_plan",
+    "general_en_explain",
+    "general_ja_plan",
+    "general_ja_explain",
+    "mixed_ja_en_translate",
+    "mixed_ja_en_review",
+)
 DEFAULT_HELDOUT_PROMPT_IDS = frozenset(
     {
         "code_markdown_table",
@@ -189,9 +201,12 @@ def build_split_contract(prompts: list[dict[str, Any]]) -> dict[str, Any]:
     prompt_by_id = {str(row["id"]): row for row in prompts}
     heldout_categories = sorted({str(prompt_by_id[prompt_id]["category"]) for prompt_id in heldout_ids})
     missing_default_heldouts = sorted(DEFAULT_HELDOUT_PROMPT_IDS.difference(prompt_ids))
+    missing_default_full_ids = [prompt_id for prompt_id in DEFAULT_FULL_PROMPT_IDS if prompt_id not in prompt_ids]
+    extra_vs_default_full_ids = [prompt_id for prompt_id in prompt_ids if prompt_id not in DEFAULT_FULL_PROMPT_IDS]
     return {
         "strategy": "fixed_category_heldout_v1",
         "purpose": "Detect train-only acceptance/speed gains before resuming MTP optimization.",
+        "default_full_ids": list(DEFAULT_FULL_PROMPT_IDS),
         "default_heldout_ids": sorted(DEFAULT_HELDOUT_PROMPT_IDS),
         "train_ids": train_ids,
         "heldout_ids": heldout_ids,
@@ -199,7 +214,10 @@ def build_split_contract(prompts: list[dict[str, Any]]) -> dict[str, Any]:
         "categories": categories,
         "heldout_categories": heldout_categories,
         "heldout_has_all_present_categories": set(heldout_categories) == set(categories),
+        "full_suite_matches_default": tuple(prompt_ids) == DEFAULT_FULL_PROMPT_IDS,
         "missing_default_heldout_ids": missing_default_heldouts,
+        "missing_default_full_ids": missing_default_full_ids,
+        "extra_vs_default_full_ids": extra_vs_default_full_ids,
         "required_for_keep_decisions": True,
         "regression_rule": "Train improvements are not wins if heldout or full-suite acceptance/true-AR speed ratio regresses.",
     }
@@ -399,6 +417,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     contract = splits.get("contract")
     if not isinstance(contract, dict) or contract.get("heldout_has_all_present_categories") is not True:
         raise BenchError("objective metrics require heldout coverage for all present categories")
+    if contract.get("full_suite_matches_default") is not True:
+        raise BenchError("objective metrics require the full default mtp-bench category prompt suite")
 
     out: dict[str, Any] = {
         "budget": label,
