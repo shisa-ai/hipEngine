@@ -246,6 +246,38 @@ def row_prompt_id(row: dict[str, Any]) -> str:
     return str(row.get("suite_id") or row.get("prompt_id") or row.get("id") or "")
 
 
+def row_category(row: dict[str, Any]) -> str:
+    return str(row.get("suite_category") or row.get("category") or "")
+
+
+def validate_raw_prompt_coverage(*, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]]) -> None:
+    expected_ids = [str(row["id"]) for row in prompts]
+    expected_set = set(expected_ids)
+    expected_category = {str(row["id"]): str(row["category"]) for row in prompts}
+    if not raw:
+        raise BenchError("category summary requires at least one MTP budget")
+    for budget, rows in sorted(raw.items()):
+        seen: dict[str, int] = {}
+        for row in rows:
+            prompt_id = row_prompt_id(row)
+            if not prompt_id:
+                raise BenchError(f"budget b{budget} contains row without prompt id")
+            seen[prompt_id] = seen.get(prompt_id, 0) + 1
+            if prompt_id not in expected_set:
+                raise BenchError(f"budget b{budget} contains unexpected prompt id: {prompt_id}")
+            category = row_category(row)
+            if category != expected_category[prompt_id]:
+                raise BenchError(
+                    f"budget b{budget} category mismatch for {prompt_id}: {category!r} != {expected_category[prompt_id]!r}"
+                )
+        duplicates = sorted(prompt_id for prompt_id, count in seen.items() if count > 1)
+        if duplicates:
+            raise BenchError(f"budget b{budget} contains duplicate prompt rows: {duplicates}")
+        missing = [prompt_id for prompt_id in expected_ids if prompt_id not in seen]
+        if missing:
+            raise BenchError(f"budget b{budget} missing prompt rows: {missing}")
+
+
 def build_split_contract(prompts: list[dict[str, Any]]) -> dict[str, Any]:
     prompt_ids = [str(row["id"]) for row in prompts]
     categories = sorted({str(row["category"]) for row in prompts})
@@ -593,6 +625,7 @@ def populate_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]], commands: list[str]) -> dict[str, Any]:
+    validate_raw_prompt_coverage(prompts=prompts, raw=raw)
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
     categories = sorted({row["category"] for row in prompts})

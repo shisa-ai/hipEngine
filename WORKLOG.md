@@ -116719,3 +116719,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 43 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 28: raw prompt coverage guard
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 28.
+- Focused artifact-integrity guard: prevent malformed MTP category budgets from entering full/train/heldout/objective metrics.
+
+### Change
+- Added `validate_raw_prompt_coverage()` to `scripts/gguf_mtp_category_bench.py`.
+- `build_summary()` now rejects raw budget data before aggregation if any budget has:
+  - missing prompt rows;
+  - duplicate prompt rows;
+  - unexpected prompt IDs;
+  - category mismatches versus the selected prompt suite.
+- Added regression tests for missing rows, duplicate rows, and category-mismatched rows.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 46 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

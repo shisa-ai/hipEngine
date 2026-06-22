@@ -149,6 +149,46 @@ def test_category_summary_rejects_invalid_cycle_timings(field: str, value: float
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+@pytest.mark.parametrize(
+    ("raw_rows", "message"),
+    [
+        (
+            [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)],
+            "missing prompt rows",
+        ),
+        (
+            [
+                _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
+                _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
+                _row("general_1", "general_en", output=20, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
+            ],
+            "duplicate prompt rows",
+        ),
+        (
+            [
+                _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
+                _row("general_1", "code", output=20, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
+            ],
+            "category mismatch",
+        ),
+    ],
+)
+def test_category_summary_rejects_bad_budget_prompt_coverage(raw_rows: list[dict], message: str) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [
+        {"id": "code_1", "category": "code", "prompt": "write code"},
+        {"id": "general_1", "category": "general_en", "prompt": "explain"},
+    ]
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw={1: raw_rows}, commands=[])
+
+
 def test_category_summary_reports_train_heldout_and_full_suite_metrics() -> None:
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
