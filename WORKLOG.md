@@ -120360,3 +120360,42 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Adaptive root-K6 does not improve focused/full/train/heldout/category accepted/output over adaptive root-K5 and worsens draft/candidate efficiency.
 - Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 158: sibling depth≤4 rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 158.
+- Tested whether allowing the retained generic sibling top-k policy one step deeper (`sibling_topk_max_depth=4`) under adaptive root-K5/tail-prev≤1/sibling-K9 recovers additional honest B5 acceptances.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 5 --sibling-topk-accept 9 --sibling-topk-max-depth 4 --root-tail-max-prev-accepted 1 --output /tmp/hipengine-mtp-rootk5-tailprev1-depth4-iter158-b5-20.json
+```
+- Focused accepted/output stayed `0.5000`.
+- Candidate accounting regressed versus current adaptive root-K5/depth≤3 default: `20/660 -> 20/820`, `accept_per_draft 0.0303 -> 0.0244`.
+- Branch count/depths were unchanged (`8` branch accepts; depths `{0: 4, 1: 3, 2: 1}`), so depth≤4 added candidates without adding focused acceptances.
+- Diagnostic tok/s `14.07`, `speedup_vs_ar_visible=0.7275x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling9-depth4-tailprev1-full-20260623-043649/raw --output /tmp/hipengine-rootk5-sibling9-depth4-tailprev1-full-20260623-043649/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=9 --extra-arg=--sibling-topk-max-depth --extra-arg=4 --extra-arg=--root-tail-max-prev-accepted --extra-arg=1
+```
+- Accepted/output matched current adaptive K5/depth≤3 default, but did not improve it: full `0.444444`, train `0.381443`, heldout `0.518072`.
+- Per-category accepted/output matched current default: code `0.344262`, general_en `0.512195`, general_ja `0.428571`, mixed_ja_en `0.534884`.
+- Draft acceptance regressed materially versus current default: full `0.024242 -> 0.019512`, train `0.018462 -> 0.015041`, heldout `0.032143 -> 0.026220`.
+- Diagnostic verifier-derived tok/s `13.4830`, ratio `0.6801`; speed remains diagnostic only.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated a generic sibling-depth cap under exact verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Depth≤4 does not improve focused/full/train/heldout/category accepted/output over depth≤3 and worsens draft/candidate efficiency.
+- Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
