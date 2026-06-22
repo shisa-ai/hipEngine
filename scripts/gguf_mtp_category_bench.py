@@ -747,8 +747,39 @@ def main() -> int:
         default=None,
         help="Budget label for --objective-summary-json, e.g. b5 or 5.",
     )
+    parser.add_argument(
+        "--compare-baseline-summary-json",
+        type=Path,
+        default=None,
+        help="Read an existing baseline category summary JSON for guarded objective comparison.",
+    )
+    parser.add_argument(
+        "--compare-candidate-summary-json",
+        type=Path,
+        default=None,
+        help="Read an existing candidate category summary JSON for guarded objective comparison.",
+    )
+    parser.add_argument(
+        "--compare-budget",
+        default=None,
+        help="Budget label for compare mode, e.g. b5 or 5.",
+    )
+    parser.add_argument(
+        "--compare-require-pass",
+        action="store_true",
+        help="In compare mode, exit non-zero when the guarded comparison does not pass.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.compare_baseline_summary_json is not None or args.compare_candidate_summary_json is not None:
+        if args.compare_baseline_summary_json is None or args.compare_candidate_summary_json is None or args.compare_budget is None:
+            raise BenchError("compare mode requires --compare-baseline-summary-json, --compare-candidate-summary-json, and --compare-budget")
+        baseline = json.loads(args.compare_baseline_summary_json.read_text(encoding="utf-8"))
+        candidate = json.loads(args.compare_candidate_summary_json.read_text(encoding="utf-8"))
+        comparison = compare_objective_metrics(baseline, candidate, args.compare_budget)
+        print(json.dumps(comparison, indent=2, sort_keys=True))
+        return 0 if comparison["passed"] or not args.compare_require_pass else 2
 
     if args.objective_summary_json is not None:
         if args.objective_budget is None:

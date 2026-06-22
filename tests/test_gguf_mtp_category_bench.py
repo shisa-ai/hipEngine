@@ -439,6 +439,71 @@ def test_objective_metrics_cli_prints_guarded_metrics(tmp_path: Path) -> None:
     assert metrics["speed_claim_eligible"] is False
 
 
+def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=20.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0)
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--compare-baseline-summary-json",
+            str(baseline_path),
+            "--compare-candidate-summary-json",
+            str(candidate_path),
+            "--compare-budget",
+            "b1",
+            "--compare-require-pass",
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    comparison = json.loads(completed.stdout)
+    assert comparison["passed"] is True
+    assert comparison["regressions"] == []
+    assert comparison["deltas"]["full"]["accepted_per_output"] > 0
+
+
+def test_compare_objective_metrics_cli_can_fail_on_regression(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2, 2, 2, 0, 2, 0, 2, 0, 2, 0], draft_ms=10.0)
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--compare-baseline-summary-json",
+            str(baseline_path),
+            "--compare-candidate-summary-json",
+            str(candidate_path),
+            "--compare-budget",
+            "b1",
+            "--compare-require-pass",
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 2
+    comparison = json.loads(completed.stdout)
+    assert comparison["passed"] is False
+    assert any(regression["split"] == "heldout" for regression in comparison["regressions"])
+
+
 def test_objective_metrics_cli_rejects_verifier_only_summary(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     args = SimpleNamespace(

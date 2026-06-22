@@ -116542,3 +116542,31 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 35 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 22: objective comparison CLI
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 22.
+- Focused harness-readiness change: expose the guarded baseline-vs-candidate objective comparison through a command-line interface for future optimize loops.
+
+### Change
+- Added CPU-only compare mode to `scripts/gguf_mtp_category_bench.py`:
+  ```bash
+  python3 scripts/gguf_mtp_category_bench.py     --compare-baseline-summary-json /path/to/baseline-summary.json     --compare-candidate-summary-json /path/to/candidate-summary.json     --compare-budget b5     --compare-require-pass
+  ```
+- The mode reads existing summary JSONs, calls `compare_objective_metrics()`, prints comparison JSON, and returns exit code `2` when `--compare-require-pass` is set and the guarded comparison fails.
+- Added subprocess tests for:
+  - a passing full-suite comparison;
+  - a failing heldout-regression comparison with exit code `2`.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+- The CLI is CPU-only and uses the same true-AR/full-suite/heldout gates as the Python helper.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 37 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
