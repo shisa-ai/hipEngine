@@ -15,6 +15,7 @@ from scripts.gguf_mtp_bench import (
     root_topk_acceptance_from_target_samples,
     select_topk_tokens,
     sibling_topk_acceptance_from_target_samples,
+    target_membership_in_draft_topk,
     validate_draft_n_max,
 )
 
@@ -178,6 +179,16 @@ def test_draft_top1_prob_matches_softmax_argmax_probability() -> None:
 
     expected = float(np.exp(2.0) / (np.exp(0.0) + np.exp(2.0) + np.exp(1.0)))
     assert prob == pytest.approx(expected)
+
+
+def test_target_membership_in_draft_topk_handles_short_draft_trace() -> None:
+    found, ranks = target_membership_in_draft_topk(
+        [11, 22, 33],
+        [[10, 11], [20, 21]],
+    )
+
+    assert found == [True, False, False]
+    assert ranks == [2, None, None]
 
 
 def test_rope_tables_use_split_half_layout() -> None:

@@ -349,6 +349,29 @@ def root_topk_acceptance_from_target_samples(
     return acceptance
 
 
+def target_membership_in_draft_topk(
+    comparison_target_tokens: list[int],
+    draft_topk_tokens: list[list[int]],
+) -> tuple[list[bool], list[int | None]]:
+    """Report whether each compared target token appears in available draft top-k rows."""
+
+    target_in_draft_topk: list[bool] = []
+    target_rank_in_draft_topk: list[int | None] = []
+    for depth, target in enumerate(comparison_target_tokens):
+        if depth >= len(draft_topk_tokens):
+            target_in_draft_topk.append(False)
+            target_rank_in_draft_topk.append(None)
+            continue
+        topk = draft_topk_tokens[depth]
+        if target in topk:
+            target_in_draft_topk.append(True)
+            target_rank_in_draft_topk.append(topk.index(target) + 1)
+        else:
+            target_in_draft_topk.append(False)
+            target_rank_in_draft_topk.append(None)
+    return target_in_draft_topk, target_rank_in_draft_topk
+
+
 def _draft_top1_prob(logits_row: np.ndarray) -> float:
     """Compute the softmax probability of the argmax token."""
     shifted = logits_row - logits_row.max()
@@ -775,16 +798,9 @@ def main():
             seq_position += visible_output_tokens
             accepted = accepted_draft_tokens == len(draft_tokens)
 
-            target_in_draft_top10 = []
-            target_rank_in_draft_top10 = []
-            for depth, target in enumerate(comparison_target_tokens):
-                top10 = draft_top10_tokens[depth]
-                if target in top10:
-                    target_in_draft_top10.append(True)
-                    target_rank_in_draft_top10.append(top10.index(target) + 1)
-                else:
-                    target_in_draft_top10.append(False)
-                    target_rank_in_draft_top10.append(None)
+            target_in_draft_top10, target_rank_in_draft_top10 = target_membership_in_draft_topk(
+                comparison_target_tokens, draft_top10_tokens
+            )
 
             cycle_details.append({
                 "cycle": cycle,

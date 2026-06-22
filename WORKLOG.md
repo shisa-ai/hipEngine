@@ -120008,3 +120008,37 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 
 ### Result
 - Not retained. Root-K5 improves aggregate full/train/heldout accepted/output but regresses `mixed_ja_en`, so current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 149: p_min with top-k selector rejected; short-trace bug fixed
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 149.
+- Evaluated whether the llama.cpp-style `--draft-p-min` confidence gate helps the retained root-K4/sibling-K10 exact-verification top-k selector by stopping low-confidence draft tails and reducing candidate budget.
+
+### Unblocker
+- The first p_min sweep exposed a benchmark accounting bug: when p_min stops drafting early, `comparison_target_tokens` can be longer than `draft_top10_tokens`, causing an `IndexError` while filling `target_in_draft_top10` metadata.
+- Added `target_membership_in_draft_topk()` so missing draft rows are recorded as `(False, None)` instead of crashing, and added a unit test for short draft traces.
+
+### Focused B5 sweep
+```bash
+for p in 0 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.50 0.60; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 4 --sibling-topk-accept 10 --draft-p-min "$p" --output /tmp/hipengine-mtp-rootk4-sib10-pmin-${p//./_}-iter149-b5-20.json
+done
+```
+- Accepted/output regressed for every p_min > 0: p0 `0.5000`, p0.10 `0.4737`, p0.15 `0.4737`, p0.20 `0.4737`, p0.25-p0.50 `0.4595`, p0.60 `0.4286`.
+- Candidate budget and diagnostic speed improved as expected (for example p0.50 `17/220`, `16.34 tok/s`, `0.849x` verifier-derived AR), but accepted/output dropped, so no p_min policy is retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 320 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 320 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: the retained code only fixes missing-row metadata accounting; the evaluated p_min selector is a generic draft-confidence threshold with no prompt/token/candidate-pattern hardcoding, no depth-specific target rescues, no fixture IDs, and no benchmark detection. No speed claim retained.
+
+### Result
+- Not retained as an acceptance improvement. Current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
+- Retained the short-draft trace metadata bug fix because it is required to evaluate p_min and other early-stop selectors safely.
