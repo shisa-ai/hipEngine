@@ -186,8 +186,9 @@ acceptance loops.
    (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
    fields, repo provenance including strict integer `git_untracked_count`,
    protocol provenance, prompt-hash provenance, and true-AR finite-logit
-   evidence. Scalar metric fields must be strict JSON numbers (not booleans or
-   numeric strings). The returned JSON contains compact `category_metrics` rows
+   evidence. Raw per-prompt MTP rows are checked with the same strict count and
+   timing typing before aggregation. Scalar metric fields must be strict JSON
+   numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows
    plus full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, positive `decode_ms`, finite non-negative
    `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`, each with a

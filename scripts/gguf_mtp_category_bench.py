@@ -811,10 +811,9 @@ def cycle_sum(row: dict[str, Any], key: str) -> float:
 
 
 def finite_float(value: Any, *, prompt_id: str, field: str) -> float:
-    try:
-        result = float(value)
-    except (TypeError, ValueError) as exc:
-        raise BenchError(f"non-numeric timing field {field} for {prompt_id}: {value!r}") from exc
+    if type(value) not in (int, float):
+        raise BenchError(f"non-numeric timing field {field} for {prompt_id}: {value!r}")
+    result = float(value)
     if not math.isfinite(result):
         raise BenchError(f"non-finite timing field {field} for {prompt_id}: {value!r}")
     return result
@@ -848,13 +847,18 @@ def validate_metric_row(row: dict[str, Any]) -> None:
     if not isinstance(metrics, dict):
         raise BenchError("category row missing metrics")
     prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
-    total_output = int(metrics.get("total_output_tokens") or 0)
-    total_accepted = int(metrics.get("total_accepted") or 0)
-    total_drafts = int(metrics.get("total_drafts") or 0)
-    if total_output <= 0:
-        raise BenchError(f"non-positive output token count for {prompt_id}: {total_output}")
-    if total_accepted < 0 or total_drafts < 0:
-        raise BenchError(f"negative metric in row {prompt_id}: accepted={total_accepted}, drafts={total_drafts}")
+    total_output = require_positive_int(
+        metrics.get("total_output_tokens"),
+        message=f"non-positive output token count for {prompt_id}: {metrics.get('total_output_tokens')!r}",
+    )
+    total_accepted = require_nonnegative_int(
+        metrics.get("total_accepted"),
+        message=f"negative metric in row {prompt_id}: accepted={metrics.get('total_accepted')!r}, drafts={metrics.get('total_drafts')!r}",
+    )
+    total_drafts = require_nonnegative_int(
+        metrics.get("total_drafts"),
+        message=f"negative metric in row {prompt_id}: accepted={metrics.get('total_accepted')!r}, drafts={metrics.get('total_drafts')!r}",
+    )
     if total_accepted > total_drafts:
         raise BenchError(f"accepted draft tokens exceed proposed drafts for {prompt_id}: {total_accepted} > {total_drafts}")
 

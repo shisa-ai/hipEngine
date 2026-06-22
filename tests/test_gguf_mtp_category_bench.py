@@ -175,9 +175,11 @@ def test_category_summary_rejects_non_positive_total_cycle_ms() -> None:
     [
         ("ar_decode_ms", -1.0, "negative timing"),
         ("mtp_draft_ms", float("nan"), "non-finite timing"),
+        ("ar_decode_ms", True, "non-numeric timing"),
+        ("mtp_draft_ms", "10.0", "non-numeric timing"),
     ],
 )
-def test_category_summary_rejects_invalid_cycle_timings(field: str, value: float, message: str) -> None:
+def test_category_summary_rejects_invalid_cycle_timings(field: str, value: object, message: str) -> None:
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
         prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
@@ -187,6 +189,30 @@ def test_category_summary_rejects_invalid_cycle_timings(field: str, value: float
     prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
     row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
     row["cycles"][0][field] = value
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("total_output_tokens", "10", "non-positive output token count"),
+        ("total_accepted", True, "negative metric in row"),
+        ("total_drafts", 1.5, "negative metric in row"),
+    ],
+)
+def test_category_summary_rejects_non_integer_raw_metric_counts(field: str, value: object, message: str) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    row["metrics"][field] = value
     raw = {1: [row]}
 
     with pytest.raises(BenchError, match=message):
