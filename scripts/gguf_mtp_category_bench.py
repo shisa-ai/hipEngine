@@ -117,12 +117,11 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
                     role = msg.get("role")
                     if not isinstance(role, str) or not role:
                         raise BenchError(f"{path}:{line_no}: messages[{msg_index}].role must be a non-empty string")
-                    if role == "user":
-                        content = msg.get("content", "")
-                        if not isinstance(content, str):
-                            raise BenchError(f"{path}:{line_no}: messages[{msg_index}].content must be a string")
-                        if content:
-                            user_parts.append(content)
+                    content = msg.get("content")
+                    if not isinstance(content, str):
+                        raise BenchError(f"{path}:{line_no}: messages[{msg_index}].content must be a string")
+                    if role == "user" and content:
+                        user_parts.append(content)
                 prompt_text = "\n\n".join(user_parts)
             if not prompt_text:
                 raise BenchError(f"{path}:{line_no}: prompt text is empty")

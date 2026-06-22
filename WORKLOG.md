@@ -118766,3 +118766,26 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 102: require explicit prompt message content
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 102.
+- Focused prompt fixture provenance contract: every `messages[]` object must carry explicit string content before prompt text extraction.
+
+### Change
+- `load_prompt_rows()` now rejects `messages[]` items with missing or non-string `content` values, regardless of role.
+- Added regressions for missing user message content and malformed non-user message content that previously could be ignored when another user message supplied prompt text.
+- Updated `docs/BENCHMARK.md` to document explicit message roles/content in prompt fixture rows.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no valid-fixture split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
