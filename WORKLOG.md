@@ -116311,3 +116311,51 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 27 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 15: fuller true-AR attached B1/B5 diagnostic
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 15.
+- Validation-only diagnostic: produce a fuller honest baseline using true no-MTP AR over all 10 category prompts with `decode_tokens=32`, then attach it to de-gamed B1/B5 MTP category diagnostics with `cycles=5`.
+
+### True AR command
+```bash
+python3 scripts/gguf_true_ar_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --decode-tokens 32   --warmup-decode-tokens 1   --raw-root /tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136   --output /tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json`.
+- Covers all 10 prompts with `true_autoregressive_path=true`, `same_prompt_suite=true`, `same_timing_protocol=true`.
+- Total true AR: `19.668866028306997 tok/s`.
+- Category true AR tok/s: code `19.7981`, general_en `19.4324`, general_ja `19.9659`, mixed_ja_en `19.3635`.
+
+### Attached MTP command
+```bash
+python3 scripts/gguf_mtp_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --budgets 1,5   --cycles 5   --raw-root /tmp/hipengine-mtp-category-b1-b5-c5-attach-20260622-134230/raw   --output /tmp/hipengine-mtp-category-b1-b5-c5-attach-20260622-134230/summary.json   --true-ar-baseline-json /tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-mtp-category-b1-b5-c5-attach-20260622-134230/summary.json` plus `.md` and raw child JSON/logs.
+- `performance_claim=false`; `speed_claim_eligible=false`; `true_ar_comparison_available=true`.
+- Total B1: `13.764777709940612 tok/s`, `0.6998256884830395x` true AR, accepted/output `0.1935483870967742`, draft acceptance `0.24`.
+- Total B5: `11.052814029705274 tok/s`, `0.5619446496711253x` true AR, accepted/output `0.24242424242424243`, draft acceptance `0.064`.
+- Train B1/B5 accepted/output: `0.11764705882352941` / `0.14285714285714285`.
+- Heldout B1/B5 accepted/output: `0.2857142857142857` / `0.3548387096774194`.
+- Category B1 accepted/output / draft acceptance:
+  - code: `0.047619047619047616` / `0.05`;
+  - general_en: `0.23076923076923078` / `0.3`;
+  - general_ja: `0.23076923076923078` / `0.3`;
+  - mixed_ja_en: `0.3333333333333333` / `0.5`.
+- Category B5 accepted/output / draft acceptance:
+  - code: `0.047619047619047616` / `0.01`;
+  - general_en: `0.375` / `0.12`;
+  - general_ja: `0.23076923076923078` / `0.06`;
+  - mixed_ja_en: `0.375` / `0.12`.
+
+### Guardrail status
+- Validation-only; no repo code changes, no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, and no kernel edits.
+- This remains diagnostic evidence only, not a retained speed claim. It confirms the honest de-gamed acceptance remains near the earlier bracket (B5 accepted/output ~0.24) and MTP remains slower than true AR in this harness.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 27 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
