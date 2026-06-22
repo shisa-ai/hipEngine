@@ -119854,3 +119854,38 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 
 ### Result
 - Not retained. Wider sibling K improves the single focused France prompt but does not improve the full/train/heldout/category suite and worsens draft acceptance. Current default remains root-K3/sibling-K10 at focused B5 `0.5000` and full-suite B5 `0.4253` accepted/output.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 145: all-depth branch child rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 145.
+- Tested a true one-level branch-child tree extension for every exposed non-argmax sibling at each generated linear draft depth. For each sibling, the temporary code precomputed a child token using that sibling token and the correct prefix hidden seed before target verification.
+
+### Measurement
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --sibling-branch-child --output /tmp/hipengine-mtp-branch-child-all-depth-b5-20.json
+```
+- Result: `accepted_per_output=0.5000`, `accept_per_draft=0.0139`, `total_accepted=20/1440`, `total_output_tokens=40`, `tokens_per_sec=5.86`, `speedup_vs_ar_visible=0.3148x`.
+- The temporary path precomputed `580` branch children across 20 cycles and found two child accepts, but total accepted/output stayed equal to the retained root-K3/sibling-K10 default while draft acceptance and throughput diagnostics regressed sharply.
+- Temporary code was reverted before validation/commit.
+
+### Retained path check
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-iteration145-retained-b5-20.json
+# accepted_per_output=0.5000, accept_per_draft=0.0233, total_accepted=20/860, tokens_per_sec=13.98
+```
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py
+# passed
+```
+- Prompt verifier passed: the temporary proposal was generic and precomputed before target verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Correct branch-child precomputation did not improve accepted/output over the current default `0.5000` and made candidate accounting/perf much worse.
+- Next improvement should either reduce the candidate budget of the retained top-k policy or build true resident MTP K/V so branch expansion is cheaper and context-correct.
