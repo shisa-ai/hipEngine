@@ -119521,3 +119521,42 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Result
 - Not retained. Naive dense replay of committed output rows is not equivalent to llama.cpp's resident MTP KV context and corrupts draft logits.
 - Next viable path should materialize true MTP K/V rows at the attention boundary or compare first draft logits against llama.cpp with the same prompt/catch-up state, not recompute a synthetic dense context from mixed target/MTP rows.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 137: depth cap and bulk-prefix dense replay rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 137.
+- Evaluated two generic, no-hardcode ways to improve the current GGUF MTP B5 accepted/output metric: fixed effective draft-depth caps and a slow bulk-prefix hidden trace feeding dense prompt/output replay.
+
+### Measurements
+```bash
+for n in 1 2 3 4 5; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max "$n" --output /tmp/hipengine-mtp-depthlimit-b${n}-20.json
+done
+```
+- Accepted/output by max depth: B1 `0.2857`, B2 `0.3333`, B3 `0.3333`, B4 `0.3333`, B5 `0.3548`.
+- Depth limiting did not improve accepted/output; full B5 stayed best in this selector-family sweep.
+
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --mtp-context-replay --output /tmp/hipengine-mtp-bulk-prefix-dense-replay-b5-20.json
+```
+- Temporary implementation: rebuilt each prompt prefix with bulk prefill to get correct prompt hidden rows, initialized llama.cpp-style shifted prompt catch-up rows, then replayed prompt/output rows through dense causal NextN each draft step.
+- Rejected: `accepted_per_output=0.0476190476`, `accept_per_draft=0.010`, `total_accepted=1/100`, `tokens_per_sec=1.65`, `speedup_vs_ar_visible=0.091x`.
+- Temporary code was reverted before validation/commit.
+
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-iteration137-retained-b5-20.json
+```
+- Retained current path after revert: `accepted_per_output=0.3548387097`, `accept_per_draft=0.110`, `total_accepted=11/100`, `tokens_per_sec=13.02`, `speedup_vs_ar_visible=0.674x`.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+```
+- Prompt verifier passed: generic depth limits and mechanical dense replay only; no prompt/token/candidate-pattern hardcoding, no depth-specific target rescues, and no retained speed claim.
+
+### Result
+- No accepted/output improvement retained. Dense recomputation remains the wrong abstraction; the viable llama.cpp-parity path needs resident MTP K/V materialization or a direct llama.cpp first-draft-logit oracle at the same catch-up boundary.
