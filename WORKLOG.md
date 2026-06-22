@@ -120206,3 +120206,39 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained as a candidate-efficiency/draft-acceptance improvement with accepted/output non-regressive. Current default is root-K4/sibling-K9/depth≤3: focused B5 `0.5000`, full-suite B5 `0.4318`, full draft acceptance `0.02375`.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk4-sibling9-depth3-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 154: sibling top-k depth≤2 rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 154.
+- Evaluated whether the retained root-K4/sibling-K9/depth≤3 policy could cap sibling top-k at depth≤2 to further reduce candidate exposure while preserving accepted/output.
+
+### Focused B5 diagnostic
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 4 --sibling-topk-accept 9 --sibling-topk-max-depth 2 --output /tmp/hipengine-mtp-rootk4-sibling9-depth2-iter154-b5-20.json
+```
+- Focused accepted/output was non-regressive: `0.5000`.
+- Candidate count improved `20/640 -> 20/480`; accept-per-draft improved `0.0312 -> 0.0417`.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk4-sibling9-depth2-full-20260623-041223/raw --output /tmp/hipengine-rootk4-sibling9-depth2-full-20260623-041223/summary.json --extra-arg=--root-topk-accept --extra-arg=4 --extra-arg=--sibling-topk-accept --extra-arg=9 --extra-arg=--sibling-topk-max-depth --extra-arg=2
+```
+- Full accepted/output regressed versus retained depth≤3: `0.431818 -> 0.425287`.
+- Heldout regressed `0.506173 -> 0.493671`; mixed_ja_en regressed `0.534884 -> 0.512195`.
+- Train and code/general categories were unchanged or non-regressive, but the full/heldout/mixed regressions block retention.
+- Draft acceptance improved `0.023750 -> 0.030833`, but accepted/output non-regression is required.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated only generic sibling top-k max-depth under exact verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Depth≤2 improves focused candidate accounting but regresses full/heldout/mixed accepted/output. Current default remains root-K4/sibling-K9/depth≤3 with focused B5 `0.5000` and full-suite B5 `0.4318`.
