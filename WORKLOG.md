@@ -118368,3 +118368,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 86: reject falsy raw timing coercion
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 86.
+- Focused raw timing contract: present falsy timing values must not be converted to `0.0` before strict timing validation.
+
+### Change
+- `validate_metric_row()` now passes `cycle.get(field, 0.0)` directly to `finite_float()` for per-cycle timing fields.
+- Missing cycle timing fields still default to `0.0`.
+- Present invalid falsy values such as `false` and `""` are no longer masked by `or 0.0`; they are rejected by strict numeric typing.
+- Added regressions for:
+  - `ar_decode_ms=false`;
+  - `mtp_draft_ms=""`.
+- Updated `docs/BENCHMARK.md` to document that present falsy timing values are rejected rather than zero-coerced.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

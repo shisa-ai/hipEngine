@@ -976,8 +976,8 @@ def validate_metric_row(row: dict[str, Any]) -> None:
     for index, cycle in enumerate(cycles):
         if not isinstance(cycle, dict):
             raise BenchError(f"cycle {index} for {prompt_id} is not an object")
-        ar_ms = finite_float(cycle.get("ar_decode_ms", 0.0) or 0.0, prompt_id=prompt_id, field=f"cycles[{index}].ar_decode_ms")
-        mtp_ms = finite_float(cycle.get("mtp_draft_ms", 0.0) or 0.0, prompt_id=prompt_id, field=f"cycles[{index}].mtp_draft_ms")
+        ar_ms = finite_float(cycle.get("ar_decode_ms", 0.0), prompt_id=prompt_id, field=f"cycles[{index}].ar_decode_ms")
+        mtp_ms = finite_float(cycle.get("mtp_draft_ms", 0.0), prompt_id=prompt_id, field=f"cycles[{index}].mtp_draft_ms")
         if ar_ms < 0.0 or mtp_ms < 0.0:
             raise BenchError(f"negative timing in row {prompt_id}: ar_decode_ms={ar_ms}, mtp_draft_ms={mtp_ms}")
         total_ar_ms += ar_ms

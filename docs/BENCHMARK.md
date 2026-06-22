@@ -198,7 +198,8 @@ acceptance loops.
    Summary and attached true-AR category map keys must be strict
    non-empty strings. In-memory prompt rows and raw per-prompt MTP rows are checked with
    strict string prompt/category identity plus the same strict count and
-   timing typing before aggregation. Scalar metric fields must be strict JSON
+   timing typing before aggregation; present falsy timing values such as
+   `false` or `""` are rejected rather than zero-coerced. Scalar metric fields must be strict JSON
    numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows
    plus full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, positive `decode_ms`, finite non-negative
