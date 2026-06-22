@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from scripts.gguf_mtp_category_bench import build_summary
+from scripts.gguf_mtp_category_bench import DEFAULT_HELDOUT_PROMPT_IDS, build_summary
 
 
 def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: int, ar_ms: float, draft_ms: float) -> dict:
@@ -67,3 +67,69 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     assert summary["totals"]["off"]["baseline_kind"] == "verifier_derived_from_b1_target_ar"
     assert summary["totals"]["off"]["true_autoregressive_path"] is False
     assert summary["categories"]["code"]["off"]["true_autoregressive_path"] is False
+
+
+def test_category_summary_reports_train_heldout_and_full_suite_metrics() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [
+        {"id": "code_merge_intervals", "category": "code", "prompt": "p"},
+        {"id": "code_topological_sort", "category": "code", "prompt": "p"},
+        {"id": "code_lru_cache", "category": "code", "prompt": "p"},
+        {"id": "code_markdown_table", "category": "code", "prompt": "p"},
+        {"id": "general_en_plan", "category": "general_en", "prompt": "p"},
+        {"id": "general_en_explain", "category": "general_en", "prompt": "p"},
+        {"id": "general_ja_plan", "category": "general_ja", "prompt": "p"},
+        {"id": "general_ja_explain", "category": "general_ja", "prompt": "p"},
+        {"id": "mixed_ja_en_translate", "category": "mixed_ja_en", "prompt": "p"},
+        {"id": "mixed_ja_en_review", "category": "mixed_ja_en", "prompt": "p"},
+    ]
+
+    def rows_for_budget(budget: int) -> list[dict]:
+        rows = []
+        for prompt in prompts:
+            is_heldout = prompt["id"] in DEFAULT_HELDOUT_PROMPT_IDS
+            accepted = 2 if is_heldout else 1
+            rows.append(
+                _row(
+                    prompt["id"],
+                    prompt["category"],
+                    output=10,
+                    accepted=accepted,
+                    drafts=budget,
+                    ar_ms=10.0,
+                    draft_ms=float(budget),
+                )
+            )
+        return rows
+
+    summary = build_summary(args=args, prompts=prompts, raw={1: rows_for_budget(1), 5: rows_for_budget(5)}, commands=[])
+    split_contract = summary["splits"]["contract"]
+
+    assert split_contract["heldout_ids"] == [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+    ]
+    assert split_contract["train_ids"] == [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "general_en_plan",
+        "general_ja_plan",
+        "mixed_ja_en_translate",
+    ]
+    assert split_contract["heldout_has_all_present_categories"] is True
+    assert split_contract["missing_default_heldout_ids"] == []
+
+    assert summary["splits"]["full"]["metrics"]["b5"]["prompts"] == 10
+    assert summary["splits"]["train"]["metrics"]["b5"]["prompts"] == 6
+    assert summary["splits"]["heldout"]["metrics"]["b5"]["prompts"] == 4
+    assert summary["splits"]["train"]["metrics"]["b5"]["accepted_per_output"] == 0.1
+    assert summary["splits"]["heldout"]["metrics"]["b5"]["accepted_per_output"] == 0.2
+    assert summary["splits"]["full"]["metrics"]["b5"]["accepted_per_output"] == 0.14

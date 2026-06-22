@@ -115967,3 +115967,30 @@ python3 -m json.tool benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp
 python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
 # 15 passed
 ```
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 2: train/heldout/full-suite aggregation
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 2.
+- Focused readiness change before restarting acceptance optimization: make the native GGUF-MTP category artifact report deterministic train, heldout, and full-suite metrics.
+
+### Change
+- `scripts/gguf_mtp_category_bench.py` now records a `splits` section with:
+  - fixed heldout prompts: `code_markdown_table`, `general_en_explain`, `general_ja_explain`, `mixed_ja_en_review`;
+  - train prompts: every other selected prompt;
+  - split-level `off`, B1..B5 metrics including `draft_acceptance`, `accepted_per_output`, decode tok/s, and diagnostic vs-AR ratio.
+- Markdown summaries now include a train/heldout split table before the category tables.
+- Added a unit test that verifies one heldout per category on the default suite and checks split accepted/output aggregation.
+
+### Guardrail status
+- No selector/proposal-policy changes; no token IDs, prompt text matching, candidate-pattern branches, or fixture shortcuts added.
+- Existing artifact metadata still blocks speed promotion because `off` is verifier-derived, not a true no-MTP AR path.
+- Next prerequisite remains the true autoregressive/no-MTP baseline in the same benchmark protocol.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 16 passed
+```
+- Same command also ran as the loop guard; prompt verifier passed in `multiloop_measure`.

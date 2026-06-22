@@ -29,6 +29,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "prompts" / "mtpbench-code-general-ja.jsonl"
 DEFAULT_BUDGETS = "1,2,3,4,5"
+DEFAULT_HELDOUT_PROMPT_IDS = frozenset(
+    {
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+    }
+)
 
 
 class BenchError(RuntimeError):
@@ -169,6 +177,66 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def row_prompt_id(row: dict[str, Any]) -> str:
+    return str(row.get("suite_id") or row.get("prompt_id") or row.get("id") or "")
+
+
+def build_split_contract(prompts: list[dict[str, Any]]) -> dict[str, Any]:
+    prompt_ids = [str(row["id"]) for row in prompts]
+    categories = sorted({str(row["category"]) for row in prompts})
+    heldout_ids = [prompt_id for prompt_id in prompt_ids if prompt_id in DEFAULT_HELDOUT_PROMPT_IDS]
+    train_ids = [prompt_id for prompt_id in prompt_ids if prompt_id not in DEFAULT_HELDOUT_PROMPT_IDS]
+    prompt_by_id = {str(row["id"]): row for row in prompts}
+    heldout_categories = sorted({str(prompt_by_id[prompt_id]["category"]) for prompt_id in heldout_ids})
+    missing_default_heldouts = sorted(DEFAULT_HELDOUT_PROMPT_IDS.difference(prompt_ids))
+    return {
+        "strategy": "fixed_category_heldout_v1",
+        "purpose": "Detect train-only acceptance/speed gains before resuming MTP optimization.",
+        "default_heldout_ids": sorted(DEFAULT_HELDOUT_PROMPT_IDS),
+        "train_ids": train_ids,
+        "heldout_ids": heldout_ids,
+        "full_ids": prompt_ids,
+        "categories": categories,
+        "heldout_categories": heldout_categories,
+        "heldout_has_all_present_categories": set(heldout_categories) == set(categories),
+        "missing_default_heldout_ids": missing_default_heldouts,
+        "required_for_keep_decisions": True,
+        "regression_rule": "Train improvements are not wins if heldout or full-suite acceptance/true-AR speed ratio regresses.",
+    }
+
+
+def filter_rows_by_prompt_ids(rows: list[dict[str, Any]], prompt_ids: set[str]) -> list[dict[str, Any]]:
+    return [row for row in rows if row_prompt_id(row) in prompt_ids]
+
+
+def aggregate_split(raw: dict[int, list[dict[str, Any]]], prompt_ids: list[str]) -> dict[str, Any]:
+    prompt_id_set = set(prompt_ids)
+    b1_rows = filter_rows_by_prompt_ids(raw[min(raw)], prompt_id_set)
+    off = aggregate_off_from_b1(b1_rows)
+    metrics: dict[str, Any] = {"off": {"label": "off", "budget": 0, **off, "mtp_vs_ar_decode_ratio": 1.0}}
+    for budget, rows in sorted(raw.items()):
+        split_rows = filter_rows_by_prompt_ids(rows, prompt_id_set)
+        metrics[f"b{budget}"] = {
+            "label": f"b{budget}",
+            "budget": budget,
+            **aggregate_rows(split_rows, off_tps=off["decode_tok_s_weighted"]),
+        }
+    return {
+        "prompt_ids": prompt_ids,
+        "metrics": metrics,
+    }
+
+
+def build_split_summaries(prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]]) -> dict[str, Any]:
+    contract = build_split_contract(prompts)
+    return {
+        "contract": contract,
+        "full": aggregate_split(raw, contract["full_ids"]),
+        "train": aggregate_split(raw, contract["train_ids"]),
+        "heldout": aggregate_split(raw, contract["heldout_ids"]),
+    }
+
+
 def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]], commands: list[str]) -> dict[str, Any]:
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
@@ -217,6 +285,8 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         best["categories_by_decode_tok_s"][category] = max((v for k, v in payload.items() if k != "off"), key=lambda x: x["decode_tok_s_weighted"])["label"]
         best["categories_by_accepted_per_output"][category] = max((v for k, v in payload.items() if k != "off"), key=lambda x: x["accepted_per_output"])["label"]
 
+    split_summaries = build_split_summaries(prompts, raw)
+
     return {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_category_matrix",
@@ -250,6 +320,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         "commands": commands,
         "totals": totals,
         "categories": category_summary,
+        "splits": split_summaries,
         "best": best,
         "prompts": [
             {"id": row["id"], "category": row["category"], "prompt_chars": len(row["prompt"])}
@@ -273,6 +344,27 @@ def write_markdown(summary: dict[str, Any], path: Path) -> None:
     if not summary.get("speed_claim_eligible", True):
         lines.append("")
         lines.append("> **Diagnostic only:** the `off` row is derived from B1 target-verifier timing, not a true no-MTP autoregressive run. Do not use `vs AR` as a retained MTP speedup claim until a true AR baseline is measured by this harness.")
+    splits = summary.get("splits") or {}
+    contract = splits.get("contract") or {}
+    if contract:
+        lines.append("")
+        lines.append("## Train / heldout split")
+        lines.append(f"Strategy: `{contract.get('strategy')}`")
+        lines.append(f"Train prompts: `{', '.join(contract.get('train_ids', []))}`")
+        lines.append(f"Heldout prompts: `{', '.join(contract.get('heldout_ids', []))}`")
+        lines.append(f"Heldout covers all present categories: `{contract.get('heldout_has_all_present_categories')}`")
+        lines.append("")
+        lines.append("| split | budget | decode tok/s | vs AR | draft accept | accepted/output | prompts |")
+        lines.append("|---|---|---:|---:|---:|---:|---:|")
+        for split_name in ("full", "train", "heldout"):
+            metrics = (splits.get(split_name) or {}).get("metrics") or {}
+            for label, row in metrics.items():
+                if label == "off":
+                    continue
+                lines.append(
+                    f"| {split_name} | {label} | {fmt(row['decode_tok_s_weighted'])} | {fmt(row['mtp_vs_ar_decode_ratio'], 3)} | "
+                    f"{fmt(row.get('draft_acceptance'), 4)} | {fmt(row.get('accepted_per_output'), 4)} | {row['prompts']} |"
+                )
     lines.append("")
     lines.append("## Total")
     lines.append("| budget | decode tok/s | vs AR | draft accept | accepted/output | output tokens |")
