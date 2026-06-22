@@ -531,6 +531,7 @@ def test_default_prompt_fixture_keeps_one_heldout_per_category() -> None:
         ({"category": "code", "prompt": "write code"}, "prompt id must be a non-empty string"),
         ({"name": "code_1", "category": "code", "prompt": "write code"}, "prompt id must be a non-empty string"),
         ({"id": 123, "category": "code", "prompt": "write code"}, "prompt id must be a non-empty string"),
+        ({"id": "code_1", "prompt": "write code"}, "category must be a non-empty string"),
         ({"id": "code_1", "category": 123, "prompt": "write code"}, "category must be a non-empty string"),
         ({"id": "code_1", "category": "code", "prompt": 123}, "prompt text must be a string"),
         (

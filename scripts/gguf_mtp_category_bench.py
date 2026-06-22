@@ -98,7 +98,7 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
             if prompt_id in seen_ids:
                 raise BenchError(f"{path}:{line_no}: duplicate prompt id: {prompt_id}")
             seen_ids.add(prompt_id)
-            raw_category = raw.get("category", "uncategorized")
+            raw_category = raw.get("category")
             if not isinstance(raw_category, str) or not raw_category:
                 raise BenchError(f"{path}:{line_no}: category must be a non-empty string")
             category = raw_category
