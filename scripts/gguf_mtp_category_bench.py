@@ -1827,7 +1827,9 @@ def compare_objective_metrics(
     regressions: list[dict[str, Any]] = []
     improvements: list[dict[str, Any]] = []
     gated_fields = ("accepted_per_output", "draft_acceptance", "mtp_vs_true_ar_decode_ratio")
-    for split_name in ("full", "heldout"):
+    gated_split_scopes = ("full", "heldout")
+    gated_category_scopes = tuple(sorted(baseline_categories))
+    for split_name in gated_split_scopes:
         for field in gated_fields:
             delta = deltas[split_name][field]
             payload = {
@@ -1841,7 +1843,7 @@ def compare_objective_metrics(
                 regressions.append(payload)
             elif delta > tolerance:
                 improvements.append(payload)
-    for category in sorted(baseline_categories):
+    for category in gated_category_scopes:
         for field in gated_fields:
             delta = category_deltas[category][field]
             payload = {
@@ -1856,10 +1858,22 @@ def compare_objective_metrics(
             elif delta > tolerance:
                 improvements.append(payload)
 
+    if regressions:
+        decision_state = "fail_regressed"
+    elif improvements:
+        decision_state = "pass_improved"
+    else:
+        decision_state = "pass_no_guarded_improvement"
+
     return {
         "budget": baseline["budget"],
         "passed": not regressions,
         "guarded_improved": bool(improvements),
+        "decision_state": decision_state,
+        "guarded_fields": list(gated_fields),
+        "guarded_split_scopes": list(gated_split_scopes),
+        "guarded_category_scopes": list(gated_category_scopes),
+        "train_report_only": True,
         "regressions": regressions,
         "improvements": improvements,
         "tolerance": tolerance,

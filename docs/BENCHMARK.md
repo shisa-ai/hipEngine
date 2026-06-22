@@ -282,9 +282,11 @@ acceptance loops.
    or any category `accepted_per_output`, `draft_acceptance`, or
    `mtp_vs_true_ar_decode_ratio` regress. Train deltas are reported but are not
    sufficient for a keep decision. The comparator also reports an `improvements[]`
-   list and `guarded_improved` boolean for those same guarded full/heldout/category
-   fields. Add `--compare-require-guarded-improvement` when an optimize loop must
-   reject exact no-op candidates in addition to regressions. The optional
+   list, `guarded_improved` boolean, `decision_state` enum
+   (`fail_regressed`, `pass_no_guarded_improvement`, or `pass_improved`), guarded
+   field/scope lists, and `train_report_only=true` for those same guarded
+   full/heldout/category fields. Add `--compare-require-guarded-improvement` when
+   an optimize loop must reject exact no-op candidates in addition to regressions. The optional
    `--compare-tolerance` applies a finite non-negative absolute tolerance to
    guarded regressions and improvements; its default is `0.0` for exact
    non-regression. NaN/Inf tolerances are invalid because they can mask

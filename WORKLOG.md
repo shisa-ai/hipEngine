@@ -119299,3 +119299,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 124: add structured compare decision metadata
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 124.
+- Focused acceptance-review harness readiness: make guarded comparison outcomes machine-readable without changing compare pass/fail behavior.
+
+### Change
+- `compare_objective_metrics()` now emits `decision_state` with one of `fail_regressed`, `pass_no_guarded_improvement`, or `pass_improved`.
+- Comparison JSON now includes `guarded_fields`, `guarded_split_scopes`, `guarded_category_scopes`, and `train_report_only=true` so optimize automation does not need to parse the prose `decision_rule`.
+- Existing comparator/CLI tests now assert improved, no-op, and regressed decision states.
+- Updated `docs/BENCHMARK.md` to document the structured comparison metadata.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no raw metric schema changes, no acceptance computation semantics changes, no objective extraction formula changes, no comparator pass/fail behavior changes, no CLI exit behavior changes, no true-AR baseline eligibility changes, no speed-claim promotion changes, and no kernel edits.
+- Comparison still runs `objective_metrics_for_budget()` on both artifacts before producing the new metadata, preserving the same split/category, attached true-AR, command, repo, protocol, and finite-metric checks.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

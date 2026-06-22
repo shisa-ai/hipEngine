@@ -2088,6 +2088,11 @@ def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(t
 
     assert comparison["passed"] is True
     assert comparison["guarded_improved"] is True
+    assert comparison["decision_state"] == "pass_improved"
+    assert comparison["guarded_fields"] == ["accepted_per_output", "draft_acceptance", "mtp_vs_true_ar_decode_ratio"]
+    assert comparison["guarded_split_scopes"] == ["full", "heldout"]
+    assert comparison["guarded_category_scopes"] == ["code", "general_en", "general_ja", "mixed_ja_en"]
+    assert comparison["train_report_only"] is True
     assert comparison["regressions"] == []
     assert any(improvement.get("split") == "heldout" for improvement in comparison["improvements"])
     assert any(improvement.get("category") == "code" for improvement in comparison["improvements"])
@@ -2138,6 +2143,7 @@ def test_compare_objective_metrics_rejects_heldout_acceptance_regression(tmp_pat
     comparison = compare_objective_metrics(baseline, candidate, "b1")
 
     assert comparison["passed"] is False
+    assert comparison["decision_state"] == "fail_regressed"
     assert {
         "split": "heldout",
         "field": "accepted_per_output",
@@ -2410,6 +2416,7 @@ def test_compare_objective_metrics_cli_can_require_guarded_improvement(tmp_path:
     comparison = json.loads(completed.stdout)
     assert comparison["passed"] is True
     assert comparison["guarded_improved"] is False
+    assert comparison["decision_state"] == "pass_no_guarded_improvement"
     assert comparison["regressions"] == []
     assert comparison["improvements"] == []
 
@@ -2443,6 +2450,7 @@ def test_compare_objective_metrics_cli_can_fail_on_regression(tmp_path: Path) ->
     assert completed.returncode == 2
     comparison = json.loads(completed.stdout)
     assert comparison["passed"] is False
+    assert comparison["decision_state"] == "fail_regressed"
     assert any(regression["split"] == "heldout" for regression in comparison["regressions"])
 
 
