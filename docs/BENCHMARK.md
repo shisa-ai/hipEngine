@@ -293,7 +293,10 @@ acceptance loops.
    regressions. Compare-mode JSON also records `comparison_sources` (baseline and
    candidate summary paths plus resolved paths), `comparison_command`, and
    `comparison_cwd`; keep these fields with any loop decision artifact so the
-   exact command and compared summaries remain auditable.
+   exact command and compared summaries remain auditable. Use
+   `--compare-output-json /path/to/comparison.json` to write the same guarded
+   comparison JSON printed to stdout as a durable decision artifact; the command
+   rejects output paths that would overwrite either compared summary.
 
 5. **Promotion remains separate from diagnostics.** The category diagnostic is
    not a retained speed claim even when a true-AR baseline is attached. To promote

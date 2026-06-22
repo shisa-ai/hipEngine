@@ -2358,6 +2358,7 @@ def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None
     candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0)
     baseline_path = tmp_path / "baseline.json"
     candidate_path = tmp_path / "candidate.json"
+    output_path = tmp_path / "comparisons" / "decision.json"
     baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
     candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
 
@@ -2371,6 +2372,8 @@ def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None
             str(candidate_path),
             "--compare-budget",
             "b1",
+            "--compare-output-json",
+            str(output_path),
             "--compare-require-pass",
         ],
         cwd=repo_root,
@@ -2380,6 +2383,8 @@ def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None
     )
 
     comparison = json.loads(completed.stdout)
+    assert output_path.exists()
+    assert json.loads(output_path.read_text(encoding="utf-8")) == comparison
     assert comparison["passed"] is True
     assert comparison["regressions"] == []
     assert comparison["deltas"]["full"]["accepted_per_output"] > 0
@@ -2394,6 +2399,41 @@ def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None
     assert str(baseline_path) in comparison["comparison_command"]
     assert "--compare-candidate-summary-json" in comparison["comparison_command"]
     assert str(candidate_path) in comparison["comparison_command"]
+    assert "--compare-output-json" in comparison["comparison_command"]
+    assert str(output_path) in comparison["comparison_command"]
+    assert comparison["comparison_output_json"] == str(output_path)
+    assert comparison["comparison_output_json_resolved"] == str(output_path.resolve(strict=False))
+
+
+def test_compare_objective_metrics_cli_rejects_output_over_input(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=20.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0)
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--compare-baseline-summary-json",
+            str(baseline_path),
+            "--compare-candidate-summary-json",
+            str(candidate_path),
+            "--compare-budget",
+            "b1",
+            "--compare-output-json",
+            str(baseline_path),
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode != 0
+    assert "--compare-output-json must not overwrite compared summary JSON inputs" in completed.stderr
 
 
 def test_compare_objective_metrics_cli_can_require_guarded_improvement(tmp_path: Path) -> None:

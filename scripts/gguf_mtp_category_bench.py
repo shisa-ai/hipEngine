@@ -2187,6 +2187,12 @@ def main() -> int:
         action="store_true",
         help="In compare mode, exit non-zero unless at least one guarded full/heldout/category metric improves beyond tolerance.",
     )
+    parser.add_argument(
+        "--compare-output-json",
+        type=Path,
+        default=None,
+        help="In compare mode, also write the guarded comparison JSON to this artifact path.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -2206,7 +2212,22 @@ def main() -> int:
         }
         comparison["comparison_command"] = quote_command([sys.executable, *sys.argv])
         comparison["comparison_cwd"] = str(Path.cwd())
-        print(json.dumps(comparison, indent=2, sort_keys=True))
+        if args.compare_output_json is not None:
+            output_path = args.compare_output_json
+            output_resolved = output_path.expanduser().resolve(strict=False)
+            input_resolved = {
+                baseline_path.expanduser().resolve(strict=False),
+                candidate_path.expanduser().resolve(strict=False),
+            }
+            if output_resolved in input_resolved:
+                raise BenchError("--compare-output-json must not overwrite compared summary JSON inputs")
+            comparison["comparison_output_json"] = str(output_path)
+            comparison["comparison_output_json_resolved"] = str(output_resolved)
+        rendered = json.dumps(comparison, indent=2, sort_keys=True) + "\n"
+        if args.compare_output_json is not None:
+            args.compare_output_json.parent.mkdir(parents=True, exist_ok=True)
+            args.compare_output_json.write_text(rendered, encoding="utf-8")
+        print(rendered, end="")
         if args.compare_require_guarded_improvement and (not comparison["passed"] or not comparison["guarded_improved"]):
             return 2
         return 0 if comparison["passed"] or not args.compare_require_pass else 2
