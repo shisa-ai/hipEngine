@@ -119973,3 +119973,38 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Retained as a full-suite accepted/output improvement. Focused B5 stays `0.5000`, while full category B5 improves `0.4253 -> 0.4318` with train/heldout/category metrics non-regressive.
 - Next improvement should target either a smaller candidate budget for the retained top-k policy or real resident MTP K/V/context to move toward llama.cpp acceptance without top-k candidate explosion.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 148: root top-5 rejected due category regression
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 148.
+- Evaluated whether root top-k values above the retained K4 improve full train/heldout/category accepted/output when deeper sibling top-k remains K10. The selector remains generic exact target verification over draft top-k sets, with no prompt/token/candidate-pattern hardcoding.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling10-full-20260623-033324/raw --output /tmp/hipengine-rootk5-sibling10-full-20260623-033324/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=10
+```
+- Full accepted/output improved over retained root-K4/sibling-K10: `0.431818 -> 0.441341`.
+- Train improved `0.368421 -> 0.375000`; heldout improved `0.506173 -> 0.518072`.
+- Per-category accepted/output: code `0.310345 -> 0.344262`, general_en `0.512195 -> 0.512195`, general_ja `0.411765 -> 0.428571`, mixed_ja_en `0.534884 -> 0.523810`.
+- Because mixed_ja_en regressed versus the retained root-K4 policy, this candidate violates the loop's per-category non-regression requirement. The temporary root-K5 default/artifact/rollup edits were reverted before validation/commit.
+
+### Retained path check
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-rootk4-retained-after-rootk5-reject-b5-20.json
+# accepted_per_output=0.5000, accept_per_draft=0.0227, total_accepted=20/880, tokens_per_sec=11.82, speedup_vs_ar_visible=0.741x
+```
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection; exact target verification and finite logits retained. No speed claim retained.
+
+### Result
+- Not retained. Root-K5 improves aggregate full/train/heldout accepted/output but regresses `mixed_ja_en`, so current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
