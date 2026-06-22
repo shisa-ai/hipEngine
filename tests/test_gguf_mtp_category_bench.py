@@ -326,6 +326,23 @@ def test_category_summary_rejects_non_string_raw_row_identity(row_update: dict[s
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_conflicting_raw_prompt_identity_fields() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    row["suite_id"] = "code_1"
+    row["prompt_id"] = "other_prompt"
+    raw = {1: [row]}
+
+    with pytest.raises(BenchError, match="budget b1 rows\\[0\\] raw prompt identity fields must agree"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 @pytest.mark.parametrize(
     ("arg_update", "message"),
     [

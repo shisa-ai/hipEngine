@@ -118695,3 +118695,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 99: require raw prompt identity agreement
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 99.
+- Focused raw prompt provenance contract: all present raw MTP prompt identity fields must agree before aggregation.
+
+### Change
+- `raw_row_prompt_id()` now validates every present raw identity field among `suite_id`, `prompt_id`, and `id`.
+- A raw row with conflicting prompt identity values now raises instead of silently trusting the first non-empty field.
+- Added a regression where `suite_id="code_1"` and `prompt_id="other_prompt"` previously hid the conflict.
+- Updated `docs/BENCHMARK.md` to document agreement across raw identity fields.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes for valid data, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

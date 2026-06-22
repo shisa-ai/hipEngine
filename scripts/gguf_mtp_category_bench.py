@@ -1104,14 +1104,20 @@ def validate_prompt_rows_for_summary(prompts: list[dict[str, Any]], *, label: st
 
 
 def raw_row_prompt_id(row: dict[str, Any], *, label: str) -> str:
+    identities: list[tuple[str, str]] = []
     for field in ("suite_id", "prompt_id", "id"):
         value = row.get(field)
         if value is None or value == "":
             continue
         if not isinstance(value, str):
             raise BenchError(f"{label} {field} must be a non-empty string")
-        return value
-    raise BenchError(f"{label} contains row without prompt id")
+        identities.append((field, value))
+    if not identities:
+        raise BenchError(f"{label} contains row without prompt id")
+    prompt_id = identities[0][1]
+    if any(value != prompt_id for _, value in identities[1:]):
+        raise BenchError(f"{label} raw prompt identity fields must agree")
+    return prompt_id
 
 
 def raw_row_category(row: dict[str, Any], *, label: str, prompt_id: str) -> str:

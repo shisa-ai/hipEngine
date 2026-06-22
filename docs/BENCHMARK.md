@@ -199,7 +199,7 @@ acceptance loops.
    artifact construction rather than coerced with `str()` / `int()`.
    Summary and attached true-AR category map keys must be strict
    non-empty strings. In-memory prompt rows and raw per-prompt MTP rows are checked with
-   unique strict string prompt IDs, strict category identity, and the same strict count and
+   unique strict string prompt IDs, agreeing raw identity fields, strict category identity, and the same strict count and
    timing typing before aggregation; raw per-cycle timing keys are required, timing values must be non-negative,
    and present falsy timing values such as `false` or `""` are rejected rather than zero-coerced. Scalar metric fields must be strict JSON
    numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows
