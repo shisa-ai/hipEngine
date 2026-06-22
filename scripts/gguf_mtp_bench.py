@@ -349,6 +349,26 @@ def root_topk_acceptance_from_target_samples(
     return acceptance
 
 
+def count_topk_draft_candidates(
+    linear_draft_count: int,
+    *,
+    root_topk_accept: int,
+    sibling_topk_accept: int,
+    sibling_topk_max_depth: int,
+) -> int:
+    """Count exposed draft candidates for linear+top-k sibling proposal accounting."""
+
+    if linear_draft_count <= 0:
+        return 0
+    count = int(linear_draft_count)
+    if root_topk_accept > 1:
+        count += int(root_topk_accept) - 1
+    if linear_draft_count > 1 and sibling_topk_accept > 1:
+        sibling_rows = min(int(linear_draft_count) - 1, int(sibling_topk_max_depth))
+        count += max(0, sibling_rows) * (int(sibling_topk_accept) - 1)
+    return count
+
+
 def target_membership_in_draft_topk(
     comparison_target_tokens: list[int],
     draft_topk_tokens: list[list[int]],
@@ -434,6 +454,15 @@ def main():
             "mismatch when the target token is in the first K candidates (default: 9; use 1 for root-only top-k)."
         ),
     )
+    parser.add_argument(
+        "--sibling-topk-max-depth",
+        type=int,
+        default=3,
+        help=(
+            "Maximum non-root draft depth eligible for sibling top-k acceptance "
+            "(default: 3; root depth 0 is controlled by --root-topk-accept)."
+        ),
+    )
     args = parser.parse_args()
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
@@ -443,6 +472,8 @@ def main():
         parser.error("--root-topk-accept must be in 1..10")
     if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 10:
         parser.error("--sibling-topk-accept must be in 1..10")
+    if args.sibling_topk_max_depth < 0:
+        parser.error("--sibling-topk-max-depth must be non-negative")
 
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
@@ -737,7 +768,11 @@ def main():
                 if depth < len(draft_tokens) and target_token == draft_tokens[depth]:
                     verify_input_token = target_token
                     continue
-                topk_limit = args.root_topk_accept if depth == 0 else args.sibling_topk_accept
+                topk_limit = (
+                    args.root_topk_accept if depth == 0
+                    else args.sibling_topk_accept if depth <= args.sibling_topk_max_depth
+                    else 1
+                )
                 if (
                     depth < len(draft_top10_tokens)
                     and topk_limit > 1
@@ -786,11 +821,12 @@ def main():
                 )
             prev_token = int(output_tokens[-1])
 
-            draft_candidate_count = len(draft_tokens)
-            if draft_tokens and args.root_topk_accept > 1:
-                draft_candidate_count += args.root_topk_accept - 1
-            if len(draft_tokens) > 1 and args.sibling_topk_accept > 1:
-                draft_candidate_count += (len(draft_tokens) - 1) * (args.sibling_topk_accept - 1)
+            draft_candidate_count = count_topk_draft_candidates(
+                len(draft_tokens),
+                root_topk_accept=args.root_topk_accept,
+                sibling_topk_accept=args.sibling_topk_accept,
+                sibling_topk_max_depth=args.sibling_topk_max_depth,
+            )
             total_drafts += draft_candidate_count
             visible_output_tokens = int(acceptance["visible_output_tokens"])
             total_output_tokens += visible_output_tokens
@@ -818,6 +854,7 @@ def main():
                 "linear_draft_tokens": len(draft_tokens),
                 "root_topk_accept": args.root_topk_accept,
                 "sibling_topk_accept": args.sibling_topk_accept,
+                "sibling_topk_max_depth": args.sibling_topk_max_depth,
                 "topk_branch_accepted": topk_branch_accepted,
                 "topk_branch_depth": topk_branch_depth,
                 "accepted_draft_tokens": accepted_draft_tokens,
@@ -854,6 +891,7 @@ def main():
     print(f"Draft n_max: {args.draft_n_max}")
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
+    print(f"Sibling top-k max depth: {args.sibling_topk_max_depth}")
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
     print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
@@ -893,6 +931,7 @@ def main():
             "draft_n_max": args.draft_n_max,
             "root_topk_accept": args.root_topk_accept,
             "sibling_topk_accept": args.sibling_topk_accept,
+            "sibling_topk_max_depth": args.sibling_topk_max_depth,
             "engine": "hipEngine GGUF MTP",
             "target_prefill_mode": target_prefill_mode,
             "mtp_context_mode": mtp_context_mode,

@@ -120164,3 +120164,45 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 
 ### Result
 - Retained as a draft-acceptance/candidate-efficiency improvement with accepted/output non-regressive. Current default is root-K4/sibling-K9: focused B5 `0.5000`, full-suite B5 `0.4318`, full draft acceptance `0.0190`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 153: sibling top-k depth cap retained
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 153.
+- The retained root-K4/sibling-K9 policy never accepted a top-k sibling at depth 4 in the full category trace, but still counted depth-4 sibling candidates. Added a generic `--sibling-topk-max-depth` cap to avoid exposing deeper sibling top-k candidates where they have not produced accepted/output gains.
+
+### Change retained
+- Added `--sibling-topk-max-depth` (default `3`) to `scripts/gguf_mtp_bench.py`.
+- Added `count_topk_draft_candidates()` and unit coverage so candidate accounting honors the sibling depth cap.
+- Exact target verification uses sibling top-k only for non-root draft depths `<= sibling_topk_max_depth`; root depth remains controlled by `--root-topk-accept`.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-rootk4-sibling9-depth3-default-b5-20.json
+```
+- Accepted/output unchanged at `0.5000`.
+- Candidate count improved `20/800 -> 20/640`; accept-per-draft improved `0.0250 -> 0.0312`.
+- Diagnostic tok/s `13.97`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk4-sibling9-depth3-full-20260623-040641/raw --output /tmp/hipengine-rootk4-sibling9-depth3-full-20260623-040641/summary.json --extra-arg=--root-topk-accept --extra-arg=4 --extra-arg=--sibling-topk-accept --extra-arg=9 --extra-arg=--sibling-topk-max-depth --extra-arg=3
+```
+- Accepted/output was non-regressive versus root-K4/sibling-K9: full `0.431818`, train `0.368421`, heldout `0.506173`, categories code `0.310345`, general_en `0.512195`, general_ja `0.411765`, mixed_ja_en `0.534884`.
+- Draft acceptance improved `0.019000 -> 0.023750`; diagnostic verifier-derived tok/s `12.9689 -> 12.8224` within noise/regression accepted only as non-speed diagnostic. No true-AR speed claim retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection; exact target verification and finite logits retained. No speed claim retained.
+
+### Result
+- Retained as a candidate-efficiency/draft-acceptance improvement with accepted/output non-regressive. Current default is root-K4/sibling-K9/depth≤3: focused B5 `0.5000`, full-suite B5 `0.4318`, full draft acceptance `0.02375`.
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk4-sibling9-depth3-category-gfx1151.json`.

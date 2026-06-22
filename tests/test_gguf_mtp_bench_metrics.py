@@ -10,6 +10,7 @@ from scripts.gguf_mtp_bench import (
     _draft_top1_prob,
     _rope_tables,
     compute_speculative_metrics,
+    count_topk_draft_candidates,
     llama_cpp_acceptance_from_target_samples,
     llama_cpp_mtp_catchup_rows,
     root_topk_acceptance_from_target_samples,
@@ -179,6 +180,21 @@ def test_draft_top1_prob_matches_softmax_argmax_probability() -> None:
 
     expected = float(np.exp(2.0) / (np.exp(0.0) + np.exp(2.0) + np.exp(1.0)))
     assert prob == pytest.approx(expected)
+
+
+def test_count_topk_draft_candidates_honors_sibling_max_depth() -> None:
+    assert count_topk_draft_candidates(
+        5,
+        root_topk_accept=4,
+        sibling_topk_accept=9,
+        sibling_topk_max_depth=3,
+    ) == 32
+    assert count_topk_draft_candidates(
+        5,
+        root_topk_accept=4,
+        sibling_topk_accept=9,
+        sibling_topk_max_depth=4,
+    ) == 40
 
 
 def test_target_membership_in_draft_topk_handles_short_draft_trace() -> None:
