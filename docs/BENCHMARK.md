@@ -131,7 +131,35 @@ acceptance loops.
    regress, and MTP/true-AR ratio must be computed from the attached true-AR
    artifact rather than `off`/`B0` verifier telemetry.
 
-4. **Promotion remains separate from diagnostics.** The category diagnostic is
+4. **Use the guarded objective CLI for loop metrics.** Future optimize loops
+   must consume objective metrics through the harness gate, not ad-hoc JSON paths:
+
+   ```bash
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5
+   ```
+
+   This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
+   artifacts without a same-protocol true-AR baseline. The returned JSON contains
+   full/train/heldout `accepted_per_output`, `draft_acceptance`,
+   `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.
+
+   Baseline-vs-candidate comparisons should use the guarded comparator:
+
+   ```bash
+   python3 scripts/gguf_mtp_category_bench.py \
+     --compare-baseline-summary-json /path/to/baseline-summary.json \
+     --compare-candidate-summary-json /path/to/candidate-summary.json \
+     --compare-budget b5 \
+     --compare-require-pass
+   ```
+
+   With `--compare-require-pass`, the command exits non-zero when full or heldout
+   `accepted_per_output`, `draft_acceptance`, or `mtp_vs_true_ar_decode_ratio`
+   regress. Train deltas are reported but are not sufficient for a keep decision.
+
+5. **Promotion remains separate from diagnostics.** The category diagnostic is
    not a retained speed claim even when a true-AR baseline is attached. To promote
    a speed row into `benchmarks/README.md`, rerun the retained benchmark protocol
    with hermetic/warm timing (prebuilt kernels, no `hipcc`/clang in the timed

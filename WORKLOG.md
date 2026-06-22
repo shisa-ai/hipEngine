@@ -116570,3 +116570,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 37 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 23: objective CLI docs
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 23.
+- Focused docs/readiness change: document the guarded objective extraction and comparison CLIs for future optimize loops.
+
+### Change
+- Updated `docs/BENCHMARK.md` honest native GGUF-MTP protocol with:
+  - `--objective-summary-json` / `--objective-budget` extraction command;
+  - `--compare-baseline-summary-json` / `--compare-candidate-summary-json` / `--compare-budget` comparison command;
+  - `--compare-require-pass` semantics (non-zero exit when full or heldout acceptance/true-AR ratio regress);
+  - note that these CLIs reject verifier-only summaries, partial/smoke prompt suites, and artifacts without same-protocol true-AR baselines.
+
+### Guardrail status
+- Docs-only; no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 37 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
