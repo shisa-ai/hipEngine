@@ -42,6 +42,7 @@ TEST_TRUE_AR_PROTOCOL = {
     "model": TEST_MODEL,
     "model_normalized": str(Path(TEST_MODEL).resolve(strict=False)),
     "quant": "UD-Q4_K_M GGUF",
+    "quant_normalized": "UD-Q4_K_M GGUF",
     "prompt_file": TEST_PROMPTS,
     "prompt_file_normalized": str((TEST_REPO_ROOT / TEST_PROMPTS).resolve(strict=False)),
     "decode_tokens": 10,
@@ -405,6 +406,29 @@ def test_speed_claim_contract_rejects_missing_true_ar_protocol() -> None:
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_attached_protocol_without_quant() -> None:
+    protocol = dict(TEST_TRUE_AR_PROTOCOL)
+    del protocol["quant_normalized"]
+    summary = {
+        "speed_claim_eligible": True,
+        "repo": dict(TEST_REPO_PROVENANCE),
+        "commands": list(TEST_SUMMARY_COMMANDS),
+        "true_ar_baseline": {
+            "available": True,
+            "true_autoregressive_path": True,
+            "same_prompt_suite": True,
+            "same_timing_protocol": True,
+            "source": "future true AR harness artifact",
+            "repo": dict(TEST_REPO_PROVENANCE),
+            "commands": list(TEST_TRUE_AR_COMMANDS),
+            "protocol": protocol,
+        },
+    }
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline protocol metadata requires non-empty quant_normalized"):
+        validate_speed_claim_contract(summary)
+
+
 def test_speed_claim_contract_rejects_attached_protocol_without_decode_tokens() -> None:
     protocol = dict(TEST_TRUE_AR_PROTOCOL)
     del protocol["decode_tokens"]
@@ -443,6 +467,7 @@ def _write_true_ar_baseline(
     prompt_count: int | None = None,
     decode_tokens: object = 10,
     warmup_decode_tokens: object = 1,
+    quant: str | None = "UD-Q4_K_M GGUF",
 ) -> None:
     prompt_hashes = {str(prompt_id): prompt_sha256(text) for prompt_id, text in prompt_text_by_id.items()}
     metric_rows = []
@@ -457,11 +482,12 @@ def _write_true_ar_baseline(
         "true_autoregressive_path": True,
         "same_timing_protocol": True,
         "model": model,
-        "quant": "UD-Q4_K_M GGUF",
         "prompt_file": prompt_file,
         "prompt_count": len(prompt_text_by_id) if prompt_count is None else prompt_count,
         "prompt_metrics": metric_rows,
     }
+    if quant is not None:
+        payload["quant"] = quant
     if decode_tokens is not None:
         payload["decode_tokens"] = decode_tokens
     if warmup_decode_tokens is not None:
@@ -515,6 +541,8 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["true_ar_baseline"]["same_timing_protocol"] is True
     assert summary["true_ar_baseline"]["repo"] == TEST_REPO_PROVENANCE
     assert summary["true_ar_baseline"]["protocol"]["model"] == TEST_MODEL
+    assert summary["true_ar_baseline"]["protocol"]["quant"] == "UD-Q4_K_M GGUF"
+    assert summary["true_ar_baseline"]["protocol"]["quant_normalized"] == "UD-Q4_K_M GGUF"
     assert summary["true_ar_baseline"]["protocol"]["prompt_file"] == TEST_PROMPTS
     assert summary["true_ar_baseline"]["protocol"]["prompt_count"] == 2
     assert summary["true_ar_baseline"]["totals"]["decode_tok_s_weighted"] == 100.0
@@ -570,6 +598,8 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["summary_commands"] == TEST_SUMMARY_COMMANDS
     assert metrics["true_ar_commands"] == TEST_TRUE_AR_COMMANDS
     assert metrics["true_ar_protocol"]["model"] == TEST_MODEL
+    assert metrics["true_ar_protocol"]["quant"] == "UD-Q4_K_M GGUF"
+    assert metrics["true_ar_protocol"]["quant_normalized"] == "UD-Q4_K_M GGUF"
     assert metrics["true_ar_protocol"]["prompt_file"] == TEST_PROMPTS
     assert metrics["true_ar_protocol"]["prompt_count"] == 10
     assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
@@ -960,6 +990,50 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_without_quant(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        quant=None,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match=r"protocol metadata missing fields: \['quant'\]"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_quant_mismatch(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        quant="UD-Q8_0 GGUF",
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR quant mismatch"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

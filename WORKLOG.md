@@ -117133,3 +117133,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 42: validate true-AR quant protocol metadata
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 42.
+- Focused quant-protocol provenance contract: attached true-AR artifacts must identify the quant family and it must match the MTP category summary.
+
+### Change
+- `TRUE_AR_PROTOCOL_FIELDS` now requires `quant`.
+- Added quant normalization that treats the category-summary suffix `with MTP blocks` as the same quant family as the true-AR GGUF quant label.
+- Source true-AR artifact protocol validation now rejects missing/non-empty-invalid quant metadata and mismatched quant families.
+- Attached true-AR protocol validation now requires both `quant` and `quant_normalized` before objective extraction or speed-claim validation can proceed.
+- Objective output preserves `true_ar_protocol.quant` and `true_ar_protocol.quant_normalized`.
+- Added regressions for missing attached quant metadata, missing source-artifact quant metadata, and mismatched source-artifact quant metadata.
+- Updated `docs/BENCHMARK.md` to document matching quant-family requirements.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 74 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

@@ -52,7 +52,7 @@ DEFAULT_HELDOUT_PROMPT_IDS = frozenset(
     }
 )
 REPO_PROVENANCE_FIELDS = ("repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count")
-TRUE_AR_PROTOCOL_FIELDS = ("model", "prompt_file", "prompt_count", "decode_tokens", "warmup_decode_tokens")
+TRUE_AR_PROTOCOL_FIELDS = ("model", "quant", "prompt_file", "prompt_count", "decode_tokens", "warmup_decode_tokens")
 
 
 class BenchError(RuntimeError):
@@ -173,13 +173,28 @@ def normalize_protocol_path(value: Any) -> str:
     return str(path.resolve(strict=False))
 
 
-def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argparse.Namespace, prompt_count: int) -> dict[str, Any]:
+def normalize_quant_label(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise BenchError("quant protocol metadata requires non-empty quant")
+    label = " ".join(value.split())
+    suffix = " with MTP blocks"
+    if label.endswith(suffix):
+        label = label[: -len(suffix)].strip()
+    return label
+
+
+def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argparse.Namespace, prompt_count: int, expected_quant: str) -> dict[str, Any]:
     missing = [field for field in TRUE_AR_PROTOCOL_FIELDS if field not in artifact]
     if missing:
         raise BenchError(f"true AR baseline artifact protocol metadata missing fields: {missing}")
     model = artifact.get("model")
     if not isinstance(model, str) or not model:
         raise BenchError("true AR baseline artifact protocol metadata requires non-empty model")
+    quant = artifact.get("quant")
+    quant_normalized = normalize_quant_label(quant)
+    expected_quant_normalized = normalize_quant_label(expected_quant)
+    if quant_normalized != expected_quant_normalized:
+        raise BenchError(f"true AR quant mismatch: {quant!r} != {expected_quant!r}")
     prompt_file = artifact.get("prompt_file")
     if not isinstance(prompt_file, str) or not prompt_file:
         raise BenchError("true AR baseline artifact protocol metadata requires non-empty prompt_file")
@@ -205,7 +220,8 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
     return {
         "model": model,
         "model_normalized": model_normalized,
-        "quant": artifact.get("quant"),
+        "quant": quant,
+        "quant_normalized": quant_normalized,
         "prompt_file": prompt_file,
         "prompt_file_normalized": prompt_file_normalized,
         "decode_tokens": decode_tokens,
@@ -218,7 +234,7 @@ def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -
     protocol = true_ar.get("protocol")
     if not isinstance(protocol, dict):
         raise BenchError(f"{label} requires true AR protocol metadata")
-    for field in ("model", "model_normalized", "prompt_file", "prompt_file_normalized"):
+    for field in ("model", "model_normalized", "quant", "quant_normalized", "prompt_file", "prompt_file_normalized"):
         if not isinstance(protocol.get(field), str) or not protocol[field]:
             raise BenchError(f"{label} protocol metadata requires non-empty {field}")
     prompt_count = protocol.get("prompt_count")
@@ -233,7 +249,8 @@ def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -
     return {
         "model": protocol["model"],
         "model_normalized": protocol["model_normalized"],
-        "quant": protocol.get("quant"),
+        "quant": protocol["quant"],
+        "quant_normalized": protocol["quant_normalized"],
         "prompt_file": protocol["prompt_file"],
         "prompt_file_normalized": protocol["prompt_file_normalized"],
         "decode_tokens": decode_tokens,
@@ -969,7 +986,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         true_ar_artifact = true_ar_artifact_from_path(true_ar_path)
         true_ar_repo = validate_repo_provenance(true_ar_artifact, label="true AR baseline artifact")
         true_ar_commands = validate_command_provenance(true_ar_artifact, label="true AR baseline artifact")
-        true_ar_protocol = validate_true_ar_protocol_metadata(artifact=true_ar_artifact, args=args, prompt_count=len(prompts))
+        true_ar_protocol = validate_true_ar_protocol_metadata(artifact=true_ar_artifact, args=args, prompt_count=len(prompts), expected_quant=str(summary["quant"]))
         rows_by_id = validate_true_ar_prompt_rows(artifact=true_ar_artifact, prompts=prompts)
         return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo, commands=true_ar_commands, protocol=true_ar_protocol)
     return validate_speed_claim_contract(summary)
