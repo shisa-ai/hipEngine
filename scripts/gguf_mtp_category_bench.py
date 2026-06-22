@@ -130,7 +130,7 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
                     if role == "user" and content:
                         user_parts.append(content)
                 prompt_text = "\n\n".join(user_parts)
-            if not prompt_text:
+            if not prompt_text or not prompt_text.strip():
                 raise BenchError(f"{path}:{line_no}: prompt text is empty")
             rows.append({"id": prompt_id, "category": category, "prompt": prompt_text, "source": raw})
     if not rows:
