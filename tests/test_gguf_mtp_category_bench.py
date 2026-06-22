@@ -411,6 +411,66 @@ def test_compare_objective_metrics_rejects_true_ar_ratio_regression(tmp_path: Pa
     )
 
 
+def test_objective_metrics_cli_prints_guarded_metrics(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], draft_ms=10.0)
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--objective-summary-json",
+            str(summary_path),
+            "--objective-budget",
+            "b1",
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    metrics = json.loads(completed.stdout)
+    assert metrics["budget"] == "b1"
+    assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
+    assert metrics["heldout"]["prompts"] == 4
+    assert metrics["speed_claim_eligible"] is False
+
+
+def test_objective_metrics_cli_rejects_verifier_only_summary(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+    summary_path = tmp_path / "verifier-only-summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--objective-summary-json",
+            str(summary_path),
+            "--objective-budget",
+            "b1",
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode != 0
+    assert "true_ar_comparison_available=true" in completed.stderr
+
+
 def test_objective_metrics_for_budget_rejects_verifier_only_summary() -> None:
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

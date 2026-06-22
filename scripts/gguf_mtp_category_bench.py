@@ -733,11 +733,30 @@ def main() -> int:
         default=None,
         help=(
             "Optional same-protocol true no-MTP AR baseline artifact with prompt_metrics[]. "
-            "When valid, the summary includes mtp_vs_true_ar_decode_ratio and may be speed-claim eligible."
+            "When valid, the summary includes mtp_vs_true_ar_decode_ratio for diagnostics."
         ),
+    )
+    parser.add_argument(
+        "--objective-summary-json",
+        type=Path,
+        default=None,
+        help="Read an existing category summary JSON and print guarded objective metrics instead of running benchmarks.",
+    )
+    parser.add_argument(
+        "--objective-budget",
+        default=None,
+        help="Budget label for --objective-summary-json, e.g. b5 or 5.",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.objective_summary_json is not None:
+        if args.objective_budget is None:
+            raise BenchError("--objective-summary-json requires --objective-budget")
+        summary = json.loads(args.objective_summary_json.read_text(encoding="utf-8"))
+        metrics = objective_metrics_for_budget(summary, args.objective_budget)
+        print(json.dumps(metrics, indent=2, sort_keys=True))
+        return 0
 
     budgets = parse_budgets(args.budgets)
     prompts = load_prompt_rows(args.prompts)

@@ -116513,3 +116513,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 33 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 21: objective extraction CLI
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 21.
+- Focused harness-readiness change: make honest objective metrics available to future optimize loops through a command-line interface, not only Python helpers.
+
+### Change
+- Added CPU-only CLI mode to `scripts/gguf_mtp_category_bench.py`:
+  ```bash
+  python3 scripts/gguf_mtp_category_bench.py     --objective-summary-json /path/to/summary.json     --objective-budget b5
+  ```
+- The mode reads an existing summary JSON, calls `objective_metrics_for_budget()`, and prints guarded objective metrics JSON.
+- It runs before model/path validation and does not load GGUF weights or invoke GPU kernels.
+- Added subprocess tests for:
+  - valid full-suite attached summary extraction;
+  - verifier-only summary rejection.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+- The CLI rejects verifier-derived-only summaries through the same true-AR/full-suite/heldout gates as the Python helper.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 35 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
