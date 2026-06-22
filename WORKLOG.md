@@ -119889,3 +119889,47 @@ python3 -m py_compile scripts/gguf_mtp_bench.py
 ### Result
 - Not retained. Correct branch-child precomputation did not improve accepted/output over the current default `0.5000` and made candidate accounting/perf much worse.
 - Next improvement should either reduce the candidate budget of the retained top-k policy or build true resident MTP K/V so branch expansion is cheaper and context-correct.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 146: wider top-k recheck rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 146.
+- Rechecked whether broadening the retained exact-verification sibling top-k proposal beyond K10 should be kept after the branch-child rejection. Temporary code allowed root/sibling top-k up to 50 and materialized a wider draft candidate list.
+
+### Focused sweep
+```bash
+for k in 10 15 20 30 50; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 3 --sibling-topk-accept "$k" --output /tmp/hipengine-mtp-sibling-topk-${k}-iter144-b5-20.json
+done
+```
+- Focused B5 accepted/output: K10 `0.5000`, K15 `0.5238`, K20 `0.5238`, K30 `0.5238`, K50 `0.5238`.
+- K15 remains the best focused candidate-budget point among wider settings (`22/1260`, accept-per-draft `0.0175`) but still has much worse candidate accounting than the retained K10 (`20/860`, accept-per-draft `0.0233`).
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk3-sibling15-full-20260623-030856/raw --output /tmp/hipengine-rootk3-sibling15-full-20260623-030856/summary.json --extra-arg=--root-topk-accept --extra-arg=3 --extra-arg=--sibling-topk-accept --extra-arg=15
+```
+- Full accepted/output was unchanged vs retained root-K3/sibling-K10: `0.425287`.
+- Train `0.354839`, heldout `0.506173`, and per-category accepted/output (code `0.285714`, general_en `0.512195`, general_ja `0.411765`, mixed_ja_en `0.534884`) were unchanged.
+- Draft acceptance regressed by candidate accounting: `0.017209 -> 0.011746`.
+
+### Retained path check
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-iteration144-retained-b5-20.json
+# accepted_per_output=0.5000, accept_per_draft=0.0233, total_accepted=20/860, tokens_per_sec=13.78
+```
+- Temporary wider-top-k code was reverted before validation/commit.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: the temporary change only broadened a generic draft top-k proposal width and exact target verification still decided acceptance; no prompt/token/candidate-pattern hardcoding, no depth-specific target rescue, no fixture IDs, no benchmark detection, and no speed claim retained.
+
+### Result
+- Not retained. Wider K improves the focused France prompt only, not the full train/heldout/category suite, and worsens draft acceptance. Current default remains root-K3/sibling-K10.
