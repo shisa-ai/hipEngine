@@ -340,9 +340,11 @@ def validate_true_ar_prompt_rows(*, rows: list[dict[str, Any]], prompts: list[di
         if category != expected_category:
             raise BenchError(f"true AR category mismatch for {prompt_id}: {category!r} != {expected_category!r}")
         output_tokens = int(row.get("output_tokens") or 0)
-        decode_ms = float(row.get("decode_ms") or 0.0)
-        if output_tokens <= 0 or decode_ms <= 0.0:
-            raise BenchError(f"true AR row for {prompt_id} must have positive output_tokens and decode_ms")
+        decode_ms = finite_float(row.get("decode_ms"), prompt_id=prompt_id, field="true_ar.prompt_metrics[].decode_ms")
+        if output_tokens <= 0:
+            raise BenchError(f"true AR row for {prompt_id} must have positive output_tokens")
+        if decode_ms <= 0.0:
+            raise BenchError(f"true AR row for {prompt_id} must have positive decode_ms")
         seen[prompt_id] = {"id": prompt_id, "category": category, "output_tokens": output_tokens, "decode_ms": decode_ms}
     expected_ids = set(prompt_by_id)
     seen_ids = set(seen)

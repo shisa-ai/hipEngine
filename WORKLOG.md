@@ -116693,3 +116693,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 41 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 27: true-AR artifact integrity guard
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 27.
+- Focused artifact-integrity guard: prevent malformed true no-MTP AR baseline rows from poisoning `mtp_vs_true_ar_decode_ratio`.
+
+### Change
+- `scripts/gguf_mtp_category_bench.py::validate_true_ar_prompt_rows()` now validates true-AR `prompt_metrics[]` rows with the same finite timing helper used for MTP category child rows.
+- Attached true-AR rows now require:
+  - positive `output_tokens`;
+  - finite positive `decode_ms`.
+- Added regression tests rejecting:
+  - `decode_ms=NaN`;
+  - `output_tokens=0`.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 43 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

@@ -607,6 +607,32 @@ def test_objective_metrics_for_budget_rejects_verifier_only_summary() -> None:
         objective_metrics_for_budget(summary, "b1")
 
 
+@pytest.mark.parametrize(
+    ("row_patch", "message"),
+    [
+        ({"decode_ms": float("nan")}, "non-finite timing"),
+        ({"output_tokens": 0}, "positive output_tokens"),
+    ],
+)
+def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path, row_patch: dict, message: str) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    row = {"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}
+    row.update(row_patch)
+    _write_true_ar_baseline(baseline_path, [row])
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_flag(tmp_path: Path) -> None:
     baseline_path = tmp_path / "true-ar.json"
     _write_true_ar_baseline(
