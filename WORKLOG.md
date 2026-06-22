@@ -119429,3 +119429,32 @@ python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipe
 
 ### Result
 - The h_nextn recurrence fix is a correctness/parity fix but did not move the 20-cycle France B5 diagnostic; the remaining gap is still the missing stateful llama.cpp-style MTP draft context/KV catch-up rather than only the within-cycle recurrent row.
+
+
+## 2026-06-23 — GGUF MTP KVLiveSpans composite forwarding unblocker
+
+### Scope
+- Continued `mtp-honest-acceptance/run-20260622-040027` after the h_nextn recurrence parity fix did not move the 20-cycle B5 acceptance diagnostic.
+- Audited the next stateful-MTP blocker and found the composite `qwen35_gguf_mtp_nextn_layer_logits_f32` signature accepted KVLiveSpans/paged-cache arguments but dropped them before calling `qwen35_gguf_mtp_attention_sublayer_f32`.
+
+### Change
+- Forward `kv_base_offsets`, `kv_live_counts`, `kv_token_positions`, `kv_evict_mask`, and `block_size` from the composite NextN wrapper into the attention sublayer.
+- Added a no-GPU contract test that monkeypatches the attention sublayer and asserts paged-MTP context arguments are not dropped.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_mtp_nextn_hidden_seed_contract.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py
+# passed
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-kvforward-b5-20.json
+# accept_per_draft=0.110, accepted_per_output=0.355, total_accepted=11/100, speedup_vs_ar_visible=0.668x
+```
+
+### Result
+- This is a stateful-context unblocker, not an acceptance win in the current single-seed diagnostic. The B5 accepted/output metric stayed `0.355` because `scripts/gguf_mtp_bench.py` still has no resident MTP K/V owner or append path.
+- Next concrete blocker: expose/materialize MTP K/V rows (including the current row) so the existing paged attention path has an actual llama.cpp-style draft context to attend over.

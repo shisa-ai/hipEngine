@@ -1531,6 +1531,9 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
         wq_qtype=wq_qtype, wk_qtype=wk_qtype, wv_qtype=wv_qtype, wo_qtype=wo_qtype,
         positions=positions, context_counts=context_counts,
         key_cache=key_cache, value_cache=value_cache,
+        kv_base_offsets=kv_base_offsets, kv_live_counts=kv_live_counts,
+        kv_token_positions=kv_token_positions, kv_evict_mask=kv_evict_mask,
+        block_size=block_size,
         rope_cos=rope_cos, rope_sin=rope_sin, rotary_dim=rotary_dim, scale=scale, eps=eps,
     )
     ffn_out = qwen35_gguf_mtp_ffn_sublayer_f32(

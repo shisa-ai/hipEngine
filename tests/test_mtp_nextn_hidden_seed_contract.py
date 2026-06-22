@@ -102,3 +102,56 @@ def test_nextn_layer_default_returns_logits_only(monkeypatch) -> None:
 
     assert isinstance(result, np.ndarray)
     np.testing.assert_array_equal(result, logits)
+
+
+def test_nextn_layer_forwards_kvlivespans_kwargs_to_attention(monkeypatch) -> None:
+    """The composite NextN wrapper must not drop paged-MTP context inputs."""
+
+    logits = np.array([[0.1, 0.2]], dtype=np.float32)
+    key_cache = np.zeros((1, 2, 1, 2), dtype=np.float32)
+    value_cache = np.zeros((1, 2, 1, 2), dtype=np.float32)
+    kv_base_offsets = np.array([[0]], dtype=np.int64)
+    kv_live_counts = np.array([1], dtype=np.int64)
+    kv_token_positions = np.array([5], dtype=np.int64)
+    kv_evict_mask = np.array([[False]], dtype=bool)
+
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_eh_proj_f32", lambda *a, **k: np.zeros((1, 2), dtype=np.float32))
+
+    def fake_attention(hidden, *args, **kwargs):
+        assert kwargs["key_cache"] is key_cache
+        assert kwargs["value_cache"] is value_cache
+        assert kwargs["kv_base_offsets"] is kv_base_offsets
+        assert kwargs["kv_live_counts"] is kv_live_counts
+        assert kwargs["kv_token_positions"] is kv_token_positions
+        assert kwargs["kv_evict_mask"] is kv_evict_mask
+        assert kwargs["block_size"] == 2
+        return np.zeros((1, 2), dtype=np.float32)
+
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_attention_sublayer_f32", fake_attention)
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_ffn_sublayer_f32", lambda *a, **k: np.zeros((1, 2), dtype=np.float32))
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_shared_head_logits_f32", lambda *a, **k: logits)
+
+    result = mtp_nextn.qwen35_gguf_mtp_nextn_layer_logits_f32(
+        np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        np.zeros((2, 2), dtype=np.float32), np.ones(2, dtype=np.float32), np.ones(2, dtype=np.float32),
+        np.ones(2, dtype=np.float32), np.zeros((2, 2), dtype=np.float32), np.zeros((2, 2), dtype=np.float32),
+        np.zeros((2, 2), dtype=np.float32), np.zeros((2, 2), dtype=np.float32), np.ones(2, dtype=np.float32),
+        np.ones(2, dtype=np.float32), np.ones(2, dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        GGMLQuantizationType.F32, GGMLQuantizationType.F32, GGMLQuantizationType.F32,
+        np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        np.zeros((2, 1), dtype=np.float32), GGMLQuantizationType.F32, np.ones(2, dtype=np.float32),
+        np.zeros((2, 2), dtype=np.float32),
+        num_heads=1,
+        num_kv_heads=1,
+        experts_used=1,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        kv_base_offsets=kv_base_offsets,
+        kv_live_counts=kv_live_counts,
+        kv_token_positions=kv_token_positions,
+        kv_evict_mask=kv_evict_mask,
+        block_size=2,
+    )
+
+    np.testing.assert_array_equal(result, logits)
