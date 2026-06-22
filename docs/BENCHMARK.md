@@ -181,8 +181,8 @@ acceptance loops.
    same-prompt-suite / same-timing-protocol true-AR flags, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt/category
    provenance including default prompt hashes/categories/lengths plus category
-   budget-row scalar fields, token counts, and
-   prompt counts, protocol provenance, prompt-hash provenance, and true-AR finite-logit
+   budget-row scalar fields, strict JSON-integer token counts and prompt counts
+   (not booleans, floats, or strings), protocol provenance, prompt-hash provenance, and true-AR finite-logit
    evidence. The returned JSON contains compact `category_metrics` rows plus
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, positive `decode_ms`, finite non-negative

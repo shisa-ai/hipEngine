@@ -117980,3 +117980,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 73: validate strict integer count fields
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 73.
+- Focused count-field contract: objective prompt/token counts must not pass validation through Python `int()` coercion of booleans, floats, or strings.
+
+### Change
+- `metric_int()` and `metric_nonnegative_int()` now require real `int` values and reject booleans, floats, and strings.
+- Objective category/split prompt counts and attached true-AR prompt counts now use the strict integer helper instead of local `int()` casts.
+- Added regressions for:
+  - float `total_output_tokens` in summary totals;
+  - boolean split prompt count.
+- Updated an existing non-positive prompt-count regression to expect the stricter integer wording.
+- Updated `docs/BENCHMARK.md` to document strict JSON-integer prompt/token counts.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 174 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

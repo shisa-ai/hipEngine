@@ -323,23 +323,19 @@ def validate_default_prompt_fixture_metadata(prompt_metadata: dict[str, Any]) ->
 
 
 def metric_int(value: Any, *, label: str) -> int:
-    try:
-        result = int(value)
-    except (TypeError, ValueError) as exc:
-        raise BenchError(f"objective metrics require positive {label}") from exc
-    if result <= 0:
-        raise BenchError(f"objective metrics require positive {label}")
-    return result
+    if type(value) is not int:
+        raise BenchError(f"objective metrics require positive integer {label}")
+    if value <= 0:
+        raise BenchError(f"objective metrics require positive integer {label}")
+    return value
 
 
 def metric_nonnegative_int(value: Any, *, label: str) -> int:
-    try:
-        result = int(value)
-    except (TypeError, ValueError) as exc:
-        raise BenchError(f"objective metrics require non-negative {label}") from exc
-    if result < 0:
-        raise BenchError(f"objective metrics require non-negative {label}")
-    return result
+    if type(value) is not int:
+        raise BenchError(f"objective metrics require non-negative integer {label}")
+    if value < 0:
+        raise BenchError(f"objective metrics require non-negative integer {label}")
+    return value
 
 
 def validate_decode_tps_from_ms(*, output: int, decode_ms_value: Any, decode_tok_s: float, label: str) -> float:
@@ -579,10 +575,7 @@ def validate_summary_category_budget_metrics(
         missing = [field for field in required if field not in row or row[field] is None]
         if missing:
             raise BenchError(f"{label} category {category}.{budget_label} missing fields: {missing}")
-        try:
-            prompts_count = int(row.get("prompts"))
-        except (TypeError, ValueError) as exc:
-            raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata") from exc
+        prompts_count = metric_int(row.get("prompts"), label=f"{label} category {category}.{budget_label}.prompts")
         if prompts_count != expected_count:
             raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata")
         output = metric_int(row.get("total_output_tokens"), label=f"{label} category {category}.{budget_label}.total_output_tokens")
@@ -592,10 +585,10 @@ def validate_summary_category_budget_metrics(
             raise BenchError(f"{label} category {category}.{budget_label}.total_accepted <= total_output_tokens")
         if accepted > drafts:
             raise BenchError(f"{label} category {category}.{budget_label}.total_accepted <= total_drafts")
-        try:
-            true_ar_prompts_count = int(true_ar_category.get("prompts"))
-        except (TypeError, ValueError) as exc:
-            raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}.prompts to match prompt metadata") from exc
+        true_ar_prompts_count = metric_int(
+            true_ar_category.get("prompts"),
+            label=f"attached true_ar_baseline.categories.{category}.prompts",
+        )
         if true_ar_prompts_count != expected_count:
             raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}.prompts to match prompt metadata")
         accepted_per_output = finite_unit_interval_objective(row["accepted_per_output"], label=f"{label} category {category}.{budget_label}.accepted_per_output")
@@ -1328,12 +1321,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         missing = [field for field in required if field not in row or row[field] is None]
         if missing:
             raise BenchError(f"objective metrics missing {missing} for {split_name}.{label}")
-        try:
-            prompts_count = int(row["prompts"])
-        except (TypeError, ValueError) as exc:
-            raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts") from exc
-        if prompts_count <= 0:
-            raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts")
+        prompts_count = metric_int(row["prompts"], label=f"{split_name}.{label}.prompts")
         if prompts_count != split_prompt_count:
             raise BenchError(f"objective metrics require {split_name}.{label}.prompts to match splits.{split_name}.prompt_ids length")
         output = metric_int(row.get("total_output_tokens"), label=f"{split_name}.{label}.total_output_tokens")
@@ -1352,12 +1340,10 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         true_ar_split = true_ar_splits.get(split_name)
         if not isinstance(true_ar_split, dict):
             raise BenchError(f"objective metrics require attached true_ar_baseline.splits.{split_name}")
-        try:
-            true_ar_prompts_count = int(true_ar_split.get("prompts"))
-        except (TypeError, ValueError) as exc:
-            raise BenchError(f"objective metrics require positive attached true_ar_baseline.splits.{split_name}.prompts") from exc
-        if true_ar_prompts_count <= 0:
-            raise BenchError(f"objective metrics require positive attached true_ar_baseline.splits.{split_name}.prompts")
+        true_ar_prompts_count = metric_int(
+            true_ar_split.get("prompts"),
+            label=f"attached true_ar_baseline.splits.{split_name}.prompts",
+        )
         if true_ar_prompts_count != split_prompt_count:
             raise BenchError(f"objective metrics require attached true_ar_baseline.splits.{split_name}.prompts to match splits.{split_name}.prompt_ids length")
         if true_ar_prompts_count != prompts_count:

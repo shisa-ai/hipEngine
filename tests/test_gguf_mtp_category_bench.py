@@ -735,6 +735,22 @@ def test_populate_objective_metrics_rejects_unexpected_total_label(tmp_path: Pat
     assert summary["objectives"] == {}
 
 
+def test_objective_metrics_for_budget_rejects_float_token_count(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["totals"]["b1"]["total_output_tokens"] = 100.5
+
+    with pytest.raises(BenchError, match="objective metrics require positive integer summary totals.b1.total_output_tokens"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_boolean_prompt_count(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["train"]["metrics"]["b1"]["prompts"] = True
+
+    with pytest.raises(BenchError, match="objective metrics require positive integer train.b1.prompts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_non_boolean_claim_flags(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["performance_claim"] = "yes"
@@ -1189,7 +1205,7 @@ def test_objective_metrics_for_budget_rejects_non_positive_prompt_count(tmp_path
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["train"]["metrics"]["b1"]["prompts"] = 0
 
-    with pytest.raises(BenchError, match="objective metrics require positive train.b1.prompts"):
+    with pytest.raises(BenchError, match="objective metrics require positive integer train.b1.prompts"):
         objective_metrics_for_budget(summary, "b1")
 
 
