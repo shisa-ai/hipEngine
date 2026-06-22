@@ -1863,10 +1863,9 @@ class Qwen35GGUFFullStackRunner:
         full_bf16_mirror_cache = getattr(scratch, "full_bf16_mirror_cache", None)
         if full_bf16_mirror_cache is not None:
             bf16_mirror_cache = full_bf16_mirror_cache(layer_id)
-        if scratch.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+        layer_uses_int8_kv = scratch.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and append_spans.scale_metadata is not None
+        if layer_uses_int8_kv:
             metadata = append_spans.scale_metadata
-            if metadata is None:
-                raise RuntimeError("GGUF INT8 full-attention decode requires scale metadata")
             bf16_to_f32(
                 scratch.full_v.ptr,
                 scratch.full_key_raw.ptr,
@@ -1920,7 +1919,7 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         active_context = int(position) + 1
-        if scratch.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and bf16_mirror_cache is None:
+        if layer_uses_int8_kv and bf16_mirror_cache is None:
             metadata = decode_spans.scale_metadata
             if metadata is None:
                 raise RuntimeError("GGUF INT8 full-attention decode requires scale metadata")
@@ -2699,10 +2698,13 @@ _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
-# Keep explicit INT8-KV short gates on the exact BF16 decode path. Longer
-# contexts are correctness-blocked by default; the env below exists only for
-# reproducing capacity/quality diagnostics of the unverified INT8-only path.
+# Keep explicit INT8-KV short gates on the exact BF16 decode path. For longer
+# contexts, the first full-attention layers stay BF16 by default because layer
+# probes show early-layer INT8 value quantization is amplified by downstream
+# routing. The env below exists only for reproducing the rejected INT8-only path.
 _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS = 8192
+_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS = 3
+_GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS"
 _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
@@ -2761,18 +2763,58 @@ def _gguf_host_token_embedding_requested() -> bool:
     return _env_flag(_GGUF_HOST_TOKEN_EMBEDDING_ENV, False)
 
 
-def _validate_gguf_int8_kv_context(*, kv_storage_dtype: DType, max_positions: int) -> None:
+def _gguf_int8_bf16_prefix_full_attention_layers(*, kv_storage_dtype: DType, max_positions: int) -> int:
+    if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        return 0
+    if int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS:
+        return 0
+    if _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False):
+        return 0
+    return max(
+        0,
+        _env_int(
+            _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV,
+            _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
+        ),
+    )
+
+
+def _gguf_int8_effective_scale_dtype(
+    *,
+    kv_storage_dtype: DType,
+    max_positions: int,
+    requested_scale_dtype: DType,
+    bf16_prefix_full_attention_layers: int,
+) -> DType:
+    if (
+        kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        and int(max_positions) > _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
+        and int(bf16_prefix_full_attention_layers) > 0
+        and not _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False)
+    ):
+        return DType.FP32
+    return requested_scale_dtype
+
+
+def _validate_gguf_int8_kv_context(
+    *,
+    kv_storage_dtype: DType,
+    max_positions: int,
+    bf16_prefix_full_attention_layers: int = 0,
+) -> None:
     if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
         return
     if int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS:
         return
+    if int(bf16_prefix_full_attention_layers) > 0:
+        return
     if _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False):
         return
     raise ValueError(
-        "GGUF int8_per_token_head KV is correctness-admitted only for rounded max contexts "
-        f"<= {_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS} where the BF16 mirror is retained; "
-        f"got rounded max context {int(max_positions)}. The INT8-only long-context path failed "
-        "BF16-vs-INT8 logit gates and is diagnostic-only. Set "
+        "GGUF int8_per_token_head KV is correctness-admitted for long contexts only with "
+        f"a BF16 full-attention prefix (default {_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS} layers); "
+        f"got rounded max context {int(max_positions)} and prefix={int(bf16_prefix_full_attention_layers)}. "
+        "The INT8-only long-context path failed BF16-vs-INT8 logit gates and is diagnostic-only. Set "
         f"{_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV}=1 only to reproduce blocked capacity diagnostics."
     )
 
@@ -2993,6 +3035,7 @@ class Qwen35GGUFResidentSession:
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
+    int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -3029,7 +3072,21 @@ class Qwen35GGUFResidentSession:
             int(self.runner.weights.config.context_length),
             ((requested_positions + 255) // 256) * 256,
         )
-        _validate_gguf_int8_kv_context(kv_storage_dtype=self.kv_storage_dtype, max_positions=rounded_positions)
+        self.int8_bf16_prefix_full_attention_layers = _gguf_int8_bf16_prefix_full_attention_layers(
+            kv_storage_dtype=self.kv_storage_dtype,
+            max_positions=rounded_positions,
+        )
+        self.kv_scale_dtype = _gguf_int8_effective_scale_dtype(
+            kv_storage_dtype=self.kv_storage_dtype,
+            max_positions=rounded_positions,
+            requested_scale_dtype=self.kv_scale_dtype,
+            bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
+        )
+        _validate_gguf_int8_kv_context(
+            kv_storage_dtype=self.kv_storage_dtype,
+            max_positions=rounded_positions,
+            bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
+        )
         runtime = self.runtime or get_hip_runtime()
         if _gguf_host_token_embedding_requested():
             self._offload_token_embedding_to_host(runtime=runtime)
@@ -3057,6 +3114,7 @@ class Qwen35GGUFResidentSession:
             kv_storage_dtype=self.kv_storage_dtype,
             kv_scale_dtype=self.kv_scale_dtype,
             kv_scale_granularity=self.kv_scale_granularity,
+            int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
         )
         total_memory_bytes = 0
         try:
@@ -3268,9 +3326,19 @@ class Qwen35GGUFResidentSession:
     def _full_attention_prefill_scratch_for_layer(self, bulk_scratch, layer_id: int):
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        metadata = None
+        if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            metadata = self.scratch.full_scale_metadata(layer_id)
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD or metadata is None:
             key_cache, value_cache = self.scratch.full_cache(layer_id)
-            return replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
+            return replace(
+                bulk_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                retained_key_cache=None,
+                retained_value_cache=None,
+                retained_append_spans=None,
+            )
         bf16_mirror_cache = None
         full_bf16_mirror_cache = getattr(self.scratch, "full_bf16_mirror_cache", None)
         if full_bf16_mirror_cache is not None:
@@ -3282,7 +3350,6 @@ class Qwen35GGUFResidentSession:
         else:
             oracle_key_cache, oracle_value_cache = bf16_mirror_cache
         retained_key_cache, retained_value_cache = self.scratch.full_cache(layer_id)
-        metadata = self.scratch.full_scale_metadata(layer_id)
         retained_append_spans = replace(
             bulk_scratch.append_spans,
             storage_dtype=DType.INT8_PER_TOKEN_HEAD,
@@ -4455,6 +4522,7 @@ class _FullStackScratch:
         kv_storage_dtype: str | DType = DType.BF16,
         kv_scale_dtype: str | DType = DType.FP16,
         kv_scale_granularity: str = "per_token_head",
+        int8_bf16_prefix_full_attention_layers: int = 0,
     ):
         def buf(nbytes: int):
             return malloc(nbytes, runtime=runtime)
@@ -4509,15 +4577,17 @@ class _FullStackScratch:
         full_kv_scale_metadata: list[KVScaleMetadata | None] = []
         state_buffers: list[object] = []
         cache_buffers: list[object] = []
-        cache_payload_dtype = DType.INT8 if kv_storage == DType.INT8_PER_TOKEN_HEAD else DType.BF16
-        cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * cache_payload_dtype.itemsize
-        mirror_bf16_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * DType.BF16.itemsize
+        int8_bf16_prefix_full_attention_layers = max(0, int(int8_bf16_prefix_full_attention_layers))
+        int8_cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * DType.INT8.itemsize
+        bf16_cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * DType.BF16.itemsize
+        mirror_bf16_nbytes = bf16_cache_nbytes
         short_int8_bf16_mirror = (
             kv_storage == DType.INT8_PER_TOKEN_HEAD
             and max_positions <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
         )
         scale_shape = (block_count, block_size, cfg.head_count_kv)
         scale_nbytes = int(np.prod(scale_shape)) * scale_dtype.itemsize
+        full_attention_index = 0
         for layer_type in cfg.layer_types:
             if layer_type == LINEAR_ATTENTION:
                 conv_state = buf(conv_zero.nbytes)
@@ -4533,6 +4603,10 @@ class _FullStackScratch:
                 full_v_scale_caches.append(None)
                 full_kv_scale_metadata.append(None)
             else:
+                layer_uses_int8 = kv_storage == DType.INT8_PER_TOKEN_HEAD and (
+                    full_attention_index >= int8_bf16_prefix_full_attention_layers
+                )
+                cache_nbytes = int8_cache_nbytes if layer_uses_int8 else bf16_cache_nbytes
                 key_cache = buf(cache_nbytes)
                 value_cache = buf(cache_nbytes)
                 cache_buffers.extend((key_cache, value_cache))
@@ -4540,7 +4614,7 @@ class _FullStackScratch:
                 layer_recurrent_states.append(None)
                 full_key_caches.append(key_cache)
                 full_value_caches.append(value_cache)
-                if short_int8_bf16_mirror:
+                if short_int8_bf16_mirror and layer_uses_int8:
                     mirror_key_cache = buf(mirror_bf16_nbytes)
                     mirror_value_cache = buf(mirror_bf16_nbytes)
                     cache_buffers.extend((mirror_key_cache, mirror_value_cache))
@@ -4549,7 +4623,7 @@ class _FullStackScratch:
                 else:
                     full_bf16_mirror_key_caches.append(None)
                     full_bf16_mirror_value_caches.append(None)
-                if kv_storage == DType.INT8_PER_TOKEN_HEAD:
+                if layer_uses_int8:
                     k_scale = buf(scale_nbytes)
                     v_scale = buf(scale_nbytes)
                     cache_buffers.extend((k_scale, v_scale))
@@ -4567,6 +4641,7 @@ class _FullStackScratch:
                     full_k_scale_caches.append(None)
                     full_v_scale_caches.append(None)
                     full_kv_scale_metadata.append(None)
+                full_attention_index += 1
         block_table_arr = np.arange(block_count, dtype=np.int32)
         position_host = np.asarray([0], dtype=np.int64)
         context_host = np.asarray([1], dtype=np.int64)
@@ -4708,27 +4783,26 @@ class _FullStackScratch:
         return key_cache, value_cache
 
     def full_scale_metadata(self, layer_id: int) -> KVScaleMetadata | None:
-        metadata = self.full_kv_scale_metadata[layer_id]
-        if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and metadata is None:
-            raise ValueError(f"layer {layer_id} has no INT8 full-attention KV scale metadata")
-        return metadata
+        return self.full_kv_scale_metadata[layer_id]
 
     def append_spans_for_layer(self, layer_id: int) -> KVLiveSpans:
-        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        metadata = self.full_scale_metadata(layer_id)
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD or metadata is None:
             return self.append_spans
         return replace(
             self.append_spans,
             storage_dtype=DType.INT8_PER_TOKEN_HEAD,
-            scale_metadata=self.full_scale_metadata(layer_id),
+            scale_metadata=metadata,
         )
 
     def decode_spans_for_layer(self, layer_id: int) -> KVLiveSpans:
-        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        metadata = self.full_scale_metadata(layer_id)
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD or metadata is None:
             return self.decode_spans
         return replace(
             self.decode_spans,
             storage_dtype=DType.INT8_PER_TOKEN_HEAD,
-            scale_metadata=self.full_scale_metadata(layer_id),
+            scale_metadata=metadata,
         )
 
     def set_full_attention_position(self, position: int, runtime: HipRuntime) -> None:

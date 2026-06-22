@@ -4,12 +4,11 @@
 
 This compares the resident GGUF BF16 full-attention KV path with the explicit
 ``int8_per_token_head`` path on the same prompt and teacher-forced token
-trajectory. Short INT8 sessions may route decode through the BF16 mirror. The
-current runtime blocks unverified long INT8-only GGUF sessions by default; set
-``HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`` together with a large
-``--max-sequence-length`` (for example ``131202``) and
-``--require-no-bf16-mirror`` only when reproducing the blocked long-context
-capacity/quality diagnostic.
+trajectory. Short INT8 sessions may route decode through the BF16 mirror. Long
+INT8 sessions use a hybrid BF16-prefix/INT8-suffix full-attention layout by
+default; set ``HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`` together with a
+large ``--max-sequence-length`` (for example ``131202``) only when reproducing
+the blocked pure INT8-only capacity/quality diagnostic.
 """
 
 from __future__ import annotations
@@ -49,6 +48,9 @@ class SequenceRun:
     elapsed_seconds: float
     memory: dict[str, Any]
     mirror_cache_count: int
+    bf16_primary_layer_count: int
+    int8_layer_count: int
+    effective_kv_scale_dtype: str
     max_sequence_length: int
 
 
@@ -96,13 +98,25 @@ def _command(args: argparse.Namespace) -> str:
     return " ".join(parts)
 
 
-def _mirror_cache_count(session: Qwen35GGUFResidentSession) -> int:
+def _kv_layout_counts(session: Qwen35GGUFResidentSession) -> tuple[int, int, int]:
     scratch = session.scratch
     if scratch is None:
-        return 0
+        return 0, 0, 0
     keys = getattr(scratch, "full_bf16_mirror_key_caches", ())
     vals = getattr(scratch, "full_bf16_mirror_value_caches", ())
-    return sum(1 for key, value in zip(keys, vals, strict=False) if key is not None and value is not None)
+    mirror_count = sum(1 for key, value in zip(keys, vals, strict=False) if key is not None and value is not None)
+    primary_keys = getattr(scratch, "full_key_caches", ())
+    metadata = getattr(scratch, "full_kv_scale_metadata", ())
+    bf16_primary = 0
+    int8_layers = 0
+    for key_cache, scale_metadata in zip(primary_keys, metadata, strict=False):
+        if key_cache is None:
+            continue
+        if scale_metadata is None:
+            bf16_primary += 1
+        else:
+            int8_layers += 1
+    return int(mirror_count), int(bf16_primary), int(int8_layers)
 
 
 def _run_sequence(
@@ -155,7 +169,8 @@ def _run_sequence(
             generated_token_ids.append(int(current.token_id))
             token_ids_for_next_step.append(int(current.token_id))
             logits_rows.append(_checked_logits(current.logits, f"decode[{step_index}]"))
-        mirror_count = _mirror_cache_count(session)
+        mirror_count, bf16_primary_layer_count, int8_layer_count = _kv_layout_counts(session)
+        effective_kv_scale_dtype = session.kv_scale_dtype.value
         stats = memory_stats()
     elapsed = time.perf_counter() - start
     logits = np.vstack(logits_rows).astype(np.float32, copy=False)
@@ -170,6 +185,9 @@ def _run_sequence(
         elapsed_seconds=float(elapsed),
         memory=stats,
         mirror_cache_count=int(mirror_count),
+        bf16_primary_layer_count=int(bf16_primary_layer_count),
+        int8_layer_count=int(int8_layer_count),
+        effective_kv_scale_dtype=str(effective_kv_scale_dtype),
         max_sequence_length=int(max_sequence_length),
     )
 
@@ -238,6 +256,9 @@ def _run_to_json(run: SequenceRun) -> dict[str, Any]:
         "finite_logits": bool(run.finite_logits),
         "elapsed_seconds": float(run.elapsed_seconds),
         "mirror_cache_count": int(run.mirror_cache_count),
+        "bf16_primary_layer_count": int(run.bf16_primary_layer_count),
+        "int8_layer_count": int(run.int8_layer_count),
+        "effective_kv_scale_dtype": str(run.effective_kv_scale_dtype),
         "max_sequence_length": int(run.max_sequence_length),
         "tracked_peak_allocated_gib": float(run.memory.get("peak_allocated_bytes", 0)) / (1024**3),
         "tracked_current_allocated_gib": float(run.memory.get("current_allocated_bytes", 0)) / (1024**3),

@@ -142,13 +142,19 @@ rerun. Artifact:
 `benchmarks/results/2026-06-18-gpu1-gguf-q4km-int8kv-128k-diagnostic.json`.
 The 2026-06-21 short BF16 mirror fixes short-gate IDs/logits, but the unmirrored
 INT8-only route still fails BF16-vs-INT8 logits (`4K` no-mirror W7900 gate:
-`KL=0.275781`, top-1 `0.5`). Long GGUF INT8 contexts therefore fail fast by
-default unless `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` is set for
-capacity reproduction. Do not promote or claim 24 GiB-class `128K/128` Q4_K_M
-support until a calibrated INT8 format/kernel passes the logit gate while
-retaining graph-class decode, or the human lead explicitly accepts the
-host-embedding/INT8-KV decode/accuracy tradeoff, a lower max-context, or a
-Q4_K_S fallback policy.
+`KL=0.275781`, top-1 `0.5`). The 2026-06-22 localization found the error source:
+early full-attention layers amplify small INT8 value-quantization perturbations
+(layer 3 alone gives `KL=0.618776`), while later layers are safe enough with FP32
+scales. Long explicit GGUF INT8 now uses a correctness-admitted hybrid layout by
+default: 3 BF16-primary full-attention layers followed by 7 INT8 layers with
+effective FP32 scales. The W7900 forced-long `4K` BF16-vs-hybrid gate passes
+(`KL mean=0.014025`, `KL max=0.028051`, top-1 `1.0`, no BF16 mirror); pure
+INT8-only reproduction still requires `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`.
+Do not promote or claim a throughput row for 24 GiB-class `128K/128` Q4_K_M until
+a full benchmark completes; GPU1 allocation of the hybrid `131328`-position
+session fits (`25,008,050,176` tracked bytes), but the attempted `128K/128`
+throughput run timed out before artifact. Evidence:
+`benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -386,14 +392,14 @@ Current focused lanes from evidence:
   Retained W7900 rows must use `scripts/run_w7900_readme_refresh.sh hipengine`
   or its exact `THEROCK_ENV`; if GGUF prefill falls while decode and IDs stay
   normal, rerun hermetically before blaming kernels.
-- **Primary next goal: make GGUF INT8 KV correct.** Short explicit
-  `--kv-storage int8_per_token_head` sessions now use a BF16 mirror and match the
-  BF16 gate IDs/logits. The unmirrored INT8-only path is not correctness-green:
-  a W7900 BF16-vs-INT8 no-mirror `4K` logit gate rejected it (`KL=0.275781`,
-  top-1 agreement `0.5`), so long GGUF INT8 contexts now fail fast by default
-  unless `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` is set for reproducing
-  old capacity diagnostics. A future useful INT8 path needs a calibrated
-  accuracy-safe KV format/kernel, not silent use of the current INT8-only route.
+- **GGUF INT8 KV correctness is now localized and guarded.** Short explicit
+  `--kv-storage int8_per_token_head` sessions still use a BF16 mirror and match
+  BF16 IDs/logits. Long sessions no longer use the rejected pure INT8-only route:
+  by default they keep a 3-layer BF16 full-attention prefix, use INT8 for the
+  remaining 7 full-attention layers, and promote scales to FP32. The forced-long
+  W7900 `4K` BF16-vs-hybrid gate passes (`KL mean=0.014025`, top-1 `1.0`, no
+  BF16 mirror). Continue with full `128K/128` capacity/throughput validation
+  before promoting any 24 GiB benchmark row.
 - **Refresh attribution before the next optimization pass.** Before touching more
   kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
   current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the

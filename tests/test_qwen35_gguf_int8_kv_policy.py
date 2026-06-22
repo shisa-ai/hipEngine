@@ -8,7 +8,11 @@ from hipengine.core.tensor import Tensor
 from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
 from hipengine.runtime.qwen35_gguf_runner import (
     _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV,
+    _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV,
+    _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
     Qwen35GGUFResidentSession,
+    _gguf_int8_bf16_prefix_full_attention_layers,
+    _gguf_int8_effective_scale_dtype,
     _validate_gguf_int8_kv_context,
 )
 from scripts.qwen35_gguf_bench import _decode_scratch_breakdown
@@ -103,6 +107,32 @@ def test_gguf_int8_full_attention_prefill_uses_bf16_oracle_and_retained_int8_cac
     assert layer_scratch.append_spans.storage_dtype is DType.BF16
 
 
+def test_gguf_int8_hybrid_prefill_uses_bf16_primary_when_layer_has_no_scale_metadata() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    oracle_key = _Buffer(0x5000, 32)
+    oracle_value = _Buffer(0x6000, 32)
+    retained_key = _Buffer(0x7000, 64)
+    retained_value = _Buffer(0x8000, 64)
+    session.scratch = type(
+        "Scratch",
+        (),
+        {
+            "full_cache": lambda self, layer_id: (retained_key, retained_value),
+            "full_scale_metadata": lambda self, layer_id: None,
+        },
+    )()
+    bulk = _BulkScratch(key_cache=oracle_key, value_cache=oracle_value, append_spans=_bf16_append_spans())
+
+    layer_scratch = session._full_attention_prefill_scratch_for_layer(bulk, 3)
+
+    assert layer_scratch.key_cache is retained_key
+    assert layer_scratch.value_cache is retained_value
+    assert layer_scratch.retained_key_cache is None
+    assert layer_scratch.retained_value_cache is None
+    assert layer_scratch.retained_append_spans is None
+
+
 def test_gguf_int8_short_prefill_prefers_bf16_mirror_cache_when_available() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
@@ -144,21 +174,56 @@ def test_gguf_int8_context_guard_allows_short_mirror_without_env(monkeypatch) ->
     )
 
 
-def test_gguf_int8_context_guard_blocks_unverified_long_without_env(monkeypatch) -> None:
+def test_gguf_int8_context_guard_allows_long_hybrid_without_env(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+
+    _validate_gguf_int8_kv_context(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=8448,
+        bf16_prefix_full_attention_layers=_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
+    )
+
+
+def test_gguf_int8_context_guard_blocks_unverified_long_without_prefix_or_env(monkeypatch) -> None:
     monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
 
     try:
         _validate_gguf_int8_kv_context(
             kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
             max_positions=8448,
+            bf16_prefix_full_attention_layers=0,
         )
     except ValueError as exc:
         message = str(exc)
     else:  # pragma: no cover - assertion clarity
-        raise AssertionError("expected long GGUF INT8 KV context to be blocked")
+        raise AssertionError("expected long pure GGUF INT8 KV context to be blocked")
 
+    assert "BF16 full-attention prefix" in message
     assert "diagnostic-only" in message
     assert _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV in message
+
+
+def test_gguf_int8_long_hybrid_promotes_fp32_scales(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+
+    assert (
+        _gguf_int8_effective_scale_dtype(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=131328,
+            requested_scale_dtype=DType.FP16,
+            bf16_prefix_full_attention_layers=_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
+        )
+        is DType.FP32
+    )
+    assert (
+        _gguf_int8_effective_scale_dtype(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=8192,
+            requested_scale_dtype=DType.FP16,
+            bf16_prefix_full_attention_layers=0,
+        )
+        is DType.FP16
+    )
 
 
 def test_gguf_int8_context_guard_allows_long_diagnostic_with_env(monkeypatch) -> None:
@@ -167,6 +232,37 @@ def test_gguf_int8_context_guard_allows_long_diagnostic_with_env(monkeypatch) ->
     _validate_gguf_int8_kv_context(
         kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         max_positions=131328,
+    )
+
+
+def test_gguf_int8_long_hybrid_prefix_default_and_env_override(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+    monkeypatch.delenv(_GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV, raising=False)
+
+    assert (
+        _gguf_int8_bf16_prefix_full_attention_layers(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=131328,
+        )
+        == _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS
+    )
+
+    monkeypatch.setenv(_GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV, "6")
+    assert (
+        _gguf_int8_bf16_prefix_full_attention_layers(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=131328,
+        )
+        == 6
+    )
+
+    monkeypatch.setenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, "1")
+    assert (
+        _gguf_int8_bf16_prefix_full_attention_layers(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=131328,
+        )
+        == 0
     )
 
 

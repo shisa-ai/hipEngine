@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-22
+
+- [correctness diagnostic] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 forced-long INT8 KV: rejected pure INT8-only `4K` gate (`KL=0.275781`, top-1 `0.5`) -> accepted hybrid 3-BF16/7-INT8 layout with effective FP32 scales (`KL mean=0.014025`, `KL max=0.028051`, top-1 `1.0`, no BF16 mirror); GPU1 `131328`-position allocation smoke fits at `25,008,050,176` tracked bytes, but no throughput row is promoted; `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`.
+
 ## 2026-06-21
 
 - [diagnostic refresh] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 GPU0 README final current-tree sweep: corrected the first non-hermetic rerun by using the full TheRock `env -i` wrapper from `scripts/run_w7900_readme_refresh.sh`; prefill `2198.4/2436.7/2453.3/1833.7/1412.5/973.8 -> 2109.6/2331.3/2332.8/1799.8/1398.1/971.1 tok/s` (-4.0/-4.3/-4.9/-1.8/-1.0/-0.3%) and decode `106.7/96.2/97.7/84.7/72.5/57.3 -> 106.5/95.8/97.1/84.9/72.4/57.2 tok/s` (-0.2/-0.4/-0.6/+0.2/-0.1/-0.1%), stable IDs `318/220/220/332/22/63`, tracked peak flat `24.985 GiB`; `benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json`.

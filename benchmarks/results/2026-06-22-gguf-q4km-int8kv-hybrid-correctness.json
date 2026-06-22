@@ -1,0 +1,190 @@
+{
+  "accepted_layout": {
+    "bf16_primary_full_attention_layers": 3,
+    "effective_kv_scale_dtype": "fp32",
+    "int8_full_attention_layers": 7,
+    "pure_int8_reproduction_env": "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1",
+    "short_context_behavior": "rounded max contexts <=8192 still keep BF16 mirror caches for exact short-gate decode"
+  },
+  "correctness_gate": {
+    "candidate": {
+      "bf16_primary_layer_count": 3,
+      "effective_kv_scale_dtype": "fp32",
+      "elapsed_seconds": 240.0978176840581,
+      "finite_logits": true,
+      "generated_token_ids": [
+        40218,
+        11048
+      ],
+      "int8_layer_count": 7,
+      "kv_storage": "int8_per_token_head",
+      "max_sequence_length": 131202,
+      "mirror_cache_count": 0,
+      "top1_token_ids": [
+        40218,
+        11048
+      ],
+      "tracked_current_allocated_gib": 24.37215518951416,
+      "tracked_peak_allocated_gib": 24.37215518951416
+    },
+    "command": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 4K --decode-steps 1 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-gguf-int8-kv-correctness-4k-hybrid-default-w7900.json",
+    "metrics": {
+      "first_top1_mismatch_index": null,
+      "kl_max": 0.02805085767052115,
+      "kl_mean": 0.014025428835260575,
+      "passed": true,
+      "top1_agreement": 1.0,
+      "top1_mismatch_count": 0
+    },
+    "passed": true,
+    "prompt_length": 4096,
+    "reference": {
+      "bf16_primary_layer_count": 10,
+      "effective_kv_scale_dtype": "fp16",
+      "elapsed_seconds": 240.23767549311742,
+      "finite_logits": true,
+      "generated_token_ids": [
+        40218,
+        11048
+      ],
+      "int8_layer_count": 0,
+      "kv_storage": "bf16",
+      "max_sequence_length": 131202,
+      "mirror_cache_count": 0,
+      "top1_token_ids": [
+        40218,
+        11048
+      ],
+      "tracked_current_allocated_gib": 24.9846773147583,
+      "tracked_peak_allocated_gib": 24.9846773147583
+    },
+    "status": "accepted"
+  },
+  "date": "2026-06-22",
+  "gpu1_allocation_smoke": {
+    "command": "instantiate Qwen35GGUFResidentSession max_sequence_length=131202 --kv-storage int8_per_token_head under HIP_VISIBLE_DEVICES=1",
+    "current_allocated_bytes": 25008050176,
+    "current_allocated_gib": 23.29056167602539,
+    "effective_kv_scale_dtype": "fp32",
+    "layout": [
+      "bf16",
+      "bf16",
+      "bf16",
+      "int8",
+      "int8",
+      "int8",
+      "int8",
+      "int8",
+      "int8",
+      "int8"
+    ],
+    "max_positions": 131328,
+    "note": "Allocation fits; 128K/128 throughput run was attempted but timed out before artifact, so no throughput/capacity benchmark is promoted here."
+  },
+  "hardware": "AMD Radeon Pro W7900 / gfx1100 (correctness), RX 7900 XTX GPU1 allocation smoke",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quant": "gguf_q4_k_m",
+  "raw_sources": [
+    "/tmp/hipengine-gguf-int8-kv-correctness-4k-hybrid-default-w7900.json",
+    "/tmp/hipengine-gguf-int8-layer-probe-4k-w7900-fp16-cpu0.json",
+    "/tmp/hipengine-gguf-int8-layer-probe-4k-w7900-fp32-suffix.json"
+  ],
+  "root_cause": {
+    "layer0_cpu_decomposition": {
+      "key_and_value": {
+        "max_abs": 0.0078125,
+        "max_rel": 94.62285614013672,
+        "mean_abs": 0.0004790104285348207,
+        "rms_abs": 0.0007681668028363415,
+        "top_abs_indices": [
+          1444,
+          932,
+          1271,
+          2039,
+          88
+        ]
+      },
+      "key_only": {
+        "max_abs": 0.00390625,
+        "max_rel": 39.03428649902344,
+        "mean_abs": 4.7144058044068515e-05,
+        "rms_abs": 0.0001985746356098959,
+        "top_abs_indices": [
+          3739,
+          3833,
+          3813,
+          3609,
+          3725
+        ]
+      },
+      "value_only": {
+        "max_abs": 0.0078125,
+        "max_rel": 54.7599983215332,
+        "mean_abs": 0.000464723416371271,
+        "rms_abs": 0.0007483094013844637,
+        "top_abs_indices": [
+          1444,
+          932,
+          2039,
+          1271,
+          88
+        ]
+      }
+    },
+    "layer_probe": "single full-attention layer 0 (model layer 3) with INT8 KV alone causes KL=0.618776/top1 mismatch; CPU decomposition shows value quantization dominates local gated-attention error.",
+    "pure_int8_failure": "Per-token/head INT8 value quantization in early full-attention layers is locally small but downstream-amplified by the GGUF model; pure no-mirror 4K gate previously failed KL=0.275781/top1=0.5."
+  },
+  "schema": 1,
+  "status": "accepted_correctness",
+  "suffix_probe_fp32": [
+    {
+      "label": "suffix_from_full_layer_3",
+      "layer_ids": [
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "logit_metrics_vs_bf16": {
+        "candidate_top1": 11048,
+        "kl_max": 0.02805085767052115,
+        "kl_mean": 0.02805085767052115,
+        "max_abs": 1.6597461700439453,
+        "mean_abs": 0.21012726426124573,
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      "token_id": 11048
+    },
+    {
+      "label": "all_full_attention_layers",
+      "layer_ids": [
+        3,
+        7,
+        11,
+        15,
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "logit_metrics_vs_bf16": {
+        "candidate_top1": 40218,
+        "kl_max": 0.30795060787165235,
+        "kl_mean": 0.30795060787165235,
+        "max_abs": 5.32383394241333,
+        "mean_abs": 0.5948768258094788,
+        "reference_top1": 11048,
+        "top1_agreement": 0.0
+      },
+      "token_id": 40218
+    }
+  ],
+  "summary": "GGUF long int8_per_token_head now uses a BF16 full-attention prefix (3 layers) plus INT8 suffix (7 layers) with effective FP32 scales; pure INT8-only remains diagnostic-only."
+}
