@@ -1430,8 +1430,8 @@ def compare_objective_metrics(
     must not regress. Train deltas are reported, but train-only gains cannot pass
     if full or heldout regress.
     """
-    if tolerance < 0.0:
-        raise BenchError("objective comparison tolerance must be non-negative")
+    if not math.isfinite(tolerance) or tolerance < 0.0:
+        raise BenchError("objective comparison tolerance must be finite and non-negative")
     baseline = objective_metrics_for_budget(baseline_summary, budget_label)
     candidate = objective_metrics_for_budget(candidate_summary, budget_label)
     if baseline["heldout_ids"] != candidate["heldout_ids"]:

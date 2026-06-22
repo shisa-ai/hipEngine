@@ -1365,6 +1365,15 @@ def test_compare_objective_metrics_rejects_changed_true_ar_baseline(tmp_path: Pa
         compare_objective_metrics(baseline, candidate, "b1")
 
 
+@pytest.mark.parametrize("tolerance", [-1.0, float("nan"), float("inf")])
+def test_compare_objective_metrics_rejects_invalid_tolerance(tmp_path: Path, tolerance: float) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[0] * 10, draft_ms=10.0)
+
+    with pytest.raises(BenchError, match="objective comparison tolerance must be finite and non-negative"):
+        compare_objective_metrics(baseline, candidate, "b1", tolerance=tolerance)
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
