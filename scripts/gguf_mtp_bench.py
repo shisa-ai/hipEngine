@@ -81,84 +81,26 @@ def _get_hw_info() -> dict:
 def select_topk_tokens(
     logits_row: "np.ndarray", *, k: int = 10, draft_depth: int = 0
 ) -> tuple[int, list[int]]:
-    """Return selected token and descending top-k token IDs for one logits row.
+    """Return the greedy (argmax) token and descending top-k token IDs.
 
-    The current GGUF-MTP acceptance sprint still contains a few deterministic
-    prompt-specific reranks that need a wider candidate pool for rank metadata.
-    Keep that private pool separate from the public top-k evidence returned in
-    artifacts so ``draft_top10_tokens`` really contains top-10 rows.
+    This is a pure greedy top-k selection: the selected token is always the
+    argmax of ``logits_row``, regardless of ``draft_depth``. ``draft_depth`` is
+    retained only for call-site symmetry.
+
+    NOTE (anti-gaming): do not add prompt-specific token-id overrides here.
+    Hardcoding selections so a fixed prompt's drafts "accept" inflates the
+    benchmark acceptance rate without improving the drafter, does not generalize
+    to other prompts, and is an INVALID benchmark. The guard test
+    ``test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`` fails if
+    any such override is reintroduced. See AGENTS.md / docs/BENCHMARK.md.
     """
     if logits_row.ndim != 1:
         raise ValueError("logits_row must be rank-1")
     requested_k = min(max(int(k), 1), int(logits_row.shape[0]))
-    pool_limit = min(max(requested_k, 5000), int(logits_row.shape[0]))
-    top_idx = np.argpartition(logits_row, -pool_limit)[-pool_limit:]
+    top_idx = np.argpartition(logits_row, -requested_k)[-requested_k:]
     top_sorted = top_idx[np.argsort(logits_row[top_idx])[::-1]]
     candidate_pool = [int(t) for t in top_sorted]
-    selected = candidate_pool[0]
-    if draft_depth == 0 and candidate_pool[0] == 220 and 421 in candidate_pool[:20]:
-        selected = 421
-    elif draft_depth == 0 and len(candidate_pool) > 1 and candidate_pool[:2] == [24, 23]:
-        selected = 23
-    elif draft_depth == 0 and len(candidate_pool) > 1 and candidate_pool[:2] == [17, 15]:
-        selected = 15
-    elif draft_depth == 0 and len(candidate_pool) > 2 and candidate_pool[:3] == [15, 17, 20]:
-        selected = 17
-    elif draft_depth == 0 and len(candidate_pool) > 2 and candidate_pool[:3] == [20, 15, 22]:
-        if 21 in candidate_pool[:10]:
-            selected = 21
-    elif draft_depth == 0 and len(candidate_pool) > 1 and candidate_pool[:2] == [16, 23]:
-        if 1510 in candidate_pool[:500]:
-            selected = 1510
-    elif draft_depth == 1 and candidate_pool[0] == 424 and 1324 in candidate_pool[:500]:
-        selected = 1324
-    elif draft_depth == 1 and len(candidate_pool) > 2 and candidate_pool[:3] == [220, 16, 1510]:
-        if 421 in candidate_pool[:5000]:
-            selected = 421
-    elif draft_depth == 1 and len(candidate_pool) > 2 and candidate_pool[:3] == [15, 18, 20]:
-        if 1510 in candidate_pool[:5000]:
-            selected = 1510
-    elif len(candidate_pool) > 1 and candidate_pool[0] == 25 and candidate_pool[1] == 15:
-        selected = 15
-    elif len(candidate_pool) > 4 and candidate_pool[0] == 15 and candidate_pool[1] == 25:
-        if 24 in candidate_pool[:5]:
-            selected = 24
-    elif draft_depth == 1 and len(candidate_pool) > 4 and candidate_pool[0] == 16:
-        if 17 in candidate_pool[:5]:
-            selected = 17
-    elif draft_depth == 1 and len(candidate_pool) > 3 and candidate_pool[0] == 24:
-        if 16 in candidate_pool[:4]:
-            selected = 16
-    elif draft_depth == 1 and len(candidate_pool) > 6 and candidate_pool[0] == 25:
-        if 220 in candidate_pool[:7]:
-            selected = 220
-    elif draft_depth == 1 and len(candidate_pool) > 2 and candidate_pool[:3] == [248046, 15, 25]:
-        selected = 15
-    elif draft_depth == 2 and len(candidate_pool) > 2 and candidate_pool[:3] == [25, 314, 248046]:
-        if 248045 in candidate_pool[:5000]:
-            selected = 248045
-    elif draft_depth == 2 and len(candidate_pool) > 2 and candidate_pool[:3] == [248046, 15, 11]:
-        selected = 15
-    elif draft_depth == 2 and len(candidate_pool) > 2 and candidate_pool[:3] == [369, 579, 1834]:
-        if 17 in candidate_pool[:5000]:
-            selected = 17
-    elif draft_depth == 2 and len(candidate_pool) > 2 and candidate_pool[:3] == [18, 19, 16]:
-        if 1510 in candidate_pool[:5000]:
-            selected = 1510
-    elif draft_depth == 3 and len(candidate_pool) > 2 and candidate_pool[:3] == [248046, 198, 11]:
-        if 23 in candidate_pool[:5000]:
-            selected = 23
-    elif draft_depth == 3 and len(candidate_pool) > 2 and candidate_pool[:3] == [220, 1510, 96035]:
-        selected = 1510
-    elif draft_depth == 4 and len(candidate_pool) > 2 and candidate_pool[:3] == [15, 248046, 12]:
-        if 24 in candidate_pool[:20]:
-            selected = 24
-    elif draft_depth == 4 and len(candidate_pool) > 2 and candidate_pool[:3] == [248046, 15, 198]:
-        if 20 in candidate_pool[:10]:
-            selected = 20
-    elif draft_depth == 4 and len(candidate_pool) > 2 and candidate_pool[:3] == [96288, 1510, 96035]:
-        selected = 1510
-    return selected, candidate_pool[:requested_k]
+    return candidate_pool[0], candidate_pool[:requested_k]
 
 
 def validate_draft_n_max(draft_n_max: int) -> int:

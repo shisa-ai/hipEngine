@@ -53,6 +53,43 @@ def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
     assert top3 == [1, 4, 3]
 
 
+def _logits_with_top3(vocab: int, top3: list[int]) -> np.ndarray:
+    """Build a logits row whose strict argsort prefix is exactly ``top3``."""
+    logits = np.full((vocab,), -1.0, dtype=np.float32)
+    for rank, token in enumerate(top3):
+        logits[token] = float(len(top3) - rank)
+    return logits
+
+
+@pytest.mark.parametrize(
+    "top3",
+    [
+        [96288, 1510, 96035],  # was force-selected to 1510 at depth 4
+        [220, 1510, 96035],    # was force-selected to 1510 at depth 3
+        [16, 23, 1510],        # was force-selected to 1510 at depth 0
+        [220, 16, 1510],       # was force-selected to 421 at depth 1
+        [25, 314, 248046],     # was force-selected to 248045 at depth 2
+    ],
+)
+def test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank(top3: list[int]) -> None:
+    """select_topk_tokens must be pure greedy top-k.
+
+    Hardcoding token-id reranks to lift benchmark acceptance on a fixed prompt is
+    an INVALID benchmark (it overfits one prompt and does not generalize). This
+    guard fails if any prompt-specific override is reintroduced: the selected
+    token must always be the argmax, for every draft depth.
+    """
+    vocab = 248_047
+    logits = _logits_with_top3(vocab, top3)
+    expected_argmax = top3[0]
+    for draft_depth in range(0, 6):
+        greedy, returned_top3 = select_topk_tokens(logits, k=3, draft_depth=draft_depth)
+        assert greedy == expected_argmax, (
+            f"draft_depth={draft_depth} top3={top3} returned {greedy}, expected argmax {expected_argmax}"
+        )
+        assert returned_top3 == top3
+
+
 def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
     for budget in range(1, 6):
         assert validate_draft_n_max(budget) == budget
