@@ -102,7 +102,8 @@ acceptance loops.
    `prompt_file`, `prompt_count`, positive `decode_tokens`, and non-negative
    `warmup_decode_tokens`); include top-level
    `prompt_hashes`; and contain one `prompt_metrics[]` row per selected prompt
-   with `prompt_sha256` plus positive `output_tokens` and `decode_ms`.
+   with `prompt_sha256`, `finite_final_logits=true`, positive `output_tokens`,
+   and positive `decode_ms`.
 
 2. **Attach AR to the MTP category matrix.** Run the MTP diagnostic over the same
    prompts/budgets and attach the AR artifact:
@@ -159,7 +160,8 @@ acceptance loops.
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
    artifacts without current schema/kind metadata, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt provenance,
-   protocol provenance, and prompt-hash provenance. The returned JSON contains
+   protocol provenance, prompt-hash provenance, and true-AR finite-logit
+   evidence. The returned JSON contains
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and
    `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count matching the

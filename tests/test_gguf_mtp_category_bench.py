@@ -456,6 +456,7 @@ def _write_true_ar_baseline(
     include_repo: bool = True,
     include_prompt_hashes: bool = True,
     include_row_hashes: bool = True,
+    include_finite_logits: bool = True,
     include_commands: bool = True,
     model: str = TEST_MODEL,
     prompt_file: str = TEST_PROMPTS,
@@ -473,6 +474,8 @@ def _write_true_ar_baseline(
         prompt_id = str(row_copy.get("id") or row_copy.get("prompt_id") or "")
         if include_row_hashes and prompt_id in prompt_hashes:
             row_copy.setdefault("prompt_sha256", prompt_hashes[prompt_id])
+        if include_finite_logits:
+            row_copy.setdefault("finite_final_logits", True)
         metric_rows.append(row_copy)
     payload = {
         "true_autoregressive_path": True,
@@ -1180,6 +1183,49 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_without_finite_logits_evidence(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        include_finite_logits=False,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="requires finite_final_logits=true"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_with_nonfinite_final_logits(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0, "finite_final_logits": False}],
+        prompt_text_by_id={"code_1": "write code"},
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="requires finite_final_logits=true"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

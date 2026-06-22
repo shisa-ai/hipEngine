@@ -117400,3 +117400,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 52: require true-AR finite-logit evidence
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 52.
+- Focused true-AR correctness provenance contract: attached true-AR baselines must prove their final logits were finite before serving as same-protocol AR denominators.
+
+### Change
+- `validate_true_ar_prompt_rows()` now requires every attached true-AR `prompt_metrics[]` row to include `finite_final_logits=true`.
+- Updated the true-AR fixture helper to emit finite-logit evidence by default.
+- Added regressions for missing `finite_final_logits` and `finite_final_logits=false` in true-AR baseline rows.
+- Updated `docs/BENCHMARK.md` to document the `finite_final_logits=true` requirement and finite-logit provenance in the guarded objective contract.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 104 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

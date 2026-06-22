@@ -665,6 +665,8 @@ def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict
             raise BenchError(f"true AR prompt_metrics row requires prompt_sha256 for {prompt_id}")
         if str(row_hash) != expected_hashes[prompt_id]:
             raise BenchError(f"true AR prompt hash mismatch for {prompt_id}: {row_hash!r} != {expected_hashes[prompt_id]!r}")
+        if row.get("finite_final_logits") is not True:
+            raise BenchError(f"true AR prompt_metrics row requires finite_final_logits=true for {prompt_id}")
         output_tokens = int(row.get("output_tokens") or 0)
         decode_ms = finite_float(row.get("decode_ms"), prompt_id=prompt_id, field="true_ar.prompt_metrics[].decode_ms")
         if output_tokens <= 0:
