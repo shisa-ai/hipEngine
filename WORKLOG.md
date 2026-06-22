@@ -117243,3 +117243,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 46: validate finite objective scalars
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 46.
+- Focused objective-scalar contract: guarded objective extraction must reject malformed scalar values in summary JSON, not just missing fields.
+
+### Change
+- Added `finite_nonnegative_objective()` in `scripts/gguf_mtp_category_bench.py`.
+- `objective_metrics_for_budget()` now rejects NaN/inf/negative values for:
+  - `accepted_per_output`;
+  - `draft_acceptance`;
+  - `decode_tok_s_weighted`;
+  - `mtp_vs_true_ar_decode_ratio`.
+- Objective extraction now rejects non-positive/non-integer split prompt counts.
+- Added regressions for a non-finite scalar metric, negative true-AR ratio, and non-positive prompt count.
+- Updated `docs/BENCHMARK.md` to document finite non-negative objective scalars and positive prompt counts.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 89 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

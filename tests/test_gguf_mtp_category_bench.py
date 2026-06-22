@@ -673,6 +673,30 @@ def test_objective_metrics_for_budget_rejects_summary_prompt_id_mismatch(tmp_pat
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_non_finite_scalar_metric(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["full"]["metrics"]["b1"]["accepted_per_output"] = float("nan")
+
+    with pytest.raises(BenchError, match="objective metrics require finite non-negative full.b1.accepted_per_output"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_negative_scalar_metric(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["heldout"]["metrics"]["b1"]["mtp_vs_true_ar_decode_ratio"] = -0.01
+
+    with pytest.raises(BenchError, match="objective metrics require finite non-negative heldout.b1.mtp_vs_true_ar_decode_ratio"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_non_positive_prompt_count(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["train"]["metrics"]["b1"]["prompts"] = 0
+
+    with pytest.raises(BenchError, match="objective metrics require positive train.b1.prompts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_missing_summary_repo_provenance(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     del summary["repo"]

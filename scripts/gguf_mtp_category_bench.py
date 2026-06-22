@@ -403,6 +403,16 @@ def finite_float(value: Any, *, prompt_id: str, field: str) -> float:
     return result
 
 
+def finite_nonnegative_objective(value: Any, *, label: str) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise BenchError(f"objective metrics require finite non-negative {label}") from exc
+    if not math.isfinite(result) or result < 0.0:
+        raise BenchError(f"objective metrics require finite non-negative {label}")
+    return result
+
+
 def validate_metric_row(row: dict[str, Any]) -> None:
     metrics = row.get("metrics")
     if not isinstance(metrics, dict):
@@ -832,12 +842,18 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         missing = [field for field in required if field not in row or row[field] is None]
         if missing:
             raise BenchError(f"objective metrics missing {missing} for {split_name}.{label}")
+        try:
+            prompts_count = int(row["prompts"])
+        except (TypeError, ValueError) as exc:
+            raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts") from exc
+        if prompts_count <= 0:
+            raise BenchError(f"objective metrics require positive {split_name}.{label}.prompts")
         out[split_name] = {
-            "accepted_per_output": float(row["accepted_per_output"]),
-            "draft_acceptance": float(row["draft_acceptance"]),
-            "decode_tok_s_weighted": float(row["decode_tok_s_weighted"]),
-            "mtp_vs_true_ar_decode_ratio": float(row["mtp_vs_true_ar_decode_ratio"]),
-            "prompts": int(row["prompts"]),
+            "accepted_per_output": finite_nonnegative_objective(row["accepted_per_output"], label=f"{split_name}.{label}.accepted_per_output"),
+            "draft_acceptance": finite_nonnegative_objective(row["draft_acceptance"], label=f"{split_name}.{label}.draft_acceptance"),
+            "decode_tok_s_weighted": finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{split_name}.{label}.decode_tok_s_weighted"),
+            "mtp_vs_true_ar_decode_ratio": finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{split_name}.{label}.mtp_vs_true_ar_decode_ratio"),
+            "prompts": prompts_count,
         }
     return out
 

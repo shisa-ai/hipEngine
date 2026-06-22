@@ -157,8 +157,9 @@ acceptance loops.
    artifacts without current schema/kind metadata, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt provenance,
    protocol provenance, and prompt-hash provenance. The returned JSON contains
-   full/train/heldout `accepted_per_output`, `draft_acceptance`,
-   `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.
+   full/train/heldout finite non-negative `accepted_per_output`,
+   `draft_acceptance`, `decode_tok_s_weighted`, and
+   `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count.
 
    When an optimize loop needs a single scalar verify metric, keep the same gates
    and request one split/field explicitly:
