@@ -91,7 +91,7 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
             raw = json.loads(line)
             if not isinstance(raw, dict):
                 raise BenchError(f"{path}:{line_no}: prompt row must be an object")
-            raw_id = raw.get("id", raw.get("name", f"prompt_{line_no}"))
+            raw_id = raw.get("id")
             if not isinstance(raw_id, str) or not raw_id:
                 raise BenchError(f"{path}:{line_no}: prompt id must be a non-empty string")
             prompt_id = raw_id
