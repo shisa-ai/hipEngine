@@ -743,6 +743,22 @@ def test_objective_metrics_for_budget_rejects_float_token_count(tmp_path: Path) 
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_string_scalar_metric(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["totals"]["b1"]["accepted_per_output"] = "0.1"
+
+    with pytest.raises(BenchError, match="objective metrics require finite non-negative summary totals.b1.accepted_per_output"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_boolean_scalar_metric(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["train"]["metrics"]["b1"]["decode_ms"] = True
+
+    with pytest.raises(BenchError, match="objective metrics require finite non-negative train.b1.decode_ms"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_boolean_prompt_count(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["train"]["metrics"]["b1"]["prompts"] = True

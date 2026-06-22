@@ -800,10 +800,9 @@ def finite_float(value: Any, *, prompt_id: str, field: str) -> float:
 
 
 def finite_nonnegative_objective(value: Any, *, label: str) -> float:
-    try:
-        result = float(value)
-    except (TypeError, ValueError) as exc:
-        raise BenchError(f"objective metrics require finite non-negative {label}") from exc
+    if type(value) not in (int, float):
+        raise BenchError(f"objective metrics require finite non-negative {label}")
+    result = float(value)
     if not math.isfinite(result) or result < 0.0:
         raise BenchError(f"objective metrics require finite non-negative {label}")
     return result
