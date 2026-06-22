@@ -734,6 +734,30 @@ def test_objective_metrics_for_budget_rejects_category_prompt_count_mismatch(tmp
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_category_missing_scalar_field(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["categories"]["code"]["b1"]["accepted_per_output"]
+
+    with pytest.raises(BenchError, match="objective summary category code.b1 missing fields"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_category_acceptance_over_one(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["general_ja"]["b1"]["draft_acceptance"] = 1.01
+
+    with pytest.raises(BenchError, match="objective metrics require 0<= objective summary category general_ja.b1.draft_acceptance <=1"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_category_negative_true_ar_ratio(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["mixed_ja_en"]["b1"]["mtp_vs_true_ar_decode_ratio"] = -0.01
+
+    with pytest.raises(BenchError, match="objective metrics require finite non-negative objective summary category mixed_ja_en.b1.mtp_vs_true_ar_decode_ratio"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_non_default_heldout_contract(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["contract"]["heldout_ids"] = [

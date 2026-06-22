@@ -117503,3 +117503,35 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 56: validate category budget-row scalars
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 56.
+- Focused category matrix scalar contract: guarded objective extraction must reject malformed category budget rows, not just require the rows to exist.
+
+### Change
+- `validate_summary_category_budget_metrics()` now requires each objective category budget row to contain:
+  - `accepted_per_output`;
+  - `draft_acceptance`;
+  - `decode_tok_s_weighted`;
+  - `mtp_vs_true_ar_decode_ratio`;
+  - `prompts`.
+- Category `accepted_per_output` and `draft_acceptance` must be finite values in `[0, 1]`.
+- Category `decode_tok_s_weighted` and `mtp_vs_true_ar_decode_ratio` must be finite non-negative values.
+- Category `prompts` must still match prompt metadata category counts.
+- Fixed validation ordering so verifier-only summaries continue to fail at the true-AR availability guard before category scalar validation.
+- Added regressions for missing category scalar fields, category acceptance > 1, and negative category true-AR ratio.
+- Updated `docs/BENCHMARK.md` to document category budget-row scalar provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 117 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
