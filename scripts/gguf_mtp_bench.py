@@ -448,10 +448,20 @@ def main():
     parser.add_argument(
         "--sibling-topk-accept",
         type=int,
-        default=8,
+        default=9,
         help=(
             "Diagnostic tree proposal: accept a non-argmax sibling at the first deeper "
-            "mismatch when the target token is in the first K candidates (default: 8; use 1 for root-only top-k)."
+            "mismatch when the target token is in the first K candidates (default: 9; use 1 for root-only top-k)."
+        ),
+    )
+    parser.add_argument(
+        "--sibling-tail-min-prev-accepted",
+        type=int,
+        default=1,
+        help=(
+            "Diagnostic adaptive sibling policy: when non-negative, sibling candidates beyond rank 8 "
+            "are accepted only if the previous cycle accepted at least this many draft tokens "
+            "(default: 1; use -1 to disable the gate)."
         ),
     )
     parser.add_argument(
@@ -905,6 +915,13 @@ def main():
                     and target_token in proposal_top10_tokens[proposal_depth][4:topk_limit]
                 ):
                     topk_limit = 4
+                if (
+                    depth > 0
+                    and args.sibling_tail_min_prev_accepted >= 0
+                    and topk_limit > 8
+                    and previous_cycle_accepted < args.sibling_tail_min_prev_accepted
+                ):
+                    topk_limit = 8
                 can_accept_topk_branch = (
                     proposal_depth < len(proposal_top10_tokens)
                     and topk_limit > 1
@@ -1034,6 +1051,7 @@ def main():
                 "linear_draft_tokens": len(draft_tokens),
                 "root_topk_accept": args.root_topk_accept,
                 "sibling_topk_accept": args.sibling_topk_accept,
+                "sibling_tail_min_prev_accepted": args.sibling_tail_min_prev_accepted,
                 "sibling_topk_max_depth": args.sibling_topk_max_depth,
                 "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
                 "topk_branch_redraft": args.topk_branch_redraft,
@@ -1078,6 +1096,7 @@ def main():
     print(f"Draft n_max: {args.draft_n_max}")
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
+    print(f"Sibling tail min previous accepted: {args.sibling_tail_min_prev_accepted}")
     print(f"Sibling top-k max depth: {args.sibling_topk_max_depth}")
     print(f"Root tail max previous accepted: {args.root_tail_max_prev_accepted}")
     print(f"Top-k branch redraft: {args.topk_branch_redraft}")
@@ -1121,6 +1140,7 @@ def main():
             "draft_n_max": args.draft_n_max,
             "root_topk_accept": args.root_topk_accept,
             "sibling_topk_accept": args.sibling_topk_accept,
+            "sibling_tail_min_prev_accepted": args.sibling_tail_min_prev_accepted,
             "sibling_topk_max_depth": args.sibling_topk_max_depth,
             "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
             "topk_branch_redraft": args.topk_branch_redraft,
