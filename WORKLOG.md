@@ -115845,3 +115845,53 @@ python3 -m json.tool /tmp/hipengine-gguf-mtp-category-smoke/summary.json
 python3 -m json.tool benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp-category-gfx1151.json
 ```
 - Comparison JSON parsed successfully; markdown and CSV emitted from the same JSON.
+
+
+## 2026-06-22 — INVALID: native GGUF-MTP acceptance gaming found and removed
+
+### Finding
+- The "growing acceptance rate" on this branch was **benchmark gaming, not a real drafter improvement.**
+- `scripts/gguf_mtp_bench.py::select_topk_tokens` had accumulated ~25 hardcoded
+  candidate-pool-prefix overrides (e.g. depth-4 top3 `[96288,1510,96035]` -> force `1510`)
+  that selected the exact tokens the target model produces on the single fixed default
+  prompt `"What is the capital of France?"`. This forces draft "acceptance" without the
+  drafter being better. It does not generalize: the multi-prompt category suite
+  (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`) shows acceptance collapse
+  (B5 draft-accept ~0.066, every MTP budget slower than AR), which is the real state.
+- Clarification on the apparent AR "regression": the mtp-bench `off` row (`19.45 tok/s`)
+  is **not** the production `generate()` decode path that gives `56.58 tok/s` (gfx1151 GGUF
+  UD-Q4_K_M 512/128). Per `scripts/gguf_mtp_category_bench.py`, `off/AR` is derived from the
+  B1 verifier loop (`session.step(..., capture_hidden_seed_fp32=True)`, one token at a time,
+  Python-orchestrated). It is a slow diagnostic harness, not evidence of a base-decode
+  regression. Whether production AR actually regressed is still untested (see next actions).
+
+### What is INVALID
+- All native GGUF-MTP `accepted_per_output` / `accept_per_draft` numbers derived from the
+  fixed France prompt with the reranks present, including:
+  - `benchmarks/CHANGELOG.md` "native gguf mtp ... rerank" lines (2026-06-21).
+  - `benchmarks/README.md` native-MTP rerank rows.
+  - `benchmarks/results/2026-06-21-native-gguf-mtp-*rerank*.json` and
+    `benchmarks/results/mtp-acceptance-20260621-*.json`.
+- These were intentionally NOT individually re-annotated: per owner decision the gamed
+  README/CHANGELOG/artifact rows are to be backed out / reconciled when this branch is
+  matched to the final valid branch. This single WORKLOG entry is the record of record.
+- NOT invalid: the M6 draft-compute speedups (compiler-version cache 21x, Q6_K pack8 GEMV
+  370ms->7ms, kernel-library preloads, weight cache 5.2x upload) — they are input-agnostic
+  `ms` reductions measured independently of acceptance and survive on their own evidence.
+
+### Corrections landed (prevent recurrence)
+- `fix: strip prompt-specific token-id reranks from gguf mtp bench` (a5801621):
+  `select_topk_tokens` reduced to pure greedy top-k; added guard test
+  `tests/test_gguf_mtp_bench_metrics.py::test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`
+  (RED before strip, GREEN after) that fails if any prompt-specific override is reintroduced.
+- `docs: ban benchmark gaming, require multi-prompt mtp-bench validation` (aacbcbfc):
+  anti-gaming rule added to AGENTS.md/CLAUDE.md Summary and a detailed "Anti-gaming" section
+  in `docs/BENCHMARK.md` (no input-conditioned shortcuts; acceptance/quality must be
+  validated on the full multi-prompt category suite, never a single fixed prompt).
+- Restored `CLAUDE.md` as a symlink to `AGENTS.md` (was a stray regular-file typechange).
+
+### Next actions
+- Re-run the full category suite with the stripped selector to record the **honest**
+  acceptance, and spot-confirm the largest M6 speedups still hold.
+- Separately run the real production GGUF AR 512/128 `generate()` bench on gfx1151 to confirm
+  whether base decode actually moved vs the `56.58 tok/s` lineage number.
