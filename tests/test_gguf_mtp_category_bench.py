@@ -266,6 +266,32 @@ def test_category_summary_rejects_non_string_raw_row_identity(row_update: dict[s
 
 
 @pytest.mark.parametrize(
+    ("arg_update", "message"),
+    [
+        ({"model": True}, "build summary args.model must be a non-empty string or Path"),
+        ({"prompts": 123}, "build summary args.prompts must be a non-empty string or Path"),
+        ({"raw_root": False}, "build summary args.raw_root must be a non-empty string or Path"),
+        ({"cycles": "1"}, "build summary args.cycles must be a positive integer"),
+        ({"cycles": 0}, "build summary args.cycles must be a positive integer"),
+    ],
+)
+def test_category_summary_rejects_coerced_build_summary_args(arg_update: dict[str, object], message: str) -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    for key, value in arg_update.items():
+        setattr(args, key, value)
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+@pytest.mark.parametrize(
     ("raw_rows", "message"),
     [
         (

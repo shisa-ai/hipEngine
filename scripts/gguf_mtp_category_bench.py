@@ -688,6 +688,24 @@ def validate_summary_category_budget_metrics(
     return dict(sorted(category_counts.items())), dict(sorted(category_metrics.items()))
 
 
+def build_summary_path_arg(value: Any, *, field: str) -> str:
+    if isinstance(value, Path):
+        text = str(value)
+    elif isinstance(value, str):
+        text = value
+    else:
+        raise BenchError(f"build summary args.{field} must be a non-empty string or Path")
+    if not text:
+        raise BenchError(f"build summary args.{field} must be a non-empty string or Path")
+    return text
+
+
+def build_summary_cycles_arg(value: Any) -> int:
+    if type(value) is not int or value <= 0:
+        raise BenchError("build summary args.cycles must be a positive integer")
+    return value
+
+
 def normalize_protocol_path(value: Any) -> str:
     path = Path(str(value)).expanduser()
     if not path.is_absolute():
@@ -1732,6 +1750,10 @@ def populate_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], raw: dict[int, list[dict[str, Any]]], commands: list[str]) -> dict[str, Any]:
+    model_arg = build_summary_path_arg(getattr(args, "model", None), field="model")
+    prompts_arg = build_summary_path_arg(getattr(args, "prompts", None), field="prompts")
+    raw_root_arg = build_summary_path_arg(getattr(args, "raw_root", None), field="raw_root")
+    cycles_arg = build_summary_cycles_arg(getattr(args, "cycles", None))
     validate_raw_prompt_coverage(prompts=prompts, raw=raw)
     b1_rows = raw[min(raw)]
     off_total = aggregate_off_from_b1(b1_rows)
@@ -1820,12 +1842,12 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "repo": repo_provenance(),
-        "model": str(args.model),
+        "model": model_arg,
         "quant": "UD-Q4_K_M GGUF with MTP blocks",
-        "prompt_file": str(args.prompts),
-        "cycles": int(args.cycles),
+        "prompt_file": prompts_arg,
+        "cycles": cycles_arg,
         "budgets": sorted(raw),
-        "raw_root": str(args.raw_root),
+        "raw_root": raw_root_arg,
         "commands": commands,
         "totals": totals,
         "categories": category_summary,
@@ -1842,7 +1864,8 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         true_ar_schema = validate_true_ar_artifact_schema(true_ar_artifact, label="true AR baseline artifact")
         true_ar_repo = validate_repo_provenance(true_ar_artifact, label="true AR baseline artifact")
         true_ar_commands = validate_command_provenance(true_ar_artifact, label="true AR baseline artifact")
-        true_ar_protocol = validate_true_ar_protocol_metadata(artifact=true_ar_artifact, args=args, prompt_count=len(prompts), expected_quant=str(summary["quant"]))
+        protocol_args = argparse.Namespace(model=model_arg, prompts=prompts_arg)
+        true_ar_protocol = validate_true_ar_protocol_metadata(artifact=true_ar_artifact, args=protocol_args, prompt_count=len(prompts), expected_quant=str(summary["quant"]))
         rows_by_id = validate_true_ar_prompt_rows(artifact=true_ar_artifact, prompts=prompts)
         return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, artifact_schema=true_ar_schema, repo=true_ar_repo, commands=true_ar_commands, protocol=true_ar_protocol)
     return validate_speed_claim_contract(summary)

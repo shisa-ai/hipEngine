@@ -118306,3 +118306,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 84: validate strict build-summary args
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 84.
+- Focused artifact-construction argument contract: `build_summary()` must not seed summary protocol/provenance fields through Python `str()` / `int()` coercion of malformed in-process args.
+
+### Change
+- Added `build_summary_path_arg()` for strict non-empty string / `Path` validation of:
+  - `args.model`;
+  - `args.prompts`;
+  - `args.raw_root`.
+- Added `build_summary_cycles_arg()` requiring `args.cycles` to be a positive integer.
+- `build_summary()` now validates these args before prompt/raw aggregation, emits validated values into the summary artifact, and passes validated model/prompts into true-AR protocol matching.
+- Added regressions for:
+  - boolean `args.model`;
+  - numeric `args.prompts`;
+  - boolean `args.raw_root`;
+  - string `args.cycles`;
+  - zero `args.cycles`.
+- Updated `docs/BENCHMARK.md` to document strict build-summary argument validation before artifact construction.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
