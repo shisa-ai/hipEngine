@@ -116359,3 +116359,31 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 27 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 16: honest GGUF-MTP protocol docs
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 16.
+- Focused docs/readiness change: codify the guarded native GGUF-MTP diagnostic protocol now that the true-AR attachment flow has been validated.
+
+### Change
+- Added `docs/BENCHMARK.md` section "Honest native GGUF-MTP category diagnostics".
+- The documented protocol requires:
+  - true no-MTP AR first via `scripts/gguf_true_ar_category_bench.py`;
+  - attached MTP category diagnostics via `scripts/gguf_mtp_category_bench.py --true-ar-baseline-json`;
+  - artifact fields `true_autoregressive_path=true`, `same_prompt_suite=true`, `same_timing_protocol=true`;
+  - full/train/heldout metrics for `accepted_per_output`, `draft_acceptance`, `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`;
+  - markdown denominator separation (`vs verifier off` vs `vs true AR`);
+  - diagnostic-vs-retained promotion split (`performance_claim=false`, `speed_claim_eligible=false` until retained protocol/hermeticity/correctness/rollup gates are met).
+- The section also records the honest target framing: improve de-gamed B5 accepted/output from ~0.24 toward llama.cpp's ~0.71–0.75 band while improving MTP/true-AR decode ratio toward >1.3x without hardcoding.
+
+### Guardrail status
+- Docs-only; no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 27 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

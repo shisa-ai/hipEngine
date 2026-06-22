@@ -74,6 +74,72 @@ inflating "acceptance" with no real drafter improvement; the category suite
 exposed it (acceptance collapsed, every MTP budget slower than AR). Those
 acceptance rows are INVALID.
 
+### Honest native GGUF-MTP category diagnostics
+
+Use this protocol before resuming native GGUF-MTP acceptance/speed optimization.
+It is the guarded replacement for the old fixed-prompt `gguf_mtp_bench.py`
+acceptance loops.
+
+1. **Measure true no-MTP AR first.** Produce a separate AR artifact over the same
+   category prompt suite:
+
+   ```bash
+   AR_ROOT=/tmp/hipengine-true-ar-category-$(date +%Y%m%d-%H%M%S)
+   python3 scripts/gguf_true_ar_category_bench.py \
+     --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+     --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+     --decode-tokens 32 \
+     --warmup-decode-tokens 1 \
+     --raw-root "$AR_ROOT" \
+     --output "$AR_ROOT/true-ar-baseline.json"
+   ```
+
+   The artifact must set `kind=hipengine_gguf_true_ar_category_baseline`,
+   `true_autoregressive_path=true`, `same_prompt_suite=true`, and
+   `same_timing_protocol=true`, and must contain one `prompt_metrics[]` row per
+   selected prompt with positive `output_tokens` and `decode_ms`.
+
+2. **Attach AR to the MTP category matrix.** Run the MTP diagnostic over the same
+   prompts/budgets and attach the AR artifact:
+
+   ```bash
+   MTP_ROOT=/tmp/hipengine-gguf-mtp-category-$(date +%Y%m%d-%H%M%S)
+   python3 scripts/gguf_mtp_category_bench.py \
+     --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+     --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+     --budgets 1,2,3,4,5 \
+     --cycles 5 \
+     --raw-root "$MTP_ROOT/raw" \
+     --output "$MTP_ROOT/summary.json" \
+     --true-ar-baseline-json "$AR_ROOT/true-ar-baseline.json"
+   ```
+
+   The summary must include `true_ar_comparison_available=true`,
+   `performance_claim=false`, `speed_claim_eligible=false`, `splits.full`,
+   `splits.train`, and `splits.heldout`. Markdown tables must label the old
+   verifier-derived denominator as `vs verifier off`; same-protocol speed ratios
+   appear only in a separate `vs true AR` column.
+
+3. **Optimization decisions use all three views.** Report full-suite, train, and
+   heldout metrics for every budget:
+
+   - `accepted_per_output` and `draft_acceptance`;
+   - `decode_tok_s_weighted`;
+   - `mtp_vs_true_ar_decode_ratio`.
+
+   A train-only gain is not a win. Heldout and full-suite acceptance must not
+   regress, and MTP/true-AR ratio must be computed from the attached true-AR
+   artifact rather than `off`/`B0` verifier telemetry.
+
+4. **Promotion remains separate from diagnostics.** The category diagnostic is
+   not a retained speed claim even when a true-AR baseline is attached. To promote
+   a speed row into `benchmarks/README.md`, rerun the retained benchmark protocol
+   with hermetic/warm timing (prebuilt kernels, no `hipcc`/clang in the timed
+   process), full artifact provenance, correctness gate, and rollup updates. The
+   optimization target is honest B5 accepted/output rising from ~0.24 toward the
+   llama.cpp reference band (~0.71–0.75) while MTP/true-AR decode ratio improves
+   toward >1.3× without hardcoding.
+
 ## Benchmark Output Contract
 
 A benchmark artifact must answer five questions without rereading raw logs:
