@@ -139,7 +139,7 @@ acceptance loops.
    boolean `speed_claim_eligible=false`, `splits.full`,
    `splits.train`, and `splits.heldout`; prompt fixture rows must use explicit unique non-blank strict
    string IDs (no `name` or line-number fallback), explicit non-blank categories (no `uncategorized` fallback), non-blank prompt text, and explicit supported chat message roles/content before split
-   construction; split contract and per-split `prompt_ids` lists must contain strict non-empty strings,
+   construction; split contract and per-split `prompt_ids` lists must contain strict non-blank strings,
    `splits.contract.heldout_ids` must be the fixed set
    `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,
    `train_ids` must be the default full-minus-heldout complement, and each split

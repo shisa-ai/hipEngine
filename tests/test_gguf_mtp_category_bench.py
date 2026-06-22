@@ -1223,10 +1223,27 @@ def test_objective_metrics_for_budget_rejects_non_string_contract_prompt_id(tmp_
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_blank_contract_prompt_id(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["contract"]["train_ids"][0] = "   "
+
+    with pytest.raises(BenchError, match=r"splits.contract.train_ids\[0\] must be a non-empty string"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_non_string_split_prompt_id(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["splits"]["train"]["prompt_ids"] = list(summary["splits"]["train"]["prompt_ids"])
     summary["splits"]["train"]["prompt_ids"][0] = True
+
+    with pytest.raises(BenchError, match=r"splits.train.prompt_ids\[0\] must be a non-empty string"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_blank_split_prompt_id(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["train"]["prompt_ids"] = list(summary["splits"]["train"]["prompt_ids"])
+    summary["splits"]["train"]["prompt_ids"][0] = "   "
 
     with pytest.raises(BenchError, match=r"splits.train.prompt_ids\[0\] must be a non-empty string"):
         objective_metrics_for_budget(summary, "b1")

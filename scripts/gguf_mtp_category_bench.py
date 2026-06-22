@@ -327,7 +327,7 @@ def validate_prompt_id_list(value: Any, *, label: str) -> list[str]:
         raise BenchError(f"{label} requires a non-empty prompt id list")
     out: list[str] = []
     for index, prompt_id in enumerate(value):
-        if not isinstance(prompt_id, str) or not prompt_id:
+        if not isinstance(prompt_id, str) or not prompt_id.strip():
             raise BenchError(f"{label}[{index}] must be a non-empty string")
         out.append(prompt_id)
     return out
