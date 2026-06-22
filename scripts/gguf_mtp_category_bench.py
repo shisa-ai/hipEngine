@@ -450,6 +450,9 @@ def validate_summary_category_budget_metrics(
             "decode_tok_s_weighted",
             "mtp_vs_true_ar_decode_ratio",
             "prompts",
+            "total_output_tokens",
+            "total_accepted",
+            "total_drafts",
         )
         missing = [field for field in required if field not in row or row[field] is None]
         if missing:
@@ -460,14 +463,25 @@ def validate_summary_category_budget_metrics(
             raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata") from exc
         if prompts_count != expected_count:
             raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata")
+        output = metric_int(row.get("total_output_tokens"), label=f"{label} category {category}.{budget_label}.total_output_tokens")
+        accepted = metric_nonnegative_int(row.get("total_accepted"), label=f"{label} category {category}.{budget_label}.total_accepted")
+        drafts = metric_int(row.get("total_drafts"), label=f"{label} category {category}.{budget_label}.total_drafts")
+        if accepted > output:
+            raise BenchError(f"{label} category {category}.{budget_label}.total_accepted <= total_output_tokens")
+        if accepted > drafts:
+            raise BenchError(f"{label} category {category}.{budget_label}.total_accepted <= total_drafts")
         try:
             true_ar_prompts_count = int(true_ar_category.get("prompts"))
         except (TypeError, ValueError) as exc:
             raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}.prompts to match prompt metadata") from exc
         if true_ar_prompts_count != expected_count:
             raise BenchError(f"objective metrics require attached true_ar_baseline.categories.{category}.prompts to match prompt metadata")
-        finite_unit_interval_objective(row["accepted_per_output"], label=f"{label} category {category}.{budget_label}.accepted_per_output")
-        finite_unit_interval_objective(row["draft_acceptance"], label=f"{label} category {category}.{budget_label}.draft_acceptance")
+        accepted_per_output = finite_unit_interval_objective(row["accepted_per_output"], label=f"{label} category {category}.{budget_label}.accepted_per_output")
+        draft_acceptance = finite_unit_interval_objective(row["draft_acceptance"], label=f"{label} category {category}.{budget_label}.draft_acceptance")
+        if not math.isclose(accepted_per_output, accepted / output, rel_tol=1e-9, abs_tol=1e-12):
+            raise BenchError(f"objective metrics require {label} category {category}.{budget_label}.accepted_per_output to match category counts")
+        if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
+            raise BenchError(f"objective metrics require {label} category {category}.{budget_label}.draft_acceptance to match category counts")
         decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{label} category {category}.{budget_label}.decode_tok_s_weighted")
         ratio = finite_nonnegative_objective(row["mtp_vs_true_ar_decode_ratio"], label=f"{label} category {category}.{budget_label}.mtp_vs_true_ar_decode_ratio")
         true_ar_tok_s = finite_positive_objective(

@@ -126,8 +126,8 @@ acceptance loops.
    include per-prompt metadata (`id`, `category`, positive `prompt_chars`, and
    `prompt_sha256`) matching `splits.contract.full_ids`, include category
    summary metadata whose keys match prompt categories, with a category row for
-   each objective budget, bounded acceptance ratios, finite non-negative speed
-   fields, prompt counts matching the prompt metadata, and per-category true-AR
+   each objective budget, count-derived bounded acceptance ratios, finite
+   non-negative speed fields, prompt counts matching the prompt metadata, and per-category true-AR
    ratios matching the attached true-AR category baselines, and carry attached
    true-AR `artifact_schema`/`artifact_kind` plus `protocol` metadata matching
    the MTP `model`, quant family, `prompt_file`, and prompt count,
@@ -165,8 +165,8 @@ acceptance loops.
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
    artifacts without current schema/kind metadata, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt/category
-   provenance including category budget-row scalar fields and prompt counts,
-   protocol provenance, prompt-hash provenance, and true-AR finite-logit
+   provenance including category budget-row scalar fields, token counts, and
+   prompt counts, protocol provenance, prompt-hash provenance, and true-AR finite-logit
    evidence. The returned JSON contains
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and

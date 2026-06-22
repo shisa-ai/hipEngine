@@ -750,6 +750,14 @@ def test_objective_metrics_for_budget_rejects_category_missing_scalar_field(tmp_
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_category_missing_count_field(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["categories"]["code"]["b1"]["total_output_tokens"]
+
+    with pytest.raises(BenchError, match="objective summary category code.b1 missing fields"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_category_acceptance_over_one(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     summary["categories"]["general_ja"]["b1"]["draft_acceptance"] = 1.01
@@ -763,6 +771,30 @@ def test_objective_metrics_for_budget_rejects_category_negative_true_ar_ratio(tm
     summary["categories"]["mixed_ja_en"]["b1"]["mtp_vs_true_ar_decode_ratio"] = -0.01
 
     with pytest.raises(BenchError, match="objective metrics require finite non-negative objective summary category mixed_ja_en.b1.mtp_vs_true_ar_decode_ratio"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_category_accepted_per_output_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["code"]["b1"]["accepted_per_output"] = 0.99
+
+    with pytest.raises(BenchError, match="objective summary category code.b1.accepted_per_output to match category counts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_category_draft_acceptance_count_mismatch(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["general_en"]["b1"]["draft_acceptance"] = 0.01
+
+    with pytest.raises(BenchError, match="objective summary category general_en.b1.draft_acceptance to match category counts"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_category_accepted_exceeds_drafts(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["categories"]["mixed_ja_en"]["b1"]["total_drafts"] = 1
+
+    with pytest.raises(BenchError, match="objective summary category mixed_ja_en.b1.total_accepted <= total_drafts"):
         objective_metrics_for_budget(summary, "b1")
 
 
@@ -824,7 +856,9 @@ def test_objective_metrics_for_budget_rejects_summary_total_full_split_count_mis
 
 def test_objective_metrics_for_budget_rejects_summary_total_category_sum_mismatch(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
-    summary["categories"]["code"]["b1"]["total_drafts"] += 1
+    category_row = summary["categories"]["code"]["b1"]
+    category_row["total_output_tokens"] += 10
+    category_row["accepted_per_output"] = category_row["total_accepted"] / category_row["total_output_tokens"]
 
     with pytest.raises(BenchError, match="summary totals.b1 counts to match category sums"):
         objective_metrics_for_budget(summary, "b1")
