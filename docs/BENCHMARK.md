@@ -42,6 +42,22 @@ Hard rules:
   `general_en`, `general_ja`, `mixed_ja_en`). A single fixed prompt (e.g. the
   `gguf_mtp_bench.py` `"capital of France?"` default) is a smoke input only and
   its acceptance/quality numbers are **not retainable**.
+- **Speculative speedups require a true AR baseline.** The denominator for
+  "MTP beats AR" must be a separate no-MTP autoregressive generation path in
+  the same benchmark script/protocol, over the same prompts, sampling settings,
+  warmup/hermeticity state, and timing window. A `B0`, `off`, or derived AR row
+  synthesized from target-verifier timings inside an MTP diagnostic cycle is
+  useful economics telemetry, but it is **not** a true AR baseline and cannot be
+  used for retained speedup claims or loop keep/revert decisions.
+- **Use train + category-heldout splits for optimization loops.** It is valid to
+  iterate on a training subset, but every keep/revert decision for acceptance or
+  speculative speed must also report full-suite metrics and a heldout subset with
+  at least one prompt per category. For
+  `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, the default heldout set is
+  `code_markdown_table`, `general_en_explain`, `general_ja_explain`, and
+  `mixed_ja_en_review`; train is the remaining six prompts. A change is not a win
+  if it improves train acceptance while regressing heldout acceptance or true-AR
+  speed ratio.
 - **Greedy selection stays greedy.** Draft/target token selection in benchmark
   harnesses is pure argmax/top-k. The guard test
   `tests/test_gguf_mtp_bench_metrics.py::test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`
@@ -262,8 +278,9 @@ while `synthetic_stress` rows are diagnostic until code rows already beat AR.
 Rebuild/validate it with `scripts/dflash_prepare_prompts.py` when the retained
 tokenizer snapshot changes.
 
-A speculative row is promotable only when every row is exact/finite and aggregate
-speculative decode is >1.10× same-session AR. The checked-in
+A speculative row is promotable only when every row is exact/finite, the artifact
+contains a true no-MTP autoregressive baseline (not a verifier-derived `off` row),
+and aggregate speculative decode is >1.10× that same-protocol AR. The checked-in
 `benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json`
 is a synthetic schema fixture, not a performance claim.
 

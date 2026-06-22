@@ -5,10 +5,12 @@ This is a thin wrapper around ``scripts/gguf_mtp_bench.py``.  It deliberately
 uses the existing native GGUF MTP diagnostic path and aggregates its per-prompt
 JSON outputs into llama.cpp-style total/category tables for off/B1..B5.
 
-Important: ``off`` is the target-AR baseline measured inside the B1 diagnostic
-run (sum visible output tokens / sum target AR verify time), because the native
-GGUF MTP diagnostic does not yet expose a standalone category-suite AR server
-path.  The wrapper records this explicitly in the artifact.
+Important: ``off`` is the target-AR verifier timing measured inside the B1
+diagnostic run (sum visible output tokens / sum target AR verify time), not an
+independent no-MTP autoregressive generation path.  Therefore this wrapper is
+acceptance/economics diagnostic evidence only: its speed ratios are not eligible
+as retained "MTP beats AR" claims until the benchmark script measures a true AR
+baseline under the same prompt suite and timing protocol.
 """
 
 from __future__ import annotations
@@ -162,6 +164,8 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "total_output_tokens": total_output,
         "decode_tok_s_weighted": 1000.0 * total_output / total_ar_ms if total_ar_ms > 0 else 0.0,
         "source": "B1 native target-AR verifier time over the same prompt rows",
+        "baseline_kind": "verifier_derived_from_b1_target_ar",
+        "true_autoregressive_path": False,
     }
 
 
@@ -216,12 +220,24 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     return {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_category_matrix",
-        "status": "complete",
-        "performance_claim": True,
+        "status": "diagnostic_retained",
+        "performance_claim": False,
+        "speed_claim_eligible": False,
+        "promotion_blocker": (
+            "off/AR is derived from B1 target-verifier timing, not a true no-MTP "
+            "autoregressive generation path. MTP speed promotion requires a separate "
+            "true AR baseline measured by the benchmark script over the same prompt suite."
+        ),
+        "ar_baseline_contract": {
+            "required_for_speed_claims": "true_no_mtp_autoregressive_generation",
+            "current_off_kind": "verifier_derived_from_b1_target_ar",
+            "current_off_true_autoregressive_path": False,
+        },
         "diagnostic_notes": [
             "Native GGUF-MTP category wrapper around scripts/gguf_mtp_bench.py.",
             "Each prompt/budget is a separate process and model load; tok/s metrics use child JSON cycle timings only, not wrapper subprocess wall time.",
-            "off/AR row is derived from B1 target-AR verifier timing because a standalone native GGUF category AR harness is not available yet.",
+            "off/AR row is derived from B1 target-AR verifier timing and is not a true no-MTP autoregressive baseline.",
+            "MTP-vs-AR speed claims are blocked until this harness measures a true AR/no-MTP path over the same prompt suite and timing protocol.",
             "cycles is verify-cycle count, not llama.cpp max_tokens; accepted drafts add visible output tokens.",
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -254,6 +270,9 @@ def write_markdown(summary: dict[str, Any], path: Path) -> None:
     lines.append("# hipEngine GGUF-MTP category matrix")
     lines.append("")
     lines.append(f"Raw root: `{summary['raw_root']}`")
+    if not summary.get("speed_claim_eligible", True):
+        lines.append("")
+        lines.append("> **Diagnostic only:** the `off` row is derived from B1 target-verifier timing, not a true no-MTP autoregressive run. Do not use `vs AR` as a retained MTP speedup claim until a true AR baseline is measured by this harness.")
     lines.append("")
     lines.append("## Total")
     lines.append("| budget | decode tok/s | vs AR | draft accept | accepted/output | output tokens |")

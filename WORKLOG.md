@@ -115944,3 +115944,26 @@ python3 -m json.tool benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp
 - The de-gamed drafter has genuinely low acceptance (~0.24) on real prompts; MTP is currently a net loss.
 - The engineering (M6 draft compute, NextN stack) is real; the acceptance/parity is the open problem.
 - Still open: hermetic production AR 512/128 `generate()` bench to confirm base decode vs `56.58`.
+
+
+## 2026-06-22 — Guardrail hardening before restarting GGUF-MTP acceptance work
+
+### Review outcome
+- Reviewed reviewer commits `a5801621`, `aacbcbfc`, `d5d4b0a4`, and `e83daea0` after the native GGUF-MTP acceptance-gaming finding.
+- Confirmed `scripts/gguf_mtp_bench.py::select_topk_tokens` is now pure greedy top-k and the historical fixed-France token reranks are stripped.
+- Added one extra structural selector guard so future rerank gaming with new token IDs is caught: `select_topk_tokens` may only branch on logits rank validation, never `draft_depth` or candidate-token patterns.
+
+### Additional prevention added
+- `scripts/gguf_mtp_category_bench.py` now marks its category matrix as `diagnostic_retained`, `performance_claim=false`, and `speed_claim_eligible=false` because its `off` row is verifier-derived from B1 target-AR timings rather than a true no-MTP autoregressive generation path.
+- `docs/BENCHMARK.md` and `AGENTS.md` now require MTP speedup claims / loop keep decisions to use a true no-MTP AR baseline measured by the same benchmark protocol; verifier-derived `off`/`B0` rows are economics telemetry only.
+- Added train/category-heldout policy for future MTP acceptance loops. Default heldout for `benchmarks/prompts/mtpbench-code-general-ja.jsonl`: `code_markdown_table`, `general_en_explain`, `general_ja_explain`, `mixed_ja_en_review`; train is the remaining six prompts. Improvements must hold on train, heldout, and full-suite metrics.
+
+### Bad loop archival
+- Archived `mtp-acceptance/run-20260621-044226` (fixed-France B2 acceptance loop; 34 iterations, final gamed metric `0.6552`).
+- Archived `mtp-native-b345/run-20260621-110303` (fixed-France deeper-budget acceptance loop; 35 iterations, final gamed metric `0.7674`).
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 15 passed
+```

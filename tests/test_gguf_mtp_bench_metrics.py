@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ast
+import inspect
+
 import numpy as np
 import pytest
 
@@ -51,6 +54,27 @@ def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
 
     assert greedy == 1
     assert top3 == [1, 4, 3]
+
+
+def test_select_topk_tokens_has_no_input_conditioned_rerank_branches() -> None:
+    """Keep the selector structurally simple: validate shape, then argmax/top-k.
+
+    This catches future attempts to reintroduce prompt/candidate/depth-specific
+    acceptance gaming with a new set of token IDs not covered by the explicit
+    historical regression cases below.
+    """
+    source = inspect.getsource(select_topk_tokens)
+    tree = ast.parse(source)
+    if_nodes = [node for node in ast.walk(tree) if isinstance(node, ast.If)]
+    assert len(if_nodes) == 1
+    assert "logits_row.ndim" in ast.unparse(if_nodes[0].test)
+    assert "draft_depth" not in ast.unparse(if_nodes[0].test)
+    assert "candidate_pool" not in ast.unparse(if_nodes[0].test)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            text = ast.unparse(node)
+            assert "draft_depth" not in text
+            assert "candidate_pool" not in text
 
 
 def _logits_with_top3(vocab: int, top3: list[int]) -> np.ndarray:
