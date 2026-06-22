@@ -1173,7 +1173,7 @@ def raw_row_category(row: dict[str, Any], *, label: str, prompt_id: str) -> str:
         value = row.get(field)
         if value is None or value == "":
             continue
-        if not isinstance(value, str):
+        if not isinstance(value, str) or not value.strip():
             raise BenchError(f"{label} {field} for {prompt_id} must be a non-empty string")
         categories.append((field, value))
     if not categories:

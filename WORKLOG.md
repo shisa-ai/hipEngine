@@ -119099,3 +119099,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 116: require non-blank raw category identity
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 116.
+- Focused raw category provenance contract: present raw category identity fields must contain non-whitespace content before identity agreement checks, raw coverage, category aggregation, and objective extraction.
+
+### Change
+- `raw_row_category()` now rejects whitespace-only values in any present `suite_category` or `category` field.
+- Added regressions for whitespace-only `suite_category` and whitespace-only `category` on otherwise valid raw rows.
+- `docs/BENCHMARK.md` already documented non-blank raw prompt/category identity fields from the prior scoped wording update.
+
+### Acceptance-rate / llama.cpp status note
+- This iteration is validation-only and does not change selector/proposal policy, so it is not expected to improve honest accepted/output.
+- Recent loop work has not yet produced a new acceptance-rate measurement or a fresh side-by-side llama.cpp behavioral review; that should be a separate optimization/review step after the guarded harness is considered ready.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes for valid rows, no speed formula changes, no split construction policy changes for valid rows, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
