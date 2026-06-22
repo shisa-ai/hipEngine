@@ -1018,6 +1018,8 @@ def validate_metric_row(row: dict[str, Any]) -> None:
         metrics.get("total_drafts"),
         message=f"negative metric in row {prompt_id}: accepted={metrics.get('total_accepted')!r}, drafts={metrics.get('total_drafts')!r}",
     )
+    if total_accepted > total_output:
+        raise BenchError(f"accepted draft tokens exceed output tokens for {prompt_id}: {total_accepted} > {total_output}")
     if total_accepted > total_drafts:
         raise BenchError(f"accepted draft tokens exceed proposed drafts for {prompt_id}: {total_accepted} > {total_drafts}")
 
