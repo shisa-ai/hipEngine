@@ -120118,3 +120118,49 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 
 ### Result
 - Not retained. Root-K5/sibling-K8 improves aggregate full/train/heldout over root-K4 but still regresses mixed_ja_en, so current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 152: sibling top-9 retained for candidate efficiency
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 152.
+- Evaluated whether the retained root-K4/sibling-K10 policy can reduce exposed deeper sibling candidates without losing honest accepted/output. This targets draft acceptance/candidate efficiency while preserving full/train/heldout/per-category accepted/output.
+
+### Focused sweep
+```bash
+for k in 1 2 3 4 5 6 7 8 9 10; do
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 4 --sibling-topk-accept "$k" --output /tmp/hipengine-mtp-rootk4-sibling${k}-iter152-b5-20.json
+done
+```
+- Focused B5 accepted/output by sibling K: K1-K4 `0.4286`, K5-K8 `0.4872`, K9-K10 `0.5000`.
+- K9 matches K10 accepted/output while reducing candidate count: K9 `20/800` (`accept_per_draft=0.0250`) vs K10 `20/880` (`0.0227`).
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk4-sibling9-full-20260623-035851/raw --output /tmp/hipengine-rootk4-sibling9-full-20260623-035851/summary.json --extra-arg=--root-topk-accept --extra-arg=4 --extra-arg=--sibling-topk-accept --extra-arg=9
+```
+- Accepted/output was non-regressive versus root-K4/sibling-K10: full `0.431818`, train `0.368421`, heldout `0.506173`, categories code `0.310345`, general_en `0.512195`, general_ja `0.411765`, mixed_ja_en `0.534884`.
+- Draft acceptance improved `0.017273 -> 0.019000`; diagnostic verifier-derived tok/s `12.8708 -> 12.9689`. No true-AR speed claim is retained.
+
+### Change retained
+- Promoted `--sibling-topk-accept` default from `10` to `9`; `--sibling-topk-accept 1` still restores root-only top-k behavior.
+- Focused default confirmation:
+  ```bash
+  python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-rootk4-sibling9-default-b5-20.json
+  # accepted_per_output=0.5000, accept_per_draft=0.0250, total_accepted=20/800, total_output_tokens=40, tokens_per_sec=12.30
+  ```
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk4-sibling9-category-gfx1151.json`.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 320 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 320 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection; exact target verification and finite logits retained. No speed claim retained.
+
+### Result
+- Retained as a draft-acceptance/candidate-efficiency improvement with accepted/output non-regressive. Current default is root-K4/sibling-K9: focused B5 `0.5000`, full-suite B5 `0.4318`, full draft acceptance `0.0190`.

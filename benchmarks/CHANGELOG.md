@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-23
 
+- [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output unchanged at `0.432` while draft acceptance improves `0.0173 -> 0.0190` (+10.0%) via generic exact-verification root-K4/deeper-sibling-K9 top-k proposal; train/heldout/categories accepted/output non-regressive; speed remains verifier-derived diagnostic (`0.674x` AR), not a retained true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk4-sibling9-category-gfx1151.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output `0.425 -> 0.432` (+1.5%) via generic exact-verification root-K4/deeper-sibling-K10 top-k proposal; train `0.355 -> 0.368`, heldout `0.506 -> 0.506`, categories non-regressive; speed remains verifier-derived diagnostic (`0.674x` AR), not a retained true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk4-sibling10-category-gfx1151.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output `0.390 -> 0.425` (+9.0%) via generic exact-verification root-K3/deeper-sibling-K10 top-k proposal; train `0.333 -> 0.355`, heldout `0.459 -> 0.506`, categories non-regressive; speed remains verifier-derived diagnostic (`0.673x` AR), not a retained true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-rootk3-sibling10-category-gfx1151.json`.
