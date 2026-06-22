@@ -2087,7 +2087,10 @@ def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(t
     comparison = compare_objective_metrics(baseline, candidate, "b1")
 
     assert comparison["passed"] is True
+    assert comparison["guarded_improved"] is True
     assert comparison["regressions"] == []
+    assert any(improvement.get("split") == "heldout" for improvement in comparison["improvements"])
+    assert any(improvement.get("category") == "code" for improvement in comparison["improvements"])
     assert comparison["deltas"]["full"]["accepted_per_output"] > 0
     assert comparison["deltas"]["heldout"]["accepted_per_output"] > 0
     assert comparison["deltas"]["full"]["mtp_vs_true_ar_decode_ratio"] > 0
@@ -2374,6 +2377,41 @@ def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None
     assert comparison["passed"] is True
     assert comparison["regressions"] == []
     assert comparison["deltas"]["full"]["accepted_per_output"] > 0
+
+
+def test_compare_objective_metrics_cli_can_require_guarded_improvement(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = copy.deepcopy(baseline)
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--compare-baseline-summary-json",
+            str(baseline_path),
+            "--compare-candidate-summary-json",
+            str(candidate_path),
+            "--compare-budget",
+            "b1",
+            "--compare-require-pass",
+            "--compare-require-guarded-improvement",
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 2
+    comparison = json.loads(completed.stdout)
+    assert comparison["passed"] is True
+    assert comparison["guarded_improved"] is False
+    assert comparison["regressions"] == []
+    assert comparison["improvements"] == []
 
 
 def test_compare_objective_metrics_cli_can_fail_on_regression(tmp_path: Path) -> None:

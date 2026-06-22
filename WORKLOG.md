@@ -119274,3 +119274,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 123: add guarded compare improvement gate
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 123.
+- Focused acceptance-review harness readiness: distinguish exact no-op candidate comparisons from actual guarded full/heldout/category improvements without changing default non-regression behavior.
+
+### Change
+- `compare_objective_metrics()` now reports `improvements[]` and `guarded_improved` for the same guarded full/heldout/category fields used by regression checks: `accepted_per_output`, `draft_acceptance`, and `mtp_vs_true_ar_decode_ratio`.
+- Added compare CLI flag `--compare-require-guarded-improvement`, which exits non-zero when a candidate has no guarded improvement beyond tolerance even if non-regression passes.
+- Added comparator assertions for improvement reporting and CLI coverage showing an identical candidate keeps `passed=true` but fails the explicit guarded-improvement requirement.
+- Updated `docs/BENCHMARK.md` to document improvement reporting, the opt-in CLI gate, and tolerance applying to both regressions and improvements.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no raw metric schema changes, no acceptance computation semantics changes, no objective extraction formula changes, no default comparator pass behavior changes, no true-AR baseline eligibility changes, no speed-claim promotion changes, and no kernel edits.
+- The improvement gate is explicit opt-in and still runs the same guarded objective extraction, split/category validation, and attached true-AR provenance checks before comparison.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

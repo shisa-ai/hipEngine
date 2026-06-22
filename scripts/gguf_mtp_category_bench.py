@@ -1825,38 +1825,43 @@ def compare_objective_metrics(
         }
 
     regressions: list[dict[str, Any]] = []
+    improvements: list[dict[str, Any]] = []
     gated_fields = ("accepted_per_output", "draft_acceptance", "mtp_vs_true_ar_decode_ratio")
     for split_name in ("full", "heldout"):
         for field in gated_fields:
             delta = deltas[split_name][field]
+            payload = {
+                "split": split_name,
+                "field": field,
+                "baseline": float(baseline[split_name][field]),
+                "candidate": float(candidate[split_name][field]),
+                "delta": delta,
+            }
             if delta < -tolerance:
-                regressions.append(
-                    {
-                        "split": split_name,
-                        "field": field,
-                        "baseline": float(baseline[split_name][field]),
-                        "candidate": float(candidate[split_name][field]),
-                        "delta": delta,
-                    }
-                )
+                regressions.append(payload)
+            elif delta > tolerance:
+                improvements.append(payload)
     for category in sorted(baseline_categories):
         for field in gated_fields:
             delta = category_deltas[category][field]
+            payload = {
+                "category": category,
+                "field": field,
+                "baseline": float(baseline_categories[category][field]),
+                "candidate": float(candidate_categories[category][field]),
+                "delta": delta,
+            }
             if delta < -tolerance:
-                regressions.append(
-                    {
-                        "category": category,
-                        "field": field,
-                        "baseline": float(baseline_categories[category][field]),
-                        "candidate": float(candidate_categories[category][field]),
-                        "delta": delta,
-                    }
-                )
+                regressions.append(payload)
+            elif delta > tolerance:
+                improvements.append(payload)
 
     return {
         "budget": baseline["budget"],
         "passed": not regressions,
+        "guarded_improved": bool(improvements),
         "regressions": regressions,
+        "improvements": improvements,
         "tolerance": tolerance,
         "benchmark_protocol": baseline_protocol,
         "true_ar_baseline": baseline_true_ar,
@@ -2163,6 +2168,11 @@ def main() -> int:
         default=0.0,
         help="Finite non-negative tolerance for guarded comparison regressions; default is exact non-regression.",
     )
+    parser.add_argument(
+        "--compare-require-guarded-improvement",
+        action="store_true",
+        help="In compare mode, exit non-zero unless at least one guarded full/heldout/category metric improves beyond tolerance.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -2173,6 +2183,8 @@ def main() -> int:
         candidate = json.loads(args.compare_candidate_summary_json.read_text(encoding="utf-8"))
         comparison = compare_objective_metrics(baseline, candidate, args.compare_budget, tolerance=args.compare_tolerance)
         print(json.dumps(comparison, indent=2, sort_keys=True))
+        if args.compare_require_guarded_improvement and (not comparison["passed"] or not comparison["guarded_improved"]):
+            return 2
         return 0 if comparison["passed"] or not args.compare_require_pass else 2
 
     if args.objective_summary_json is not None:

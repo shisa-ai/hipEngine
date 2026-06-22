@@ -281,10 +281,14 @@ acceptance loops.
    With `--compare-require-pass`, the command exits non-zero when full, heldout,
    or any category `accepted_per_output`, `draft_acceptance`, or
    `mtp_vs_true_ar_decode_ratio` regress. Train deltas are reported but are not
-   sufficient for a keep decision. The optional `--compare-tolerance` applies a
-   finite non-negative absolute tolerance to guarded regressions; its default is
-   `0.0` for exact non-regression. NaN/Inf tolerances are invalid because they
-   can mask regressions.
+   sufficient for a keep decision. The comparator also reports an `improvements[]`
+   list and `guarded_improved` boolean for those same guarded full/heldout/category
+   fields. Add `--compare-require-guarded-improvement` when an optimize loop must
+   reject exact no-op candidates in addition to regressions. The optional
+   `--compare-tolerance` applies a finite non-negative absolute tolerance to
+   guarded regressions and improvements; its default is `0.0` for exact
+   non-regression. NaN/Inf tolerances are invalid because they can mask
+   regressions.
 
 5. **Promotion remains separate from diagnostics.** The category diagnostic is
    not a retained speed claim even when a true-AR baseline is attached. To promote
