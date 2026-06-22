@@ -116923,3 +116923,51 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 35: prompt-hash artifact smoke
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 35.
+- Validation-only current-schema smoke after adding prompt-hash provenance: generate fresh full-suite true-AR and attached B1 MTP artifacts, then exercise objective extraction/scalar/self-compare CLIs.
+
+### True AR command
+```bash
+python3 scripts/gguf_true_ar_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --decode-tokens 1   --warmup-decode-tokens 0   --raw-root /tmp/hipengine-true-ar-category-fullsuite-d1-hash-20260622-150741   --output /tmp/hipengine-true-ar-category-fullsuite-d1-hash-20260622-150741/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-true-ar-category-fullsuite-d1-hash-20260622-150741/true-ar-baseline.json`.
+- Contains 10 `prompt_hashes` and per-row `prompt_sha256`, all matching `load_prompt_rows()` prompt text.
+- Total true AR: `16.430839830671978 tok/s` for `decode_tokens=1` smoke.
+
+### Attached MTP command
+```bash
+python3 scripts/gguf_mtp_category_bench.py   --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl   --budgets 1   --cycles 1   --raw-root /tmp/hipengine-mtp-category-b1-c1-hash-20260622-150908/raw   --output /tmp/hipengine-mtp-category-b1-c1-hash-20260622-150908/summary.json   --true-ar-baseline-json /tmp/hipengine-true-ar-category-fullsuite-d1-hash-20260622-150741/true-ar-baseline.json
+```
+- Artifact: `/tmp/hipengine-mtp-category-b1-c1-hash-20260622-150908/summary.json` plus `.md` and raw B1 children.
+- Summary `prompts[]` includes 10 `prompt_sha256` entries matching `load_prompt_rows()`.
+- `objective_metrics_available=true`, `true_ar_comparison_available=true`, `full_suite_matches_default=true`.
+- B1 full accepted/output: `0.09090909090909091`.
+- B1 full MTP/true-AR: `0.41318338733614285`.
+
+### Objective CLI validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --objective-summary-json /tmp/hipengine-mtp-category-b1-c1-hash-20260622-150908/summary.json --objective-budget b1
+python3 scripts/gguf_mtp_category_bench.py --objective-summary-json /tmp/hipengine-mtp-category-b1-c1-hash-20260622-150908/summary.json --objective-budget b1 --objective-split full --objective-field mtp_vs_true_ar_decode_ratio
+python3 scripts/gguf_mtp_category_bench.py --compare-baseline-summary-json /tmp/hipengine-mtp-category-b1-c1-hash-20260622-150908/summary.json --compare-candidate-summary-json /tmp/hipengine-mtp-category-b1-c1-hash-20260622-150908/summary.json --compare-budget b1 --compare-require-pass
+```
+- Objective JSON parsed; scalar full MTP/true-AR ratio matched `0.41318338733614285`.
+- Self-compare passed with `regressions=[]` and zero full/train/heldout deltas.
+
+### Note
+- Initial ad-hoc validation snippet looked for a raw `prompt` key in the JSONL fixture and failed; the fixture stores `messages`. Revalidated with `load_prompt_rows()`, the actual harness loader. This was a validation-snippet issue, not a harness failure.
+
+### Guardrail status
+- Validation-only; no repo code changes, no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+- This remains a `decode_tokens=1` / `cycles=1` smoke, not retained speed evidence.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 53 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
