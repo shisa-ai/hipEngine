@@ -121081,3 +121081,43 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Depth≤2 improves candidate efficiency/draft acceptance but fails full, train, heldout, and mixed_ja_en accepted-output non-regression.
 - Current default remains branch-redraft root-K8/sibling-K7/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5475`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 175: root-K9 tail-prev gate rejected under sibling-K7
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 175.
+- Tested `root_topk_accept=9` with the existing generic previous-accepted root-tail gate (`root_tail_max_prev_accepted=1`) under the retained branch-redraft root-K8 / sibling-K7 / ungated-root-tail baseline. Goal was to see whether gating high-rank root branches after longer previous accept streaks avoids the mixed_ja_en regression seen with ungated root-K9 while preserving some train/general_ja gains.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 9 --root-tail-max-prev-accepted 1 --output /tmp/hipengine-mtp-branch-redraft-rootk9-tailprev1-sibling7-iter175-b5-20.json
+```
+- Focused accepted/output regressed versus current root-K8/sibling-K7 default: `0.5349 -> 0.5000`.
+- Accepted drafts/candidates changed `23/630 -> 20/642`, `accept_per_draft 0.0365 -> 0.0312`.
+- Branch/redraft counts dropped from `8` to `6`; branch depths `{0: 4, 1: 2}`.
+- Diagnostic tok/s `13.51`, `speedup_vs_ar_visible=0.6860x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk9-tailprev1-sibling7-full-20260623-061812/raw --output /tmp/hipengine-branch-redraft-rootk9-tailprev1-sibling7-full-20260623-061812/summary.json --extra-arg=--root-topk-accept --extra-arg=9 --extra-arg=--root-tail-max-prev-accepted --extra-arg=1
+```
+- Full accepted/output regressed versus the current root-K8/sibling-K7 default: `0.547511 -> 0.532710`.
+- Train improved slightly `0.495798 -> 0.504132`, but heldout regressed `0.607843 -> 0.569892`.
+- Per-category accepted/output: code unchanged `0.444444`, general_en regressed `0.642857 -> 0.591837`, general_ja improved `0.487179 -> 0.523810`, mixed_ja_en regressed `0.629630 -> 0.607843`.
+- Full draft acceptance regressed `0.037660 -> 0.034431` (`121/3213 -> 114/3311`).
+- Diagnostic weighted decode tok/s `13.0062 -> 12.8596`; verifier-derived ratio `0.6604 -> 0.6531`. Speed remains diagnostic only and is not a true no-MTP AR claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: this evaluates generic root top-k width plus the existing generic previous-accepted gate under exact verification and branch redraft. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Not retained. Root-K9 with tail-prev≤1 fails focused, full, heldout, general_en, mixed_ja_en, and draft-efficiency non-regression despite improving train/general_ja.
+- Current default remains branch-redraft root-K8/sibling-K7/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5475`.
