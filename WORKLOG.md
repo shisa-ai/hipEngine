@@ -115895,3 +115895,52 @@ python3 -m json.tool benchmarks/results/2026-06-22-hipengine-vs-llamacpp-35b-mtp
   acceptance, and spot-confirm the largest M6 speedups still hold.
 - Separately run the real production GGUF AR 512/128 `generate()` bench on gfx1151 to confirm
   whether base decode actually moved vs the `56.58 tok/s` lineage number.
+
+
+## 2026-06-22 — Honest native GGUF-MTP acceptance bracket (stripped selector) + M6 confirmation
+
+### Scope
+- First category-suite acceptance measured with the de-gamed pure-top-k `select_topk_tokens`.
+- Model/quant/hw: `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, UD-Q4_K_M, gfx1151 / Radeon 8060S.
+- Prompts: `benchmarks/prompts/mtpbench-code-general-ja.jsonl` (10, all 4 categories). Budgets B1,B5; cycles=5.
+- Raw root: `/tmp/hipengine-gguf-mtp-honest-20260622-121520/` (20 child JSON/logs + summary).
+
+### Command
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_category_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --budgets 1,5 --cycles 5 --raw-root <root> --output <root>/summary-honest-b1-b5.json
+```
+
+### Honest acceptance (deterministic; independent of HIP hermeticity)
+- Total: B1 draft-accept `0.2400`, accepted/output `0.1935`; B5 draft-accept `0.0640`, accepted/output `0.2424`.
+- vs the gamed France-prompt claim (B5 accepted/output `0.767`): the real drafter is ~`0.24`.
+- Worst category is `code` (B1 draft-accept `0.05`, accepted/output `0.0476`); best is `mixed_ja_en` (B1 `0.50`/`0.333`).
+- This matches the pre-strip category run (`0.2481`) — confirming the reranks barely fired off the France
+  prompt; they only ever inflated the single-prompt loop metric.
+
+### Speed: MTP is net-negative even warm (acceptance too low)
+- Warm (`warm_excluding_cycle0`): B1 `0.901x` AR, B5 `0.677x` AR. MTP loses on every budget because
+  accepted tokens don't cover draft cost.
+
+### M6 draft-compute speedups CONFIRMED (input-agnostic, survive the strip)
+- Per-cycle draft ms (B1): cycle0 `96.5ms` (cold/JIT) then `7.7/7.2/7.5/7.0ms` warm.
+- Per-cycle draft ms (B5, 5-token chain): cycle0 `133.0ms` (cold/JIT) then `~31-33ms` = `~6.3ms/token` warm.
+- Warm per-token draft `~6-7ms` matches the M6 "Q6_K pack8 GEMV + library-preload" claim (`370ms -> 7ms`).
+
+### HERMETICITY CAVEAT (important for any retained speed number)
+- The summary's headline `decode tok/s` and `avg_mtp_draft_ms` are **NOT hermetic**: they average the
+  cold cycle-0 JIT compile into the per-cycle mean (B1 avg draft `25ms`, B5 `50ms`), understating speed.
+  Use `warm_excluding_cycle0`, or for a retainable number do a true hermetic run per docs/KERNELS.md:
+  prebuild the `.so` outside the timed process, warm the JIT cache, and require_cached so no `hipcc`/clang
+  spawns during measurement.
+- The `off`/AR `~18.8 tok/s` here is the verifier harness (per-token `session.step` + fp32 hidden capture),
+  NOT the production `generate()` decode that gives `56.58 tok/s`. Do not compare them.
+- Net: acceptance numbers above are trustworthy; the speed numbers are diagnostic-only until re-measured
+  hermetically.
+
+### Conclusion
+- The de-gamed drafter has genuinely low acceptance (~0.24) on real prompts; MTP is currently a net loss.
+- The engineering (M6 draft compute, NextN stack) is real; the acceptance/parity is the open problem.
+- Still open: hermetic production AR 512/128 `generate()` bench to confirm base decode vs `56.58`.
