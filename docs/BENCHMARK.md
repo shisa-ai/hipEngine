@@ -130,7 +130,9 @@ acceptance loops.
    each objective budget, count-derived bounded acceptance ratios, finite
    non-negative speed fields, prompt counts matching the prompt metadata, and per-category true-AR
    ratios matching the attached true-AR category baselines, and carry attached
-   true-AR `artifact_schema`/`artifact_kind` plus `protocol` metadata matching
+   true-AR `true_autoregressive_path=true`, `same_prompt_suite=true`,
+   `same_timing_protocol=true`, `artifact_schema`/`artifact_kind`, plus
+   `protocol` metadata matching
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
    `speed_claim_eligible=false`, `splits.full`,
@@ -164,7 +166,8 @@ acceptance loops.
    ```
 
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
-   artifacts without current schema/kind metadata, a same-protocol true-AR
+   artifacts without current schema/kind metadata, explicit true-no-MTP /
+   same-prompt-suite / same-timing-protocol true-AR flags, a same-protocol true-AR
    baseline, repo provenance, command provenance, summary prompt/category
    provenance including default prompt hashes/categories/lengths plus category
    budget-row scalar fields, token counts, and

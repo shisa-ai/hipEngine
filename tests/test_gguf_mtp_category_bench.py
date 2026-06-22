@@ -688,6 +688,27 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_schema(tm
         objective_metrics_for_budget(summary, "b1")
 
 
+@pytest.mark.parametrize(
+    ("flag", "message"),
+    [
+        ("true_autoregressive_path", "objective metrics require attached true_ar_baseline.true_autoregressive_path=true"),
+        ("same_prompt_suite", "objective metrics require attached true_ar_baseline.same_prompt_suite=true"),
+        ("same_timing_protocol", "objective metrics require attached true_ar_baseline.same_timing_protocol=true"),
+    ],
+)
+def test_objective_metrics_for_budget_rejects_attached_true_ar_flag_not_true(
+    tmp_path: Path,
+    flag: str,
+    message: str,
+) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["true_ar_baseline"][flag] = False
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match=message):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_missing_summary_prompt_metadata(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     del summary["prompts"]

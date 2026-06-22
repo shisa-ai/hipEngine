@@ -117706,3 +117706,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 63: validate objective true-AR baseline flags
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 63.
+- Focused true-AR denominator contract: guarded objective extraction must require attached baselines to explicitly be true no-MTP AR, same prompt suite, and same timing protocol.
+
+### Change
+- Added `validate_attached_true_ar_baseline_flags()` in `scripts/gguf_mtp_category_bench.py`.
+- `objective_metrics_for_budget()` now rejects attached `true_ar_baseline` metadata unless:
+  - `true_autoregressive_path=true`;
+  - `same_prompt_suite=true`;
+  - `same_timing_protocol=true`.
+- Added regressions for false `true_autoregressive_path`, `same_prompt_suite`, and `same_timing_protocol` flags in objective extraction.
+- Updated `docs/BENCHMARK.md` to document objective-time true-AR flag validation.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction math changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

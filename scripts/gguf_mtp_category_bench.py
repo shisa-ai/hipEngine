@@ -583,6 +583,15 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
     }
 
 
+def validate_attached_true_ar_baseline_flags(true_ar: dict[str, Any]) -> None:
+    if true_ar.get("true_autoregressive_path") is not True:
+        raise BenchError("objective metrics require attached true_ar_baseline.true_autoregressive_path=true")
+    if true_ar.get("same_prompt_suite") is not True:
+        raise BenchError("objective metrics require attached true_ar_baseline.same_prompt_suite=true")
+    if true_ar.get("same_timing_protocol") is not True:
+        raise BenchError("objective metrics require attached true_ar_baseline.same_timing_protocol=true")
+
+
 def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -> dict[str, Any]:
     protocol = true_ar.get("protocol")
     if not isinstance(protocol, dict):
@@ -1099,6 +1108,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     true_ar = summary.get("true_ar_baseline")
     if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
         raise BenchError("objective metrics require an attached true_ar_baseline")
+    validate_attached_true_ar_baseline_flags(true_ar)
     true_ar_artifact = validate_attached_true_ar_artifact_schema(true_ar, label="attached true_ar_baseline")
     validate_repo_provenance(true_ar, label="attached true_ar_baseline")
     summary_commands = validate_command_provenance(summary, label="objective summary")
