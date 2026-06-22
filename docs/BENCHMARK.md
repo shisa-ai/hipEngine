@@ -262,8 +262,13 @@ acceptance loops.
    `--objective-split` and `--objective-category` are mutually exclusive scalar
    selectors; either selector must be paired with `--objective-field`. Scalar
    mode still calls the guarded objective extractor first; it is not a way
-   to read verifier-derived `off`/`B0` telemetry or partial prompt suites. Any
-   artifact that flips `speed_claim_eligible=true` must also pass this guarded
+   to read verifier-derived `off`/`B0` telemetry or partial prompt suites. Add
+   `--objective-output-json /path/to/objective.json` when a scalar verify command
+   should also retain the full guarded full/train/heldout/category objective JSON
+   as an artifact; the artifact records `objective_sources`, `objective_command`,
+   `objective_cwd`, and output-path provenance, and the command rejects output
+   paths that would overwrite the input summary JSON. Any artifact that flips
+   `speed_claim_eligible=true` must also pass this guarded
    extractor for every canonical positive `bN` MTP budget before the contract accepts it. Any artifact
    that flips `performance_claim=true` must also flip `speed_claim_eligible=true`
    and pass the same guarded eligibility checks.

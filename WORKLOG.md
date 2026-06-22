@@ -119376,3 +119376,31 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 127: add durable objective metrics artifact
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 127.
+- Focused acceptance-review harness readiness: let scalar objective verify commands retain the full guarded objective JSON and provenance without shell redirection or a separate JSON-only rerun.
+
+### Change
+- Added objective CLI flag `--objective-output-json` for `--objective-summary-json` mode.
+- Objective mode writes the full guarded objective metrics JSON to the requested artifact path and creates parent directories.
+- Scalar objective stdout is preserved when `--objective-split` / `--objective-category` plus `--objective-field` are used, while the artifact carries full/train/heldout/category metrics.
+- Objective artifact JSON records `objective_sources`, `objective_command`, `objective_cwd`, `objective_output_json`, and `objective_output_json_resolved` when an output artifact path is provided.
+- Objective mode rejects `--objective-output-json` paths that would overwrite the input summary JSON.
+- Added CLI coverage for scalar stdout plus full artifact provenance and overwrite protection.
+- Updated `docs/BENCHMARK.md` to document durable objective artifacts and overwrite protection.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no raw metric schema changes, no acceptance computation semantics changes, no objective extraction formula changes, no comparator behavior changes, no true-AR baseline eligibility changes, no speed-claim promotion changes, and no kernel edits.
+- The output artifact is rendered from the same guarded objective metrics already produced by `objective_metrics_for_budget()`.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

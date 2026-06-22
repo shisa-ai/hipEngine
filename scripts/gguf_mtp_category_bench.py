@@ -2155,6 +2155,12 @@ def main() -> int:
         help="With --objective-split or --objective-category, print this numeric objective field as a scalar.",
     )
     parser.add_argument(
+        "--objective-output-json",
+        type=Path,
+        default=None,
+        help="With --objective-summary-json, also write the full guarded objective metrics JSON to this artifact path.",
+    )
+    parser.add_argument(
         "--compare-baseline-summary-json",
         type=Path,
         default=None,
@@ -2243,18 +2249,43 @@ def main() -> int:
             raise BenchError("--objective-category and --objective-field must be provided together")
         if args.objective_field is not None and args.objective_split is None and args.objective_category is None:
             raise BenchError("--objective-field requires --objective-split or --objective-category")
-        summary = json.loads(args.objective_summary_json.read_text(encoding="utf-8"))
+        summary_path = args.objective_summary_json
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
         metrics = objective_metrics_for_budget(summary, args.objective_budget)
+        scalar_value: float | None = None
         if args.objective_split is not None and args.objective_field is not None:
-            print(metrics[args.objective_split][args.objective_field])
+            scalar_value = metrics[args.objective_split][args.objective_field]
         elif args.objective_category is not None and args.objective_field is not None:
             category_metrics = metrics.get("category_metrics")
             if not isinstance(category_metrics, dict) or args.objective_category not in category_metrics:
                 raise BenchError(f"--objective-category not found in guarded metrics: {args.objective_category}")
-            print(category_metrics[args.objective_category][args.objective_field])
+            scalar_value = category_metrics[args.objective_category][args.objective_field]
+        if args.objective_output_json is not None:
+            output_path = args.objective_output_json
+            output_resolved = output_path.expanduser().resolve(strict=False)
+            input_resolved = summary_path.expanduser().resolve(strict=False)
+            if output_resolved == input_resolved:
+                raise BenchError("--objective-output-json must not overwrite the summary JSON input")
+            metrics["objective_sources"] = {
+                "summary_json": str(summary_path),
+                "summary_json_resolved": str(input_resolved),
+            }
+            metrics["objective_command"] = quote_command([sys.executable, *sys.argv])
+            metrics["objective_cwd"] = str(Path.cwd())
+            metrics["objective_output_json"] = str(output_path)
+            metrics["objective_output_json_resolved"] = str(output_resolved)
+        rendered = json.dumps(metrics, indent=2, sort_keys=True) + "\n"
+        if args.objective_output_json is not None:
+            args.objective_output_json.parent.mkdir(parents=True, exist_ok=True)
+            args.objective_output_json.write_text(rendered, encoding="utf-8")
+        if scalar_value is not None:
+            print(scalar_value)
         else:
-            print(json.dumps(metrics, indent=2, sort_keys=True))
+            print(rendered, end="")
         return 0
+
+    if args.objective_output_json is not None:
+        raise BenchError("--objective-output-json requires --objective-summary-json")
 
     budgets = parse_budgets(args.budgets)
     prompts = load_prompt_rows(args.prompts)

@@ -2242,6 +2242,79 @@ def test_objective_metrics_cli_can_print_scalar_metric(tmp_path: Path) -> None:
     assert float(completed.stdout.strip()) == pytest.approx(28 / 40)
 
 
+def test_objective_metrics_cli_can_write_output_artifact_with_scalar_stdout(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], draft_ms=10.0)
+    summary_path = tmp_path / "summary.json"
+    output_path = tmp_path / "objective" / "metrics.json"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--objective-summary-json",
+            str(summary_path),
+            "--objective-budget",
+            "b1",
+            "--objective-split",
+            "heldout",
+            "--objective-field",
+            "accepted_per_output",
+            "--objective-output-json",
+            str(output_path),
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert float(completed.stdout.strip()) == pytest.approx(28 / 40)
+    assert output_path.exists()
+    metrics = json.loads(output_path.read_text(encoding="utf-8"))
+    assert metrics["budget"] == "b1"
+    assert metrics["heldout"]["accepted_per_output"] == pytest.approx(28 / 40)
+    assert metrics["category_metrics"]["code"]["accepted_per_output"] == pytest.approx(10 / 40)
+    assert metrics["objective_sources"] == {
+        "summary_json": str(summary_path),
+        "summary_json_resolved": str(summary_path.resolve(strict=False)),
+    }
+    assert metrics["objective_cwd"] == str(repo_root)
+    assert "--objective-summary-json" in metrics["objective_command"]
+    assert str(summary_path) in metrics["objective_command"]
+    assert "--objective-output-json" in metrics["objective_command"]
+    assert str(output_path) in metrics["objective_command"]
+    assert metrics["objective_output_json"] == str(output_path)
+    assert metrics["objective_output_json_resolved"] == str(output_path.resolve(strict=False))
+
+
+def test_objective_metrics_cli_rejects_output_over_input(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--objective-summary-json",
+            str(summary_path),
+            "--objective-budget",
+            "b1",
+            "--objective-output-json",
+            str(summary_path),
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode != 0
+    assert "--objective-output-json must not overwrite the summary JSON input" in completed.stderr
+
+
 def test_objective_metrics_cli_can_print_category_scalar_metric(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], draft_ms=10.0)
