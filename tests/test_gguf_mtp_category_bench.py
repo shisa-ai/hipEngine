@@ -26,8 +26,11 @@ from scripts.gguf_mtp_category_bench import (
 from scripts.gguf_true_ar_category_bench import build_true_ar_artifact
 
 
+TEST_REPO_ROOT = Path(__file__).resolve().parents[1]
+TEST_MODEL = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+TEST_PROMPTS = "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 TEST_REPO_PROVENANCE = {
-    "repo_root": str(Path(__file__).resolve().parents[1]),
+    "repo_root": str(TEST_REPO_ROOT),
     "git_commit": "test-commit",
     "git_branch": "test-branch",
     "git_tracked_dirty": False,
@@ -35,6 +38,16 @@ TEST_REPO_PROVENANCE = {
 }
 TEST_SUMMARY_COMMANDS = ["python3 scripts/gguf_mtp_category_bench.py --budgets 1 --output summary.json"]
 TEST_TRUE_AR_COMMANDS = ["python3 scripts/gguf_true_ar_category_bench.py --output true-ar.json"]
+TEST_TRUE_AR_PROTOCOL = {
+    "model": TEST_MODEL,
+    "model_normalized": str(Path(TEST_MODEL).resolve(strict=False)),
+    "quant": "UD-Q4_K_M GGUF",
+    "prompt_file": TEST_PROMPTS,
+    "prompt_file_normalized": str((TEST_REPO_ROOT / TEST_PROMPTS).resolve(strict=False)),
+    "decode_tokens": 10,
+    "warmup_decode_tokens": 1,
+    "prompt_count": 10,
+}
 
 
 def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: int, ar_ms: float, draft_ms: float) -> dict:
@@ -327,6 +340,7 @@ def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
             "source": "future true AR harness artifact",
             "repo": dict(TEST_REPO_PROVENANCE),
             "commands": list(TEST_TRUE_AR_COMMANDS),
+            "protocol": dict(TEST_TRUE_AR_PROTOCOL),
         },
     }
 
@@ -371,6 +385,26 @@ def test_speed_claim_contract_rejects_missing_true_ar_command_provenance() -> No
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_missing_true_ar_protocol() -> None:
+    summary = {
+        "speed_claim_eligible": True,
+        "repo": dict(TEST_REPO_PROVENANCE),
+        "commands": list(TEST_SUMMARY_COMMANDS),
+        "true_ar_baseline": {
+            "available": True,
+            "true_autoregressive_path": True,
+            "same_prompt_suite": True,
+            "same_timing_protocol": True,
+            "source": "future true AR harness artifact",
+            "repo": dict(TEST_REPO_PROVENANCE),
+            "commands": list(TEST_TRUE_AR_COMMANDS),
+        },
+    }
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires true AR protocol metadata"):
+        validate_speed_claim_contract(summary)
+
+
 def _write_true_ar_baseline(
     path: Path,
     rows: list[dict],
@@ -381,6 +415,9 @@ def _write_true_ar_baseline(
     include_prompt_hashes: bool = True,
     include_row_hashes: bool = True,
     include_commands: bool = True,
+    model: str = TEST_MODEL,
+    prompt_file: str = TEST_PROMPTS,
+    prompt_count: int | None = None,
 ) -> None:
     prompt_hashes = {str(prompt_id): prompt_sha256(text) for prompt_id, text in prompt_text_by_id.items()}
     metric_rows = []
@@ -394,6 +431,12 @@ def _write_true_ar_baseline(
         "kind": "hipengine_gguf_true_ar_category_baseline",
         "true_autoregressive_path": True,
         "same_timing_protocol": True,
+        "model": model,
+        "quant": "UD-Q4_K_M GGUF",
+        "prompt_file": prompt_file,
+        "decode_tokens": 10,
+        "warmup_decode_tokens": 1,
+        "prompt_count": len(prompt_text_by_id) if prompt_count is None else prompt_count,
         "prompt_metrics": metric_rows,
     }
     if include_prompt_hashes:
@@ -444,6 +487,9 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["true_ar_baseline"]["same_prompt_suite"] is True
     assert summary["true_ar_baseline"]["same_timing_protocol"] is True
     assert summary["true_ar_baseline"]["repo"] == TEST_REPO_PROVENANCE
+    assert summary["true_ar_baseline"]["protocol"]["model"] == TEST_MODEL
+    assert summary["true_ar_baseline"]["protocol"]["prompt_file"] == TEST_PROMPTS
+    assert summary["true_ar_baseline"]["protocol"]["prompt_count"] == 2
     assert summary["true_ar_baseline"]["totals"]["decode_tok_s_weighted"] == 100.0
     assert summary["objective_metrics_available"] is False
     assert "heldout coverage" in summary["objective_metrics_blocker"]
@@ -496,6 +542,9 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["performance_claim"] is False
     assert metrics["summary_commands"] == TEST_SUMMARY_COMMANDS
     assert metrics["true_ar_commands"] == TEST_TRUE_AR_COMMANDS
+    assert metrics["true_ar_protocol"]["model"] == TEST_MODEL
+    assert metrics["true_ar_protocol"]["prompt_file"] == TEST_PROMPTS
+    assert metrics["true_ar_protocol"]["prompt_count"] == 10
     assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
     assert metrics["full"]["draft_acceptance"] == pytest.approx(1.0)
     assert metrics["full"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((100.0 / 1100.0 * 1000.0) / 100.0)
@@ -524,6 +573,15 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_repo_prov
     del summary["true_ar_baseline"]["repo"]
 
     with pytest.raises(BenchError, match="attached true_ar_baseline requires repo provenance metadata"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_protocol(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    del summary["true_ar_baseline"]["protocol"]
+    summary["objectives"] = {}
+
+    with pytest.raises(BenchError, match="attached true_ar_baseline requires true AR protocol metadata"):
         objective_metrics_for_budget(summary, "b1")
 
 
@@ -875,6 +933,72 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
     raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
 
     with pytest.raises(BenchError, match=message):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_model_mismatch(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        model="/models/gguf/other-model.gguf",
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR model path mismatch"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_prompt_file_mismatch(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        prompt_file="benchmarks/prompts/other.jsonl",
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR prompt_file mismatch"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_prompt_count_mismatch(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        prompt_count=2,
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR prompt_count mismatch"):
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 

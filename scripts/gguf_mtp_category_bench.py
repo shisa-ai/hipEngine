@@ -52,6 +52,7 @@ DEFAULT_HELDOUT_PROMPT_IDS = frozenset(
     }
 )
 REPO_PROVENANCE_FIELDS = ("repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count")
+TRUE_AR_PROTOCOL_FIELDS = ("model", "prompt_file", "prompt_count")
 
 
 class BenchError(RuntimeError):
@@ -163,6 +164,70 @@ def validate_command_provenance(payload: dict[str, Any], *, label: str) -> list[
             raise BenchError(f"{label} commands[{index}] must be a non-empty string")
         out.append(command)
     return out
+
+
+def normalize_protocol_path(value: Any) -> str:
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return str(path.resolve(strict=False))
+
+
+def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argparse.Namespace, prompt_count: int) -> dict[str, Any]:
+    missing = [field for field in TRUE_AR_PROTOCOL_FIELDS if field not in artifact]
+    if missing:
+        raise BenchError(f"true AR baseline artifact protocol metadata missing fields: {missing}")
+    model = artifact.get("model")
+    if not isinstance(model, str) or not model:
+        raise BenchError("true AR baseline artifact protocol metadata requires non-empty model")
+    prompt_file = artifact.get("prompt_file")
+    if not isinstance(prompt_file, str) or not prompt_file:
+        raise BenchError("true AR baseline artifact protocol metadata requires non-empty prompt_file")
+    artifact_prompt_count = artifact.get("prompt_count")
+    if not isinstance(artifact_prompt_count, int) or artifact_prompt_count <= 0:
+        raise BenchError("true AR baseline artifact protocol metadata requires positive prompt_count")
+    if artifact_prompt_count != prompt_count:
+        raise BenchError(f"true AR prompt_count mismatch: {artifact_prompt_count} != {prompt_count}")
+    model_normalized = normalize_protocol_path(model)
+    expected_model_normalized = normalize_protocol_path(getattr(args, "model"))
+    if model_normalized != expected_model_normalized:
+        raise BenchError(f"true AR model path mismatch: {model!r} != {str(getattr(args, 'model'))!r}")
+    prompt_file_normalized = normalize_protocol_path(prompt_file)
+    expected_prompt_file_normalized = normalize_protocol_path(getattr(args, "prompts"))
+    if prompt_file_normalized != expected_prompt_file_normalized:
+        raise BenchError(f"true AR prompt_file mismatch: {prompt_file!r} != {str(getattr(args, 'prompts'))!r}")
+    return {
+        "model": model,
+        "model_normalized": model_normalized,
+        "quant": artifact.get("quant"),
+        "prompt_file": prompt_file,
+        "prompt_file_normalized": prompt_file_normalized,
+        "decode_tokens": artifact.get("decode_tokens"),
+        "warmup_decode_tokens": artifact.get("warmup_decode_tokens"),
+        "prompt_count": artifact_prompt_count,
+    }
+
+
+def validate_attached_true_ar_protocol(true_ar: dict[str, Any], *, label: str) -> dict[str, Any]:
+    protocol = true_ar.get("protocol")
+    if not isinstance(protocol, dict):
+        raise BenchError(f"{label} requires true AR protocol metadata")
+    for field in ("model", "model_normalized", "prompt_file", "prompt_file_normalized"):
+        if not isinstance(protocol.get(field), str) or not protocol[field]:
+            raise BenchError(f"{label} protocol metadata requires non-empty {field}")
+    prompt_count = protocol.get("prompt_count")
+    if not isinstance(prompt_count, int) or prompt_count <= 0:
+        raise BenchError(f"{label} protocol metadata requires positive prompt_count")
+    return {
+        "model": protocol["model"],
+        "model_normalized": protocol["model_normalized"],
+        "quant": protocol.get("quant"),
+        "prompt_file": protocol["prompt_file"],
+        "prompt_file_normalized": protocol["prompt_file_normalized"],
+        "decode_tokens": protocol.get("decode_tokens"),
+        "warmup_decode_tokens": protocol.get("warmup_decode_tokens"),
+        "prompt_count": prompt_count,
+    }
 
 
 def run_one(
@@ -499,7 +564,7 @@ def aggregate_true_ar_rows(rows_by_id: dict[str, dict[str, Any]], prompt_ids: li
     }
 
 
-def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path, repo: dict[str, Any], commands: list[str]) -> dict[str, Any]:
+def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path, repo: dict[str, Any], commands: list[str], protocol: dict[str, Any]) -> dict[str, Any]:
     prompt_ids = [str(row["id"]) for row in summary["prompts"]]
     full_metric = aggregate_true_ar_rows(rows_by_id, prompt_ids)
     category_metrics = {
@@ -520,6 +585,7 @@ def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, di
         "source": str(source),
         "repo": repo,
         "commands": commands,
+        "protocol": protocol,
         "prompt_count": len(prompt_ids),
         "totals": full_metric,
         "categories": category_metrics,
@@ -585,6 +651,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
         raise BenchError("speed_claim_eligible=true requires true AR measured with the same timing protocol")
     validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_command_provenance(true_ar, label="speed-claim true_ar_baseline")
+    validate_attached_true_ar_protocol(true_ar, label="speed-claim true_ar_baseline")
     return summary
 
 
@@ -608,6 +675,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     validate_repo_provenance(true_ar, label="attached true_ar_baseline")
     summary_commands = validate_command_provenance(summary, label="objective summary")
     true_ar_commands = validate_command_provenance(true_ar, label="attached true_ar_baseline")
+    true_ar_protocol = validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline")
     splits = summary.get("splits")
     if not isinstance(splits, dict):
         raise BenchError("objective metrics require splits")
@@ -626,6 +694,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "summary_commands": summary_commands,
         "true_ar_commands": true_ar_commands,
+        "true_ar_protocol": true_ar_protocol,
         "heldout_ids": list(contract.get("heldout_ids", [])),
         "train_ids": list(contract.get("train_ids", [])),
     }
@@ -679,6 +748,7 @@ def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
         "source": true_ar.get("source"),
         "repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "commands": validate_command_provenance(true_ar, label="attached true_ar_baseline"),
+        "protocol": validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline"),
         "prompt_count": true_ar.get("prompt_count"),
         "totals": true_ar.get("totals"),
         "categories": true_ar.get("categories"),
@@ -887,8 +957,9 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         true_ar_artifact = true_ar_artifact_from_path(true_ar_path)
         true_ar_repo = validate_repo_provenance(true_ar_artifact, label="true AR baseline artifact")
         true_ar_commands = validate_command_provenance(true_ar_artifact, label="true AR baseline artifact")
+        true_ar_protocol = validate_true_ar_protocol_metadata(artifact=true_ar_artifact, args=args, prompt_count=len(prompts))
         rows_by_id = validate_true_ar_prompt_rows(artifact=true_ar_artifact, prompts=prompts)
-        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo, commands=true_ar_commands)
+        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo, commands=true_ar_commands, protocol=true_ar_protocol)
     return validate_speed_claim_contract(summary)
 
 

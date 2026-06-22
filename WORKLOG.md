@@ -117078,3 +117078,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 40: require true-AR protocol metadata
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 40.
+- Focused current-schema protocol provenance contract: attached true-AR artifacts must not just claim `same_prompt_suite=true`; they must also identify the model/prompt protocol and match the MTP category summary.
+
+### Change
+- Added true-AR protocol metadata validation in `scripts/gguf_mtp_category_bench.py`.
+- True-AR attachment now requires and carries `protocol` metadata:
+  - `model` and normalized model path;
+  - `prompt_file` and normalized prompt path;
+  - `prompt_count`;
+  - decode-token metadata when present.
+- Attachment rejects model mismatch, prompt-file mismatch, and prompt-count mismatch.
+- Objective extraction and speed-claim validation now require attached true-AR protocol metadata and expose it via `true_ar_protocol`.
+- Added regressions for missing attached protocol metadata plus mismatched model, prompt file, and prompt count.
+- Updated `docs/BENCHMARK.md` to document the protocol metadata contract.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no train/heldout/full split math changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 68 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

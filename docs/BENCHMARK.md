@@ -97,9 +97,10 @@ acceptance loops.
    The artifact must set `kind=hipengine_gguf_true_ar_category_baseline`,
    `true_autoregressive_path=true`, `same_prompt_suite=true`, and
    `same_timing_protocol=true`; include non-empty `commands`; include `repo`
-   code-state provenance; include top-level `prompt_hashes`; and contain one `prompt_metrics[]` row per
-   selected prompt with `prompt_sha256` plus positive `output_tokens` and
-   `decode_ms`.
+   code-state provenance; include protocol metadata (`model`, `prompt_file`,
+   `prompt_count`, plus decode-token fields); include top-level
+   `prompt_hashes`; and contain one `prompt_metrics[]` row per selected prompt
+   with `prompt_sha256` plus positive `output_tokens` and `decode_ms`.
 
 2. **Attach AR to the MTP category matrix.** Run the MTP diagnostic over the same
    prompts/budgets and attach the AR artifact:
@@ -116,7 +117,8 @@ acceptance loops.
      --true-ar-baseline-json "$AR_ROOT/true-ar-baseline.json"
    ```
 
-   The summary must include non-empty `commands`,
+   The summary must include non-empty `commands`, attached true-AR `protocol`
+   metadata matching the MTP `model`, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
    `speed_claim_eligible=false`, `splits.full`,
    `splits.train`, and `splits.heldout`. Markdown tables must label the old
