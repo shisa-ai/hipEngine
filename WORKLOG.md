@@ -116104,3 +116104,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 24 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 8: true-AR CLI dry-run guard
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 8.
+- Focused guardrail change: protect the new true no-MTP AR baseline producer CLI with an end-to-end CPU-only dry-run test.
+
+### Change
+- Added a subprocess test for `scripts/gguf_true_ar_category_bench.py --dry-run` using temporary prompt/model files.
+- The test validates the emitted attachable artifact schema:
+  - `kind=hipengine_gguf_true_ar_category_baseline`;
+  - `performance_claim=false`;
+  - `true_autoregressive_path=true`;
+  - `same_timing_protocol=true` and `same_prompt_suite=true`;
+  - exact prompt IDs and `prompt_metrics[]` order;
+  - expected dry-run output token totals.
+
+### Guardrail status
+- Test-only change; no selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, and no GPU requirement.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 25 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

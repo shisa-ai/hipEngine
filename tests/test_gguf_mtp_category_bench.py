@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -359,3 +361,51 @@ def test_markdown_separates_true_ar_from_verifier_off(tmp_path: Path) -> None:
     assert "True no-MTP AR baseline attached" in markdown
     assert "vs verifier off | vs true AR" in markdown
     assert "| vs AR |" not in markdown
+
+
+def test_true_ar_category_cli_dry_run_emits_attachable_schema(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    model_path = tmp_path / "model.gguf"
+    model_path.write_bytes(b"dry-run-placeholder")
+    prompts_path = tmp_path / "prompts.jsonl"
+    prompts_path.write_text(
+        json.dumps({"id": "code_1", "category": "code", "prompt": "write code"}) + "\n"
+        + json.dumps({"id": "general_1", "category": "general_en", "prompt": "explain"}) + "\n",
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "true-ar-baseline.json"
+    raw_root = tmp_path / "raw"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_true_ar_category_bench.py"),
+            "--model",
+            str(model_path),
+            "--prompts",
+            str(prompts_path),
+            "--decode-tokens",
+            "4",
+            "--raw-root",
+            str(raw_root),
+            "--output",
+            str(output_path),
+            "--dry-run",
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    artifact = json.loads(output_path.read_text(encoding="utf-8"))
+    assert artifact["kind"] == "hipengine_gguf_true_ar_category_baseline"
+    assert artifact["status"] == "dry_run"
+    assert artifact["performance_claim"] is False
+    assert artifact["true_autoregressive_path"] is True
+    assert artifact["same_timing_protocol"] is True
+    assert artifact["same_prompt_suite"] is True
+    assert artifact["prompt_ids"] == ["code_1", "general_1"]
+    assert [row["id"] for row in artifact["prompt_metrics"]] == ["code_1", "general_1"]
+    assert all(row["output_tokens"] == 4 for row in artifact["prompt_metrics"])
+    assert artifact["totals"]["total_output_tokens"] == 8
