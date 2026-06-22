@@ -262,6 +262,23 @@ def test_category_summary_rejects_non_string_input_prompt_rows(prompt_update: di
         build_summary(args=args, prompts=[prompt], raw=raw, commands=[])
 
 
+def test_category_summary_rejects_duplicate_input_prompt_ids() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [
+        {"id": "code_1", "category": "code", "prompt": "write code"},
+        {"id": "code_1", "category": "code", "prompt": "write more code"},
+    ]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="prompt suite contains duplicate prompt id: code_1"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 @pytest.mark.parametrize(
     ("row_update", "message"),
     [
@@ -502,6 +519,18 @@ def test_load_prompt_rows_rejects_non_string_prompt_fixture_fields(tmp_path: Pat
     prompt_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
 
     with pytest.raises(BenchError, match=message):
+        load_prompt_rows(prompt_path)
+
+
+def test_load_prompt_rows_rejects_duplicate_prompt_ids(tmp_path: Path) -> None:
+    prompt_path = tmp_path / "prompts.jsonl"
+    rows = [
+        {"id": "code_1", "category": "code", "prompt": "write code"},
+        {"id": "code_1", "category": "code", "prompt": "write more code"},
+    ]
+    prompt_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+    with pytest.raises(BenchError, match=r"prompts\.jsonl:2: duplicate prompt id: code_1"):
         load_prompt_rows(prompt_path)
 
 

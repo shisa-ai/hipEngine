@@ -82,6 +82,7 @@ def parse_budgets(text: str) -> list[int]:
 
 def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
     with path.open("r", encoding="utf-8") as handle:
         for line_no, line in enumerate(handle, start=1):
             line = line.strip()
@@ -94,6 +95,9 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
             if not isinstance(raw_id, str) or not raw_id:
                 raise BenchError(f"{path}:{line_no}: prompt id must be a non-empty string")
             prompt_id = raw_id
+            if prompt_id in seen_ids:
+                raise BenchError(f"{path}:{line_no}: duplicate prompt id: {prompt_id}")
+            seen_ids.add(prompt_id)
             raw_category = raw.get("category", "uncategorized")
             if not isinstance(raw_category, str) or not raw_category:
                 raise BenchError(f"{path}:{line_no}: category must be a non-empty string")
@@ -1074,12 +1078,16 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def validate_prompt_rows_for_summary(prompts: list[dict[str, Any]], *, label: str = "prompt suite") -> list[dict[str, Any]]:
     if not isinstance(prompts, list) or not prompts:
         raise BenchError(f"{label} requires non-empty prompt rows")
+    seen_ids: set[str] = set()
     for index, row in enumerate(prompts):
         if not isinstance(row, dict):
             raise BenchError(f"{label} prompts[{index}] must be an object")
         prompt_id = row.get("id")
         if not isinstance(prompt_id, str) or not prompt_id:
             raise BenchError(f"{label} prompts[{index}].id must be a non-empty string")
+        if prompt_id in seen_ids:
+            raise BenchError(f"{label} contains duplicate prompt id: {prompt_id}")
+        seen_ids.add(prompt_id)
         category = row.get("category")
         if not isinstance(category, str) or not category:
             raise BenchError(f"{label} prompt {prompt_id}.category must be a non-empty string")

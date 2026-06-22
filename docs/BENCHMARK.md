@@ -137,7 +137,7 @@ acceptance loops.
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, boolean `performance_claim=false`,
    boolean `speed_claim_eligible=false`, `splits.full`,
-   `splits.train`, and `splits.heldout`; prompt fixture rows must use strict
+   `splits.train`, and `splits.heldout`; prompt fixture rows must use unique strict
    string IDs, categories, prompt text, and message content before split
    construction; split contract and per-split `prompt_ids` lists must contain strict non-empty strings,
    `splits.contract.heldout_ids` must be the fixed set
@@ -199,7 +199,7 @@ acceptance loops.
    artifact construction rather than coerced with `str()` / `int()`.
    Summary and attached true-AR category map keys must be strict
    non-empty strings. In-memory prompt rows and raw per-prompt MTP rows are checked with
-   strict string prompt/category identity plus the same strict count and
+   unique strict string prompt IDs, strict category identity, and the same strict count and
    timing typing before aggregation; present falsy timing values such as
    `false` or `""` are rejected rather than zero-coerced. Scalar metric fields must be strict JSON
    numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows

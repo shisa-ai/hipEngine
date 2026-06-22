@@ -118577,3 +118577,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 94: reject duplicate prompt-suite IDs
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 94.
+- Focused prompt provenance contract: prompt-suite IDs must be unique before split construction, raw coverage checks, and objective artifact validation.
+
+### Change
+- `load_prompt_rows()` now rejects duplicate prompt IDs while reading JSONL fixtures.
+- `validate_prompt_rows_for_summary()` now rejects duplicate in-memory prompt IDs before split construction/raw aggregation.
+- Added regressions for duplicate fixture IDs and duplicate `build_summary()` prompt rows.
+- Updated `docs/BENCHMARK.md` to document unique prompt IDs in fixture and in-memory prompt provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no valid-suite split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
