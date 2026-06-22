@@ -118456,3 +118456,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 89: validate unique CLI budgets
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 89.
+- Focused CLI budget contract: duplicate `--budgets` entries must not run duplicate subprocess work and then silently overwrite earlier raw budget rows in the summary artifact.
+
+### Change
+- `parse_budgets()` now wraps non-integer entries in `BenchError` instead of leaking `ValueError`.
+- `parse_budgets()` now rejects duplicate budget values after 1..5 range validation.
+- Added regressions for duplicate budgets and non-integer budget entries.
+- Updated `docs/BENCHMARK.md` to document that CLI `--budgets` values must be unique.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no split construction policy changes, no exact-target verifier behavior changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

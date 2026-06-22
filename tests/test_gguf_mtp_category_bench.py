@@ -19,6 +19,7 @@ from scripts.gguf_mtp_category_bench import (
     compare_objective_metrics,
     load_prompt_rows,
     objective_metrics_for_budget,
+    parse_budgets,
     populate_objective_metrics,
     prompt_sha256,
     repo_provenance,
@@ -84,6 +85,16 @@ def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: i
             }
         ],
     }
+
+
+def test_parse_budgets_rejects_duplicate_values() -> None:
+    with pytest.raises(BenchError, match="--budgets must not contain duplicates: \\[1\\]"):
+        parse_budgets("1,5,1")
+
+
+def test_parse_budgets_wraps_non_integer_values() -> None:
+    with pytest.raises(BenchError, match="--budgets entries must be integers"):
+        parse_budgets("1,bad")
 
 
 def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
