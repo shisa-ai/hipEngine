@@ -2324,6 +2324,42 @@ def test_compare_objective_metrics_cli_can_fail_on_regression(tmp_path: Path) ->
     assert any(regression["split"] == "heldout" for regression in comparison["regressions"])
 
 
+def test_compare_objective_metrics_cli_honors_explicit_tolerance(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[1] * 10, draft_ms=11.0)
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--compare-baseline-summary-json",
+            str(baseline_path),
+            "--compare-candidate-summary-json",
+            str(candidate_path),
+            "--compare-budget",
+            "b1",
+            "--compare-require-pass",
+            "--compare-tolerance",
+            "0.01",
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    comparison = json.loads(completed.stdout)
+    assert comparison["passed"] is True
+    assert comparison["tolerance"] == 0.01
+    assert comparison["deltas"]["full"]["mtp_vs_true_ar_decode_ratio"] < 0.0
+    assert comparison["regressions"] == []
+
+
 def test_objective_metrics_cli_rejects_verifier_only_summary(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     args = SimpleNamespace(

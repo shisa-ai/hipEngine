@@ -2152,6 +2152,12 @@ def main() -> int:
         action="store_true",
         help="In compare mode, exit non-zero when the guarded comparison does not pass.",
     )
+    parser.add_argument(
+        "--compare-tolerance",
+        type=float,
+        default=0.0,
+        help="Finite non-negative tolerance for guarded comparison regressions; default is exact non-regression.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -2160,7 +2166,7 @@ def main() -> int:
             raise BenchError("compare mode requires --compare-baseline-summary-json, --compare-candidate-summary-json, and --compare-budget")
         baseline = json.loads(args.compare_baseline_summary_json.read_text(encoding="utf-8"))
         candidate = json.loads(args.compare_candidate_summary_json.read_text(encoding="utf-8"))
-        comparison = compare_objective_metrics(baseline, candidate, args.compare_budget)
+        comparison = compare_objective_metrics(baseline, candidate, args.compare_budget, tolerance=args.compare_tolerance)
         print(json.dumps(comparison, indent=2, sort_keys=True))
         return 0 if comparison["passed"] or not args.compare_require_pass else 2
 
