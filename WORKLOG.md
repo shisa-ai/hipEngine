@@ -121587,3 +121587,51 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained. Current default is branch-redraft root-K11/sibling-K8/depth≤3 with ungated root tail and up to five branch redrafts: focused B5 `0.6154`, full-suite B5 `0.6855`, heldout `0.7241`, categories non-regressive.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk11-sibling8-max5-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 186: sibling-K9 rejected under root-K11/max-5 branch redraft
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 186.
+- Tested widening deeper sibling search from `sibling_topk_accept=8` to `9` while leaving `root_topk_accept=11`, `sibling_topk_max_depth=3`, `root_tail_max_prev_accepted=-1`, and `topk_branch_redraft_max_branches=5` unchanged.
+- This was a direct acceptance experiment under exact target verification; no prompt text, token IDs, fixture IDs, candidate-pattern branches, or target-token rescue logic were introduced.
+
+### Change evaluated and reverted
+- Temporarily changed `--sibling-topk-accept` default from `8` to `9`.
+- Reverted the default back to sibling-K8 because full-suite/train/code accepted-output regressed even though the focused prompt improved.
+
+### Focused B5 validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-max5-rootk11-sibling9-default-iter186-b5-20.json
+```
+- Temporary sibling-K9 run printed `Root top-k accept: 11`, `Sibling top-k accept: 9`, `Top-k branch redraft max branches: 5`.
+- Focused accepted/output improved over sibling-K8: `0.6154 -> 0.6552`.
+- Accepted drafts/candidates changed `32/760 -> 38/833`, `accept_per_draft 0.0421 -> 0.0456`; focused draft top-k rows remained length `11`.
+- Top-k branch accepts increased `14 -> 19`, with `7` multi-branch cycles, `2` triple-branch cycles, and `1` quad-branch cycle.
+- Diagnostic tok/s `14.04`, `speedup_vs_ar_visible=0.7186x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-max5-rootk11-sibling9-full-20260623-073819/raw --output /tmp/hipengine-branch-redraft-max5-rootk11-sibling9-full-20260623-073819/summary.json --extra-arg=--sibling-topk-accept --extra-arg=9
+```
+- Full accepted/output regressed vs sibling-K8: `0.685535 -> 0.680511`.
+- Train regressed `0.653179 -> 0.642857`; heldout stayed non-regressive `0.724138 -> 0.724138`.
+- Per-category accepted/output regressed for code `0.636364 -> 0.619048`; general_en unchanged `0.743590`, general_ja unchanged `0.666667`, mixed_ja_en unchanged `0.714286`.
+- Full draft acceptance regressed `0.054705 -> 0.049836` (`218/3985 -> 213/4274`).
+- Diagnostic weighted decode tok/s changed `13.6671 -> 13.7203`; verifier-derived ratio `0.7027 -> 0.6992`. Timing remains diagnostic only and cannot support a speed claim.
+
+### Validation after revert
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify; dot progress reached 100%, 321 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard; dot progress reached 100%, 321 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed for the evaluated shape: sibling-K9 was only a generic deeper-sibling top-k threshold change under exact verification. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches were introduced. The candidate is rejected because full/train/code acceptance regressed despite focused-prompt improvement.
+
+### Result
+- Rejected. Current default remains branch-redraft root-K11/sibling-K8/depth≤3 with ungated root tail and up to five branch redrafts.
+- Added compact rejected artifact:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk11-sibling9-max5-rejected-gfx1151.json`.
