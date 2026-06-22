@@ -121348,3 +121348,50 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained. Current default is branch-redraft root-K8/sibling-K7/depth≤3 with ungated root tail and up to five branch redrafts: focused B5 `0.6154`, full-suite B5 `0.6689`, heldout `0.7163`, categories non-regressive.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-max5-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 181: root-K9 retained under max-5 branch redraft
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 181.
+- Tested widening root search from `root_topk_accept=8` to `9` under the retained max-5 branch-redraft root-K8 / sibling-K7 / depth≤3 / ungated-root-tail policy. Earlier root-K9 variants regressed heldout/mixed_ja_en, so this re-evaluates it after max-5 redraft and the lower sibling-K7 candidate set.
+
+### Change retained
+- Changed `--root-topk-accept` default from `8` to `9` while keeping `root_tail_max_prev_accepted=-1`, `sibling_topk_accept=7`, `sibling_topk_max_depth=3`, `topk_branch_redraft=true`, and `topk_branch_redraft_max_branches=5`.
+- This remains a generic rank/top-k proposal under exact target verification; it does not inspect prompt text, token IDs, candidate-token patterns, fixture/category IDs, or depth-specific rescues.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 9 --output /tmp/hipengine-mtp-branch-redraft-max5-rootk9-iter181-b5-20.json
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-max5-rootk9-default-iter181-b5-20.json
+```
+- Focused accepted/output matched the prior root-K8/max-5 default: `0.6154`.
+- Accepted drafts/candidates changed `32/640 -> 32/660`, `accept_per_draft 0.0500 -> 0.0485`.
+- Top-k branch accepts stayed at `14`, with `5` multi-branch cycles and `1` triple-branch cycle; no quad/quint branch cycles were exercised in the focused run.
+- Default run after the code change printed `Root top-k accept: 9`.
+- Diagnostic default tok/s `12.27`, `speedup_vs_ar_visible=0.7231x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-max5-rootk9-full-20260623-070237/raw --output /tmp/hipengine-branch-redraft-max5-rootk9-full-20260623-070237/summary.json --extra-arg=--root-topk-accept --extra-arg=9
+```
+- Full accepted/output improved over current root-K8/max-5 default: `0.668874 -> 0.671053`.
+- Train improved `0.627329 -> 0.631902`; heldout non-regressive `0.716312 -> 0.716312`.
+- Per-category accepted/output improved/non-regressed: code unchanged `0.603960`, general_en unchanged `0.743590`, general_ja `0.655172 -> 0.666667`, mixed_ja_en unchanged `0.692308`.
+- Full draft acceptance changed `0.060570 -> 0.059251` (`202/3335 -> 204/3443`); accepted/output improved while candidate efficiency dipped slightly.
+- Diagnostic weighted decode tok/s `13.6727 -> 13.3968`; verifier-derived ratio `0.6975 -> 0.6989`. This is retained as a correctness-preserving acceptance tradeoff only; no true no-MTP AR speed claim retained.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: this only widens a generic root top-k threshold under exact verification and branch redraft. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Retained. Current default is branch-redraft root-K9/sibling-K7/depth≤3 with ungated root tail and up to five branch redrafts: focused B5 `0.6154`, full-suite B5 `0.6711`, heldout `0.7163`, categories non-regressive.
+- Added compact artifact and benchmark rollup/changelog entries:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk9-max5-category-gfx1151.json`.

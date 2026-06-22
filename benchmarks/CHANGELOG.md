@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-23
 
+- [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output `0.669 -> 0.671` (+0.3%) via root top-k widening under max-5 exact-verification branch redraft (`root_topk_accept=9`); train `0.627 -> 0.632`, heldout non-regressive `0.716`, categories non-regressive; speed remains verifier-derived diagnostic (`0.699x` AR, weighted tok/s `13.67 -> 13.40`) and is retained only as an acceptance/correctness tradeoff, not a true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk9-max5-category-gfx1151.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output `0.668 -> 0.669` (+0.2%) via allowing up to five exact-verified top-k branch redrafts per B-window (`topk_branch_redraft_max_branches=5`); train non-regressive `0.627`, heldout `0.714 -> 0.716`, categories non-regressive; speed remains verifier-derived diagnostic (`0.697x` AR, weighted tok/s `13.66 -> 13.67`), not a true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-max5-category-gfx1151.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP B5 UD-Q4_K_M / gfx1151 full category suite: accepted/output `0.644 -> 0.668` (+3.7%) via allowing up to four exact-verified top-k branch redrafts per B-window (`topk_branch_redraft_max_branches=4`); train `0.605 -> 0.627`, heldout `0.690 -> 0.714`, categories non-regressive; speed remains verifier-derived diagnostic (`0.697x` AR, weighted tok/s `13.60 -> 13.66`), not a true-AR speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-max4-category-gfx1151.json`.
