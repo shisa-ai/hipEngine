@@ -120042,3 +120042,43 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained as an acceptance improvement. Current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
 - Retained the short-draft trace metadata bug fix because it is required to evaluate p_min and other early-stop selectors safely.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 150: root-K5/K6 category tradeoff rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 150.
+- Evaluated whether increasing root top-k beyond the retained K4 can be made category-safe by changing the deeper sibling top-k, and whether root-K6 restores the mixed_ja_en regression observed for root-K5.
+
+### Category validations
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling9-full-20260623-034839/raw --output /tmp/hipengine-rootk5-sibling9-full-20260623-034839/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=9
+```
+- Root-K5/sibling-K9 matched the root-K5/sibling-K10 aggregate accepted/output (`full=0.441341`, train `0.375000`, heldout `0.518072`) but still regressed mixed_ja_en versus retained root-K4/sibling-K10: `0.534884 -> 0.523810`.
+- Draft acceptance improved versus K10 (`0.017556 -> 0.019268`) but the category regression blocks retention.
+
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk6-sibling10-full-20260623-034954/raw --output /tmp/hipengine-rootk6-sibling10-full-20260623-034954/summary.json --extra-arg=--root-topk-accept --extra-arg=6 --extra-arg=--sibling-topk-accept --extra-arg=10
+```
+- Root-K6/sibling-K10 also matched root-K5 aggregate accepted/output (`full=0.441341`, train `0.375000`, heldout `0.518072`) and still regressed mixed_ja_en to `0.523810`.
+- Candidate accounting worsened (`draft_acceptance=0.017174`).
+
+### Retained path check
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-iteration150-retained-b5-20.json
+# accepted_per_output=0.5000, accept_per_draft=0.0227, total_accepted=20/880, tokens_per_sec=12.62, speedup_vs_ar_visible=0.729x
+```
+- Current default remains root-K4/sibling-K10.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 320 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 320 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated only generic root/deeper sibling top-k widths; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Root-K5/K6 variants improve aggregate full/train/heldout but consistently regress mixed_ja_en, violating per-category non-regression. Current default remains root-K4/sibling-K10 with focused B5 `0.5000` and full-suite B5 `0.4318`.
