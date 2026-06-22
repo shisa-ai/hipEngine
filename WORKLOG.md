@@ -120438,3 +120438,42 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 ### Result
 - Not retained. Tail-prev≤2 is equivalent to the current tail-prev≤1 policy on the focused/full category suite and provides no accepted/output or draft-acceptance improvement.
 - Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 160: sibling K10 rejected under adaptive root-K5
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 160.
+- Tested whether restoring wider sibling search (`sibling_topk_accept=10`) under the retained adaptive root-K5/tail-prev≤1/depth≤3 policy recovers additional honest B5 non-root acceptances now that root rank-5 is gated.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 5 --sibling-topk-accept 10 --sibling-topk-max-depth 3 --root-tail-max-prev-accepted 1 --output /tmp/hipengine-mtp-rootk5-tailprev1-sibling10-iter160-b5-20.json
+```
+- Focused accepted/output matched the current sibling-K9 default: `0.5000`.
+- Candidate accounting regressed versus current default: `20/660 -> 20/720`, `accept_per_draft 0.0303 -> 0.0278`.
+- Branch count/depths were unchanged (`8` branch accepts; depths `{0: 4, 1: 3, 2: 1}`).
+- Diagnostic tok/s `14.50`, `speedup_vs_ar_visible=0.7216x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-rootk5-sibling10-depth3-tailprev1-full-20260623-044435/raw --output /tmp/hipengine-rootk5-sibling10-depth3-tailprev1-full-20260623-044435/summary.json --extra-arg=--root-topk-accept --extra-arg=5 --extra-arg=--sibling-topk-accept --extra-arg=10 --extra-arg=--sibling-topk-max-depth --extra-arg=3 --extra-arg=--root-tail-max-prev-accepted --extra-arg=1
+```
+- Accepted/output matched current adaptive root-K5/sibling-K9 default, but did not improve it: full `0.444444`, train `0.381443`, heldout `0.518072`.
+- Per-category accepted/output matched current default: code `0.344262`, general_en `0.512195`, general_ja `0.428571`, mixed_ja_en `0.534884`.
+- Draft acceptance regressed versus current default: full `0.024242 -> 0.022222`, train `0.018687 -> 0.017130`, heldout `0.032576 -> 0.029861`.
+- Diagnostic verifier-derived tok/s `13.3063`, ratio `0.6811`; speed remains diagnostic only and is not a true no-MTP AR claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: evaluated a generic sibling top-k width under exact verification; no prompt text checks, token IDs, candidate-pattern branches, depth-specific target-token rescues, fixture IDs, or benchmark detection. No speed claim retained.
+
+### Result
+- Not retained. Sibling-K10 adds candidates but no focused/full/train/heldout/category accepted-output improvement, and draft acceptance regresses.
+- Current default remains adaptive root-K5/sibling-K9/depth≤3/tail-prev≤1: focused B5 `0.5000`, full-suite B5 `0.4444`.
