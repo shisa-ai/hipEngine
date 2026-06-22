@@ -14,6 +14,7 @@ from scripts.gguf_mtp_category_bench import (
     BenchError,
     build_split_contract,
     build_summary,
+    compare_objective_metrics,
     load_prompt_rows,
     objective_metrics_for_budget,
     validate_speed_claim_contract,
@@ -316,6 +317,85 @@ def test_objective_metrics_for_budget_requires_true_ar_and_reports_splits(tmp_pa
     assert metrics["heldout"]["prompts"] == 2
     assert metrics["heldout"]["accepted_per_output"] == pytest.approx(6 / 30)
     assert metrics["heldout_ids"] == ["code_markdown_table", "general_en_explain"]
+
+
+def _objective_summary(tmp_path: Path, name: str, *, accepted: list[int], draft_ms: float) -> dict:
+    baseline_path = tmp_path / f"{name}-true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [
+            {"id": "code_merge_intervals", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
+            {"id": "code_markdown_table", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
+            {"id": "general_en_plan", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+            {"id": "general_en_explain", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
+        ],
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [
+        {"id": "code_merge_intervals", "category": "code", "prompt": "write code"},
+        {"id": "code_markdown_table", "category": "code", "prompt": "write table"},
+        {"id": "general_en_plan", "category": "general_en", "prompt": "plan"},
+        {"id": "general_en_explain", "category": "general_en", "prompt": "explain"},
+    ]
+    outputs = [10, 10, 20, 20]
+    ar_ms = [100.0, 100.0, 200.0, 200.0]
+    raw = {
+        1: [
+            _row(prompt["id"], prompt["category"], output=output, accepted=acc, drafts=1, ar_ms=ar, draft_ms=draft_ms)
+            for prompt, output, acc, ar in zip(prompts, outputs, accepted, ar_ms, strict=True)
+        ]
+    }
+    return build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(tmp_path: Path) -> None:
+    baseline = _objective_summary(tmp_path, "baseline", accepted=[1, 2, 3, 4], draft_ms=20.0)
+    candidate = _objective_summary(tmp_path, "candidate", accepted=[2, 3, 4, 5], draft_ms=10.0)
+
+    comparison = compare_objective_metrics(baseline, candidate, "b1")
+
+    assert comparison["passed"] is True
+    assert comparison["regressions"] == []
+    assert comparison["deltas"]["full"]["accepted_per_output"] > 0
+    assert comparison["deltas"]["heldout"]["accepted_per_output"] > 0
+    assert comparison["deltas"]["full"]["mtp_vs_true_ar_decode_ratio"] > 0
+    assert "train deltas are report-only" in comparison["decision_rule"]
+
+
+def test_compare_objective_metrics_rejects_heldout_acceptance_regression(tmp_path: Path) -> None:
+    baseline = _objective_summary(tmp_path, "baseline", accepted=[1, 2, 3, 4], draft_ms=10.0)
+    candidate = _objective_summary(tmp_path, "candidate", accepted=[5, 1, 5, 1], draft_ms=10.0)
+
+    comparison = compare_objective_metrics(baseline, candidate, "b1")
+
+    assert comparison["passed"] is False
+    assert {
+        "split": "heldout",
+        "field": "accepted_per_output",
+        "baseline": comparison["baseline"]["heldout"]["accepted_per_output"],
+        "candidate": comparison["candidate"]["heldout"]["accepted_per_output"],
+        "delta": comparison["deltas"]["heldout"]["accepted_per_output"],
+    } in comparison["regressions"]
+    assert comparison["deltas"]["train"]["accepted_per_output"] > 0
+
+
+def test_compare_objective_metrics_rejects_true_ar_ratio_regression(tmp_path: Path) -> None:
+    baseline = _objective_summary(tmp_path, "baseline", accepted=[1, 2, 3, 4], draft_ms=10.0)
+    candidate = _objective_summary(tmp_path, "candidate", accepted=[1, 2, 3, 4], draft_ms=200.0)
+
+    comparison = compare_objective_metrics(baseline, candidate, "b1")
+
+    assert comparison["passed"] is False
+    assert any(
+        regression["field"] == "mtp_vs_true_ar_decode_ratio" and regression["split"] in {"full", "heldout"}
+        for regression in comparison["regressions"]
+    )
 
 
 def test_objective_metrics_for_budget_rejects_verifier_only_summary() -> None:

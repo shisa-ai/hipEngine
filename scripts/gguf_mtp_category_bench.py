@@ -436,6 +436,68 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     return out
 
 
+def compare_objective_metrics(
+    baseline_summary: dict[str, Any],
+    candidate_summary: dict[str, Any],
+    budget_label: str | int,
+    *,
+    tolerance: float = 0.0,
+) -> dict[str, Any]:
+    """Compare candidate objective metrics against a baseline.
+
+    The returned `passed` flag is intentionally conservative for future
+    keep/revert loops: full-suite and heldout acceptance plus true-AR speed ratio
+    must not regress. Train deltas are reported, but train-only gains cannot pass
+    if full or heldout regress.
+    """
+    if tolerance < 0.0:
+        raise BenchError("objective comparison tolerance must be non-negative")
+    baseline = objective_metrics_for_budget(baseline_summary, budget_label)
+    candidate = objective_metrics_for_budget(candidate_summary, budget_label)
+    if baseline["heldout_ids"] != candidate["heldout_ids"]:
+        raise BenchError("objective comparison requires identical heldout_ids")
+    if baseline["train_ids"] != candidate["train_ids"]:
+        raise BenchError("objective comparison requires identical train_ids")
+
+    fields = ("accepted_per_output", "draft_acceptance", "decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio")
+    deltas: dict[str, dict[str, float]] = {}
+    for split_name in ("full", "train", "heldout"):
+        deltas[split_name] = {
+            field: float(candidate[split_name][field]) - float(baseline[split_name][field])
+            for field in fields
+        }
+
+    regressions: list[dict[str, Any]] = []
+    gated_fields = ("accepted_per_output", "draft_acceptance", "mtp_vs_true_ar_decode_ratio")
+    for split_name in ("full", "heldout"):
+        for field in gated_fields:
+            delta = deltas[split_name][field]
+            if delta < -tolerance:
+                regressions.append(
+                    {
+                        "split": split_name,
+                        "field": field,
+                        "baseline": float(baseline[split_name][field]),
+                        "candidate": float(candidate[split_name][field]),
+                        "delta": delta,
+                    }
+                )
+
+    return {
+        "budget": baseline["budget"],
+        "passed": not regressions,
+        "regressions": regressions,
+        "tolerance": tolerance,
+        "baseline": baseline,
+        "candidate": candidate,
+        "deltas": deltas,
+        "decision_rule": (
+            "full and heldout accepted_per_output, draft_acceptance, and "
+            "mtp_vs_true_ar_decode_ratio must not regress; train deltas are report-only"
+        ),
+    }
+
+
 def populate_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
     """Populate top-level objective metrics when all guardrails are satisfied."""
     summary["objective_metrics_available"] = False

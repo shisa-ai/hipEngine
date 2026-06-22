@@ -116449,3 +116449,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 29 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 19: objective comparison helper
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 19.
+- Focused harness-readiness change: provide a machine-checkable comparison helper for future optimize loop keep/reject decisions.
+
+### Change
+- Added `scripts.gguf_mtp_category_bench.compare_objective_metrics(baseline_summary, candidate_summary, budget)`.
+- It consumes the guarded objective bundles and returns:
+  - baseline objective metrics;
+  - candidate objective metrics;
+  - full/train/heldout deltas;
+  - conservative `passed` decision;
+  - explicit `regressions` list.
+- Decision rule:
+  - full and heldout `accepted_per_output`, `draft_acceptance`, and `mtp_vs_true_ar_decode_ratio` must not regress;
+  - train deltas are report-only, so train-only gains cannot pass when full or heldout regress.
+- Added tests for:
+  - passing candidate with full/heldout non-regression;
+  - rejecting heldout acceptance regression despite train improvement;
+  - rejecting MTP/true-AR ratio regression.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance metric changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 32 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
