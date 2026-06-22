@@ -116999,3 +116999,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 37: require repo provenance for objective artifacts
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 37.
+- Focused current-schema provenance contract: objective extraction/comparison should not accept artifacts that omit code-state metadata.
+
+### Change
+- Added `REPO_PROVENANCE_FIELDS` and `validate_repo_provenance()` to `scripts/gguf_mtp_category_bench.py`.
+- True-AR attachment now validates `repo` metadata in the source true-AR artifact and carries it into `summary["true_ar_baseline"]["repo"]`.
+- `objective_metrics_for_budget()` now requires repo metadata on both the MTP summary and attached true-AR baseline, and exposes `summary_repo` / `true_ar_repo` in objective output.
+- `validate_speed_claim_contract()` now requires repo metadata when a summary is marked `speed_claim_eligible=true`.
+- Added regression tests for missing summary repo, missing attached true-AR repo, and missing true-AR artifact repo provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 56 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

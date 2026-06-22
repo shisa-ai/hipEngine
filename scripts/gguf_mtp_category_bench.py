@@ -51,6 +51,7 @@ DEFAULT_HELDOUT_PROMPT_IDS = frozenset(
         "mixed_ja_en_review",
     }
 )
+REPO_PROVENANCE_FIELDS = ("repo_root", "git_commit", "git_branch", "git_tracked_dirty", "git_untracked_count")
 
 
 class BenchError(RuntimeError):
@@ -129,6 +130,27 @@ def repo_provenance() -> dict[str, Any]:
         "git_tracked_dirty": tracked_dirty,
         "git_untracked_count": untracked_count,
     }
+
+
+def validate_repo_provenance(payload: dict[str, Any], *, label: str) -> dict[str, Any]:
+    repo = payload.get("repo")
+    if not isinstance(repo, dict):
+        raise BenchError(f"{label} requires repo provenance metadata")
+    missing = [field for field in REPO_PROVENANCE_FIELDS if field not in repo]
+    if missing:
+        raise BenchError(f"{label} repo provenance missing fields: {missing}")
+    if not isinstance(repo.get("repo_root"), str) or not repo["repo_root"]:
+        raise BenchError(f"{label} repo provenance requires non-empty repo_root")
+    if repo.get("git_commit") is not None and not isinstance(repo.get("git_commit"), str):
+        raise BenchError(f"{label} repo provenance git_commit must be a string or null")
+    if repo.get("git_branch") is not None and not isinstance(repo.get("git_branch"), str):
+        raise BenchError(f"{label} repo provenance git_branch must be a string or null")
+    if repo.get("git_tracked_dirty") is not None and not isinstance(repo.get("git_tracked_dirty"), bool):
+        raise BenchError(f"{label} repo provenance git_tracked_dirty must be a bool or null")
+    if repo.get("git_untracked_count") is not None:
+        if not isinstance(repo.get("git_untracked_count"), int) or repo["git_untracked_count"] < 0:
+            raise BenchError(f"{label} repo provenance git_untracked_count must be a non-negative integer or null")
+    return {field: repo.get(field) for field in REPO_PROVENANCE_FIELDS}
 
 
 def run_one(
@@ -375,7 +397,7 @@ def build_split_summaries(prompts: list[dict[str, Any]], raw: dict[int, list[dic
     }
 
 
-def true_ar_rows_from_artifact(path: Path) -> list[dict[str, Any]]:
+def true_ar_artifact_from_path(path: Path) -> dict[str, Any]:
     artifact = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(artifact, dict):
         raise BenchError("true AR baseline artifact must be a JSON object")
@@ -385,10 +407,15 @@ def true_ar_rows_from_artifact(path: Path) -> list[dict[str, Any]]:
         raise BenchError("true AR baseline artifact must set same_prompt_suite=true")
     if artifact.get("same_timing_protocol") is not True:
         raise BenchError("true AR baseline artifact must set same_timing_protocol=true")
+    validate_repo_provenance(artifact, label="true AR baseline artifact")
     rows = artifact.get("prompt_metrics")
     if not isinstance(rows, list) or not rows:
         raise BenchError("true AR baseline artifact must contain non-empty prompt_metrics[]")
-    return rows
+    return artifact
+
+
+def true_ar_rows_from_artifact(path: Path) -> list[dict[str, Any]]:
+    return true_ar_artifact_from_path(path)["prompt_metrics"]
 
 
 def validate_true_ar_prompt_rows(*, rows: list[dict[str, Any]], prompts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -439,7 +466,7 @@ def aggregate_true_ar_rows(rows_by_id: dict[str, dict[str, Any]], prompt_ids: li
     }
 
 
-def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path) -> dict[str, Any]:
+def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, dict[str, Any]], source: Path, repo: dict[str, Any]) -> dict[str, Any]:
     prompt_ids = [str(row["id"]) for row in summary["prompts"]]
     full_metric = aggregate_true_ar_rows(rows_by_id, prompt_ids)
     category_metrics = {
@@ -458,6 +485,7 @@ def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, di
         "same_prompt_suite": True,
         "same_timing_protocol": True,
         "source": str(source),
+        "repo": repo,
         "prompt_count": len(prompt_ids),
         "totals": full_metric,
         "categories": category_metrics,
@@ -510,6 +538,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     """
     if not summary.get("speed_claim_eligible", False):
         return summary
+    validate_repo_provenance(summary, label="speed-claim summary")
     true_ar = summary.get("true_ar_baseline")
     if not isinstance(true_ar, dict):
         raise BenchError("speed_claim_eligible=true requires true_ar_baseline metadata")
@@ -519,6 +548,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
         raise BenchError("speed_claim_eligible=true requires true AR measured on the same prompt suite")
     if true_ar.get("same_timing_protocol") is not True:
         raise BenchError("speed_claim_eligible=true requires true AR measured with the same timing protocol")
+    validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
     return summary
 
 
@@ -533,11 +563,13 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     label = f"b{budget_label}" if isinstance(budget_label, int) or str(budget_label).isdigit() else str(budget_label)
     if label == "off" or not label.startswith("b"):
         raise BenchError(f"objective budget must be an MTP budget label like b5, got {budget_label!r}")
+    validate_repo_provenance(summary, label="objective summary")
     if summary.get("true_ar_comparison_available") is not True:
         raise BenchError("objective metrics require true_ar_comparison_available=true")
     true_ar = summary.get("true_ar_baseline")
     if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
         raise BenchError("objective metrics require an attached true_ar_baseline")
+    validate_repo_provenance(true_ar, label="attached true_ar_baseline")
     splits = summary.get("splits")
     if not isinstance(splits, dict):
         raise BenchError("objective metrics require splits")
@@ -552,6 +584,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "true_ar_comparison_available": True,
         "speed_claim_eligible": bool(summary.get("speed_claim_eligible", False)),
         "performance_claim": bool(summary.get("performance_claim", False)),
+        "summary_repo": validate_repo_provenance(summary, label="objective summary"),
+        "true_ar_repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "heldout_ids": list(contract.get("heldout_ids", [])),
         "train_ids": list(contract.get("train_ids", [])),
     }
@@ -603,6 +637,7 @@ def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
         raise BenchError("objective comparison requires attached true_ar_baseline metadata")
     return {
         "source": true_ar.get("source"),
+        "repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "prompt_count": true_ar.get("prompt_count"),
         "totals": true_ar.get("totals"),
         "categories": true_ar.get("categories"),
@@ -808,8 +843,10 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     }
     if true_ar_baseline_json:
         true_ar_path = Path(true_ar_baseline_json)
-        rows_by_id = validate_true_ar_prompt_rows(rows=true_ar_rows_from_artifact(true_ar_path), prompts=prompts)
-        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path)
+        true_ar_artifact = true_ar_artifact_from_path(true_ar_path)
+        true_ar_repo = validate_repo_provenance(true_ar_artifact, label="true AR baseline artifact")
+        rows_by_id = validate_true_ar_prompt_rows(rows=true_ar_artifact["prompt_metrics"], prompts=prompts)
+        return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo)
     return validate_speed_claim_contract(summary)
 
 
