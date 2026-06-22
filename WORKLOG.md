@@ -120828,3 +120828,42 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 - Retained. Current default is branch-redraft root-K8/sibling-K9/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5475`, heldout `0.6078`, categories non-regressive.
 - Added compact artifact and benchmark rollup/changelog entries:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-ungated-rootk8-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 169: root-K9 rejected under branch-redraft ungated root tail
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 169.
+- Tested wider root search (`root_topk_accept=9`) after the retained branch-redraft + ungated-root-tail root-K8 policy. Rank-9 root branches can redraft from the accepted branch token, while exact target verification rejects incorrect candidates.
+
+### Focused B5 validation
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 9 --output /tmp/hipengine-mtp-branch-redraft-ungated-rootk9-iter169-b5-20.json
+```
+- Focused accepted/output matched the current root-K8 default: `0.5349`.
+- Candidate accounting regressed: `23/750 -> 23/770`, `accept_per_draft 0.0307 -> 0.0299`.
+- Branch/redraft counts were unchanged (`8` branch accepts/redrafts; branch depths `{0: 6, 1: 2}`).
+- Diagnostic tok/s `13.50`, `speedup_vs_ar_visible=0.6949x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-ungated-rootk9-full-20260623-053909/raw --output /tmp/hipengine-branch-redraft-ungated-rootk9-full-20260623-053909/summary.json --extra-arg=--root-topk-accept --extra-arg=9
+```
+- Aggregate accepted/output improved over the current root-K8 default: full `0.547511 -> 0.553571`, train `0.495798 -> 0.508197`, heldout non-regressive `0.607843 -> 0.607843`.
+- Per-category accepted/output was mixed: code `0.444444 -> 0.444444`, general_en `0.642857 -> 0.661017`, general_ja `0.487179 -> 0.523810`, but mixed_ja_en regressed `0.629630 -> 0.607843`.
+- Full draft acceptance also regressed slightly: `0.031734 -> 0.031584` (`121/3813 -> 124/3926`).
+- Diagnostic weighted decode tok/s `12.9623 -> 13.0504`, verifier-derived ratio `0.6629 -> 0.6602`. Speed remains diagnostic only and is not a true no-MTP AR claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify, 322 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard, 322 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: this evaluates a generic root top-k threshold under exact verification and branch redraft. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches. Full/train/heldout/per-category metrics are reported. Speed remains verifier-derived diagnostic only.
+
+### Result
+- Not retained. Root-K9 improves aggregate full/train acceptance but violates the per-category non-regression requirement by regressing mixed_ja_en and worsens focused/full draft efficiency.
+- Current default remains branch-redraft root-K8/sibling-K9/depth≤3 with ungated root tail (`root_tail_max_prev_accepted=-1`): focused B5 `0.5349`, full-suite B5 `0.5475`.
