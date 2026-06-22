@@ -327,13 +327,32 @@ def test_speed_claim_contract_accepts_same_protocol_true_ar_baseline() -> None:
     assert validate_speed_claim_contract(summary) is summary
 
 
-def _write_true_ar_baseline(path: Path, rows: list[dict], *, same_prompt_suite: bool | None = True, include_repo: bool = True) -> None:
+def _write_true_ar_baseline(
+    path: Path,
+    rows: list[dict],
+    *,
+    prompt_text_by_id: dict[str, str],
+    same_prompt_suite: bool | None = True,
+    include_repo: bool = True,
+    include_prompt_hashes: bool = True,
+    include_row_hashes: bool = True,
+) -> None:
+    prompt_hashes = {str(prompt_id): prompt_sha256(text) for prompt_id, text in prompt_text_by_id.items()}
+    metric_rows = []
+    for row in rows:
+        row_copy = dict(row)
+        prompt_id = str(row_copy.get("id") or row_copy.get("prompt_id") or "")
+        if include_row_hashes and prompt_id in prompt_hashes:
+            row_copy.setdefault("prompt_sha256", prompt_hashes[prompt_id])
+        metric_rows.append(row_copy)
     payload = {
         "kind": "hipengine_gguf_true_ar_category_baseline",
         "true_autoregressive_path": True,
         "same_timing_protocol": True,
-        "prompt_metrics": rows,
+        "prompt_metrics": metric_rows,
     }
+    if include_prompt_hashes:
+        payload["prompt_hashes"] = prompt_hashes
     if include_repo:
         payload["repo"] = dict(TEST_REPO_PROVENANCE)
     if same_prompt_suite is not None:
@@ -343,12 +362,17 @@ def _write_true_ar_baseline(path: Path, rows: list[dict], *, same_prompt_suite: 
 
 def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> None:
     baseline_path = tmp_path / "true-ar.json"
+    prompts = [
+        {"id": "code_1", "category": "code", "prompt": "write code"},
+        {"id": "general_1", "category": "general_en", "prompt": "explain"},
+    ]
     _write_true_ar_baseline(
         baseline_path,
         [
             {"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
             {"id": "general_1", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
         ],
+        prompt_text_by_id={row["id"]: row["prompt"] for row in prompts},
     )
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -357,10 +381,6 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
         raw_root="/tmp/raw",
         true_ar_baseline_json=baseline_path,
     )
-    prompts = [
-        {"id": "code_1", "category": "code", "prompt": "write code"},
-        {"id": "general_1", "category": "general_en", "prompt": "explain"},
-    ]
     raw = {
         1: [
             _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
@@ -397,6 +417,7 @@ def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int]
             {"id": row["id"], "category": row["category"], "output_tokens": 10, "decode_ms": 100.0}
             for row in prompts
         ],
+        prompt_text_by_id={row["id"]: row["prompt"] for row in prompts},
     )
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -459,6 +480,12 @@ def test_objective_metrics_for_budget_rejects_missing_attached_true_ar_repo_prov
 
 def test_objective_metrics_for_budget_rejects_partial_suite_even_with_present_category_heldouts(tmp_path: Path) -> None:
     baseline_path = tmp_path / "partial-true-ar.json"
+    prompts = [
+        {"id": "code_merge_intervals", "category": "code", "prompt": "write code"},
+        {"id": "code_markdown_table", "category": "code", "prompt": "write table"},
+        {"id": "general_en_plan", "category": "general_en", "prompt": "plan"},
+        {"id": "general_en_explain", "category": "general_en", "prompt": "explain"},
+    ]
     _write_true_ar_baseline(
         baseline_path,
         [
@@ -467,6 +494,7 @@ def test_objective_metrics_for_budget_rejects_partial_suite_even_with_present_ca
             {"id": "general_en_plan", "category": "general_en", "output_tokens": 10, "decode_ms": 100.0},
             {"id": "general_en_explain", "category": "general_en", "output_tokens": 10, "decode_ms": 100.0},
         ],
+        prompt_text_by_id={row["id"]: row["prompt"] for row in prompts},
     )
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -475,12 +503,6 @@ def test_objective_metrics_for_budget_rejects_partial_suite_even_with_present_ca
         raw_root="/tmp/raw",
         true_ar_baseline_json=baseline_path,
     )
-    prompts = [
-        {"id": "code_merge_intervals", "category": "code", "prompt": "write code"},
-        {"id": "code_markdown_table", "category": "code", "prompt": "write table"},
-        {"id": "general_en_plan", "category": "general_en", "prompt": "plan"},
-        {"id": "general_en_explain", "category": "general_en", "prompt": "explain"},
-    ]
     raw = {
         1: [
             _row(row["id"], row["category"], output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
@@ -774,7 +796,7 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
     baseline_path = tmp_path / "true-ar.json"
     row = {"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}
     row.update(row_patch)
-    _write_true_ar_baseline(baseline_path, [row])
+    _write_true_ar_baseline(baseline_path, [row], prompt_text_by_id={"code_1": "write code"})
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
         prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
@@ -794,6 +816,7 @@ def test_category_summary_rejects_true_ar_baseline_without_repo_provenance(tmp_p
     _write_true_ar_baseline(
         baseline_path,
         [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
         include_repo=False,
     )
     args = SimpleNamespace(
@@ -815,6 +838,7 @@ def test_category_summary_rejects_true_ar_prompt_hash_mismatch(tmp_path: Path) -
     _write_true_ar_baseline(
         baseline_path,
         [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0, "prompt_sha256": "0" * 64}],
+        prompt_text_by_id={"code_1": "write code"},
     )
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -830,6 +854,50 @@ def test_category_summary_rejects_true_ar_prompt_hash_mismatch(tmp_path: Path) -
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_true_ar_baseline_without_prompt_hashes(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        include_prompt_hashes=False,
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="requires prompt_hashes metadata"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
+def test_category_summary_rejects_true_ar_baseline_without_row_prompt_hash(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        include_row_hashes=False,
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="requires prompt_sha256"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_flag(tmp_path: Path) -> None:
     baseline_path = tmp_path / "true-ar.json"
     _write_true_ar_baseline(
@@ -838,6 +906,7 @@ def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_fla
             {"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
             {"id": "general_1", "category": "general_en", "output_tokens": 20, "decode_ms": 200.0},
         ],
+        prompt_text_by_id={"code_1": "write code", "general_1": "explain"},
         same_prompt_suite=None,
     )
     args = SimpleNamespace(
@@ -869,6 +938,7 @@ def test_category_summary_rejects_true_ar_baseline_with_missing_prompt(tmp_path:
         [
             {"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0},
         ],
+        prompt_text_by_id={"code_1": "write code", "general_1": "explain"},
     )
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -973,6 +1043,7 @@ def test_markdown_separates_true_ar_from_verifier_off(tmp_path: Path) -> None:
     _write_true_ar_baseline(
         baseline_path,
         [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
     )
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

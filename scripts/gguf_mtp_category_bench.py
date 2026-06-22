@@ -418,8 +418,29 @@ def true_ar_rows_from_artifact(path: Path) -> list[dict[str, Any]]:
     return true_ar_artifact_from_path(path)["prompt_metrics"]
 
 
-def validate_true_ar_prompt_rows(*, rows: list[dict[str, Any]], prompts: list[dict[str, Any]]) -> dict[str, Any]:
+def validate_true_ar_prompt_rows(*, artifact: dict[str, Any], prompts: list[dict[str, Any]]) -> dict[str, Any]:
     prompt_by_id = {str(row["id"]): row for row in prompts}
+    expected_hashes = {prompt_id: prompt_sha256(str(row["prompt"])) for prompt_id, row in prompt_by_id.items()}
+    prompt_hashes = artifact.get("prompt_hashes")
+    if not isinstance(prompt_hashes, dict):
+        raise BenchError("true AR baseline artifact requires prompt_hashes metadata")
+    normalized_hashes = {str(prompt_id): str(value) for prompt_id, value in prompt_hashes.items()}
+    if normalized_hashes != expected_hashes:
+        missing = sorted(set(expected_hashes) - set(normalized_hashes))
+        extra = sorted(set(normalized_hashes) - set(expected_hashes))
+        mismatched = sorted(
+            prompt_id
+            for prompt_id in set(expected_hashes).intersection(normalized_hashes)
+            if normalized_hashes[prompt_id] != expected_hashes[prompt_id]
+        )
+        raise BenchError(
+            "true AR prompt_hashes must exactly match selected prompt text; "
+            f"missing={missing}, extra={extra}, mismatched={mismatched}"
+        )
+
+    rows = artifact.get("prompt_metrics")
+    if not isinstance(rows, list) or not rows:
+        raise BenchError("true AR baseline artifact must contain non-empty prompt_metrics[]")
     seen: dict[str, dict[str, Any]] = {}
     for row in rows:
         prompt_id = str(row.get("id") or row.get("prompt_id") or "")
@@ -430,14 +451,14 @@ def validate_true_ar_prompt_rows(*, rows: list[dict[str, Any]], prompts: list[di
         if prompt_id not in prompt_by_id:
             raise BenchError(f"true AR prompt id not in selected prompt suite: {prompt_id}")
         category = str(row.get("category") or "")
-        prompt = str(prompt_by_id[prompt_id]["prompt"])
         expected_category = str(prompt_by_id[prompt_id]["category"])
         if category != expected_category:
             raise BenchError(f"true AR category mismatch for {prompt_id}: {category!r} != {expected_category!r}")
         row_hash = row.get("prompt_sha256")
-        expected_hash = prompt_sha256(prompt)
-        if row_hash is not None and str(row_hash) != expected_hash:
-            raise BenchError(f"true AR prompt hash mismatch for {prompt_id}: {row_hash!r} != {expected_hash!r}")
+        if row_hash is None:
+            raise BenchError(f"true AR prompt_metrics row requires prompt_sha256 for {prompt_id}")
+        if str(row_hash) != expected_hashes[prompt_id]:
+            raise BenchError(f"true AR prompt hash mismatch for {prompt_id}: {row_hash!r} != {expected_hashes[prompt_id]!r}")
         output_tokens = int(row.get("output_tokens") or 0)
         decode_ms = finite_float(row.get("decode_ms"), prompt_id=prompt_id, field="true_ar.prompt_metrics[].decode_ms")
         if output_tokens <= 0:
@@ -845,7 +866,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         true_ar_path = Path(true_ar_baseline_json)
         true_ar_artifact = true_ar_artifact_from_path(true_ar_path)
         true_ar_repo = validate_repo_provenance(true_ar_artifact, label="true AR baseline artifact")
-        rows_by_id = validate_true_ar_prompt_rows(rows=true_ar_artifact["prompt_metrics"], prompts=prompts)
+        rows_by_id = validate_true_ar_prompt_rows(artifact=true_ar_artifact, prompts=prompts)
         return attach_true_ar_baseline(summary, rows_by_id=rows_by_id, source=true_ar_path, repo=true_ar_repo)
     return validate_speed_claim_contract(summary)
 

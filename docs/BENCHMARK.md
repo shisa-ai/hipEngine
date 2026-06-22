@@ -96,8 +96,10 @@ acceptance loops.
 
    The artifact must set `kind=hipengine_gguf_true_ar_category_baseline`,
    `true_autoregressive_path=true`, `same_prompt_suite=true`, and
-   `same_timing_protocol=true`, and must contain one `prompt_metrics[]` row per
-   selected prompt with positive `output_tokens` and `decode_ms`.
+   `same_timing_protocol=true`; include `repo` code-state provenance; include
+   top-level `prompt_hashes`; and contain one `prompt_metrics[]` row per
+   selected prompt with `prompt_sha256` plus positive `output_tokens` and
+   `decode_ms`.
 
 2. **Attach AR to the MTP category matrix.** Run the MTP diagnostic over the same
    prompts/budgets and attach the AR artifact:
@@ -141,7 +143,8 @@ acceptance loops.
    ```
 
    This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
-   artifacts without a same-protocol true-AR baseline. The returned JSON contains
+   artifacts without a same-protocol true-AR baseline, repo provenance, and
+   prompt-hash provenance. The returned JSON contains
    full/train/heldout `accepted_per_output`, `draft_acceptance`,
    `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.
 

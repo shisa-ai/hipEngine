@@ -117024,3 +117024,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
 ```
 - Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 38: require prompt hashes on attached true-AR artifacts
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 38.
+- Focused current-schema prompt provenance contract: a true-AR artifact can no longer be attached using only `same_prompt_suite=true`; it must carry machine-checkable prompt text hashes.
+
+### Change
+- `validate_true_ar_prompt_rows()` now consumes the full true-AR artifact and requires:
+  - top-level `prompt_hashes` exactly matching the selected prompt IDs/text;
+  - per-row `prompt_metrics[].prompt_sha256` for every prompt;
+  - per-row prompt hash equality against the selected prompt text.
+- The true-AR producer already emits this schema; fixture helpers now write current-schema prompt hashes.
+- Added regressions for missing top-level `prompt_hashes` and missing per-row `prompt_sha256`.
+- Updated `docs/BENCHMARK.md` to document the required true-AR repo and prompt-hash provenance.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no runtime prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, no exact-target verifier changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 58 passed
+python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
