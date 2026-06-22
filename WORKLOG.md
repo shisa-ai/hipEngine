@@ -116892,3 +116892,34 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 51 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 34: prompt hash provenance guard
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 34.
+- Focused prompt-protocol integrity guard: make same-length prompt text changes visible in summary/true-AR artifacts and objective comparisons.
+
+### Change
+- Added `prompt_sha256()` to `scripts/gguf_mtp_category_bench.py`.
+- Category summaries now include `prompt_sha256` in each top-level `prompts[]` metadata row.
+- `scripts/gguf_true_ar_category_bench.py` now emits:
+  - top-level `prompt_hashes` keyed by prompt ID;
+  - per-row `prompt_sha256` in `prompt_metrics[]`.
+- Attached true-AR rows that include `prompt_sha256` are validated against the selected prompt text.
+- Existing comparison protocol metadata now catches same-length prompt changes via `prompt_sha256`, not only `prompt_chars`.
+- Added regression tests for:
+  - prompt hash emission in category/true-AR artifacts;
+  - true-AR prompt hash mismatch rejection;
+  - protocol comparison rejection on changed prompt hash.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 53 passed
+python3 -m py_compile scripts/gguf_true_ar_category_bench.py
+```
+- Same pytest command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

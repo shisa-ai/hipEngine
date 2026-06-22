@@ -16,6 +16,7 @@ baseline under the same prompt suite and timing protocol.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import subprocess
@@ -94,6 +95,10 @@ def load_prompt_rows(path: Path) -> list[dict[str, Any]]:
 
 def safe_name(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in value)
+
+
+def prompt_sha256(prompt: str) -> str:
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
 def run_one(
@@ -368,9 +373,14 @@ def validate_true_ar_prompt_rows(*, rows: list[dict[str, Any]], prompts: list[di
         if prompt_id not in prompt_by_id:
             raise BenchError(f"true AR prompt id not in selected prompt suite: {prompt_id}")
         category = str(row.get("category") or "")
+        prompt = str(prompt_by_id[prompt_id]["prompt"])
         expected_category = str(prompt_by_id[prompt_id]["category"])
         if category != expected_category:
             raise BenchError(f"true AR category mismatch for {prompt_id}: {category!r} != {expected_category!r}")
+        row_hash = row.get("prompt_sha256")
+        expected_hash = prompt_sha256(prompt)
+        if row_hash is not None and str(row_hash) != expected_hash:
+            raise BenchError(f"true AR prompt hash mismatch for {prompt_id}: {row_hash!r} != {expected_hash!r}")
         output_tokens = int(row.get("output_tokens") or 0)
         decode_ms = finite_float(row.get("decode_ms"), prompt_id=prompt_id, field="true_ar.prompt_metrics[].decode_ms")
         if output_tokens <= 0:
@@ -761,7 +771,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         "splits": split_summaries,
         "best": best,
         "prompts": [
-            {"id": row["id"], "category": row["category"], "prompt_chars": len(row["prompt"])}
+            {"id": row["id"], "category": row["category"], "prompt_chars": len(row["prompt"]), "prompt_sha256": prompt_sha256(row["prompt"])}
             for row in prompts
         ],
     }

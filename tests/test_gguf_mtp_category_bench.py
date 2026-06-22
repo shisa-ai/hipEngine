@@ -19,6 +19,7 @@ from scripts.gguf_mtp_category_bench import (
     compare_objective_metrics,
     load_prompt_rows,
     objective_metrics_for_budget,
+    prompt_sha256,
     validate_speed_claim_contract,
     write_markdown,
 )
@@ -92,6 +93,7 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
         "same_timing_protocol": False,
         "source": None,
     }
+    assert summary["prompts"][0]["prompt_sha256"] == prompt_sha256("write code")
     assert summary["totals"]["off"]["baseline_kind"] == "verifier_derived_from_b1_target_ar"
     assert summary["totals"]["off"]["true_autoregressive_path"] is False
     assert summary["categories"]["code"]["off"]["true_autoregressive_path"] is False
@@ -488,6 +490,7 @@ def test_compare_objective_metrics_rejects_changed_true_ar_baseline(tmp_path: Pa
     [
         lambda summary: summary.update({"cycles": 2}),
         lambda summary: summary["prompts"][0].update({"prompt_chars": summary["prompts"][0]["prompt_chars"] + 1}),
+        lambda summary: summary["prompts"][0].update({"prompt_sha256": "0" * 64}),
     ],
 )
 def test_compare_objective_metrics_rejects_changed_protocol_metadata(tmp_path: Path, mutate) -> None:
@@ -752,6 +755,26 @@ def test_category_summary_rejects_invalid_true_ar_prompt_metrics(tmp_path: Path,
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_true_ar_prompt_hash_mismatch(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0, "prompt_sha256": "0" * 64}],
+    )
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR prompt hash mismatch"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_flag(tmp_path: Path) -> None:
     baseline_path = tmp_path / "true-ar.json"
     _write_true_ar_baseline(
@@ -838,6 +861,9 @@ def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
     assert artifact["same_timing_protocol"] is True
     assert artifact["same_prompt_suite"] is True
     assert artifact["prompt_ids"] == ["code_1", "general_1"]
+    assert artifact["prompt_hashes"] == {"code_1": prompt_sha256("write code"), "general_1": prompt_sha256("explain")}
+    assert artifact["prompt_metrics"][0]["prompt_sha256"] == prompt_sha256("write code")
+    assert artifact["prompt_metrics"][1]["prompt_sha256"] == prompt_sha256("explain")
     assert artifact["totals"]["decode_tok_s_weighted"] == pytest.approx(64 / 0.960)
     assert artifact["categories"]["code"]["decode_tok_s_weighted"] == pytest.approx(50.0)
     assert artifact["categories"]["general_en"]["decode_tok_s_weighted"] == pytest.approx(100.0)
@@ -955,6 +981,7 @@ def test_true_ar_category_cli_dry_run_emits_attachable_schema(tmp_path: Path) ->
     assert artifact["same_timing_protocol"] is True
     assert artifact["same_prompt_suite"] is True
     assert artifact["prompt_ids"] == ["code_1", "general_1"]
+    assert artifact["prompt_hashes"] == {"code_1": prompt_sha256("write code"), "general_1": prompt_sha256("explain")}
     assert [row["id"] for row in artifact["prompt_metrics"]] == ["code_1", "general_1"]
     assert all(row["output_tokens"] == 4 for row in artifact["prompt_metrics"])
     assert artifact["totals"]["total_output_tokens"] == 8

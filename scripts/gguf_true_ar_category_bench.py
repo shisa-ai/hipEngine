@@ -29,7 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.gguf_mtp_bench import build_chat_prompt
-from scripts.gguf_mtp_category_bench import DEFAULT_MODEL, DEFAULT_PROMPTS, BenchError, load_prompt_rows, safe_name
+from scripts.gguf_mtp_category_bench import DEFAULT_MODEL, DEFAULT_PROMPTS, BenchError, load_prompt_rows, prompt_sha256, safe_name
 
 
 def exact_command_payload(argv: Sequence[object]) -> dict[str, Any]:
@@ -66,6 +66,9 @@ def build_true_ar_artifact(
     metric_ids = [str(row["id"]) for row in prompt_metrics]
     if metric_ids != prompt_ids:
         raise BenchError(f"prompt_metrics order/ids must match selected prompts: {metric_ids} != {prompt_ids}")
+    for prompt_row, metric_row in zip(prompts, prompt_metrics, strict=True):
+        metric_row.setdefault("prompt_chars", len(str(prompt_row["prompt"])))
+        metric_row.setdefault("prompt_sha256", prompt_sha256(str(prompt_row["prompt"])))
     return {
         "schema": 1,
         "kind": "hipengine_gguf_true_ar_category_baseline",
@@ -82,6 +85,7 @@ def build_true_ar_artifact(
         "warmup_decode_tokens": int(args.warmup_decode_tokens),
         "prompt_count": len(prompts),
         "prompt_ids": prompt_ids,
+        "prompt_hashes": {str(row["id"]): prompt_sha256(str(row["prompt"])) for row in prompts},
         "commands": commands,
         "totals": aggregate_prompt_metrics(prompt_metrics),
         "categories": category_metrics(prompt_metrics),
@@ -138,6 +142,7 @@ def run_prompt_true_ar(
         "id": str(prompt_row["id"]),
         "category": str(prompt_row["category"]),
         "prompt_chars": len(str(prompt_row["prompt"])),
+        "prompt_sha256": prompt_sha256(str(prompt_row["prompt"])),
         "prompt_tokens": len(prompt_tokens),
         "output_tokens": int(decode_tokens),
         "decode_ms": decode_ms,
@@ -197,6 +202,7 @@ def main() -> int:
                 "id": row["id"],
                 "category": row["category"],
                 "prompt_chars": len(row["prompt"]),
+                "prompt_sha256": prompt_sha256(row["prompt"]),
                 "prompt_tokens": None,
                 "output_tokens": int(args.decode_tokens),
                 "decode_ms": 1.0,
