@@ -154,7 +154,23 @@ def cycle_sum(row: dict[str, Any], key: str) -> float:
     return float(sum(float(c.get(key, 0.0) or 0.0) for c in row.get("cycles", [])))
 
 
+def validate_metric_row(row: dict[str, Any]) -> None:
+    metrics = row.get("metrics")
+    if not isinstance(metrics, dict):
+        raise BenchError("category row missing metrics")
+    prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
+    total_output = int(metrics.get("total_output_tokens") or 0)
+    total_accepted = int(metrics.get("total_accepted") or 0)
+    total_drafts = int(metrics.get("total_drafts") or 0)
+    if total_output < 0 or total_accepted < 0 or total_drafts < 0:
+        raise BenchError(f"negative metric in row {prompt_id}: output={total_output}, accepted={total_accepted}, drafts={total_drafts}")
+    if total_accepted > total_drafts:
+        raise BenchError(f"accepted draft tokens exceed proposed drafts for {prompt_id}: {total_accepted} > {total_drafts}")
+
+
 def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None) -> dict[str, Any]:
+    for row in rows:
+        validate_metric_row(row)
     total_output = sum(int(row["metrics"]["total_output_tokens"]) for row in rows)
     total_accepted = sum(int(row["metrics"]["total_accepted"]) for row in rows)
     total_drafts = sum(int(row["metrics"]["total_drafts"]) for row in rows)

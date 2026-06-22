@@ -116637,3 +116637,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 37 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 25: reject impossible acceptance rows
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 25.
+- Focused artifact-integrity guard: prevent future objective loops from consuming malformed category rows with physically impossible acceptance metrics.
+
+### Change
+- Added row-level metric validation in `scripts/gguf_mtp_category_bench.py` aggregation:
+  - reject missing/non-dict `metrics`;
+  - reject negative `total_output_tokens`, `total_accepted`, or `total_drafts`;
+  - reject `total_accepted > total_drafts`.
+- Added a regression test for impossible accepted/draft counts.
+- Fixed synthetic unit fixtures that had impossible `accepted > drafts` counts; the first verify run caught those immediately, confirming the guard is active.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed math changes, no heldout metric calculation changes, and no kernel edits.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# first run failed on impossible synthetic fixtures as intended; after fixture correction:
+# 38 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.

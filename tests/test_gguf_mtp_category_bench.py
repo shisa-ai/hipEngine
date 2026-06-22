@@ -96,6 +96,20 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     assert summary["categories"]["code"]["off"]["true_autoregressive_path"] is False
 
 
+def test_category_summary_rejects_impossible_acceptance_metrics() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=2, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="accepted draft tokens exceed proposed drafts"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_reports_train_heldout_and_full_suite_metrics() -> None:
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -120,7 +134,7 @@ def test_category_summary_reports_train_heldout_and_full_suite_metrics() -> None
         rows = []
         for prompt in prompts:
             is_heldout = prompt["id"] in DEFAULT_HELDOUT_PROMPT_IDS
-            accepted = 2 if is_heldout else 1
+            accepted = min(2 if is_heldout else 1, budget)
             rows.append(
                 _row(
                     prompt["id"],
@@ -251,7 +265,7 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     raw = {
         1: [
             _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
-            _row("general_1", "general_en", output=20, accepted=2, drafts=1, ar_ms=200.0, draft_ms=20.0),
+            _row("general_1", "general_en", output=20, accepted=2, drafts=2, ar_ms=200.0, draft_ms=20.0),
         ]
     }
 
@@ -293,7 +307,7 @@ def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int]
     )
     raw = {
         1: [
-            _row(row["id"], row["category"], output=10, accepted=acc, drafts=1, ar_ms=100.0, draft_ms=draft_ms)
+            _row(row["id"], row["category"], output=10, accepted=acc, drafts=max(acc, 1), ar_ms=100.0, draft_ms=draft_ms)
             for row, acc in zip(prompts, accepted, strict=True)
         ]
     }
@@ -313,7 +327,7 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["speed_claim_eligible"] is False
     assert metrics["performance_claim"] is False
     assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
-    assert metrics["full"]["draft_acceptance"] == pytest.approx(55 / 10)
+    assert metrics["full"]["draft_acceptance"] == pytest.approx(1.0)
     assert metrics["full"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((100.0 / 1100.0 * 1000.0) / 100.0)
     assert metrics["train"]["prompts"] == 6
     assert metrics["train"]["accepted_per_output"] == pytest.approx(27 / 60)
@@ -578,7 +592,7 @@ def test_category_summary_rejects_true_ar_baseline_without_same_prompt_suite_fla
     raw = {
         1: [
             _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
-            _row("general_1", "general_en", output=20, accepted=2, drafts=1, ar_ms=200.0, draft_ms=20.0),
+            _row("general_1", "general_en", output=20, accepted=2, drafts=2, ar_ms=200.0, draft_ms=20.0),
         ]
     }
 
@@ -608,7 +622,7 @@ def test_category_summary_rejects_true_ar_baseline_with_missing_prompt(tmp_path:
     raw = {
         1: [
             _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0),
-            _row("general_1", "general_en", output=20, accepted=2, drafts=1, ar_ms=200.0, draft_ms=20.0),
+            _row("general_1", "general_en", output=20, accepted=2, drafts=2, ar_ms=200.0, draft_ms=20.0),
         ]
     }
 
