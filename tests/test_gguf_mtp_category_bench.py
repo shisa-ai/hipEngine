@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import sys
@@ -479,6 +480,22 @@ def test_compare_objective_metrics_rejects_changed_true_ar_baseline(tmp_path: Pa
     candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0, true_ar_name="candidate-ar")
 
     with pytest.raises(BenchError, match="identical attached true_ar_baseline"):
+        compare_objective_metrics(baseline, candidate, "b1")
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda summary: summary.update({"cycles": 2}),
+        lambda summary: summary["prompts"][0].update({"prompt_chars": summary["prompts"][0]["prompt_chars"] + 1}),
+    ],
+)
+def test_compare_objective_metrics_rejects_changed_protocol_metadata(tmp_path: Path, mutate) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = copy.deepcopy(baseline)
+    mutate(candidate)
+
+    with pytest.raises(BenchError, match="identical benchmark protocol metadata"):
         compare_objective_metrics(baseline, candidate, "b1")
 
 

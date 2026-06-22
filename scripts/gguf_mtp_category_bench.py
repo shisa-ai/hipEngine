@@ -543,6 +543,20 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     return out
 
 
+def summary_protocol_signature(summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": summary.get("kind"),
+        "model": summary.get("model"),
+        "quant": summary.get("quant"),
+        "prompt_file": summary.get("prompt_file"),
+        "cycles": summary.get("cycles"),
+        "prompts": summary.get("prompts"),
+        "default_full_ids": (summary.get("splits") or {}).get("contract", {}).get("default_full_ids"),
+        "heldout_ids": (summary.get("splits") or {}).get("contract", {}).get("heldout_ids"),
+        "train_ids": (summary.get("splits") or {}).get("contract", {}).get("train_ids"),
+    }
+
+
 def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
     true_ar = summary.get("true_ar_baseline")
     if not isinstance(true_ar, dict) or true_ar.get("available") is not True:
@@ -578,6 +592,10 @@ def compare_objective_metrics(
         raise BenchError("objective comparison requires identical heldout_ids")
     if baseline["train_ids"] != candidate["train_ids"]:
         raise BenchError("objective comparison requires identical train_ids")
+    baseline_protocol = summary_protocol_signature(baseline_summary)
+    candidate_protocol = summary_protocol_signature(candidate_summary)
+    if baseline_protocol != candidate_protocol:
+        raise BenchError("objective comparison requires identical benchmark protocol metadata")
     baseline_true_ar = true_ar_baseline_signature(baseline_summary)
     candidate_true_ar = true_ar_baseline_signature(candidate_summary)
     if baseline_true_ar != candidate_true_ar:
@@ -612,6 +630,7 @@ def compare_objective_metrics(
         "passed": not regressions,
         "regressions": regressions,
         "tolerance": tolerance,
+        "benchmark_protocol": baseline_protocol,
         "true_ar_baseline": baseline_true_ar,
         "baseline": baseline,
         "candidate": candidate,

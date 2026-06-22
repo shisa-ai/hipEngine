@@ -116774,3 +116774,33 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 # 47 passed
 ```
 - Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
+
+
+## 2026-06-22 — mtp-honest-acceptance iteration 30: lock comparison benchmark protocol
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 30.
+- Focused comparison-provenance guard: prevent future baseline-vs-candidate objective comparisons from changing benchmark protocol metadata.
+
+### Change
+- Added `summary_protocol_signature(summary)` in `scripts/gguf_mtp_category_bench.py`.
+- `compare_objective_metrics()` now rejects comparisons unless baseline and candidate summaries have identical:
+  - `kind`;
+  - `model`;
+  - `quant`;
+  - `prompt_file`;
+  - `cycles`;
+  - prompt metadata list;
+  - default/train/heldout prompt IDs.
+- Added regression tests rejecting changed `cycles` and changed prompt metadata.
+
+### Guardrail status
+- No selector/proposal-policy changes, no token IDs, no prompt text matching, no candidate-pattern branches, no acceptance computation semantics changes, no speed formula changes, no heldout metric calculation changes, and no kernel edits.
+- This blocks a future candidate from improving objective metrics by changing the prompt text/length, model metadata, cycle count, or prompt protocol while preserving prompt IDs.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# 49 passed
+```
+- Same command ran as loop verify and loop guard; prompt verifier passed in `multiloop_measure`.
