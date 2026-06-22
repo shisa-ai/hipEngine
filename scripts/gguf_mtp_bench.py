@@ -283,6 +283,42 @@ def llama_cpp_acceptance_from_target_samples(
     }
 
 
+def root_topk_acceptance_from_target_samples(
+    draft_tokens: list[int],
+    draft_topk_tokens: list[list[int]],
+    target_samples: list[int],
+    *,
+    root_topk_accept: int,
+) -> dict[str, object] | None:
+    """Accept a depth-0 branch when the target token is in the root top-k set.
+
+    This models a tiny tree proposal: the root logits expose multiple candidate
+    first draft tokens, exact target verification selects the matching root
+    sibling, and then one corrective target token is emitted.  It deliberately
+    does not continue down the linear argmax chain for non-argmax root siblings
+    because branch-specific deeper draft rows were not generated.
+    """
+    if root_topk_accept <= 1:
+        return None
+    if not draft_tokens or not draft_topk_tokens or not target_samples:
+        return None
+    root_target = int(target_samples[0])
+    if root_target == int(draft_tokens[0]):
+        return None
+    if root_target not in [int(token) for token in draft_topk_tokens[0][:root_topk_accept]]:
+        return None
+    if len(target_samples) < 2:
+        raise ValueError("target_samples must include the corrective target token after root top-k acceptance")
+    output_tokens = [root_target, int(target_samples[1])]
+    return {
+        "accepted_draft_tokens": 1,
+        "visible_output_tokens": len(output_tokens),
+        "output_tokens": output_tokens,
+        "comparison_target_tokens": output_tokens,
+        "pending_hidden_row_index": 1,
+    }
+
+
 def _draft_top1_prob(logits_row: np.ndarray) -> float:
     """Compute the softmax probability of the argmax token."""
     shifted = logits_row - logits_row.max()
@@ -327,11 +363,22 @@ def main():
             "(llama.cpp --spec-draft-p-min, default 0.0 = always draft to n_max)."
         ),
     )
+    parser.add_argument(
+        "--root-topk-accept",
+        type=int,
+        default=1,
+        help=(
+            "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
+            "the first K root candidates (1 = linear argmax path)."
+        ),
+    )
     args = parser.parse_args()
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.root_topk_accept < 1 or args.root_topk_accept > 10:
+        parser.error("--root-topk-accept must be in 1..10")
 
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
@@ -608,6 +655,8 @@ def main():
             target_tokens = []
             target_hidden_seeds = []
             verify_input_token = cycle_prev_token
+            branch_root_accepted = False
+            branch_root_accept_token: int | None = None
             while True:
                 t0 = time.perf_counter()
                 target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
@@ -619,12 +668,34 @@ def main():
                 target_hidden_seeds.append(target_hidden_seed)
 
                 depth = len(target_tokens) - 1
+                if branch_root_accepted:
+                    break
                 if depth < len(draft_tokens) and target_token == draft_tokens[depth]:
+                    verify_input_token = target_token
+                    continue
+                if (
+                    depth == 0
+                    and args.root_topk_accept > 1
+                    and draft_top10_tokens
+                    and target_token in draft_top10_tokens[0][:args.root_topk_accept]
+                ):
+                    branch_root_accepted = True
+                    branch_root_accept_token = target_token
                     verify_input_token = target_token
                     continue
                 break
 
-            acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, target_tokens)
+            if branch_root_accepted:
+                acceptance = root_topk_acceptance_from_target_samples(
+                    draft_tokens,
+                    draft_top10_tokens,
+                    target_tokens,
+                    root_topk_accept=args.root_topk_accept,
+                )
+                if acceptance is None or branch_root_accept_token is None:
+                    raise RuntimeError("branch root acceptance accounting failed")
+            else:
+                acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, target_tokens)
             accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
             output_tokens = list(acceptance["output_tokens"])
             comparison_target_tokens = list(acceptance["comparison_target_tokens"])
@@ -650,7 +721,10 @@ def main():
                 )
             prev_token = int(output_tokens[-1])
 
-            total_drafts += len(draft_tokens)
+            draft_candidate_count = len(draft_tokens)
+            if draft_tokens and args.root_topk_accept > 1:
+                draft_candidate_count += args.root_topk_accept - 1
+            total_drafts += draft_candidate_count
             visible_output_tokens = int(acceptance["visible_output_tokens"])
             total_output_tokens += visible_output_tokens
             total_accepted += accepted_draft_tokens
@@ -680,7 +754,10 @@ def main():
                 "target_in_draft_top10": target_in_draft_top10,
                 "target_rank_in_draft_top10": target_rank_in_draft_top10,
                 "accepted": accepted,
-                "generated_draft_tokens": len(draft_tokens),
+                "generated_draft_tokens": draft_candidate_count,
+                "linear_draft_tokens": len(draft_tokens),
+                "root_topk_accept": args.root_topk_accept,
+                "branch_root_accepted": branch_root_accepted,
                 "accepted_draft_tokens": accepted_draft_tokens,
                 "visible_output_tokens": visible_output_tokens,
                 "pending_hidden_row_index": acceptance["pending_hidden_row_index"],
@@ -713,6 +790,7 @@ def main():
     print(f"Model: {Path(args.model).name}")
     print(f"Cycles: {args.cycles}")
     print(f"Draft n_max: {args.draft_n_max}")
+    print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
     print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
@@ -750,6 +828,7 @@ def main():
             "prompt_tokens": len(prompt),
             "cycles": args.cycles,
             "draft_n_max": args.draft_n_max,
+            "root_topk_accept": args.root_topk_accept,
             "engine": "hipEngine GGUF MTP",
             "target_prefill_mode": target_prefill_mode,
             "mtp_context_mode": mtp_context_mode,

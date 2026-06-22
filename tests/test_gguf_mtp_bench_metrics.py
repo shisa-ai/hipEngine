@@ -12,6 +12,7 @@ from scripts.gguf_mtp_bench import (
     compute_speculative_metrics,
     llama_cpp_acceptance_from_target_samples,
     llama_cpp_mtp_catchup_rows,
+    root_topk_acceptance_from_target_samples,
     select_topk_tokens,
     validate_draft_n_max,
 )
@@ -254,6 +255,41 @@ def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
         validate_draft_n_max(0)
     with pytest.raises(ValueError, match="1..5"):
         validate_draft_n_max(6)
+
+
+def test_root_topk_acceptance_accepts_non_argmax_root_branch() -> None:
+    acceptance = root_topk_acceptance_from_target_samples(
+        draft_tokens=[10, 11, 12],
+        draft_topk_tokens=[[10, 20, 30], [11, 21, 31]],
+        target_samples=[20, 99],
+        root_topk_accept=2,
+    )
+
+    assert acceptance == {
+        "accepted_draft_tokens": 1,
+        "visible_output_tokens": 2,
+        "output_tokens": [20, 99],
+        "comparison_target_tokens": [20, 99],
+        "pending_hidden_row_index": 1,
+    }
+
+
+def test_root_topk_acceptance_defers_to_linear_argmax_path() -> None:
+    assert root_topk_acceptance_from_target_samples(
+        draft_tokens=[10, 11],
+        draft_topk_tokens=[[10, 20]],
+        target_samples=[10, 11, 99],
+        root_topk_accept=2,
+    ) is None
+
+
+def test_root_topk_acceptance_rejects_out_of_set_target() -> None:
+    assert root_topk_acceptance_from_target_samples(
+        draft_tokens=[10, 11],
+        draft_topk_tokens=[[10, 20]],
+        target_samples=[30, 99],
+        root_topk_accept=2,
+    ) is None
 
 
 def test_llama_cpp_mtp_catchup_rows_shift_target_hidden_right() -> None:

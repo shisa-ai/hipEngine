@@ -119593,3 +119593,44 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Result
 - Not retained. Single-row draft attention has only one key/value row, so shifting the shared Q/K RoPE position is effectively invariant for the current path.
 - The finding reinforces that the real acceptance blocker is missing multi-row/resident MTP context, not a scalar RoPE cursor offset.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 139: root top-2 tree proposal retained
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 139.
+- Added an opt-in generic root top-k tree proposal for GGUF MTP verification: when `--root-topk-accept K` is greater than 1, exact target verification may accept a depth-0 draft if the target greedy token is in the first K root candidates, then emits one corrective target token. Non-argmax root accepts do not continue down the linear argmax chain because branch-specific deeper draft rows were not generated.
+- This is not a token/prompt/candidate-pattern override; it is a generic tree-shaped proposal checked by exact target verification.
+
+### Focused B5 measurement
+```bash
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --root-topk-accept 2 --output /tmp/hipengine-mtp-root-topk2-helper-b5-20.json
+```
+- `accepted_per_output=0.4286`, `accept_per_draft=0.125`, `total_accepted=15/120`, `total_output_tokens=35`, `tokens_per_sec=13.32`, `speedup_vs_ar_visible=0.698x`.
+- Baseline same command family with `--root-topk-accept 1`: `accepted_per_output=0.3548`, `accept_per_draft=0.110`, `total_accepted=11/100`, `total_output_tokens=31`, `tokens_per_sec=13.05`, `speedup_vs_ar_visible=0.665x`.
+- Root top-2 added 3 non-argmax branch-root accepts in this 20-cycle prompt diagnostic.
+
+### Full category validation (B5, cycles=10)
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-root-topk2-full-20260623-021424/raw-topk2 --output /tmp/hipengine-root-topk2-full-20260623-021424/summary-topk2.json --extra-arg=--root-topk-accept --extra-arg=2
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-root-topk2-full-20260623-021424/raw-default --output /tmp/hipengine-root-topk2-full-20260623-021424/summary-default.json
+```
+- Full suite accepted/output improved `0.242424 -> 0.324324`; draft acceptance `0.064000 -> 0.080000`; diagnostic verifier-derived decode tok/s `11.726850 -> 12.393400`.
+- Train accepted/output improved `0.200000 -> 0.294118`; draft acceptance `0.050000 -> 0.069444`; diagnostic tok/s `11.432735 -> 12.114751`.
+- Heldout accepted/output improved `0.298246 -> 0.365079`; draft acceptance `0.085000 -> 0.095833`; diagnostic tok/s `12.137705 -> 12.790320`.
+- Per-category accepted/output: code `0.130435 -> 0.230769`, general_en `0.285714 -> 0.333333`, general_ja `0.130435 -> 0.354839`, mixed_ja_en `0.428571 -> 0.428571` (non-regressive).
+- No true no-MTP AR baseline was attached in this iteration, so the verifier-derived tok/s/ratio improvement remains diagnostic and is not a retained speed claim.
+
+### Validation
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+```
+- Prompt verifier passed: the selector only uses the depth-0 draft top-k set and exact target verification; no prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches were added.
+
+### Result
+- Retained as an opt-in honest acceptance improvement. It moves the current focused B5 diagnostic from `~0.355` to `0.4286` accepted/output and improves full/train/heldout/category accepted/output without category regression.
+- Next work: either promote the best validated root tree policy to the default benchmark path after deciding the B5 candidate-budget accounting convention, or extend the tree beyond root with branch-specific MTP rows/resident KV so top-k siblings can continue past one accepted token.
