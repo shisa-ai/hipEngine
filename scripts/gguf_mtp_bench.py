@@ -457,10 +457,10 @@ def main():
     parser.add_argument(
         "--sibling-topk-max-depth",
         type=int,
-        default=3,
+        default=4,
         help=(
             "Maximum non-root draft depth eligible for sibling top-k acceptance "
-            "(default: 3; root depth 0 is controlled by --root-topk-accept)."
+            "(default: 4; root depth 0 is controlled by --root-topk-accept)."
         ),
     )
     parser.add_argument(
