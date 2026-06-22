@@ -673,6 +673,36 @@ def test_objective_metrics_for_budget_rejects_summary_prompt_id_mismatch(tmp_pat
         objective_metrics_for_budget(summary, "b1")
 
 
+def test_objective_metrics_for_budget_rejects_non_default_heldout_contract(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["contract"]["heldout_ids"] = [
+        "code_topological_sort",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+    ]
+
+    with pytest.raises(BenchError, match="objective metrics require the fixed default heldout prompt IDs"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_non_default_train_complement(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["contract"]["train_ids"] = list(summary["splits"]["contract"]["train_ids"][:-1])
+
+    with pytest.raises(BenchError, match="objective metrics require train prompt IDs to be the default full-minus-heldout complement"):
+        objective_metrics_for_budget(summary, "b1")
+
+
+def test_objective_metrics_for_budget_rejects_forged_full_default_contract(tmp_path: Path) -> None:
+    summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
+    summary["splits"]["contract"]["full_ids"] = list(reversed(summary["splits"]["contract"]["full_ids"]))
+    summary["prompts"] = list(reversed(summary["prompts"]))
+
+    with pytest.raises(BenchError, match="objective metrics require splits.contract.full_ids to match the default full prompt order"):
+        objective_metrics_for_budget(summary, "b1")
+
+
 def test_objective_metrics_for_budget_rejects_missing_split_prompt_ids(tmp_path: Path) -> None:
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1] * 10, draft_ms=10.0)
     del summary["splits"]["full"]["prompt_ids"]

@@ -127,8 +127,10 @@ acceptance loops.
    the MTP `model`, quant family, `prompt_file`, and prompt count,
    `true_ar_comparison_available=true`, `performance_claim=false`,
    `speed_claim_eligible=false`, `splits.full`,
-   `splits.train`, and `splits.heldout`; each split `prompt_ids` list must
-   match its `splits.contract` counterpart. Markdown tables must label the old
+   `splits.train`, and `splits.heldout`; `splits.contract.heldout_ids` must be
+   the fixed set `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,
+   `train_ids` must be the default full-minus-heldout complement, and each split
+   `prompt_ids` list must match its `splits.contract` counterpart. Markdown tables must label the old
    verifier-derived denominator as `vs verifier off`; same-protocol speed ratios
    appear only in a separate `vs true AR` column. Any future retained summary with
    `speed_claim_eligible=true` must pass the same current-schema checks for the
@@ -161,7 +163,8 @@ acceptance loops.
    full/train/heldout finite [0, 1] `accepted_per_output` and
    `draft_acceptance`, finite non-negative `decode_tok_s_weighted`, and
    `mtp_vs_true_ar_decode_ratio`, each with a positive prompt count matching the
-   split `prompt_ids` length and split `prompt_ids` matching `splits.contract`.
+   split `prompt_ids` length, split `prompt_ids` matching `splits.contract`, and
+   the fixed heldout/train split described above.
    The gate also verifies each
    `mtp_vs_true_ar_decode_ratio` against the attached true-AR
    split `decode_tok_s_weighted` and matching split prompt count / prompt-id

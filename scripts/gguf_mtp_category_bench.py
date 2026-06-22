@@ -821,6 +821,18 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         raise BenchError("objective metrics require heldout coverage for all present categories")
     if contract.get("full_suite_matches_default") is not True:
         raise BenchError("objective metrics require the full default mtp-bench category prompt suite")
+    expected_full_ids = list(DEFAULT_FULL_PROMPT_IDS)
+    actual_full_ids = [str(prompt_id) for prompt_id in contract.get("full_ids") or []]
+    if actual_full_ids != expected_full_ids:
+        raise BenchError("objective metrics require splits.contract.full_ids to match the default full prompt order")
+    expected_heldout_ids = [prompt_id for prompt_id in expected_full_ids if prompt_id in DEFAULT_HELDOUT_PROMPT_IDS]
+    actual_heldout_ids = [str(prompt_id) for prompt_id in contract.get("heldout_ids") or []]
+    if actual_heldout_ids != expected_heldout_ids:
+        raise BenchError("objective metrics require the fixed default heldout prompt IDs")
+    expected_train_ids = [prompt_id for prompt_id in expected_full_ids if prompt_id not in DEFAULT_HELDOUT_PROMPT_IDS]
+    actual_train_ids = [str(prompt_id) for prompt_id in contract.get("train_ids") or []]
+    if actual_train_ids != expected_train_ids:
+        raise BenchError("objective metrics require train prompt IDs to be the default full-minus-heldout complement")
 
     out: dict[str, Any] = {
         "budget": label,
