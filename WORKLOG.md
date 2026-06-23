@@ -122749,3 +122749,54 @@ python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test
 - Retained as an acceptance/correctness tradeoff, not as a speed row. Current default is now branch-redraft root-K14/sibling-K14-tailmin0/depth≤4 with ungated root tail, up to five branch redrafts, and `draft_p_min=0.0`.
 - Updated rollup and changelog and added compact retained artifact:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk14-sibling14-tailmin0-depth4-max5-category-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 209: sibling-K15 rejected under root-K14/tailmin0/depth≤4/max-5
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 209.
+- Tested widening the generic non-root sibling top-k proposal from retained `sibling_topk_accept=14` to `15`, preserving `root_topk_accept=14`, `sibling_tail_min_prev_accepted=0`, `sibling_topk_max_depth=4`, `root_tail_max_prev_accepted=-1`, `topk_branch_redraft=true`, `topk_branch_redraft_max_branches=5`, and `draft_p_min=0.0`.
+- This was a direct proposal/selector experiment under exact target verification; no prompt text, token IDs, fixture IDs, candidate-token-pattern branches, benchmark detection, or target-token rescue logic were introduced.
+
+### Change evaluated and reverted
+- Temporarily changed `--sibling-topk-accept` default from `14` to `15` and validation from `1..14` to `1..15`.
+- Reverted to retained sibling-K14 because sibling-K15 did not improve focused or full-suite accepted/output and increased candidate accounting.
+
+### Focused B5 validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-rootk14-sibling15-tailmin0-depth4-default-iter209-b5-20.json
+```
+- Focused accepted/output was unchanged vs retained root-K14/sibling-K14-tailmin0: `0.7260 -> 0.7260`.
+- Accepted drafts/candidates changed `53/1483 -> 53/1563`; `accept_per_draft 0.0357 -> 0.0339`.
+- Focused top-k rows had length `15`; no sibling rank-15 target hits were observed.
+- Top-k branch accepts stayed `34`, with `13` branch-redraft cycles, `10` multi-branch cycles, `7` triple-branch cycles, and `4` quad-branch cycles; no quint branch cycles were exercised.
+- Diagnostic tok/s `14.28`, `speedup_vs_ar_visible=0.7351x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk14-sibling15-tailmin0-depth4-full-20260623-102321/raw --output /tmp/hipengine-branch-redraft-rootk14-sibling15-tailmin0-depth4-full-20260623-102321/summary.json
+```
+- Full accepted/output unchanged vs retained root-K14/sibling-K14-tailmin0: `0.744898 -> 0.744898` (`292/392` both).
+- Train unchanged `0.732143` (`164/224`); heldout unchanged `0.761905` (`128/168`).
+- Per-category accepted/output unchanged: code `0.696970`, general_en `0.789474`, general_ja `0.726027`, mixed_ja_en `0.782609`.
+- Full draft acceptance regressed `0.039221 -> 0.037221` because candidate accounting rose (`292/7445 -> 292/7845`).
+- Diagnostic weighted decode tok/s regressed slightly `14.3516 -> 14.3016`; verifier-derived ratio was effectively flat `0.7308 -> 0.7308`. Timing remains diagnostic only and cannot support a speed claim.
+- No sibling rank-15 full-suite target hits were observed in the saved raw rows.
+
+### Validation after revert
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify; dot progress reached 100%, 321 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard; dot progress reached 100%, 321 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py | tail -5
+# 321 tests collected
+```
+- Prompt verifier passed for the evaluated shape: sibling-K15 only widens a generic non-root top-k proposal under exact target verification. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches were introduced. The candidate is rejected because no full-suite/train/heldout/per-category accepted-output metric improved and candidate accounting increased.
+
+### Result
+- Rejected. Current default remains branch-redraft root-K14/sibling-K14-tailmin0/depth≤4 with ungated root tail, up to five branch redrafts, and `draft_p_min=0.0`.
+- Added compact rejected artifact:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk14-sibling15-tailmin0-depth4-max5-rejected-gfx1151.json`.
