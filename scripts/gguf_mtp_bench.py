@@ -439,19 +439,19 @@ def main():
     parser.add_argument(
         "--root-topk-accept",
         type=int,
-        default=2048,
+        default=4096,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 2048; use 1 for linear argmax path)."
+            "the first K root candidates (default: 4096; use 1 for linear argmax path)."
         ),
     )
     parser.add_argument(
         "--sibling-topk-accept",
         type=int,
-        default=2048,
+        default=4096,
         help=(
             "Diagnostic tree proposal: accept a non-argmax sibling at the first deeper "
-            "mismatch when the target token is in the first K candidates (default: 2048; use 1 for root-only top-k)."
+            "mismatch when the target token is in the first K candidates (default: 4096; use 1 for root-only top-k)."
         ),
     )
     parser.add_argument(
@@ -514,10 +514,10 @@ def main():
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
         parser.error(str(exc))
-    if args.root_topk_accept < 1 or args.root_topk_accept > 2048:
-        parser.error("--root-topk-accept must be in 1..2048")
-    if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 2048:
-        parser.error("--sibling-topk-accept must be in 1..2048")
+    if args.root_topk_accept < 1 or args.root_topk_accept > 4096:
+        parser.error("--root-topk-accept must be in 1..4096")
+    if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 4096:
+        parser.error("--sibling-topk-accept must be in 1..4096")
     if args.sibling_topk_max_depth < 0:
         parser.error("--sibling-topk-max-depth must be non-negative")
     if args.root_tail_max_prev_accepted < -1:

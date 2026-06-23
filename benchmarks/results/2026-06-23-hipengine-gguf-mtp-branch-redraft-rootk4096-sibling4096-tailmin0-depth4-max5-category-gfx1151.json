@@ -1,0 +1,579 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_branch_redraft_max5_rootk4096_sibling4096_tailmin0_depth4_retained",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-23",
+  "source_commit_before_artifact": "07934379",
+  "artifact_commit_note": "Committed with root_topk_accept=4096 and sibling_topk_accept=4096 defaults under sibling_tail_min_prev_accepted=0, sibling_topk_max_depth=4, topk_branch_redraft_max_branches=5; use containing git commit for retained revision.",
+  "hardware": "gfx1151/Radeon 8060S (per GGUF-MTP category diagnostics)",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M",
+  "policy": {
+    "draft_n_max": 5,
+    "draft_p_min": 0.0,
+    "root_topk_accept": 4096,
+    "topk_candidate_count": 4096,
+    "root_tail_max_prev_accepted": -1,
+    "sibling_topk_accept": 4096,
+    "sibling_tail_min_prev_accepted": 0,
+    "sibling_topk_max_depth": 4,
+    "topk_branch_redraft": true,
+    "topk_branch_redraft_max_branches": 5,
+    "root_tail_gate": "disabled, allowing generic root ranks 1..4096",
+    "sibling_tail_gate": "sibling candidates beyond rank 8 require previous cycle accepted >= 0, effectively allowing rank 9..4096 for every non-root row reached by the verifier",
+    "redraft_acceptance": "allow up to five exact-verified top-k branch accepts per B-window; after each non-final branch accept, redraft remaining B-window from accepted target token and accept verified proposals only"
+  },
+  "baseline_policy": {
+    "artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk2048-sibling2048-tailmin0-depth4-max5-category-gfx1151.json",
+    "draft_n_max": 5,
+    "root_topk_accept": 2048,
+    "sibling_topk_accept": 2048,
+    "sibling_tail_min_prev_accepted": 0,
+    "sibling_topk_max_depth": 4,
+    "topk_branch_redraft": true,
+    "topk_branch_redraft_max_branches": 5
+  },
+  "commands": {
+    "category_full": "python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-full-iter234/raw --output /tmp/hipengine-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-full-iter234/summary.json",
+    "verify": "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py",
+    "guard": "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py",
+    "prompt_verifier": "git diff inspection: only generic 2048->4096 root/sibling top-k default/bound/help changes; no prompt/token/candidate hardcoding and no speed claim"
+  },
+  "true_ar_reference": {
+    "available": true,
+    "artifact": "/tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json",
+    "true_autoregressive_path": true,
+    "same_prompt_suite": true,
+    "decode_tokens": 32,
+    "weighted_decode_tok_s": 19.668866028306997,
+    "candidate_mtp_vs_true_ar_decode_ratio": 0.7455940327414698,
+    "note": "Used only as proper no-MTP AR reference; this K4096 row does not make a speedup claim because MTP diagnostic tok/s is below true AR."
+  },
+  "category_b5": {
+    "baseline_branch_redraft_rootk2048_sibling2048_tailmin0_depth4_max5": {
+      "full": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 10,
+        "total_output_tokens": 539,
+        "total_accepted": 439,
+        "total_drafts": 1024636,
+        "decode_ms": 36839.7,
+        "decode_tok_s_weighted": 14.630955192360418,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.278628763714117,
+        "mtp_vs_ar_decode_ratio": 0.7589209466960914,
+        "draft_acceptance": 0.0004284448330919468,
+        "accepted_per_output": 0.8144712430426716,
+        "avg_output_tokens_per_prompt": 53.9
+      },
+      "train": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 6,
+        "total_output_tokens": 323,
+        "total_accepted": 263,
+        "total_drafts": 614801,
+        "decode_ms": 22243.5,
+        "decode_tok_s_weighted": 14.521096050531616,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.253454743353835,
+        "mtp_vs_ar_decode_ratio": 0.7542072965135882,
+        "draft_acceptance": 0.0004277806965180603,
+        "accepted_per_output": 0.8142414860681114,
+        "avg_output_tokens_per_prompt": 53.833333333333336
+      },
+      "heldout": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 4,
+        "total_output_tokens": 216,
+        "total_accepted": 176,
+        "total_drafts": 409835,
+        "decode_ms": 14596.2,
+        "decode_tok_s_weighted": 14.798372179060303,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.31639631164144,
+        "mtp_vs_ar_decode_ratio": 0.7661041915018976,
+        "draft_acceptance": 0.000429441116546903,
+        "accepted_per_output": 0.8148148148148148,
+        "avg_output_tokens_per_prompt": 54.0
+      },
+      "categories": {
+        "code": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 4,
+          "total_output_tokens": 222,
+          "total_accepted": 182,
+          "total_drafts": 409891,
+          "decode_ms": 15338.579999999998,
+          "decode_tok_s_weighted": 14.473308480967601,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.283136376073276,
+          "mtp_vs_ar_decode_ratio": 0.7505681751505029,
+          "draft_acceptance": 0.0004440204834943924,
+          "accepted_per_output": 0.8198198198198198,
+          "avg_output_tokens_per_prompt": 55.5
+        },
+        "general_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 115,
+          "total_accepted": 95,
+          "total_drafts": 204938,
+          "decode_ms": 7828.19,
+          "decode_tok_s_weighted": 14.690496781503771,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.203505391175405,
+          "mtp_vs_ar_decode_ratio": 0.7649903745310219,
+          "draft_acceptance": 0.0004635548312172462,
+          "accepted_per_output": 0.8260869565217391,
+          "avg_output_tokens_per_prompt": 57.5
+        },
+        "general_ja": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 96,
+          "total_accepted": 76,
+          "total_drafts": 204900,
+          "decode_ms": 6535.6900000000005,
+          "decode_tok_s_weighted": 14.688579170676698,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.3392425463336,
+          "mtp_vs_ar_decode_ratio": 0.7595219479504076,
+          "draft_acceptance": 0.0003709126403123475,
+          "accepted_per_output": 0.7916666666666666,
+          "avg_output_tokens_per_prompt": 48.0
+        },
+        "mixed_ja_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 106,
+          "total_accepted": 86,
+          "total_drafts": 204907,
+          "decode_ms": 7137.24,
+          "decode_tok_s_weighted": 14.851679360649214,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.29630384761017,
+          "mtp_vs_ar_decode_ratio": 0.7696644641345955,
+          "draft_acceptance": 0.00041970259678781105,
+          "accepted_per_output": 0.8113207547169812,
+          "avg_output_tokens_per_prompt": 53.0
+        }
+      }
+    },
+    "branch_redraft_rootk4096_sibling4096_tailmin0_depth4_max5": {
+      "full": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 10,
+        "total_output_tokens": 549,
+        "total_accepted": 449,
+        "total_drafts": 2048645,
+        "decode_ms": 37436.1,
+        "decode_tok_s_weighted": 14.664989141497111,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.25840748755658,
+        "mtp_vs_ar_decode_ratio": 0.7614850371700044,
+        "draft_acceptance": 0.00021916925577637901,
+        "accepted_per_output": 0.8178506375227687,
+        "avg_output_tokens_per_prompt": 54.9
+      },
+      "train": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 6,
+        "total_output_tokens": 328,
+        "total_accepted": 268,
+        "total_drafts": 1229205,
+        "decode_ms": 22516.85,
+        "decode_tok_s_weighted": 14.566868811578885,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.257437891827212,
+        "mtp_vs_ar_decode_ratio": 0.7564281860029268,
+        "draft_acceptance": 0.00021802709881590132,
+        "accepted_per_output": 0.8170731707317073,
+        "avg_output_tokens_per_prompt": 54.666666666666664
+      },
+      "heldout": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 4,
+        "total_output_tokens": 221,
+        "total_accepted": 181,
+        "total_drafts": 819440,
+        "decode_ms": 14919.25,
+        "decode_tok_s_weighted": 14.813077064865862,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.259846705564005,
+        "mtp_vs_ar_decode_ratio": 0.7691170802821857,
+        "draft_acceptance": 0.0002208825539392756,
+        "accepted_per_output": 0.8190045248868778,
+        "avg_output_tokens_per_prompt": 55.25
+      },
+      "categories": {
+        "code": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 4,
+          "total_output_tokens": 227,
+          "total_accepted": 187,
+          "total_drafts": 819498,
+          "decode_ms": 15852.449999999999,
+          "decode_tok_s_weighted": 14.319553129011604,
+          "ar_baseline_tok_s_weighted_for_this_budget": 18.994385360098402,
+          "mtp_vs_ar_decode_ratio": 0.7538834691167612,
+          "draft_acceptance": 0.0002281884763599179,
+          "accepted_per_output": 0.8237885462555066,
+          "avg_output_tokens_per_prompt": 56.75
+        },
+        "general_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 115,
+          "total_accepted": 95,
+          "total_drafts": 409735,
+          "decode_ms": 7728.370000000001,
+          "decode_tok_s_weighted": 14.88023994710398,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.41593491103281,
+          "mtp_vs_ar_decode_ratio": 0.7663931721695518,
+          "draft_acceptance": 0.00023185717597959656,
+          "accepted_per_output": 0.8260869565217391,
+          "avg_output_tokens_per_prompt": 57.5
+        },
+        "general_ja": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 96,
+          "total_accepted": 76,
+          "total_drafts": 409700,
+          "decode_ms": 6483.98,
+          "decode_tok_s_weighted": 14.805721177424978,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.491990010355117,
+          "mtp_vs_ar_decode_ratio": 0.7595797642805809,
+          "draft_acceptance": 0.00018550158652672687,
+          "accepted_per_output": 0.7916666666666666,
+          "avg_output_tokens_per_prompt": 48.0
+        },
+        "mixed_ja_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 111,
+          "total_accepted": 91,
+          "total_drafts": 409712,
+          "decode_ms": 7371.3,
+          "decode_tok_s_weighted": 15.058402181433397,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.446186620322845,
+          "mtp_vs_ar_decode_ratio": 0.7743627311329072,
+          "draft_acceptance": 0.00022210723630257352,
+          "accepted_per_output": 0.8198198198198198,
+          "avg_output_tokens_per_prompt": 55.5
+        }
+      }
+    }
+  },
+  "rank_and_branch_stats": {
+    "accepted_draft_tokens_histogram": {
+      "0": 7,
+      "1": 1,
+      "2": 3,
+      "4": 3,
+      "5": 86
+    },
+    "topk_branch_accept_count_histogram": {
+      "0": 7,
+      "1": 4,
+      "2": 21,
+      "3": 25,
+      "4": 26,
+      "5": 17
+    },
+    "max_observed_target_rank": 3173,
+    "target_rank_2049_to_4096_hits": [
+      {
+        "prompt": "code_topological_sort",
+        "cycle": 9,
+        "depth": 0,
+        "rank": 3173,
+        "accepted_draft_tokens": 5,
+        "visible_output_tokens": 6,
+        "topk_branch_depths": [
+          0,
+          2,
+          3,
+          4
+        ],
+        "topk_branch_accept_count": 4
+      },
+      {
+        "prompt": "general_en_plan",
+        "cycle": 5,
+        "depth": 0,
+        "rank": 2209,
+        "accepted_draft_tokens": 5,
+        "visible_output_tokens": 6,
+        "topk_branch_depths": [
+          0,
+          2,
+          4
+        ],
+        "topk_branch_accept_count": 3
+      },
+      {
+        "prompt": "mixed_ja_en_review",
+        "cycle": 6,
+        "depth": 0,
+        "rank": 2496,
+        "accepted_draft_tokens": 5,
+        "visible_output_tokens": 6,
+        "topk_branch_depths": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "topk_branch_accept_count": 5
+      }
+    ],
+    "target_rank_bucket_histogram": {
+      "depth0:129-256": 3,
+      "depth0:2049-4096": 3,
+      "depth0:257-512": 1,
+      "depth0:513-1024": 2,
+      "depth0:<=128": 84,
+      "depth1:1025-2048": 1,
+      "depth1:129-256": 1,
+      "depth1:<=128": 90,
+      "depth2:129-256": 1,
+      "depth2:513-1024": 1,
+      "depth2:<=128": 87,
+      "depth3:513-1024": 1,
+      "depth3:<=128": 88,
+      "depth4:1025-2048": 1,
+      "depth4:129-256": 1,
+      "depth4:513-1024": 2,
+      "depth4:<=128": 82
+    },
+    "target_rank_missing_by_depth": {
+      "0": 7,
+      "1": 1,
+      "2": 3,
+      "4": 3,
+      "5": 86
+    },
+    "accepted_draft_tokens_by_cycle": {
+      "code_lru_cache": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "code_markdown_table": [
+        0,
+        5,
+        5,
+        4,
+        5,
+        5,
+        2,
+        5,
+        5,
+        5
+      ],
+      "code_merge_intervals": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        2
+      ],
+      "code_topological_sort": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        5,
+        5,
+        5
+      ],
+      "general_en_explain": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "general_en_plan": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        0
+      ],
+      "general_ja_explain": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        0
+      ],
+      "general_ja_plan": [
+        5,
+        0,
+        2,
+        0,
+        5,
+        0,
+        5,
+        5,
+        4,
+        5
+      ],
+      "mixed_ja_en_review": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        0,
+        5,
+        5,
+        5,
+        5
+      ],
+      "mixed_ja_en_translate": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1,
+        5
+      ]
+    }
+  },
+  "deltas": {
+    "full_accepted_per_output": {
+      "old": 0.8144712430426716,
+      "new": 0.8178506375227687,
+      "abs": 0.0033793944800970532,
+      "pct": 0.4149188211326482
+    },
+    "train_accepted_per_output": {
+      "old": 0.8142414860681114,
+      "new": 0.8170731707317073,
+      "abs": 0.002831684663595846,
+      "pct": 0.34776963739218125
+    },
+    "heldout_accepted_per_output": {
+      "old": 0.8148148148148148,
+      "new": 0.8190045248868778,
+      "abs": 0.004189710072063035,
+      "pct": 0.5141916906622912
+    },
+    "full_decode_tok_s_weighted_diagnostic": {
+      "old": 14.630955192360418,
+      "new": 14.664989141497111,
+      "abs": 0.034033949136693664,
+      "pct": 0.23261604378683742
+    },
+    "full_draft_acceptance": {
+      "old": 0.0004284448330919468,
+      "new": 0.00021916925577637901,
+      "abs": -0.0002092755773155678,
+      "pct": -48.84539645519684
+    },
+    "category_accepted_per_output": {
+      "code": {
+        "old": 0.8198198198198198,
+        "new": 0.8237885462555066,
+        "abs": 0.003968726435686798,
+        "pct": 0.4840974003969656
+      },
+      "general_en": {
+        "old": 0.8260869565217391,
+        "new": 0.8260869565217391,
+        "abs": 0.0,
+        "pct": 0.0
+      },
+      "general_ja": {
+        "old": 0.7916666666666666,
+        "new": 0.7916666666666666,
+        "abs": 0.0,
+        "pct": 0.0
+      },
+      "mixed_ja_en": {
+        "old": 0.8113207547169812,
+        "new": 0.8198198198198198,
+        "abs": 0.008499065102838599,
+        "pct": 1.0475591870940493
+      }
+    },
+    "category_decode_tok_s_weighted_diagnostic": {
+      "code": {
+        "old": 14.473308480967601,
+        "new": 14.319553129011604,
+        "abs": -0.1537553519559971,
+        "pct": -1.062337282164516
+      },
+      "general_en": {
+        "old": 14.690496781503771,
+        "new": 14.88023994710398,
+        "abs": 0.1897431656002091,
+        "pct": 1.291604827408599
+      },
+      "general_ja": {
+        "old": 14.688579170676698,
+        "new": 14.805721177424978,
+        "abs": 0.11714200674827957,
+        "pct": 0.797504002171534
+      },
+      "mixed_ja_en": {
+        "old": 14.851679360649214,
+        "new": 15.058402181433397,
+        "abs": 0.20672282078418291,
+        "pct": 1.3919154579374649
+      }
+    }
+  },
+  "correctness": {
+    "verify_pytest": "321 passed",
+    "guard_pytest": "321 passed",
+    "prompt_verifier": "passed: generic top-k envelope change only; no hardcoded prompts/token IDs/candidate patterns/depth-specific target rescues/benchmark detection branches",
+    "exact_target_verification": "raw GGUF-MTP benchmark cycles use exact target verification; accepted/output counted from target-verified tokens",
+    "finite_logits_and_timings": "category summary schema checks passed; timing fields finite"
+  },
+  "retention_reason": "Full/heldout/category accepted/output improve or stay flat when widening the generic exact-verified root and sibling top-k acceptance envelope from K2048 to K4096. Diagnostic full-suite decode tok/s also improves slightly (14.6310 -> 14.6650), but true no-MTP AR remains faster (19.6689 tok/s), so this is retained only as an acceptance/correctness tradeoff and not a true-AR speed claim."
+}

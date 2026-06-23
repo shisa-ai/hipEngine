@@ -124052,3 +124052,41 @@ python3 -m pytest --collect-only -q tests/test_gguf_mtp_bench_metrics.py tests/t
 - Added compact retained artifact:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk2048-sibling2048-tailmin0-depth4-max5-category-gfx1151.json`.
 - Updated `benchmarks/README.md` retained GGUF-MTP row and `benchmarks/CHANGELOG.md` with the root/sibling-K2048 accepted/output improvement and true-AR speed caveat.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 234: root/sibling-K4096 retained under tailmin0/depth≤4/max-5
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 234.
+- Tested widening the generic exact-verified root and non-root top-k proposal envelope from retained `root_topk_accept=2048` / `sibling_topk_accept=2048` to `4096`, preserving `sibling_tail_min_prev_accepted=0`, `sibling_topk_max_depth=4`, `root_tail_max_prev_accepted=-1`, `topk_branch_redraft=true`, `topk_branch_redraft_max_branches=5`, and `draft_p_min=0.0`.
+- This was a direct proposal/selector experiment under exact target verification; no prompt text, token IDs, fixture IDs, candidate-token-pattern branches, benchmark detection, or target-token rescue logic were introduced.
+
+### Change retained
+- Changed `--root-topk-accept` and `--sibling-topk-accept` defaults from `2048` to `4096`, and validation bounds from `1..2048` to `1..4096`, in `scripts/gguf_mtp_bench.py`.
+- Retained as an acceptance/correctness tradeoff: full/train/heldout accepted-output improved, per-category accepted-output was non-regressive, and diagnostic full-suite weighted tok/s improved slightly. No true-AR speed claim is retained because true AR remains faster.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-full-iter234/raw --output /tmp/hipengine-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-full-iter234/summary.json
+```
+- Full accepted/output improved `0.814471 -> 0.817851` (`439/539 -> 449/549`).
+- Train improved `0.814241 -> 0.817073` (`263/323 -> 268/328`); heldout improved `0.814815 -> 0.819005` (`176/216 -> 181/221`).
+- Per-category accepted/output improved/non-regressed: code `0.819820 -> 0.823789`, general_en unchanged `0.826087`, general_ja unchanged `0.791667`, mixed_ja_en `0.811321 -> 0.819820`.
+- Full draft acceptance regressed `0.000428 -> 0.000219` because candidate accounting rose (`439/1024636 -> 449/2048708`).
+- The wider K4096 envelope captured three exact-verified root target ranks beyond K2048: train `code_topological_sort` cycle 9 depth 0 rank `3173`, train `general_en_plan` cycle 5 depth 0 rank `2209`, and heldout `mixed_ja_en_review` cycle 6 depth 0 rank `2496`.
+- Diagnostic weighted decode tok/s changed `14.6310 -> 14.6650`; verifier-derived ratio changed `0.7589 -> 0.7615`. Proper no-MTP true-AR reference from `/tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json` is `19.6689 tok/s`, so the honest B5 diagnostic is `0.746x` true AR and remains below the speed target.
+
+### Validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify; 321 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard; 321 tests)
+```
+- Prompt verifier passed after diff inspection: the retained shape only widens generic root/sibling top-k defaults and validation bounds from 2048 to 4096. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches were introduced. Full/train/heldout/per-category metrics and provenance are recorded; heldout and categories are non-regressive. Verifier-derived timing is not promoted as a true no-MTP AR speed claim.
+
+### Rollup
+- Added compact retained artifact:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-max5-category-gfx1151.json`.
+- Updated `benchmarks/README.md` retained GGUF-MTP row and `benchmarks/CHANGELOG.md` with the root/sibling-K4096 accepted/output improvement and true-AR speed caveat.
