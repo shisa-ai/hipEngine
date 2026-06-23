@@ -2698,12 +2698,12 @@ _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
-# Keep explicit INT8-KV short gates on the exact BF16 decode path. For longer
-# contexts, the first full-attention layers stay BF16 by default because layer
-# probes show early-layer INT8 value quantization is amplified by downstream
-# routing. The env below exists only for reproducing the rejected INT8-only path.
+# Keep explicit INT8-KV short gates on the exact BF16 decode path. Long-context
+# sweeps found that memory-saving GGUF hybrids (prefix <=8 of 10 full-attention
+# layers) drift BF16 logits; only a 9-layer BF16 prefix passed 128K/128, and that
+# is a correctness fallback rather than a 24GB capacity path.
 _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS = 8192
-_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS = 3
+_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS = 9
 _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS"
 _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
@@ -2768,13 +2768,13 @@ def _gguf_int8_bf16_prefix_full_attention_layers(*, kv_storage_dtype: DType, max
         return 0
     if int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS:
         return 0
-    if _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False):
-        return 0
+    allow_unverified = _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False)
+    default_prefix = 0 if allow_unverified else _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS
     return max(
         0,
         _env_int(
             _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV,
-            _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
+            default_prefix,
         ),
     )
 
@@ -2790,7 +2790,6 @@ def _gguf_int8_effective_scale_dtype(
         kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
         and int(max_positions) > _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
         and int(bf16_prefix_full_attention_layers) > 0
-        and not _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False)
     ):
         return DType.FP32
     return requested_scale_dtype
@@ -2806,15 +2805,15 @@ def _validate_gguf_int8_kv_context(
         return
     if int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS:
         return
-    if int(bf16_prefix_full_attention_layers) > 0:
-        return
     if _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False):
+        return
+    if int(bf16_prefix_full_attention_layers) >= _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS:
         return
     raise ValueError(
         "GGUF int8_per_token_head KV is correctness-admitted for long contexts only with "
-        f"a BF16 full-attention prefix (default {_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS} layers); "
+        f"at least {_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS} BF16-prefix full-attention layers; "
         f"got rounded max context {int(max_positions)} and prefix={int(bf16_prefix_full_attention_layers)}. "
-        "The INT8-only long-context path failed BF16-vs-INT8 logit gates and is diagnostic-only. Set "
+        "Prefixes below that failed BF16-vs-hybrid long-context logit gates and are diagnostic-only. Set "
         f"{_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV}=1 only to reproduce blocked capacity diagnostics."
     )
 

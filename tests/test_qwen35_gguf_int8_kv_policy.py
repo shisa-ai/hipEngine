@@ -198,8 +198,27 @@ def test_gguf_int8_context_guard_blocks_unverified_long_without_prefix_or_env(mo
     else:  # pragma: no cover - assertion clarity
         raise AssertionError("expected long pure GGUF INT8 KV context to be blocked")
 
-    assert "BF16 full-attention prefix" in message
+    assert "at least" in message
+    assert "BF16-prefix full-attention layers" in message
     assert "diagnostic-only" in message
+    assert _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV in message
+
+
+def test_gguf_int8_context_guard_blocks_too_small_long_prefix_without_env(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+
+    try:
+        _validate_gguf_int8_kv_context(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=131328,
+            bf16_prefix_full_attention_layers=_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS - 1,
+        )
+    except ValueError as exc:
+        message = str(exc)
+    else:  # pragma: no cover - assertion clarity
+        raise AssertionError("expected low-prefix GGUF INT8 KV context to be blocked")
+
+    assert "Prefixes below" in message
     assert _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV in message
 
 
@@ -257,6 +276,15 @@ def test_gguf_int8_long_hybrid_prefix_default_and_env_override(monkeypatch) -> N
     )
 
     monkeypatch.setenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, "1")
+    assert (
+        _gguf_int8_bf16_prefix_full_attention_layers(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=131328,
+        )
+        == 6
+    )
+
+    monkeypatch.delenv(_GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV, raising=False)
     assert (
         _gguf_int8_bf16_prefix_full_attention_layers(
             kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,

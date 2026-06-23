@@ -144,21 +144,19 @@ The 2026-06-21 short BF16 mirror fixes short-gate IDs/logits, but the unmirrored
 INT8-only route still fails BF16-vs-INT8 logits (`4K` no-mirror W7900 gate:
 `KL=0.275781`, top-1 `0.5`). The 2026-06-22 localization found the error source:
 early full-attention layers amplify small INT8 value-quantization perturbations
-(layer 3 alone gives `KL=0.618776`), while later layers are safe enough with FP32
-scales. Long explicit GGUF INT8 now uses a correctness-admitted hybrid layout by
-default: 3 BF16-primary full-attention layers followed by 7 INT8 layers with
-effective FP32 scales. The W7900 forced-long `4K` BF16-vs-hybrid gate passes
-(`KL mean=0.014025`, `KL max=0.028051`, top-1 `1.0`, no BF16 mirror); pure
-INT8-only reproduction still requires `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`.
-A follow-up GPU1 `128K/128` diagnostic completed after adding the required
-`HIPENGINE_COMPILER_VERSION_FILE`/`HIPENGINE_HIPCC_VERSION_FILE` environment cache
-keys: `756.715` prefill / `66.053` decode tok/s, final ID `13`, finite logits,
-tracked peak `23.291 GiB`, but it remains unpromoted. The W7900 long-context
-`128K/128` BF16-vs-hybrid gate rejected the 3-BF16/7-INT8 layout: `KL mean=3.849`,
-`KL max=12.298`, top-1 agreement `0.1628`, first mismatch at the prefill logit
-row. Evidence: `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`,
+(layer 3 alone gives `KL=0.618776`). A 3-BF16/7-INT8 hybrid passed only the
+forced-long `4K` gate (`KL mean=0.014025`, top-1 `1.0`), then failed the W7900
+`128K/128` gate (`KL mean=3.849`, top-1 `0.1628`, first mismatch at prefill).
+The 2026-06-23 prefix sweep across `32K/64K/128K` found that every memory-saving
+prefix `3..8` fails; only prefix `9` or all-BF16 prefix `10` passes prefill, and
+a full `128K/128` prefix-9 decode confirmation passes (`KL mean=2.59e-4`, top-1
+`0.969`) but peaks at `25.112 GiB`, higher than BF16 and not a 24GB path. The
+runtime safety fallback is therefore prefix `9`; lower prefixes and pure INT8 now
+require `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. Evidence:
+`benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`,
 `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`,
-and `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`.
+`benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`,
+and `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -398,15 +396,14 @@ Current focused lanes from evidence:
   normal, rerun hermetically before blaming kernels.
 - **GGUF INT8 KV correctness is now localized and guarded.** Short explicit
   `--kv-storage int8_per_token_head` sessions still use a BF16 mirror and match
-  BF16 IDs/logits. Long sessions no longer use the rejected pure INT8-only route:
-  by default they keep a 3-layer BF16 full-attention prefix, use INT8 for the
-  remaining 7 full-attention layers, and promote scales to FP32. The forced-long
-  W7900 `4K` BF16-vs-hybrid gate passes (`KL mean=0.014025`, top-1 `1.0`, no
-  BF16 mirror), but the W7900 `128K/128` quality gate rejects the same default
-  hybrid (`KL mean=3.849`, top-1 `0.1628`, first mismatch at prefill). GPU1
-  `128K/128` remains a capacity/throughput diagnostic (`756.715/66.053 tok/s`,
-  `23.291 GiB` tracked), not a promoted row. Next correctness work should sweep
-  context length and BF16-prefix depth before trying another compact KV format.
+  BF16 IDs/logits. Long sessions no longer use the rejected pure INT8-only route
+  or the rejected memory-saving hybrid prefixes: the W7900 `32K/64K/128K` sweep
+  rejected prefixes `3..8`; prefix `9` is the first passing point and full
+  `128K/128` prefix-9 confirmation passes (`KL mean=2.59e-4`, top-1 `0.969`) but
+  peaks at `25.112 GiB`, higher than BF16. GPU1 `128K/128` with prefix-3 remains
+  a capacity/throughput diagnostic (`756.715/66.053 tok/s`, `23.291 GiB` tracked),
+  not a promoted row. Lower prefixes now require the unverified-long diagnostic
+  env; a 24GB solution needs another KV format or non-KV memory reduction.
 - **Refresh attribution before the next optimization pass.** Before touching more
   kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
   current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the
