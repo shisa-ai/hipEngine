@@ -1142,10 +1142,11 @@ def test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys() 
     assert plan.optimization_kernels_ready is True
     assert payload["missing_exactness_oracle_keys"] == []
     assert payload["missing_native_runtime_keys"] == [
-        ["hip_gfx1100", "mtp_nextn_layer", "w4_gguf", "qwen35_dense_logits"],
         ["hip_gfx1100", "paged_kv_write", "w4_gguf", "mixed_bf16_spans"],
         ["hip_gfx1100", "paged_attn_decode", "w4_gguf", "bf16_context_spans"],
     ]
+    assert payload["checks"][2]["name"] == "native_nextn_runtime"
+    assert payload["checks"][2]["registered"] is True
     assert payload["missing_optimization_keys"] == []
     assert payload["kernel_check_contract"] == Qwen35GGUFMTPRuntimeKernelCheck.contract()
     assert Qwen35GGUFMTPRuntimeKernelCheck.contract() == {

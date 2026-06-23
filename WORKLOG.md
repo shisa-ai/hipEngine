@@ -124199,3 +124199,16 @@ python3 scripts/gguf_mtp_bench.py \
 # passed; log showed Root top-k accept: 1, Sibling top-k accept: 1,
 # Top-k branch redraft: False, Decode repack: True, Effective GEMV/WMMA: True
 ```
+
+## 2026-06-23 — mtp-gguf-final loop launch and baseline guard fix
+
+### Loop launch
+- Started pi-multiloop `mtp-gguf-final/run-20260623-224120` in optimize / keep-revert mode.
+- Primary metric: full-suite B1 `mtp_vs_true_ar_decode_ratio` (higher is better) with raw B1 `decode_tok_s_weighted` and guard checks required for keeps.
+- Verify command regenerates a current-HEAD true AR denominator under `/tmp/hipengine-mtp-gguf-final/current-true-ar/` and runs `scripts/gguf_mtp_category_bench.py --budgets 1 --cycles 10` against `benchmarks/prompts/mtpbench-code-general-ja.jsonl`.
+
+### Baseline
+- Current-HEAD true AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, weighted decode tok/s `56.38708551128891`.
+- Baseline MTP summary: `/tmp/hipengine-mtp-gguf-final/run-20260623-224301/summary.json`.
+- Baseline B1 full: ratio `0.3171272935835634`, `decode_tok_s_weighted=17.88188382126001`, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- Baseline guard initially failed because `tests/test_gguf_mtp_context.py::test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys` still expected `hip_gfx1100/mtp_nextn_layer/w4_gguf/qwen35_dense_logits` to be missing, but that native key is now registered. Updated the test expectation; no runtime behavior changed.
