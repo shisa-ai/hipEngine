@@ -1187,10 +1187,20 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["categories"]["code"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((10.0 / 110.0 * 1000.0) / 100.0)
 
 
-def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int], draft_ms: float, true_ar_name: str = "shared") -> dict:
+def _default_objective_summary(
+    tmp_path: Path,
+    name: str,
+    *,
+    accepted: list[int],
+    draft_ms: float,
+    true_ar_name: str = "shared",
+    drafts: list[int] | None = None,
+) -> dict:
     prompts = load_prompt_rows(DEFAULT_PROMPTS)
     assert [row["id"] for row in prompts] == list(DEFAULT_FULL_PROMPT_IDS)
     assert len(accepted) == len(prompts)
+    if drafts is not None:
+        assert len(drafts) == len(prompts)
     baseline_path = tmp_path / f"{true_ar_name}-true-ar.json"
     _write_true_ar_baseline(
         baseline_path,
@@ -1209,8 +1219,16 @@ def _default_objective_summary(tmp_path: Path, name: str, *, accepted: list[int]
     )
     raw = {
         1: [
-            _row(row["id"], row["category"], output=10, accepted=acc, drafts=max(acc, 1), ar_ms=100.0, draft_ms=draft_ms)
-            for row, acc in zip(prompts, accepted, strict=True)
+            _row(
+                row["id"],
+                row["category"],
+                output=10,
+                accepted=acc,
+                drafts=max(acc, 1) if drafts is None else drafts[index],
+                ar_ms=100.0,
+                draft_ms=draft_ms,
+            )
+            for index, (row, acc) in enumerate(zip(prompts, accepted, strict=True))
         ]
     }
     return build_summary(args=args, prompts=prompts, raw=raw, commands=list(TEST_SUMMARY_COMMANDS))
@@ -2162,20 +2180,41 @@ def test_compare_objective_metrics_passes_when_full_and_heldout_do_not_regress(t
 
     assert comparison["passed"] is True
     assert comparison["guarded_improved"] is True
-    assert comparison["decision_state"] == "pass_improved"
-    assert comparison["guarded_fields"] == ["accepted_per_output", "draft_acceptance", "mtp_vs_true_ar_decode_ratio"]
+    assert comparison["decision_state"] == "pass_speed_improved"
+    assert comparison["nonregression_fields"] == ["draft_acceptance", "decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio"]
+    assert comparison["required_speed_improvement_fields"] == ["decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio"]
+    assert comparison["report_only_fields"] == ["accepted_per_output"]
     assert comparison["guarded_split_scopes"] == ["full", "heldout"]
     assert comparison["guarded_category_scopes"] == ["code", "general_en", "general_ja", "mixed_ja_en"]
     assert comparison["train_report_only"] is True
     assert comparison["regressions"] == []
+    assert comparison["missing_required_speed_improvements"] == []
     assert any(improvement.get("split") == "heldout" for improvement in comparison["improvements"])
     assert any(improvement.get("category") == "code" for improvement in comparison["improvements"])
     assert comparison["deltas"]["full"]["accepted_per_output"] > 0
     assert comparison["deltas"]["heldout"]["accepted_per_output"] > 0
     assert comparison["deltas"]["full"]["mtp_vs_true_ar_decode_ratio"] > 0
     assert comparison["category_deltas"]["code"]["accepted_per_output"] > 0
-    assert "every category" in comparison["decision_rule"]
+    assert "accepted_per_output is report-only" in comparison["decision_rule"]
     assert "train deltas are report-only" in comparison["decision_rule"]
+
+
+def test_compare_objective_metrics_does_not_count_accepted_output_only_as_guarded_improvement(tmp_path: Path) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0)
+
+    comparison = compare_objective_metrics(baseline, candidate, "b1")
+
+    assert comparison["passed"] is True
+    assert comparison["guarded_improved"] is False
+    assert comparison["decision_state"] == "pass_no_speed_improvement"
+    assert comparison["deltas"]["full"]["accepted_per_output"] > 0
+    assert comparison["report_only_improvements"]
+    assert comparison["improvements"] == []
+    assert {item["field"] for item in comparison["missing_required_speed_improvements"]} == {
+        "decode_tok_s_weighted",
+        "mtp_vs_true_ar_decode_ratio",
+    }
 
 
 def test_compare_objective_metrics_rejects_changed_true_ar_baseline(tmp_path: Path) -> None:
@@ -2210,7 +2249,7 @@ def test_compare_objective_metrics_rejects_changed_protocol_metadata(tmp_path: P
         compare_objective_metrics(baseline, candidate, "b1")
 
 
-def test_compare_objective_metrics_rejects_heldout_acceptance_regression(tmp_path: Path) -> None:
+def test_compare_objective_metrics_rejects_heldout_draft_acceptance_regression(tmp_path: Path) -> None:
     baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
     candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2, 2, 2, 0, 2, 0, 2, 0, 2, 0], draft_ms=10.0)
 
@@ -2220,10 +2259,10 @@ def test_compare_objective_metrics_rejects_heldout_acceptance_regression(tmp_pat
     assert comparison["decision_state"] == "fail_regressed"
     assert {
         "split": "heldout",
-        "field": "accepted_per_output",
-        "baseline": comparison["baseline"]["heldout"]["accepted_per_output"],
-        "candidate": comparison["candidate"]["heldout"]["accepted_per_output"],
-        "delta": comparison["deltas"]["heldout"]["accepted_per_output"],
+        "field": "draft_acceptance",
+        "baseline": comparison["baseline"]["heldout"]["draft_acceptance"],
+        "candidate": comparison["candidate"]["heldout"]["draft_acceptance"],
+        "delta": comparison["deltas"]["heldout"]["draft_acceptance"],
     } in comparison["regressions"]
     assert comparison["deltas"]["train"]["accepted_per_output"] > 0
 
@@ -2241,22 +2280,22 @@ def test_compare_objective_metrics_rejects_true_ar_ratio_regression(tmp_path: Pa
     )
 
 
-def test_compare_objective_metrics_rejects_category_regression_hidden_by_aggregates(tmp_path: Path) -> None:
-    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0)
+def test_compare_objective_metrics_rejects_category_draft_regression_hidden_by_aggregates(tmp_path: Path) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0, drafts=[2] * 10)
     candidate = _default_objective_summary(tmp_path, "candidate", accepted=[0, 0, 0, 0, 2, 2, 2, 2, 2, 2], draft_ms=10.0)
 
     comparison = compare_objective_metrics(baseline, candidate, "b1")
 
-    assert comparison["deltas"]["full"]["accepted_per_output"] > 0
-    assert comparison["deltas"]["heldout"]["accepted_per_output"] > 0
-    assert comparison["category_deltas"]["code"]["accepted_per_output"] < 0
+    assert comparison["deltas"]["full"]["draft_acceptance"] > 0
+    assert comparison["deltas"]["heldout"]["draft_acceptance"] > 0
+    assert comparison["category_deltas"]["code"]["draft_acceptance"] < 0
     assert comparison["passed"] is False
     assert {
         "category": "code",
-        "field": "accepted_per_output",
-        "baseline": comparison["baseline"]["category_metrics"]["code"]["accepted_per_output"],
-        "candidate": comparison["candidate"]["category_metrics"]["code"]["accepted_per_output"],
-        "delta": comparison["category_deltas"]["code"]["accepted_per_output"],
+        "field": "draft_acceptance",
+        "baseline": comparison["baseline"]["category_metrics"]["code"]["draft_acceptance"],
+        "candidate": comparison["candidate"]["category_metrics"]["code"]["draft_acceptance"],
+        "delta": comparison["category_deltas"]["code"]["draft_acceptance"],
     } in comparison["regressions"]
 
 
@@ -2614,9 +2653,45 @@ def test_compare_objective_metrics_cli_can_require_guarded_improvement(tmp_path:
     comparison = json.loads(completed.stdout)
     assert comparison["passed"] is True
     assert comparison["guarded_improved"] is False
-    assert comparison["decision_state"] == "pass_no_guarded_improvement"
+    assert comparison["decision_state"] == "pass_no_speed_improvement"
     assert comparison["regressions"] == []
     assert comparison["improvements"] == []
+
+
+def test_compare_objective_metrics_cli_can_require_draft_acceptance_improvement(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=20.0)
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0)
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--compare-baseline-summary-json",
+            str(baseline_path),
+            "--compare-candidate-summary-json",
+            str(candidate_path),
+            "--compare-budget",
+            "b1",
+            "--compare-require-pass",
+            "--compare-require-guarded-improvement",
+            "--compare-require-draft-acceptance-improvement",
+        ],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 2
+    comparison = json.loads(completed.stdout)
+    assert comparison["passed"] is True
+    assert comparison["guarded_improved"] is True
+    assert comparison["draft_acceptance_improved"] is False
+    assert comparison["decision_state"] == "pass_speed_improved"
 
 
 def test_compare_objective_metrics_cli_can_fail_on_regression(tmp_path: Path) -> None:
@@ -2673,7 +2748,7 @@ def test_compare_objective_metrics_cli_honors_explicit_tolerance(tmp_path: Path)
             "b1",
             "--compare-require-pass",
             "--compare-tolerance",
-            "0.01",
+            "1.0",
         ],
         cwd=repo_root,
         check=True,
@@ -2683,7 +2758,7 @@ def test_compare_objective_metrics_cli_honors_explicit_tolerance(tmp_path: Path)
 
     comparison = json.loads(completed.stdout)
     assert comparison["passed"] is True
-    assert comparison["tolerance"] == 0.01
+    assert comparison["tolerance"] == 1.0
     assert comparison["deltas"]["full"]["mtp_vs_true_ar_decode_ratio"] < 0.0
     assert comparison["regressions"] == []
 

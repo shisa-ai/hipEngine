@@ -1840,10 +1840,12 @@ def compare_objective_metrics(
 ) -> dict[str, Any]:
     """Compare candidate objective metrics against a baseline.
 
-    The returned `passed` flag is intentionally conservative for future
-    keep/revert loops: full-suite and heldout acceptance plus true-AR speed ratio
-    must not regress. Train deltas are reported, but train-only gains cannot pass
-    if full or heldout regress.
+    The loop guard is speed-first: accepted/output is reported, but it is not a
+    keep criterion by itself. Future keep/revert loops should require
+    ``guarded_improved`` (full-suite tok/s and true-AR ratio improve) and, for
+    proposal/selector work, ``draft_acceptance_improved`` as well. Train deltas
+    are reported, but train-only gains cannot pass if heldout/category speed or
+    draft efficiency regress.
     """
     if not math.isfinite(tolerance) or tolerance < 0.0:
         raise BenchError("objective comparison tolerance must be finite and non-negative")
@@ -1884,11 +1886,14 @@ def compare_objective_metrics(
 
     regressions: list[dict[str, Any]] = []
     improvements: list[dict[str, Any]] = []
-    gated_fields = ("accepted_per_output", "draft_acceptance", "mtp_vs_true_ar_decode_ratio")
+    report_only_improvements: list[dict[str, Any]] = []
+    nonregression_fields = ("draft_acceptance", "decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio")
+    report_only_fields = ("accepted_per_output",)
+    required_speed_improvement_fields = ("decode_tok_s_weighted", "mtp_vs_true_ar_decode_ratio")
     gated_split_scopes = ("full", "heldout")
     gated_category_scopes = tuple(sorted(baseline_categories))
     for split_name in gated_split_scopes:
-        for field in gated_fields:
+        for field in nonregression_fields:
             delta = deltas[split_name][field]
             payload = {
                 "split": split_name,
@@ -1901,8 +1906,20 @@ def compare_objective_metrics(
                 regressions.append(payload)
             elif delta > tolerance:
                 improvements.append(payload)
+        for field in report_only_fields:
+            delta = deltas[split_name][field]
+            if delta > tolerance:
+                report_only_improvements.append(
+                    {
+                        "split": split_name,
+                        "field": field,
+                        "baseline": float(baseline[split_name][field]),
+                        "candidate": float(candidate[split_name][field]),
+                        "delta": delta,
+                    }
+                )
     for category in gated_category_scopes:
-        for field in gated_fields:
+        for field in nonregression_fields:
             delta = category_deltas[category][field]
             payload = {
                 "category": category,
@@ -1915,25 +1932,62 @@ def compare_objective_metrics(
                 regressions.append(payload)
             elif delta > tolerance:
                 improvements.append(payload)
+        for field in report_only_fields:
+            delta = category_deltas[category][field]
+            if delta > tolerance:
+                report_only_improvements.append(
+                    {
+                        "category": category,
+                        "field": field,
+                        "baseline": float(baseline_categories[category][field]),
+                        "candidate": float(candidate_categories[category][field]),
+                        "delta": delta,
+                    }
+                )
+
+    required_speed_improvements: list[dict[str, Any]] = []
+    missing_required_speed_improvements: list[dict[str, Any]] = []
+    for field in required_speed_improvement_fields:
+        delta = deltas["full"][field]
+        payload = {
+            "split": "full",
+            "field": field,
+            "baseline": float(baseline["full"][field]),
+            "candidate": float(candidate["full"][field]),
+            "delta": delta,
+        }
+        if delta > tolerance:
+            required_speed_improvements.append(payload)
+        else:
+            missing_required_speed_improvements.append(payload)
+    draft_acceptance_delta = deltas["full"]["draft_acceptance"]
+    draft_acceptance_improved = draft_acceptance_delta > tolerance
+    guarded_improved = not regressions and not missing_required_speed_improvements
 
     if regressions:
         decision_state = "fail_regressed"
-    elif improvements:
-        decision_state = "pass_improved"
+    elif guarded_improved:
+        decision_state = "pass_speed_improved"
     else:
-        decision_state = "pass_no_guarded_improvement"
+        decision_state = "pass_no_speed_improvement"
 
     return {
         "budget": baseline["budget"],
         "passed": not regressions,
-        "guarded_improved": bool(improvements),
+        "guarded_improved": guarded_improved,
+        "draft_acceptance_improved": draft_acceptance_improved,
         "decision_state": decision_state,
-        "guarded_fields": list(gated_fields),
+        "nonregression_fields": list(nonregression_fields),
+        "required_speed_improvement_fields": list(required_speed_improvement_fields),
+        "report_only_fields": list(report_only_fields),
         "guarded_split_scopes": list(gated_split_scopes),
         "guarded_category_scopes": list(gated_category_scopes),
         "train_report_only": True,
         "regressions": regressions,
         "improvements": improvements,
+        "report_only_improvements": report_only_improvements,
+        "required_speed_improvements": required_speed_improvements,
+        "missing_required_speed_improvements": missing_required_speed_improvements,
         "tolerance": tolerance,
         "benchmark_protocol": baseline_protocol,
         "true_ar_baseline": baseline_true_ar,
@@ -1942,8 +1996,9 @@ def compare_objective_metrics(
         "deltas": deltas,
         "category_deltas": category_deltas,
         "decision_rule": (
-            "full, heldout, and every category accepted_per_output, draft_acceptance, and "
-            "mtp_vs_true_ar_decode_ratio must not regress; train deltas are report-only"
+            "full-suite decode_tok_s_weighted and mtp_vs_true_ar_decode_ratio must improve for guarded_improved; "
+            "full/heldout/every-category draft_acceptance, decode_tok_s_weighted, and mtp_vs_true_ar_decode_ratio must not regress; "
+            "accepted_per_output is report-only and cannot justify a keep by itself; train deltas are report-only"
         ),
     }
 
@@ -2249,7 +2304,12 @@ def main() -> int:
     parser.add_argument(
         "--compare-require-guarded-improvement",
         action="store_true",
-        help="In compare mode, exit non-zero unless at least one guarded full/heldout/category metric improves beyond tolerance.",
+        help="In compare mode, exit non-zero unless full-suite tok/s and true-AR ratio improve beyond tolerance.",
+    )
+    parser.add_argument(
+        "--compare-require-draft-acceptance-improvement",
+        action="store_true",
+        help="In compare mode, exit non-zero unless full-suite draft_acceptance also improves beyond tolerance; use for proposal/selector loops.",
     )
     parser.add_argument(
         "--compare-output-json",
@@ -2293,6 +2353,8 @@ def main() -> int:
             args.compare_output_json.write_text(rendered, encoding="utf-8")
         print(rendered, end="")
         if args.compare_require_guarded_improvement and (not comparison["passed"] or not comparison["guarded_improved"]):
+            return 2
+        if args.compare_require_draft_acceptance_improvement and (not comparison["passed"] or not comparison["draft_acceptance_improved"]):
             return 2
         return 0 if comparison["passed"] or not args.compare_require_pass else 2
 

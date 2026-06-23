@@ -171,9 +171,15 @@ acceptance loops.
    - `mtp_vs_true_ar_decode_ratio`.
 
    Category objective rows are also reported for every present category. A
-   train-only gain is not a win. Heldout, full-suite, and per-category
-   acceptance must not regress, and MTP/true-AR ratio must be computed from the
-   attached true-AR split/category baseline rather than `off`/`B0` verifier
+   train-only gain is not a win. The loop guard is speed-first: full-suite
+   `decode_tok_s_weighted` and `mtp_vs_true_ar_decode_ratio` must improve for a
+   guarded keep, while full-suite, heldout, and every-category
+   `draft_acceptance`, `decode_tok_s_weighted`, and
+   `mtp_vs_true_ar_decode_ratio` must not regress. `accepted_per_output` is
+   reported as a useful coverage signal, but it is report-only for keep/revert
+   decisions; a wider search that raises accepted/output while lowering speed or
+   draft efficiency is reward hacking. MTP/true-AR ratio must be computed from
+   the attached true-AR split/category baseline rather than `off`/`B0` verifier
    telemetry.
 
 4. **Use the guarded objective CLI for loop metrics.** Future optimize loops
@@ -242,33 +248,33 @@ acceptance loops.
    and request one split/field or category/field explicitly:
 
    ```bash
-   # Primary acceptance metric candidate: full-suite B5 accepted/output.
-   python3 scripts/gguf_mtp_category_bench.py \
-     --objective-summary-json "$MTP_ROOT/summary.json" \
-     --objective-budget b5 \
-     --objective-split full \
-     --objective-field accepted_per_output
-
-   # Heldout monitor: reject train-only wins when this regresses.
-   python3 scripts/gguf_mtp_category_bench.py \
-     --objective-summary-json "$MTP_ROOT/summary.json" \
-     --objective-budget b5 \
-     --objective-split heldout \
-     --objective-field accepted_per_output
-
-   # Speed-ratio monitor: same-protocol MTP/true-AR ratio.
+   # Primary speed metric: full-suite same-protocol MTP/true-AR ratio.
    python3 scripts/gguf_mtp_category_bench.py \
      --objective-summary-json "$MTP_ROOT/summary.json" \
      --objective-budget b5 \
      --objective-split full \
      --objective-field mtp_vs_true_ar_decode_ratio
 
-   # Per-category monitor: reject aggregate gains that hide category regressions.
+   # Proposal/selector efficiency monitor: full-suite draft acceptance.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split full \
+     --objective-field draft_acceptance
+
+   # Coverage signal only: accepted/output is not a keep metric by itself.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split full \
+     --objective-field accepted_per_output
+
+   # Per-category speed monitor: reject aggregate gains that hide category regressions.
    python3 scripts/gguf_mtp_category_bench.py \
      --objective-summary-json "$MTP_ROOT/summary.json" \
      --objective-budget b5 \
      --objective-category code \
-     --objective-field accepted_per_output
+     --objective-field mtp_vs_true_ar_decode_ratio
    ```
 
    `--objective-split` and `--objective-category` are mutually exclusive scalar
@@ -292,20 +298,29 @@ acceptance loops.
      --compare-baseline-summary-json /path/to/baseline-summary.json \
      --compare-candidate-summary-json /path/to/candidate-summary.json \
      --compare-budget b5 \
-     --compare-require-pass
+     --compare-require-pass \
+     --compare-require-guarded-improvement \
+     --compare-require-draft-acceptance-improvement
    ```
 
    With `--compare-require-pass`, the command exits non-zero when full, heldout,
-   or any category `accepted_per_output`, `draft_acceptance`, or
-   `mtp_vs_true_ar_decode_ratio` regress. Train deltas are reported but are not
-   sufficient for a keep decision. The comparator also reports an `improvements[]`
-   list, `guarded_improved` boolean, `decision_state` enum
-   (`fail_regressed`, `pass_no_guarded_improvement`, or `pass_improved`), guarded
-   field/scope lists, and `train_report_only=true` for those same guarded
-   full/heldout/category fields. Add `--compare-require-guarded-improvement` when
-   an optimize loop must reject exact no-op candidates in addition to regressions. The optional
-   `--compare-tolerance` applies a finite non-negative absolute tolerance to
-   guarded regressions and improvements; its default is `0.0` for exact
+   or any category `draft_acceptance`, `decode_tok_s_weighted`, or
+   `mtp_vs_true_ar_decode_ratio` regress. `accepted_per_output` deltas are
+   retained in `report_only_improvements[]`, but cannot make `guarded_improved`
+   true by themselves. Train deltas are reported but are not sufficient for a
+   keep decision. The comparator also reports an `improvements[]` list,
+   `report_only_improvements[]`, `guarded_improved` (true only when full-suite
+   tok/s and true-AR ratio improve), `draft_acceptance_improved`,
+   `missing_required_speed_improvements[]`, `decision_state` enum
+   (`fail_regressed`, `pass_no_speed_improvement`, or `pass_speed_improved`),
+   guarded field/scope lists, and `train_report_only=true` for those same
+   guarded full/heldout/category fields. Add
+   `--compare-require-guarded-improvement` when an optimize loop must reject
+   accepted/output-only or exact no-op candidates in addition to regressions. Add
+   `--compare-require-draft-acceptance-improvement` for proposal/selector loops;
+   runtime/kernel-only loops may omit that flag but still must not regress draft
+   acceptance. The optional `--compare-tolerance` applies a finite non-negative
+   absolute tolerance to guarded regressions and improvements; its default is `0.0` for exact
    non-regression. NaN/Inf tolerances are invalid because they can mask
    regressions. Compare-mode JSON also records `comparison_sources` (baseline and
    candidate summary paths plus resolved paths), `comparison_command`, and
@@ -320,9 +335,13 @@ acceptance loops.
    a speed row into `benchmarks/README.md`, rerun the retained benchmark protocol
    with hermetic/warm timing (prebuilt kernels, no `hipcc`/clang in the timed
    process), full artifact provenance, correctness gate, and rollup updates. The
-   optimization target is honest B5 accepted/output rising from ~0.24 toward the
-   llama.cpp reference band (~0.71–0.75) while MTP/true-AR decode ratio improves
-   toward >1.3× without hardcoding.
+   optimization target is MTP/true-AR decode ratio first: diagnostic progress may
+   be logged below 1.0× only when the same-protocol ratio and tok/s improve;
+   retained speedups require ratio > 1.0×, and the target remains >1.3×. For
+   proposal/selector work, full-suite draft acceptance should move toward the
+   llama.cpp reference band (~0.50–0.84 depending on budget) rather than being
+   traded away for accepted/output; lower accepted/output is acceptable only when
+   speed ratio improves and draft acceptance does not regress. No hardcoding.
 
 ## Benchmark Output Contract
 

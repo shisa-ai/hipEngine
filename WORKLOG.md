@@ -124134,3 +124134,28 @@ PY2
 # REJECT old 19.67 artifact: requires production timing_protocol metadata
 # ACCEPT new 56.32 artifact: graph_replay True
 ```
+
+## 2026-06-23 — GGUF-MTP speed-first loop guard
+
+### Decision
+- Do not use accepted/output as a keep metric by itself. It is a coverage/reporting signal only: a wide search can raise accepted/output while destroying draft efficiency and tok/s.
+- For proposal/selector loops, require full-suite speed to improve (`decode_tok_s_weighted` and `mtp_vs_true_ar_decode_ratio`) and require full-suite `draft_acceptance` to improve as well. Full/heldout/every-category speed and draft acceptance must not regress.
+- For runtime/kernel-only loops, speed/tok-s and true-AR ratio still must improve; draft acceptance may be unchanged but must not regress.
+- Retained speedup remains separate: diagnostic progress below 1.0x true AR can be logged only when speed ratio improves, but a retained/promoted speedup requires MTP/true-AR ratio > 1.0x (target >1.3x).
+
+### Implementation
+- Updated `scripts/gguf_mtp_category_bench.py` compare mode:
+  - `guarded_improved` now means full-suite `decode_tok_s_weighted` and `mtp_vs_true_ar_decode_ratio` improved.
+  - `accepted_per_output` moved to `report_only_improvements`; it cannot make a candidate pass `--compare-require-guarded-improvement`.
+  - Full/heldout/every-category `draft_acceptance`, `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio` are non-regression fields.
+  - Added `draft_acceptance_improved` and `--compare-require-draft-acceptance-improvement` for proposal/selector loops.
+  - Decision states are now `fail_regressed`, `pass_no_speed_improvement`, and `pass_speed_improved`.
+- Updated tests to cover accepted/output-only reward hacking, draft-acceptance regressions, category-hidden regressions, and the new CLI draft-acceptance-improvement flag.
+- Updated `docs/BENCHMARK.md` to state the speed-first guard and the exact compare command for future MTP loop decisions.
+
+### Validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_category_bench.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+```
