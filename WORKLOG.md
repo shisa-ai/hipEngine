@@ -123443,3 +123443,56 @@ python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test
 - Rejected. Current default remains branch-redraft root-K32/sibling-K28-tailmin0/depth≤4 with ungated root tail, up to five branch redrafts, and `draft_p_min=0.0`.
 - Added compact rejected artifact:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk32-sibling32-tailmin0-depth4-max5-rejected-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 222: previous-hidden branch-redraft seed rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 222.
+- Tested a generic branch-redraft seed-source change under retained `root_topk_accept=32`, `sibling_topk_accept=28`, `sibling_tail_min_prev_accepted=0`, `sibling_topk_max_depth=4`, `root_tail_max_prev_accepted=-1`, `topk_branch_redraft=true`, `topk_branch_redraft_max_branches=5`, and `draft_p_min=0.0`.
+- Hypothesis: llama.cpp-style shifted MTP rows might prefer redrafting from the previous target hidden row for the accepted branch token (`target_hidden_seeds[depth - 1]`) rather than the current default redraft seed (`target_hidden_seed` captured after consuming the accepted branch token).
+- This was a direct proposal/runtime behavior experiment under exact target verification; no prompt text, token IDs, fixture IDs, candidate-token-pattern branches, benchmark detection, or target-token rescue logic were introduced.
+
+### Change evaluated and reverted
+- Temporarily changed pending branch redraft from:
+  `current_hidden_seed = np.ascontiguousarray(target_hidden_seed, dtype=np.float32)`
+  to:
+  `current_hidden_seed = np.ascontiguousarray(target_hidden_seeds[depth - 1], dtype=np.float32)`
+- Reverted to the retained default because the previous-hidden redraft seed regressed focused/full/heldout acceptance.
+
+### Focused B5 validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-prevseed-rootk32-sibling28-tailmin0-depth4-default-iter222-b5-20.json
+```
+- Focused accepted/output regressed vs retained root-K32/sibling-K28-tailmin0: `0.7468 -> 0.7333`.
+- Accepted drafts/candidates changed `59/2973 -> 55/2965`; `accept_per_draft 0.0198 -> 0.0185`.
+- Branch accepts dropped `41 -> 38`; redraft cycles `14`; multi/triple/quad/quint branch cycles were `11/7/5/1`.
+- Diagnostic tok/s `14.29`, `speedup_vs_ar_visible=0.7427x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-prevseed-rootk32-sibling28-tailmin0-depth4-full-iter222/raw --output /tmp/hipengine-branch-redraft-prevseed-rootk32-sibling28-tailmin0-depth4-full-iter222/summary.json
+```
+- Full accepted/output regressed `0.773243 -> 0.770642` (`341/441 -> 336/436`).
+- Train regressed `0.769231 -> 0.768340`; heldout regressed `0.779006 -> 0.774011`.
+- Per-category accepted/output: code unchanged `0.751553`, general_en unchanged `0.813084`, general_ja improved `0.726027 -> 0.733333`, mixed_ja_en regressed `0.800000 -> 0.784946`.
+- Full draft acceptance regressed `0.022872 -> 0.022476`; candidates changed `14909 -> 14949`.
+- Diagnostic weighted decode tok/s increased `14.2406 -> 14.5675`, but verifier-derived ratio regressed `0.7424 -> 0.7344`; timing remains diagnostic only and cannot support a speed claim.
+
+### Validation after revert
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify; 321 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard; 321 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py | tail -5
+# 321 tests collected
+```
+- Prompt verifier passed for the evaluated shape: only the generic branch-redraft hidden-seed source changed. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches were introduced. The candidate is rejected because focused/full/train/heldout acceptance regressed and mixed_ja_en regressed despite a general_ja improvement.
+
+### Result
+- Rejected. Current default remains branch-redraft root-K32/sibling-K28-tailmin0/depth≤4 with ungated root tail, up to five branch redrafts, `draft_p_min=0.0`, and the original redraft seed source.
+- Added compact rejected artifact:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-prevseed-rootk32-sibling28-tailmin0-depth4-max5-rejected-gfx1151.json`.
