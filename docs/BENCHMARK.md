@@ -88,23 +88,33 @@ acceptance loops.
    python3 scripts/gguf_true_ar_category_bench.py \
      --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
      --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
-     --decode-tokens 32 \
+     --decode-tokens 128 \
      --warmup-decode-tokens 1 \
+     --compiler-version-file /tmp/hipengine-readme-gfx1151-runs/20260615-040438/hipcc-version-gfx1151.txt \
      --raw-root "$AR_ROOT" \
      --output "$AR_ROOT/true-ar-baseline.json"
    ```
 
    The artifact must set `schema=1`,
    `kind=hipengine_gguf_true_ar_category_baseline`,
-   `true_autoregressive_path=true`, `same_prompt_suite=true`, and
-   `same_timing_protocol=true`; include non-empty `commands`; include `repo`
-   code-state provenance; include protocol metadata (`model`, matching `quant`,
+   `status=complete`, `true_autoregressive_path=true`,
+   `same_prompt_suite=true`, and `same_timing_protocol=true`; include non-empty
+   `commands`; include `repo` code-state provenance; include protocol metadata (`model`, matching `quant`,
    `prompt_file`, `prompt_count`, positive `decode_tokens`, and non-negative
-   `warmup_decode_tokens`); include top-level
-   `prompt_hashes`; and contain one `prompt_metrics[]` row per selected prompt
-   with `prompt_sha256`, `finite_final_logits=true`, `output_tokens` matching
-   artifact `decode_tokens`, `warmup_decode_tokens` matching artifact
-   `warmup_decode_tokens`, and positive `decode_ms`.
+   `warmup_decode_tokens`); include production `timing_protocol` metadata with
+   `decode_path=graph_replay`, `graph_replay_decode=true`,
+   `graph_steps_per_replay=1`, `decode_repack=true`,
+   `effective_decode_repack=true`, `use_gemv_decode=true`,
+   `effective_use_gemv_decode=true`, `use_wmma_prefill=true`, and
+   `effective_use_wmma_prefill=true`; include top-level `prompt_hashes`; and
+   contain one `prompt_metrics[]` row per selected prompt with `prompt_sha256`,
+   `finite_final_logits=true`, `output_tokens` matching artifact
+   `decode_tokens`, `warmup_decode_tokens` matching artifact
+   `warmup_decode_tokens`, and positive `decode_ms`. An eager/raw artifact such
+   as `/tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json`
+   (`19.67 tok/s`, no production timing metadata/effective decode-repack GEMV)
+   is valid only as a diagnostic of that path and is **INVALID** as the
+   retained GGUF-MTP speed denominator.
 
 2. **Attach AR to the MTP category matrix.** Run the MTP diagnostic over the same
    prompts/budgets and attach the AR artifact:
@@ -115,7 +125,7 @@ acceptance loops.
      --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
      --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
      --budgets 1,2,3,4,5 \
-     --cycles 5 \
+     --cycles 10 \
      --raw-root "$MTP_ROOT/raw" \
      --output "$MTP_ROOT/summary.json" \
      --true-ar-baseline-json "$AR_ROOT/true-ar-baseline.json"
@@ -134,7 +144,8 @@ acceptance loops.
    true-AR `true_autoregressive_path=true`, `same_prompt_suite=true`,
    `same_timing_protocol=true`, `artifact_schema`/`artifact_kind` with strict
    integer schema fields, plus self-consistent `protocol` metadata matching
-   the MTP `model`, quant family, `prompt_file`, and prompt count,
+   the MTP `model`, quant family, `prompt_file`, and prompt count, the same
+   production `timing_protocol` metadata listed above,
    `true_ar_comparison_available=true`, boolean `performance_claim=false`,
    boolean `speed_claim_eligible=false`, `splits.full`,
    `splits.train`, and `splits.heldout`; prompt fixture rows must use explicit unique non-blank strict
@@ -183,7 +194,8 @@ acceptance loops.
    artifacts without current schema/kind metadata (schema fields must be strict
    JSON integers, not booleans), explicit true-no-MTP / same-prompt-suite /
    same-timing-protocol true-AR flags, a same-protocol true-AR
-   baseline, strict attached true-AR source provenance, repo provenance including matching summary / attached true-AR
+   baseline with production timing protocol (`graph_replay` + decode-repack +
+   effective GEMV/WMMA), strict attached true-AR source provenance, repo provenance including matching summary / attached true-AR
    `repo_root` and non-null `git_commit`, command provenance, summary prompt/category
    provenance including strict prompt fixture and raw row identity typing,
    default prompt hashes/categories/lengths plus exactly-one prompt text source per fixture row and category budget-row scalar fields, strict JSON-integer token counts and prompt counts
@@ -605,7 +617,7 @@ PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
   --json benchmarks/results/<date>-qwen36-35b-a3b-q4km-p9-e2-correctness.json
 ```
 
-The fixture compares a candidate launched with `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. The qwen35moe resident runtime currently safety-disables those two requested fast paths unless `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1` is set, because P9.E2 rejected their real opt-in output. The artifact records `fastpath_safety` with requested vs effective flags; a passing gate with `effective_* = false` is a correctness fallback only, not a performance acceptance for WMMA/GEMV. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
+The fixture compares a candidate launched with `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. Do not infer fastpath use from requested flags alone: artifacts must record `fastpath_safety` and requested vs effective flags, and only rows with `effective_use_wmma_prefill=true` / `effective_use_gemv_decode=true` can be used as WMMA/GEMV performance evidence. A passing gate with `effective_* = false` is a correctness fallback only. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
 
 Fixtures (prompts + reference logits) are tiny (< 10 MB) and *are* committed under `fixtures/`. They are not "benchmark outputs" and do not count against the never-commit rule.
 

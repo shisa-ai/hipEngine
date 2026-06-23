@@ -15,6 +15,7 @@ import argparse
 import ctypes
 import json
 import math
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -415,6 +416,9 @@ def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[n
 def main():
     parser = argparse.ArgumentParser(description="MTP speculative decoding benchmark")
     parser.add_argument("--model", default=GGUF_PATH, help="GGUF model path")
+    parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True, help="Use the production resident T16 decode-repack GGUF path (default: true)")
+    parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True, help="Request WMMA prefill for the resident GGUF session (default: true)")
+    parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True, help="Request GEMV decode for the resident GGUF session (default: true)")
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
@@ -529,6 +533,10 @@ def main():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
     topk_candidate_count = max(10, args.root_topk_accept, args.sibling_topk_accept)
+    if args.decode_repack:
+        os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
+    else:
+        os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "0"
     if not Path(args.model).exists():
         print(f"ERROR: Model file not found: {args.model}", file=sys.stderr)
         sys.exit(1)
@@ -622,7 +630,11 @@ def main():
         return np.asarray(result, dtype=np.float32)
 
     # Run benchmark
-    session = Qwen35GGUFResidentSession(model_path=args.model)
+    session = Qwen35GGUFResidentSession(
+        model_path=args.model,
+        use_wmma_prefill=bool(args.use_wmma_prefill),
+        use_gemv_decode=bool(args.use_gemv_decode),
+    )
     try:
         runtime = session.runtime or get_hip_runtime()
         hidden_size = 2048
@@ -1094,6 +1106,9 @@ def main():
     print(f"Model: {Path(args.model).name}")
     print(f"Cycles: {args.cycles}")
     print(f"Draft n_max: {args.draft_n_max}")
+    print(f"Decode repack: {args.decode_repack}")
+    print(f"Effective GEMV decode: {session.use_gemv_decode}")
+    print(f"Effective WMMA prefill: {session.use_wmma_prefill}")
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
     print(f"Sibling tail min previous accepted: {args.sibling_tail_min_prev_accepted}")
@@ -1138,6 +1153,13 @@ def main():
             "prompt_tokens": len(prompt),
             "cycles": args.cycles,
             "draft_n_max": args.draft_n_max,
+            "decode_repack": bool(args.decode_repack),
+            "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
+            "use_wmma_prefill": bool(args.use_wmma_prefill),
+            "use_gemv_decode": bool(args.use_gemv_decode),
+            "effective_use_wmma_prefill": bool(session.use_wmma_prefill),
+            "effective_use_gemv_decode": bool(session.use_gemv_decode),
+            "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
             "root_topk_accept": args.root_topk_accept,
             "sibling_topk_accept": args.sibling_topk_accept,
             "sibling_tail_min_prev_accepted": args.sibling_tail_min_prev_accepted,

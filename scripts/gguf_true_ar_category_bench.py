@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import sys
 import time
@@ -85,6 +86,19 @@ def build_true_ar_artifact(
         "prompt_file": str(args.prompts),
         "decode_tokens": int(args.decode_tokens),
         "warmup_decode_tokens": int(args.warmup_decode_tokens),
+        "timing_protocol": {
+            "decode_path": "graph_replay" if bool(getattr(args, "graph_replay_decode", False)) else "eager_step",
+            "graph_replay_decode": bool(getattr(args, "graph_replay_decode", False)),
+            "graph_steps_per_replay": int(getattr(args, "graph_steps_per_replay", 0) or 0),
+            "decode_repack": bool(getattr(args, "decode_repack", False)),
+            "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
+            "use_gemv_decode": bool(getattr(args, "use_gemv_decode", False)),
+            "use_wmma_prefill": bool(getattr(args, "use_wmma_prefill", False)),
+            "force_bulk_prefill": bool(getattr(args, "force_bulk_prefill", False)),
+            "no_bulk_prefill": bool(getattr(args, "no_bulk_prefill", False)),
+            "bulk_prefill_attention_mode": str(getattr(args, "bulk_prefill_attention_mode", "bulk")),
+            "attn_aotriton_min_tokens": int(getattr(args, "attn_aotriton_min_tokens", 0) or 0),
+        },
         "prompt_count": len(prompts),
         "prompt_ids": prompt_ids,
         "prompt_hashes": {str(row["id"]): prompt_sha256(str(row["prompt"])) for row in prompts},
@@ -95,7 +109,8 @@ def build_true_ar_artifact(
         "notes": [
             "True no-MTP autoregressive resident GGUF path; no draft/proposal/MTP kernels are invoked.",
             "Prompt tokens use scripts.gguf_mtp_bench.build_chat_prompt() so the prompt suite matches GGUF-MTP diagnostics.",
-            "decode_ms measures the autoregressive decode loop after prefill and optional warmup; model load and prefill are excluded.",
+            "Default timing mirrors the retained production GGUF benchmark path: GEMV decode enabled and measured decode via HIP graph replay with graph capture excluded.",
+            "decode_ms measures the autoregressive decode loop after prefill and optional warmup; model load, prefill, warmup, and graph capture are excluded.",
             "Use as --true-ar-baseline-json input for scripts/gguf_mtp_category_bench.py.",
         ],
     }
@@ -110,6 +125,8 @@ def run_prompt_true_ar(
     warmup_decode_tokens: int,
     use_bulk_prefill: bool | None,
     bulk_attention_mode: str,
+    graph_replay_decode: bool,
+    graph_steps_per_replay: int,
 ) -> dict[str, Any]:
     prompt_tokens = build_chat_prompt(tokenizer, str(prompt_row["prompt"]))
     session.reset()
@@ -132,12 +149,35 @@ def run_prompt_true_ar(
     warmup_ms = 1000.0 * (time.perf_counter() - warmup_start)
 
     final = None
-    decode_start = time.perf_counter()
-    for step_index in range(int(decode_tokens)):
-        final = session.step(next_token, return_logits=(step_index == int(decode_tokens) - 1))
-        next_token = int(final.token_id)
-        generated.append(next_token)
-    decode_ms = 1000.0 * (time.perf_counter() - decode_start)
+    graph_capture_ms = 0.0
+    if graph_replay_decode:
+        graph = None
+        capture_start = time.perf_counter()
+        try:
+            graph = session.capture_decode_graph(
+                position=session.position,
+                steps_per_replay=int(graph_steps_per_replay),
+                max_replay_steps=int(decode_tokens),
+                record_steps=int(decode_tokens),
+            )
+            graph_capture_ms = 1000.0 * (time.perf_counter() - capture_start)
+            decode_start = time.perf_counter()
+            graph.replay(int(decode_tokens))
+            decode_ms = 1000.0 * (time.perf_counter() - decode_start)
+            generated.extend(int(token) for token in graph.read_generated_token_ids(int(decode_tokens)))
+            final = graph.read_sample()
+            if final is not None:
+                next_token = int(final.token_id)
+        finally:
+            if graph is not None:
+                graph.close()
+    else:
+        decode_start = time.perf_counter()
+        for step_index in range(int(decode_tokens)):
+            final = session.step(next_token, return_logits=(step_index == int(decode_tokens) - 1))
+            next_token = int(final.token_id)
+            generated.append(next_token)
+        decode_ms = 1000.0 * (time.perf_counter() - decode_start)
     finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
 
     return {
@@ -152,6 +192,9 @@ def run_prompt_true_ar(
         "prefill_ms": prefill_ms,
         "warmup_decode_ms": warmup_ms,
         "warmup_decode_tokens": int(warmup_decode_tokens),
+        "graph_replay_decode": bool(graph_replay_decode),
+        "graph_steps_per_replay": int(graph_steps_per_replay if graph_replay_decode else 0),
+        "graph_capture_ms_excluded": graph_capture_ms,
         "finite_final_logits": finite_logits,
         "final_token_id": None if final is None else int(final.token_id),
         "generated_preview_token_ids": generated[:16],
@@ -171,6 +214,12 @@ def main() -> int:
     parser.add_argument("--force-bulk-prefill", action="store_true")
     parser.add_argument("--no-bulk-prefill", action="store_true")
     parser.add_argument("--bulk-prefill-attention-mode", choices=("bulk", "native"), default="bulk")
+    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--graph-steps-per-replay", type=int, default=1)
+    parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--attn-aotriton-min-tokens", type=int, default=512)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--dry-run", action="store_true")
@@ -180,6 +229,12 @@ def main() -> int:
         raise BenchError("--decode-tokens must be positive")
     if args.warmup_decode_tokens < 0:
         raise BenchError("--warmup-decode-tokens must be non-negative")
+    if args.graph_steps_per_replay <= 0:
+        raise BenchError("--graph-steps-per-replay must be positive")
+    if args.graph_replay_decode and args.decode_tokens % args.graph_steps_per_replay != 0:
+        raise BenchError("--decode-tokens must be divisible by --graph-steps-per-replay")
+    if args.attn_aotriton_min_tokens < 0:
+        raise BenchError("--attn-aotriton-min-tokens must be non-negative")
     if args.force_bulk_prefill and args.no_bulk_prefill:
         raise BenchError("--force-bulk-prefill and --no-bulk-prefill are mutually exclusive")
     if not args.model.exists():
@@ -210,6 +265,10 @@ def main() -> int:
                 "decode_ms": 1.0,
                 "decode_tok_s": 1000.0 * int(args.decode_tokens),
                 "warmup_decode_tokens": int(args.warmup_decode_tokens),
+                "graph_replay_decode": bool(args.graph_replay_decode),
+                "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
+                "decode_repack": bool(args.decode_repack),
+                "graph_capture_ms_excluded": 0.0,
                 "finite_final_logits": True,
                 "dry_run": True,
             }
@@ -222,7 +281,13 @@ def main() -> int:
         print(args.output)
         return 0
 
+    if args.decode_repack:
+        os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
+    else:
+        os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "0"
+
     from hipengine.loading.gguf import scan_gguf
+    from hipengine.runtime.prefill import PrefillConfig
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
@@ -240,12 +305,22 @@ def main() -> int:
     else:
         use_bulk_prefill = None
 
+    prefill_config = PrefillConfig(attn_aotriton_min_tokens=int(args.attn_aotriton_min_tokens))
     session = Qwen35GGUFResidentSession(
         args.model,
         compiler_version=compiler_version,
         require_cached_build=bool(args.require_cached_build),
         max_sequence_length=max_sequence_length,
+        use_wmma_prefill=bool(args.use_wmma_prefill),
+        use_gemv_decode=bool(args.use_gemv_decode),
+        prefill_config=prefill_config,
     )
+    session_timing_protocol = {
+        "effective_decode_repack": bool(args.decode_repack),
+        "effective_use_wmma_prefill": bool(session.use_wmma_prefill),
+        "effective_use_gemv_decode": bool(session.use_gemv_decode),
+        "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
+    }
     prompt_metrics: list[dict[str, Any]] = []
     try:
         for row in prompts:
@@ -257,6 +332,8 @@ def main() -> int:
                 warmup_decode_tokens=int(args.warmup_decode_tokens),
                 use_bulk_prefill=use_bulk_prefill,
                 bulk_attention_mode=str(args.bulk_prefill_attention_mode),
+                graph_replay_decode=bool(args.graph_replay_decode),
+                graph_steps_per_replay=int(args.graph_steps_per_replay),
             )
             prompt_metrics.append(metric)
             per_prompt_path = args.raw_root / f"{safe_name(row['id'])}.json"
@@ -266,6 +343,7 @@ def main() -> int:
         session.close()
 
     artifact = build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=prompt_metrics, commands=commands)
+    artifact["timing_protocol"].update(session_timing_protocol)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(args.output)

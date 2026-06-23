@@ -52,6 +52,17 @@ TEST_TRUE_AR_PROTOCOL = {
     "warmup_decode_tokens": 1,
     "prompt_count": 10,
 }
+TEST_TRUE_AR_TIMING_PROTOCOL = {
+    "decode_path": "graph_replay",
+    "graph_replay_decode": True,
+    "graph_steps_per_replay": 1,
+    "decode_repack": True,
+    "effective_decode_repack": True,
+    "use_gemv_decode": True,
+    "effective_use_gemv_decode": True,
+    "use_wmma_prefill": True,
+    "effective_use_wmma_prefill": True,
+}
 TEST_SUMMARY_ARTIFACT = {"schema": 1, "kind": "hipengine_gguf_mtp_category_matrix"}
 TEST_ATTACHED_TRUE_AR_ARTIFACT = {
     "artifact_schema": 1,
@@ -72,6 +83,13 @@ def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: i
         "prompt_id": prompt_id,
         "category": category,
         "suite_category": category,
+        "workload": {
+            "decode_repack": True,
+            "use_wmma_prefill": True,
+            "use_gemv_decode": True,
+            "effective_use_wmma_prefill": True,
+            "effective_use_gemv_decode": True,
+        },
         "metrics": {
             "total_output_tokens": output,
             "total_accepted": accepted,
@@ -159,6 +177,36 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     assert summary["totals"]["off"]["baseline_kind"] == "verifier_derived_from_b1_target_ar"
     assert summary["totals"]["off"]["true_autoregressive_path"] is False
     assert summary["categories"]["code"]["off"]["true_autoregressive_path"] is False
+
+
+def test_category_summary_rejects_raw_rows_without_production_mtp_timing_metadata() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    del row["workload"]
+
+    with pytest.raises(BenchError, match="raw row code_1 requires workload timing/protocol metadata"):
+        build_summary(args=args, prompts=prompts, raw={1: [row]}, commands=[])
+
+
+def test_category_summary_rejects_raw_rows_without_effective_gemv_mtp_decode() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=1,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)
+    row["workload"]["effective_use_gemv_decode"] = False
+
+    with pytest.raises(BenchError, match="raw row code_1 requires workload.effective_use_gemv_decode=True"):
+        build_summary(args=args, prompts=prompts, raw={1: [row]}, commands=[])
 
 
 def test_category_summary_rejects_impossible_acceptance_metrics() -> None:
@@ -791,6 +839,7 @@ def _speed_claim_summary(
         "repo": dict(TEST_REPO_PROVENANCE),
         "commands": list(TEST_TRUE_AR_COMMANDS),
         "protocol": dict(TEST_TRUE_AR_PROTOCOL),
+        "timing_protocol": dict(TEST_TRUE_AR_TIMING_PROTOCOL),
     }
     if true_ar_overrides:
         true_ar.update(true_ar_overrides)
@@ -963,6 +1012,25 @@ def test_speed_claim_contract_rejects_missing_true_ar_protocol() -> None:
         validate_speed_claim_contract(summary)
 
 
+def test_speed_claim_contract_rejects_eager_or_raw_true_ar_timing_protocol() -> None:
+    timing = dict(TEST_TRUE_AR_TIMING_PROTOCOL)
+    timing["decode_path"] = "eager_step"
+    timing["graph_replay_decode"] = False
+    summary = _speed_claim_summary(true_ar_overrides={"timing_protocol": timing})
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires timing_protocol.decode_path='graph_replay'"):
+        validate_speed_claim_contract(summary)
+
+
+def test_speed_claim_contract_rejects_true_ar_without_effective_gemv_decode() -> None:
+    timing = dict(TEST_TRUE_AR_TIMING_PROTOCOL)
+    timing["effective_use_gemv_decode"] = False
+    summary = _speed_claim_summary(true_ar_overrides={"timing_protocol": timing})
+
+    with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires timing_protocol.effective_use_gemv_decode=True"):
+        validate_speed_claim_contract(summary)
+
+
 def test_speed_claim_contract_rejects_attached_protocol_without_quant() -> None:
     protocol = dict(TEST_TRUE_AR_PROTOCOL)
     del protocol["quant_normalized"]
@@ -1017,6 +1085,7 @@ def _write_true_ar_baseline(
     decode_tokens: object = 10,
     warmup_decode_tokens: object = 1,
     quant: str | None = "UD-Q4_K_M GGUF",
+    status: str | None = "complete",
     schema: int | None = 1,
     kind: str | None = "hipengine_gguf_true_ar_category_baseline",
 ) -> None:
@@ -1038,8 +1107,11 @@ def _write_true_ar_baseline(
         "model": model,
         "prompt_file": prompt_file,
         "prompt_count": len(prompt_text_by_id) if prompt_count is None else prompt_count,
+        "timing_protocol": dict(TEST_TRUE_AR_TIMING_PROTOCOL),
         "prompt_metrics": metric_rows,
     }
+    if status is not None:
+        payload["status"] = status
     if schema is not None:
         payload["schema"] = schema
     if kind is not None:
@@ -1105,6 +1177,7 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["true_ar_baseline"]["protocol"]["quant_normalized"] == "UD-Q4_K_M GGUF"
     assert summary["true_ar_baseline"]["protocol"]["prompt_file"] == TEST_PROMPTS
     assert summary["true_ar_baseline"]["protocol"]["prompt_count"] == 2
+    assert summary["true_ar_baseline"]["timing_protocol"] == TEST_TRUE_AR_TIMING_PROTOCOL
     assert summary["true_ar_baseline"]["totals"]["decode_tok_s_weighted"] == 100.0
     assert summary["objective_metrics_available"] is False
     assert "heldout coverage" in summary["objective_metrics_blocker"]
@@ -1183,6 +1256,7 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
     assert metrics["true_ar_protocol"]["quant_normalized"] == "UD-Q4_K_M GGUF"
     assert metrics["true_ar_protocol"]["prompt_file"] == TEST_PROMPTS
     assert metrics["true_ar_protocol"]["prompt_count"] == 10
+    assert metrics["true_ar_timing_protocol"] == TEST_TRUE_AR_TIMING_PROTOCOL
     assert metrics["full"]["accepted_per_output"] == pytest.approx(55 / 100)
     assert metrics["full"]["draft_acceptance"] == pytest.approx(1.0)
     assert metrics["full"]["decode_ms"] == pytest.approx(1100.0)
@@ -2821,6 +2895,28 @@ def test_category_summary_rejects_true_ar_baseline_without_schema(tmp_path: Path
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
+def test_category_summary_rejects_true_ar_baseline_dry_run_status(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "true-ar.json"
+    _write_true_ar_baseline(
+        baseline_path,
+        [{"id": "code_1", "category": "code", "output_tokens": 10, "decode_ms": 100.0}],
+        prompt_text_by_id={"code_1": "write code"},
+        status="dry_run",
+    )
+    args = SimpleNamespace(
+        model=TEST_MODEL,
+        prompts=TEST_PROMPTS,
+        cycles=1,
+        raw_root="/tmp/raw",
+        true_ar_baseline_json=baseline_path,
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    raw = {1: [_row("code_1", "code", output=10, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+
+    with pytest.raises(BenchError, match="true AR baseline artifact requires status='complete'"):
+        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+
 def test_category_summary_rejects_true_ar_baseline_wrong_kind(tmp_path: Path) -> None:
     baseline_path = tmp_path / "true-ar.json"
     _write_true_ar_baseline(
@@ -3300,6 +3396,9 @@ def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
     assert artifact["true_autoregressive_path"] is True
     assert artifact["same_timing_protocol"] is True
     assert artifact["same_prompt_suite"] is True
+    assert artifact["timing_protocol"]["decode_path"] == "eager_step"
+    assert artifact["timing_protocol"]["decode_repack"] is False
+    assert artifact["timing_protocol"]["use_gemv_decode"] is False
     assert artifact["prompt_ids"] == ["code_1", "general_1"]
     assert artifact["prompt_hashes"] == {"code_1": prompt_sha256("write code"), "general_1": prompt_sha256("explain")}
     assert artifact["prompt_metrics"][0]["prompt_sha256"] == prompt_sha256("write code")
@@ -3423,6 +3522,9 @@ def test_true_ar_category_cli_dry_run_emits_attachable_schema(tmp_path: Path) ->
     assert artifact["true_autoregressive_path"] is True
     assert artifact["same_timing_protocol"] is True
     assert artifact["same_prompt_suite"] is True
+    assert artifact["timing_protocol"]["decode_path"] == "graph_replay"
+    assert artifact["timing_protocol"]["decode_repack"] is True
+    assert artifact["timing_protocol"]["use_gemv_decode"] is True
     assert artifact["prompt_ids"] == ["code_1", "general_1"]
     assert artifact["prompt_hashes"] == {"code_1": prompt_sha256("write code"), "general_1": prompt_sha256("explain")}
     assert [row["id"] for row in artifact["prompt_metrics"]] == ["code_1", "general_1"]

@@ -124090,3 +124090,47 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Added compact retained artifact:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-max5-category-gfx1151.json`.
 - Updated `benchmarks/README.md` retained GGUF-MTP row and `benchmarks/CHANGELOG.md` with the root/sibling-K4096 accepted/output improvement and true-AR speed caveat.
+
+## 2026-06-23 — GGUF-MTP benchmark denominator correction and protocol guard
+
+### Scope
+- Paused `mtp-honest-acceptance/run-20260622-040027` at the user's request before doing any more loop iterations.
+- Audited the source of the reported `19.67 tok/s` true-AR denominator and the current native GGUF-MTP K4096 B5 diagnostic numbers.
+
+### Benchmark correction
+- The old true-AR artifact `/tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json` is now marked invalid as a retained speed denominator: it lacked production `timing_protocol` metadata and did not prove graph-replay + decode-repack + effective GEMV/WMMA timing.
+- Proper true no-MTP AR baseline: `/tmp/hipengine-true-ar-category-fullsuite-d128-graph-gemv-repack-20260623-144126/true-ar-baseline.json`, full prompt suite, 10 prompts, 128 decode tokens, graph replay, decode repack, effective GEMV decode and WMMA prefill. Weighted decode throughput: `56.3199 tok/s` (category range roughly `56.28..56.40 tok/s`).
+- Current native GGUF-MTP K4096 B5 diagnostic: `/tmp/hipengine-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-full-repack-iter236/summary.json`; weighted decode `16.6935 tok/s`, accepted/output `0.823009`, train `0.828080`, heldout `0.814815`, draft acceptance `0.000226984`, true-AR ratio `0.296405x`.
+- Explanation for the acceptance/speed mismatch: the selector now exposes a huge exact-verified top-k tree (`465/2,048,606` draft candidates accepted), so accepted/output is high, but draft acceptance and total candidate/runtime cost remain poor; this is not a fast speculative implementation.
+
+### Automation / docs
+- `scripts/gguf_true_ar_category_bench.py` now records production timing metadata including graph replay, decode-repack, requested/effective GEMV/WMMA, bulk prefill settings, AOTriton threshold, and fastpath safety.
+- `scripts/gguf_mtp_bench.py` now exposes/records decode-repack, requested/effective WMMA prefill, requested/effective GEMV decode, and fastpath safety in raw MTP rows.
+- `scripts/gguf_mtp_category_bench.py` now rejects retained/attached true-AR baselines unless the source artifact is `status=complete` and the attached timing protocol is production (`graph_replay`, one step per replay, decode-repack, effective GEMV/WMMA). It also rejects raw MTP rows without production workload timing metadata/effective GEMV/WMMA.
+- Added tests for rejecting eager/raw true-AR timing, missing/effective-false GEMV, dry-run true-AR status, and raw MTP rows without production workload metadata.
+- Updated `docs/BENCHMARK.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` so the retained rollup no longer uses `19.67 tok/s`; added compact artifact `benchmarks/results/2026-06-23-hipengine-gguf-mtp-k4096-production-true-ar-gfx1151.json`.
+
+### Validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (all tests in both suites)
+
+python3 - <<'PY2'
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from scripts.gguf_mtp_category_bench import validate_true_ar_artifact_schema, validate_true_ar_protocol_metadata, BenchError
+args=SimpleNamespace(model='/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf', prompts='benchmarks/prompts/mtpbench-code-general-ja.jsonl')
+for p in ['/tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json', '/tmp/hipengine-true-ar-category-fullsuite-d128-graph-gemv-repack-20260623-144126/true-ar-baseline.json']:
+    art=json.loads(Path(p).read_text())
+    try:
+        validate_true_ar_artifact_schema(art,label='true AR baseline artifact')
+        meta=validate_true_ar_protocol_metadata(artifact=art,args=args,prompt_count=10,expected_quant='UD-Q4_K_M GGUF')
+        print('ACCEPT',p,meta['timing_protocol']['decode_path'],meta['timing_protocol']['effective_use_gemv_decode'])
+    except BenchError as e:
+        print('REJECT',p,e)
+PY2
+# REJECT old 19.67 artifact: requires production timing_protocol metadata
+# ACCEPT new 56.32 artifact: graph_replay True
+```

@@ -57,6 +57,17 @@ MTP_CATEGORY_KIND = "hipengine_gguf_mtp_category_matrix"
 TRUE_AR_SCHEMA = 1
 TRUE_AR_KIND = "hipengine_gguf_true_ar_category_baseline"
 TRUE_AR_PROTOCOL_FIELDS = ("model", "quant", "prompt_file", "prompt_count", "decode_tokens", "warmup_decode_tokens")
+TRUE_AR_PRODUCTION_TIMING_REQUIRED = {
+    "decode_path": "graph_replay",
+    "graph_replay_decode": True,
+    "graph_steps_per_replay": 1,
+    "decode_repack": True,
+    "effective_decode_repack": True,
+    "use_gemv_decode": True,
+    "effective_use_gemv_decode": True,
+    "use_wmma_prefill": True,
+    "effective_use_wmma_prefill": True,
+}
 PROMPT_MESSAGE_ROLES = frozenset({"system", "user", "assistant"})
 
 
@@ -190,12 +201,15 @@ def validate_category_summary_schema(summary: dict[str, Any], *, label: str) -> 
 
 
 def validate_true_ar_artifact_schema(artifact: dict[str, Any], *, label: str) -> dict[str, Any]:
-    return validate_artifact_schema(artifact, label=label, kind=TRUE_AR_KIND, schema=TRUE_AR_SCHEMA)
+    schema = validate_artifact_schema(artifact, label=label, kind=TRUE_AR_KIND, schema=TRUE_AR_SCHEMA)
+    if artifact.get("status") != "complete":
+        raise BenchError(f"{label} requires status='complete'; got {artifact.get('status')!r}")
+    return schema
 
 
 def validate_attached_true_ar_artifact_schema(true_ar: dict[str, Any], *, label: str) -> dict[str, Any]:
     payload = {"kind": true_ar.get("artifact_kind"), "schema": true_ar.get("artifact_schema")}
-    return validate_true_ar_artifact_schema(payload, label=label)
+    return validate_artifact_schema(payload, label=label, kind=TRUE_AR_KIND, schema=TRUE_AR_SCHEMA)
 
 
 def validate_attached_true_ar_source(true_ar: dict[str, Any], *, label: str) -> str:
@@ -783,6 +797,18 @@ def normalize_quant_label(value: Any) -> str:
     return label
 
 
+def validate_true_ar_timing_protocol_metadata(timing: Any, *, label: str) -> dict[str, Any]:
+    if not isinstance(timing, dict):
+        raise BenchError(f"{label} requires production timing_protocol metadata")
+    normalized: dict[str, Any] = {}
+    for field, expected in TRUE_AR_PRODUCTION_TIMING_REQUIRED.items():
+        value = timing.get(field)
+        if value != expected:
+            raise BenchError(f"{label} requires timing_protocol.{field}={expected!r}; got {value!r}")
+        normalized[field] = value
+    return normalized
+
+
 def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argparse.Namespace, prompt_count: int, expected_quant: str) -> dict[str, Any]:
     missing = [field for field in TRUE_AR_PROTOCOL_FIELDS if field not in artifact]
     if missing:
@@ -820,6 +846,10 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
     expected_prompt_file_normalized = normalize_protocol_path(getattr(args, "prompts"))
     if prompt_file_normalized != expected_prompt_file_normalized:
         raise BenchError(f"true AR prompt_file mismatch: {prompt_file!r} != {str(getattr(args, 'prompts'))!r}")
+    timing_protocol = validate_true_ar_timing_protocol_metadata(
+        artifact.get("timing_protocol"),
+        label="true AR baseline artifact",
+    )
     return {
         "model": model,
         "model_normalized": model_normalized,
@@ -830,7 +860,12 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
         "decode_tokens": decode_tokens,
         "warmup_decode_tokens": warmup_decode_tokens,
         "prompt_count": artifact_prompt_count,
+        "timing_protocol": timing_protocol,
     }
+
+
+def validate_attached_true_ar_timing_protocol(true_ar: dict[str, Any], *, label: str) -> dict[str, Any]:
+    return validate_true_ar_timing_protocol_metadata(true_ar.get("timing_protocol"), label=label)
 
 
 def validate_attached_true_ar_baseline_flags(true_ar: dict[str, Any]) -> None:
@@ -1001,11 +1036,29 @@ def finite_unit_interval_objective(value: Any, *, label: str) -> float:
     return result
 
 
+def validate_mtp_row_timing_protocol(row: dict[str, Any], *, prompt_id: str) -> None:
+    workload = row.get("workload")
+    if not isinstance(workload, dict):
+        raise BenchError(f"raw row {prompt_id} requires workload timing/protocol metadata")
+    required = {
+        "decode_repack": True,
+        "use_wmma_prefill": True,
+        "use_gemv_decode": True,
+        "effective_use_wmma_prefill": True,
+        "effective_use_gemv_decode": True,
+    }
+    for field, expected in required.items():
+        value = workload.get(field)
+        if value != expected:
+            raise BenchError(f"raw row {prompt_id} requires workload.{field}={expected!r}; got {value!r}")
+
+
 def validate_metric_row(row: dict[str, Any], *, expected_cycles: int | None = None) -> None:
     metrics = row.get("metrics")
     if not isinstance(metrics, dict):
         raise BenchError("category row missing metrics")
     prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
+    validate_mtp_row_timing_protocol(row, prompt_id=prompt_id)
     total_output = require_positive_int(
         metrics.get("total_output_tokens"),
         message=f"non-positive output token count for {prompt_id}: {metrics.get('total_output_tokens')!r}",
@@ -1455,7 +1508,8 @@ def attach_true_ar_baseline(summary: dict[str, Any], *, rows_by_id: dict[str, di
         "artifact_kind": artifact_schema["kind"],
         "repo": repo,
         "commands": commands,
-        "protocol": protocol,
+        "protocol": {key: value for key, value in protocol.items() if key != "timing_protocol"},
+        "timing_protocol": protocol["timing_protocol"],
         "prompt_count": len(prompt_ids),
         "totals": full_metric,
         "categories": category_metrics,
@@ -1527,6 +1581,7 @@ def validate_speed_claim_contract(summary: dict[str, Any]) -> dict[str, Any]:
     validate_repo_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_command_provenance(true_ar, label="speed-claim true_ar_baseline")
     validate_attached_true_ar_protocol(true_ar, label="speed-claim true_ar_baseline")
+    validate_attached_true_ar_timing_protocol(true_ar, label="speed-claim true_ar_baseline")
     budget_labels = summary_mtp_budget_labels(summary, label="speed_claim_eligible=true")
     if not budget_labels:
         raise BenchError("speed_claim_eligible=true requires at least one guarded MTP objective budget")
@@ -1564,6 +1619,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
     summary_commands = validate_command_provenance(summary, label="objective summary")
     true_ar_commands = validate_command_provenance(true_ar, label="attached true_ar_baseline")
     true_ar_protocol = validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline")
+    true_ar_timing_protocol = validate_attached_true_ar_timing_protocol(true_ar, label="attached true_ar_baseline")
     validate_attached_true_ar_protocol_matches_summary(
         summary,
         summary_prompts=summary_prompts,
@@ -1616,6 +1672,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         "summary_commands": summary_commands,
         "true_ar_commands": true_ar_commands,
         "true_ar_protocol": true_ar_protocol,
+        "true_ar_timing_protocol": true_ar_timing_protocol,
         "heldout_ids": actual_heldout_ids,
         "train_ids": actual_train_ids,
     }
@@ -1766,6 +1823,7 @@ def true_ar_baseline_signature(summary: dict[str, Any]) -> dict[str, Any]:
         "repo": validate_repo_provenance(true_ar, label="attached true_ar_baseline"),
         "commands": validate_command_provenance(true_ar, label="attached true_ar_baseline"),
         "protocol": validate_attached_true_ar_protocol(true_ar, label="attached true_ar_baseline"),
+        "timing_protocol": validate_attached_true_ar_timing_protocol(true_ar, label="attached true_ar_baseline"),
         "prompt_count": true_ar.get("prompt_count"),
         "totals": true_ar.get("totals"),
         "categories": true_ar.get("categories"),
