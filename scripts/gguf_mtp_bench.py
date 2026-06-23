@@ -28,6 +28,9 @@ sys.path.insert(0, str(REPO_ROOT))
 
 GGUF_PATH = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 DEFAULT_PROMPT = "What is the capital of France?"
+DEFAULT_ROOT_TOPK_ACCEPT = 1
+DEFAULT_SIBLING_TOPK_ACCEPT = 1
+DEFAULT_TOPK_BRANCH_REDRAFT = False
 IM_START_TOKEN = 248045
 IM_END_TOKEN = 248046
 THINK_START_TOKEN = 248068
@@ -413,7 +416,7 @@ def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[n
     return np.ascontiguousarray(cos), np.ascontiguousarray(sin)
 
 
-def main():
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="MTP speculative decoding benchmark")
     parser.add_argument("--model", default=GGUF_PATH, help="GGUF model path")
     parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True, help="Use the production resident T16 decode-repack GGUF path (default: true)")
@@ -443,19 +446,19 @@ def main():
     parser.add_argument(
         "--root-topk-accept",
         type=int,
-        default=4096,
+        default=DEFAULT_ROOT_TOPK_ACCEPT,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 4096; use 1 for linear argmax path)."
+            "the first K root candidates (default: 1 = linear argmax path; widen explicitly for coverage diagnostics)."
         ),
     )
     parser.add_argument(
         "--sibling-topk-accept",
         type=int,
-        default=4096,
+        default=DEFAULT_SIBLING_TOPK_ACCEPT,
         help=(
             "Diagnostic tree proposal: accept a non-argmax sibling at the first deeper "
-            "mismatch when the target token is in the first K candidates (default: 4096; use 1 for root-only top-k)."
+            "mismatch when the target token is in the first K candidates (default: 1 = linear argmax path)."
         ),
     )
     parser.add_argument(
@@ -491,11 +494,11 @@ def main():
         "--topk-branch-redraft",
         dest="topk_branch_redraft",
         action="store_true",
-        default=True,
+        default=DEFAULT_TOPK_BRANCH_REDRAFT,
         help=(
             "Diagnostic branch-reset proposal: after one exact-verified top-k branch accept, "
             "redraft the remaining B-window from the accepted target token and only accept "
-            "subsequent argmax redraft matches (default: enabled)."
+            "subsequent argmax redraft matches (default: disabled; opt in for tree coverage diagnostics)."
         ),
     )
     parser.add_argument(
@@ -513,7 +516,12 @@ def main():
             "branch redraft is enabled (default: 5)."
         ),
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main(argv: list[str] | None = None):
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:

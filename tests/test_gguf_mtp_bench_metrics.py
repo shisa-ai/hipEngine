@@ -9,6 +9,7 @@ import pytest
 from scripts.gguf_mtp_bench import (
     _draft_top1_prob,
     _rope_tables,
+    build_arg_parser,
     compute_speculative_metrics,
     count_topk_draft_candidates,
     llama_cpp_acceptance_from_target_samples,
@@ -19,6 +20,15 @@ from scripts.gguf_mtp_bench import (
     target_membership_in_draft_topk,
     validate_draft_n_max,
 )
+
+
+def test_default_mtp_policy_is_linear_b1_speed_first() -> None:
+    args = build_arg_parser().parse_args([])
+
+    assert args.draft_n_max == 1
+    assert args.root_topk_accept == 1
+    assert args.sibling_topk_accept == 1
+    assert args.topk_branch_redraft is False
 
 
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:

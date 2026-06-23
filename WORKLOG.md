@@ -124159,3 +124159,43 @@ python3 -m py_compile scripts/gguf_mtp_category_bench.py
 python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
 # passed
 ```
+
+## 2026-06-23 — GGUF-MTP speed-first default: B1 linear greedy
+
+### Scope
+- Follow-up to the speed-first loop guard: current K4096 B5 branch-tree coverage row had high accepted/output but pathological draft acceptance and poor MTP tok/s.
+- Chosen default policy is the already-measured full-suite B1 linear greedy diagnostic: `draft_n_max=1`, `root_topk_accept=1`, `sibling_topk_accept=1`, branch redraft disabled, production resident GGUF decode-repack/GEMV/WMMA path.
+- This is a generic policy/default change only. No prompt text, token IDs, fixture IDs, candidate-token patterns, or target-token rescue branches were added.
+
+### Evidence
+- Baseline K4096 B5 production diagnostic: `/tmp/hipengine-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-full-repack-iter236/summary.json`, true AR denominator `/tmp/hipengine-true-ar-category-fullsuite-d128-graph-gemv-repack-20260623-144126/true-ar-baseline.json`.
+  - Full `decode_tok_s_weighted=16.6935`, `mtp_vs_true_ar_decode_ratio=0.296405`, `draft_acceptance=0.000226984` (`465/2,048,606`), `accepted_per_output=0.823009`.
+- Candidate B1 linear full-suite diagnostic: `/tmp/hipengine-gguf-mtp-b1-linear-repack-20260624-000052/summary.json`.
+  - Full `decode_tok_s_weighted=18.3724`, `mtp_vs_true_ar_decode_ratio=0.326214`, `draft_acceptance=0.270000` (`27/100`), `accepted_per_output=0.212598`.
+  - Train: `18.1437 tok/s`, ratio `0.322196`, draft acceptance `0.216667`.
+  - Heldout: `18.6908 tok/s`, ratio `0.331804`, draft acceptance `0.350000`.
+  - All categories improve tok/s and draft acceptance vs K4096 B5; accepted/output drops because the K4096 row was a wide exact-verified coverage tree. Under the speed-first guard, accepted/output is report-only.
+- Delta vs K4096 B5: tok/s `+1.6789` (+10.1%), true-AR ratio `+0.02981` (+10.1%), draft acceptance `1189x`; still only `0.326x` production true AR, so no speedup claim is retained.
+
+### Implementation
+- Changed `scripts/gguf_mtp_bench.py` defaults from root/sibling K4096 + branch redraft on to B1 linear defaults: root/sibling K1 and branch redraft off.
+- Added `build_arg_parser()` and a parser-default regression test so this speed-first policy does not silently drift back to K4096 coverage defaults.
+- Added compact retained diagnostic artifact `benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-default-speed-gfx1151.json`.
+- Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` to make B1 linear the current native GGUF-MTP diagnostic row while leaving K4096 B5 as a coverage-only diagnostic.
+- Added a `docs/REFACTOR.md` cleanup entry for the now-default-off GGUF top-k/branch-redraft coverage tree.
+
+### Validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed
+
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --draft-n-max 1 \
+  --cycles 2 \
+  --prompt 'Write a short greeting.' \
+  --output /tmp/hipengine-gguf-mtp-default-b1-smoke-20260623-151818.json
+# passed; log showed Root top-k accept: 1, Sibling top-k accept: 1,
+# Top-k branch redraft: False, Decode repack: True, Effective GEMV/WMMA: True
+```

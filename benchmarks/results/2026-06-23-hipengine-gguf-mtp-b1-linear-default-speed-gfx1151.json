@@ -1,0 +1,265 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_b1_linear_default_speed_first",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-23",
+  "source_commit": "6aaabf6d",
+  "hardware": "gfx1151/Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "change": {
+    "summary": "Make the GGUF-MTP diagnostic default speed-first B1 linear greedy instead of the exact-verified K4096 branch tree.",
+    "draft_n_max_default": 1,
+    "root_topk_accept_default": {
+      "old": 4096,
+      "new": 1
+    },
+    "sibling_topk_accept_default": {
+      "old": 4096,
+      "new": 1
+    },
+    "topk_branch_redraft_default": {
+      "old": true,
+      "new": false
+    },
+    "rationale": "The K4096 branch tree raised accepted/output by enumerating millions of exact-verified candidates, but it made draft acceptance pathological and did not improve MTP tok/s. The linear B1 path maximizes measured diagnostic tok/s and accepted/generated-draft efficiency without prompt- or token-specific rescues."
+  },
+  "true_ar_baseline": {
+    "artifact": "/tmp/hipengine-true-ar-category-fullsuite-d128-graph-gemv-repack-20260623-144126/true-ar-baseline.json",
+    "decode_tokens": 128,
+    "weighted_decode_tok_s": 56.31986287140617,
+    "timing_protocol": {
+      "decode_path": "graph_replay",
+      "graph_replay_decode": true,
+      "graph_steps_per_replay": 1,
+      "decode_repack": true,
+      "decode_repack_env": "1",
+      "use_gemv_decode": true,
+      "use_wmma_prefill": true,
+      "force_bulk_prefill": false,
+      "no_bulk_prefill": false,
+      "bulk_prefill_attention_mode": "bulk",
+      "attn_aotriton_min_tokens": 512,
+      "effective_decode_repack": true,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "fastpath_safety": {
+        "is_qwen35moe": true,
+        "allow_unsafe_qwen35moe_fastpaths": false,
+        "requested_wmma_prefill": true,
+        "requested_gemv_decode": true,
+        "effective_wmma_prefill": true,
+        "effective_gemv_decode": true,
+        "disabled_wmma_prefill": false,
+        "disabled_gemv_decode": false,
+        "reason": null
+      }
+    }
+  },
+  "baseline_k4096_b5": {
+    "artifact": "/tmp/hipengine-branch-redraft-rootk4096-sibling4096-tailmin0-depth4-full-repack-iter236/summary.json",
+    "checked_artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-k4096-production-true-ar-gfx1151.json",
+    "policy": {
+      "draft_n_max": 5,
+      "root_topk_accept": 4096,
+      "sibling_topk_accept": 4096,
+      "sibling_tail_min_prev_accepted": 0,
+      "sibling_topk_max_depth": 4,
+      "topk_branch_redraft": true,
+      "topk_branch_redraft_max_branches": 5,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 16.69348457728847,
+      "mtp_vs_true_ar_decode_ratio": 0.2964049222812263,
+      "draft_acceptance": 0.00022698361715234653,
+      "accepted_per_output": 0.8230088495575221,
+      "total_output_tokens": 565,
+      "total_accepted": 465,
+      "total_drafts": 2048606,
+      "decode_ms": 33845.54
+    },
+    "train": {
+      "decode_tok_s_weighted": 16.778781620070692,
+      "mtp_vs_true_ar_decode_ratio": 0.2979581940192116,
+      "draft_acceptance": 0.00023511743261526245,
+      "accepted_per_output": 0.828080229226361,
+      "total_output_tokens": 349,
+      "total_accepted": 289,
+      "total_drafts": 1229173,
+      "decode_ms": 20800.08
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 16.55748436620863,
+      "mtp_vs_true_ar_decode_ratio": 0.2939327654112365,
+      "draft_acceptance": 0.0002147826606934307,
+      "accepted_per_output": 0.8148148148148148,
+      "total_output_tokens": 216,
+      "total_accepted": 176,
+      "total_drafts": 819433,
+      "decode_ms": 13045.46
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 16.620852777600202,
+        "mtp_vs_true_ar_decode_ratio": 0.2951549397741334,
+        "draft_acceptance": 0.00023674386876091432,
+        "accepted_per_output": 0.8290598290598291,
+        "total_output_tokens": 234,
+        "total_accepted": 194,
+        "total_drafts": 819451,
+        "decode_ms": 14078.7
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 16.723372354535496,
+        "mtp_vs_true_ar_decode_ratio": 0.29651508375571267,
+        "draft_acceptance": 0.00023430463996407328,
+        "accepted_per_output": 0.8275862068965517,
+        "total_output_tokens": 116,
+        "total_accepted": 96,
+        "total_drafts": 409723,
+        "decode_ms": 6936.4
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 16.076789515902483,
+        "mtp_vs_true_ar_decode_ratio": 0.28566485318369156,
+        "draft_acceptance": 0.00018305094673949654,
+        "accepted_per_output": 0.7894736842105263,
+        "total_output_tokens": 95,
+        "total_accepted": 75,
+        "total_drafts": 409722,
+        "decode_ms": 5909.139999999999
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 17.337783364396863,
+        "mtp_vs_true_ar_decode_ratio": 0.30797191130449725,
+        "draft_acceptance": 0.0002440750774938371,
+        "accepted_per_output": 0.8333333333333334,
+        "total_output_tokens": 120,
+        "total_accepted": 100,
+        "total_drafts": 409710,
+        "decode_ms": 6921.3
+      }
+    }
+  },
+  "candidate_b1_linear": {
+    "artifact": "/tmp/hipengine-gguf-mtp-b1-linear-repack-20260624-000052/summary.json",
+    "policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 18.37235409168239,
+      "mtp_vs_true_ar_decode_ratio": 0.3262144677736797,
+      "draft_acceptance": 0.27,
+      "accepted_per_output": 0.2125984251968504,
+      "total_output_tokens": 127,
+      "total_accepted": 27,
+      "total_drafts": 100,
+      "decode_ms": 6912.5599999999995
+    },
+    "train": {
+      "decode_tok_s_weighted": 18.14367804664665,
+      "mtp_vs_true_ar_decode_ratio": 0.3221960727576402,
+      "draft_acceptance": 0.21666666666666667,
+      "accepted_per_output": 0.1780821917808219,
+      "total_output_tokens": 73,
+      "total_accepted": 13,
+      "total_drafts": 60,
+      "decode_ms": 4023.44
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 18.690812427313507,
+      "mtp_vs_true_ar_decode_ratio": 0.3318041595591104,
+      "draft_acceptance": 0.35,
+      "accepted_per_output": 0.25925925925925924,
+      "total_output_tokens": 54,
+      "total_accepted": 14,
+      "total_drafts": 40,
+      "decode_ms": 2889.12
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 18.240974440299894,
+        "mtp_vs_true_ar_decode_ratio": 0.32392523923947397,
+        "draft_acceptance": 0.225,
+        "accepted_per_output": 0.1836734693877551,
+        "total_output_tokens": 49,
+        "total_accepted": 9,
+        "total_drafts": 40,
+        "decode_ms": 2686.26
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 18.1285531964265,
+        "mtp_vs_true_ar_decode_ratio": 0.3214297544448595,
+        "draft_acceptance": 0.25,
+        "accepted_per_output": 0.2,
+        "total_output_tokens": 25,
+        "total_accepted": 5,
+        "total_drafts": 20,
+        "decode_ms": 1379.04
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 17.97183890981262,
+        "mtp_vs_true_ar_decode_ratio": 0.3193375591895582,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.13043478260869565,
+        "total_output_tokens": 23,
+        "total_accepted": 3,
+        "total_drafts": 20,
+        "decode_ms": 1279.7800000000002
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 19.139000178630667,
+        "mtp_vs_true_ar_decode_ratio": 0.3399670154821459,
+        "draft_acceptance": 0.5,
+        "accepted_per_output": 0.3333333333333333,
+        "total_output_tokens": 30,
+        "total_accepted": 10,
+        "total_drafts": 20,
+        "decode_ms": 1567.48
+      }
+    }
+  },
+  "deltas_vs_k4096_b5": {
+    "decode_tok_s_weighted_abs": 1.67886951439392,
+    "decode_tok_s_weighted_pct": 10.057034567115045,
+    "mtp_vs_true_ar_decode_ratio_abs": 0.029809545492453404,
+    "mtp_vs_true_ar_decode_ratio_pct": 10.057034567115043,
+    "draft_acceptance_abs": 0.2697730163828477,
+    "draft_acceptance_factor": 1189.5131612903226,
+    "accepted_per_output_abs": -0.6104104243606716,
+    "accepted_per_output_pct": -74.16814833629665
+  },
+  "validation": {
+    "commands": [
+      "python3 -m py_compile scripts/gguf_mtp_bench.py",
+      "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py",
+      "python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 1 --cycles 2 --prompt 'Write a short greeting.' --output /tmp/hipengine-gguf-mtp-default-b1-smoke-20260623-151818.json"
+    ],
+    "default_smoke_artifact": "/tmp/hipengine-gguf-mtp-default-b1-smoke-20260623-151818.json",
+    "default_smoke_policy": {
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    }
+  },
+  "notes": [
+    "This is diagnostic progress, not a retained speedup: 18.37 tok/s is still only 0.326x the production true no-MTP AR baseline.",
+    "Accepted/output drops because the K4096 tree was a coverage diagnostic; speed-first loop policy treats accepted/output as report-only and optimizes tok/s plus draft_acceptance.",
+    "The candidate summary used explicit --root-topk-accept 1 --sibling-topk-accept 1 --no-topk-branch-redraft before this commit made that policy the parser default."
+  ]
+}
