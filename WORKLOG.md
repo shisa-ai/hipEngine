@@ -124268,3 +124268,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Action
 - Reverted the prototype code changes; no runtime code retained.
 - Added `docs/REFACTOR.md` debt entry: do not use GGUF decode graph replay for exact multi-step MTP target verification until graph-vs-eager multi-token correctness is fixed and guarded.
+
+## 2026-06-23 — mtp-gguf-final iteration 4 rejected: target return_logits=false
+
+### Hypothesis
+- MTP target verification only needs the greedy token id plus the captured fp32 hidden seed. Change `session.step(..., return_logits=False, capture_hidden_seed_fp32=True)` inside `scripts/gguf_mtp_bench.py` to skip target-logit D2H/finite checks.
+
+### Result
+- Rejected by the optimize loop because full-suite B1 performance regressed.
+- Smoke artifact: `/tmp/hipengine-mtp-target-nologits-smoke-20260623-232841.json`, `target_return_logits=false`, avg AR decode `42.61 ms`, avg draft `6.99 ms`, throughput `20.16 tok/s` on 2 cycles.
+- Full-suite artifact: `/tmp/hipengine-mtp-gguf-final/run-20260623-233055/summary.json`.
+  - Candidate: `decode_tok_s_weighted=20.30093336338511`, `mtp_vs_true_ar_decode_ratio=0.3597625827526696`, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - Kept warm-draft baseline: `decode_tok_s_weighted=20.633228921613227`, ratio `0.36572767107985876`.
+  - Delta: ratio `-1.6%`, tok/s `-1.6%`; acceptance/output unchanged.
+- Reverted the code change; no runtime behavior retained.
