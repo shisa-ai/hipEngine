@@ -457,11 +457,11 @@ def main():
     parser.add_argument(
         "--sibling-tail-min-prev-accepted",
         type=int,
-        default=1,
+        default=0,
         help=(
             "Diagnostic adaptive sibling policy: when non-negative, sibling candidates beyond rank 8 "
             "are accepted only if the previous cycle accepted at least this many draft tokens "
-            "(default: 1; use -1 to disable the gate)."
+            "(default: 0; use -1 to disable the gate)."
         ),
     )
     parser.add_argument(
