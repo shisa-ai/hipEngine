@@ -1,0 +1,679 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_branch_redraft_max5_rootk512_sibling28_tailmin0_depth4_retained",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-23",
+  "source_commit_before_artifact": "20517cc25ea8dafd7a845b1dd19a7f748e814e9b",
+  "artifact_commit_note": "Committed with root_topk_accept=512, sibling_topk_accept=28, sibling_tail_min_prev_accepted=0 defaults under sibling_topk_max_depth=4/topk_branch_redraft_max_branches=5; use containing git commit for retained revision.",
+  "hardware": "gfx1151/Radeon 8060S (per existing GGUF-MTP category diagnostics)",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M",
+  "policy": {
+    "draft_n_max": 5,
+    "draft_p_min": 0.0,
+    "root_topk_accept": 512,
+    "topk_candidate_count": 512,
+    "root_tail_max_prev_accepted": -1,
+    "sibling_topk_accept": 28,
+    "sibling_tail_min_prev_accepted": 0,
+    "sibling_topk_max_depth": 4,
+    "topk_branch_redraft": true,
+    "topk_branch_redraft_max_branches": 5,
+    "root_tail_gate": "disabled, allowing generic root ranks 1..512",
+    "sibling_tail_gate": "sibling candidates beyond rank 8 require previous cycle accepted >= 0, effectively allowing rank 9..28 for every non-root row reached by the verifier",
+    "redraft_acceptance": "allow up to five exact-verified top-k branch accepts per B-window; after each non-final branch accept, redraft remaining B-window from accepted target token and accept verified proposals only"
+  },
+  "baseline_policy": {
+    "artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk256-sibling28-tailmin0-depth4-max5-category-gfx1151.json",
+    "draft_n_max": 5,
+    "draft_p_min": 0.0,
+    "root_topk_accept": 256,
+    "topk_candidate_count": 256,
+    "root_tail_max_prev_accepted": -1,
+    "sibling_topk_accept": 28,
+    "sibling_tail_min_prev_accepted": 0,
+    "sibling_topk_max_depth": 4,
+    "topk_branch_redraft": true,
+    "topk_branch_redraft_max_branches": 5
+  },
+  "commands": {
+    "focused_b5_default": "python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-rootk512-sibling28-tailmin0-depth4-default-iter228-b5-20.json",
+    "category_full": "python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk512-sibling28-tailmin0-depth4-full-iter228/raw --output /tmp/hipengine-branch-redraft-rootk512-sibling28-tailmin0-depth4-full-iter228/summary.json",
+    "verify": "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py",
+    "guard": "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py",
+    "syntax_and_collect": "python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py && python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py | tail -5"
+  },
+  "focused_b5_baseline": {
+    "accept_per_draft": 0.01,
+    "accepted_per_output": 0.7895,
+    "visible_tokens_per_cycle": 4.75,
+    "avg_cycle_ms": 317.64,
+    "avg_decode_ms": 317.64,
+    "avg_ar_decode_ms": 239.61,
+    "avg_mtp_draft_ms": 78.03,
+    "avg_ms_per_visible_token": 66.87,
+    "tokens_per_sec": 14.95,
+    "ar_baseline_tokens_per_sec": 19.82,
+    "speedup_vs_ar_visible": 0.7544,
+    "total_accepted": 75,
+    "total_drafts": 7475,
+    "total_output_tokens": 95,
+    "verify_cycle_count": 20,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.0103,
+      "accepted_per_output": 0.7935,
+      "visible_tokens_per_cycle": 4.8421,
+      "avg_cycle_ms": 317.54,
+      "avg_ar_decode_ms": 244.36,
+      "avg_mtp_draft_ms": 73.19,
+      "avg_ms_per_visible_token": 65.58,
+      "tokens_per_sec": 15.25,
+      "speedup_vs_ar_visible": 0.7695,
+      "total_accepted": 73,
+      "total_drafts": 7100,
+      "total_output_tokens": 92,
+      "verify_cycle_count": 19
+    }
+  },
+  "focused_b5": {
+    "accept_per_draft": 0.006,
+    "accepted_per_output": 0.7895,
+    "visible_tokens_per_cycle": 4.75,
+    "avg_cycle_ms": 320.3,
+    "avg_decode_ms": 320.3,
+    "avg_ar_decode_ms": 241.65,
+    "avg_mtp_draft_ms": 78.65,
+    "avg_ms_per_visible_token": 67.43,
+    "tokens_per_sec": 14.83,
+    "ar_baseline_tokens_per_sec": 19.66,
+    "speedup_vs_ar_visible": 0.7545,
+    "total_accepted": 75,
+    "total_drafts": 12595,
+    "total_output_tokens": 95,
+    "verify_cycle_count": 20,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.0061,
+      "accepted_per_output": 0.7935,
+      "visible_tokens_per_cycle": 4.8421,
+      "avg_cycle_ms": 319.96,
+      "avg_ar_decode_ms": 246.53,
+      "avg_mtp_draft_ms": 73.44,
+      "avg_ms_per_visible_token": 66.08,
+      "tokens_per_sec": 15.13,
+      "speedup_vs_ar_visible": 0.7705,
+      "total_accepted": 73,
+      "total_drafts": 11964,
+      "total_output_tokens": 92,
+      "verify_cycle_count": 19
+    }
+  },
+  "focused_b5_branch_counts": {
+    "topk_branch_accepts": 18,
+    "branch_redrafts": 18,
+    "branch_accept_count_total": 49,
+    "multi_branch_cycles": 14,
+    "triple_branch_cycles": 11,
+    "quad_branch_cycles": 6,
+    "quint_branch_cycles": 0,
+    "branch_depths": {
+      "0": 14,
+      "1": 3,
+      "2": 1,
+      "3": 0,
+      "4": 0,
+      "5": 0
+    },
+    "topk_lens": [
+      512
+    ],
+    "root_rank257_to_512_hits": []
+  },
+  "category_b5": {
+    "baseline_branch_redraft_rootk256_sibling28_tailmin0_depth4_max5": {
+      "artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk256-sibling28-tailmin0-depth4-max5-category-gfx1151.json",
+      "full": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 10,
+        "total_output_tokens": 463,
+        "total_accepted": 363,
+        "total_drafts": 37357,
+        "decode_ms": 31986.46,
+        "decode_tok_s_weighted": 14.474874681349547,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.47617911859142,
+        "mtp_vs_ar_decode_ratio": 0.7432091578749259,
+        "draft_acceptance": 0.009717054367320717,
+        "accepted_per_output": 0.7840172786177105,
+        "avg_output_tokens_per_prompt": 46.3
+      },
+      "train": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 6,
+        "total_output_tokens": 280,
+        "total_accepted": 220,
+        "total_drafts": 22437,
+        "decode_ms": 19375.65,
+        "decode_tok_s_weighted": 14.451128091186618,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.585952954541003,
+        "mtp_vs_ar_decode_ratio": 0.7378312469517152,
+        "draft_acceptance": 0.009805232428577795,
+        "accepted_per_output": 0.7857142857142857,
+        "avg_output_tokens_per_prompt": 46.666666666666664
+      },
+      "heldout": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 4,
+        "total_output_tokens": 183,
+        "total_accepted": 143,
+        "total_drafts": 14920,
+        "decode_ms": 12610.81,
+        "decode_tok_s_weighted": 14.511359698544345,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.31058061534273,
+        "mtp_vs_ar_decode_ratio": 0.7514719514448319,
+        "draft_acceptance": 0.009584450402144772,
+        "accepted_per_output": 0.7814207650273224,
+        "avg_output_tokens_per_prompt": 45.75
+      },
+      "categories": {
+        "code": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 4,
+          "total_output_tokens": 171,
+          "total_accepted": 131,
+          "total_drafts": 14950,
+          "decode_ms": 12111.15,
+          "decode_tok_s_weighted": 14.119220718098612,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.503849443969205,
+          "mtp_vs_ar_decode_ratio": 0.7239196938358454,
+          "draft_acceptance": 0.008762541806020067,
+          "accepted_per_output": 0.7660818713450293,
+          "avg_output_tokens_per_prompt": 42.75
+        },
+        "general_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 108,
+          "total_accepted": 88,
+          "total_drafts": 7489,
+          "decode_ms": 7266.49,
+          "decode_tok_s_weighted": 14.862746663106947,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.56298465935953,
+          "mtp_vs_ar_decode_ratio": 0.7597381954698899,
+          "draft_acceptance": 0.011750567498998532,
+          "accepted_per_output": 0.8148148148148148,
+          "avg_output_tokens_per_prompt": 54.0
+        },
+        "general_ja": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 84,
+          "total_accepted": 64,
+          "total_drafts": 7464,
+          "decode_ms": 6014.389999999999,
+          "decode_tok_s_weighted": 13.966503668701232,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.094945067934816,
+          "mtp_vs_ar_decode_ratio": 0.7314241344508753,
+          "draft_acceptance": 0.00857449088960343,
+          "accepted_per_output": 0.7619047619047619,
+          "avg_output_tokens_per_prompt": 42.0
+        },
+        "mixed_ja_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 100,
+          "total_accepted": 80,
+          "total_drafts": 7454,
+          "decode_ms": 6594.43,
+          "decode_tok_s_weighted": 15.164312912564087,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.664020544968665,
+          "mtp_vs_ar_decode_ratio": 0.7711705181494078,
+          "draft_acceptance": 0.010732492621411323,
+          "accepted_per_output": 0.8,
+          "avg_output_tokens_per_prompt": 50.0
+        }
+      }
+    },
+    "branch_redraft_rootk512_sibling28_tailmin0_depth4_max5": {
+      "full": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 10,
+        "total_output_tokens": 470,
+        "total_accepted": 370,
+        "total_drafts": 62977,
+        "decode_ms": 32272.88,
+        "decode_tok_s_weighted": 14.563311362357496,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.671823753852745,
+        "mtp_vs_ar_decode_ratio": 0.7403132289402123,
+        "draft_acceptance": 0.005875160772980612,
+        "accepted_per_output": 0.7872340425531915,
+        "avg_output_tokens_per_prompt": 47.0
+      },
+      "train": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 6,
+        "total_output_tokens": 287,
+        "total_accepted": 227,
+        "total_drafts": 37817,
+        "decode_ms": 19876.86,
+        "decode_tok_s_weighted": 14.438900309203767,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.651087074856946,
+        "mtp_vs_ar_decode_ratio": 0.7347634384907878,
+        "draft_acceptance": 0.0060025914271359445,
+        "accepted_per_output": 0.7909407665505227,
+        "avg_output_tokens_per_prompt": 47.833333333333336
+      },
+      "heldout": {
+        "label": "b5",
+        "budget": 5,
+        "prompts": 4,
+        "total_output_tokens": 183,
+        "total_accepted": 143,
+        "total_drafts": 25160,
+        "decode_ms": 12396.02,
+        "decode_tok_s_weighted": 14.762802899640368,
+        "ar_baseline_tok_s_weighted_for_this_budget": 19.704433497536947,
+        "mtp_vs_ar_decode_ratio": 0.7492122471567486,
+        "draft_acceptance": 0.0056836248012718605,
+        "accepted_per_output": 0.7814207650273224,
+        "avg_output_tokens_per_prompt": 45.75
+      },
+      "categories": {
+        "code": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 4,
+          "total_output_tokens": 177,
+          "total_accepted": 137,
+          "total_drafts": 25207,
+          "decode_ms": 12575.26,
+          "decode_tok_s_weighted": 14.075255700478559,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.539054927926276,
+          "mtp_vs_ar_decode_ratio": 0.7203652250530009,
+          "draft_acceptance": 0.005434998214781608,
+          "accepted_per_output": 0.7740112994350282,
+          "avg_output_tokens_per_prompt": 44.25
+        },
+        "general_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 108,
+          "total_accepted": 88,
+          "total_drafts": 12609,
+          "decode_ms": 7218.2,
+          "decode_tok_s_weighted": 14.962178936576986,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.727324536407874,
+          "mtp_vs_ar_decode_ratio": 0.7584494749383502,
+          "draft_acceptance": 0.006979141882782139,
+          "accepted_per_output": 0.8148148148148148,
+          "avg_output_tokens_per_prompt": 54.0
+        },
+        "general_ja": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 85,
+          "total_accepted": 65,
+          "total_drafts": 12587,
+          "decode_ms": 5886.33,
+          "decode_tok_s_weighted": 14.440236955794187,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.764821872449467,
+          "mtp_vs_ar_decode_ratio": 0.7306029393527036,
+          "draft_acceptance": 0.005164058155239533,
+          "accepted_per_output": 0.7647058823529411,
+          "avg_output_tokens_per_prompt": 42.5
+        },
+        "mixed_ja_en": {
+          "label": "b5",
+          "budget": 5,
+          "prompts": 2,
+          "total_output_tokens": 100,
+          "total_accepted": 80,
+          "total_drafts": 12574,
+          "decode_ms": 6593.09,
+          "decode_tok_s_weighted": 15.167394954414394,
+          "ar_baseline_tok_s_weighted_for_this_budget": 19.770464902482185,
+          "mtp_vs_ar_decode_ratio": 0.7671744204917571,
+          "draft_acceptance": 0.006362334976936536,
+          "accepted_per_output": 0.8,
+          "avg_output_tokens_per_prompt": 50.0
+        }
+      },
+      "root_rank257_to_512_prompt_hits": {
+        "code_lru_cache": [
+          {
+            "cycle": 6,
+            "previous_cycle_accepted": 2,
+            "accepted_draft_tokens": 5,
+            "visible_output_tokens": 6,
+            "topk_branch_depths": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "target_rank_in_draft_topk": [
+              340,
+              3,
+              6,
+              2,
+              1,
+              null
+            ]
+          }
+        ],
+        "general_ja_plan": [
+          {
+            "cycle": 2,
+            "previous_cycle_accepted": 0,
+            "accepted_draft_tokens": 2,
+            "visible_output_tokens": 3,
+            "topk_branch_depths": [
+              0,
+              1
+            ],
+            "target_rank_in_draft_topk": [
+              494,
+              10,
+              null
+            ]
+          }
+        ]
+      },
+      "topk_branch_accept_count_histograms": {
+        "code_lru_cache": {
+          "2": 2,
+          "3": 3,
+          "4": 3,
+          "5": 2
+        },
+        "code_markdown_table": {
+          "0": 7,
+          "2": 1,
+          "3": 1,
+          "4": 1
+        },
+        "code_merge_intervals": {
+          "2": 2,
+          "3": 1,
+          "4": 4,
+          "5": 3
+        },
+        "code_topological_sort": {
+          "0": 1,
+          "1": 4,
+          "2": 1,
+          "4": 3,
+          "5": 1
+        },
+        "general_en_explain": {
+          "2": 4,
+          "3": 5,
+          "5": 1
+        },
+        "general_en_plan": {
+          "1": 2,
+          "2": 1,
+          "3": 5,
+          "4": 2
+        },
+        "general_ja_explain": {
+          "0": 1,
+          "1": 1,
+          "2": 3,
+          "4": 3,
+          "5": 2
+        },
+        "general_ja_plan": {
+          "0": 4,
+          "1": 1,
+          "2": 2,
+          "3": 2,
+          "4": 1
+        },
+        "mixed_ja_en_review": {
+          "0": 2,
+          "2": 3,
+          "3": 4,
+          "5": 1
+        },
+        "mixed_ja_en_translate": {
+          "0": 2,
+          "1": 1,
+          "2": 2,
+          "3": 4,
+          "4": 1
+        }
+      },
+      "accepted_draft_tokens_by_cycle": {
+        "code_lru_cache": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          2,
+          5,
+          5,
+          4,
+          5
+        ],
+        "code_markdown_table": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          3,
+          2
+        ],
+        "code_merge_intervals": [
+          4,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          3
+        ],
+        "code_topological_sort": [
+          1,
+          5,
+          2,
+          5,
+          5,
+          1,
+          5,
+          5,
+          3,
+          1
+        ],
+        "general_en_explain": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "general_en_plan": [
+          5,
+          3,
+          5,
+          5,
+          3,
+          4,
+          5,
+          2,
+          1,
+          5
+        ],
+        "general_ja_explain": [
+          1,
+          5,
+          5,
+          5,
+          1,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "general_ja_plan": [
+          5,
+          0,
+          2,
+          0,
+          5,
+          0,
+          1,
+          5,
+          5,
+          0
+        ],
+        "mixed_ja_en_review": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          0,
+          0,
+          5,
+          5,
+          5
+        ],
+        "mixed_ja_en_translate": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          2,
+          5,
+          5,
+          3,
+          0
+        ]
+      }
+    }
+  },
+  "deltas": {
+    "full": {
+      "accepted_per_output": 0.003216763935480982,
+      "draft_acceptance": -0.0038418935943401048,
+      "total_accepted": 7,
+      "total_drafts": 25620,
+      "total_output_tokens": 7,
+      "decode_tok_s_weighted": 0.08843668100794844,
+      "mtp_vs_ar_decode_ratio": -0.0028959289347135764
+    },
+    "train": {
+      "accepted_per_output": 0.005226480836237002,
+      "draft_acceptance": -0.003802641001441851,
+      "total_accepted": 7,
+      "total_drafts": 15380,
+      "total_output_tokens": 7,
+      "decode_tok_s_weighted": -0.012227781982851127,
+      "mtp_vs_ar_decode_ratio": -0.003067808460927357
+    },
+    "heldout": {
+      "accepted_per_output": 0.0,
+      "draft_acceptance": -0.0039008256008729114,
+      "total_accepted": 0,
+      "total_drafts": 10240,
+      "total_output_tokens": 0,
+      "decode_tok_s_weighted": 0.25144320109602347,
+      "mtp_vs_ar_decode_ratio": -0.0022597042880833085
+    },
+    "focused_b5": {
+      "accepted_per_output": 0.0,
+      "accept_per_draft": -0.004,
+      "total_accepted": 0,
+      "total_drafts": 5120,
+      "total_output_tokens": 0,
+      "visible_tokens_per_cycle": 0.0,
+      "tokens_per_sec": -0.11999999999999922,
+      "speedup_vs_ar_visible": 9.999999999998899e-05
+    },
+    "categories": {
+      "code": {
+        "accepted_per_output": 0.007929428089998969,
+        "draft_acceptance": -0.003327543591238459,
+        "total_accepted": 6,
+        "total_drafts": 10257,
+        "total_output_tokens": 6,
+        "decode_tok_s_weighted": -0.043965017620053004,
+        "mtp_vs_ar_decode_ratio": -0.0035544687828444888
+      },
+      "general_en": {
+        "accepted_per_output": 0.0,
+        "draft_acceptance": -0.004771425616216392,
+        "total_accepted": 0,
+        "total_drafts": 5120,
+        "total_output_tokens": 0,
+        "decode_tok_s_weighted": 0.09943227347003969,
+        "mtp_vs_ar_decode_ratio": -0.001288720531539611
+      },
+      "general_ja": {
+        "accepted_per_output": 0.0028011204481792618,
+        "draft_acceptance": -0.0034104327343638966,
+        "total_accepted": 1,
+        "total_drafts": 5123,
+        "total_output_tokens": 1,
+        "decode_tok_s_weighted": 0.4737332870929549,
+        "mtp_vs_ar_decode_ratio": -0.0008211950981716898
+      },
+      "mixed_ja_en": {
+        "accepted_per_output": 0.0,
+        "draft_acceptance": -0.004370157644474787,
+        "total_accepted": 0,
+        "total_drafts": 5120,
+        "total_output_tokens": 0,
+        "decode_tok_s_weighted": 0.003082041850307249,
+        "mtp_vs_ar_decode_ratio": -0.003996097657650743
+      }
+    }
+  },
+  "correctness": {
+    "exact_target_verification": true,
+    "finite_logits": true,
+    "prompt_verifier": "passed: generic root top-k width only; no prompt/token/candidate-pattern hardcoding, no fixture IDs, no benchmark detection, no depth-specific target-token rescue, and no verifier-derived speed claim retained",
+    "verify_result": "passed (321 tests)",
+    "guard_result": "passed (321 tests)"
+  },
+  "retention_reason": "Root-K512 improves full-suite and train accepted/output while heldout and all categories are non-regressive; code and general_ja improve. Focused accepted/output is flat versus root-K256 but remains above the pre-root-K256 baseline. Diagnostic weighted decode tok/s is non-regressive, but speed remains verifier-derived diagnostic only; retained as accepted-output/correctness improvement, not as a true-AR speed row."
+}
