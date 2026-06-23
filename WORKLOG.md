@@ -122333,3 +122333,53 @@ python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test
 - Rejected. Current default remains branch-redraft root-K12/sibling-K9-tailmin1/depth≤4 with ungated root tail and up to five branch redrafts.
 - Added compact rejected artifact:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk12-tail0-sibling9-tailmin1-depth4-max5-rejected-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 201: current-branch sibling tail gate rejected
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 201.
+- Tested an additional generic current-window sibling tail gate under retained `root_topk_accept=12`, `sibling_topk_accept=9`, `sibling_tail_min_prev_accepted=1`, `sibling_topk_max_depth=4`, `root_tail_max_prev_accepted=-1`, and `topk_branch_redraft_max_branches=5`.
+- The evaluated gate required sibling candidates beyond rank 8 to have at least one earlier top-k branch accept within the same B-window. No prompt text, token IDs, fixture IDs, candidate-pattern branches, or target-token rescue logic were introduced.
+
+### Change evaluated and reverted
+- Temporarily added `--sibling-tail-min-current-branches` with default `1` and applied it to non-root sibling tail ranks beyond 8.
+- Reverted/removed the gate because no accepted/output metric improved and diagnostic throughput regressed.
+
+### Focused B5 validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-max5-rootk12-sibling9-tailmin1-curbranch1-depth4-default-iter201-b5-20.json
+```
+- Temporary current-branch gate run printed `Root top-k accept: 12`, `Sibling top-k accept: 9`, `Sibling tail min previous accepted: 1`, `Sibling tail min current branches: 1`, `Sibling top-k max depth: 4`, `Top-k branch redraft max branches: 5`.
+- Focused accepted/output unchanged vs retained sibling-K9-tailmin1: `0.6667 -> 0.6667`.
+- Accepted drafts/candidates unchanged `40/1017 -> 40/1017`, `accept_per_draft 0.0393 -> 0.0393`; focused draft top-k rows stayed length `12`.
+- Top-k branch accepts unchanged at `22`, with `7` multi-branch cycles, `3` triple-branch cycles, and `2` quad-branch cycles; no quint branch cycles were exercised.
+- Diagnostic tok/s `13.64`, `speedup_vs_ar_visible=0.7294x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-max5-rootk12-sibling9-tailmin1-curbranch1-depth4-full-20260623-092102/raw --output /tmp/hipengine-branch-redraft-max5-rootk12-sibling9-tailmin1-curbranch1-depth4-full-20260623-092102/summary.json --extra-arg=--sibling-tail-min-current-branches --extra-arg=1
+```
+- Full accepted/output unchanged vs sibling-K9-tailmin1: `0.705882 -> 0.705882`.
+- Train unchanged `0.675676 -> 0.675676`; heldout unchanged `0.741935 -> 0.741935`.
+- Per-category accepted/output unchanged: code `0.639640`, general_en `0.756098`, general_ja `0.696970`, mixed_ja_en `0.753086`.
+- Full draft acceptance unchanged `0.046198` (`240/5195` both runs).
+- Diagnostic weighted decode tok/s regressed `13.9570 -> 13.7881`; verifier-derived ratio `0.7129 -> 0.7108`. Timing remains diagnostic only and cannot support a speed claim.
+
+### Validation after revert
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify; dot progress reached 100%, 321 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard; dot progress reached 100%, 321 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py | tail -5
+# 321 tests collected
+```
+- Prompt verifier passed for the evaluated shape: current-branch gating only adds a generic current-window branch-count condition to the sibling tail, preserving exact target verification. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches were introduced. The candidate is rejected because no accepted/output metric improved and diagnostic throughput regressed.
+
+### Result
+- Rejected. Current default remains branch-redraft root-K12/sibling-K9-tailmin1/depth≤4 with ungated root tail and up to five branch redrafts.
+- Added compact rejected artifact:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk12-sibling9-tailmin1-curbranch1-depth4-max5-rejected-gfx1151.json`.
