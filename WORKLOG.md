@@ -124212,3 +124212,41 @@ python3 scripts/gguf_mtp_bench.py \
 - Baseline MTP summary: `/tmp/hipengine-mtp-gguf-final/run-20260623-224301/summary.json`.
 - Baseline B1 full: ratio `0.3171272935835634`, `decode_tok_s_weighted=17.88188382126001`, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - Baseline guard initially failed because `tests/test_gguf_mtp_context.py::test_gguf_mtp_runtime_kernel_plan_reports_oracles_and_missing_native_keys` still expected `hip_gfx1100/mtp_nextn_layer/w4_gguf/qwen35_dense_logits` to be missing, but that native key is now registered. Updated the test expectation; no runtime behavior changed.
+
+## 2026-06-23 — mtp-gguf-final iteration 2: stateless MTP draft warmup
+
+### Hypothesis
+- The full-suite B1 linear loop was charging every prompt for the first native MTP draft wrapper/library/weight-cache cold start (~99 ms) even though the true no-MTP AR denominator already uses a warmup decode.
+- Add a generic, stateless, untimed MTP draft warmup after prefill and before measured cycles. It uses the current pending hidden seed/token/position and discards the logits, so it does not mutate target/session state, consume output tokens, alter prompts, or change acceptance semantics.
+
+### Change
+- Added `--mtp-draft-warmup` / `--no-mtp-draft-warmup` to `scripts/gguf_mtp_bench.py`, default on.
+- The default runs one untimed `run_draft(...)` after prefill, records `workload.mtp_draft_warmup` and `workload.mtp_draft_warmup_ms`, and leaves measured cycle accounting unchanged.
+- Updated the parser-default regression test in `tests/test_gguf_mtp_bench_metrics.py`.
+
+### Evidence
+- Smoke: `/tmp/hipengine-mtp-draft-warmup-smoke-20260623-230611.json` with warmup on, `mtp_draft_warmup_ms=94.68`; measured cycle draft ms `[7.51, 6.93]`.
+- Full-suite verify summary: `/tmp/hipengine-mtp-gguf-final/run-20260623-230826/summary.json`.
+  - True AR denominator: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, `decode_tok_s_weighted=56.416920438890834`.
+  - B1 full: `decode_tok_s_weighted=20.633228921613227`, `mtp_vs_true_ar_decode_ratio=0.36572767107985876`, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - Current-loop baseline (`/tmp/hipengine-mtp-gguf-final/run-20260623-225343/summary.json`): `decode_tok_s_weighted=18.120879105199553`, ratio `0.3213657691453424`, same draft acceptance/output.
+  - Delta: tok/s `+2.51235` (+13.9%), ratio `+0.04436` (+13.8%), draft acceptance/output unchanged.
+  - Per-prompt warmup mean `99.36 ms`; measured draft rows after warmup average `7.01 ms`, cycle-0 draft average `7.67 ms`.
+- Compact retained artifact: `benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-warm-draft-gfx1151.json`.
+- Rollup updated in `benchmarks/README.md` and `benchmarks/CHANGELOG.md`.
+- Added a `docs/REFACTOR.md` cleanup entry for the cold-start `--no-mtp-draft-warmup` diagnostic opt-out.
+
+### Validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py
+python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 2 --draft-n-max 1 --prompt 'Write a short greeting.' --output /tmp/hipengine-mtp-draft-warmup-smoke-20260623-230611.json
+# passed; warmup on and measured draft rows were ~7ms
+
+# mtp-gguf-final verify command
+# produced /tmp/hipengine-mtp-gguf-final/run-20260623-230826/summary.json with ratio 0.36572767107985876
+
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py hipengine/runtime/qwen35_gguf_runner.py hipengine/speculative/gguf_mtp.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py
+# passed, 432 tests
+```

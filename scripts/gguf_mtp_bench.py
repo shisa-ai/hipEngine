@@ -31,6 +31,7 @@ DEFAULT_PROMPT = "What is the capital of France?"
 DEFAULT_ROOT_TOPK_ACCEPT = 1
 DEFAULT_SIBLING_TOPK_ACCEPT = 1
 DEFAULT_TOPK_BRANCH_REDRAFT = False
+DEFAULT_MTP_DRAFT_WARMUP = True
 IM_START_TOKEN = 248045
 IM_END_TOKEN = 248046
 THINK_START_TOKEN = 248068
@@ -422,6 +423,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True, help="Use the production resident T16 decode-repack GGUF path (default: true)")
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True, help="Request WMMA prefill for the resident GGUF session (default: true)")
     parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True, help="Request GEMV decode for the resident GGUF session (default: true)")
+    parser.add_argument(
+        "--mtp-draft-warmup",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_MTP_DRAFT_WARMUP,
+        help=(
+            "Run one stateless untimed MTP draft after prefill to warm kernel/library/weight caches "
+            "before measured speculative cycles (default: true; use --no-mtp-draft-warmup for cold-start diagnostics)."
+        ),
+    )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
@@ -711,6 +721,23 @@ def main(argv: list[str] | None = None):
             mtp_context_positions = list(range(len(mtp_context_tokens)))
         else:
             mtp_context_positions: list[int] = []
+
+        mtp_draft_warmup_ms = 0.0
+        if args.mtp_draft_warmup:
+            warmup_pos = np.asarray([seq_position], dtype=np.int64)
+            warmup_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
+            warmup_token_embed = token_embd_f32[prev_token:prev_token + 1].copy()
+            t_warmup0 = time.perf_counter()
+            _ = run_draft(
+                warmup_hidden_seed,
+                warmup_token_embed,
+                return_hidden_seed=args.draft_n_max > 1,
+                positions=warmup_pos,
+                rope_cos=_rope_cos[warmup_pos],
+                rope_sin=_rope_sin[warmup_pos],
+                rotary_dim=rope_dim,
+            )
+            mtp_draft_warmup_ms = (time.perf_counter() - t_warmup0) * 1000
 
         total_drafts = 0
         total_accepted = 0
@@ -1117,6 +1144,7 @@ def main(argv: list[str] | None = None):
     print(f"Decode repack: {args.decode_repack}")
     print(f"Effective GEMV decode: {session.use_gemv_decode}")
     print(f"Effective WMMA prefill: {session.use_wmma_prefill}")
+    print(f"MTP draft warmup: {args.mtp_draft_warmup} ({mtp_draft_warmup_ms:.2f}ms)")
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
     print(f"Sibling tail min previous accepted: {args.sibling_tail_min_prev_accepted}")
@@ -1167,6 +1195,8 @@ def main(argv: list[str] | None = None):
             "use_gemv_decode": bool(args.use_gemv_decode),
             "effective_use_wmma_prefill": bool(session.use_wmma_prefill),
             "effective_use_gemv_decode": bool(session.use_gemv_decode),
+            "mtp_draft_warmup": bool(args.mtp_draft_warmup),
+            "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
             "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
             "root_topk_accept": args.root_topk_accept,
             "sibling_topk_accept": args.sibling_topk_accept,

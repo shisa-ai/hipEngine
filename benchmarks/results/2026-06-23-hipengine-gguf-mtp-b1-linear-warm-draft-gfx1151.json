@@ -1,0 +1,267 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_b1_linear_warm_draft_default",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-23",
+  "source_commit_before_commit": "c5a12410",
+  "source_dirty": true,
+  "hardware": "gfx1151/Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "change": {
+    "summary": "Enable an untimed stateless MTP draft warmup by default before measured speculative cycles.",
+    "mtp_draft_warmup_default": {
+      "old": false,
+      "new": true
+    },
+    "rationale": "The true no-MTP AR denominator already uses a warmup decode. The native MTP category harness previously charged each prompt for the first MTP draft wrapper/library/weight-cache cold start (~99 ms), while warm draft rows are ~7 ms. A stateless warmup run does not mutate target/session state or consume output tokens, and exposes steady-state MTP tok/s without prompt/token-specific behavior.",
+    "anti_gaming": "No prompt text, token IDs, candidate ranks, fixture IDs, target-token rescue branches, prompt-suite edits, accepted/output policy changes, or true-AR denominator changes."
+  },
+  "true_ar_baseline": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json",
+    "decode_tokens": 128,
+    "weighted_decode_tok_s": 56.416920438890834,
+    "timing_protocol": {
+      "decode_path": "graph_replay",
+      "graph_replay_decode": true,
+      "graph_steps_per_replay": 1,
+      "decode_repack": true,
+      "decode_repack_env": "1",
+      "use_gemv_decode": true,
+      "use_wmma_prefill": true,
+      "force_bulk_prefill": false,
+      "no_bulk_prefill": false,
+      "bulk_prefill_attention_mode": "bulk",
+      "attn_aotriton_min_tokens": 512,
+      "effective_decode_repack": true,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "fastpath_safety": {
+        "is_qwen35moe": true,
+        "allow_unsafe_qwen35moe_fastpaths": false,
+        "requested_wmma_prefill": true,
+        "requested_gemv_decode": true,
+        "effective_wmma_prefill": true,
+        "effective_gemv_decode": true,
+        "disabled_wmma_prefill": false,
+        "disabled_gemv_decode": false,
+        "reason": null
+      }
+    },
+    "repo_commit": "c5a12410"
+  },
+  "baseline_b1_linear_cold_draft_loop": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/run-20260623-225343/summary.json",
+    "previous_rollup_artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-default-speed-gfx1151.json",
+    "policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "mtp_draft_warmup": false,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 18.120879105199553,
+      "mtp_vs_true_ar_decode_ratio": 0.3213657691453424,
+      "draft_acceptance": 0.27,
+      "accepted_per_output": 0.2125984251968504,
+      "total_output_tokens": 127,
+      "total_accepted": 27,
+      "total_drafts": 100,
+      "decode_ms": 7008.49
+    },
+    "train": {
+      "decode_tok_s_weighted": 17.83206106870229,
+      "mtp_vs_true_ar_decode_ratio": 0.3162516413400786,
+      "draft_acceptance": 0.21666666666666667,
+      "accepted_per_output": 0.1780821917808219,
+      "total_output_tokens": 73,
+      "total_accepted": 13,
+      "total_drafts": 60,
+      "decode_ms": 4093.75
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 18.526523806583093,
+      "mtp_vs_true_ar_decode_ratio": 0.328547336650841,
+      "draft_acceptance": 0.35,
+      "accepted_per_output": 0.25925925925925924,
+      "total_output_tokens": 54,
+      "total_accepted": 14,
+      "total_drafts": 40,
+      "decode_ms": 2914.74
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 17.843487127198575,
+        "mtp_vs_true_ar_decode_ratio": 0.31646265454736294,
+        "draft_acceptance": 0.225,
+        "accepted_per_output": 0.1836734693877551,
+        "total_output_tokens": 49,
+        "total_accepted": 9,
+        "total_drafts": 40,
+        "decode_ms": 2746.1
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 18.206711722209278,
+        "mtp_vs_true_ar_decode_ratio": 0.3229409914491842,
+        "draft_acceptance": 0.25,
+        "accepted_per_output": 0.2,
+        "total_output_tokens": 25,
+        "total_accepted": 5,
+        "total_drafts": 20,
+        "decode_ms": 1373.12
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 17.646562372925573,
+        "mtp_vs_true_ar_decode_ratio": 0.3129184981896775,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.13043478260869565,
+        "total_output_tokens": 23,
+        "total_accepted": 3,
+        "total_drafts": 20,
+        "decode_ms": 1303.37
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 18.916703449145594,
+        "mtp_vs_true_ar_decode_ratio": 0.33542772162083295,
+        "draft_acceptance": 0.5,
+        "accepted_per_output": 0.3333333333333333,
+        "total_output_tokens": 30,
+        "total_accepted": 10,
+        "total_drafts": 20,
+        "decode_ms": 1585.9
+      }
+    }
+  },
+  "candidate_b1_linear_warm_draft": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/run-20260623-230826/summary.json",
+    "policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "mtp_draft_warmup": true,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 20.633228921613227,
+      "mtp_vs_true_ar_decode_ratio": 0.36572767107985876,
+      "draft_acceptance": 0.27,
+      "accepted_per_output": 0.2125984251968504,
+      "total_output_tokens": 127,
+      "total_accepted": 27,
+      "total_drafts": 100,
+      "decode_ms": 6155.12
+    },
+    "train": {
+      "decode_tok_s_weighted": 20.322939866369712,
+      "mtp_vs_true_ar_decode_ratio": 0.3602338737710635,
+      "draft_acceptance": 0.21666666666666667,
+      "accepted_per_output": 0.1780821917808219,
+      "total_output_tokens": 73,
+      "total_accepted": 13,
+      "total_drafts": 60,
+      "decode_ms": 3592.0
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 21.06807328568307,
+      "mtp_vs_true_ar_decode_ratio": 0.3734258304487902,
+      "draft_acceptance": 0.35,
+      "accepted_per_output": 0.25925925925925924,
+      "total_output_tokens": 54,
+      "total_accepted": 14,
+      "total_drafts": 40,
+      "decode_ms": 2563.1200000000003
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 20.7095339932208,
+        "mtp_vs_true_ar_decode_ratio": 0.3670283815786079,
+        "draft_acceptance": 0.225,
+        "accepted_per_output": 0.1836734693877551,
+        "total_output_tokens": 49,
+        "total_accepted": 9,
+        "total_drafts": 40,
+        "decode_ms": 2366.06
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 20.070165297881392,
+        "mtp_vs_true_ar_decode_ratio": 0.3557413988698201,
+        "draft_acceptance": 0.25,
+        "accepted_per_output": 0.2,
+        "total_output_tokens": 25,
+        "total_accepted": 5,
+        "total_drafts": 20,
+        "decode_ms": 1245.63
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 20.741088095517217,
+        "mtp_vs_true_ar_decode_ratio": 0.36772387916263355,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.13043478260869565,
+        "total_output_tokens": 23,
+        "total_accepted": 3,
+        "total_drafts": 20,
+        "decode_ms": 1108.91
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 20.912918606920783,
+        "mtp_vs_true_ar_decode_ratio": 0.3707108906894596,
+        "draft_acceptance": 0.5,
+        "accepted_per_output": 0.3333333333333333,
+        "total_output_tokens": 30,
+        "total_accepted": 10,
+        "total_drafts": 20,
+        "decode_ms": 1434.52
+      }
+    },
+    "warmup_ms": {
+      "mean": 99.35900000000001,
+      "min": 95.66,
+      "max": 104.62
+    },
+    "measured_draft_ms_after_warmup": {
+      "mean_cycle0": 7.670999999999999,
+      "mean_all_cycles": 7.015000000000001
+    }
+  },
+  "deltas_vs_loop_baseline": {
+    "decode_tok_s_weighted_abs": 2.512349816413675,
+    "decode_tok_s_weighted_pct": 13.864392570737854,
+    "mtp_vs_true_ar_decode_ratio_abs": 0.04436190193451639,
+    "mtp_vs_true_ar_decode_ratio_pct": 13.804177729474686,
+    "draft_acceptance_abs": 0.0,
+    "accepted_per_output_abs": 0.0
+  },
+  "validation": {
+    "commands": [
+      "python3 -m py_compile scripts/gguf_mtp_bench.py",
+      "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py",
+      "python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 2 --draft-n-max 1 --prompt 'Write a short greeting.' --output /tmp/hipengine-mtp-draft-warmup-smoke-20260623-230611.json",
+      "mtp-gguf-final verify command -> /tmp/hipengine-mtp-gguf-final/run-20260623-230826/summary.json",
+      "configured guard: py_compile selected MTP scripts/runtime + pytest MTP guard suite (432 passed)"
+    ],
+    "default_smoke_artifact": "/tmp/hipengine-mtp-draft-warmup-smoke-20260623-230611.json",
+    "default_smoke": {
+      "mtp_draft_warmup": true,
+      "mtp_draft_warmup_ms": 94.68,
+      "cycle_draft_ms": [
+        7.51,
+        6.93
+      ]
+    }
+  },
+  "notes": [
+    "This remains diagnostic progress, not a true speedup claim: 20.63 tok/s is 0.366x the production true no-MTP AR baseline.",
+    "Draft acceptance and accepted/output are unchanged by construction because the warmup draft is discarded before measured cycles.",
+    "Use --no-mtp-draft-warmup for cold-start diagnostic comparisons."
+  ]
+}
