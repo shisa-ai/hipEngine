@@ -123496,3 +123496,54 @@ python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test
 - Rejected. Current default remains branch-redraft root-K32/sibling-K28-tailmin0/depth≤4 with ungated root tail, up to five branch redrafts, `draft_p_min=0.0`, and the original redraft seed source.
 - Added compact rejected artifact:
   `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-prevseed-rootk32-sibling28-tailmin0-depth4-max5-rejected-gfx1151.json`.
+
+## 2026-06-23 — mtp-honest-acceptance iteration 223: sibling-K40 rejected under root-K32-tailmin0/depth≤4/max-5
+
+### Scope
+- Active loop: `mtp-honest-acceptance/run-20260622-040027`, iteration 223.
+- Tested widening the generic non-root sibling top-k proposal from retained `sibling_topk_accept=28` to `40`, preserving `root_topk_accept=32`, `sibling_tail_min_prev_accepted=0`, `sibling_topk_max_depth=4`, `root_tail_max_prev_accepted=-1`, `topk_branch_redraft=true`, `topk_branch_redraft_max_branches=5`, and `draft_p_min=0.0`.
+- This was a direct proposal/selector experiment under exact target verification; no prompt text, token IDs, fixture IDs, candidate-token-pattern branches, benchmark detection, or target-token rescue logic were introduced.
+
+### Change evaluated and reverted
+- Temporarily changed `--sibling-topk-accept` default from `28` to `40` and validation from `1..28` to `1..40`.
+- Reverted to retained sibling-K28 because sibling-K40 improved only the focused prompt while full-suite/train/heldout/per-category accepted-output metrics were unchanged and candidate accounting increased substantially.
+
+### Focused B5 validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+python3 scripts/gguf_mtp_bench.py --cycles 20 --draft-n-max 5 --output /tmp/hipengine-mtp-branch-redraft-rootk32-sibling40-tailmin0-depth4-default-iter223-b5-20.json
+```
+- Focused accepted/output improved vs retained root-K32/sibling-K28-tailmin0: `0.7468 -> 0.7561`.
+- Accepted drafts/candidates changed `59/2973 -> 62/3935`; `accept_per_draft 0.0198 -> 0.0158`.
+- Focused top-k rows had length `40`; no sibling rank-33..40 hit appeared in the focused prompt, so this matched the earlier sibling-K32 focused acceptance result while adding more candidates.
+- Top-k branch accepts changed `41 -> 42`, with `15` branch-redraft cycles, `12` multi-branch cycles, `9` triple-branch cycles, and `6` quad-branch cycles; no quint branch cycles were exercised.
+- Diagnostic tok/s `14.50`, `speedup_vs_ar_visible=0.7468x`; no true-AR speed claim retained.
+
+### Full category validation
+```bash
+python3 scripts/gguf_mtp_category_bench.py --budgets 5 --cycles 10 --raw-root /tmp/hipengine-branch-redraft-rootk32-sibling40-tailmin0-depth4-full-iter223/raw --output /tmp/hipengine-branch-redraft-rootk32-sibling40-tailmin0-depth4-full-iter223/summary.json
+```
+- Full accepted/output unchanged vs retained root-K32/sibling-K28-tailmin0: `0.773243 -> 0.773243` (`341/441` both).
+- Train unchanged `0.769231` (`200/260`); heldout unchanged `0.779006` (`141/181`).
+- Per-category accepted/output unchanged: code `0.751553`, general_en `0.813084`, general_ja `0.726027`, mixed_ja_en `0.800000`.
+- Full draft acceptance regressed `0.022872 -> 0.017305` because candidate accounting rose (`341/14909 -> 341/19705`).
+- A sibling rank-40 hit appeared in `general_en_plan` cycle 4, but accepted-output was already maxed for that cycle and no full-suite metric improved.
+- Diagnostic weighted decode tok/s changed `14.2406 -> 14.5664`, with verifier-derived ratio `0.7424 -> 0.7427`. Timing remains diagnostic only and cannot support a speed claim.
+
+### Validation after revert
+```bash
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (verify; 321 tests)
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py
+# passed (guard; 321 tests)
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py
+# passed
+python3 -m pytest --collect-only tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py | tail -5
+# 321 tests collected
+```
+- Prompt verifier passed for the evaluated shape: sibling-K40 only widens a generic non-root top-k proposal under exact target verification. No prompt text, token IDs, candidate-token patterns, depth-specific target-token rescues, fixture IDs, or benchmark-detection branches were introduced. The candidate is rejected because no full-suite/train/heldout/per-category accepted-output metric improved and candidate accounting increased, avoiding retention of a focused-prompt-only gain.
+
+### Result
+- Rejected. Current default remains branch-redraft root-K32/sibling-K28-tailmin0/depth≤4 with ungated root tail, up to five branch redrafts, and `draft_p_min=0.0`.
+- Added compact rejected artifact:
+  `benchmarks/results/2026-06-23-hipengine-gguf-mtp-branch-redraft-rootk32-sibling40-tailmin0-depth4-max5-rejected-gfx1151.json`.
