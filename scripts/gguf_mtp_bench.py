@@ -448,10 +448,10 @@ def main():
     parser.add_argument(
         "--sibling-topk-accept",
         type=int,
-        default=28,
+        default=128,
         help=(
             "Diagnostic tree proposal: accept a non-argmax sibling at the first deeper "
-            "mismatch when the target token is in the first K candidates (default: 28; use 1 for root-only top-k)."
+            "mismatch when the target token is in the first K candidates (default: 128; use 1 for root-only top-k)."
         ),
     )
     parser.add_argument(
@@ -516,8 +516,8 @@ def main():
         parser.error(str(exc))
     if args.root_topk_accept < 1 or args.root_topk_accept > 1024:
         parser.error("--root-topk-accept must be in 1..1024")
-    if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 28:
-        parser.error("--sibling-topk-accept must be in 1..28")
+    if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 128:
+        parser.error("--sibling-topk-accept must be in 1..128")
     if args.sibling_topk_max_depth < 0:
         parser.error("--sibling-topk-max-depth must be non-negative")
     if args.root_tail_max_prev_accepted < -1:
