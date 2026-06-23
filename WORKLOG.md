@@ -124250,3 +124250,21 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py
 # passed, 432 tests
 ```
+
+## 2026-06-23 — mtp-gguf-final iteration 3 rejected: GGUF decode graph target verification
+
+### Hypothesis
+- MTP B1 after draft warmup still spends most time in target verification (`~54.5 ms` target step vs `~7.0 ms` draft). Try using resident GGUF decode graph replay for target verification while capturing the fp32 MTP hidden seed.
+
+### Result
+- Rejected before full-suite measurement. A smoke run with a prototype graph target path was fast but not exact:
+  - `/tmp/hipengine-mtp-target-graph-smoke-20260623-232504.json`: target graph effective, target step `~18 ms`, but cycle 1 target token became `220` instead of the eager smoke's `248068`.
+- Focused graph/eager probe on prompt `[760,4087,369]` showed multi-step GGUF graph replay diverges after the first token:
+  - eager: `178404, 80017, 188691`
+  - `graph.replay(2)`: `178404, [80017, 348]`
+  - repeated `graph.replay(1)` twice: `178404, 80017, 348`
+- Likely cause: full-attention graph capture still bakes host scalars such as `active_context = int(position) + 1`; the device position scalar advances, but not every launch parameter is device-driven.
+
+### Action
+- Reverted the prototype code changes; no runtime code retained.
+- Added `docs/REFACTOR.md` debt entry: do not use GGUF decode graph replay for exact multi-step MTP target verification until graph-vs-eager multi-token correctness is fixed and guarded.
