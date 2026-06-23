@@ -152,11 +152,20 @@ prefix `3..8` fails; only prefix `9` or all-BF16 prefix `10` passes prefill, and
 a full `128K/128` prefix-9 decode confirmation passes (`KL mean=2.59e-4`, top-1
 `0.969`) but peaks at `25.112 GiB`, higher than BF16 and not a 24GB path. The
 runtime safety fallback is therefore prefix `9`; lower prefixes and pure INT8 now
-require `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. Evidence:
+require `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. A first
+host-side QDQ format sweep (`scripts/qwen35_gguf_q8_format_sweep.py`) did not find
+an all-Q8 4K/1 candidate that passes the KL/top-1 gate: per-token/head FP16,
+per-token/head FP32, llama-style `q8_0` block32 FP16/FP32, block16/block64, and
+one-sided K/V variants all failed at BF16-prefix `0`. Approximate short-context
+passes appear only with BF16 prefix depth `>=6` (`block16_fp32` / current
+per-token-head) or `>=8` (`q8_0_block32_fp32`), so any real HIP Q8 KV follow-up
+must implement the format and rerun the long BF16-vs-Q8 guard before promotion.
+Evidence:
 `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`,
 `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`,
-and `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`.
+`benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`, and
+`benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -403,7 +412,10 @@ Current focused lanes from evidence:
   peaks at `25.112 GiB`, higher than BF16. GPU1 `128K/128` with prefix-3 remains
   a capacity/throughput diagnostic (`756.715/66.053 tok/s`, `23.291 GiB` tracked),
   not a promoted row. Lower prefixes now require the unverified-long diagnostic
-  env; a 24GB solution needs another KV format or non-KV memory reduction.
+  env. The first QDQ-only Q8-format sweep found no all-Q8 4K/1 pass; approximate
+  passes still need at least 6 BF16-prefix full-attention layers (or 8 for
+  `q8_0_block32_fp32`), so a 24GB solution needs a real HIP Q8-format kernel plus
+  long guard evidence, or non-KV memory reduction.
 - **Refresh attribution before the next optimization pass.** Before touching more
   kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
   current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the

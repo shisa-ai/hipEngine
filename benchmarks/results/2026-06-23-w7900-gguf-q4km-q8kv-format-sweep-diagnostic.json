@@ -1,0 +1,826 @@
+{
+  "backend": "hip_gfx1100",
+  "date": "2026-06-23",
+  "decision": "no_zero_prefix_q8_format_promoted; block16/q8_0 candidates need real HIP implementation and long BF16-vs-Q8 guard before any promotion",
+  "diagnostic": {
+    "caveats": [
+      "Full-model replay is a numerical QDQ probe through BF16 cache storage, not a HIP Q8 implementation.",
+      "Full-model replay quantizes retained prefill KV rows; the newly appended decode-token KV row remains BF16.",
+      "Layer-local CPU attention rows include the decode-token KV row and isolate the probed full-attention layer."
+    ],
+    "command": "python3 scripts/qwen35_gguf_q8_format_sweep.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4K --token-id 9707 --max-sequence-length 8192 --formats per_token_head_fp16,q8_0_block32_fp32,block16_fp32,key_q8_0_block32_value_bf16_fp16 --bf16-prefix-full-layers 0,3,6,8,9 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-q8-format-prefix-sweep-4k.json",
+    "decode_steps": 1,
+    "decode_token": 40218,
+    "elapsed_seconds": 81.87328291777521,
+    "formats": [
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.14742305119181276,
+          "kl_mean": 0.14742305119181276,
+          "max_abs": 4.007287979125977,
+          "mean_abs": 0.41529133915901184,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 0,
+        "format": "per_token_head_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 50.390625,
+          "saves_vs_bf16_pct": 49.609375,
+          "total_bytes": 10320
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 4,
+          "pct_of_bf16": 50.390625,
+          "saves_vs_bf16_pct": 49.609375,
+          "total_bytes": 1032,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 4
+        },
+        "quantized_full_attention_layers": 10,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.12349373444321592,
+          "kl_mean": 0.12349373444321592,
+          "max_abs": 3.3111467361450195,
+          "mean_abs": 0.36952561140060425,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 0,
+        "format": "q8_0_block32_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 56.25,
+          "saves_vs_bf16_pct": 43.75,
+          "total_bytes": 11520
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 64,
+          "pct_of_bf16": 56.25,
+          "saves_vs_bf16_pct": 43.75,
+          "total_bytes": 1152,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 64
+        },
+        "quantized_full_attention_layers": 10,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.10843252583985036,
+          "kl_mean": 0.10843252583985036,
+          "max_abs": 3.6420135498046875,
+          "mean_abs": 0.3645664155483246,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 0,
+        "format": "block16_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 62.5,
+          "saves_vs_bf16_pct": 37.5,
+          "total_bytes": 12800
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 128,
+          "pct_of_bf16": 62.5,
+          "saves_vs_bf16_pct": 37.5,
+          "total_bytes": 1280,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 128
+        },
+        "quantized_full_attention_layers": 10,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.12102513042045247,
+          "kl_mean": 0.12102513042045247,
+          "max_abs": 3.4480018615722656,
+          "mean_abs": 0.3725983202457428,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 0,
+        "format": "key_q8_0_block32_value_bf16_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 76.5625,
+          "saves_vs_bf16_pct": 23.4375,
+          "total_bytes": 15680
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 32,
+          "pct_of_bf16": 76.5625,
+          "saves_vs_bf16_pct": 23.4375,
+          "total_bytes": 1568,
+          "value_payload_bytes": 1024,
+          "value_scale_bytes": 0
+        },
+        "quantized_full_attention_layers": 10,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.0553618003297143,
+          "kl_mean": 0.0553618003297143,
+          "max_abs": 2.063441753387451,
+          "mean_abs": 0.249704048037529,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 3,
+        "format": "per_token_head_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 65.2734375,
+          "saves_vs_bf16_pct": 34.7265625,
+          "total_bytes": 13368
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 4,
+          "pct_of_bf16": 50.390625,
+          "saves_vs_bf16_pct": 49.609375,
+          "total_bytes": 1032,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 4
+        },
+        "quantized_full_attention_layers": 7,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.05388117601152241,
+          "kl_mean": 0.05388117601152241,
+          "max_abs": 2.0160696506500244,
+          "mean_abs": 0.24143314361572266,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 3,
+        "format": "q8_0_block32_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 69.375,
+          "saves_vs_bf16_pct": 30.625,
+          "total_bytes": 14208
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 64,
+          "pct_of_bf16": 56.25,
+          "saves_vs_bf16_pct": 43.75,
+          "total_bytes": 1152,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 64
+        },
+        "quantized_full_attention_layers": 7,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 359,
+          "kl_max": 0.04629192764539964,
+          "kl_mean": 0.04629192764539964,
+          "max_abs": 1.583540916442871,
+          "mean_abs": 0.2251405417919159,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 3,
+        "format": "block16_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 73.75,
+          "saves_vs_bf16_pct": 26.25,
+          "total_bytes": 15104
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 128,
+          "pct_of_bf16": 62.5,
+          "saves_vs_bf16_pct": 37.5,
+          "total_bytes": 1280,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 128
+        },
+        "quantized_full_attention_layers": 7,
+        "token_id": 359
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.0466024712925442,
+          "kl_mean": 0.0466024712925442,
+          "max_abs": 1.6942691802978516,
+          "mean_abs": 0.22721430659294128,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 3,
+        "format": "key_q8_0_block32_value_bf16_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 83.59375,
+          "saves_vs_bf16_pct": 16.40625,
+          "total_bytes": 17120
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 32,
+          "pct_of_bf16": 76.5625,
+          "saves_vs_bf16_pct": 23.4375,
+          "total_bytes": 1568,
+          "value_payload_bytes": 1024,
+          "value_scale_bytes": 0
+        },
+        "quantized_full_attention_layers": 7,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 0.004677122873437994,
+          "kl_mean": 0.004677122873437994,
+          "max_abs": 0.5533984899520874,
+          "mean_abs": 0.07747765630483627,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 6,
+        "format": "per_token_head_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 80.15625,
+          "saves_vs_bf16_pct": 19.84375,
+          "total_bytes": 16416
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 4,
+          "pct_of_bf16": 50.390625,
+          "saves_vs_bf16_pct": 49.609375,
+          "total_bytes": 1032,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 4
+        },
+        "quantized_full_attention_layers": 4,
+        "token_id": 11048
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.002019561188229574,
+          "kl_mean": 0.002019561188229574,
+          "max_abs": 0.31180739402770996,
+          "mean_abs": 0.042770929634571075,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 6,
+        "format": "q8_0_block32_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 82.5,
+          "saves_vs_bf16_pct": 17.5,
+          "total_bytes": 16896
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 64,
+          "pct_of_bf16": 56.25,
+          "saves_vs_bf16_pct": 43.75,
+          "total_bytes": 1152,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 64
+        },
+        "quantized_full_attention_layers": 4,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 0.011021425778930888,
+          "kl_mean": 0.011021425778930888,
+          "max_abs": 0.8320772051811218,
+          "mean_abs": 0.11637435108423233,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 6,
+        "format": "block16_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 85.0,
+          "saves_vs_bf16_pct": 15.0,
+          "total_bytes": 17408
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 128,
+          "pct_of_bf16": 62.5,
+          "saves_vs_bf16_pct": 37.5,
+          "total_bytes": 1280,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 128
+        },
+        "quantized_full_attention_layers": 4,
+        "token_id": 11048
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 0.008869792611760512,
+          "kl_mean": 0.008869792611760512,
+          "max_abs": 0.870823860168457,
+          "mean_abs": 0.1168384775519371,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 6,
+        "format": "key_q8_0_block32_value_bf16_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 90.625,
+          "saves_vs_bf16_pct": 9.375,
+          "total_bytes": 18560
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 32,
+          "pct_of_bf16": 76.5625,
+          "saves_vs_bf16_pct": 23.4375,
+          "total_bytes": 1568,
+          "value_payload_bytes": 1024,
+          "value_scale_bytes": 0
+        },
+        "quantized_full_attention_layers": 4,
+        "token_id": 11048
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.0002516411755241079,
+          "kl_mean": 0.0002516411755241079,
+          "max_abs": 0.1168828010559082,
+          "mean_abs": 0.025355132296681404,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 8,
+        "format": "per_token_head_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 90.078125,
+          "saves_vs_bf16_pct": 9.921875,
+          "total_bytes": 18448
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 4,
+          "pct_of_bf16": 50.390625,
+          "saves_vs_bf16_pct": 49.609375,
+          "total_bytes": 1032,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 4
+        },
+        "quantized_full_attention_layers": 2,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 0.006437457406420719,
+          "kl_mean": 0.006437457406420719,
+          "max_abs": 0.6154422760009766,
+          "mean_abs": 0.0916994959115982,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 8,
+        "format": "q8_0_block32_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 91.25,
+          "saves_vs_bf16_pct": 8.75,
+          "total_bytes": 18688
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 64,
+          "pct_of_bf16": 56.25,
+          "saves_vs_bf16_pct": 43.75,
+          "total_bytes": 1152,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 64
+        },
+        "quantized_full_attention_layers": 2,
+        "token_id": 11048
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.0002927772584327008,
+          "kl_mean": 0.0002927772584327008,
+          "max_abs": 0.1429762840270996,
+          "mean_abs": 0.031898945569992065,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 8,
+        "format": "block16_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 92.5,
+          "saves_vs_bf16_pct": 7.5,
+          "total_bytes": 18944
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 128,
+          "pct_of_bf16": 62.5,
+          "saves_vs_bf16_pct": 37.5,
+          "total_bytes": 1280,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 128
+        },
+        "quantized_full_attention_layers": 2,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 328,
+          "kl_max": 0.00035599307024659487,
+          "kl_mean": 0.00035599307024659487,
+          "max_abs": 0.12272071838378906,
+          "mean_abs": 0.02217440865933895,
+          "passed": false,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "bf16_prefix_full_attention_layers": 8,
+        "format": "key_q8_0_block32_value_bf16_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 95.3125,
+          "saves_vs_bf16_pct": 4.6875,
+          "total_bytes": 19520
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 32,
+          "pct_of_bf16": 76.5625,
+          "saves_vs_bf16_pct": 23.4375,
+          "total_bytes": 1568,
+          "value_payload_bytes": 1024,
+          "value_scale_bytes": 0
+        },
+        "quantized_full_attention_layers": 2,
+        "token_id": 328
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 4.8419129891188224e-05,
+          "kl_mean": 4.8419129891188224e-05,
+          "max_abs": 0.049509525299072266,
+          "mean_abs": 0.008121906779706478,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 9,
+        "format": "per_token_head_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 95.0390625,
+          "saves_vs_bf16_pct": 4.9609375,
+          "total_bytes": 19464
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 4,
+          "pct_of_bf16": 50.390625,
+          "saves_vs_bf16_pct": 49.609375,
+          "total_bytes": 1032,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 4
+        },
+        "quantized_full_attention_layers": 1,
+        "token_id": 11048
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 1.3103129334888322e-05,
+          "kl_mean": 1.3103129334888322e-05,
+          "max_abs": 0.02699422836303711,
+          "mean_abs": 0.004783671349287033,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 9,
+        "format": "q8_0_block32_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 95.625,
+          "saves_vs_bf16_pct": 4.375,
+          "total_bytes": 19584
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 64,
+          "pct_of_bf16": 56.25,
+          "saves_vs_bf16_pct": 43.75,
+          "total_bytes": 1152,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 64
+        },
+        "quantized_full_attention_layers": 1,
+        "token_id": 11048
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 1.4903435172515605e-05,
+          "kl_mean": 1.4903435172515605e-05,
+          "max_abs": 0.027224302291870117,
+          "mean_abs": 0.004632621072232723,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 9,
+        "format": "block16_fp32",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 96.25,
+          "saves_vs_bf16_pct": 3.75,
+          "total_bytes": 19712
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 128,
+          "pct_of_bf16": 62.5,
+          "saves_vs_bf16_pct": 37.5,
+          "total_bytes": 1280,
+          "value_payload_bytes": 512,
+          "value_scale_bytes": 128
+        },
+        "quantized_full_attention_layers": 1,
+        "token_id": 11048
+      },
+      {
+        "approx_decode_logit_metrics_vs_bf16": {
+          "candidate_top1": 11048,
+          "kl_max": 1.0906479806050473e-05,
+          "kl_mean": 1.0906479806050473e-05,
+          "max_abs": 0.023107528686523438,
+          "mean_abs": 0.0037492376286536455,
+          "passed": true,
+          "reference_top1": 11048,
+          "top1_agreement": 1.0
+        },
+        "bf16_prefix_full_attention_layers": 9,
+        "format": "key_q8_0_block32_value_bf16_fp16",
+        "hybrid_memory_bytes_per_token_all_full_layers": {
+          "bf16_total_bytes": 20480,
+          "pct_of_bf16": 97.65625,
+          "saves_vs_bf16_pct": 2.34375,
+          "total_bytes": 20000
+        },
+        "memory_bytes_per_token_per_full_layer": {
+          "bf16_total_bytes": 2048,
+          "key_payload_bytes": 512,
+          "key_scale_bytes": 32,
+          "pct_of_bf16": 76.5625,
+          "saves_vs_bf16_pct": 23.4375,
+          "total_bytes": 1568,
+          "value_payload_bytes": 1024,
+          "value_scale_bytes": 0
+        },
+        "quantized_full_attention_layers": 1,
+        "token_id": 11048
+      }
+    ],
+    "layer_local_probe": {
+      "active_context": 4097,
+      "layer_id": 3,
+      "rows": [
+        {
+          "format": "per_token_head_fp16",
+          "gated_attention_diff": {
+            "max_abs": 0.0078125,
+            "max_rel": 73.77714538574219,
+            "mean_abs": 0.0004673782386817038,
+            "rms_abs": 0.0007509977215028814
+          },
+          "key_quantization_error": {
+            "max_abs": 0.0625,
+            "max_rel": 1.0,
+            "mean_abs": 0.01422348152846098,
+            "rms_abs": 0.0164680565722319
+          },
+          "value_quantization_error": {
+            "max_abs": 0.01788330078125,
+            "max_rel": 1.0,
+            "mean_abs": 0.0044901310466229916,
+            "rms_abs": 0.005196849583964443
+          }
+        },
+        {
+          "format": "q8_0_block32_fp32",
+          "gated_attention_diff": {
+            "max_abs": 0.0078125,
+            "max_rel": 30.440000534057617,
+            "mean_abs": 0.00023583017173223197,
+            "rms_abs": 0.000426065601579476
+          },
+          "key_quantization_error": {
+            "max_abs": 0.0527806282043457,
+            "max_rel": 1.0,
+            "mean_abs": 0.010174383409321308,
+            "rms_abs": 0.012311273183057313
+          },
+          "value_quantization_error": {
+            "max_abs": 0.017539676278829575,
+            "max_rel": 1.0,
+            "mean_abs": 0.002941287588328123,
+            "rms_abs": 0.003602675616424416
+          }
+        },
+        {
+          "format": "block16_fp32",
+          "gated_attention_diff": {
+            "max_abs": 0.0078125,
+            "max_rel": 40.68000030517578,
+            "mean_abs": 0.00019510347920004278,
+            "rms_abs": 0.00036219336367973224
+          },
+          "key_quantization_error": {
+            "max_abs": 0.0527806282043457,
+            "max_rel": 1.0,
+            "mean_abs": 0.008809595368802547,
+            "rms_abs": 0.010959160641995364
+          },
+          "value_quantization_error": {
+            "max_abs": 0.017539676278829575,
+            "max_rel": 1.0,
+            "mean_abs": 0.0024234058801084757,
+            "rms_abs": 0.003064449476790879
+          }
+        },
+        {
+          "format": "key_q8_0_block32_value_bf16_fp16",
+          "gated_attention_diff": {
+            "max_abs": 0.001953125,
+            "max_rel": 2.702857255935669,
+            "mean_abs": 9.444373063161038e-06,
+            "rms_abs": 7.103596949974645e-05
+          },
+          "key_quantization_error": {
+            "max_abs": 0.052734375,
+            "max_rel": 1.0,
+            "mean_abs": 0.010207210667431355,
+            "rms_abs": 0.012313325189216325
+          },
+          "value_quantization_error": {
+            "max_abs": 0.0,
+            "max_rel": 0.0,
+            "mean_abs": 0.0,
+            "rms_abs": 0.0
+          }
+        }
+      ]
+    },
+    "max_sequence_length": 8192,
+    "mode": "qwen35_gguf_q8_format_sweep",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompt_length": 4096,
+    "quality_thresholds": {
+      "kl_max": 0.05,
+      "top1_agreement_min": 0.9
+    },
+    "reference": {
+      "kv_storage": "bf16",
+      "token_id": 11048
+    },
+    "schema": 1,
+    "summary": {
+      "approx_passed_formats": [
+        {
+          "bf16_prefix_full_attention_layers": 6,
+          "format": "per_token_head_fp16"
+        },
+        {
+          "bf16_prefix_full_attention_layers": 6,
+          "format": "block16_fp32"
+        },
+        {
+          "bf16_prefix_full_attention_layers": 6,
+          "format": "key_q8_0_block32_value_bf16_fp16"
+        },
+        {
+          "bf16_prefix_full_attention_layers": 8,
+          "format": "q8_0_block32_fp32"
+        },
+        {
+          "bf16_prefix_full_attention_layers": 9,
+          "format": "per_token_head_fp16"
+        },
+        {
+          "bf16_prefix_full_attention_layers": 9,
+          "format": "q8_0_block32_fp32"
+        },
+        {
+          "bf16_prefix_full_attention_layers": 9,
+          "format": "block16_fp32"
+        },
+        {
+          "bf16_prefix_full_attention_layers": 9,
+          "format": "key_q8_0_block32_value_bf16_fp16"
+        }
+      ],
+      "best_approx_kl": {
+        "bf16_prefix_full_attention_layers": 9,
+        "format": "key_q8_0_block32_value_bf16_fp16",
+        "kl_max": 1.0906479806050473e-05
+      },
+      "best_layer_local_mean_abs_format": "key_q8_0_block32_value_bf16_fp16"
+    }
+  },
+  "hardware": "AMD Radeon Pro W7900 / gfx1100 (HIP_VISIBLE_DEVICES=0)",
+  "interpretation": {
+    "best_layer_local": "key_q8_0_block32_value_bf16_fp16",
+    "caveat": "This is a host QDQ-through-BF16-cache diagnostic, not an implemented Q8 KV runtime. The appended decode-token row is BF16 in the approximate full-model replay; only the layer-local CPU attention includes that row. Passing rows must be re-tested with real HIP kernels and the long BF16-vs-Q8 correctness script.",
+    "first_approx_passes": "With BF16-prefix depth 6, per_token_head_fp16, block16_fp32, and key_q8_0_block32_value_bf16_fp16 pass the approximate 4K/1 gate; q8_0_block32_fp32 first passes at prefix 8.",
+    "zero_prefix": "All tested all-Q8 full-attention layouts fail the approximate 4K/1 BF16-vs-QDQ logit gate."
+  },
+  "model": "Qwen3.6-35B-A3B GGUF",
+  "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quant": "gguf_q4_k_m",
+  "schema": 1,
+  "software_env": {
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version-713.txt",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_HIPCC_VERSION_FILE": "/tmp/hipengine-hipcc-version-713.txt",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "hipcc_version_first_line": "HIP version: 7.13.26162-1140233ffe"
+  },
+  "source_json": "/tmp/hipengine-gguf-q8-format-prefix-sweep-4k.json",
+  "status": "diagnostic_q8_format_sweep",
+  "task": "GGUF Q4_K_M Q8 KV format numerical sweep"
+}
