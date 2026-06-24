@@ -124545,3 +124545,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - B3 `30.48046159781564 tok/s`, `0.5413511321408578x` true AR.
   - B1 and B3 regressed versus the B1/B2/B3 guard baseline, so the candidate failed the user-requested B2/B3 visibility/non-regression check.
 - Guard passed (`py_compile` + configured MTP tests), and prompt verifier passed (generic runtime kernel, no prompt/token/rank hardcoding). Reverted because the B1 improvement was not robust and B1/B3 visibility regressed.
+
+## 2026-06-24 — mtp-gguf-final iteration 19 rejected: stream-ordered graph token read
+
+### Hypothesis
+- Target graph verification synchronized the graph stream after replay and then did a blocking token D2H read. Replacing that with `graph.replay(..., synchronize=False)` plus a stream-ordered `hipMemcpyAsync` token read on the graph stream might preserve correctness while reducing one synchronization per target step.
+
+### Result
+- Rejected by the optimize loop and reverted; no runtime code retained.
+- Prototype added optional `synchronize=False` to `Qwen35GGUFDecodeGraph.replay()` and a token-only `read_sample(stream_ordered=True)` path using `hipMemcpyAsync(..., DEVICE_TO_HOST, graph_stream)` followed by one stream synchronize.
+- Smoke: `/tmp/hipengine-mtp-stream-ordered-read-smoke-20260624-072655.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; acceptance unchanged.
+  - Avg target verify `18.01 ms`, avg draft `7.54 ms`, `39.15 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-072943/summary.json`.
+  - B1: `41.87659922445857 tok/s`, `0.7437385311563686x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- Current clean rebaseline remains better (`0.7458249822210832`), and best retained remains `0.7510349576460698`. Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1 regressed. Reverted.
