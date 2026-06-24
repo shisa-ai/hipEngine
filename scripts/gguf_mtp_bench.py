@@ -28,7 +28,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 GGUF_PATH = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 DEFAULT_PROMPT = "What is the capital of France?"
-DEFAULT_ROOT_TOPK_ACCEPT = 1
+DEFAULT_ROOT_TOPK_ACCEPT = 2
 DEFAULT_SIBLING_TOPK_ACCEPT = 1
 DEFAULT_TOPK_BRANCH_REDRAFT = False
 DEFAULT_MTP_DRAFT_WARMUP = True
@@ -477,7 +477,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_ROOT_TOPK_ACCEPT,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 1 = linear argmax path; widen explicitly for coverage diagnostics)."
+            "the first K root candidates (default: 2 = generic root tree; use 1 for linear argmax path)."
         ),
     )
     parser.add_argument(
@@ -570,11 +570,7 @@ def main(argv: list[str] | None = None):
         sys.exit(1)
     proposal_topk_candidate_count = max(1, args.root_topk_accept, args.sibling_topk_accept)
     diagnostic_topk_candidate_count = max(10, proposal_topk_candidate_count)
-    topk_candidate_count = (
-        proposal_topk_candidate_count
-        if proposal_topk_candidate_count == 1
-        else diagnostic_topk_candidate_count
-    )
+    topk_candidate_count = proposal_topk_candidate_count
     if args.decode_repack:
         os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
     else:

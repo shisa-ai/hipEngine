@@ -124695,3 +124695,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - Retained smoke target/draft tokens were `[148368], [248068]` / `[248045], [1710]`; this prototype produced target/draft tokens `[248044], [148368]` / `[248045], [248045]`.
   - The first target read was stale/incorrect (`248044`, the input token), so the unsynchronized replay path is not correctness-safe with the current blocking read.
 - Full-suite verify was skipped after the correctness smoke failure. Guard still passed (`py_compile` + 437 tests), and prompt verifier passed (generic sync-policy experiment, no prompt/token/benchmark gaming), but exact target verification failed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 28 kept: B1 root top-2 exact-verification default
+
+### Hypothesis
+- After five runtime micro-failures, pivot to proposal quality. B1 still drafts one NextN row per cycle, but exact target verification can accept a generic root top-2 tree candidate when the target greedy token is the second MTP candidate. Promoting root K=2 and timing only the active K=2 proposal set could increase visible output tok/s without prompt/token/candidate-pattern hardcoding.
+
+### Result
+- Kept by the optimize loop.
+- Code change:
+  - `DEFAULT_ROOT_TOPK_ACCEPT` now defaults to `2`; sibling top-k remains `1` and branch-redraft remains off.
+  - Timed proposal selection now computes only `proposal_topk_candidate_count=max(root_topk_accept, sibling_topk_accept, 1)` for all widths, while full diagnostic top-10 rows are still filled after `draft_ms` when needed.
+  - Updated the default-policy test to assert B1 root-top2 speed-first defaults.
+- Smoke: `/tmp/hipengine-mtp-root2-default-smoke-20260624-104038.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; diagnostic top-10 length remained `10`.
+  - Root/sibling K=`2/1`; avg target verify `17.93 ms`, avg draft `7.49 ms`, `39.35 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-104310/summary.json`.
+  - True no-MTP AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, `56.37155590845131 tok/s`.
+  - B1 root-top2: `43.110482929788425 tok/s`, `0.7647559524487993x` true AR, `draft_acceptance=0.2`, `accepted_per_output=0.2857142857142857`, `decode_ms=3247.47`.
+  - Train: `42.78257893385813 tok/s`, `0.7590350934131502x`, `accepted_per_output=0.25`; heldout: `43.55558781895394 tok/s`, `0.7725053012828379x`, `accepted_per_output=0.3333333333333333`.
+  - Category ratios: code `0.7652682837524443`, general_en `0.7518447501014015`, general_ja `0.7464213917574732`, mixed_ja_en `0.7887471569586316`.
+- Compared with the retained argmax row, raw weighted tok/s improves `42.99313463960243 -> 43.110482929788425` (+0.27%). On the rerun true-AR denominator, the retained raw tok/s would be `0.7626742591498495x`, so the candidate also improves same-denominator ratio.
+- Proposal accounting tradeoff: root K=2 doubles root candidate accounting (`total_drafts 100 -> 200`), so draft acceptance drops `0.270 -> 0.200`; exact target verification accepts more visible tokens (`27 -> 40`), accepted/output improves `0.213 -> 0.286`, and raw tok/s improves despite the tradeoff.
+- Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
+- Prompt verifier passed: generic exact-verification root top-K policy only; no prompt text, token IDs, candidate-token patterns, fixture IDs, benchmark detection, target-token rescue logic, prompt-suite edits, true-AR denominator manipulation, or accepted/output-only keep policy.
+- Rollup updated: `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-root-top2-gfx1151.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
