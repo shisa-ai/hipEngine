@@ -175,10 +175,13 @@ per-token/head INT8: prefix `0` still fails `4K/1` (`KL mean=0.8731`, top-1
 prefix `7` passes `128K/16` (`KL mean=0.00741`, top-1 `0.94118`) while saving
 less memory than the admitted prefix-8 per-token/head path and increasing tracked
 prefill peak due extra layer-local BF16 oracles (`25.554 GiB` peak / `24.803 GiB`
-current). Do not promote key-only KV. A real HIP block16 K/V runtime diagnostic is
-now wired behind `HIPENGINE_GGUF_INT8_KV_BLOCK16=1` using `[blocks, block_size,
-kv_heads, 16]` scale metadata; it is not promoted until the same BF16-vs-candidate
-short and long guards pass.
+current). Do not promote key-only KV. The real HIP block16 K/V runtime diagnostic
+(`HIPENGINE_GGUF_INT8_KV_BLOCK16=1`, `[blocks, block_size, kv_heads, 16]` scales)
+is also not promoted: the primitive HIP path is CPU-reference-correct, but forced-long
+W7900 `4K/1` BF16-vs-block16 gates fail top-1 at prefix `0`, `6`, `7`, and the
+admitted prefix `8` (prefix 8: `KL mean=0.0001505`, top-1 `0.5`, candidate
+`25.298/24.797 GiB` peak/current). Skip expensive long block16 gates until a
+short no-mirror gate passes.
 Evidence:
 `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`,
 `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`,
@@ -186,8 +189,9 @@ Evidence:
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`,
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`,
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-noncontiguous-mask-diagnostic.json`, and
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`.
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-noncontiguous-mask-diagnostic.json`,
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`, and
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,

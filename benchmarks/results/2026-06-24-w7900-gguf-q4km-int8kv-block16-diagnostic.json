@@ -1,0 +1,293 @@
+{
+  "artifact_type": "diagnostic_correctness",
+  "backend": "hip_gfx1100",
+  "comparison_to_current_admitted_path": {
+    "block16_result": "prefix 8 block16 uses the same 8 BF16 / 2 INT8 layer count but fails 4K/1 top-1 (0.5) and peaks higher in the short gate (25.298 GiB vs prefix-8 per-token/head 128K quality artifact candidate peak 25.239 GiB)",
+    "current_default": "prefix 8 per-token/head INT8 K/V, accepted at W7900 128K/128 with KL mean 0.01448 and top-1 0.96124",
+    "decision": "do not promote block16; skip expensive long gates because the short no-mirror gate fails before any long-context benefit can be claimed"
+  },
+  "date_utc": "2026-06-24",
+  "default_change": "none; HIPENGINE_GGUF_INT8_KV_BLOCK16 remains diagnostic-only and unset by default",
+  "environment": {
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "hip_visible_devices": "0",
+    "hipengine_compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "hipengine_gguf_decode_repack": "1",
+    "hipengine_hip_arch": "gfx1100",
+    "rocm_path": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "therock_python": "/home/lhl/mambaforge/envs/therock/bin/python3.12"
+  },
+  "git_commit": "316976f1",
+  "hardware": "AMD Radeon Pro W7900 (GPU0)",
+  "model": "Qwen3.6-35B-A3B",
+  "model_quality_gates": {
+    "command_template": "HIPENGINE_GGUF_INT8_KV_BLOCK16=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS=<prefix> python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 4K --decode-steps 1 --max-sequence-length 131202 --kv-scale-dtype fp16 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror",
+    "rows": [
+      {
+        "bf16_prefix_full_attention_layers": 0,
+        "candidate_layout": {
+          "bf16_primary_full_attention_indices": [],
+          "bf16_primary_layer_count": 0,
+          "effective_kv_scale_dtype": "fp16",
+          "effective_kv_scale_granularity": "block16",
+          "int8_full_attention_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "int8_layer_count": 10,
+          "mirror_cache_count": 0
+        },
+        "candidate_memory_gib": {
+          "reference_current": 24.9846773147583,
+          "reference_peak": 24.9846773147583,
+          "tracked_current": 23.88879108428955,
+          "tracked_peak": 26.39367389678955
+        },
+        "candidate_top1_token_ids": [
+          40218,
+          25088
+        ],
+        "metrics": {
+          "first_top1_mismatch_index": 1,
+          "kl_max": 0.4812694896454493,
+          "kl_mean": 0.24063474482272465,
+          "passed": false,
+          "top1_agreement": 0.5,
+          "top1_mismatch_count": 1
+        },
+        "passed": false,
+        "reference_top1_token_ids": [
+          40218,
+          11048
+        ],
+        "source_json": "/tmp/hipengine-gguf-block16-prefix0-4k1.json",
+        "status": "rejected_correctness"
+      },
+      {
+        "bf16_prefix_full_attention_layers": 6,
+        "candidate_layout": {
+          "bf16_primary_full_attention_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "bf16_primary_layer_count": 6,
+          "effective_kv_scale_dtype": "fp32",
+          "effective_kv_scale_granularity": "block16",
+          "int8_full_attention_indices": [
+            6,
+            7,
+            8,
+            9
+          ],
+          "int8_layer_count": 4,
+          "mirror_cache_count": 0
+        },
+        "candidate_memory_gib": {
+          "reference_current": 24.9846773147583,
+          "reference_peak": 24.9846773147583,
+          "tracked_current": 24.6089448928833,
+          "tracked_peak": 25.6108980178833
+        },
+        "candidate_top1_token_ids": [
+          40218,
+          328
+        ],
+        "metrics": {
+          "first_top1_mismatch_index": 1,
+          "kl_max": 0.00222656464776367,
+          "kl_mean": 0.001113282323881835,
+          "passed": false,
+          "top1_agreement": 0.5,
+          "top1_mismatch_count": 1
+        },
+        "passed": false,
+        "reference_top1_token_ids": [
+          40218,
+          11048
+        ],
+        "source_json": "/tmp/hipengine-gguf-block16-prefix6-4k1.json",
+        "status": "rejected_correctness"
+      },
+      {
+        "bf16_prefix_full_attention_layers": 7,
+        "candidate_layout": {
+          "bf16_primary_full_attention_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "bf16_primary_layer_count": 7,
+          "effective_kv_scale_dtype": "fp32",
+          "effective_kv_scale_granularity": "block16",
+          "int8_full_attention_indices": [
+            7,
+            8,
+            9
+          ],
+          "int8_layer_count": 3,
+          "mirror_cache_count": 0
+        },
+        "candidate_memory_gib": {
+          "reference_current": 24.9846773147583,
+          "reference_peak": 24.9846773147583,
+          "tracked_current": 24.70287799835205,
+          "tracked_peak": 25.45434284210205
+        },
+        "candidate_top1_token_ids": [
+          40218,
+          328
+        ],
+        "metrics": {
+          "first_top1_mismatch_index": 1,
+          "kl_max": 0.0008265153086936066,
+          "kl_mean": 0.0004132576543468033,
+          "passed": false,
+          "top1_agreement": 0.5,
+          "top1_mismatch_count": 1
+        },
+        "passed": false,
+        "reference_top1_token_ids": [
+          40218,
+          11048
+        ],
+        "source_json": "/tmp/hipengine-gguf-block16-prefix7-4k1.json",
+        "status": "rejected_correctness"
+      },
+      {
+        "bf16_prefix_full_attention_layers": 8,
+        "candidate_layout": {
+          "bf16_primary_full_attention_indices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "bf16_primary_layer_count": 8,
+          "effective_kv_scale_dtype": "fp32",
+          "effective_kv_scale_granularity": "block16",
+          "int8_full_attention_indices": [
+            8,
+            9
+          ],
+          "int8_layer_count": 2,
+          "mirror_cache_count": 0
+        },
+        "candidate_memory_gib": {
+          "reference_current": 24.9846773147583,
+          "reference_peak": 24.9846773147583,
+          "tracked_current": 24.7968111038208,
+          "tracked_peak": 25.2977876663208
+        },
+        "candidate_top1_token_ids": [
+          40218,
+          328
+        ],
+        "metrics": {
+          "first_top1_mismatch_index": 1,
+          "kl_max": 0.00030100100844338007,
+          "kl_mean": 0.00015050050422169003,
+          "passed": false,
+          "top1_agreement": 0.5,
+          "top1_mismatch_count": 1
+        },
+        "passed": false,
+        "reference_top1_token_ids": [
+          40218,
+          11048
+        ],
+        "source_json": "/tmp/hipengine-gguf-block16-prefix8-4k1.json",
+        "status": "rejected_correctness"
+      }
+    ],
+    "thresholds": {
+      "kl_mean_max": 0.05,
+      "require_no_bf16_mirror": true,
+      "top1_agreement_min": 0.9
+    }
+  },
+  "notes": [
+    "All model rows used max_sequence_length=131202 to force the long no-mirror retained-INT8 decode path for a 4K prompt.",
+    "Prefix 0/6/7/8 all have finite logits and low enough KL by prefix 6+, but top-1 agreement is 0.5 because the first decode row flips from BF16 token 11048 to candidate token 328 (or 25088 at prefix 0).",
+    "The primitive gate remains useful coverage for the block16 HIP writer/decode kernels; the model-level rejection is a quantization-quality decision, not a kernel-correctness failure."
+  ],
+  "passed": false,
+  "performance_claim": false,
+  "primitive_cpu_reference_gate": {
+    "cases": [
+      {
+        "bf16_vs_block16_quantization": {
+          "max_abs_attn": 0.00047117844223976135,
+          "max_rel_attn": 25.186847686767578,
+          "pseudo_logit_gate": {
+            "kl_max": 1.0624932607535494e-07,
+            "kl_mean": 1.0624932607535494e-07,
+            "passed": true,
+            "top1_agreement": 1.0
+          }
+        },
+        "context_len": 64,
+        "max_abs_attn": 2.9802322387695312e-08,
+        "max_rel_attn": 0.0006591994897462428,
+        "name": "ctx64",
+        "passed": true,
+        "pseudo_logit_gate": {
+          "kl_max": 1.0157099567874437e-15,
+          "kl_mean": 1.0157099567874437e-15,
+          "passed": true,
+          "top1_agreement": 1.0
+        }
+      },
+      {
+        "bf16_vs_block16_quantization": {
+          "max_abs_attn": 0.000186113640666008,
+          "max_rel_attn": 8.38554859161377,
+          "pseudo_logit_gate": {
+            "kl_max": 1.4880898842766032e-08,
+            "kl_mean": 1.4880898842766032e-08,
+            "passed": true,
+            "top1_agreement": 1.0
+          }
+        },
+        "context_len": 520,
+        "max_abs_attn": 2.2351741790771484e-08,
+        "max_rel_attn": 0.02034675143659115,
+        "name": "ctx520",
+        "passed": true,
+        "pseudo_logit_gate": {
+          "kl_max": 2.3627164286312637e-16,
+          "kl_mean": 2.3627164286312637e-16,
+          "passed": true,
+          "top1_agreement": 1.0
+        }
+      }
+    ],
+    "command": "python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp32 --seed 1234 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-block16-hip-64-520.json",
+    "passed": true,
+    "source_json": "/tmp/hipengine-block16-hip-64-520.json",
+    "status": "accepted"
+  },
+  "quant": "gguf_q4_k_m",
+  "schema": 1,
+  "status": "rejected_no_promotion",
+  "summary": "GGUF block16 INT8 K/V runtime path is primitive-correct, but model-level BF16-vs-block16 gates fail the 4K/1 top-1 guard even at the admitted prefix-8 layer mix, so block16 is not promoted."
+}
