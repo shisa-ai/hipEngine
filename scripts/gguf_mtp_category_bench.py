@@ -2003,6 +2003,77 @@ def compare_objective_metrics(
     }
 
 
+def compare_objective_metrics_for_budgets(
+    baseline_summary: dict[str, Any],
+    candidate_summary: dict[str, Any],
+    budget_labels: list[str | int],
+    *,
+    tolerance: float = 0.0,
+) -> dict[str, Any]:
+    """Compare multiple MTP budgets with B1 as the primary keep metric.
+
+    The GGUF-MTP optimize loop currently optimizes B1 tok/s, but B2/B3 should be
+    visible and non-regressing while we iterate.  The first budget in
+    ``budget_labels`` is the primary speed-improvement budget; every listed
+    budget must pass the normal non-regression guard.
+    """
+
+    if not budget_labels:
+        raise BenchError("objective comparison requires at least one MTP budget")
+    labels: list[str] = []
+    for budget_label in budget_labels:
+        label = canonical_mtp_budget_label(budget_label)
+        if label in labels:
+            raise BenchError(f"objective comparison budgets must not contain duplicates: {label}")
+        labels.append(label)
+
+    per_budget = {
+        label: compare_objective_metrics(baseline_summary, candidate_summary, label, tolerance=tolerance)
+        for label in labels
+    }
+    primary_label = labels[0]
+    primary = per_budget[primary_label]
+    passed = all(row["passed"] for row in per_budget.values())
+    all_guarded_improved = all(row["guarded_improved"] for row in per_budget.values())
+    guarded_improved = bool(passed and primary["guarded_improved"])
+    draft_acceptance_improved = bool(passed and primary["draft_acceptance_improved"])
+
+    if not passed:
+        decision_state = "fail_regressed"
+    elif guarded_improved:
+        decision_state = "pass_primary_speed_improved"
+    else:
+        decision_state = "pass_no_primary_speed_improvement"
+
+    return {
+        "budgets": labels,
+        "primary_budget": primary_label,
+        "passed": passed,
+        "guarded_improved": guarded_improved,
+        "all_guarded_improved": all_guarded_improved,
+        "draft_acceptance_improved": draft_acceptance_improved,
+        "decision_state": decision_state,
+        "tolerance": tolerance,
+        "per_budget": per_budget,
+        "regressions": [
+            {"budget": label, **regression}
+            for label, row in per_budget.items()
+            for regression in row["regressions"]
+        ],
+        "missing_required_speed_improvements": [
+            {"budget": label, **missing}
+            for label, row in per_budget.items()
+            for missing in row["missing_required_speed_improvements"]
+        ],
+        "decision_rule": (
+            f"primary budget {primary_label} must improve full-suite decode_tok_s_weighted and "
+            "mtp_vs_true_ar_decode_ratio; every listed budget must pass full/heldout/category "
+            "non-regression guards for draft_acceptance, decode_tok_s_weighted, and "
+            "mtp_vs_true_ar_decode_ratio; accepted_per_output is report-only"
+        ),
+    }
+
+
 def populate_objective_metrics(summary: dict[str, Any]) -> dict[str, Any]:
     """Populate top-level objective metrics when all guardrails are satisfied."""
     summary["objective_metrics_available"] = False
@@ -2288,7 +2359,12 @@ def main() -> int:
     parser.add_argument(
         "--compare-budget",
         default=None,
-        help="Budget label for compare mode, e.g. b5 or 5.",
+        help="Budget label for compare mode, e.g. b5 or 5. Mutually exclusive with --compare-budgets.",
+    )
+    parser.add_argument(
+        "--compare-budgets",
+        default=None,
+        help="Comma-separated budget labels for multi-budget compare mode, e.g. 1,2,3. First budget is the primary keep metric; later budgets are non-regression guards.",
     )
     parser.add_argument(
         "--compare-require-pass",
@@ -2321,13 +2397,23 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.compare_baseline_summary_json is not None or args.compare_candidate_summary_json is not None:
-        if args.compare_baseline_summary_json is None or args.compare_candidate_summary_json is None or args.compare_budget is None:
-            raise BenchError("compare mode requires --compare-baseline-summary-json, --compare-candidate-summary-json, and --compare-budget")
+        if args.compare_baseline_summary_json is None or args.compare_candidate_summary_json is None:
+            raise BenchError("compare mode requires --compare-baseline-summary-json and --compare-candidate-summary-json")
+        if (args.compare_budget is None) == (args.compare_budgets is None):
+            raise BenchError("compare mode requires exactly one of --compare-budget or --compare-budgets")
         baseline_path = args.compare_baseline_summary_json
         candidate_path = args.compare_candidate_summary_json
         baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
         candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
-        comparison = compare_objective_metrics(baseline, candidate, args.compare_budget, tolerance=args.compare_tolerance)
+        if args.compare_budgets is not None:
+            comparison = compare_objective_metrics_for_budgets(
+                baseline,
+                candidate,
+                parse_budgets(args.compare_budgets),
+                tolerance=args.compare_tolerance,
+            )
+        else:
+            comparison = compare_objective_metrics(baseline, candidate, args.compare_budget, tolerance=args.compare_tolerance)
         comparison["comparison_sources"] = {
             "baseline_summary_json": str(baseline_path),
             "baseline_summary_json_resolved": str(baseline_path.expanduser().resolve(strict=False)),

@@ -124330,3 +124330,37 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py
 # passed, 432 tests
 ```
+
+## 2026-06-24 — mtp-gguf-final iteration 6: add B2/B3 guard visibility
+
+### Change
+- Extended `scripts/gguf_mtp_category_bench.py` compare mode with `--compare-budgets 1,2,3` and a multi-budget comparison helper.
+- Multi-budget guard semantics for future loop iterations:
+  - B1 remains the primary optimize metric.
+  - Every listed budget (currently B1/B2/B3) must pass the normal full/heldout/category non-regression guard for `draft_acceptance`, `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`.
+  - `accepted_per_output` remains report-only.
+- Added tests that objective metrics populate B1/B2/B3 and that CLI compare mode can report/guard `--compare-budgets 1,2,3`.
+
+### B1/B2/B3 verification run
+- True AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar-b123/true-ar-baseline.json`, `decode_tok_s_weighted=56.38608977098678`.
+- Summary: `/tmp/hipengine-mtp-gguf-final/run-b123-20260624-004204/summary.json`.
+- Objective JSONs: `objective-b1.json`, `objective-b2.json`, `objective-b3.json` in the same run directory.
+- Full-suite metrics:
+  - B1: `42.28189036672049 tok/s`, `0.7498638500816287x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`, `127 output / 27 accepted / 100 drafts`.
+  - B2: `35.55790877968891 tok/s`, `0.6306149074019507x` true AR, `draft_acceptance=0.185`, `accepted_per_output=0.27007299270072993`, `137 output / 37 accepted / 200 drafts`.
+  - B3: `30.81338723162186 tok/s`, `0.5464714321700803x` true AR, `draft_acceptance=0.14333333333333334`, `accepted_per_output=0.3006993006993007`, `143 output / 43 accepted / 300 drafts`.
+- Interpretation: deeper budgets increase accepted/output but currently lose enough draft time that B2/B3 are slower than B1; keep optimizing B1, but future iterations should make B2/B3 visible and non-regressing.
+
+### Validation
+```bash
+python3 -m py_compile scripts/gguf_mtp_category_bench.py
+python3 -m pytest -q tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_bench_metrics.py
+# passed
+
+python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --budgets 1,2,3 --cycles 10 --raw-root /tmp/hipengine-mtp-gguf-final/run-b123-20260624-004204/raw --output /tmp/hipengine-mtp-gguf-final/run-b123-20260624-004204/summary.json --true-ar-baseline-json /tmp/hipengine-mtp-gguf-final/current-true-ar-b123/true-ar-baseline.json
+# passed; objective ratios B1/B2/B3: 0.7498638500816287 / 0.6306149074019507 / 0.5464714321700803
+
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py hipengine/runtime/qwen35_gguf_runner.py hipengine/speculative/gguf_mtp.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py
+# passed, 436 tests
+```

@@ -17,6 +17,7 @@ from scripts.gguf_mtp_category_bench import (
     build_split_contract,
     build_summary,
     compare_objective_metrics,
+    compare_objective_metrics_for_budgets,
     load_prompt_rows,
     objective_metrics_for_budget,
     parse_budgets,
@@ -1195,6 +1196,7 @@ def _default_objective_summary(
     draft_ms: float,
     true_ar_name: str = "shared",
     drafts: list[int] | None = None,
+    budgets: tuple[int, ...] = (1,),
 ) -> dict:
     prompts = load_prompt_rows(DEFAULT_PROMPTS)
     assert [row["id"] for row in prompts] == list(DEFAULT_FULL_PROMPT_IDS)
@@ -1217,21 +1219,33 @@ def _default_objective_summary(
         raw_root="/tmp/raw",
         true_ar_baseline_json=baseline_path,
     )
+    def budget_row(budget: int, index: int, row: dict, accepted_count: int) -> dict:
+        row_accepted = accepted_count if budget == 1 else min(accepted_count, budget)
+        if drafts is None:
+            row_drafts = max(accepted_count, 1) if budget == 1 else max(row_accepted, budget)
+        else:
+            row_drafts = max(drafts[index], row_accepted)
+        return _row(
+            row["id"],
+            row["category"],
+            output=10,
+            accepted=row_accepted,
+            drafts=row_drafts,
+            ar_ms=100.0,
+            draft_ms=draft_ms * budget,
+        )
+
     raw = {
-        1: [
-            _row(
-                row["id"],
-                row["category"],
-                output=10,
-                accepted=acc,
-                drafts=max(acc, 1) if drafts is None else drafts[index],
-                ar_ms=100.0,
-                draft_ms=draft_ms,
-            )
+        budget: [
+            budget_row(budget, index, row, acc)
             for index, (row, acc) in enumerate(zip(prompts, accepted, strict=True))
         ]
+        for budget in budgets
     }
-    return build_summary(args=args, prompts=prompts, raw=raw, commands=list(TEST_SUMMARY_COMMANDS))
+    commands = [
+        f"python3 scripts/gguf_mtp_category_bench.py --budgets {','.join(str(budget) for budget in budgets)} --output summary.json"
+    ]
+    return build_summary(args=args, prompts=prompts, raw=raw, commands=commands)
 
 
 def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path) -> None:
@@ -1289,6 +1303,31 @@ def test_objective_metrics_for_budget_requires_full_default_suite(tmp_path: Path
         "general_ja_explain",
         "mixed_ja_en_review",
     ]
+
+
+def test_objective_metrics_populates_b1_b2_b3_for_iteration_guard(tmp_path: Path) -> None:
+    summary = _default_objective_summary(
+        tmp_path,
+        "summary-b123",
+        accepted=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        draft_ms=10.0,
+        budgets=(1, 2, 3),
+    )
+
+    assert summary["objective_metrics_available"] is True
+    assert sorted(summary["objectives"]) == ["b1", "b2", "b3"]
+    b1 = objective_metrics_for_budget(summary, "b1")
+    b2 = objective_metrics_for_budget(summary, "b2")
+    b3 = objective_metrics_for_budget(summary, "b3")
+
+    assert b1["budget"] == "b1"
+    assert b2["budget"] == "b2"
+    assert b3["budget"] == "b3"
+    assert b1["summary_commands"] == ["python3 scripts/gguf_mtp_category_bench.py --budgets 1,2,3 --output summary.json"]
+    assert b2["summary_totals"]["total_drafts"] == 20
+    assert b3["summary_totals"]["total_drafts"] == 30
+    assert b2["full"]["draft_acceptance"] == pytest.approx(19 / 20)
+    assert b3["full"]["draft_acceptance"] == pytest.approx(27 / 30)
 
 
 @pytest.mark.parametrize("budget_label", [0, True, "0", "b0", "b01", "banana", "off"])
@@ -2299,6 +2338,34 @@ def test_compare_objective_metrics_rejects_category_draft_regression_hidden_by_a
     } in comparison["regressions"]
 
 
+def test_compare_objective_metrics_for_budgets_tracks_b1_primary_and_b2_b3_guards(tmp_path: Path) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=20.0, budgets=(1, 2, 3))
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0, budgets=(1, 2, 3))
+
+    comparison = compare_objective_metrics_for_budgets(baseline, candidate, [1, 2, 3])
+
+    assert comparison["budgets"] == ["b1", "b2", "b3"]
+    assert comparison["primary_budget"] == "b1"
+    assert comparison["passed"] is True
+    assert comparison["guarded_improved"] is True
+    assert comparison["all_guarded_improved"] is True
+    assert comparison["per_budget"]["b2"]["passed"] is True
+    assert comparison["per_budget"]["b3"]["passed"] is True
+    assert "every listed budget" in comparison["decision_rule"]
+
+
+def test_compare_objective_metrics_for_budgets_fails_when_b2_regresses(tmp_path: Path) -> None:
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=10.0, budgets=(1, 2, 3))
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=20.0, budgets=(1, 2, 3))
+
+    comparison = compare_objective_metrics_for_budgets(baseline, candidate, [1, 2, 3])
+
+    assert comparison["passed"] is False
+    assert comparison["guarded_improved"] is False
+    assert comparison["decision_state"] == "fail_regressed"
+    assert any(item["budget"] == "b2" for item in comparison["regressions"])
+
+
 def test_objective_metrics_cli_prints_guarded_metrics(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     summary = _default_objective_summary(tmp_path, "summary", accepted=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], draft_ms=10.0)
@@ -2589,6 +2656,44 @@ def test_compare_objective_metrics_cli_prints_comparison(tmp_path: Path) -> None
     assert str(output_path) in comparison["comparison_command"]
     assert comparison["comparison_output_json"] == str(output_path)
     assert comparison["comparison_output_json_resolved"] == str(output_path.resolve(strict=False))
+
+
+def test_compare_objective_metrics_cli_prints_b1_b2_b3_comparison(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    baseline = _default_objective_summary(tmp_path, "baseline", accepted=[1] * 10, draft_ms=20.0, budgets=(1, 2, 3))
+    candidate = _default_objective_summary(tmp_path, "candidate", accepted=[2] * 10, draft_ms=10.0, budgets=(1, 2, 3))
+    baseline_path = tmp_path / "baseline-b123.json"
+    candidate_path = tmp_path / "candidate-b123.json"
+    baseline_path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    candidate_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "gguf_mtp_category_bench.py"),
+            "--compare-baseline-summary-json",
+            str(baseline_path),
+            "--compare-candidate-summary-json",
+            str(candidate_path),
+            "--compare-budgets",
+            "1,2,3",
+            "--compare-require-pass",
+            "--compare-require-guarded-improvement",
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    comparison = json.loads(completed.stdout)
+    assert comparison["budgets"] == ["b1", "b2", "b3"]
+    assert comparison["primary_budget"] == "b1"
+    assert comparison["passed"] is True
+    assert comparison["guarded_improved"] is True
+    assert comparison["per_budget"]["b2"]["passed"] is True
+    assert comparison["per_budget"]["b3"]["passed"] is True
+    assert "--compare-budgets" in comparison["comparison_command"]
 
 
 def test_compare_objective_metrics_cli_rejects_output_over_input(tmp_path: Path) -> None:
