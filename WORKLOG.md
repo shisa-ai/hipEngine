@@ -124681,3 +124681,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-101608/summary.json`.
   - B1: `42.75475267890507 tok/s`, `0.7577814128737268x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - This regressed vs the retained argmax row (`42.99313463960243 tok/s`, `0.760991932477236x`) with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but B1 raw speed and ratio regressed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 27 rejected: unsynchronized graph replay with blocking read
+
+### Hypothesis
+- Target graph verification synchronized after each graph launch and then immediately performed a blocking token D2H read. Letting the blocking read serve as the completion fence could remove one explicit stream synchronize per target replay while preserving exact token readback.
+
+### Result
+- Rejected by the optimize loop and reverted; no runtime/benchmark code retained.
+- Prototype added `Qwen35GGUFDecodeGraph.replay(..., synchronize=True)` and called `target_graph.replay(1, synchronize=False)` from MTP target-graph verification while keeping the normal blocking `read_sample(return_logits=False)` path.
+- Smoke: `/tmp/hipengine-mtp-replay-nosync-blocking-read-smoke-20260624-103154.json`.
+  - Target graph reported effective with no fallback, but exact token behavior was wrong.
+  - Retained smoke target/draft tokens were `[148368], [248068]` / `[248045], [1710]`; this prototype produced target/draft tokens `[248044], [148368]` / `[248045], [248045]`.
+  - The first target read was stale/incorrect (`248044`, the input token), so the unsynchronized replay path is not correctness-safe with the current blocking read.
+- Full-suite verify was skipped after the correctness smoke failure. Guard still passed (`py_compile` + 437 tests), and prompt verifier passed (generic sync-policy experiment, no prompt/token/benchmark gaming), but exact target verification failed. Reverted.
