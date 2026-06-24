@@ -28,7 +28,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 GGUF_PATH = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 DEFAULT_PROMPT = "What is the capital of France?"
-DEFAULT_ROOT_TOPK_ACCEPT = 2
+DEFAULT_ROOT_TOPK_ACCEPT = 3
 DEFAULT_SIBLING_TOPK_ACCEPT = 1
 DEFAULT_TOPK_BRANCH_REDRAFT = False
 DEFAULT_MTP_DRAFT_WARMUP = True
@@ -477,7 +477,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_ROOT_TOPK_ACCEPT,
         help=(
             "Diagnostic tree proposal: accept a depth-0 draft when the target token is in "
-            "the first K root candidates (default: 2 = generic root tree; use 1 for linear argmax path)."
+            "the first K root candidates (default: 3 = generic root tree; use 1 for linear argmax path)."
         ),
     )
     parser.add_argument(
