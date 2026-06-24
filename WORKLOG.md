@@ -124592,3 +124592,28 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-081847/summary.json`.
   - B1: `36.57886778323421 tok/s`, `0.6518401032724054x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - The smaller graph window exhausted on accepted-token prompts and eager fallback was far more expensive than the reduced context cap saved. Current clean rebaseline remains `0.7458249822210832`; best retained remains `0.7510349576460698`. Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1 regressed heavily. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 22 kept: argmax-only timed B1 proposal selection
+
+### Hypothesis
+- B1 greedy MTP acceptance only consumes the top-1 draft token, but the benchmark timed a CPU `argpartition` top-10 over the full GGUF vocabulary every draft for diagnostic reporting. Timing only the active proposal width (`K=1`) with `np.argmax` and computing the unused top-10 diagnostics after `draft_ms` should reduce measured draft time without changing proposals, target verification, or acceptance.
+
+### Result
+- Kept by the optimize loop.
+- Code change:
+  - `select_topk_tokens(..., k=1)` now uses pure `np.argmax`.
+  - For the B1/K=1 default, the benchmark times only the active proposal width and keeps a separate diagnostic top-10 count.
+  - Full `draft_top10_tokens` diagnostics remain in artifacts, but are filled after `draft_ms` for B1 because they are not consumed by greedy acceptance.
+- Smoke: `/tmp/hipengine-mtp-argmax-diagnostic-topk-smoke-20260624-084910.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; acceptance unchanged.
+  - Diagnostic top-10 length remained `10`; avg target verify `17.98 ms`, avg draft `7.01 ms`, `40.02 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-085142/summary.json`.
+  - True no-MTP AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, `56.49617664099023 tok/s`.
+  - B1: `42.99313463960243 tok/s`, `0.760991932477236x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`, `decode_ms=2953.96`.
+  - Train: `42.589934773223185 tok/s`, `0.7537684646385132x`; heldout: `43.55049437876026 tok/s`, `0.770990363568964x`.
+  - Category ratios: code `0.75550585276068`, general_en `0.7605743479794873`, general_ja `0.7420114847129208`, mixed_ja_en `0.7860779876527497`.
+- This improves the prior retained target-graph row (`42.42242041620737 tok/s`, `0.7510349576460698x`) by `+1.3%` with unchanged acceptance/output. It remains below true AR, so the benchmark row is still diagnostic progress rather than a speedup claim.
+- Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
+- Prompt verifier passed: generic proposal-width timing cleanup only; no prompt/token/rank/fixture hardcoding, no prompt-suite edits, no true-AR denominator changes, no accepted/output policy changes.
+- Rollup updated: `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-argmax-diagnostic-topk-gfx1151.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.

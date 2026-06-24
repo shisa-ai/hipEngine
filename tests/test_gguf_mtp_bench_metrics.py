@@ -185,6 +185,15 @@ def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
     assert top3 == [1, 4, 3]
 
 
+def test_select_topk_tokens_uses_argmax_for_top1() -> None:
+    logits = np.array([0.1, 4.0, -1.0, 2.5, 3.0], dtype=np.float32)
+
+    greedy, top1 = select_topk_tokens(logits, k=1)
+
+    assert greedy == 1
+    assert top1 == [1]
+
+
 def test_draft_top1_prob_matches_softmax_argmax_probability() -> None:
     logits = np.array([0.0, 2.0, 1.0], dtype=np.float32)
 

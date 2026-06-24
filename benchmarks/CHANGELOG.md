@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-24
+
+- [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 full category suite: B1 linear default diagnostic MTP tok/s `42.42 -> 42.99` (+1.3%) and ratio `0.751 -> 0.761x` current true AR by timing only greedy K=1 proposal selection (`np.argmax`) and moving unused top-10 diagnostics outside `draft_ms`; draft acceptance and accepted/output stay `0.270` / `0.213`; still below true AR, so no speed claim; `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-argmax-diagnostic-topk-gfx1151.json`.
+
 ## 2026-06-23
 
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 full category suite: B1 linear default diagnostic MTP tok/s `20.63 -> 42.42` (+105.6%) and ratio `0.366 -> 0.751x` current true AR by enabling capped resident decode-graph target verification with fp32 hidden-seed capture; draft acceptance and accepted/output stay `0.270` / `0.213`; still below true AR, so no speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-target-graph-gfx1151.json`.

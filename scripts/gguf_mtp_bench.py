@@ -104,8 +104,16 @@ def select_topk_tokens(
     if logits_row.ndim != 1:
         raise ValueError("logits_row must be rank-1")
     requested_k = min(max(int(k), 1), int(logits_row.shape[0]))
-    top_idx = np.argpartition(logits_row, -requested_k)[-requested_k:]
-    top_sorted = top_idx[np.argsort(logits_row[top_idx])[::-1]]
+    top_idx = (
+        np.asarray([int(np.argmax(logits_row))], dtype=np.int64)
+        if requested_k == 1
+        else np.argpartition(logits_row, -requested_k)[-requested_k:]
+    )
+    top_sorted = (
+        top_idx
+        if requested_k == 1
+        else top_idx[np.argsort(logits_row[top_idx])[::-1]]
+    )
     candidate_pool = [int(t) for t in top_sorted]
     return candidate_pool[0], candidate_pool[:requested_k]
 
@@ -560,7 +568,13 @@ def main(argv: list[str] | None = None):
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
-    topk_candidate_count = max(10, args.root_topk_accept, args.sibling_topk_accept)
+    proposal_topk_candidate_count = max(1, args.root_topk_accept, args.sibling_topk_accept)
+    diagnostic_topk_candidate_count = max(10, proposal_topk_candidate_count)
+    topk_candidate_count = (
+        proposal_topk_candidate_count
+        if proposal_topk_candidate_count == 1
+        else diagnostic_topk_candidate_count
+    )
     if args.decode_repack:
         os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
     else:
@@ -784,6 +798,7 @@ def main(argv: list[str] | None = None):
             t2 = time.perf_counter()
             draft_tokens = []
             draft_top10_tokens = []
+            draft_diagnostic_logits: list[tuple[int, int, np.ndarray]] = []
             replay_tokens = [cycle_prev_token]
             if args.mtp_context_replay:
                 # Use the same sequential single-seed draft approach as non-replay.
@@ -819,11 +834,16 @@ def main(argv: list[str] | None = None):
                             rope_sin=rope_sin_slice,
                             rotary_dim=rope_dim,
                         )
+                    draft_logits_row = draft_logits[0]
                     draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits[0], k=topk_candidate_count, draft_depth=draft_depth
+                        draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
                     )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
+                    if diagnostic_topk_candidate_count > topk_candidate_count:
+                        draft_diagnostic_logits.append(
+                            (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
+                        )
                     current_token = draft_token
                     current_pos += 1
                     if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
@@ -858,11 +878,16 @@ def main(argv: list[str] | None = None):
                             rope_sin=rope_sin_slice,
                             rotary_dim=rope_dim,
                         )
+                    draft_logits_row = draft_logits[0]
                     draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits[0], k=topk_candidate_count, draft_depth=draft_depth
+                        draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
                     )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
+                    if diagnostic_topk_candidate_count > topk_candidate_count:
+                        draft_diagnostic_logits.append(
+                            (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
+                        )
                     current_token = draft_token
                     current_pos += 1
                     if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
@@ -870,6 +895,18 @@ def main(argv: list[str] | None = None):
                             break
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
+            if diagnostic_topk_candidate_count > topk_candidate_count:
+                for (
+                    topk_row_index,
+                    diagnostic_depth,
+                    diagnostic_logits_row,
+                ) in draft_diagnostic_logits:
+                    _, diagnostic_top10_tokens = select_topk_tokens(
+                        diagnostic_logits_row,
+                        k=diagnostic_topk_candidate_count,
+                        draft_depth=diagnostic_depth,
+                    )
+                    draft_top10_tokens[topk_row_index] = diagnostic_top10_tokens
 
             # Verify/account with llama.cpp semantics. The target evaluates the
             # sampled token plus accepted draft prefix and returns one final
