@@ -124845,3 +124845,29 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
 - Prompt verifier passed: generic exact-verification root top-K policy only; no prompt text, token IDs, candidate-token patterns, fixture IDs, benchmark detection, target-token rescue logic, prompt-suite edits, true-AR denominator manipulation, or accepted/output-only keep policy.
 - Rollup updated: `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-root-top10-gfx1151.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-06-24 — mtp-gguf-final iteration 34 kept: B1 root top-20 exact-verification default
+
+### Hypothesis
+- Root top-10 improved because ranks 7-10 added exact-verified visible tokens. A wider uniform root top-20 tree could let ranks 11-20 add enough accepted tokens to overcome wider active top-k selection and candidate accounting while preserving exact target verification.
+
+### Result
+- Kept by the optimize loop.
+- Code change:
+  - `DEFAULT_ROOT_TOPK_ACCEPT` now defaults to `20`; sibling top-k remains `1` and branch-redraft remains off.
+  - Active-K timed selection from iteration 28 remains unchanged; root top-20 artifacts expose 20 proposal tokens per draft row.
+  - Updated the default-policy test/help text to root-top20.
+- Smoke: `/tmp/hipengine-mtp-root20-default-smoke-20260624-124214.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`.
+  - Root/sibling K=`20/1`; proposal row length `20`; avg target verify `18.06 ms`, avg draft `7.50 ms`, `39.12 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-124445/summary.json`.
+  - True no-MTP AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, `56.38027596497393 tok/s`.
+  - B1 root-top20: `45.5765811088807 tok/s`, `0.808378113246466x` true AR, `draft_acceptance=0.0415`, `accepted_per_output=0.453551912568306`, `decode_ms=4015.22`.
+  - Train: `45.56431402925229 tok/s`, `0.8080839715844965x`, `accepted_per_output=0.45454545454545453`; heldout: `45.59507822991162 tok/s`, `0.808821114901175x`, `accepted_per_output=0.4520547945205479`.
+  - Category ratios: code `0.8135303747659521`, general_en `0.8164034989033991`, general_ja `0.7891892023814193`, mixed_ja_en `0.8066132001572937`.
+- Compared with the retained root-top10 row, raw weighted tok/s improves `45.055613022938374 -> 45.5765811088807` (+1.16%). On the rerun true-AR denominator, retained root-top10 raw tok/s would be `0.7991378589726845x`, so the candidate also improves same-denominator ratio.
+- Proposal accounting tradeoff: root K=20 increases candidate accounting (`total_drafts 1000 -> 2000`), so draft acceptance drops `0.069 -> 0.0415`; exact target verification accepts more visible tokens (`69 -> 83`), accepted/output improves `0.408 -> 0.454`, and raw tok/s improves despite the tradeoff.
+- Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
+- Prompt verifier passed: generic exact-verification root top-K policy only; no prompt text, token IDs, candidate-token patterns, fixture IDs, benchmark detection, target-token rescue logic, prompt-suite edits, true-AR denominator manipulation, or accepted/output-only keep policy.
+- Rollup updated: `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-root-top20-gfx1151.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
