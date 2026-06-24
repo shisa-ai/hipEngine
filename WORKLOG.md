@@ -124561,3 +124561,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-072943/summary.json`.
   - B1: `41.87659922445857 tok/s`, `0.7437385311563686x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - Current clean rebaseline remains better (`0.7458249822210832`), and best retained remains `0.7510349576460698`. Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1 regressed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 20 rejected: fused q split + RMSNorm + gate extraction
+
+### Hypothesis
+- Iteration 18's device q/gate split removed the host round-trip but added a separate split launch before q RMSNorm. Fuse `q_full[...,0]` extraction, q RMSNorm, and `q_full[...,1]` gate extraction into a single device kernel to avoid both the D2H/H2D split and the extra split launch.
+
+### Result
+- Rejected by the optimize loop and reverted; no kernel/runtime code retained.
+- Prototype added `hipengine_mtp_split_q_rmsnorm_gate_f32` and routed `qwen35_gguf_mtp_attention_sublayer_f32()` through it.
+- Smoke: `/tmp/hipengine-mtp-fused-q-rmsnorm-gate-smoke-20260624-080031.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; acceptance unchanged.
+  - Avg target verify `18.02 ms`, avg draft `8.29 ms`, `38.02 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-080321/summary.json`.
+  - B1: `41.60605941476327 tok/s`, `0.7408687886198736x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- Current clean rebaseline remains better (`0.7458249822210832`), and best retained remains `0.7510349576460698`. Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1 regressed. Reverted.
