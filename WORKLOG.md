@@ -124665,3 +124665,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-095950/summary.json`.
   - B1: `42.664982463684375 tok/s`, `0.7562069964797072x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - This regressed vs the retained argmax row (`42.99313463960243 tok/s`, `0.760991932477236x`) with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but B1 raw speed and ratio regressed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 26 rejected: reuse read-sample scalar hosts
+
+### Hypothesis
+- Target graph verification allocated tiny NumPy scalar buffers inside every timed `_read_sample(return_logits=False)`. Reusing resident host scalar buffers for lm-head token/value readback could avoid per-step host allocation while preserving the same device token copy, logits behavior, and exact verification.
+
+### Result
+- Rejected by the optimize loop and reverted; no runtime code retained.
+- Prototype added `_lm_out_index_host` / `_lm_out_value_host` arrays to `Qwen35GGUFResidentSession` and used them in `_read_sample()`.
+- Smoke: `/tmp/hipengine-mtp-read-sample-reuse-smoke-20260624-101325.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; diagnostic top-10 length remained `10`.
+  - Avg target verify `18.02 ms`, avg draft `6.76 ms`, `40.36 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-101608/summary.json`.
+  - B1: `42.75475267890507 tok/s`, `0.7577814128737268x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- This regressed vs the retained argmax row (`42.99313463960243 tok/s`, `0.760991932477236x`) with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but B1 raw speed and ratio regressed. Reverted.
