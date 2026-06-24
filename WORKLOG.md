@@ -124524,3 +124524,24 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Guard passed: `py_compile` selected MTP scripts/runtime plus configured MTP pytest guard (`436` tests).
 - Prompt verifier passed: no code changes, no prompt/token/rank hardcoding, no denominator changes.
 - Multiloop recorded this as a `KEEP` only to restore a clean current measurement after the smoke-abort metrics; it is not a new performance claim and does not supersede the best retained target-graph artifact (`0.7510349576460698`).
+
+## 2026-06-24 — mtp-gguf-final iteration 18 rejected: device q/gate split
+
+### Hypothesis
+- The MTP attention sublayer copied `q_full` to host, split query/gate with numpy, then uploaded query/gate every draft. A small device split kernel for `q_full[...,0,:]` and `q_full[...,1,:]` could avoid that D2H/H2D round trip without changing logits, draft tokens, target verification, or acceptance.
+
+### Result
+- Rejected by the optimize loop and reverted; no code retained.
+- Prototype added `hipengine_mtp_split_q_gate_f32` in `mtp_nextn.hip`, a Python wrapper, and routed `qwen35_gguf_mtp_attention_sublayer_f32()` through device query/gate buffers.
+- Smoke: `/tmp/hipengine-mtp-split-q-gate-smoke-20260624-061126.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; acceptance unchanged.
+- Primary B1 verify: `/tmp/hipengine-mtp-gguf-final/run-20260624-061408/summary.json`.
+  - B1 `42.294563316959454 tok/s`, `0.7511766074001989x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - This was only a tiny/noisy +0.019% ratio improvement over the best retained `0.7510349576460698`.
+- B1/B2/B3 visibility rerun: `/tmp/hipengine-mtp-gguf-final/run-split-q-gate-b123-20260624-063851/summary.json`.
+  - B1 `41.75118267621793 tok/s`, `0.7415258439396505x` true AR.
+  - B2 `35.10228344197105 tok/s`, `0.6234374378176126x` true AR.
+  - B3 `30.48046159781564 tok/s`, `0.5413511321408578x` true AR.
+  - B1 and B3 regressed versus the B1/B2/B3 guard baseline, so the candidate failed the user-requested B2/B3 visibility/non-regression check.
+- Guard passed (`py_compile` + configured MTP tests), and prompt verifier passed (generic runtime kernel, no prompt/token/rank hardcoding). Reverted because the B1 improvement was not robust and B1/B3 visibility regressed.
