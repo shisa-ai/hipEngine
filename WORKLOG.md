@@ -124577,3 +124577,18 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-080321/summary.json`.
   - B1: `41.60605941476327 tok/s`, `0.7408687886198736x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - Current clean rebaseline remains better (`0.7458249822210832`), and best retained remains `0.7510349576460698`. Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1 regressed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 21 rejected: smaller target-graph replay window
+
+### Hypothesis
+- The retained target verifier graph used the worst-case replay-window context cap `cycles * (draft_n_max + 1)`. Reducing the graph window to `cycles + draft_n_max` could shrink the captured full-attention context cap for the common B1 case, with eager fallback only if a prompt exhausted the smaller graph window.
+
+### Result
+- Rejected by the optimize loop and reverted; no runtime code retained.
+- Prototype changed `target_graph_max_replay_steps` to `cycles + draft_n_max` and guarded graph replay with a `replayed_steps < max_replay_steps` check before falling back to eager.
+- Smoke: `/tmp/hipengine-mtp-small-graph-window-smoke-20260624-081607.json`.
+  - Target graph effective with no fallback for the 2-cycle smoke.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; acceptance unchanged.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-081847/summary.json`.
+  - B1: `36.57886778323421 tok/s`, `0.6518401032724054x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- The smaller graph window exhausted on accepted-token prompts and eager fallback was far more expensive than the reduced context cap saved. Current clean rebaseline remains `0.7458249822210832`; best retained remains `0.7510349576460698`. Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1 regressed heavily. Reverted.
