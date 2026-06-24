@@ -167,7 +167,20 @@ an all-Q8 4K/1 candidate that passes the KL/top-1 gate: per-token/head FP16,
 per-token/head FP32, llama-style `q8_0` block32 FP16/FP32, block16/block64, and
 one-sided K/V variants all failed at BF16-prefix `0`. Approximate short-context
 passes appear only with BF16 prefix depth `>=6` (`block16_fp32` / current
-per-token-head) or `>=8` (`q8_0_block32_fp32`). A real HIP key-only diagnostic
+per-token-head) or `>=8` (`q8_0_block32_fp32`). A follow-up pure-layout sweep
+added arbitrary `block<N>_{fp16,fp32}` QDQ candidates and actual no-mirror
+per-token/head checks at `128/1`, `512/1`, and `4K/1`. The actual per-token/head
+FP32 runtime still fails all three (`128/1` `KL mean=0.0824`, top-1 `0.5`;
+`512/1` `KL mean=0.05698`, top-1 `1.0`; `4K/1` `KL mean=0.15398`, top-1 `0.5`).
+The QDQ sweep shows the sharp cutoff: block2 and coarser layouts fail, while
+`block1_fp16` / `block1_fp32` pass exactly at `4K/1`. `block1` is a per-scalar
+scale layout (INT8 payload plus one scale per value), so it answers the
+"possible if memory is ignored" question but is not a memory-saving KV format
+(`block1_fp16` is ~150% of BF16 KV; `block1_fp32` is ~250%). External llama.cpp
+ROCm `q8_0` K+V also completed but does not pass the same strict quality bar on
+this GGUF (`4K` corpus mean KLD `1.424879`, same-top-p `0.84563`). PARO remains
+the control case: packed PARO per-token/head INT8 KV passes the same KL/top-1
+style `4K/1` gate (`mean KL=2.09e-7`, top-1 `1.0`). A real HIP key-only diagnostic
 (`HIPENGINE_GGUF_INT8_KV_KEY_ONLY=1`, INT8 K + BF16 V) now has primitive CPU-reference
 coverage and a rocprof kernel-trace smoke, but it is not better than prefix-8
 per-token/head INT8: prefix `0` still fails `4K/1` (`KL mean=0.8731`, top-1
@@ -190,8 +203,9 @@ Evidence:
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`,
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`,
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-noncontiguous-mask-diagnostic.json`,
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`, and
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json`.
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`,
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json`, and
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,

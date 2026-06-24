@@ -1,0 +1,497 @@
+{
+  "actual_runtime_rows": [
+    {
+      "bf16_primary_layer_count": 0,
+      "candidate_current_gib": 23.751805305480957,
+      "candidate_peak_gib": 26.256688117980957,
+      "candidate_top1": [
+        169706,
+        127397
+      ],
+      "decode_steps": 1,
+      "int8_layer_count": 10,
+      "kv_scale_dtype": "fp32",
+      "kv_scale_granularity": "per_token_head",
+      "kv_storage": "int8_per_token_head",
+      "metrics": {
+        "first_top1_mismatch_index": 1,
+        "kl_max": 0.16479820040935123,
+        "kl_mean": 0.08239910020467561,
+        "passed": false,
+        "top1_agreement": 0.5,
+        "top1_mismatch_count": 1
+      },
+      "mirror_cache_count": 0,
+      "passed": false,
+      "prompt_length": 128,
+      "reference_top1": [
+        169706,
+        62547
+      ]
+    },
+    {
+      "bf16_primary_layer_count": 0,
+      "candidate_current_gib": 23.751805305480957,
+      "candidate_peak_gib": 26.256688117980957,
+      "candidate_top1": [
+        168156,
+        318
+      ],
+      "decode_steps": 1,
+      "int8_layer_count": 10,
+      "kv_scale_dtype": "fp32",
+      "kv_scale_granularity": "per_token_head",
+      "kv_storage": "int8_per_token_head",
+      "metrics": {
+        "first_top1_mismatch_index": null,
+        "kl_max": 0.11396066945288655,
+        "kl_mean": 0.056980334726443274,
+        "passed": false,
+        "top1_agreement": 1.0,
+        "top1_mismatch_count": 0
+      },
+      "mirror_cache_count": 0,
+      "passed": false,
+      "prompt_length": 512,
+      "reference_top1": [
+        168156,
+        318
+      ]
+    },
+    {
+      "bf16_primary_layer_count": 0,
+      "candidate_current_gib": 23.751805305480957,
+      "candidate_peak_gib": 26.256688117980957,
+      "candidate_top1": [
+        40218,
+        40218
+      ],
+      "decode_steps": 1,
+      "int8_layer_count": 10,
+      "kv_scale_dtype": "fp32",
+      "kv_scale_granularity": "per_token_head",
+      "kv_storage": "int8_per_token_head",
+      "metrics": {
+        "first_top1_mismatch_index": 1,
+        "kl_max": 0.30795060787165235,
+        "kl_mean": 0.15397530393582617,
+        "passed": false,
+        "top1_agreement": 0.5,
+        "top1_mismatch_count": 1
+      },
+      "mirror_cache_count": 0,
+      "passed": false,
+      "prompt_length": 4096,
+      "reference_top1": [
+        40218,
+        11048
+      ]
+    },
+    {
+      "bf16_primary_layer_count": 0,
+      "candidate_current_gib": 23.74202060699463,
+      "candidate_peak_gib": 26.24690341949463,
+      "candidate_top1": [
+        168156,
+        318
+      ],
+      "decode_steps": 1,
+      "int8_layer_count": 10,
+      "kv_scale_dtype": "fp16",
+      "kv_scale_granularity": "per_token_head",
+      "kv_storage": "int8_per_token_head",
+      "metrics": {
+        "first_top1_mismatch_index": null,
+        "kl_max": 0.24287156487347406,
+        "kl_mean": 0.12143578243673703,
+        "passed": false,
+        "top1_agreement": 1.0,
+        "top1_mismatch_count": 0
+      },
+      "mirror_cache_count": 0,
+      "note": "fp16-scale comparison point",
+      "passed": false,
+      "prompt_length": 512,
+      "reference_top1": [
+        168156,
+        318
+      ]
+    },
+    {
+      "bf16_primary_layer_count": 0,
+      "candidate_current_gib": 24.0453462600708,
+      "candidate_peak_gib": 26.5502290725708,
+      "candidate_top1": [
+        168156,
+        13
+      ],
+      "decode_steps": 1,
+      "int8_layer_count": 10,
+      "kv_scale_dtype": "fp32",
+      "kv_scale_granularity": "block16",
+      "kv_storage": "int8_per_token_head",
+      "metrics": {
+        "first_top1_mismatch_index": 1,
+        "kl_max": 1.3282924634134985,
+        "kl_mean": 0.6641462317067492,
+        "passed": false,
+        "top1_agreement": 0.5,
+        "top1_mismatch_count": 1
+      },
+      "mirror_cache_count": 0,
+      "note": "block16 runtime diagnostic comparison point",
+      "passed": false,
+      "prompt_length": 512,
+      "reference_top1": [
+        168156,
+        318
+      ]
+    }
+  ],
+  "caveats": [
+    "Host QDQ format sweeps replay through BF16 cache storage; they rank numerical layouts before HIP implementation and are not runtime proof.",
+    "Block1 QDQ is effectively per-scalar sign plus scale; it answers the accuracy question but is not a useful memory-saving KV format.",
+    "llama.cpp uses a corpus/perplexity KL diagnostic with same-top-p; the artifact maps those metrics onto the hipEngine KL/top-1 threshold for comparison only."
+  ],
+  "commands": {
+    "actual_pure_128_1": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 128 --decode-steps 1 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-gguf-pure-int8-pth-fp32-128-1.json",
+    "actual_pure_4k_1": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 4K --decode-steps 1 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-gguf-pure-int8-kv-quality-4k1-fp32.json",
+    "actual_pure_512_1": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 512 --decode-steps 1 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-gguf-pure-int8-pth-fp32-512-1.json",
+    "host_qdq_coarse_all_pure_4k_1": "python3 scripts/qwen35_gguf_q8_format_sweep.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4K --token-id 9707 --max-sequence-length 8192 --formats per_token_head_fp16,per_token_head_fp32,q8_0_block32_fp16,q8_0_block32_fp32,block16_fp16,block16_fp32,block64_fp16,block64_fp32,key_bf16_value_q8_0_block32_fp16,key_bf16_value_q8_0_block32_fp32,key_q8_0_block32_value_bf16_fp16,key_q8_0_block32_value_bf16_fp32 --bf16-prefix-full-layers 0 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-q8-all-pure-4k1.json",
+    "host_qdq_fine_blocks_4k_1": "python3 scripts/qwen35_gguf_q8_format_sweep.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4K --token-id 9707 --max-sequence-length 8192 --formats block16_fp32,block8_fp16,block8_fp32,block4_fp16,block4_fp32,block2_fp16,block2_fp32,block1_fp16,block1_fp32 --bf16-prefix-full-layers 0 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-q8-fine-blocks-pure-4k1.json",
+    "llamacpp_q8_0_4k": "python3 scripts/llamacpp_q8_kv_quality_sweep.py --llama-perplexity /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-perplexity --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --contexts 4K --chunks 1 --prompt-file /tmp/hipengine-llamacpp-q8-kv-quality-4k/generated-corpus.txt --work-dir /tmp/hipengine-llamacpp-q8-kv-quality-4k --reference-cache-type-k f16 --reference-cache-type-v f16 --candidate-cache-type-k q8_0 --candidate-cache-type-v q8_0 --kl-threshold 0.05 --top1-threshold 0.9 --no-warmup --env HIP_VISIBLE_DEVICES=0 --json /tmp/hipengine-llamacpp-q8-kv-quality-4k.json",
+    "paro_control_4k_1": "python3 scripts/qwen35_paro_int8_kv_quality_sweep.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-lengths 4K --decode-steps 1 --token-id 9707 --max-layers 40 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 8192 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-paro-int8-kv-quality-4k1.json"
+  },
+  "date": "2026-06-24",
+  "decision": "do_not_promote_coarse_pure_gguf_int8_kv; only per-element-scale QDQ is exact enough and it is larger than BF16",
+  "hardware": "AMD Radeon Pro W7900 48GB / gfx1100 GPU0",
+  "host_qdq_coarse_rows_4k_1": [
+    {
+      "candidate_top1": 328,
+      "format": "per_token_head_fp16",
+      "kl_max": 0.14742305119181276,
+      "kl_mean": 0.14742305119181276,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 50.390625,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 49.609375,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 103146,
+      "format": "per_token_head_fp32",
+      "kl_max": 0.7170218268904228,
+      "kl_mean": 0.7170218268904228,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 50.78125,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 49.21875,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 54070,
+      "format": "q8_0_block32_fp16",
+      "kl_max": 0.5714707089170673,
+      "kl_mean": 0.5714707089170673,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 53.125,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 46.875,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 328,
+      "format": "q8_0_block32_fp32",
+      "kl_max": 0.12349373444321592,
+      "kl_mean": 0.12349373444321592,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 56.25,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 43.75,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 40218,
+      "format": "block16_fp16",
+      "kl_max": 0.5060817273920285,
+      "kl_mean": 0.5060817273920285,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 56.25,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 43.75,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 328,
+      "format": "block16_fp32",
+      "kl_max": 0.10843252583985036,
+      "kl_mean": 0.10843252583985036,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 62.5,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 37.5,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 201839,
+      "format": "block64_fp16",
+      "kl_max": 0.5637696339892528,
+      "kl_mean": 0.5637696339892528,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 51.5625,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 48.4375,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 25088,
+      "format": "block64_fp32",
+      "kl_max": 0.4936006071307871,
+      "kl_mean": 0.4936006071307871,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 53.125,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 46.875,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 40218,
+      "format": "key_bf16_value_q8_0_block32_fp16",
+      "kl_max": 0.6685125263831226,
+      "kl_mean": 0.6685125263831226,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 76.5625,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 23.4375,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 40218,
+      "format": "key_bf16_value_q8_0_block32_fp32",
+      "kl_max": 0.26135019185418773,
+      "kl_mean": 0.26135019185418773,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 78.125,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 21.875,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 328,
+      "format": "key_q8_0_block32_value_bf16_fp16",
+      "kl_max": 0.12102513042045247,
+      "kl_mean": 0.12102513042045247,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 76.5625,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 23.4375,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 99171,
+      "format": "key_q8_0_block32_value_bf16_fp32",
+      "kl_max": 0.7411240722304304,
+      "kl_mean": 0.7411240722304304,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 78.125,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 21.875,
+      "top1_agreement": 0.0
+    }
+  ],
+  "host_qdq_fine_block_rows_4k_1": [
+    {
+      "candidate_top1": 328,
+      "format": "block16_fp32",
+      "kl_max": 0.10843252583985036,
+      "kl_mean": 0.10843252583985036,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 62.5,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 37.5,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 251,
+      "format": "block8_fp16",
+      "kl_max": 0.6110146438027194,
+      "kl_mean": 0.6110146438027194,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 62.5,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 37.5,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 54070,
+      "format": "block8_fp32",
+      "kl_max": 0.5896302817429996,
+      "kl_mean": 0.5896302817429996,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 75.0,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 25.0,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 40218,
+      "format": "block4_fp16",
+      "kl_max": 0.3968667523339174,
+      "kl_mean": 0.3968667523339174,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 75.0,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 25.0,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 328,
+      "format": "block4_fp32",
+      "kl_max": 0.1053859141487846,
+      "kl_mean": 0.1053859141487846,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 100.0,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 0.0,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 328,
+      "format": "block2_fp16",
+      "kl_max": 0.11779684673994942,
+      "kl_mean": 0.11779684673994942,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 100.0,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": 0.0,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 251,
+      "format": "block2_fp32",
+      "kl_max": 0.5305643007050267,
+      "kl_mean": 0.5305643007050267,
+      "passed": false,
+      "pct_of_bf16_per_full_layer": 150.0,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": -50.0,
+      "top1_agreement": 0.0
+    },
+    {
+      "candidate_top1": 11048,
+      "format": "block1_fp16",
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "passed": true,
+      "pct_of_bf16_per_full_layer": 150.0,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": -50.0,
+      "top1_agreement": 1.0
+    },
+    {
+      "candidate_top1": 11048,
+      "format": "block1_fp32",
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "passed": true,
+      "pct_of_bf16_per_full_layer": 250.0,
+      "reference_top1": 11048,
+      "saves_vs_bf16_pct_per_full_layer": -150.0,
+      "top1_agreement": 1.0
+    }
+  ],
+  "llamacpp_external_q8_0_row": {
+    "candidate_cache": {
+      "type_k": "q8_0",
+      "type_v": "q8_0"
+    },
+    "command": "HIP_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-perplexity -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa on -ctk q8_0 -ctv q8_0 -c 4096 -b 2048 -ub 512 --chunks 1 -f /tmp/hipengine-llamacpp-q8-kv-quality-4k/generated-corpus.txt --no-warmup --kl-divergence-base /tmp/hipengine-llamacpp-q8-kv-quality-4k/llamacpp-f16-kv-base-4K.kld --kl-divergence",
+    "llama_cpp_commit": "e37abd6b5",
+    "llama_cpp_repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+    "metrics": {
+      "kl_max": 23.208828,
+      "kl_mean": 1.424879,
+      "same_top_p": 0.84563
+    },
+    "passed_hipengine_like_quality_guard": false,
+    "reference_cache": {
+      "type_k": "f16",
+      "type_v": "f16"
+    },
+    "workload": "ctx4K_chunks1"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "paro_control_row": {
+    "command": "python3 scripts/qwen35_paro_int8_kv_quality_sweep.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --prompt-lengths 4K --decode-steps 1 --token-id 9707 --max-layers 40 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 8192 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --kv-storage int8_per_token_head --json /tmp/hipengine-paro-int8-kv-quality-4k1.json",
+    "decode_steps": 1,
+    "kv_storage": "int8_per_token_head",
+    "logit_gate": {
+      "candidate_top1": [
+        9707,
+        9707
+      ],
+      "first_top1_mismatch": null,
+      "kl": [
+        0.0,
+        4.1841191567499437e-07
+      ],
+      "max_abs_argmax_logit_delta": 0.1951904296875,
+      "max_kl": 4.1841191567499437e-07,
+      "mean_kl": 2.0920595783749719e-07,
+      "positions": 2,
+      "reference_top1": [
+        9707,
+        9707
+      ],
+      "top1_agreement": 1.0,
+      "top1_matches": [
+        true,
+        true
+      ]
+    },
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "passed": true,
+    "prompt_length": 4096,
+    "quant": "w4_paro"
+  },
+  "performance_claim": false,
+  "quality_thresholds": {
+    "kl_mean_max": 0.05,
+    "top1_agreement_min": 0.9
+  },
+  "quant": "gguf_q4_k_m",
+  "raw_tmp_artifacts": {
+    "actual_pure_128_1": "/tmp/hipengine-gguf-pure-int8-pth-fp32-128-1.json",
+    "actual_pure_4k_1": "/tmp/hipengine-gguf-pure-int8-kv-quality-4k1-fp32.json",
+    "actual_pure_512_1": "/tmp/hipengine-gguf-pure-int8-pth-fp32-512-1.json",
+    "host_qdq_coarse": "/tmp/hipengine-gguf-q8-all-pure-4k1.json",
+    "host_qdq_fine_blocks": "/tmp/hipengine-gguf-q8-fine-blocks-pure-4k1.json",
+    "llamacpp_q8_0_4k": "/tmp/hipengine-llamacpp-q8-kv-quality-4k.json",
+    "paro_control_4k_1": "/tmp/hipengine-paro-int8-kv-quality-4k1.json"
+  },
+  "schema": 1,
+  "software": {
+    "hip_visible_devices": "0",
+    "hipcc_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "hipengine_hip_arch": "gfx1100",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12"
+  },
+  "status": "diagnostic_retained",
+  "summary": {
+    "actual_runtime_block16_fp32_512_1": "fails, worse than per-token/head at the same shape",
+    "actual_runtime_pure_per_token_head_fp32": "fails at 128/1, 512/1, and 4K/1 with no BF16 mirror",
+    "host_qdq_coarse_all_q8_4k_1": "no pure all-Q8 coarse candidate passes; best coarse zero-prefix row is block16_fp32 KL=0.1084 with top-1 mismatch",
+    "host_qdq_fine_blocks_4k_1": "only block1_fp16/block1_fp32 pass; block2 and coarser fail. Block1 means one scale per scalar, so payload is INT8 but metadata is >= BF16 size.",
+    "llamacpp_q8_0_external": "llama.cpp ROCm q8_0 K+V completes but fails a hipEngine-like quality guard on the same GGUF at 4K/chunks=1 (mean KLD=1.424879, same-top-p=0.84563).",
+    "paro_control": "PARO int8_per_token_head on the packed PARO model passes the same KL/top-1 style 4K/1 gate (mean KL=2.09e-7, top-1=1.0), so the GGUF failure is model/format/path-specific rather than an INT8 primitive impossibility."
+  },
+  "task": "GGUF pure INT8/Q8 KV layout accuracy sweep without memory promotion",
+  "validation": [
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 -m py_compile scripts/qwen35_gguf_q8_format_sweep.py",
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12 -m ruff check scripts/qwen35_gguf_q8_format_sweep.py",
+    "python3 -m json.tool /tmp/hipengine-gguf-q8-fine-blocks-pure-4k1.json",
+    "python3 -m json.tool /tmp/hipengine-gguf-q8-all-pure-4k1.json",
+    "python3 -m json.tool /tmp/hipengine-gguf-pure-int8-pth-fp32-512-1.json",
+    "python3 -m json.tool /tmp/hipengine-gguf-pure-int8-pth-fp32-128-1.json"
+  ]
+}

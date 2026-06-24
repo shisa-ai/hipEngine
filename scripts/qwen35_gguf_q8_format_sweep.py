@@ -213,17 +213,15 @@ def _format_spec(name: str, head_dim: int) -> FormatSpec:
     if lower == "q8_0_block32_fp32":
         spec = QuantSpec(block_size=32, scale_dtype="fp32")
         return FormatSpec(lower, spec, spec)
-    if lower == "block16_fp16":
-        spec = QuantSpec(block_size=16, scale_dtype="fp16")
-        return FormatSpec(lower, spec, spec)
-    if lower == "block16_fp32":
-        spec = QuantSpec(block_size=16, scale_dtype="fp32")
-        return FormatSpec(lower, spec, spec)
-    if lower == "block64_fp16":
-        spec = QuantSpec(block_size=64, scale_dtype="fp16")
-        return FormatSpec(lower, spec, spec)
-    if lower == "block64_fp32":
-        spec = QuantSpec(block_size=64, scale_dtype="fp32")
+    if lower.startswith("block") and lower.endswith(("_fp16", "_fp32")):
+        block_text, scale_dtype = lower.rsplit("_", 1)
+        try:
+            block_size = int(block_text.removeprefix("block"))
+        except ValueError as exc:
+            raise ValueError(f"unknown Q8 format {name!r}") from exc
+        if block_size <= 0:
+            raise ValueError(f"block size must be positive in Q8 format {name!r}")
+        spec = QuantSpec(block_size=block_size, scale_dtype=scale_dtype)
         return FormatSpec(lower, spec, spec)
     if lower == "key_bf16_value_q8_0_block32_fp16":
         return FormatSpec(lower, None, QuantSpec(block_size=32, scale_dtype="fp16"))
