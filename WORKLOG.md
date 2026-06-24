@@ -124468,3 +124468,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - B2: `30.29659705083636 tok/s`, `0.5375625152590757x` true AR, `draft_acceptance=0.185`.
   - B3: `25.484381460201597 tok/s`, `0.4521777866530902x` true AR, `draft_acceptance=0.14333333333333334`.
 - Current guard baseline remains much better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`). The sampler top-k launch cost outweighed saved logits D2H, so the candidate was reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 14 rejected: hipMemset selected-out accumulator
+
+### Hypothesis
+- The MTP FFN sublayer initialized `selected_out` by allocating a host zero array and copying it to the device every draft. Replacing that with `runtime.memset()` on the freshly allocated device buffer might reduce host allocation/H2D overhead without changing math or acceptance.
+
+### Result
+- Rejected by the optimize loop and reverted; no code retained.
+- Smoke: `/tmp/hipengine-mtp-memset-accum-smoke-20260624-045422.json`, target tokens matched the retained path and draft latency looked normal (`~7.15 ms` on 2 cycles).
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-memset-accum-20260624-045657/summary.json`.
+  - B1: `41.901468860939914 tok/s`, `0.743859483458228x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - B2: `35.351098335401936 tok/s`, `0.6275734589334692x` true AR, `draft_acceptance=0.185`.
+  - B3: `30.772276545930314 tok/s`, `0.5462875254386967x` true AR, `draft_acceptance=0.14333333333333334`.
+- Current guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`). Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1/B2 regressed. Reverted.
