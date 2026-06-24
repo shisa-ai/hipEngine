@@ -124409,3 +124409,16 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - B3: `32.04902089233343 tok/s`, `0.5682634846028208x` true AR, `draft_acceptance=0.09833333333333333`, `accepted_per_output=0.3710691823899371`, `159 output / 59 accepted / 600 candidates`.
 - B1/B2/B3 ratios and tok/s all improved versus the K1 guard baseline, but draft acceptance regressed for every budget (`B1 0.270 -> 0.200`, `B2 0.185 -> 0.135`, `B3 0.143 -> 0.098`) because the exact-verified candidate denominator doubled.
 - Prompt verifier passed (generic selector, no prompt/token/rank hardcoding, no denominator or accepted/output policy change), but this is a selector-policy tradeoff rather than a mechanical runtime win. Do not make K2 default without explicit policy approval.
+
+## 2026-06-24 — mtp-gguf-final iteration 10 rejected: no-sync target graph read
+
+### Hypothesis
+- `Qwen35GGUFDecodeGraph.replay(1)` synchronizes the graph stream, then `read_sample(return_logits=False)` performs a blocking D2H token read. Skipping the explicit stream sync might reduce per-target host synchronization if the D2H read safely waited for the graph result.
+
+### Result
+- Rejected before full-suite measurement due to correctness failure.
+- Prototype changes: optional `synchronize=False` in `Qwen35GGUFDecodeGraph.replay()` and use it in `scripts/gguf_mtp_bench.py` before `read_sample()`.
+- Smoke: `/tmp/hipengine-mtp-target-nosync-smoke-20260624-025324.json`.
+  - `target_graph_verify=true/effective=true`, but target tokens were wrong: `[248044]`, `[148368]` instead of the synchronized/eager smoke `[148368]`, `[248068]`.
+  - Reported target timing collapsed to `~0.1 ms`, confirming the host read was racing the graph stream rather than waiting safely.
+- Reverted the prototype. Keep the explicit `stream_synchronize()` in `Qwen35GGUFDecodeGraph.replay()` before `read_sample()` unless a stream-ordered D2H path/event wait is implemented and correctness-gated.
