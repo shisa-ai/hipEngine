@@ -50,6 +50,8 @@ class SequenceRun:
     mirror_cache_count: int
     bf16_primary_layer_count: int
     int8_layer_count: int
+    bf16_primary_full_attention_indices: list[int]
+    int8_full_attention_indices: list[int]
     effective_kv_scale_dtype: str
     max_sequence_length: int
 
@@ -98,25 +100,27 @@ def _command(args: argparse.Namespace) -> str:
     return " ".join(parts)
 
 
-def _kv_layout_counts(session: Qwen35GGUFResidentSession) -> tuple[int, int, int]:
+def _kv_layout_counts(session: Qwen35GGUFResidentSession) -> tuple[int, int, int, list[int], list[int]]:
     scratch = session.scratch
     if scratch is None:
-        return 0, 0, 0
+        return 0, 0, 0, [], []
     keys = getattr(scratch, "full_bf16_mirror_key_caches", ())
     vals = getattr(scratch, "full_bf16_mirror_value_caches", ())
     mirror_count = sum(1 for key, value in zip(keys, vals, strict=False) if key is not None and value is not None)
     primary_keys = getattr(scratch, "full_key_caches", ())
     metadata = getattr(scratch, "full_kv_scale_metadata", ())
-    bf16_primary = 0
-    int8_layers = 0
+    bf16_indices: list[int] = []
+    int8_indices: list[int] = []
+    full_index = 0
     for key_cache, scale_metadata in zip(primary_keys, metadata, strict=False):
         if key_cache is None:
             continue
         if scale_metadata is None:
-            bf16_primary += 1
+            bf16_indices.append(full_index)
         else:
-            int8_layers += 1
-    return int(mirror_count), int(bf16_primary), int(int8_layers)
+            int8_indices.append(full_index)
+        full_index += 1
+    return int(mirror_count), len(bf16_indices), len(int8_indices), bf16_indices, int8_indices
 
 
 def _run_sequence(
@@ -169,7 +173,13 @@ def _run_sequence(
             generated_token_ids.append(int(current.token_id))
             token_ids_for_next_step.append(int(current.token_id))
             logits_rows.append(_checked_logits(current.logits, f"decode[{step_index}]"))
-        mirror_count, bf16_primary_layer_count, int8_layer_count = _kv_layout_counts(session)
+        (
+            mirror_count,
+            bf16_primary_layer_count,
+            int8_layer_count,
+            bf16_primary_full_attention_indices,
+            int8_full_attention_indices,
+        ) = _kv_layout_counts(session)
         effective_kv_scale_dtype = session.kv_scale_dtype.value
         stats = memory_stats()
     elapsed = time.perf_counter() - start
@@ -187,6 +197,8 @@ def _run_sequence(
         mirror_cache_count=int(mirror_count),
         bf16_primary_layer_count=int(bf16_primary_layer_count),
         int8_layer_count=int(int8_layer_count),
+        bf16_primary_full_attention_indices=[int(idx) for idx in bf16_primary_full_attention_indices],
+        int8_full_attention_indices=[int(idx) for idx in int8_full_attention_indices],
         effective_kv_scale_dtype=str(effective_kv_scale_dtype),
         max_sequence_length=int(max_sequence_length),
     )
@@ -258,6 +270,8 @@ def _run_to_json(run: SequenceRun) -> dict[str, Any]:
         "mirror_cache_count": int(run.mirror_cache_count),
         "bf16_primary_layer_count": int(run.bf16_primary_layer_count),
         "int8_layer_count": int(run.int8_layer_count),
+        "bf16_primary_full_attention_indices": [int(idx) for idx in run.bf16_primary_full_attention_indices],
+        "int8_full_attention_indices": [int(idx) for idx in run.int8_full_attention_indices],
         "effective_kv_scale_dtype": str(run.effective_kv_scale_dtype),
         "max_sequence_length": int(run.max_sequence_length),
         "tracked_peak_allocated_gib": float(run.memory.get("peak_allocated_bytes", 0)) / (1024**3),

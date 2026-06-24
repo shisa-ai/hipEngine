@@ -8,9 +8,11 @@ from hipengine.core.tensor import Tensor
 from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
 from hipengine.runtime.qwen35_gguf_runner import (
     _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV,
+    _GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV,
     _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV,
     _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
     Qwen35GGUFResidentSession,
+    _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_int8_bf16_prefix_full_attention_layers,
     _gguf_int8_effective_scale_dtype,
     _validate_gguf_int8_kv_context,
@@ -295,6 +297,52 @@ def test_gguf_int8_long_hybrid_prefix_default_and_env_override(monkeypatch) -> N
         )
         == 0
     )
+
+
+def test_gguf_int8_full_layer_set_defaults_to_prefix_and_allows_ranges(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+    monkeypatch.delenv(_GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV, raising=False)
+    monkeypatch.delenv(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV, raising=False)
+
+    assert _gguf_int8_bf16_full_attention_layer_indices(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=131328,
+        full_attention_layers=10,
+    ) == tuple(range(_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS))
+
+    monkeypatch.setenv(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV, "0-2,5,7")
+    assert _gguf_int8_bf16_full_attention_layer_indices(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=131328,
+        full_attention_layers=10,
+    ) == (0, 1, 2, 5, 7)
+
+    monkeypatch.setenv(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV, "none")
+    assert _gguf_int8_bf16_full_attention_layer_indices(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=131328,
+        full_attention_layers=10,
+    ) == ()
+
+
+def test_gguf_int8_context_guard_blocks_custom_full_layer_set_without_env(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+
+    try:
+        _validate_gguf_int8_kv_context(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            max_positions=131328,
+            bf16_prefix_full_attention_layers=_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
+            bf16_full_attention_layer_indices=(0, 1, 2, 5, 7, 8, 9),
+        )
+    except ValueError as exc:
+        message = str(exc)
+    else:  # pragma: no cover - assertion clarity
+        raise AssertionError("expected custom GGUF INT8 KV layer set to be blocked")
+
+    assert "custom BF16 full-attention layer sets" in message
+    assert _GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV in message
+    assert _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV in message
 
 
 def test_gguf_decode_scratch_breakdown_reports_int8_kv_scales_separately() -> None:

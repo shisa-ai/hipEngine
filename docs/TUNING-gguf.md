@@ -156,8 +156,13 @@ and prefix `7` fail the `128K/16` top-1 guard (`0.88235` for prefix `7`), and th
 new no-env default prefix `8` passes full W7900 `128K/128` (`KL mean=0.01448`,
 top-1 `0.96124`, no persistent BF16 mirror, candidate peak/current
 `25.239/24.738 GiB`). Lower prefixes and pure INT8 therefore still require
-`HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. A first
-host-side QDQ format sweep (`scripts/qwen35_gguf_q8_format_sweep.py`) did not find
+`HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. A 2026-06-24
+non-contiguous-mask diagnostic added `HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS`
+for zero-based BF16-primary full-attention lists; it did not find a better
+3-INT8-layer per-token/head layout. Masks with INT8 layers `{6,8,9}` and
+`{5,8,9}` both failed W7900 `128K/16` (`KL mean=0.0517` / top-1 `0.8235`, and
+`KL mean=0.0711` / top-1 `0.8824` respectively), so the default remains prefix
+`8`. A first host-side QDQ format sweep (`scripts/qwen35_gguf_q8_format_sweep.py`) did not find
 an all-Q8 4K/1 candidate that passes the KL/top-1 gate: per-token/head FP16,
 per-token/head FP32, llama-style `q8_0` block32 FP16/FP32, block16/block64, and
 one-sided K/V variants all failed at BF16-prefix `0`. Approximate short-context
@@ -169,8 +174,9 @@ Evidence:
 `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`,
-`benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`, and
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`.
+`benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`,
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`, and
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-noncontiguous-mask-diagnostic.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -415,11 +421,14 @@ Current focused lanes from evidence:
   unsafe under chunk-outer prefill when more than one INT8 layer is active. The
   no-env W7900 `128K/128` guard now accepts prefix `8` (`KL mean=0.01448`, top-1
   `0.96124`, no persistent BF16 mirror); prefix `7` still fails `128K/16` top-1
-  and pure INT8 fails `4K/1`. Lower prefixes still require the unverified-long
-  diagnostic env. The first QDQ-only Q8-format sweep found no all-Q8 4K/1 pass;
-  approximate passes still need at least 6 BF16-prefix full-attention layers (or
-  8 for `q8_0_block32_fp32`), so a deeper 24GB solution needs a real HIP Q8-format
-  kernel plus long guard evidence, or non-KV memory reduction.
+  and pure INT8 fails `4K/1`. Lower prefixes and custom non-contiguous masks via
+  `HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS` still require the unverified-long
+  diagnostic env; the first two 3-INT8-layer masks that skipped sensitive layer
+  7 (`{6,8,9}` and `{5,8,9}` INT8) also failed `128K/16`. The first QDQ-only
+  Q8-format sweep found no all-Q8 4K/1 pass; approximate passes still need at
+  least 6 BF16-prefix full-attention layers (or 8 for `q8_0_block32_fp32`), so a
+  deeper 24GB solution needs a real HIP Q8-format kernel plus long guard evidence,
+  or non-KV memory reduction.
 - **Refresh attribution before the next optimization pass.** Before touching more
   kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
   current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the

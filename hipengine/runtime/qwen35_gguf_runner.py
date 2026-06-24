@@ -2705,6 +2705,7 @@ _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS = 8192
 _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS = 8
 _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS"
+_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS"
 _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
@@ -2779,17 +2780,79 @@ def _gguf_int8_bf16_prefix_full_attention_layers(*, kv_storage_dtype: DType, max
     )
 
 
+def _parse_gguf_int8_full_attention_layer_indices(raw: str, *, full_attention_layers: int) -> tuple[int, ...]:
+    value = raw.strip().lower()
+    count = int(full_attention_layers)
+    if count < 0:
+        raise ValueError("full_attention_layers must be non-negative")
+    if value in {"none", "empty", "-"}:
+        return ()
+    if value == "all":
+        return tuple(range(count))
+    indices: set[int] = set()
+    for item in value.replace(";", ",").split(","):
+        token = item.strip()
+        if not token:
+            continue
+        if "-" in token:
+            start_text, end_text = token.split("-", 1)
+            start = int(start_text.strip())
+            end = int(end_text.strip())
+            if end < start:
+                raise ValueError(f"invalid GGUF INT8 BF16 full-layer range {token!r}")
+            indices.update(range(start, end + 1))
+        else:
+            indices.add(int(token))
+    if not indices:
+        return ()
+    bad = sorted(idx for idx in indices if idx < 0 or idx >= count)
+    if bad:
+        raise ValueError(
+            f"{_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV} index/indices {bad} outside [0, {count})"
+        )
+    return tuple(sorted(indices))
+
+
+def _gguf_int8_bf16_full_attention_layer_indices(
+    *,
+    kv_storage_dtype: DType,
+    max_positions: int,
+    full_attention_layers: int,
+) -> tuple[int, ...]:
+    if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        return ()
+    if int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS:
+        return ()
+    override = _env_value(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV)
+    if override is not None:
+        return _parse_gguf_int8_full_attention_layer_indices(
+            override,
+            full_attention_layers=int(full_attention_layers),
+        )
+    prefix = _gguf_int8_bf16_prefix_full_attention_layers(
+        kv_storage_dtype=kv_storage_dtype,
+        max_positions=max_positions,
+    )
+    return tuple(range(min(max(0, int(prefix)), int(full_attention_layers))))
+
+
 def _gguf_int8_effective_scale_dtype(
     *,
     kv_storage_dtype: DType,
     max_positions: int,
     requested_scale_dtype: DType,
     bf16_prefix_full_attention_layers: int,
+    bf16_full_attention_layer_count: int | None = None,
 ) -> DType:
+    hybrid_bf16_layers = (
+        int(bf16_prefix_full_attention_layers)
+        if bf16_full_attention_layer_count is None
+        else int(bf16_full_attention_layer_count)
+    )
     if (
         kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
         and int(max_positions) > _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
-        and int(bf16_prefix_full_attention_layers) > 0
+        and hybrid_bf16_layers > 0
     ):
         return DType.FP32
     return requested_scale_dtype
@@ -2800,6 +2863,7 @@ def _validate_gguf_int8_kv_context(
     kv_storage_dtype: DType,
     max_positions: int,
     bf16_prefix_full_attention_layers: int = 0,
+    bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
 ) -> None:
     if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
         return
@@ -2807,6 +2871,14 @@ def _validate_gguf_int8_kv_context(
         return
     if _env_flag(_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, False):
         return
+    admitted_prefix = tuple(range(_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS))
+    if bf16_full_attention_layer_indices is not None:
+        if tuple(sorted(int(idx) for idx in bf16_full_attention_layer_indices)) == admitted_prefix:
+            return
+        raise ValueError(
+            "GGUF int8_per_token_head KV custom BF16 full-attention layer sets are diagnostic-only. "
+            f"Set {_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV}=1 to test {_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV}."
+        )
     if int(bf16_prefix_full_attention_layers) >= _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS:
         return
     raise ValueError(
@@ -3036,6 +3108,7 @@ class Qwen35GGUFResidentSession:
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
     int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
+    int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -3072,20 +3145,33 @@ class Qwen35GGUFResidentSession:
             int(self.runner.weights.config.context_length),
             ((requested_positions + 255) // 256) * 256,
         )
+        full_attention_layer_count = sum(
+            1 for layer_type in self.runner.weights.config.layer_types if layer_type == FULL_ATTENTION
+        )
         self.int8_bf16_prefix_full_attention_layers = _gguf_int8_bf16_prefix_full_attention_layers(
             kv_storage_dtype=self.kv_storage_dtype,
             max_positions=rounded_positions,
         )
+        self.int8_bf16_full_attention_layer_indices = _gguf_int8_bf16_full_attention_layer_indices(
+            kv_storage_dtype=self.kv_storage_dtype,
+            max_positions=rounded_positions,
+            full_attention_layers=full_attention_layer_count,
+        )
+        custom_bf16_layers = _env_value(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV) is not None
         self.kv_scale_dtype = _gguf_int8_effective_scale_dtype(
             kv_storage_dtype=self.kv_storage_dtype,
             max_positions=rounded_positions,
             requested_scale_dtype=self.kv_scale_dtype,
             bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
+            bf16_full_attention_layer_count=len(self.int8_bf16_full_attention_layer_indices),
         )
         _validate_gguf_int8_kv_context(
             kv_storage_dtype=self.kv_storage_dtype,
             max_positions=rounded_positions,
             bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
+            bf16_full_attention_layer_indices=(
+                self.int8_bf16_full_attention_layer_indices if custom_bf16_layers else None
+            ),
         )
         runtime = self.runtime or get_hip_runtime()
         if _gguf_host_token_embedding_requested():
@@ -3115,6 +3201,7 @@ class Qwen35GGUFResidentSession:
             kv_scale_dtype=self.kv_scale_dtype,
             kv_scale_granularity=self.kv_scale_granularity,
             int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
+            int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
         )
         total_memory_bytes = 0
         try:
@@ -4506,6 +4593,7 @@ class _FullStackScratch:
     kv_storage_dtype: DType
     kv_scale_dtype: DType
     kv_scale_granularity: str
+    int8_bf16_full_attention_layer_indices: tuple[int, ...]
     block_table: object
     position_buf: object
     context_buf: object
@@ -4560,6 +4648,7 @@ class _FullStackScratch:
         kv_scale_dtype: str | DType = DType.FP16,
         kv_scale_granularity: str = "per_token_head",
         int8_bf16_prefix_full_attention_layers: int = 0,
+        int8_bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
     ):
         def buf(nbytes: int):
             return malloc(nbytes, runtime=runtime)
@@ -4615,6 +4704,17 @@ class _FullStackScratch:
         state_buffers: list[object] = []
         cache_buffers: list[object] = []
         int8_bf16_prefix_full_attention_layers = max(0, int(int8_bf16_prefix_full_attention_layers))
+        if int8_bf16_full_attention_layer_indices is None:
+            bf16_full_attention_indices = tuple(range(int8_bf16_prefix_full_attention_layers))
+        else:
+            bf16_full_attention_indices = tuple(sorted({int(idx) for idx in int8_bf16_full_attention_layer_indices}))
+        full_attention_count = sum(1 for layer_type in cfg.layer_types if layer_type == FULL_ATTENTION)
+        bad_bf16_indices = [idx for idx in bf16_full_attention_indices if idx < 0 or idx >= full_attention_count]
+        if bad_bf16_indices:
+            raise ValueError(
+                f"GGUF INT8 BF16 full-attention layer indices {bad_bf16_indices} outside [0, {full_attention_count})"
+            )
+        bf16_full_attention_index_set = frozenset(bf16_full_attention_indices)
         int8_cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * DType.INT8.itemsize
         bf16_cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * DType.BF16.itemsize
         mirror_bf16_nbytes = bf16_cache_nbytes
@@ -4641,7 +4741,7 @@ class _FullStackScratch:
                 full_kv_scale_metadata.append(None)
             else:
                 layer_uses_int8 = kv_storage == DType.INT8_PER_TOKEN_HEAD and (
-                    full_attention_index >= int8_bf16_prefix_full_attention_layers
+                    full_attention_index not in bf16_full_attention_index_set
                 )
                 cache_nbytes = int8_cache_nbytes if layer_uses_int8 else bf16_cache_nbytes
                 key_cache = buf(cache_nbytes)
@@ -4778,6 +4878,7 @@ class _FullStackScratch:
             kv_storage_dtype=kv_storage,
             kv_scale_dtype=scale_dtype,
             kv_scale_granularity=kv_scale_granularity,
+            int8_bf16_full_attention_layer_indices=bf16_full_attention_indices,
             block_table=block_table,
             position_buf=position_buf,
             context_buf=context_buf,

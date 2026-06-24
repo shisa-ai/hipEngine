@@ -1,0 +1,407 @@
+{
+  "change": "Add diagnostic HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS override for non-contiguous BF16-primary full-attention masks; default prefix-8 guard remains unchanged.",
+  "date": "2026-06-24",
+  "decision": "no non-contiguous 3-INT8-layer per-token/head mask promoted; tested masks that skip known-sensitive layer 7 still fail 128K/16 BF16-vs-INT8 top-1/KL guards",
+  "environment": {
+    "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "hip_visible_devices": "0",
+    "hipengine_hip_arch": "gfx1100",
+    "rocm_path": "/opt/rocm"
+  },
+  "hardware": "AMD Radeon Pro W7900 / gfx1100, HIP_VISIBLE_DEVICES=0",
+  "layer_probe_4k_fp32": {
+    "command": "python3 scripts/qwen35_gguf_int8_layer_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-length 4K --decode-steps 1 --token-id 9707 --max-sequence-length 8192 --scale-dtype fp32 --cpu-cache-layer -1 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-gguf-int8-layer-probe-4k-fp32.json",
+    "max_sequence_length": 8192,
+    "selected_ablations": [
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [],
+        "kl_mean": 0.0,
+        "label": "all_bf16_reference",
+        "layer_ids": [],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          5
+        ],
+        "kl_mean": 0.011376153655997204,
+        "label": "single_full_layer_5",
+        "layer_ids": [
+          23
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          6
+        ],
+        "kl_mean": 0.008142964924987355,
+        "label": "single_full_layer_6",
+        "layer_ids": [
+          27
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          7
+        ],
+        "kl_mean": 0.003772209087126692,
+        "label": "single_full_layer_7",
+        "layer_ids": [
+          31
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          8
+        ],
+        "kl_mean": 0.00025021015480069104,
+        "label": "single_full_layer_8",
+        "layer_ids": [
+          35
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          9
+        ],
+        "kl_mean": 5.890061539682262e-05,
+        "label": "single_full_layer_9",
+        "layer_ids": [
+          39
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "kl_mean": 0.02805085767052115,
+        "label": "suffix_from_full_layer_3",
+        "layer_ids": [
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          6,
+          7,
+          8,
+          9
+        ],
+        "kl_mean": 0.00832515851444617,
+        "label": "suffix_from_full_layer_6",
+        "layer_ids": [
+          27,
+          31,
+          35,
+          39
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 11048,
+        "int8_full_attention_indices": [
+          8,
+          9
+        ],
+        "kl_mean": 0.00025069238721213633,
+        "label": "suffix_from_full_layer_8",
+        "layer_ids": [
+          35,
+          39
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 1.0
+      },
+      {
+        "candidate_top1": 40218,
+        "int8_full_attention_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "kl_mean": 0.30795060787165235,
+        "label": "all_full_attention_layers",
+        "layer_ids": [
+          3,
+          7,
+          11,
+          15,
+          19,
+          23,
+          27,
+          31,
+          35,
+          39
+        ],
+        "reference_top1": 11048,
+        "top1_agreement": 0.0
+      }
+    ],
+    "summary": {
+      "all_int8_logit_metrics": {
+        "candidate_top1": 40218,
+        "kl_max": 0.30795060787165235,
+        "kl_mean": 0.30795060787165235,
+        "max_abs": 5.32383394241333,
+        "mean_abs": 0.5948768258094788,
+        "reference_top1": 11048,
+        "top1_agreement": 0.0
+      },
+      "max_attn_out_diff_layer": {
+        "attn_out_diff": {
+          "max_abs": 0.015625,
+          "max_rel": 8.06382942199707,
+          "mean_abs": 0.0015785363502800465,
+          "rms_abs": 0.002115420978550913,
+          "top_abs_indices": [
+            1269,
+            267,
+            1038,
+            633,
+            395
+          ]
+        },
+        "full_attention_index": 8,
+        "gated_diff": {
+          "max_abs": 0.009765625,
+          "max_rel": 95.74418640136719,
+          "mean_abs": 0.001226875465363264,
+          "rms_abs": 0.001865259624209439,
+          "top_abs_indices": [
+            3960,
+            3955,
+            2306,
+            2367,
+            2423
+          ]
+        },
+        "layer_id": 35
+      },
+      "max_gated_diff_layer": {
+        "attn_out_diff": {
+          "max_abs": 0.00830078125,
+          "max_rel": 116.42196655273438,
+          "mean_abs": 0.001654063700698316,
+          "rms_abs": 0.0021222087543659855,
+          "top_abs_indices": [
+            1429,
+            11,
+            708,
+            1515,
+            960
+          ]
+        },
+        "full_attention_index": 7,
+        "gated_diff": {
+          "max_abs": 0.015625,
+          "max_rel": 20.91701316833496,
+          "mean_abs": 0.0012990960385650396,
+          "rms_abs": 0.002220404538916499,
+          "top_abs_indices": [
+            3640,
+            2771,
+            2708,
+            2607,
+            541
+          ]
+        },
+        "layer_id": 31
+      },
+      "worst_single_layer_logit_metrics": {
+        "int8_full_attention_indices": [
+          0
+        ],
+        "label": "single_full_layer_0",
+        "layer_ids": [
+          3
+        ],
+        "logit_metrics_vs_bf16": {
+          "candidate_top1": 359,
+          "kl_max": 0.4200374328815052,
+          "kl_mean": 0.4200374328815052,
+          "max_abs": 5.717802047729492,
+          "mean_abs": 0.726473331451416,
+          "reference_top1": 11048,
+          "top1_agreement": 0.0
+        },
+        "token_id": 359
+      }
+    }
+  },
+  "long_mask_rejections": {
+    "int8_layers_5_8_9_bf16_0_4_6_7": {
+      "candidate_layout": {
+        "bf16_primary_full_attention_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          6,
+          7
+        ],
+        "bf16_primary_layer_count": 7,
+        "effective_kv_scale_dtype": "fp32",
+        "int8_full_attention_indices": [
+          5,
+          8,
+          9
+        ],
+        "int8_layer_count": 3,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 24.614815711975098,
+        "tracked_peak_allocated_gib": 25.366280555725098
+      },
+      "candidate_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        17,
+        13,
+        59,
+        58,
+        17,
+        15,
+        220,
+        17
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": 4,
+        "kl_max": 0.2695260578499967,
+        "kl_mean": 0.07114232125814048,
+        "passed": false,
+        "top1_agreement": 0.8823529411764706,
+        "top1_mismatch_count": 2
+      },
+      "passed": false,
+      "reference_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        59,
+        13,
+        59,
+        58,
+        17,
+        15,
+        220,
+        17
+      ],
+      "status": "rejected_correctness"
+    },
+    "int8_layers_6_8_9_bf16_0_5_7": {
+      "candidate_layout": {
+        "bf16_primary_full_attention_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          7
+        ],
+        "bf16_primary_layer_count": 7,
+        "effective_kv_scale_dtype": "fp32",
+        "int8_full_attention_indices": [
+          6,
+          8,
+          9
+        ],
+        "int8_layer_count": 3,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 24.614815711975098,
+        "tracked_peak_allocated_gib": 25.366280555725098
+      },
+      "candidate_top1_prefix": [
+        7018,
+        59,
+        94,
+        220,
+        20,
+        13,
+        59,
+        58,
+        17,
+        15,
+        220,
+        17
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": 2,
+        "kl_max": 0.2649952871778391,
+        "kl_mean": 0.051702477150940986,
+        "passed": false,
+        "top1_agreement": 0.8235294117647058,
+        "top1_mismatch_count": 3
+      },
+      "passed": false,
+      "reference_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        59,
+        13,
+        59,
+        58,
+        17,
+        15,
+        220,
+        17
+      ],
+      "status": "rejected_correctness"
+    }
+  },
+  "mode": "gguf_int8_kv_noncontiguous_mask_diagnostic",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quant": "gguf_q4_k_m",
+  "raw_tmp_artifacts": {
+    "layer_probe": "/tmp/hipengine-gguf-int8-layer-probe-4k-fp32.json",
+    "mask_5_8_9": "/tmp/gguf-int8-mask-5-8-9-128k-d16.json",
+    "mask_6_8_9": "/tmp/gguf-int8-mask-6-8-9-128k-d16.json"
+  }
+}
