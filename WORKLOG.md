@@ -124633,3 +124633,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-092014/summary.json`.
   - B1: `42.978148826222764 tok/s`, `0.7612424471386703x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - Although the ratio was slightly above iteration 22, the true-AR denominator had rerun lower (`56.45789851546958 tok/s`) after the retained commit. Raw B1 decode tok/s regressed vs the retained argmax row (`42.99313463960243 -> 42.978148826222764`), with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but the raw-speed acceptance policy failed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 24 rejected: half-width draft RoPE rows
+
+### Hypothesis
+- The MTP draft path passes full split-half RoPE rows (`[cos_half, cos_half]` / `[sin_half, sin_half]`) even though the MTP HIP wrapper accepts half-width rows and otherwise slices/copies back to half-width before upload. Precomputing contiguous half-width draft RoPE tables in the benchmark could avoid an extra host slice/copy and halve the per-draft RoPE H2D payload.
+
+### Result
+- Rejected by the optimize loop and reverted; no benchmark/runtime code retained beyond the iteration 22 argmax keep.
+- Prototype kept `_rope_tables()` full-width for compatibility/tests, added `_rope_cos_draft` / `_rope_sin_draft` as contiguous half-width tables, and routed warmup/draft/redraft MTP calls through them.
+- Smoke: `/tmp/hipengine-mtp-half-rope-smoke-20260624-094245.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; diagnostic top-10 length remained `10`.
+  - Avg target verify `18.01 ms`, avg draft `7.25 ms`, `39.59 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-094515/summary.json`.
+  - B1: `42.81269278353296 tok/s`, `0.7587354675543514x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- This regressed vs the retained argmax row (`42.99313463960243 tok/s`, `0.760991932477236x`) with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but B1 raw speed and ratio regressed. Reverted.
