@@ -124364,3 +124364,16 @@ python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.
 python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py
 # passed, 436 tests
 ```
+
+## 2026-06-24 — mtp-gguf-final iteration 7 rejected: K=1 argmax selector fast path
+
+### Hypothesis
+- Default B1 uses a single draft candidate, but `select_topk_tokens()` still used the generic `np.argpartition(..., k=1)` path. Replacing that with `np.argmax()` might shave CPU selector overhead without changing draft tokens, target verification, acceptance, or B2/B3 visibility.
+
+### Result
+- Rejected by the optimize loop because full-suite B1 performance regressed slightly.
+- Candidate summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-011828/summary.json`.
+  - Candidate: `decode_tok_s_weighted=42.08851845100996`, `mtp_vs_true_ar_decode_ratio=0.7467131589621299`, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - Current B1/B2/B3 guard baseline: ratio `0.7498638500816287`; best retained target-graph metric `0.7510349576460698`.
+  - Delta vs current: ratio `-0.4%`, tok/s regressed; acceptance/output unchanged.
+- Guard still passed (`py_compile` + 436 MTP tests), and the prompt verifier found no prompt/token/rank hardcoding. Reverted the code/test changes; no runtime behavior retained.
