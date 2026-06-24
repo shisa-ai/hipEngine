@@ -124482,3 +124482,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - B2: `35.351098335401936 tok/s`, `0.6275734589334692x` true AR, `draft_acceptance=0.185`.
   - B3: `30.772276545930314 tok/s`, `0.5462875254386967x` true AR, `draft_acceptance=0.14333333333333334`.
 - Current guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`). Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1/B2 regressed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 15 aborted: F32 shared-head draft path
+
+### Hypothesis
+- Prior cached-draft notes suggested a pre-dequantized F32 MTP shared head might be faster than the raw Q6_K shared head despite larger memory. Test switching `scripts/gguf_mtp_bench.py` to dequantize `output.weight` to F32 once and pass `shared_head_qtype=F32`.
+
+### Result
+- Aborted before full-suite verify because the 35B smoke was catastrophically slower; reverted the code change.
+- Smoke: `/tmp/hipengine-mtp-f32-head-smoke-20260624-052811.json`.
+  - F32 shared head size: `2034 MB` vs raw Q6_K `~398 MB`.
+  - Draft warmup: `1866.41 ms`.
+  - Avg target verify `18.7 ms`, avg draft `386.73 ms`, throughput `2.47 tok/s`.
+  - Target/draft tokens matched the retained smoke (`[148368]`, `[248068]` targets; `[248045]`, `[1710]` drafts), acceptance unchanged (`0/2`), but F32 GEMV/head bandwidth is far too slow.
+- Focused parser/py_compile guard passed before the smoke, and prompt verifier had no gaming concern. No full-suite run was needed for this non-viable candidate.
