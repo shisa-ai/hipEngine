@@ -175,8 +175,10 @@ per-token/head INT8: prefix `0` still fails `4K/1` (`KL mean=0.8731`, top-1
 prefix `7` passes `128K/16` (`KL mean=0.00741`, top-1 `0.94118`) while saving
 less memory than the admitted prefix-8 per-token/head path and increasing tracked
 prefill peak due extra layer-local BF16 oracles (`25.554 GiB` peak / `24.803 GiB`
-current). Do not promote key-only KV; any remaining real HIP Q8 KV follow-up must
-implement a different format and rerun the long BF16-vs-Q8 guard before promotion.
+current). Do not promote key-only KV. A real HIP block16 K/V runtime diagnostic is
+now wired behind `HIPENGINE_GGUF_INT8_KV_BLOCK16=1` using `[blocks, block_size,
+kv_heads, 16]` scale metadata; it is not promoted until the same BF16-vs-candidate
+short and long guards pass.
 Evidence:
 `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`,
 `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`,

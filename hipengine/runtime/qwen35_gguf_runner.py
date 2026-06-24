@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     build_qwen35_paged_attn_decode,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_bf16_to_bf16,
+    qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
@@ -38,6 +39,8 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     build_qwen35_paged_kv_write,
+    qwen35_write_paged_kv_int8_block16_prompt_spans,
+    qwen35_write_paged_kv_int8_block16_spans,
     qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans,
     qwen35_write_paged_kv_int8_key_bf16_value_spans,
     qwen35_write_paged_kv_int8_per_token_head_prompt_spans,
@@ -1224,7 +1227,8 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             else:
-                qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
+                int8_prompt_write_fn = _gguf_int8_kv_prompt_write_fn(retained_spans.scale_metadata)
+                int8_prompt_write_fn(
                     scratch.full_key.ptr,
                     scratch.full_key_raw.ptr,
                     scratch.retained_key_cache.ptr,
@@ -1910,7 +1914,8 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             else:
-                qwen35_write_paged_kv_int8_per_token_head_spans(
+                int8_append_write_fn = _gguf_int8_kv_append_write_fn(metadata)
+                int8_append_write_fn(
                     scratch.full_key.ptr,
                     scratch.full_key_raw.ptr,
                     key_cache.ptr,
@@ -1990,7 +1995,8 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             else:
-                qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans(
+                int8_decode_gate_fn = _gguf_int8_kv_decode_gate_fn(metadata)
+                int8_decode_gate_fn(
                     scratch.full_query.ptr,
                     key_cache.ptr,
                     value_cache.ptr,
@@ -2770,6 +2776,7 @@ _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_
 _GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS"
 _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
 _GGUF_INT8_KV_KEY_ONLY_ENV = "HIPENGINE_GGUF_INT8_KV_KEY_ONLY"
+_GGUF_INT8_KV_BLOCK16_ENV = "HIPENGINE_GGUF_INT8_KV_BLOCK16"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
@@ -2829,6 +2836,21 @@ def _gguf_host_token_embedding_requested() -> bool:
 
 def _gguf_int8_kv_value_bf16_enabled(*, kv_storage_dtype: DType) -> bool:
     return kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and _env_flag(_GGUF_INT8_KV_KEY_ONLY_ENV, False)
+
+
+def _gguf_int8_kv_scale_granularity(
+    *,
+    kv_storage_dtype: DType,
+    requested_granularity: str = "per_token_head",
+) -> str:
+    requested = str(requested_granularity or "per_token_head").strip().lower()
+    if requested not in {"per_token_head", "block16"}:
+        raise ValueError("GGUF resident INT8 KV scale granularity must be per_token_head or block16")
+    if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        return "per_token_head"
+    if _env_flag(_GGUF_INT8_KV_BLOCK16_ENV, False):
+        return "block16"
+    return requested
 
 
 def _gguf_int8_bf16_prefix_full_attention_layers(*, kv_storage_dtype: DType, max_positions: int) -> int:
@@ -2955,6 +2977,33 @@ def _validate_gguf_int8_kv_context(
         "Prefixes below that failed BF16-vs-hybrid long-context logit gates and are diagnostic-only. Set "
         f"{_GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV}=1 only to reproduce blocked capacity diagnostics."
     )
+
+
+def _gguf_int8_kv_prompt_write_fn(metadata: KVScaleMetadata):
+    granularity = getattr(metadata, "granularity", "per_token_head")
+    if granularity == "block16":
+        return qwen35_write_paged_kv_int8_block16_prompt_spans
+    if granularity == "per_token_head":
+        return qwen35_write_paged_kv_int8_per_token_head_prompt_spans
+    raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
+
+
+def _gguf_int8_kv_append_write_fn(metadata: KVScaleMetadata):
+    granularity = getattr(metadata, "granularity", "per_token_head")
+    if granularity == "block16":
+        return qwen35_write_paged_kv_int8_block16_spans
+    if granularity == "per_token_head":
+        return qwen35_write_paged_kv_int8_per_token_head_spans
+    raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
+
+
+def _gguf_int8_kv_decode_gate_fn(metadata: KVScaleMetadata):
+    granularity = getattr(metadata, "granularity", "per_token_head")
+    if granularity == "block16":
+        return qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans
+    if granularity == "per_token_head":
+        return qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans
+    raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
 
 
 def _q8_0_embedding_rows_to_bf16(
@@ -3207,8 +3256,12 @@ class Qwen35GGUFResidentSession:
         self.kv_scale_dtype = DType.parse(self.kv_scale_dtype)
         if self.kv_scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("GGUF resident INT8 KV scales must use fp16 or fp32")
-        if self.kv_scale_granularity != "per_token_head":
-            raise ValueError("GGUF resident INT8 KV scale granularity must be per_token_head")
+        self.kv_scale_granularity = _gguf_int8_kv_scale_granularity(
+            kv_storage_dtype=self.kv_storage_dtype,
+            requested_granularity=self.kv_scale_granularity,
+        )
+        if self.int8_kv_value_bf16 and self.kv_scale_granularity == "block16":
+            raise ValueError("GGUF INT8 KV block16 scales are not supported with the key-only diagnostic")
         requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
         rounded_positions = min(
             int(self.runner.weights.config.context_length),
@@ -4738,9 +4791,12 @@ class _FullStackScratch:
         scale_dtype = DType.parse(kv_scale_dtype)
         if scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("GGUF INT8 KV scales must use fp16 or fp32")
-        if kv_scale_granularity != "per_token_head":
-            raise ValueError("GGUF INT8 KV scale granularity must be per_token_head")
+        kv_scale_granularity = str(kv_scale_granularity or "per_token_head").strip().lower()
+        if kv_scale_granularity not in {"per_token_head", "block16"}:
+            raise ValueError("GGUF INT8 KV scale granularity must be per_token_head or block16")
         int8_kv_value_bf16 = bool(int8_kv_value_bf16 and kv_storage == DType.INT8_PER_TOKEN_HEAD)
+        if int8_kv_value_bf16 and kv_scale_granularity == "block16":
+            raise ValueError("GGUF INT8 KV block16 scales are not supported with the key-only diagnostic")
         requested_positions = block_size if max_sequence_length is None else int(max_sequence_length)
         if requested_positions <= 0:
             raise ValueError("max_sequence_length must be positive")
@@ -4798,7 +4854,13 @@ class _FullStackScratch:
             kv_storage == DType.INT8_PER_TOKEN_HEAD
             and max_positions <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
         )
-        scale_shape = (block_count, block_size, cfg.head_count_kv)
+        if kv_scale_granularity == "block16":
+            scale_dim_blocks = int(cfg.key_length) // 16
+            if int(cfg.key_length) % 16 != 0 or scale_dim_blocks != 16:
+                raise ValueError("GGUF INT8 KV block16 scales require head_dim/key_length 256")
+            scale_shape = (block_count, block_size, cfg.head_count_kv, scale_dim_blocks)
+        else:
+            scale_shape = (block_count, block_size, cfg.head_count_kv)
         scale_nbytes = int(np.prod(scale_shape)) * scale_dtype.itemsize
         full_attention_index = 0
         for layer_type in cfg.layer_types:

@@ -10,12 +10,17 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV,
     _GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV,
     _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV,
+    _GGUF_INT8_KV_BLOCK16_ENV,
     _GGUF_INT8_KV_KEY_ONLY_ENV,
     _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
     Qwen35GGUFResidentSession,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_int8_bf16_prefix_full_attention_layers,
     _gguf_int8_effective_scale_dtype,
+    _gguf_int8_kv_append_write_fn,
+    _gguf_int8_kv_decode_gate_fn,
+    _gguf_int8_kv_prompt_write_fn,
+    _gguf_int8_kv_scale_granularity,
     _gguf_int8_kv_value_bf16_enabled,
     _validate_gguf_int8_kv_context,
 )
@@ -58,6 +63,15 @@ def _scale_metadata() -> KVScaleMetadata:
         k_scale=_tensor(0x3000, (4, 256, 2), DType.FP16),
         v_scale=_tensor(0x4000, (4, 256, 2), DType.FP16),
         scale_dtype=DType.FP16,
+    )
+
+
+def _block16_scale_metadata() -> KVScaleMetadata:
+    return KVScaleMetadata(
+        k_scale=_tensor(0x3000, (4, 256, 2, 16), DType.FP32),
+        v_scale=_tensor(0x4000, (4, 256, 2, 16), DType.FP32),
+        scale_dtype=DType.FP32,
+        granularity="block16",
     )
 
 
@@ -186,6 +200,72 @@ def test_gguf_int8_key_only_env_is_diagnostic_opt_in(monkeypatch) -> None:
     assert _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=DType.BF16) is False
     assert _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD) is True
 
+
+def test_gguf_int8_block16_env_is_diagnostic_opt_in(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_KV_BLOCK16_ENV, raising=False)
+    assert (
+        _gguf_int8_kv_scale_granularity(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            requested_granularity="per_token_head",
+        )
+        == "per_token_head"
+    )
+    assert (
+        _gguf_int8_kv_scale_granularity(
+            kv_storage_dtype=DType.BF16,
+            requested_granularity="block16",
+        )
+        == "per_token_head"
+    )
+
+    monkeypatch.setenv(_GGUF_INT8_KV_BLOCK16_ENV, "1")
+    assert (
+        _gguf_int8_kv_scale_granularity(
+            kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            requested_granularity="per_token_head",
+        )
+        == "block16"
+    )
+
+
+def test_gguf_int8_block16_metadata_routes_to_block16_kernels() -> None:
+    per_token = _scale_metadata()
+    block16 = _block16_scale_metadata()
+
+    assert _gguf_int8_kv_prompt_write_fn(per_token).__name__.endswith("per_token_head_prompt_spans")
+    assert _gguf_int8_kv_append_write_fn(per_token).__name__.endswith("per_token_head_spans")
+    assert _gguf_int8_kv_decode_gate_fn(per_token).__name__.endswith("int8_gqa_splitk_gate_bf16_spans")
+    assert _gguf_int8_kv_prompt_write_fn(block16).__name__.endswith("block16_prompt_spans")
+    assert _gguf_int8_kv_append_write_fn(block16).__name__.endswith("block16_spans")
+    assert _gguf_int8_kv_decode_gate_fn(block16).__name__.endswith("block16_gqa_splitk_gate_bf16_spans")
+
+
+def test_gguf_int8_block16_prefill_retained_spans_keep_scale_metadata() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session.int8_kv_value_bf16 = False
+    layer_oracle_key = _Buffer(0x5100, 64)
+    layer_oracle_value = _Buffer(0x6200, 64)
+    retained_key = _Buffer(0x7000, 16)
+    retained_value = _Buffer(0x8000, 16)
+    metadata = _block16_scale_metadata()
+    session.scratch = type(
+        "Scratch",
+        (),
+        {
+            "full_cache": lambda self, layer_id: (retained_key, retained_value),
+            "full_scale_metadata": lambda self, layer_id: metadata,
+        },
+    )()
+    session._int8_prefill_oracle_cache_for_layer = lambda layer_id: (layer_oracle_key, layer_oracle_value)
+    bulk = _BulkScratch(key_cache=None, value_cache=None, append_spans=_bf16_append_spans())
+
+    layer_scratch = session._full_attention_prefill_scratch_for_layer(bulk, 7)
+
+    assert layer_scratch.retained_append_spans is not None
+    assert layer_scratch.retained_append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
+    assert layer_scratch.retained_append_spans.scale_metadata is metadata
+    assert layer_scratch.retained_append_spans.scale_metadata.granularity == "block16"
 
 
 def test_gguf_int8_context_guard_allows_short_mirror_without_env(monkeypatch) -> None:
@@ -382,6 +462,7 @@ def test_gguf_decode_scratch_breakdown_reports_int8_kv_scales_separately() -> No
             "layer_recurrent_states": (),
             "kv_storage_dtype": DType.INT8_PER_TOKEN_HEAD,
             "kv_scale_dtype": DType.FP16,
+            "kv_scale_granularity": "block16",
         },
     )()
 
@@ -390,6 +471,7 @@ def test_gguf_decode_scratch_breakdown_reports_int8_kv_scales_separately() -> No
     assert breakdown["total_bytes"] == 231
     assert breakdown["kv_storage_dtype"] == "int8_per_token_head"
     assert breakdown["kv_scale_dtype"] == "fp16"
+    assert breakdown["kv_scale_granularity"] == "block16"
     assert breakdown["by_component_bytes"]["full_attention_kv_cache"] == 200
     assert breakdown["by_component_bytes"]["full_attention_kv_scales"] == 24
     assert breakdown["by_component_bytes"]["decode_workspace_other"] == 7

@@ -8,7 +8,9 @@ trajectory. Short INT8 sessions may route decode through the BF16 mirror. Long
 INT8 sessions use a hybrid BF16-prefix/INT8-suffix full-attention layout by
 default; set ``HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`` together with a
 large ``--max-sequence-length`` (for example ``131202``) only when reproducing
-the blocked pure INT8-only capacity/quality diagnostic.
+the blocked pure INT8-only capacity/quality diagnostic. Set
+``HIPENGINE_GGUF_INT8_KV_BLOCK16=1`` for the guarded block16 scale-granularity
+runtime diagnostic.
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ class SequenceRun:
     bf16_primary_full_attention_indices: list[int]
     int8_full_attention_indices: list[int]
     effective_kv_scale_dtype: str
+    effective_kv_scale_granularity: str
     int8_kv_value_bf16: bool
     max_sequence_length: int
 
@@ -182,6 +185,7 @@ def _run_sequence(
             int8_full_attention_indices,
         ) = _kv_layout_counts(session)
         effective_kv_scale_dtype = session.kv_scale_dtype.value
+        effective_kv_scale_granularity = str(getattr(session, "kv_scale_granularity", "per_token_head"))
         int8_kv_value_bf16 = bool(getattr(session, "int8_kv_value_bf16", False))
         stats = memory_stats()
     elapsed = time.perf_counter() - start
@@ -202,6 +206,7 @@ def _run_sequence(
         bf16_primary_full_attention_indices=[int(idx) for idx in bf16_primary_full_attention_indices],
         int8_full_attention_indices=[int(idx) for idx in int8_full_attention_indices],
         effective_kv_scale_dtype=str(effective_kv_scale_dtype),
+        effective_kv_scale_granularity=str(effective_kv_scale_granularity),
         int8_kv_value_bf16=bool(int8_kv_value_bf16),
         max_sequence_length=int(max_sequence_length),
     )
@@ -276,6 +281,7 @@ def _run_to_json(run: SequenceRun) -> dict[str, Any]:
         "bf16_primary_full_attention_indices": [int(idx) for idx in run.bf16_primary_full_attention_indices],
         "int8_full_attention_indices": [int(idx) for idx in run.int8_full_attention_indices],
         "effective_kv_scale_dtype": str(run.effective_kv_scale_dtype),
+        "effective_kv_scale_granularity": str(run.effective_kv_scale_granularity),
         "int8_kv_value_bf16": bool(run.int8_kv_value_bf16),
         "max_sequence_length": int(run.max_sequence_length),
         "tracked_peak_allocated_gib": float(run.memory.get("peak_allocated_bytes", 0)) / (1024**3),
@@ -365,6 +371,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "hipengine_hip_arch": os.environ.get("HIPENGINE_HIP_ARCH"),
             "rocm_path": os.environ.get("ROCM_PATH"),
             "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
+            "hipengine_gguf_int8_kv_block16": os.environ.get("HIPENGINE_GGUF_INT8_KV_BLOCK16"),
         },
         "rows": rows,
         "blocked_reasons": blocked,

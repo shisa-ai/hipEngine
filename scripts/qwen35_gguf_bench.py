@@ -1015,6 +1015,7 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
         "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
         "kv_storage_dtype": getattr(getattr(scratch, "kv_storage_dtype", None), "value", None),
         "kv_scale_dtype": getattr(getattr(scratch, "kv_scale_dtype", None), "value", None),
+        "kv_scale_granularity": getattr(scratch, "kv_scale_granularity", None),
         "int8_kv_value_bf16": bool(getattr(scratch, "int8_kv_value_bf16", False)),
         "by_component_bytes": named,
     }
