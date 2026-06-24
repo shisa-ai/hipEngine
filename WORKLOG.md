@@ -124617,3 +124617,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
 - Prompt verifier passed: generic proposal-width timing cleanup only; no prompt/token/rank/fixture hardcoding, no prompt-suite edits, no true-AR denominator changes, no accepted/output policy changes.
 - Rollup updated: `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-argmax-diagnostic-topk-gfx1151.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-06-24 — mtp-gguf-final iteration 23 rejected: hoist MTP draft static args
+
+### Hypothesis
+- Each B1 draft rebuilt the constant MTP GPU argument list and static keyword dictionary, including weight/qtype lookups, inside the timed draft window. Hoisting immutable args/static kwargs and reusing one-element `context_counts` could reduce Python overhead without changing proposals, target verification, or acceptance.
+
+### Result
+- Rejected by the optimize loop and reverted; no runtime/benchmark code retained beyond the previous iteration 22 keep.
+- Prototype precomputed immutable MTP draft kernel args and static kwargs once, reused `context_counts=[1]`, and made `run_draft()` attach only dynamic fields per call.
+- Smoke: `/tmp/hipengine-mtp-static-args-smoke-20260624-091740.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; diagnostic top-10 length remained `10`.
+  - Avg target verify `18.05 ms`, avg draft `7.26 ms`, `39.50 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-092014/summary.json`.
+  - B1: `42.978148826222764 tok/s`, `0.7612424471386703x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- Although the ratio was slightly above iteration 22, the true-AR denominator had rerun lower (`56.45789851546958 tok/s`) after the retained commit. Raw B1 decode tok/s regressed vs the retained argmax row (`42.99313463960243 -> 42.978148826222764`), with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but the raw-speed acceptance policy failed. Reverted.
