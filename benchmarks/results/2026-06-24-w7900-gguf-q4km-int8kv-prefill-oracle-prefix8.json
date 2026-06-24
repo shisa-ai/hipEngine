@@ -1,0 +1,286 @@
+{
+  "accepted_gate": {
+    "candidate_layout": {
+      "bf16_primary_layer_count": 8,
+      "effective_kv_scale_dtype": "fp32",
+      "int8_layer_count": 2,
+      "mirror_cache_count": 0,
+      "tracked_current_allocated_gib": 24.738102912902832,
+      "tracked_peak_allocated_gib": 25.239079475402832
+    },
+    "candidate_top1_prefix": [
+      7018,
+      59,
+      96,
+      220,
+      17,
+      13,
+      59,
+      58,
+      17,
+      15
+    ],
+    "command": "python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 128K --decode-steps 128 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp16 --kl-threshold 0.05 --top1-threshold 0.9 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/gguf-int8-default-prefix8-128k-d128-perlayer.json",
+    "environment": {
+      "compiler_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+      "hip_visible_devices": "0",
+      "hipengine_hip_arch": "gfx1100",
+      "rocm_path": "/opt/rocm"
+    },
+    "metrics": {
+      "first_top1_mismatch_index": 4,
+      "kl_max": 0.6606773726341065,
+      "kl_mean": 0.014484136580019992,
+      "passed": true,
+      "top1_agreement": 0.9612403100775194,
+      "top1_mismatch_count": 5
+    },
+    "passed": true,
+    "reference_top1_prefix": [
+      7018,
+      59,
+      96,
+      220,
+      59,
+      13,
+      59,
+      58,
+      17,
+      15
+    ],
+    "status": "accepted"
+  },
+  "change": "Use layer-local temporary BF16 prefill oracle caches for GGUF INT8-retained full-attention layers; default long-context BF16 prefix is lowered from 9 to 8 after 128K/128 quality acceptance.",
+  "date": "2026-06-24",
+  "diagnostics": {
+    "layer_local_oracle_prefix3_prefill_only_accepted": {
+      "candidate_layout": {
+        "bf16_primary_layer_count": 3,
+        "effective_kv_scale_dtype": "fp32",
+        "int8_layer_count": 7,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 24.12166690826416,
+        "tracked_peak_allocated_gib": 25.87508487701416
+      },
+      "candidate_top1_prefix": [
+        7018
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": null,
+        "kl_max": 0.0,
+        "kl_mean": 0.0,
+        "passed": true,
+        "top1_agreement": 1.0,
+        "top1_mismatch_count": 0
+      },
+      "passed": true,
+      "reference_top1_prefix": [
+        7018
+      ],
+      "status": "accepted"
+    },
+    "old_shared_oracle_prefix3_prefill_only_rejected": {
+      "candidate_layout": {
+        "bf16_primary_layer_count": 3,
+        "effective_kv_scale_dtype": "fp32",
+        "int8_layer_count": 7,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 24.37215518951416,
+        "tracked_peak_allocated_gib": 24.37215518951416
+      },
+      "candidate_top1_prefix": [
+        82
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": 0,
+        "kl_max": 3.0906277551280836,
+        "kl_mean": 3.0906277551280836,
+        "passed": false,
+        "top1_agreement": 0.0,
+        "top1_mismatch_count": 1
+      },
+      "passed": false,
+      "reference_top1_prefix": [
+        7018
+      ],
+      "status": "rejected_correctness"
+    },
+    "prefix6_128k_decode16_rejected": {
+      "candidate_layout": {
+        "bf16_primary_layer_count": 6,
+        "effective_kv_scale_dtype": "fp32",
+        "int8_layer_count": 4,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 24.491528511047363,
+        "tracked_peak_allocated_gib": 25.493481636047363
+      },
+      "candidate_top1_prefix": [
+        7018,
+        59,
+        94,
+        220,
+        20,
+        13,
+        59,
+        58,
+        17,
+        15
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": 2,
+        "kl_max": 0.1980877165163275,
+        "kl_mean": 0.0429941412934632,
+        "passed": false,
+        "top1_agreement": 0.8823529411764706,
+        "top1_mismatch_count": 2
+      },
+      "passed": false,
+      "reference_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        59,
+        13,
+        59,
+        58,
+        17,
+        15
+      ],
+      "status": "rejected_correctness"
+    },
+    "prefix7_128k_decode16_rejected": {
+      "candidate_layout": {
+        "bf16_primary_layer_count": 7,
+        "effective_kv_scale_dtype": "fp32",
+        "int8_layer_count": 3,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 24.614815711975098,
+        "tracked_peak_allocated_gib": 25.366280555725098
+      },
+      "candidate_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        17,
+        13,
+        59,
+        14,
+        17,
+        15
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": 4,
+        "kl_max": 0.05182869259558162,
+        "kl_mean": 0.007058957921459897,
+        "passed": false,
+        "top1_agreement": 0.8823529411764706,
+        "top1_mismatch_count": 2
+      },
+      "passed": false,
+      "reference_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        59,
+        13,
+        59,
+        58,
+        17,
+        15
+      ],
+      "status": "rejected_correctness"
+    },
+    "prefix8_128k_decode16_accepted": {
+      "candidate_layout": {
+        "bf16_primary_layer_count": 8,
+        "effective_kv_scale_dtype": "fp32",
+        "int8_layer_count": 2,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 24.738102912902832,
+        "tracked_peak_allocated_gib": 25.239079475402832
+      },
+      "candidate_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        17,
+        13,
+        59,
+        58,
+        17,
+        15
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": 4,
+        "kl_max": 0.04229705101133925,
+        "kl_mean": 0.00529389842641287,
+        "passed": true,
+        "top1_agreement": 0.9411764705882353,
+        "top1_mismatch_count": 1
+      },
+      "passed": true,
+      "reference_top1_prefix": [
+        7018,
+        59,
+        96,
+        220,
+        59,
+        13,
+        59,
+        58,
+        17,
+        15
+      ],
+      "status": "accepted"
+    },
+    "pure_int8_prefix0_4k_decode1_rejected": {
+      "candidate_layout": {
+        "bf16_primary_layer_count": 0,
+        "effective_kv_scale_dtype": "fp16",
+        "int8_layer_count": 10,
+        "mirror_cache_count": 0,
+        "tracked_current_allocated_gib": 23.74202060699463,
+        "tracked_peak_allocated_gib": 26.24690341949463
+      },
+      "candidate_top1_prefix": [
+        40218,
+        246834
+      ],
+      "metrics": {
+        "first_top1_mismatch_index": 1,
+        "kl_max": 0.5515616710573051,
+        "kl_mean": 0.27578083552865257,
+        "passed": false,
+        "top1_agreement": 0.5,
+        "top1_mismatch_count": 1
+      },
+      "passed": false,
+      "reference_top1_prefix": [
+        40218,
+        11048
+      ],
+      "status": "rejected_correctness"
+    }
+  },
+  "hardware": "AMD Radeon Pro W7900 / gfx1100, HIP_VISIBLE_DEVICES=0",
+  "interpretation": [
+    "Layer-local oracle fixes the prefill-only false rejection; prefix3 128K/d0 goes KL 3.0906/top1 0.0 to KL 0/top1 1.0 with no BF16 mirror.",
+    "Quantized decode quality is still real: pure INT8 fails 4K/d1, prefix6 and prefix7 fail 128K/d16 top-1, and prefix8 passes 128K/d128.",
+    "The accepted prefix8 path keeps no persistent BF16 mirror; transient per-layer oracle buffers are released before decode."
+  ],
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quant": "gguf_q4_k_m",
+  "root_cause": "The previous shared BF16 prefill oracle was unsafe in chunk-outer bulk prefill when more than one full-attention layer used retained INT8 KV: later layers overwrote earlier layers previous chunks before the earlier layer processed the next prompt chunk.",
+  "schema": "hipengine.benchmark.ggguf_int8_kv_prefill_oracle_fix.v1",
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-713.txt",
+    "hip_arch": "gfx1100",
+    "require_cached_build": true
+  },
+  "status": "accepted"
+}

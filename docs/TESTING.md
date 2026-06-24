@@ -226,14 +226,15 @@ python3 scripts/qwen35_kv_e2e_fixture_gate.py --max-layers 40 \
 
 For GGUF Qwen3.6, add the resident BF16-vs-INT8 logit gate. Short contexts are
 expected to pass via the BF16 mirror. Long contexts must pass with
-`--require-no-bf16-mirror`; the safety fallback keeps 9 of 10 full-attention
-layers as BF16 primary storage and uses INT8 only for the final full-attention
-layer. Memory-saving prefixes `3..8` and pure INT8-only remain diagnostic-only
-behind `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`: the 2026-06-23 sweep
-rejected prefixes `3..8` at `32K/64K/128K`, while prefix 9 passed full `128K/128`
-but peaked at `25.112 GiB` and is not a 24GB path. The `4K` forced-long gate below
-is a quick guard; promotion of a 24GB `128K/128` row also requires the same gate
-at `--prompt-lengths 128K --decode-steps 128 --max-sequence-length 131202`.
+`--require-no-bf16-mirror`; the safety fallback keeps 8 of 10 full-attention
+layers as BF16 primary storage and uses INT8 only for the final two full-attention
+layers. Lower prefixes and pure INT8-only remain diagnostic-only behind
+`HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`: after the 2026-06-24
+layer-local BF16 prefill-oracle fix, prefix 8 passes full W7900 `128K/128`
+(`KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror), prefix 7 fails
+`128K/16` top-1, and pure INT8 fails `4K/1`. The `4K` forced-long gate below is a
+quick guard; promotion of a 24GB `128K/128` row also requires the same gate at
+`--prompt-lengths 128K --decode-steps 128 --max-sequence-length 131202`.
 
 ```bash
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \

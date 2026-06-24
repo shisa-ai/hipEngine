@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-24
+
+- [correctness guard] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 INT8 KV 128K/128: default long hybrid prefix `9 -> 8` (-1 BF16-primary full-attn layer) after replacing the shared chunk-outer BF16 prefill oracle with layer-local temporary oracles; accepted `KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror, candidate peak/current `25.239/24.738 GiB`; prefix `7` still fails `128K/16` top-1 (`0.88235`) and pure INT8 fails `4K/1`; `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`.
+
 ## 2026-06-23
 
 - [format diagnostic] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 Q8 KV QDQ sweep: all-Q8 `4K/1` candidates fail the approximate BF16-vs-QDQ gate (best zero-prefix `block16_fp32` KL `0.108`, top-1 `0.0`); first approximate passes require BF16 prefix `6` (`per_token_head_fp16`, `block16_fp32`, key-only `q8_0`) or prefix `8` for `q8_0_block32_fp32`, so no Q8 KV format is promoted without real HIP kernels and long BF16-vs-Q8 guards; `benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`.

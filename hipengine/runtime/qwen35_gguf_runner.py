@@ -2699,11 +2699,11 @@ _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 # Keep explicit INT8-KV short gates on the exact BF16 decode path. Long-context
-# sweeps found that memory-saving GGUF hybrids (prefix <=8 of 10 full-attention
-# layers) drift BF16 logits; only a 9-layer BF16 prefix passed 128K/128, and that
-# is a correctness fallback rather than a 24GB capacity path.
+# sweeps after the layer-local BF16 prefill-oracle fix found that prefix 8/10
+# full-attention layers passes 128K/128 while prefix 7 fails a 128K/16 top-1
+# guard. Prefix 8 is therefore the admitted GGUF Q4_K_M long-context hybrid.
 _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS = 8192
-_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS = 9
+_GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS = 8
 _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS"
 _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
@@ -3014,6 +3014,7 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    _int8_prefill_oracle_buffers: dict[int, tuple[DeviceBuffer, DeviceBuffer]] = field(default_factory=dict, init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
     _expert_pack8_library: object | None = field(default=None, init=False)
@@ -3147,7 +3148,7 @@ class Qwen35GGUFResidentSession:
             self.runner,
             rows=prefill_rows,
             capacity=prefill_capacity,
-            allocate_kv_cache=self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD,
+            allocate_kv_cache=False,
             runtime=runtime,
         )
         self._buffers = (
@@ -3343,9 +3344,7 @@ class Qwen35GGUFResidentSession:
         if full_bf16_mirror_cache is not None:
             bf16_mirror_cache = full_bf16_mirror_cache(layer_id)
         if bf16_mirror_cache is None:
-            if bulk_scratch.key_cache is None or bulk_scratch.value_cache is None:
-                raise RuntimeError("GGUF INT8 retained prefill requires a BF16 oracle cache in bulk scratch")
-            oracle_key_cache, oracle_value_cache = bulk_scratch.key_cache, bulk_scratch.value_cache
+            oracle_key_cache, oracle_value_cache = self._int8_prefill_oracle_cache_for_layer(layer_id)
         else:
             oracle_key_cache, oracle_value_cache = bf16_mirror_cache
         retained_key_cache, retained_value_cache = self.scratch.full_cache(layer_id)
@@ -3362,6 +3361,41 @@ class Qwen35GGUFResidentSession:
             retained_value_cache=retained_value_cache,
             retained_append_spans=retained_append_spans,
         )
+
+    def _int8_prefill_oracle_cache_for_layer(self, layer_id: int) -> tuple[DeviceBuffer, DeviceBuffer]:
+        """Return a per-layer BF16 oracle cache for INT8-retained GGUF prefill.
+
+        Chunk-outer bulk prefill revisits each layer once per prompt chunk. A
+        single shared oracle cache is therefore unsafe when more than one
+        full-attention layer is INT8-retained: later layers overwrite earlier
+        layers' previous chunks before those earlier layers process the next
+        chunk. Keep the temporary BF16 oracle layer-local for the duration of
+        one prefill, then release it before decode.
+        """
+
+        if self.scratch is None or self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        layer = int(layer_id)
+        cached = self._int8_prefill_oracle_buffers.get(layer)
+        if cached is not None:
+            return cached
+        cfg = self.runner.weights.config
+        nbytes = int(self.scratch.max_positions) * int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+        runtime = self.runtime or get_hip_runtime()
+        key_cache = malloc(nbytes, runtime=runtime)
+        value_cache = malloc(nbytes, runtime=runtime)
+        cached = (key_cache, value_cache)
+        self._int8_prefill_oracle_buffers[layer] = cached
+        return cached
+
+    def _release_int8_prefill_oracle_buffers(self) -> None:
+        if not self._int8_prefill_oracle_buffers:
+            return
+        runtime = self.runtime or get_hip_runtime()
+        for key_cache, value_cache in reversed(tuple(self._int8_prefill_oracle_buffers.values())):
+            free(value_cache, runtime=runtime)
+            free(key_cache, runtime=runtime)
+        self._int8_prefill_oracle_buffers.clear()
 
     def prefill(
         self,
@@ -3588,7 +3622,10 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         last_hidden_ptr = last_bulk_scratch.norm.ptr
-        return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
+        try:
+            return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
+        finally:
+            self._release_int8_prefill_oracle_buffers()
 
     def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
         if self._expert_sidecar_reader is None or self._expert_sidecar_model_map is None:
@@ -3966,6 +4003,7 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        self._release_int8_prefill_oracle_buffers()
         for buffer in reversed(self._buffers):
             if buffer is not None:
                 free(buffer, runtime=runtime)

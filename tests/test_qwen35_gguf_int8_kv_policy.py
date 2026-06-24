@@ -77,11 +77,13 @@ def test_gguf_full_attention_prefill_scratch_retains_bf16_cache_by_default() -> 
     assert layer_scratch.retained_append_spans is None
 
 
-def test_gguf_int8_full_attention_prefill_uses_bf16_oracle_and_retained_int8_cache() -> None:
+def test_gguf_int8_full_attention_prefill_uses_layer_local_bf16_oracle_and_retained_int8_cache() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
-    oracle_key = _Buffer(0x5000, 32)
-    oracle_value = _Buffer(0x6000, 32)
+    shared_oracle_key = _Buffer(0x5000, 32)
+    shared_oracle_value = _Buffer(0x6000, 32)
+    layer_oracle_key = _Buffer(0x5100, 64)
+    layer_oracle_value = _Buffer(0x6200, 64)
     retained_key = _Buffer(0x7000, 16)
     retained_value = _Buffer(0x8000, 16)
     metadata = _scale_metadata()
@@ -93,12 +95,13 @@ def test_gguf_int8_full_attention_prefill_uses_bf16_oracle_and_retained_int8_cac
             "full_scale_metadata": lambda self, layer_id: metadata,
         },
     )()
-    bulk = _BulkScratch(key_cache=oracle_key, value_cache=oracle_value, append_spans=_bf16_append_spans())
+    session._int8_prefill_oracle_cache_for_layer = lambda layer_id: (layer_oracle_key, layer_oracle_value)
+    bulk = _BulkScratch(key_cache=shared_oracle_key, value_cache=shared_oracle_value, append_spans=_bf16_append_spans())
 
     layer_scratch = session._full_attention_prefill_scratch_for_layer(bulk, 7)
 
-    assert layer_scratch.key_cache is oracle_key
-    assert layer_scratch.value_cache is oracle_value
+    assert layer_scratch.key_cache is layer_oracle_key
+    assert layer_scratch.value_cache is layer_oracle_value
     assert layer_scratch.retained_key_cache is retained_key
     assert layer_scratch.retained_value_cache is retained_value
     assert layer_scratch.retained_append_spans is not None

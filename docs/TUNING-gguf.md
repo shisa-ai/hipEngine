@@ -142,17 +142,21 @@ rerun. Artifact:
 `benchmarks/results/2026-06-18-gpu1-gguf-q4km-int8kv-128k-diagnostic.json`.
 The 2026-06-21 short BF16 mirror fixes short-gate IDs/logits, but the unmirrored
 INT8-only route still fails BF16-vs-INT8 logits (`4K` no-mirror W7900 gate:
-`KL=0.275781`, top-1 `0.5`). The 2026-06-22 localization found the error source:
-early full-attention layers amplify small INT8 value-quantization perturbations
-(layer 3 alone gives `KL=0.618776`). A 3-BF16/7-INT8 hybrid passed only the
-forced-long `4K` gate (`KL mean=0.014025`, top-1 `1.0`), then failed the W7900
-`128K/128` gate (`KL mean=3.849`, top-1 `0.1628`, first mismatch at prefill).
-The 2026-06-23 prefix sweep across `32K/64K/128K` found that every memory-saving
-prefix `3..8` fails; only prefix `9` or all-BF16 prefix `10` passes prefill, and
-a full `128K/128` prefix-9 decode confirmation passes (`KL mean=2.59e-4`, top-1
-`0.969`) but peaks at `25.112 GiB`, higher than BF16 and not a 24GB path. The
-runtime safety fallback is therefore prefix `9`; lower prefixes and pure INT8 now
-require `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. A first
+`KL=0.275781`, top-1 `0.5`). The 2026-06-22/23 prefix work initially overblamed
+INT8 quality because the shared temporary BF16 prefill oracle was unsafe in
+chunk-outer bulk prefill: with more than one INT8-retained full-attention layer,
+later layers overwrote earlier layers' previous prompt chunks before those earlier
+layers processed the next chunk. The 2026-06-24 fix makes that oracle layer-local
+and releases it before decode. After the fix, prefix `3` prefill-only `128K` goes
+from `KL=3.0906` / top-1 `0.0` to exact `KL=0` / top-1 `1.0` with no persistent
+BF16 mirror.
+
+Decode quality is still the real constraint: pure INT8 fails `4K/1`, prefix `6`
+and prefix `7` fail the `128K/16` top-1 guard (`0.88235` for prefix `7`), and the
+new no-env default prefix `8` passes full W7900 `128K/128` (`KL mean=0.01448`,
+top-1 `0.96124`, no persistent BF16 mirror, candidate peak/current
+`25.239/24.738 GiB`). Lower prefixes and pure INT8 therefore still require
+`HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. A first
 host-side QDQ format sweep (`scripts/qwen35_gguf_q8_format_sweep.py`) did not find
 an all-Q8 4K/1 candidate that passes the KL/top-1 gate: per-token/head FP16,
 per-token/head FP32, llama-style `q8_0` block32 FP16/FP32, block16/block64, and
@@ -164,8 +168,9 @@ Evidence:
 `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`,
 `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`,
-`benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`, and
-`benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`.
+`benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`,
+`benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`, and
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,
@@ -405,17 +410,16 @@ Current focused lanes from evidence:
   normal, rerun hermetically before blaming kernels.
 - **GGUF INT8 KV correctness is now localized and guarded.** Short explicit
   `--kv-storage int8_per_token_head` sessions still use a BF16 mirror and match
-  BF16 IDs/logits. Long sessions no longer use the rejected pure INT8-only route
-  or the rejected memory-saving hybrid prefixes: the W7900 `32K/64K/128K` sweep
-  rejected prefixes `3..8`; prefix `9` is the first passing point and full
-  `128K/128` prefix-9 confirmation passes (`KL mean=2.59e-4`, top-1 `0.969`) but
-  peaks at `25.112 GiB`, higher than BF16. GPU1 `128K/128` with prefix-3 remains
-  a capacity/throughput diagnostic (`756.715/66.053 tok/s`, `23.291 GiB` tracked),
-  not a promoted row. Lower prefixes now require the unverified-long diagnostic
-  env. The first QDQ-only Q8-format sweep found no all-Q8 4K/1 pass; approximate
-  passes still need at least 6 BF16-prefix full-attention layers (or 8 for
-  `q8_0_block32_fp32`), so a 24GB solution needs a real HIP Q8-format kernel plus
-  long guard evidence, or non-KV memory reduction.
+  BF16 IDs/logits. Long sessions use layer-local temporary BF16 prefill oracles
+  for INT8-retained full-attention layers, because a single shared oracle is
+  unsafe under chunk-outer prefill when more than one INT8 layer is active. The
+  no-env W7900 `128K/128` guard now accepts prefix `8` (`KL mean=0.01448`, top-1
+  `0.96124`, no persistent BF16 mirror); prefix `7` still fails `128K/16` top-1
+  and pure INT8 fails `4K/1`. Lower prefixes still require the unverified-long
+  diagnostic env. The first QDQ-only Q8-format sweep found no all-Q8 4K/1 pass;
+  approximate passes still need at least 6 BF16-prefix full-attention layers (or
+  8 for `q8_0_block32_fp32`), so a deeper 24GB solution needs a real HIP Q8-format
+  kernel plus long guard evidence, or non-KV memory reduction.
 - **Refresh attribution before the next optimization pass.** Before touching more
   kernels, regenerate hermetic Q4_K_M `rocprofv3` bucket summaries for the
   current tree at `512`, `4K`, `32K`, and `128K`/largest-fitting context. Pick the
