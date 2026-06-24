@@ -124917,3 +124917,23 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Raw weighted tok/s regressed `45.77177230711414 -> 45.740176638504124` (-0.069%). Candidate accounting doubled (`total_drafts 4000 -> 8000`), draft acceptance dropped `0.0225 -> 0.011375`, and accepted/output only rose `0.474 -> 0.476`; no mechanical runtime win justified the tradeoff.
 - Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
 - Prompt verifier passed policy-wise (generic root top-K policy, no prompt/token/benchmark gaming), but same-denominator performance acceptance failed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 37 rejected: B1 root top-64 exact-verification default
+
+### Hypothesis
+- Root top-80 overshot the knee, but root top-40 still won. An intermediate uniform root top-64 policy might improve visible-output throughput without the full top-80 overhead/accounting regression.
+
+### Result
+- Rejected by the optimize loop and reverted; root-top40 remains the retained default.
+- Prototype changed `DEFAULT_ROOT_TOPK_ACCEPT` from `40` to `64`; sibling top-k stayed `1`, branch-redraft stayed off, and active-K timed selection stayed unchanged.
+- Smoke: `/tmp/hipengine-mtp-root64-default-smoke-20260624-133713.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`.
+  - Root/sibling K=`64/1`; proposal row length `64`; avg target verify `18.00 ms`, avg draft `7.17 ms`, `39.75 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-133944/summary.json`.
+  - True no-MTP AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, `56.33418489086828 tok/s`.
+  - B1 root-top64 reported `45.58875127397884 tok/s`, `0.8092555410590264x` true AR, `draft_acceptance=0.01421875`, `accepted_per_output=0.47643979057591623`, `decode_ms=4189.63`.
+- Raw weighted tok/s regressed `45.77177230711414 -> 45.58875127397884` (-0.40%). On the rerun true-AR denominator, retained root-top40 raw tok/s would be `0.8125043860274919x`, above the candidate `0.8092555410590264x`.
+- Candidate accounting increased (`total_drafts 4000 -> 6400`), draft acceptance dropped `0.0225 -> 0.01421875`, and accepted/output only rose `0.474 -> 0.476`; no mechanical runtime win justified the tradeoff.
+- Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
+- Prompt verifier passed policy-wise (generic root top-K policy, no prompt/token/benchmark gaming), but same-denominator performance acceptance failed. Reverted.
