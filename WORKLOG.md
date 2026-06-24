@@ -124508,3 +124508,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - Avg target verify `18.05 ms`, avg draft `8.02 ms`, throughput `38.36 tok/s` on 2 cycles.
   - Cycle 0 draft stayed `[248045]`, but cycle 1 draft changed from the retained path's `[1710]` to `[3709]`.
 - This is a proposal/math change, it changed the draft token stream, and it did not improve smoke draft latency over the retained ~7ms path. No expensive full-suite run was needed.
+
+## 2026-06-24 — mtp-gguf-final iteration 17: no-code B1/B2/B3 rebaseline
+
+### Purpose
+- Rebaseline the retained path after smoke-only abort logs had polluted the multiloop `current` metric. No runtime, benchmark, prompt, or test code changed.
+
+### Evidence
+- Current-HEAD true AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar-rebaseline/true-ar-baseline.json`, `decode_tok_s_weighted=56.26602130998591`.
+- Summary: `/tmp/hipengine-mtp-gguf-final/run-rebaseline-20260624-053638/summary.json`.
+- Full-suite metrics:
+  - B1: `41.96460434317133 tok/s`, `0.7458249822210832x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - B2: `34.943363694100185 tok/s`, `0.6210384683428567x` true AR, `draft_acceptance=0.185`, `accepted_per_output=0.27007299270072993`.
+  - B3: `30.857404266521655 tok/s`, `0.5484198730974637x` true AR, `draft_acceptance=0.14333333333333334`, `accepted_per_output=0.3006993006993007`.
+- Guard passed: `py_compile` selected MTP scripts/runtime plus configured MTP pytest guard (`436` tests).
+- Prompt verifier passed: no code changes, no prompt/token/rank hardcoding, no denominator changes.
+- Multiloop recorded this as a `KEEP` only to restore a clean current measurement after the smoke-abort metrics; it is not a new performance claim and does not supersede the best retained target-graph artifact (`0.7510349576460698`).
