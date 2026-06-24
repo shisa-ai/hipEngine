@@ -124377,3 +124377,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - Current B1/B2/B3 guard baseline: ratio `0.7498638500816287`; best retained target-graph metric `0.7510349576460698`.
   - Delta vs current: ratio `-0.4%`, tok/s regressed; acceptance/output unchanged.
 - Guard still passed (`py_compile` + 436 MTP tests), and the prompt verifier found no prompt/token/rank hardcoding. Reverted the code/test changes; no runtime behavior retained.
+
+## 2026-06-24 — mtp-gguf-final iteration 8 rejected: MTP context replay default
+
+### Hypothesis
+- The default GGUF-MTP diagnostic uses only the final target hidden seed after bulk prefill. `--mtp-context-replay` persists committed target/MTP rows, which might improve draft acceptance enough to offset overhead now that target verification is graph replayed.
+
+### Result
+- Rejected by the optimize loop; no code changes were made.
+- Proper current-HEAD true AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar-context-replay/true-ar-baseline.json`, `decode_tok_s_weighted=56.41331496538767`.
+- Context replay summary: `/tmp/hipengine-mtp-gguf-final/run-context-replay-20260624-015601/summary.json`.
+- Full-suite metrics with `--mtp-context-replay`:
+  - B1: `42.138373126999085 tok/s`, `0.7469579327655721x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - B2: `35.43851934244733 tok/s`, `0.6281942368426779x` true AR, `draft_acceptance=0.185`, `accepted_per_output=0.27007299270072993`.
+  - B3: `30.787912192013227 tok/s`, `0.545756125320824x` true AR, `draft_acceptance=0.14333333333333334`, `accepted_per_output=0.3006993006993007`.
+- Current B1/B2/B3 guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`), and best retained B1 target-graph metric is `0.7510349576460698`.
+- Guard passed (`py_compile` + 436 MTP tests), and prompt verifier found no prompt/token/rank hardcoding. Do not make context replay default.
