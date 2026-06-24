@@ -124649,3 +124649,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-094515/summary.json`.
   - B1: `42.81269278353296 tok/s`, `0.7587354675543514x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
 - This regressed vs the retained argmax row (`42.99313463960243 tok/s`, `0.760991932477236x`) with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but B1 raw speed and ratio regressed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 25 rejected: embedding-row view instead of copy
+
+### Hypothesis
+- The timed B1 draft path copied the selected token embedding row before passing it to the MTP wrapper. A full single-row slice of the contiguous embedding matrix is already C-contiguous and the wrapper only reads it for H2D upload, so dropping `.copy()` could save a small timed host memcpy without changing logits, proposals, or verification.
+
+### Result
+- Rejected by the optimize loop and reverted; no benchmark/runtime code retained beyond the iteration 22 argmax keep.
+- Prototype removed `.copy()` from `token_embd_f32[current_token:current_token+1]` in warmup/draft/redraft call sites.
+- Smoke: `/tmp/hipengine-mtp-token-embed-view-smoke-20260624-095720.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; diagnostic top-10 length remained `10`.
+  - Avg target verify `17.96 ms`, avg draft `7.16 ms`, `39.80 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-095950/summary.json`.
+  - B1: `42.664982463684375 tok/s`, `0.7562069964797072x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- This regressed vs the retained argmax row (`42.99313463960243 tok/s`, `0.760991932477236x`) with unchanged acceptance/output. Guard passed (`py_compile` + 437 tests), prompt verifier passed, but B1 raw speed and ratio regressed. Reverted.
