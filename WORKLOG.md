@@ -124799,3 +124799,23 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
 - Prompt verifier passed: generic exact-verification root top-K policy only; no prompt text, token IDs, candidate-token patterns, fixture IDs, benchmark detection, target-token rescue logic, prompt-suite edits, true-AR denominator manipulation, or accepted/output-only keep policy.
 - Rollup updated: `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-root-top5-gfx1151.json`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-06-24 — mtp-gguf-final iteration 32 rejected: B1 root top-6 exact-verification default
+
+### Hypothesis
+- Root top-5 still improved raw B1 tok/s and same-denominator ratio, but the marginal accepted-token gain was shrinking. Testing K=6 would show whether one more uniform root candidate still improves visible-output throughput or crosses the overhead/accounting knee.
+
+### Result
+- Rejected by the optimize loop and reverted; root-top5 remains the retained default.
+- Prototype changed `DEFAULT_ROOT_TOPK_ACCEPT` from `5` to `6`; sibling top-k stayed `1`, branch-redraft stayed off, and active-K timed selection stayed unchanged.
+- Smoke: `/tmp/hipengine-mtp-root6-default-smoke-20260624-120145.json`.
+  - Target graph effective with no fallback.
+  - Target tokens matched retained path: `[148368]`, `[248068]`; draft tokens matched retained path: `[248045]`, `[1710]`; diagnostic top-10 length remained `10`.
+  - Root/sibling K=`6/1`; avg target verify `17.95 ms`, avg draft `6.98 ms`, `40.10 tok/s` on 2 cycles.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260624-120413/summary.json`.
+  - True no-MTP AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, `56.40622296995055 tok/s`.
+  - B1 root-top6: `44.573335673433455 tok/s`, `0.7902201800886249x` true AR, `draft_acceptance=0.1`, `accepted_per_output=0.375`, `decode_ms=3589.59`.
+- Compared with retained root-top5, raw weighted tok/s regressed `44.687369952771036 -> 44.573335673433455` (-0.26%). On the rerun true-AR denominator, retained root-top5 raw tok/s would be `0.7922418414113186x`, above the candidate `0.7902201800886249x`.
+- Proposal accounting tradeoff failed: root K=6 increases candidate accounting (`total_drafts 500 -> 600`) and drops draft acceptance `0.120 -> 0.100`, but exact accepted/output stays flat at `0.375` (`60` accepted visible tokens). No mechanical runtime win justifies the tradeoff.
+- Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
+- Prompt verifier passed policy-wise (generic root top-K policy, no prompt/token/benchmark gaming), but performance acceptance failed. Reverted.
