@@ -10,11 +10,13 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV,
     _GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV,
     _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV,
+    _GGUF_INT8_KV_KEY_ONLY_ENV,
     _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
     Qwen35GGUFResidentSession,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_int8_bf16_prefix_full_attention_layers,
     _gguf_int8_effective_scale_dtype,
+    _gguf_int8_kv_value_bf16_enabled,
     _validate_gguf_int8_kv_context,
 )
 from scripts.qwen35_gguf_bench import _decode_scratch_breakdown
@@ -34,6 +36,7 @@ class _BulkScratch:
     retained_key_cache: object | None = None
     retained_value_cache: object | None = None
     retained_append_spans: KVLiveSpans | None = None
+    int8_kv_value_bf16: bool = False
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: DType) -> Tensor:
@@ -82,6 +85,7 @@ def test_gguf_full_attention_prefill_scratch_retains_bf16_cache_by_default() -> 
 def test_gguf_int8_full_attention_prefill_uses_layer_local_bf16_oracle_and_retained_int8_cache() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session.int8_kv_value_bf16 = True
     shared_oracle_key = _Buffer(0x5000, 32)
     shared_oracle_value = _Buffer(0x6000, 32)
     layer_oracle_key = _Buffer(0x5100, 64)
@@ -110,6 +114,7 @@ def test_gguf_int8_full_attention_prefill_uses_layer_local_bf16_oracle_and_retai
     assert layer_scratch.retained_append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
     assert layer_scratch.retained_append_spans.scale_metadata is metadata
     assert layer_scratch.append_spans.storage_dtype is DType.BF16
+    assert layer_scratch.int8_kv_value_bf16 is True
 
 
 def test_gguf_int8_hybrid_prefill_uses_bf16_primary_when_layer_has_no_scale_metadata() -> None:
@@ -141,6 +146,7 @@ def test_gguf_int8_hybrid_prefill_uses_bf16_primary_when_layer_has_no_scale_meta
 def test_gguf_int8_short_prefill_prefers_bf16_mirror_cache_when_available() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session.int8_kv_value_bf16 = False
     oracle_key = _Buffer(0x5000, 32)
     oracle_value = _Buffer(0x6000, 32)
     mirror_key = _Buffer(0x6100, 64)
@@ -168,6 +174,18 @@ def test_gguf_int8_short_prefill_prefers_bf16_mirror_cache_when_available() -> N
     assert layer_scratch.retained_append_spans is not None
     assert layer_scratch.retained_append_spans.storage_dtype is DType.INT8_PER_TOKEN_HEAD
     assert layer_scratch.retained_append_spans.scale_metadata is metadata
+    assert layer_scratch.int8_kv_value_bf16 is False
+
+
+def test_gguf_int8_key_only_env_is_diagnostic_opt_in(monkeypatch) -> None:
+    monkeypatch.delenv(_GGUF_INT8_KV_KEY_ONLY_ENV, raising=False)
+    assert _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=DType.BF16) is False
+    assert _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD) is False
+
+    monkeypatch.setenv(_GGUF_INT8_KV_KEY_ONLY_ENV, "1")
+    assert _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=DType.BF16) is False
+    assert _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD) is True
+
 
 
 def test_gguf_int8_context_guard_allows_short_mirror_without_env(monkeypatch) -> None:

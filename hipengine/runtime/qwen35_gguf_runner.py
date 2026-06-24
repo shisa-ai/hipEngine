@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     build_qwen35_paged_attn_decode,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_bf16_to_bf16,
+    qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
@@ -37,6 +38,8 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     build_qwen35_paged_kv_write,
+    qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans,
+    qwen35_write_paged_kv_int8_key_bf16_value_spans,
     qwen35_write_paged_kv_int8_per_token_head_prompt_spans,
     qwen35_write_paged_kv_int8_per_token_head_spans,
     qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
@@ -1204,22 +1207,39 @@ class Qwen35GGUFFullStackRunner:
                 library=cast_library,
                 runtime=runtime,
             )
-            qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
-                scratch.full_key.ptr,
-                scratch.full_key_raw.ptr,
-                scratch.retained_key_cache.ptr,
-                scratch.retained_value_cache.ptr,
-                retained_spans.scale_metadata.k_scale.ptr,
-                retained_spans.scale_metadata.v_scale.ptr,
-                retained_spans,
-                rows,
-                scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
+            if getattr(scratch, "int8_kv_value_bf16", False):
+                qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
+                    scratch.full_key.ptr,
+                    scratch.full_key_raw.ptr,
+                    scratch.retained_key_cache.ptr,
+                    scratch.retained_value_cache.ptr,
+                    retained_spans.scale_metadata.k_scale.ptr,
+                    retained_spans,
+                    rows,
+                    scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
+            else:
+                qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
+                    scratch.full_key.ptr,
+                    scratch.full_key_raw.ptr,
+                    scratch.retained_key_cache.ptr,
+                    scratch.retained_value_cache.ptr,
+                    retained_spans.scale_metadata.k_scale.ptr,
+                    retained_spans.scale_metadata.v_scale.ptr,
+                    retained_spans,
+                    rows,
+                    scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
         threshold = int(PrefillConfig().attn_aotriton_min_tokens)
         use_aotriton = threshold > 0 and rows >= threshold
         paged_attn_library = self._paged_attn_decode_library()
@@ -1874,21 +1894,37 @@ class Qwen35GGUFFullStackRunner:
                 library=cast_library,
                 runtime=runtime,
             )
-            qwen35_write_paged_kv_int8_per_token_head_spans(
-                scratch.full_key.ptr,
-                scratch.full_key_raw.ptr,
-                key_cache.ptr,
-                value_cache.ptr,
-                metadata.k_scale.ptr,
-                metadata.v_scale.ptr,
-                append_spans,
-                scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
+            if getattr(scratch, "int8_kv_value_bf16", False):
+                qwen35_write_paged_kv_int8_key_bf16_value_spans(
+                    scratch.full_key.ptr,
+                    scratch.full_key_raw.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    metadata.k_scale.ptr,
+                    append_spans,
+                    scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
+            else:
+                qwen35_write_paged_kv_int8_per_token_head_spans(
+                    scratch.full_key.ptr,
+                    scratch.full_key_raw.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    metadata.k_scale.ptr,
+                    metadata.v_scale.ptr,
+                    append_spans,
+                    scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
             if bf16_mirror_cache is not None:
                 mirror_key_cache, mirror_value_cache = bf16_mirror_cache
                 qwen35_write_paged_kv_mixed_value_bf16_spans(
@@ -1928,31 +1964,57 @@ class Qwen35GGUFFullStackRunner:
                 int(scratch.full_attn_split_count),
                 max(1, (active_context + chunk_size - 1) // chunk_size),
             )
-            qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans(
-                scratch.full_query.ptr,
-                key_cache.ptr,
-                value_cache.ptr,
-                metadata.k_scale.ptr,
-                metadata.v_scale.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                scratch.full_attn_split_partial.ptr,
-                scratch.full_attn_split_m.ptr,
-                scratch.full_attn_split_l.ptr,
-                decode_spans,
-                chunk_size,
-                num_splits,
-                scratch.block_size,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length,
-                1,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
+            if getattr(scratch, "int8_kv_value_bf16", False):
+                qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans(
+                    scratch.full_query.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    metadata.k_scale.ptr,
+                    scratch.full_gate.ptr,
+                    scratch.full_gated.ptr,
+                    scratch.full_attn_split_partial.ptr,
+                    scratch.full_attn_split_m.ptr,
+                    scratch.full_attn_split_l.ptr,
+                    decode_spans,
+                    chunk_size,
+                    num_splits,
+                    scratch.block_size,
+                    cfg.head_count,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    cfg.key_length,
+                    1,
+                    cfg.key_length ** -0.5,
+                    stream=stream,
+                    library=paged_attn_library,
+                    runtime=runtime,
+                )
+            else:
+                qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans(
+                    scratch.full_query.ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    metadata.k_scale.ptr,
+                    metadata.v_scale.ptr,
+                    scratch.full_gate.ptr,
+                    scratch.full_gated.ptr,
+                    scratch.full_attn_split_partial.ptr,
+                    scratch.full_attn_split_m.ptr,
+                    scratch.full_attn_split_l.ptr,
+                    decode_spans,
+                    chunk_size,
+                    num_splits,
+                    scratch.block_size,
+                    cfg.head_count,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    cfg.key_length,
+                    1,
+                    cfg.key_length ** -0.5,
+                    stream=stream,
+                    library=paged_attn_library,
+                    runtime=runtime,
+                )
         else:
             if bf16_mirror_cache is not None:
                 key_cache, value_cache = bf16_mirror_cache
@@ -2707,6 +2769,7 @@ _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS = 8
 _GGUF_INT8_BF16_PREFIX_FULL_ATTENTION_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS"
 _GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS"
 _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
+_GGUF_INT8_KV_KEY_ONLY_ENV = "HIPENGINE_GGUF_INT8_KV_KEY_ONLY"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
@@ -2762,6 +2825,10 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
 
 def _gguf_host_token_embedding_requested() -> bool:
     return _env_flag(_GGUF_HOST_TOKEN_EMBEDDING_ENV, False)
+
+
+def _gguf_int8_kv_value_bf16_enabled(*, kv_storage_dtype: DType) -> bool:
+    return kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and _env_flag(_GGUF_INT8_KV_KEY_ONLY_ENV, False)
 
 
 def _gguf_int8_bf16_prefix_full_attention_layers(*, kv_storage_dtype: DType, max_positions: int) -> int:
@@ -3107,6 +3174,7 @@ class Qwen35GGUFResidentSession:
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
+    int8_kv_value_bf16: bool = field(default=False, init=False)
     int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
 
@@ -3135,6 +3203,7 @@ class Qwen35GGUFResidentSession:
         self.kv_storage_dtype = DType.parse(getattr(self.kv_policy, "storage_dtype", DType.BF16))
         if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
             raise ValueError("GGUF resident full-attention KV storage must be bf16 or int8_per_token_head")
+        self.int8_kv_value_bf16 = _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=self.kv_storage_dtype)
         self.kv_scale_dtype = DType.parse(self.kv_scale_dtype)
         if self.kv_scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("GGUF resident INT8 KV scales must use fp16 or fp32")
@@ -3200,6 +3269,7 @@ class Qwen35GGUFResidentSession:
             kv_storage_dtype=self.kv_storage_dtype,
             kv_scale_dtype=self.kv_scale_dtype,
             kv_scale_granularity=self.kv_scale_granularity,
+            int8_kv_value_bf16=self.int8_kv_value_bf16,
             int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
             int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
         )
@@ -3425,6 +3495,7 @@ class Qwen35GGUFResidentSession:
                 retained_key_cache=None,
                 retained_value_cache=None,
                 retained_append_spans=None,
+                int8_kv_value_bf16=False,
             )
         bf16_mirror_cache = None
         full_bf16_mirror_cache = getattr(self.scratch, "full_bf16_mirror_cache", None)
@@ -3447,6 +3518,7 @@ class Qwen35GGUFResidentSession:
             retained_key_cache=retained_key_cache,
             retained_value_cache=retained_value_cache,
             retained_append_spans=retained_append_spans,
+            int8_kv_value_bf16=getattr(self, "int8_kv_value_bf16", False),
         )
 
     def _int8_prefill_oracle_cache_for_layer(self, layer_id: int) -> tuple[DeviceBuffer, DeviceBuffer]:
@@ -4295,6 +4367,7 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_rows_capacity: int
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
+    int8_kv_value_bf16: bool = False
     start: int = 0
 
     @classmethod
@@ -4593,6 +4666,7 @@ class _FullStackScratch:
     kv_storage_dtype: DType
     kv_scale_dtype: DType
     kv_scale_granularity: str
+    int8_kv_value_bf16: bool
     int8_bf16_full_attention_layer_indices: tuple[int, ...]
     block_table: object
     position_buf: object
@@ -4647,6 +4721,7 @@ class _FullStackScratch:
         kv_storage_dtype: str | DType = DType.BF16,
         kv_scale_dtype: str | DType = DType.FP16,
         kv_scale_granularity: str = "per_token_head",
+        int8_kv_value_bf16: bool = False,
         int8_bf16_prefix_full_attention_layers: int = 0,
         int8_bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
     ):
@@ -4665,6 +4740,7 @@ class _FullStackScratch:
             raise ValueError("GGUF INT8 KV scales must use fp16 or fp32")
         if kv_scale_granularity != "per_token_head":
             raise ValueError("GGUF INT8 KV scale granularity must be per_token_head")
+        int8_kv_value_bf16 = bool(int8_kv_value_bf16 and kv_storage == DType.INT8_PER_TOKEN_HEAD)
         requested_positions = block_size if max_sequence_length is None else int(max_sequence_length)
         if requested_positions <= 0:
             raise ValueError("max_sequence_length must be positive")
@@ -4743,9 +4819,12 @@ class _FullStackScratch:
                 layer_uses_int8 = kv_storage == DType.INT8_PER_TOKEN_HEAD and (
                     full_attention_index not in bf16_full_attention_index_set
                 )
-                cache_nbytes = int8_cache_nbytes if layer_uses_int8 else bf16_cache_nbytes
-                key_cache = buf(cache_nbytes)
-                value_cache = buf(cache_nbytes)
+                key_cache_nbytes = int8_cache_nbytes if layer_uses_int8 else bf16_cache_nbytes
+                value_cache_nbytes = (
+                    bf16_cache_nbytes if layer_uses_int8 and int8_kv_value_bf16 else key_cache_nbytes
+                )
+                key_cache = buf(key_cache_nbytes)
+                value_cache = buf(value_cache_nbytes)
                 cache_buffers.extend((key_cache, value_cache))
                 layer_conv_states.append(None)
                 layer_recurrent_states.append(None)
@@ -4878,6 +4957,7 @@ class _FullStackScratch:
             kv_storage_dtype=kv_storage,
             kv_scale_dtype=scale_dtype,
             kv_scale_granularity=kv_scale_granularity,
+            int8_kv_value_bf16=int8_kv_value_bf16,
             int8_bf16_full_attention_layer_indices=bf16_full_attention_indices,
             block_table=block_table,
             position_buf=position_buf,

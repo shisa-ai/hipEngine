@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Resident Qwen3.5 GGUF c=1 benchmark harness.
 
 The harness measures the public GGUF resident execution surface directly.  By
@@ -1014,6 +1015,7 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
         "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
         "kv_storage_dtype": getattr(getattr(scratch, "kv_storage_dtype", None), "value", None),
         "kv_scale_dtype": getattr(getattr(scratch, "kv_scale_dtype", None), "value", None),
+        "int8_kv_value_bf16": bool(getattr(scratch, "int8_kv_value_bf16", False)),
         "by_component_bytes": named,
     }
 

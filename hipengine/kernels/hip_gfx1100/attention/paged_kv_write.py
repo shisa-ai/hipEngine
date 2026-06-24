@@ -26,6 +26,12 @@ _SYMBOL_INT8_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_per_token_
 _SYMBOL_INT8_SCALE_FP16 = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_spans"
 _SYMBOL_INT8_SCALE_FP16_BATCH = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_batch_spans"
 _SYMBOL_INT8_SCALE_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_prompt_spans"
+_SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32 = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_spans"
+_SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_BATCH = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_batch_spans"
+_SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_prompt_spans"
+_SYMBOL_INT8_KEY_BF16_VALUE_SCALE_FP16 = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_fp16_spans"
+_SYMBOL_INT8_KEY_BF16_VALUE_SCALE_FP16_BATCH = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_fp16_batch_spans"
+_SYMBOL_INT8_KEY_BF16_VALUE_SCALE_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_fp16_prompt_spans"
 
 
 def plan_qwen35_paged_kv_write_build(
@@ -417,6 +423,114 @@ def qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
     )
 
 
+def qwen35_write_paged_kv_int8_key_bf16_value_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    spans: KVLiveSpans,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append one FP32 K/V row as INT8 key + BF16 value with per-token/head K scales."""
+
+    _launch_int8_key_bf16_value_write(
+        _int8_key_bf16_value_symbol(spans, batch=False, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        spans,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_key_bf16_value_batch_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append batched FP32 K/V rows into row-major INT8-key/BF16-value cache arenas."""
+
+    _launch_int8_key_bf16_value_write_batch(
+        _int8_key_bf16_value_symbol(spans, batch=True, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=True,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append prompt FP32 K/V rows into a shared INT8-key/BF16-value cache arena."""
+
+    _launch_int8_key_bf16_value_write_batch(
+        _int8_key_bf16_value_symbol(spans, batch=True, prompt=True),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=False,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "w4_paro", "mixed_bf16_spans"),
@@ -471,6 +585,21 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_batch_spans"),
         qwen35_write_paged_kv_int8_per_token_head_batch_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_key_bf16_value", "per_token_head_spans"),
+        qwen35_write_paged_kv_int8_key_bf16_value_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_key_bf16_value", "per_token_head_prompt_spans"),
+        qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_key_bf16_value", "per_token_head_batch_spans"),
+        qwen35_write_paged_kv_int8_key_bf16_value_batch_spans,
         replace=replace,
     )
 
@@ -706,6 +835,130 @@ def _launch_int8_write_batch(
     _check_launch(runtime, err)
 
 
+def _launch_int8_key_bf16_value_write(
+    symbol: str,
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    spans: KVLiveSpans,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    block_table_len = _check_int8_write_shape(
+        spans,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        k_scale_ptr=k_scale_ptr,
+        v_scale_ptr=_metadata_v_scale_ptr(spans),
+    )
+    library = library or build_qwen35_paged_kv_write(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(k_scale_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_int8_key_bf16_value_write_batch(
+    symbol: str,
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    row_major_cache: bool,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    block_table_len = _check_int8_write_batch_shape(
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=row_major_cache,
+        k_scale_ptr=k_scale_ptr,
+        v_scale_ptr=_metadata_v_scale_ptr(spans),
+    )
+    library = library or build_qwen35_paged_kv_write(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(k_scale_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _check_write_shape(
     spans: KVLiveSpans,
     block_size: int,
@@ -869,6 +1122,33 @@ def _int8_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:
     if batch:
         return _SYMBOL_INT8_SCALE_F32_BATCH
     return _SYMBOL_INT8_SCALE_F32
+
+
+def _int8_key_bf16_value_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:
+    metadata = spans.scale_metadata
+    scale_dtype = metadata.scale_dtype if metadata is not None else None
+    if scale_dtype == DType.FP32:
+        if prompt:
+            return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_PROMPT
+        if batch:
+            return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_BATCH
+        return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32
+    if scale_dtype == DType.FP16:
+        if prompt:
+            return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_FP16_PROMPT
+        if batch:
+            return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_FP16_BATCH
+        return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_FP16
+    if prompt:
+        return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_PROMPT
+    if batch:
+        return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_BATCH
+    return _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32
+
+
+def _metadata_v_scale_ptr(spans: KVLiveSpans) -> int:
+    metadata = spans.scale_metadata
+    return 0 if metadata is None else int(metadata.v_scale.ptr)
 
 
 def _block_table_len(spans: KVLiveSpans) -> int:

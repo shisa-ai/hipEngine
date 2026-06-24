@@ -167,16 +167,25 @@ an all-Q8 4K/1 candidate that passes the KL/top-1 gate: per-token/head FP16,
 per-token/head FP32, llama-style `q8_0` block32 FP16/FP32, block16/block64, and
 one-sided K/V variants all failed at BF16-prefix `0`. Approximate short-context
 passes appear only with BF16 prefix depth `>=6` (`block16_fp32` / current
-per-token-head) or `>=8` (`q8_0_block32_fp32`), so any real HIP Q8 KV follow-up
-must implement the format and rerun the long BF16-vs-Q8 guard before promotion.
+per-token-head) or `>=8` (`q8_0_block32_fp32`). A real HIP key-only diagnostic
+(`HIPENGINE_GGUF_INT8_KV_KEY_ONLY=1`, INT8 K + BF16 V) now has primitive CPU-reference
+coverage and a rocprof kernel-trace smoke, but it is not better than prefix-8
+per-token/head INT8: prefix `0` still fails `4K/1` (`KL mean=0.8731`, top-1
+`0.0` in the landed-env rerun), prefix `6` passes `4K/1` but fails `128K/16` top-1 (`0.88235`), and
+prefix `7` passes `128K/16` (`KL mean=0.00741`, top-1 `0.94118`) while saving
+less memory than the admitted prefix-8 per-token/head path and increasing tracked
+prefill peak due extra layer-local BF16 oracles (`25.554 GiB` peak / `24.803 GiB`
+current). Do not promote key-only KV; any remaining real HIP Q8 KV follow-up must
+implement a different format and rerun the long BF16-vs-Q8 guard before promotion.
 Evidence:
 `benchmarks/results/2026-06-22-gguf-q4km-int8kv-hybrid-correctness.json`,
 `benchmarks/results/2026-06-23-gpu1-gguf-q4km-int8kv-hybrid-128k-diagnostic.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-hybrid-128k-quality-rejected.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-int8kv-prefix-sweep.json`,
 `benchmarks/results/2026-06-23-w7900-gguf-q4km-q8kv-format-sweep-diagnostic.json`,
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`, and
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-noncontiguous-mask-diagnostic.json`.
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`,
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-noncontiguous-mask-diagnostic.json`, and
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,

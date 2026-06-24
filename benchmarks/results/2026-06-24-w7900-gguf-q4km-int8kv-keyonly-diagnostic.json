@@ -1,0 +1,270 @@
+{
+  "schema": 1,
+  "artifact_type": "diagnostic_correctness",
+  "status": "rejected_no_promotion",
+  "passed": false,
+  "performance_claim": false,
+  "model": "Qwen3.6-35B-A3B",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": "AMD Radeon Pro W7900 (GPU0)",
+  "date_utc": "2026-06-24",
+  "summary": "Real HIP INT8-key/BF16-value KV kernels are primitive-correct, but the model-level key-only GGUF path does not beat the admitted prefix-8 per-token/head INT8 KV guard.",
+  "default_change": "none; HIPENGINE_GGUF_INT8_KV_KEY_ONLY remains diagnostic-only and default explicit long INT8 KV remains prefix 8 per-token/head",
+  "primitive_cpu_reference_gate": {
+    "command": "python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp32 --seed 1234 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-keyonly-int8-primitive-64-520.json",
+    "status": "accepted",
+    "passed": true,
+    "cases": [
+      {
+        "name": "ctx64",
+        "context_len": 64,
+        "int8_key_bf16_value_path": {
+          "candidate": "hip_gfx1100",
+          "passed": true,
+          "max_abs_attn": 2.9802322387695312e-08,
+          "max_rel_attn": 0.0026374130975455046,
+          "blocked_reason": null,
+          "mismatch_reason": null,
+          "pseudo_logit_gate": {
+            "kl_mean": 6.926828792249137e-17,
+            "kl_max": 6.926828792249137e-17,
+            "top1_agreement": 1.0,
+            "passed": true
+          }
+        },
+        "bf16_vs_int8_key_bf16_value_quantization": {
+          "max_abs_attn": 5.2345916628837585e-05,
+          "max_rel_attn": 1.18197500705719,
+          "pseudo_logit_gate": {
+            "kl_mean": 9.628059599120923e-10,
+            "kl_max": 9.628059599120923e-10,
+            "top1_agreement": 1.0,
+            "passed": true
+          }
+        }
+      },
+      {
+        "name": "ctx520",
+        "context_len": 520,
+        "int8_key_bf16_value_path": {
+          "candidate": "hip_gfx1100",
+          "passed": true,
+          "max_abs_attn": 2.421438694000244e-08,
+          "max_rel_attn": 0.008112350478768349,
+          "blocked_reason": null,
+          "mismatch_reason": null,
+          "pseudo_logit_gate": {
+            "kl_mean": -4.0122457236840243e-16,
+            "kl_max": -4.0122457236840243e-16,
+            "top1_agreement": 1.0,
+            "passed": true
+          }
+        },
+        "bf16_vs_int8_key_bf16_value_quantization": {
+          "max_abs_attn": 1.7348589608445764e-05,
+          "max_rel_attn": 1.0548083782196045,
+          "pseudo_logit_gate": {
+            "kl_mean": 1.4454353454673245e-10,
+            "kl_max": 1.4454353454673245e-10,
+            "top1_agreement": 1.0,
+            "passed": true
+          }
+        }
+      }
+    ],
+    "source_json": "/tmp/hipengine-keyonly-int8-primitive-64-520.json"
+  },
+  "rocprof_kernel_trace": {
+    "command": "rocprofv3 --kernel-trace -d /tmp/hipengine-keyonly-rocprof -o keyonly -f csv -- env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp32 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-int8-hip --json /tmp/hipengine-keyonly-int8-primitive-rocprof.json",
+    "csv": "/tmp/hipengine-keyonly-rocprof/keyonly_kernel_trace.csv",
+    "keyonly_kernels": {
+      "void (anonymous namespace)::qwen35_write_paged_kv_int8_key_bf16_value_kernel<float>(float const*, float const*, signed char*, unsigned short*, float*, int const*, long const*, long, long, long, long, long, int)": {
+        "count": 64,
+        "duration_ns_total": 174801
+      },
+      "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernel<float, 8l, 16l, 2l>(float const*, signed char const*, unsigned short const*, float const*, int const*, long const*, float*, float*, float*, long, long, float)": {
+        "count": 1,
+        "duration_ns_total": 20520
+      }
+    },
+    "primitive_status": "accepted"
+  },
+  "model_quality_gates": {
+    "prefix0_4k_d1": {
+      "status": "rejected_correctness",
+      "passed": false,
+      "prompt_length": 4096,
+      "decode_steps_plus_prefill_row": 2,
+      "metrics": {
+        "first_top1_mismatch_index": 0,
+        "kl_max": 1.323495465262958,
+        "kl_mean": 0.8731151925708022,
+        "passed": false,
+        "top1_agreement": 0.0,
+        "top1_mismatch_count": 2
+      },
+      "candidate_layout": {
+        "bf16_primary_layer_count": 0,
+        "int8_layer_count": 10,
+        "bf16_primary_full_attention_indices": [],
+        "int8_full_attention_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "int8_kv_value_bf16": true,
+        "effective_kv_scale_dtype": "fp16",
+        "tracked_peak_allocated_gib": 26.87312412261963,
+        "tracked_current_allocated_gib": 24.36824131011963,
+        "mirror_cache_count": 0
+      },
+      "reference_peak_gib": 24.9846773147583,
+      "errors": [
+        "KL/top1 gate failed: kl_mean=0.873115 <= 0.05, top1=0 >= 0.9"
+      ],
+      "source_json": null
+    },
+    "prefix6_4k_d1": {
+      "status": "accepted",
+      "passed": true,
+      "prompt_length": 4096,
+      "decode_steps_plus_prefill_row": 2,
+      "metrics": {
+        "first_top1_mismatch_index": null,
+        "kl_max": 0.01105349766908148,
+        "kl_mean": 0.00552674883454074,
+        "passed": true,
+        "top1_agreement": 1.0,
+        "top1_mismatch_count": 0
+      },
+      "candidate_layout": {
+        "bf16_primary_layer_count": 6,
+        "int8_layer_count": 4,
+        "bf16_primary_full_attention_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "int8_full_attention_indices": [
+          6,
+          7,
+          8,
+          9
+        ],
+        "int8_kv_value_bf16": true,
+        "effective_kv_scale_dtype": "fp32",
+        "tracked_peak_allocated_gib": 25.743969917297363,
+        "tracked_current_allocated_gib": 24.742016792297363,
+        "mirror_cache_count": 0
+      },
+      "reference_peak_gib": 24.9846773147583,
+      "errors": [],
+      "source_json": null
+    },
+    "prefix6_128k_d16": {
+      "status": "rejected_correctness",
+      "passed": false,
+      "prompt_length": 131072,
+      "decode_steps_plus_prefill_row": 17,
+      "metrics": {
+        "first_top1_mismatch_index": 4,
+        "kl_max": 0.04994422748153369,
+        "kl_mean": 0.01594613449252543,
+        "passed": false,
+        "top1_agreement": 0.8823529411764706,
+        "top1_mismatch_count": 2
+      },
+      "candidate_layout": {
+        "bf16_primary_layer_count": 6,
+        "int8_layer_count": 4,
+        "bf16_primary_full_attention_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "int8_full_attention_indices": [
+          6,
+          7,
+          8,
+          9
+        ],
+        "int8_kv_value_bf16": true,
+        "effective_kv_scale_dtype": "fp32",
+        "tracked_peak_allocated_gib": 25.743969917297363,
+        "tracked_current_allocated_gib": 24.742016792297363,
+        "mirror_cache_count": 0
+      },
+      "reference_peak_gib": 24.9846773147583,
+      "errors": [
+        "KL/top1 gate failed: kl_mean=0.0159461 <= 0.05, top1=0.882353 >= 0.9"
+      ],
+      "source_json": null
+    },
+    "prefix7_128k_d16": {
+      "status": "accepted",
+      "passed": true,
+      "prompt_length": 131072,
+      "decode_steps_plus_prefill_row": 17,
+      "metrics": {
+        "first_top1_mismatch_index": 7,
+        "kl_max": 0.05464254513644506,
+        "kl_mean": 0.007405797197502134,
+        "passed": true,
+        "top1_agreement": 0.9411764705882353,
+        "top1_mismatch_count": 1
+      },
+      "candidate_layout": {
+        "bf16_primary_layer_count": 7,
+        "int8_layer_count": 3,
+        "bf16_primary_full_attention_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "int8_full_attention_indices": [
+          7,
+          8,
+          9
+        ],
+        "int8_kv_value_bf16": true,
+        "effective_kv_scale_dtype": "fp32",
+        "tracked_peak_allocated_gib": 25.554146766662598,
+        "tracked_current_allocated_gib": 24.802681922912598,
+        "mirror_cache_count": 0
+      },
+      "reference_peak_gib": 24.9846773147583,
+      "errors": [],
+      "source_json": null
+    }
+  },
+  "decision": {
+    "promoted": false,
+    "reason": "Prefix 6 is the smallest short-context pass but fails long 128K/16 top-1. Prefix 7 passes 128K/16 but has higher prefill peak and less current-memory saving than the existing prefix-8 per-token/head admitted path; all-key-only prefix 0 still fails 4K/1.",
+    "next_options": [
+      "Do not continue with per-token/head key-only as the 24GB solution.",
+      "Try a genuinely different calibrated KV format only if it has a long BF16-vs-candidate gate plan.",
+      "Otherwise switch to non-KV residency reductions."
+    ]
+  },
+  "notes": [
+    "Prefix 6/7 model-quality rows were collected with the same key-only runtime path before the env flag was renamed to HIPENGINE_GGUF_INT8_KV_KEY_ONLY; prefix0_4k_d1 was rerun after the rename and confirms the landed env selects the same key-only layout."
+  ]
+}

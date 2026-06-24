@@ -53,6 +53,7 @@ class SequenceRun:
     bf16_primary_full_attention_indices: list[int]
     int8_full_attention_indices: list[int]
     effective_kv_scale_dtype: str
+    int8_kv_value_bf16: bool
     max_sequence_length: int
 
 
@@ -181,6 +182,7 @@ def _run_sequence(
             int8_full_attention_indices,
         ) = _kv_layout_counts(session)
         effective_kv_scale_dtype = session.kv_scale_dtype.value
+        int8_kv_value_bf16 = bool(getattr(session, "int8_kv_value_bf16", False))
         stats = memory_stats()
     elapsed = time.perf_counter() - start
     logits = np.vstack(logits_rows).astype(np.float32, copy=False)
@@ -200,6 +202,7 @@ def _run_sequence(
         bf16_primary_full_attention_indices=[int(idx) for idx in bf16_primary_full_attention_indices],
         int8_full_attention_indices=[int(idx) for idx in int8_full_attention_indices],
         effective_kv_scale_dtype=str(effective_kv_scale_dtype),
+        int8_kv_value_bf16=bool(int8_kv_value_bf16),
         max_sequence_length=int(max_sequence_length),
     )
 
@@ -273,6 +276,7 @@ def _run_to_json(run: SequenceRun) -> dict[str, Any]:
         "bf16_primary_full_attention_indices": [int(idx) for idx in run.bf16_primary_full_attention_indices],
         "int8_full_attention_indices": [int(idx) for idx in run.int8_full_attention_indices],
         "effective_kv_scale_dtype": str(run.effective_kv_scale_dtype),
+        "int8_kv_value_bf16": bool(run.int8_kv_value_bf16),
         "max_sequence_length": int(run.max_sequence_length),
         "tracked_peak_allocated_gib": float(run.memory.get("peak_allocated_bytes", 0)) / (1024**3),
         "tracked_current_allocated_gib": float(run.memory.get("current_allocated_bytes", 0)) / (1024**3),
