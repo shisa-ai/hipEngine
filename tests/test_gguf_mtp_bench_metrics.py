@@ -22,11 +22,11 @@ from scripts.gguf_mtp_bench import (
 )
 
 
-def test_default_mtp_policy_is_b1_root_top3_speed_first() -> None:
+def test_default_mtp_policy_is_b1_root_top4_speed_first() -> None:
     args = build_arg_parser().parse_args([])
 
     assert args.draft_n_max == 1
-    assert args.root_topk_accept == 3
+    assert args.root_topk_accept == 4
     assert args.sibling_topk_accept == 1
     assert args.topk_branch_redraft is False
     assert args.mtp_draft_warmup is True
