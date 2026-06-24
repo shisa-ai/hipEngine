@@ -14,7 +14,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.tensor import Tensor
 
 _SPAN_ROLES = {"prefill", "decode", "verify_chain", "verify_tree"}
-_SCALE_GRANULARITIES = {"per_token_head"}
+_SCALE_GRANULARITIES = {"per_token_head", "block16"}
 _SCALE_DTYPES = {DType.FP16, DType.FP32}
 
 
@@ -41,7 +41,7 @@ class KVScaleMetadata:
         if self.k_scale.dtype != parsed or self.v_scale.dtype != parsed:
             raise ValueError("scale tensor dtypes must match scale_dtype")
         if self.granularity not in _SCALE_GRANULARITIES:
-            raise ValueError("scale granularity must be per_token_head")
+            raise ValueError("scale granularity must be per_token_head or block16")
 
     @property
     def device(self):  # intentionally mirrors Tensor.device without importing Device here

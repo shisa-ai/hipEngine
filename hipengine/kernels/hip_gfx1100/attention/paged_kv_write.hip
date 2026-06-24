@@ -376,6 +376,85 @@ __global__ void qwen35_write_paged_kv_int8_key_bf16_value_kernel(
   }
 }
 
+template <typename scale_t, int64_t quant_block_dim>
+__global__ void qwen35_write_paged_kv_int8_block_kernel(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    scale_t* k_scale,
+    scale_t* v_scale,
+    const int32_t* block_table,
+    const int64_t* position_ptr,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int row_major_cache) {
+  const int64_t head = static_cast<int64_t>(blockIdx.x);
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t scale_block = static_cast<int64_t>(blockIdx.z);
+  const int64_t tid = static_cast<int64_t>(threadIdx.x);
+  const int64_t scale_blocks = head_dim / quant_block_dim;
+  if (head >= num_kv_heads || row >= rows || scale_block >= scale_blocks || (head_dim % quant_block_dim) != 0) {
+    return;
+  }
+
+  const int64_t position = position_ptr[row];
+  if (position < 0) {
+    return;
+  }
+  const int64_t logical_block = position / block_size;
+  if (logical_block >= block_table_len) {
+    return;
+  }
+  const int64_t block_offset = position - logical_block * block_size;
+  const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+  if (physical_block < 0) {
+    return;
+  }
+  const int64_t cache_block = row_major_cache ? row * block_table_len + physical_block : physical_block;
+  const int64_t input_base = (row * num_kv_heads + head) * head_dim + scale_block * quant_block_dim;
+  const int64_t cache_base = ((cache_block * block_size + block_offset) * num_kv_heads + head) * head_dim + scale_block * quant_block_dim;
+  const int64_t scale_offset = ((cache_block * block_size + block_offset) * num_kv_heads + head) * scale_blocks + scale_block;
+
+  extern __shared__ float shared[];
+  float* key_max_scratch = shared;
+  float* value_max_scratch = shared + blockDim.x;
+
+  float local_key_max = 0.0f;
+  float local_value_max = 0.0f;
+  if (tid < quant_block_dim) {
+    local_key_max = fabsf(key[input_base + tid]);
+    local_value_max = fabsf(value[input_base + tid]);
+  }
+  key_max_scratch[tid] = local_key_max;
+  value_max_scratch[tid] = local_value_max;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      key_max_scratch[tid] = fmaxf(key_max_scratch[tid], key_max_scratch[tid + stride]);
+      value_max_scratch[tid] = fmaxf(value_max_scratch[tid], value_max_scratch[tid + stride]);
+    }
+    __syncthreads();
+  }
+
+  const float key_scale = key_max_scratch[0] / 127.0f;
+  const float value_scale = value_max_scratch[0] / 127.0f;
+  if (tid == 0) {
+    store_int8_scale(k_scale, scale_offset, key_scale);
+    store_int8_scale(v_scale, scale_offset, value_scale);
+  }
+  __syncthreads();
+
+  if (tid < quant_block_dim) {
+    key_cache[cache_base + tid] = quantize_int8_per_token_head_value(key[input_base + tid], key_scale);
+    value_cache[cache_base + tid] = quantize_int8_per_token_head_value(value[input_base + tid], value_scale);
+  }
+}
+
 bool valid_kv_shape(int64_t block_size, int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim) {
   return block_size > 0 && block_table_len > 0 && num_kv_heads > 0 && head_dim > 0;
 }
@@ -461,6 +540,53 @@ int launch_qwen35_write_paged_kv_int8_key_bf16_value(
       key_cache,
       value_cache,
       k_scale,
+      base_offsets,
+      live_counts,
+      rows,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      row_major_cache);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scale_t>
+int launch_qwen35_write_paged_kv_int8_block16(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    scale_t* k_scale,
+    scale_t* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int row_major_cache,
+    hipStream_t stream) {
+  constexpr int64_t quant_block_dim = 16;
+  if (!valid_kv_batch_shape(rows, block_size, block_table_len, num_kv_heads, head_dim) || (head_dim % quant_block_dim) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 32;
+  const int64_t scale_blocks = head_dim / quant_block_dim;
+  const size_t shared_bytes = static_cast<size_t>(threads) * 2U * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_write_paged_kv_int8_block_kernel<scale_t, quant_block_dim>),
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(rows), static_cast<unsigned int>(scale_blocks)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
       base_offsets,
       live_counts,
       rows,
@@ -920,6 +1046,202 @@ extern "C" int hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_pr
     int64_t head_dim,
     hipStream_t stream) {
   return launch_qwen35_write_paged_kv_int8_per_token_head<half_t>(
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      rows,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      0,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_spans(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    float* k_scale,
+    float* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  return launch_qwen35_write_paged_kv_int8_block16<float>(
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      1,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      0,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_batch_spans(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    float* k_scale,
+    float* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  return launch_qwen35_write_paged_kv_int8_block16<float>(
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      rows,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      1,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_prompt_spans(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    float* k_scale,
+    float* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  return launch_qwen35_write_paged_kv_int8_block16<float>(
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      rows,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      0,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_spans(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    half_t* k_scale,
+    half_t* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  return launch_qwen35_write_paged_kv_int8_block16<half_t>(
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      1,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      0,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_batch_spans(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    half_t* k_scale,
+    half_t* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  return launch_qwen35_write_paged_kv_int8_block16<half_t>(
+      key,
+      value,
+      key_cache,
+      value_cache,
+      k_scale,
+      v_scale,
+      base_offsets,
+      live_counts,
+      rows,
+      block_size,
+      block_table_len,
+      num_kv_heads,
+      head_dim,
+      1,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_prompt_spans(
+    const float* key,
+    const float* value,
+    int8_t* key_cache,
+    int8_t* value_cache,
+    half_t* k_scale,
+    half_t* v_scale,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  return launch_qwen35_write_paged_kv_int8_block16<half_t>(
       key,
       value,
       key_cache,

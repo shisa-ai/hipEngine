@@ -27,8 +27,10 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.benchmark.correctness import LogitCorrectness, evaluate_logits
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.kernels.cpu_reference import (
+    paged_attn_decode_int8_block16,
     paged_attn_decode_int8_key_bf16_value,
     paged_attn_decode_int8_per_token_head,
+    write_paged_kv_int8_block16,
     write_paged_kv_int8_key_bf16_value,
     write_paged_kv_int8_per_token_head,
 )
@@ -170,7 +172,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "blocked_reasons": blocked_reasons,
         "correctness_failures": correctness_failures,
         "notes": [
-            "BF16, int8_per_token_head, and int8_key_bf16_value are compared against separate CPU-reference oracles.",
+            "BF16, int8_per_token_head, int8_block16, and int8_key_bf16_value are compared against separate CPU-reference oracles.",
             "pseudo_logit_gate projects layer outputs through a deterministic synthetic matrix so KL/top-1 are available without model weights.",
             "device=hip runs the BF16 HIP path and registered INT8 HIP writer/decode wrappers; use --require-int8-hip for K1/key-only promotion gates.",
         ],
@@ -233,6 +235,27 @@ def _run_case(
         scale=case.scale,
         output_dtype=np.float32,
     )
+    block16_cache = write_paged_kv_int8_block16(
+        case.key_rows,
+        case.value_rows,
+        case.positions,
+        case.block_table,
+        block_size=case.block_size,
+        cache_blocks=case.blocks,
+        scale_dtype=scale_dtype,
+    )
+    block16_oracle = paged_attn_decode_int8_block16(
+        case.query,
+        block16_cache[0],
+        block16_cache[1],
+        block16_cache[2],
+        block16_cache[3],
+        np.asarray([case.context_len], dtype=np.int64),
+        block_table=case.block_table,
+        block_size=case.block_size,
+        scale=case.scale,
+        output_dtype=np.float32,
+    )
 
     if device == "cpu":
         bf16_check = _compare_path(
@@ -260,6 +283,16 @@ def _run_case(
             "cpu_reference",
             key_bf16_oracle,
             key_bf16_oracle,
+            case.logit_projection,
+            max_abs_threshold=max_abs_threshold,
+            kl_threshold=kl_threshold,
+            top1_threshold=top1_threshold,
+        )
+        block16_check = _compare_path(
+            "int8_block16",
+            "cpu_reference",
+            block16_oracle,
+            block16_oracle,
             case.logit_projection,
             max_abs_threshold=max_abs_threshold,
             kl_threshold=kl_threshold,
@@ -301,6 +334,18 @@ def _run_case(
             require_int8_hip=require_int8_hip,
             allow_missing_int8_hip=allow_missing_int8_hip,
         )
+        block16_check = _run_int8_block16_hip_or_blocked(
+            case,
+            block16_cache,
+            block16_oracle,
+            max_abs_threshold=max_abs_threshold,
+            kl_threshold=kl_threshold,
+            top1_threshold=top1_threshold,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached_build,
+            require_int8_hip=require_int8_hip,
+            allow_missing_int8_hip=allow_missing_int8_hip,
+        )
 
     quality = _compare_quantized_to_bf16(case, bf16_oracle, int8_oracle, kl_threshold=kl_threshold, top1_threshold=top1_threshold)
     key_bf16_quality = _compare_quantized_to_bf16(
@@ -310,10 +355,18 @@ def _run_case(
         kl_threshold=kl_threshold,
         top1_threshold=top1_threshold,
     )
+    block16_quality = _compare_quantized_to_bf16(
+        case,
+        bf16_oracle,
+        block16_oracle,
+        kl_threshold=kl_threshold,
+        top1_threshold=top1_threshold,
+    )
     paths = {
         "bf16": bf16_check.to_json(),
         "int8_per_token_head": int8_check.to_json(),
         "int8_key_bf16_value": key_bf16_check.to_json(),
+        "int8_block16": block16_check.to_json(),
     }
     blockers = [f"{case.name}:{path['blocked_reason']}" for path in paths.values() if path.get("blocked_reason")]
     if allow_missing_int8_hip and not require_int8_hip:
@@ -328,6 +381,7 @@ def _run_case(
             "paths": paths,
             "bf16_vs_int8_quantization": quality,
             "bf16_vs_int8_key_bf16_value_quantization": key_bf16_quality,
+            "bf16_vs_int8_block16_quantization": block16_quality,
         },
         blockers,
         failures,
@@ -798,6 +852,142 @@ def _run_int8_key_bf16_value_hip(
 
 
 
+def _run_int8_block16_hip(
+    case: SyntheticCase,
+    block16_cache: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    *,
+    compiler_version: str | None,
+    require_cached_build: bool,
+) -> np.ndarray:
+    from hipengine.core.device import Device
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_qwen35_paged_attn_decode,
+        build_qwen35_paged_kv_write,
+        qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans,
+        qwen35_write_paged_kv_int8_block16_spans,
+    )
+    from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
+
+    runtime = get_hip_runtime()
+    buffers = []
+
+    def dev(array: np.ndarray):
+        host = np.ascontiguousarray(array)
+        buf = malloc(host.nbytes, runtime=runtime)
+        buffers.append(buf)
+        copy_host_to_device(buf, host_array_ptr(host), runtime=runtime)
+        return buf
+
+    def out_dev(array: np.ndarray):
+        buf = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buf)
+        return buf
+
+    device = Device("hip", 0)
+    block_table = np.ascontiguousarray(case.block_table.astype(np.int32))
+    positions = np.ascontiguousarray(case.positions.astype(np.int64))
+    live_counts = np.asarray([case.context_len], dtype=np.int64)
+    key_rows = np.ascontiguousarray(case.key_rows.astype(np.float32))
+    value_rows = np.ascontiguousarray(case.value_rows.astype(np.float32))
+    key_cache = np.zeros_like(block16_cache[0])
+    value_cache = np.zeros_like(block16_cache[1])
+    k_scale = np.zeros_like(block16_cache[2])
+    v_scale = np.zeros_like(block16_cache[3])
+    query = np.ascontiguousarray(case.query.astype(np.float32))
+    out = np.zeros_like(query, dtype=np.float32)
+    num_splits = max(1, (case.context_len + case.block_size - 1) // case.block_size)
+    chunk_size = case.block_size
+    partial_out = np.zeros((case.num_q_heads, num_splits, case.head_dim), dtype=np.float32)
+    partial_m = np.zeros((case.num_q_heads, num_splits), dtype=np.float32)
+    partial_l = np.zeros((case.num_q_heads, num_splits), dtype=np.float32)
+    scale_dtype = "fp16" if k_scale.dtype == np.float16 else "fp32"
+    try:
+        block_table_b = dev(block_table)
+        positions_b = dev(positions)
+        live_counts_b = dev(live_counts)
+        key_rows_b = dev(key_rows)
+        value_rows_b = dev(value_rows)
+        key_cache_b = dev(key_cache)
+        value_cache_b = dev(value_cache)
+        k_scale_b = dev(k_scale)
+        v_scale_b = dev(v_scale)
+        query_b = dev(query)
+        out_b = out_dev(out)
+        partial_out_b = dev(partial_out)
+        partial_m_b = dev(partial_m)
+        partial_l_b = dev(partial_l)
+        kv_lib = build_qwen35_paged_kv_write(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
+        attn_lib = build_qwen35_paged_attn_decode(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
+        scale_metadata = KVScaleMetadata(
+            k_scale=Tensor.from_handle(k_scale_b.ptr, k_scale.shape, scale_dtype, device),
+            v_scale=Tensor.from_handle(v_scale_b.ptr, v_scale.shape, scale_dtype, device),
+            scale_dtype=scale_dtype,
+            granularity="block16",
+        )
+        row_bytes = case.num_kv_heads * case.head_dim * np.dtype(np.float32).itemsize
+        pos_bytes = np.dtype(np.int64).itemsize
+        for row in range(case.context_len):
+            spans = KVLiveSpans.paged_uniform(
+                block_table=Tensor.from_handle(block_table_b.ptr, block_table.shape, "int32", device),
+                live_counts=Tensor.from_handle(positions_b.ptr + row * pos_bytes, (1,), "int64", device),
+                max_live_count=case.context_len - 1,
+                storage_dtype="int8_per_token_head",
+                scale_metadata=scale_metadata,
+            )
+            qwen35_write_paged_kv_int8_block16_spans(
+                key_rows_b.ptr + row * row_bytes,
+                value_rows_b.ptr + row * row_bytes,
+                key_cache_b.ptr,
+                value_cache_b.ptr,
+                k_scale_b.ptr,
+                v_scale_b.ptr,
+                spans,
+                case.block_size,
+                case.num_kv_heads,
+                case.head_dim,
+                library=kv_lib,
+                runtime=runtime,
+            )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(block_table_b.ptr, block_table.shape, "int32", device),
+            live_counts=Tensor.from_handle(live_counts_b.ptr, live_counts.shape, "int64", device),
+            max_live_count=case.context_len,
+            storage_dtype="int8_per_token_head",
+            scale_metadata=scale_metadata,
+        )
+        qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans(
+            query_b.ptr,
+            key_cache_b.ptr,
+            value_cache_b.ptr,
+            k_scale_b.ptr,
+            v_scale_b.ptr,
+            out_b.ptr,
+            partial_out_b.ptr,
+            partial_m_b.ptr,
+            partial_l_b.ptr,
+            decode_spans,
+            chunk_size,
+            num_splits,
+            case.block_size,
+            case.num_q_heads,
+            case.num_kv_heads,
+            case.head_dim,
+            case.scale,
+            library=attn_lib,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_b, runtime=runtime)
+        return out
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
+
 def _run_int8_hip_or_blocked(
     case: SyntheticCase,
     int8_cache: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
@@ -845,6 +1035,65 @@ def _run_int8_hip_or_blocked(
         "int8_per_token_head",
         "hip_gfx1100",
         int8_oracle,
+        candidate,
+        case.logit_projection,
+        max_abs_threshold=max_abs_threshold,
+        kl_threshold=kl_threshold,
+        top1_threshold=top1_threshold,
+    )
+
+
+
+def _run_int8_block16_hip_or_blocked(
+    case: SyntheticCase,
+    block16_cache: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    block16_oracle: np.ndarray,
+    *,
+    max_abs_threshold: float,
+    kl_threshold: float,
+    top1_threshold: float,
+    compiler_version: str | None,
+    require_cached_build: bool,
+    require_int8_hip: bool,
+    allow_missing_int8_hip: bool,
+) -> PathCheck:
+    try:
+        from hipengine.kernels.registry import KernelKey, registered_keys
+    except Exception as exc:  # pragma: no cover - defensive import guard
+        return PathCheck("int8_block16", "hip_gfx1100", False, blocked_reason=f"cannot inspect registry: {exc}")
+    expected_keys = {
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_block16", "block16_spans"),
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_block16", "block16_prompt_spans"),
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_block16", "block16_batch_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "gqa_splitk_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "gqa_splitk_gate_bf16_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "block16_gqa_splitk_spans"),
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "block16_gqa_splitk_gate_bf16_spans"),
+    }
+    missing = sorted(key.display() for key in expected_keys.difference(set(registered_keys())))
+    if missing:
+        reason = "INT8-block16 HIP wrappers are not registered yet; missing exact keys: " + "; ".join(missing)
+        if require_int8_hip or not allow_missing_int8_hip:
+            return PathCheck("int8_block16", "hip_gfx1100", False, blocked_reason=reason)
+        return PathCheck("int8_block16", "hip_gfx1100", True, blocked_reason=reason)
+    try:
+        candidate = _run_int8_block16_hip(
+            case,
+            block16_cache,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached_build,
+        )
+    except Exception as exc:  # pragma: no cover - requires GPU
+        return PathCheck(
+            "int8_block16",
+            "hip_gfx1100",
+            False,
+            blocked_reason=f"failed to execute INT8-block16 HIP wrappers: {exc}",
+        )
+    return _compare_path(
+        "int8_block16",
+        "hip_gfx1100",
+        block16_oracle,
         candidate,
         case.logit_projection,
         max_abs_threshold=max_abs_threshold,

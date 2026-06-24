@@ -26,6 +26,12 @@ _SYMBOL_INT8_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_per_token_
 _SYMBOL_INT8_SCALE_FP16 = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_spans"
 _SYMBOL_INT8_SCALE_FP16_BATCH = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_batch_spans"
 _SYMBOL_INT8_SCALE_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_fp16_prompt_spans"
+_SYMBOL_INT8_BLOCK16_SCALE_F32 = "hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_spans"
+_SYMBOL_INT8_BLOCK16_SCALE_F32_BATCH = "hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_batch_spans"
+_SYMBOL_INT8_BLOCK16_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_block16_scale_f32_prompt_spans"
+_SYMBOL_INT8_BLOCK16_SCALE_FP16 = "hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_spans"
+_SYMBOL_INT8_BLOCK16_SCALE_FP16_BATCH = "hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_batch_spans"
+_SYMBOL_INT8_BLOCK16_SCALE_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_int8_block16_scale_fp16_prompt_spans"
 _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32 = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_spans"
 _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_BATCH = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_batch_spans"
 _SYMBOL_INT8_KEY_BF16_VALUE_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_key_bf16_value_scale_f32_prompt_spans"
@@ -423,6 +429,120 @@ def qwen35_write_paged_kv_int8_per_token_head_prompt_spans(
     )
 
 
+def qwen35_write_paged_kv_int8_block16_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append one FP32 K/V row to block16 INT8 KV cache."""
+
+    _launch_int8_write(
+        _int8_block16_symbol(spans, batch=False, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_block16_batch_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append batched FP32 K/V rows into row-major block16 INT8 KV arenas."""
+
+    _launch_int8_write_batch(
+        _int8_block16_symbol(spans, batch=True, prompt=False),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=True,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_int8_block16_prompt_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append prompt FP32 K/V rows into one shared block16 INT8 KV arena."""
+
+    _launch_int8_write_batch(
+        _int8_block16_symbol(spans, batch=True, prompt=True),
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        row_major_cache=False,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_write_paged_kv_int8_key_bf16_value_spans(
     key_ptr: int,
     value_ptr: int,
@@ -585,6 +705,21 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_batch_spans"),
         qwen35_write_paged_kv_int8_per_token_head_batch_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_block16", "block16_spans"),
+        qwen35_write_paged_kv_int8_block16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_block16", "block16_prompt_spans"),
+        qwen35_write_paged_kv_int8_block16_prompt_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "int8_block16", "block16_batch_spans"),
+        qwen35_write_paged_kv_int8_block16_batch_spans,
         replace=replace,
     )
     register(
@@ -1093,11 +1228,20 @@ def _check_int8_scale_metadata(
         raise ValueError("v_scale_ptr must match spans.scale_metadata.v_scale")
     if metadata.scale_dtype not in {DType.FP16, DType.FP32}:
         raise ValueError("INT8 scale metadata must be fp16 or fp32")
-    if len(metadata.k_scale.shape) != 3:
-        raise ValueError("INT8 scale tensors must have shape [blocks, block_size, num_kv_heads]")
-    scale_blocks, scale_block_size, scale_heads = (int(dim) for dim in metadata.k_scale.shape)
-    if scale_block_size != block_size or scale_heads != num_kv_heads:
-        raise ValueError("INT8 scale tensor shape must match block_size and num_kv_heads")
+    if metadata.granularity == "per_token_head":
+        if len(metadata.k_scale.shape) != 3:
+            raise ValueError("INT8 scale tensors must have shape [blocks, block_size, num_kv_heads]")
+        scale_blocks, scale_block_size, scale_heads = (int(dim) for dim in metadata.k_scale.shape)
+        if scale_block_size != block_size or scale_heads != num_kv_heads:
+            raise ValueError("INT8 scale tensor shape must match block_size and num_kv_heads")
+    elif metadata.granularity == "block16":
+        if len(metadata.k_scale.shape) != 4:
+            raise ValueError("block16 INT8 scale tensors must have shape [blocks, block_size, num_kv_heads, 16]")
+        scale_blocks, scale_block_size, scale_heads, scale_dim_blocks = (int(dim) for dim in metadata.k_scale.shape)
+        if scale_block_size != block_size or scale_heads != num_kv_heads or scale_dim_blocks != 16:
+            raise ValueError("block16 INT8 scale tensor shape must match block_size, num_kv_heads, and 16 scale blocks")
+    else:
+        raise ValueError("INT8 scale metadata granularity must be per_token_head or block16")
     if scale_blocks < required_blocks:
         raise ValueError("INT8 scale tensors must cover the paged block table")
 
@@ -1122,6 +1266,28 @@ def _int8_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:
     if batch:
         return _SYMBOL_INT8_SCALE_F32_BATCH
     return _SYMBOL_INT8_SCALE_F32
+
+
+def _int8_block16_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:
+    metadata = spans.scale_metadata
+    scale_dtype = metadata.scale_dtype if metadata is not None else None
+    if scale_dtype == DType.FP32:
+        if prompt:
+            return _SYMBOL_INT8_BLOCK16_SCALE_F32_PROMPT
+        if batch:
+            return _SYMBOL_INT8_BLOCK16_SCALE_F32_BATCH
+        return _SYMBOL_INT8_BLOCK16_SCALE_F32
+    if scale_dtype == DType.FP16:
+        if prompt:
+            return _SYMBOL_INT8_BLOCK16_SCALE_FP16_PROMPT
+        if batch:
+            return _SYMBOL_INT8_BLOCK16_SCALE_FP16_BATCH
+        return _SYMBOL_INT8_BLOCK16_SCALE_FP16
+    if prompt:
+        return _SYMBOL_INT8_BLOCK16_SCALE_F32_PROMPT
+    if batch:
+        return _SYMBOL_INT8_BLOCK16_SCALE_F32_BATCH
+    return _SYMBOL_INT8_BLOCK16_SCALE_F32
 
 
 def _int8_key_bf16_value_symbol(spans: KVLiveSpans, *, batch: bool, prompt: bool) -> str:

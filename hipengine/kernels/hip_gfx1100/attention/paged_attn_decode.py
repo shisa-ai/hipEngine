@@ -36,6 +36,8 @@ _SYMBOL_SPLIT_GQA_GATE_FP16_BATCH_DIRECT = (
 _SYMBOL_GATE_MUL_BF16_TO_BF16 = "hipengine_qwen35_full_attn_gate_mul_bf16_to_bf16"
 _SYMBOL_SPLIT_GQA_INT8_CONTEXT_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_f32_spans"
 _SYMBOL_SPLIT_GQA_INT8_CONTEXT_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_fp16_spans"
+_SYMBOL_SPLIT_GQA_INT8_BLOCK16_CONTEXT_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_block16_scale_f32_spans"
+_SYMBOL_SPLIT_GQA_INT8_BLOCK16_CONTEXT_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_block16_scale_fp16_spans"
 _SYMBOL_SPLIT_GQA_INT8_KEY_BF16_VALUE_CONTEXT_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value_scale_f32_spans"
 _SYMBOL_SPLIT_GQA_INT8_KEY_BF16_VALUE_CONTEXT_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value_scale_fp16_spans"
 _SYMBOL_PREFILL_GQA_GATE_BF16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans"
@@ -1629,6 +1631,79 @@ def qwen35_paged_attn_decode_int8_gqa_splitk_spans(
     )
 
 
+def qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Decode Qwen3.5 grouped-GQA split-K attention from block16 INT8 K/V."""
+
+    _check_int8_qwen35_gqa_shape(
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        k_scale_ptr=k_scale_ptr,
+        v_scale_ptr=v_scale_ptr,
+    )
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_int8_block16_gqa_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    _launch_reduce(
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_spans(
     query_ptr: int,
     key_cache_ptr: int,
@@ -1745,6 +1820,88 @@ def qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans(
     library = library or build_qwen35_paged_attn_decode(load=True)
     runtime = runtime or get_hip_runtime()
     _launch_int8_gqa_split_context(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        k_scale_ptr,
+        v_scale_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    _launch_gate_reduce(
+        _SYMBOL_SPLIT_REDUCE_GATE_BF16,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Decode block16 INT8 grouped-GQA split-K attention and apply BF16 sigmoid gate."""
+
+    _check_int8_qwen35_gqa_shape(
+        spans,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        k_scale_ptr=k_scale_ptr,
+        v_scale_ptr=v_scale_ptr,
+    )
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_int8_block16_gqa_split_context(
         query_ptr,
         key_cache_ptr,
         value_cache_ptr,
@@ -2144,6 +2301,76 @@ def _launch_int8_gqa_split_context(
     _check_launch(runtime, err)
 
 
+def _launch_int8_block16_gqa_split_context(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    k_scale_ptr: int,
+    v_scale_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int,
+    library: ctypes.CDLL,
+    runtime: HipRuntime,
+) -> None:
+    symbol = _int8_block16_gqa_context_symbol(spans)
+    split = getattr(library, symbol)
+    split.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    split.restype = ctypes.c_int
+    err = split(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(k_scale_ptr),
+        ctypes.c_void_p(v_scale_ptr),
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(chunk_size),
+        ctypes.c_int64(num_splits),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def _launch_int8_key_bf16_value_gqa_split_context(
     query_ptr: int,
     key_cache_ptr: int,
@@ -2310,17 +2537,34 @@ def _check_int8_prefill_scale_metadata(
         raise ValueError("v_scale_ptr must match spans.scale_metadata.v_scale")
     if metadata.scale_dtype not in {DType.FP16, DType.FP32}:
         raise ValueError("INT8 attention scale metadata must be fp16 or fp32")
-    if len(metadata.k_scale.shape) != 3 or len(metadata.v_scale.shape) != 3:
-        raise ValueError("INT8 attention scale tensors must have shape [blocks, block_size, num_kv_heads]")
-    scale_blocks, scale_block_size, scale_heads = (int(dim) for dim in metadata.k_scale.shape)
-    v_scale_blocks, v_scale_block_size, v_scale_heads = (int(dim) for dim in metadata.v_scale.shape)
-    if (
-        scale_block_size != block_size
-        or scale_heads != num_kv_heads
-        or v_scale_block_size != block_size
-        or v_scale_heads != num_kv_heads
-    ):
-        raise ValueError("INT8 attention scale tensor shape must match block_size and num_kv_heads")
+    if metadata.granularity == "per_token_head":
+        if len(metadata.k_scale.shape) != 3 or len(metadata.v_scale.shape) != 3:
+            raise ValueError("INT8 attention scale tensors must have shape [blocks, block_size, num_kv_heads]")
+        scale_blocks, scale_block_size, scale_heads = (int(dim) for dim in metadata.k_scale.shape)
+        v_scale_blocks, v_scale_block_size, v_scale_heads = (int(dim) for dim in metadata.v_scale.shape)
+        if (
+            scale_block_size != block_size
+            or scale_heads != num_kv_heads
+            or v_scale_block_size != block_size
+            or v_scale_heads != num_kv_heads
+        ):
+            raise ValueError("INT8 attention scale tensor shape must match block_size and num_kv_heads")
+    elif metadata.granularity == "block16":
+        if len(metadata.k_scale.shape) != 4 or len(metadata.v_scale.shape) != 4:
+            raise ValueError("block16 INT8 attention scale tensors must have shape [blocks, block_size, num_kv_heads, 16]")
+        scale_blocks, scale_block_size, scale_heads, scale_dim_blocks = (int(dim) for dim in metadata.k_scale.shape)
+        v_scale_blocks, v_scale_block_size, v_scale_heads, v_scale_dim_blocks = (int(dim) for dim in metadata.v_scale.shape)
+        if (
+            scale_block_size != block_size
+            or scale_heads != num_kv_heads
+            or scale_dim_blocks != 16
+            or v_scale_block_size != block_size
+            or v_scale_heads != num_kv_heads
+            or v_scale_dim_blocks != 16
+        ):
+            raise ValueError("block16 INT8 attention scale tensor shape must match block_size, num_kv_heads, and 16 scale blocks")
+    else:
+        raise ValueError("INT8 attention scale granularity must be per_token_head or block16")
     if v_scale_blocks != scale_blocks:
         raise ValueError("INT8 attention key/value scale tensors must have the same block count")
     if scale_blocks <= 0:
@@ -2344,11 +2588,20 @@ def _check_int8_scale_metadata(
         raise ValueError("v_scale_ptr must match spans.scale_metadata.v_scale")
     if metadata.scale_dtype not in {DType.FP16, DType.FP32}:
         raise ValueError("INT8 attention scale metadata must be fp16 or fp32")
-    if len(metadata.k_scale.shape) != 3:
-        raise ValueError("INT8 attention scale tensors must have shape [blocks, block_size, num_kv_heads]")
-    scale_blocks, scale_block_size, scale_heads = (int(dim) for dim in metadata.k_scale.shape)
-    if scale_block_size != block_size or scale_heads != num_kv_heads:
-        raise ValueError("INT8 attention scale tensor shape must match block_size and num_kv_heads")
+    if metadata.granularity == "per_token_head":
+        if len(metadata.k_scale.shape) != 3:
+            raise ValueError("INT8 attention scale tensors must have shape [blocks, block_size, num_kv_heads]")
+        scale_blocks, scale_block_size, scale_heads = (int(dim) for dim in metadata.k_scale.shape)
+        if scale_block_size != block_size or scale_heads != num_kv_heads:
+            raise ValueError("INT8 attention scale tensor shape must match block_size and num_kv_heads")
+    elif metadata.granularity == "block16":
+        if len(metadata.k_scale.shape) != 4:
+            raise ValueError("block16 INT8 attention scale tensors must have shape [blocks, block_size, num_kv_heads, 16]")
+        scale_blocks, scale_block_size, scale_heads, scale_dim_blocks = (int(dim) for dim in metadata.k_scale.shape)
+        if scale_block_size != block_size or scale_heads != num_kv_heads or scale_dim_blocks != 16:
+            raise ValueError("block16 INT8 attention scale tensor shape must match block_size, num_kv_heads, and 16 scale blocks")
+    else:
+        raise ValueError("INT8 attention scale granularity must be per_token_head or block16")
     if scale_blocks < spans.base_offsets.numel:
         raise ValueError("INT8 attention scale tensors must cover the paged block table")
 
@@ -2361,6 +2614,16 @@ def _int8_gqa_context_symbol(spans: KVLiveSpans) -> str:
     if scale_dtype == DType.FP16:
         return _SYMBOL_SPLIT_GQA_INT8_CONTEXT_FP16
     return _SYMBOL_SPLIT_GQA_INT8_CONTEXT_F32
+
+
+def _int8_block16_gqa_context_symbol(spans: KVLiveSpans) -> str:
+    metadata = spans.scale_metadata
+    scale_dtype = metadata.scale_dtype if metadata is not None else None
+    if scale_dtype == DType.FP32:
+        return _SYMBOL_SPLIT_GQA_INT8_BLOCK16_CONTEXT_F32
+    if scale_dtype == DType.FP16:
+        return _SYMBOL_SPLIT_GQA_INT8_BLOCK16_CONTEXT_FP16
+    return _SYMBOL_SPLIT_GQA_INT8_BLOCK16_CONTEXT_F32
 
 
 def _int8_key_bf16_value_gqa_context_symbol(spans: KVLiveSpans) -> str:
@@ -2515,6 +2778,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "gqa_splitk_spans"),
+        qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "gqa_splitk_gate_bf16_spans"),
         qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
         replace=replace,
@@ -2530,6 +2798,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "gqa_splitk_gate_bf16_spans"),
+        qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "per_token_head_gqa_splitk_spans"),
         qwen35_paged_attn_decode_int8_gqa_splitk_spans,
         replace=replace,
@@ -2537,6 +2810,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "int8_key_bf16_value", "per_token_head_gqa_splitk_spans"),
         qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "block16_gqa_splitk_spans"),
+        qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans,
         replace=replace,
     )
     register(
@@ -2552,6 +2830,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "int8_key_bf16_value", "per_token_head_gqa_splitk_gate_bf16_spans"),
         qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "int8_block16", "block16_gqa_splitk_gate_bf16_spans"),
+        qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans,
         replace=replace,
     )
     register(
