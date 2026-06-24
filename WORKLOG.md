@@ -124439,3 +124439,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Current guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`), and best retained B1 target-graph metric remains `0.7510349576460698`.
 - Additional blocker: `python3 scripts/check_lineage.py --kind kernel --diff stat` failed because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent, so the kernel-lineage guard could not run in this environment.
 - The regular MTP guard plus added GGUF op/hidden-seed tests passed, but the metric did not improve and B2/B3 regressed. Reverted the prototype.
+
+## 2026-06-24 — mtp-gguf-final iteration 12 rejected: deferred target hidden-seed copies
+
+### Hypothesis
+- Default K1/no-context/no-redraft verification only needs the final corrective target hidden seed on host. Deferring intermediate target hidden-seed D2H copies until the acceptance boundary might reduce accepted-cycle host-copy overhead without changing target graph execution, tokens, or acceptance.
+
+### Result
+- Rejected by the optimize loop and reverted; no code retained.
+- Smoke: `/tmp/hipengine-mtp-lazy-seed-smoke-20260624-033752.json`, target graph effective and target tokens matched the retained synchronized path (`[148368]`, `[248068]`).
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-lazy-seed-20260624-034024/summary.json`.
+  - B1: `41.98333228650483 tok/s`, `0.7452075077351107x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - B2: `35.28572422017262 tok/s`, `0.6263244285922397x` true AR, `draft_acceptance=0.185`.
+  - B3: `30.80436000172332 tok/s`, `0.5467798551006932x` true AR, `draft_acceptance=0.14333333333333334`.
+- Current guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`). Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1/B2 regressed. Reverted.
