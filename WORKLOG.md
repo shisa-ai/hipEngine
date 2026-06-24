@@ -124393,3 +124393,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - B3: `30.787912192013227 tok/s`, `0.545756125320824x` true AR, `draft_acceptance=0.14333333333333334`, `accepted_per_output=0.3006993006993007`.
 - Current B1/B2/B3 guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`), and best retained B1 target-graph metric is `0.7510349576460698`.
 - Guard passed (`py_compile` + 436 MTP tests), and prompt verifier found no prompt/token/rank hardcoding. Do not make context replay default.
+
+## 2026-06-24 — mtp-gguf-final iteration 9 rejected by policy: K2 exact-verified selector
+
+### Hypothesis
+- With target verification now graph-replayed, a small exact-verified top-2 root/sibling candidate set might raise visible output per cycle enough to improve B1 tok/s, and B2/B3 visibility would show whether it generalizes.
+
+### Result
+- Rejected by the loop's proposal/selector draft-acceptance policy; no code changes were made.
+- Current-HEAD true AR baseline: `/tmp/hipengine-mtp-gguf-final/current-true-ar-k2/true-ar-baseline.json`, `decode_tok_s_weighted=56.398170497852085`.
+- K2 summary: `/tmp/hipengine-mtp-gguf-final/run-k2-20260624-022405/summary.json` with `--root-topk-accept 2 --sibling-topk-accept 2`.
+- Full-suite metrics:
+  - B1: `43.045003551212794 tok/s`, `0.7632340405944933x` true AR, `draft_acceptance=0.2`, `accepted_per_output=0.2857142857142857`, `140 output / 40 accepted / 200 candidates`.
+  - B2: `36.922929378903575 tok/s`, `0.6546831050186243x` true AR, `draft_acceptance=0.135`, `accepted_per_output=0.35064935064935066`, `154 output / 54 accepted / 400 candidates`.
+  - B3: `32.04902089233343 tok/s`, `0.5682634846028208x` true AR, `draft_acceptance=0.09833333333333333`, `accepted_per_output=0.3710691823899371`, `159 output / 59 accepted / 600 candidates`.
+- B1/B2/B3 ratios and tok/s all improved versus the K1 guard baseline, but draft acceptance regressed for every budget (`B1 0.270 -> 0.200`, `B2 0.185 -> 0.135`, `B3 0.143 -> 0.098`) because the exact-verified candidate denominator doubled.
+- Prompt verifier passed (generic selector, no prompt/token/rank hardcoding, no denominator or accepted/output policy change), but this is a selector-policy tradeoff rather than a mechanical runtime win. Do not make K2 default without explicit policy approval.
