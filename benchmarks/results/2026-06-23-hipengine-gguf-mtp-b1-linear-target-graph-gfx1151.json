@@ -1,0 +1,293 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_b1_linear_warm_draft_target_graph_verify",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-23",
+  "source_commit_before_commit": "6fd0ca7f",
+  "source_dirty": true,
+  "hardware": "gfx1151/Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "change": {
+    "summary": "Use a resident GGUF decode graph for exact MTP target verification, with a replay-window attention max-context cap and fp32 hidden-seed capture.",
+    "target_graph_verify_default": {
+      "old": false,
+      "new": true
+    },
+    "attention_context_cap": "position + cycles * (draft_n_max + 1) for the MTP target verifier graph; live_counts remains device-dynamic.",
+    "rationale": "After the stateless draft warmup, target verification dominated B1 wall time. A capped target graph reduces target step latency from ~54.5 ms eager to ~23.0 ms average while preserving the exact target token stream and hidden-seed capture.",
+    "anti_gaming": "No prompt text, token IDs, candidate ranks, fixture IDs, target-token rescue branches, prompt-suite edits, accepted/output policy changes, or true-AR denominator games."
+  },
+  "true_ar_baseline": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json",
+    "decode_tokens": 128,
+    "weighted_decode_tok_s": 56.48528072404217,
+    "timing_protocol": {
+      "decode_path": "graph_replay",
+      "graph_replay_decode": true,
+      "graph_steps_per_replay": 1,
+      "decode_repack": true,
+      "decode_repack_env": "1",
+      "use_gemv_decode": true,
+      "use_wmma_prefill": true,
+      "force_bulk_prefill": false,
+      "no_bulk_prefill": false,
+      "bulk_prefill_attention_mode": "bulk",
+      "attn_aotriton_min_tokens": 512,
+      "effective_decode_repack": true,
+      "effective_use_wmma_prefill": true,
+      "effective_use_gemv_decode": true,
+      "fastpath_safety": {
+        "is_qwen35moe": true,
+        "allow_unsafe_qwen35moe_fastpaths": false,
+        "requested_wmma_prefill": true,
+        "requested_gemv_decode": true,
+        "effective_wmma_prefill": true,
+        "effective_gemv_decode": true,
+        "disabled_wmma_prefill": false,
+        "disabled_gemv_decode": false,
+        "reason": null
+      }
+    },
+    "repo_commit": "6fd0ca7f"
+  },
+  "baseline_b1_linear_warm_draft_eager_target": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/run-20260623-230826/summary.json",
+    "previous_rollup_artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-warm-draft-gfx1151.json",
+    "policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "mtp_draft_warmup": true,
+      "target_graph_verify": false,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 20.633228921613227,
+      "mtp_vs_true_ar_decode_ratio": 0.36572767107985876,
+      "draft_acceptance": 0.27,
+      "accepted_per_output": 0.2125984251968504,
+      "total_output_tokens": 127,
+      "total_accepted": 27,
+      "total_drafts": 100,
+      "decode_ms": 6155.12
+    },
+    "train": {
+      "decode_tok_s_weighted": 20.322939866369712,
+      "mtp_vs_true_ar_decode_ratio": 0.3602338737710635,
+      "draft_acceptance": 0.21666666666666667,
+      "accepted_per_output": 0.1780821917808219,
+      "total_output_tokens": 73,
+      "total_accepted": 13,
+      "total_drafts": 60,
+      "decode_ms": 3592.0
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 21.06807328568307,
+      "mtp_vs_true_ar_decode_ratio": 0.3734258304487902,
+      "draft_acceptance": 0.35,
+      "accepted_per_output": 0.25925925925925924,
+      "total_output_tokens": 54,
+      "total_accepted": 14,
+      "total_drafts": 40,
+      "decode_ms": 2563.1200000000003
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 20.7095339932208,
+        "mtp_vs_true_ar_decode_ratio": 0.3670283815786079,
+        "draft_acceptance": 0.225,
+        "accepted_per_output": 0.1836734693877551,
+        "total_output_tokens": 49,
+        "total_accepted": 9,
+        "total_drafts": 40,
+        "decode_ms": 2366.06
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 20.070165297881392,
+        "mtp_vs_true_ar_decode_ratio": 0.3557413988698201,
+        "draft_acceptance": 0.25,
+        "accepted_per_output": 0.2,
+        "total_output_tokens": 25,
+        "total_accepted": 5,
+        "total_drafts": 20,
+        "decode_ms": 1245.63
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 20.741088095517217,
+        "mtp_vs_true_ar_decode_ratio": 0.36772387916263355,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.13043478260869565,
+        "total_output_tokens": 23,
+        "total_accepted": 3,
+        "total_drafts": 20,
+        "decode_ms": 1108.91
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 20.912918606920783,
+        "mtp_vs_true_ar_decode_ratio": 0.3707108906894596,
+        "draft_acceptance": 0.5,
+        "accepted_per_output": 0.3333333333333333,
+        "total_output_tokens": 30,
+        "total_accepted": 10,
+        "total_drafts": 20,
+        "decode_ms": 1434.52
+      }
+    }
+  },
+  "candidate_b1_linear_warm_draft_target_graph": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/run-20260623-235743/summary.json",
+    "policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "mtp_draft_warmup": true,
+      "target_graph_verify": true,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 42.42242041620737,
+      "mtp_vs_true_ar_decode_ratio": 0.7510349576460698,
+      "draft_acceptance": 0.27,
+      "accepted_per_output": 0.2125984251968504,
+      "total_output_tokens": 127,
+      "total_accepted": 27,
+      "total_drafts": 100,
+      "decode_ms": 2993.7
+    },
+    "train": {
+      "decode_tok_s_weighted": 42.10720610035359,
+      "mtp_vs_true_ar_decode_ratio": 0.7453956347927407,
+      "draft_acceptance": 0.21666666666666667,
+      "accepted_per_output": 0.1780821917808219,
+      "total_output_tokens": 73,
+      "total_accepted": 13,
+      "total_drafts": 60,
+      "decode_ms": 1733.67
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 42.856122473274446,
+      "mtp_vs_true_ar_decode_ratio": 0.7588029526217205,
+      "draft_acceptance": 0.35,
+      "accepted_per_output": 0.25925925925925924,
+      "total_output_tokens": 54,
+      "total_accepted": 14,
+      "total_drafts": 40,
+      "decode_ms": 1260.03
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 42.229729729729726,
+        "mtp_vs_true_ar_decode_ratio": 0.7476002709387023,
+        "draft_acceptance": 0.225,
+        "accepted_per_output": 0.1836734693877551,
+        "total_output_tokens": 49,
+        "total_accepted": 9,
+        "total_drafts": 40,
+        "decode_ms": 1160.3200000000002
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 42.38868730713148,
+        "mtp_vs_true_ar_decode_ratio": 0.7503520991549805,
+        "draft_acceptance": 0.25,
+        "accepted_per_output": 0.2,
+        "total_output_tokens": 25,
+        "total_accepted": 5,
+        "total_drafts": 20,
+        "decode_ms": 589.78
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 41.130921511471946,
+        "mtp_vs_true_ar_decode_ratio": 0.7283316008036956,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.13043478260869565,
+        "total_output_tokens": 23,
+        "total_accepted": 3,
+        "total_drafts": 20,
+        "decode_ms": 559.19
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 43.83337473152057,
+        "mtp_vs_true_ar_decode_ratio": 0.7759795787178357,
+        "draft_acceptance": 0.5,
+        "accepted_per_output": 0.3333333333333333,
+        "total_output_tokens": 30,
+        "total_accepted": 10,
+        "total_drafts": 20,
+        "decode_ms": 684.4100000000001
+      }
+    },
+    "graph_effective_all_prompts": true,
+    "graph_fallback_reasons": [],
+    "target_graph_context_cap": {
+      "min": 59,
+      "max": 91
+    },
+    "timing_ms": {
+      "target_verify_avg": 22.9694,
+      "draft_avg": 6.9676,
+      "target_verify_total": 2296.94,
+      "draft_total": 696.76,
+      "draft_warmup_avg": 98.275
+    }
+  },
+  "deltas_vs_warm_draft_baseline": {
+    "decode_tok_s_weighted_abs": 21.789191494594146,
+    "decode_tok_s_weighted_pct": 105.6024317733908,
+    "mtp_vs_true_ar_decode_ratio_abs": 0.385307286566211,
+    "mtp_vs_true_ar_decode_ratio_pct": 105.35360516434014,
+    "draft_acceptance_abs": 0.0,
+    "accepted_per_output_abs": 0.0
+  },
+  "validation": {
+    "commands": [
+      "python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py",
+      "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py",
+      "python3 -m pytest -q tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_decode_graph_replay_context_cap_matches_two_eager_steps (skipped locally because /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf absent)",
+      "manual 35B graph/eager probe: eager 178404,80017,188691; capped graph replay produced 178404,[80017,188691] for replay(2) and repeated replay(1)",
+      "python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 2 --draft-n-max 1 --prompt \"Write a short greeting.\" --output /tmp/hipengine-mtp-target-graph-cap-smoke-20260623-235509.json",
+      "mtp-gguf-final verify command -> /tmp/hipengine-mtp-gguf-final/run-20260623-235743/summary.json",
+      "configured guard: py_compile selected MTP scripts/runtime + pytest MTP guard suite (432 passed)"
+    ],
+    "default_smoke_artifact": "/tmp/hipengine-mtp-target-graph-cap-smoke-20260623-235509.json",
+    "default_smoke": {
+      "target_graph_verify": true,
+      "target_graph_verify_effective": true,
+      "target_graph_context_cap": 21,
+      "cycle_target_tokens": [
+        [
+          148368
+        ],
+        [
+          248068
+        ]
+      ],
+      "cycle_draft_tokens": [
+        [
+          248045
+        ],
+        [
+          1710
+        ]
+      ],
+      "avg_ar_decode_ms": 18.02,
+      "avg_mtp_draft_ms": 7.09,
+      "tokens_per_sec": 39.83
+    }
+  },
+  "notes": [
+    "This remains diagnostic progress, not a true speedup claim: 42.42 tok/s is 0.751x the production true no-MTP AR baseline.",
+    "Draft acceptance and accepted/output are unchanged by construction; target graph only changes target verification execution.",
+    "Use --no-target-graph-verify for eager target-verification diagnostics.",
+    "Uncapped multi-step decode graph replay remains a separate correctness debt; the target verifier passes an explicit replay-window context cap."
+  ]
+}

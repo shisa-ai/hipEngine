@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-06-23
 
+- [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 full category suite: B1 linear default diagnostic MTP tok/s `20.63 -> 42.42` (+105.6%) and ratio `0.366 -> 0.751x` current true AR by enabling capped resident decode-graph target verification with fp32 hidden-seed capture; draft acceptance and accepted/output stay `0.270` / `0.213`; still below true AR, so no speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-target-graph-gfx1151.json`.
+
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 full category suite: B1 linear default diagnostic MTP tok/s `18.12 -> 20.63` (+13.9%) and ratio `0.321 -> 0.366x` current true AR by enabling one stateless untimed MTP draft warmup before measured cycles; draft acceptance and accepted/output stay `0.270` / `0.213`; still below true AR, so no speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-warm-draft-gfx1151.json`.
 
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 full category suite: diagnostic MTP tok/s `16.69 -> 18.37` (+10.1%) and draft acceptance `0.000227 -> 0.270` (1189x) by switching the default policy from K4096 B5 branch-tree coverage to B1 linear greedy (`root_topk_accept=1`, `sibling_topk_accept=1`, branch redraft off); accepted/output drops `0.823 -> 0.213` because accepted/output is report-only and the K4096 row enumerated millions of exact-verified alternatives; still only `0.326x` true AR, so no speed claim; `benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-default-speed-gfx1151.json`.

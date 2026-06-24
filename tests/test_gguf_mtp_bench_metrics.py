@@ -30,6 +30,7 @@ def test_default_mtp_policy_is_linear_b1_speed_first() -> None:
     assert args.sibling_topk_accept == 1
     assert args.topk_branch_redraft is False
     assert args.mtp_draft_warmup is True
+    assert args.target_graph_verify is True
 
 
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:

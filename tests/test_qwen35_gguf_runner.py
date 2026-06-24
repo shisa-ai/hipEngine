@@ -136,6 +136,33 @@ def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
     assert float(np.max(np.abs(graph_second.logits - eager_second.logits))) == 0.0
 
 
+def test_qwen35_gguf_decode_graph_replay_context_cap_matches_two_eager_steps() -> None:
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    prompt_ids = [760, 4087, 369]
+    with Qwen35GGUFResidentSession(MODEL) as eager:
+        eager_first = eager.prefill(prompt_ids)
+        eager_second = eager.step(eager_first.token_id)
+        eager_third = eager.step(eager_second.token_id)
+    with Qwen35GGUFResidentSession(MODEL) as graph_session:
+        graph_first = graph_session.prefill(prompt_ids)
+        with graph_session.capture_decode_graph(
+            position=len(prompt_ids),
+            max_replay_steps=2,
+            record_steps=2,
+            attention_max_context_len=len(prompt_ids) + 2,
+        ) as graph:
+            graph.replay(2)
+            graph_ids = [graph_first.token_id, *graph.read_generated_token_ids(2)]
+            graph_third = graph.read_sample()
+
+    assert graph_ids == [eager_first.token_id, eager_second.token_id, eager_third.token_id]
+    assert graph_third.token_id == eager_third.token_id
+    assert graph_third.logits.shape == eager_third.logits.shape == (1, 248320)
+    assert np.all(np.isfinite(graph_third.logits))
+    assert float(np.max(np.abs(graph_third.logits - eager_third.logits))) == 0.0
+
+
 def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
     ref = reference_logits.astype(np.float64, copy=False)
     cand = candidate_logits.astype(np.float64, copy=False)

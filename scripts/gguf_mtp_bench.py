@@ -32,6 +32,7 @@ DEFAULT_ROOT_TOPK_ACCEPT = 1
 DEFAULT_SIBLING_TOPK_ACCEPT = 1
 DEFAULT_TOPK_BRANCH_REDRAFT = False
 DEFAULT_MTP_DRAFT_WARMUP = True
+DEFAULT_TARGET_GRAPH_VERIFY = True
 IM_START_TOKEN = 248045
 IM_END_TOKEN = 248046
 THINK_START_TOKEN = 248068
@@ -432,6 +433,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "before measured speculative cycles (default: true; use --no-mtp-draft-warmup for cold-start diagnostics)."
         ),
     )
+    parser.add_argument(
+        "--target-graph-verify",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_TARGET_GRAPH_VERIFY,
+        help=(
+            "Use resident GGUF decode graph replay for target verification with a replay-window context cap "
+            "and fp32 hidden-seed capture (default: true; use --no-target-graph-verify for eager-step diagnostics)."
+        ),
+    )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
@@ -653,6 +663,7 @@ def main(argv: list[str] | None = None):
         use_wmma_prefill=bool(args.use_wmma_prefill),
         use_gemv_decode=bool(args.use_gemv_decode),
     )
+    target_graph = None
     try:
         runtime = session.runtime or get_hip_runtime()
         hidden_size = 2048
@@ -738,6 +749,26 @@ def main(argv: list[str] | None = None):
                 rotary_dim=rope_dim,
             )
             mtp_draft_warmup_ms = (time.perf_counter() - t_warmup0) * 1000
+
+        target_graph_max_replay_steps = int(args.cycles) * (int(args.draft_n_max) + 1)
+        target_graph_context_cap = int(seq_position) + target_graph_max_replay_steps
+        target_graph_verify_enabled = False
+        target_graph_verify_fallback_reason: str | None = None
+        current_device_token = int(prev_token)
+        if args.target_graph_verify:
+            try:
+                target_graph = session.capture_decode_graph(
+                    position=seq_position,
+                    steps_per_replay=1,
+                    max_replay_steps=target_graph_max_replay_steps,
+                    record_steps=0,
+                    attention_max_context_len=target_graph_context_cap,
+                    capture_hidden_seed_fp32=True,
+                )
+                target_graph_verify_enabled = True
+            except Exception as exc:  # pragma: no cover - graph capture failures depend on runtime state
+                target_graph_verify_fallback_reason = f"{type(exc).__name__}: {exc}"
+                target_graph = None
 
         total_drafts = 0
         total_accepted = 0
@@ -863,10 +894,21 @@ def main(argv: list[str] | None = None):
             redraft_ms = 0.0
             while True:
                 t0 = time.perf_counter()
-                target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
+                if target_graph_verify_enabled and target_graph is not None and int(verify_input_token) == current_device_token:
+                    target_graph.replay(1)
+                    target_result = target_graph.read_sample(return_logits=False)
+                else:
+                    if target_graph is not None:
+                        target_graph.close()
+                        target_graph = None
+                    if target_graph_verify_enabled and int(verify_input_token) != current_device_token:
+                        target_graph_verify_fallback_reason = "verify input diverged from device sample token"
+                    target_graph_verify_enabled = False
+                    target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
                 t1 = time.perf_counter()
                 ar_decode_ms += (t1 - t0) * 1000
                 target_token = int(target_result.token_id)
+                current_device_token = target_token
                 target_tokens.append(target_token)
                 target_hidden_seed = copy_pending_hidden_seed()
                 target_hidden_seeds.append(target_hidden_seed)
@@ -1121,6 +1163,8 @@ def main(argv: list[str] | None = None):
             decode_times.append(ar_decode_ms + draft_ms)
 
     finally:
+        if target_graph is not None:
+            target_graph.close()
         session.close()
 
     # Compute metrics
@@ -1145,6 +1189,13 @@ def main(argv: list[str] | None = None):
     print(f"Effective GEMV decode: {session.use_gemv_decode}")
     print(f"Effective WMMA prefill: {session.use_wmma_prefill}")
     print(f"MTP draft warmup: {args.mtp_draft_warmup} ({mtp_draft_warmup_ms:.2f}ms)")
+    print(
+        f"Target graph verify: requested={args.target_graph_verify} "
+        f"effective={target_graph_verify_enabled} max_replay_steps={target_graph_max_replay_steps} "
+        f"context_cap={target_graph_context_cap}"
+    )
+    if target_graph_verify_fallback_reason:
+        print(f"Target graph verify fallback: {target_graph_verify_fallback_reason}")
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
     print(f"Sibling tail min previous accepted: {args.sibling_tail_min_prev_accepted}")
@@ -1197,6 +1248,11 @@ def main(argv: list[str] | None = None):
             "effective_use_gemv_decode": bool(session.use_gemv_decode),
             "mtp_draft_warmup": bool(args.mtp_draft_warmup),
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
+            "target_graph_verify": bool(args.target_graph_verify),
+            "target_graph_verify_effective": bool(target_graph_verify_enabled),
+            "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
+            "target_graph_context_cap": int(target_graph_context_cap),
+            "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,
             "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
             "root_topk_accept": args.root_topk_accept,
             "sibling_topk_accept": args.sibling_topk_accept,

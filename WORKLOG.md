@@ -124282,3 +124282,51 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - Kept warm-draft baseline: `decode_tok_s_weighted=20.633228921613227`, ratio `0.36572767107985876`.
   - Delta: ratio `-1.6%`, tok/s `-1.6%`; acceptance/output unchanged.
 - Reverted the code change; no runtime behavior retained.
+
+## 2026-06-23 — mtp-gguf-final iteration 5 kept: capped target graph verification
+
+### Hypothesis
+- After the draft warmup, B1 MTP still spent most wall time in target verification (`~54.5 ms` eager target step vs `~7.0 ms` draft). The previous target-graph prototype was fast but diverged after the first replay because full-attention `max_context_len` was captured as `position + 1` while device `live_counts` advanced.
+- Fix the graph path for MTP target verification by passing a fixed replay-window `attention_max_context_len = seq_position + cycles * (draft_n_max + 1)` while leaving `live_counts` device-dynamic, and capture the fp32 hidden seed inside the graph replay.
+
+### Change
+- Added optional `attention_max_context_len` and `capture_hidden_seed_fp32` to `Qwen35GGUFResidentSession.capture_decode_graph()` / `_step_from_device_token()` / decode internals.
+- Added cumulative replay accounting and hidden-seed readiness propagation to `Qwen35GGUFDecodeGraph`.
+- Added default `--target-graph-verify` to `scripts/gguf_mtp_bench.py` with an eager fallback/opt-out (`--no-target-graph-verify`).
+- Added parser-default coverage and a skipped-local 0.8B graph-vs-eager two-step pytest (`tests/test_qwen35_gguf_runner.py`) for environments with the small GGUF fixture.
+
+### Correctness checks
+- Manual 35B graph/eager probe on `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`:
+  - eager: `178404, 80017, 188691`
+  - capped `graph.replay(2)`: `178404, [80017, 188691]`
+  - capped repeated `graph.replay(1)` twice: `178404, 80017, 188691`
+  - hidden seed contract ready after replay.
+- Greeting smoke with target graph: `/tmp/hipengine-mtp-target-graph-cap-smoke-20260623-235509.json`.
+  - `target_graph_verify=true/effective=true`, `target_graph_context_cap=21`, no fallback.
+  - Target tokens match the prior eager smoke: `[148368]`, `[248068]`; draft tokens `[248045]`, `[1710]`.
+  - Avg target verify `18.02 ms`, draft `7.09 ms`, `39.83 tok/s` for the 2-cycle smoke.
+
+### Full-suite evidence
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-20260623-235743/summary.json`.
+- True AR denominator: `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json`, `decode_tok_s_weighted=56.48528072404217`.
+- Candidate B1 full: `decode_tok_s_weighted=42.42242041620737`, `mtp_vs_true_ar_decode_ratio=0.7510349576460698`, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+- Kept warm-draft baseline: `/tmp/hipengine-mtp-gguf-final/run-20260623-230826/summary.json`, `decode_tok_s_weighted=20.633228921613227`, ratio `0.36572767107985876`.
+- Delta: tok/s `+21.7892` (+105.6%), ratio `+0.3853` (+105.4%), draft acceptance/output unchanged.
+- Per-prompt target graph effective for all 10 prompts with no fallback; target verify average `22.97 ms`, draft average `6.97 ms`.
+- Retained artifact: `benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-target-graph-gfx1151.json`.
+- Rollup updated in `benchmarks/README.md` and `benchmarks/CHANGELOG.md`; `docs/REFACTOR.md` now tracks the eager target-verify opt-out and remaining uncapped graph replay debt.
+
+### Validation
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py
+python3 -m pytest -q tests/test_qwen35_gguf_runner.py::test_qwen35_gguf_decode_graph_replay_context_cap_matches_two_eager_steps
+# skipped locally because /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf is absent
+
+# mtp-gguf-final verify command
+# produced /tmp/hipengine-mtp-gguf-final/run-20260623-235743/summary.json with ratio 0.7510349576460698
+
+python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py hipengine/runtime/qwen35_gguf_runner.py hipengine/speculative/gguf_mtp.py
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py
+# passed, 432 tests
+```

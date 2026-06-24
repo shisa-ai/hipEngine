@@ -1963,8 +1963,17 @@ class Qwen35GGUFFullStackRunner:
         *,
         position: int,
         stream: int = 0,
+        attention_max_context_len: int | None = None,
     ) -> None:
-        self._run_full_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, position=position, stream=stream)
+        self._run_full_attention_attn_only(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            scratch,
+            position=position,
+            stream=stream,
+            attention_max_context_len=attention_max_context_len,
+        )
         self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
 
     def _run_full_attention_attn_only(
@@ -1976,6 +1985,7 @@ class Qwen35GGUFFullStackRunner:
         *,
         position: int,
         stream: int = 0,
+        attention_max_context_len: int | None = None,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -2106,17 +2116,22 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         active_context = int(position) + 1
-        if _use_gguf_full_attention_split_decode(active_context):
+        attention_context_cap = active_context if attention_max_context_len is None else int(attention_max_context_len)
+        if attention_context_cap < active_context:
+            raise ValueError("attention_max_context_len must cover the current decode position")
+        if attention_context_cap > int(scratch.max_positions):
+            raise ValueError("attention_max_context_len exceeds GGUF resident cache capacity")
+        if _use_gguf_full_attention_split_decode(attention_context_cap):
             chunk_size = int(scratch.block_size)
             num_splits = min(
                 int(scratch.full_attn_split_count),
-                max(1, (active_context + chunk_size - 1) // chunk_size),
+                max(1, (attention_context_cap + chunk_size - 1) // chunk_size),
             )
             split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
                 cfg,
                 block_size=scratch.block_size,
                 num_splits=num_splits,
-                active_context=active_context,
+                active_context=attention_context_cap,
             )
             split_gate_fn(
                 scratch.full_query.ptr,
@@ -2148,7 +2163,7 @@ class Qwen35GGUFFullStackRunner:
                 value_cache.ptr,
                 scratch.full_attn_context.ptr,
                 scratch.decode_spans,
-                active_context,
+                attention_context_cap,
                 scratch.block_size,
                 cfg.head_count,
                 cfg.head_count_kv,
@@ -3805,6 +3820,7 @@ class Qwen35GGUFResidentSession:
         *,
         position: int,
         stream: int = 0,
+        attention_max_context_len: int | None = None,
         capture_hidden_seed_fp32: bool = False,
     ) -> int:
         if self.runner is None or self.scratch is None:
@@ -3821,7 +3837,15 @@ class Qwen35GGUFResidentSession:
             if layer_type == LINEAR_ATTENTION:
                 self.runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, stream=stream)
             elif layer_type == FULL_ATTENTION:
-                self.runner._run_full_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, position=position, stream=stream)
+                self.runner._run_full_attention_layer(
+                    layer_id,
+                    src.ptr,
+                    dst.ptr,
+                    self.scratch,
+                    position=position,
+                    stream=stream,
+                    attention_max_context_len=attention_max_context_len,
+                )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             src, dst = dst, src
@@ -3987,6 +4011,8 @@ class Qwen35GGUFResidentSession:
         steps_per_replay: int = 1,
         max_replay_steps: int | None = None,
         record_steps: int = 0,
+        attention_max_context_len: int | None = None,
+        capture_hidden_seed_fp32: bool = False,
     ) -> "Qwen35GGUFDecodeGraph":
         """Capture one-step resident GGUF decode for graph replay.
 
@@ -3997,7 +4023,11 @@ class Qwen35GGUFResidentSession:
         token back to ``_lm_out_index``, and advances the device position/context
         scalar.  Optional recording appends generated token IDs to a device
         int64 buffer so graph/eager correctness gates do not need host sampling
-        between replayed steps.
+        between replayed steps.  ``attention_max_context_len`` may be set to a
+        fixed replay-window cap; the attention kernels still read dynamic
+        context length from the resident device scalar, but the captured launch
+        must reserve enough shared-memory/context capacity for every replayed
+        step.
         """
 
         if self.runner is None or self.scratch is None:
@@ -4013,6 +4043,13 @@ class Qwen35GGUFResidentSession:
             raise ValueError("decode graph replay span exceeds GGUF resident cache capacity")
         if position + steps_per_replay - 1 >= self.scratch.max_positions:
             raise ValueError("decode graph capture span exceeds GGUF resident cache capacity")
+        replay_context_cap = int(position) + int(steps_per_replay)
+        if attention_max_context_len is not None:
+            replay_context_cap = int(attention_max_context_len)
+            if replay_context_cap < int(position) + replay_span:
+                raise ValueError("attention_max_context_len must cover the decode graph replay span")
+        if replay_context_cap > int(self.scratch.max_positions):
+            raise ValueError("attention_max_context_len exceeds GGUF resident cache capacity")
         bucket_key = build_qwen35_gguf_decode_graph_bucket_key(
             position=int(position),
             steps_per_replay=int(steps_per_replay),
@@ -4051,6 +4088,8 @@ class Qwen35GGUFResidentSession:
                             record_output_ptr=None if generated_buf is None else generated_buf.ptr,
                             record_index_ptr=None if generated_index_buf is None else generated_index_buf.ptr,
                             record_capacity=record_steps,
+                            attention_max_context_len=replay_context_cap,
+                            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
                         )
                 graph = runtime.stream_end_capture(stream)
             except Exception:
@@ -4084,6 +4123,8 @@ class Qwen35GGUFResidentSession:
             generated_index=generated_index_buf,
             record_steps=int(record_steps),
             bucket_key=bucket_key,
+            attention_max_context_len=int(replay_context_cap),
+            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
         )
 
     def _step_from_device_token(
@@ -4095,6 +4136,8 @@ class Qwen35GGUFResidentSession:
         record_output_ptr: int | None = None,
         record_index_ptr: int | None = None,
         record_capacity: int = 0,
+        attention_max_context_len: int | None = None,
+        capture_hidden_seed_fp32: bool = False,
     ) -> None:
         if self._lm_out_index is None:
             raise RuntimeError("GGUF resident lm-head buffers are closed")
@@ -4107,7 +4150,12 @@ class Qwen35GGUFResidentSession:
         self.scratch.position_host[0] = int(position)
         self.scratch.context_host[0] = int(position) + 1
         self._set_token_embedding_from_ptr(self._lm_out_index.ptr, stream=stream)
-        hidden_ptr = self._run_current_hidden_to_final_hidden(position=position, stream=stream)
+        hidden_ptr = self._run_current_hidden_to_final_hidden(
+            position=position,
+            stream=stream,
+            attention_max_context_len=attention_max_context_len,
+            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+        )
         self._sample_device_from_hidden(hidden_ptr, stream=stream)
         if record_output_ptr is not None:
             if record_index_ptr is None:
@@ -4180,6 +4228,9 @@ class Qwen35GGUFDecodeGraph:
     generated_index: DeviceBuffer | None = None
     record_steps: int = 0
     bucket_key: Qwen35GGUFDecodeGraphBucketKey | None = None
+    attention_max_context_len: int | None = None
+    capture_hidden_seed_fp32: bool = False
+    replayed_steps: int = 0
     closed: bool = False
 
     def replay(self, steps: int) -> None:
@@ -4191,23 +4242,28 @@ class Qwen35GGUFDecodeGraph:
             raise ValueError("steps_per_replay must be positive")
         if steps > self.max_replay_steps:
             raise ValueError("steps exceed captured max_replay_steps")
-        if self.record_steps and steps > self.record_steps:
-            raise ValueError("steps exceed decode graph record capacity")
+        if self.replayed_steps + steps > self.max_replay_steps:
+            raise ValueError("cumulative graph replay steps exceed captured max_replay_steps")
+        if self.record_steps and self.replayed_steps + steps > self.record_steps:
+            raise ValueError("cumulative graph replay steps exceed decode graph record capacity")
         if steps % self.steps_per_replay != 0:
             raise ValueError("steps must be divisible by steps_per_replay")
         launches = steps // self.steps_per_replay
         for _ in range(launches):
             self.session.runtime.graph_launch(self.graph_exec, self.stream)  # type: ignore[union-attr]
         self.session.runtime.stream_synchronize(self.stream)  # type: ignore[union-attr]
-        self.session._position = self.position + steps
+        self.replayed_steps += steps
+        self.session._position = self.position + self.replayed_steps
         if self.session.scratch is not None:
             self.session.scratch.position_host[0] = self.session._position
             self.session.scratch.context_host[0] = self.session._position + 1
+        if self.capture_hidden_seed_fp32:
+            self.session._hidden_seed_fp32_populated = True
 
-    def read_sample(self) -> Qwen35GGUFNextTokenProbeResult:
+    def read_sample(self, *, return_logits: bool = True) -> Qwen35GGUFNextTokenProbeResult:
         if self.closed:
             raise RuntimeError("GGUF decode graph is closed")
-        return self.session._read_sample()
+        return self.session._read_sample(return_logits=return_logits)
 
     def read_generated_token_ids(self, count: int | None = None) -> list[int]:
         if self.closed:
