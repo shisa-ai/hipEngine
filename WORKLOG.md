@@ -124422,3 +124422,20 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - `target_graph_verify=true/effective=true`, but target tokens were wrong: `[248044]`, `[148368]` instead of the synchronized/eager smoke `[148368]`, `[248068]`.
   - Reported target timing collapsed to `~0.1 ms`, confirming the host read was racing the graph stream rather than waiting safely.
 - Reverted the prototype. Keep the explicit `stream_synchronize()` in `Qwen35GGUFDecodeGraph.replay()` before `read_sample()` unless a stream-ordered D2H path/event wait is implemented and correctness-gated.
+
+## 2026-06-24 — mtp-gguf-final iteration 11 rejected: dual-output GGUF RMSNorm hidden-seed capture
+
+### Hypothesis
+- Target graph verification captures the fp32 MTP seed by running output RMSNorm twice: once to BF16 for the lm-head and once to FP32 for the seed. A dual-output GGUF RMSNorm kernel could remove one output-norm launch/read pass per target verifier step without changing tokens, draft acceptance, or the true-AR denominator.
+
+### Result
+- Rejected by the optimize loop and reverted; no runtime/kernel code retained.
+- Prototype added `hipengine_gguf_rmsnorm_bf16_f32_weight_dual_out`, a Python wrapper, runtime routing for `capture_hidden_seed_fp32=True`, and unit coverage against the unfused BF16+FP32 outputs.
+- Correctness smoke: `/tmp/hipengine-mtp-dual-rmsnorm-smoke-20260624-030634.json` matched the synchronized/eager target token stream (`[148368]`, `[248068]`) with target graph effective.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-dual-rmsnorm-20260624-030916/summary.json`.
+  - B1: `42.241528411585485 tok/s`, `0.7497519941219059x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - B2: `35.28954167385766 tok/s`, `0.6263600119726301x` true AR, `draft_acceptance=0.185`.
+  - B3: `30.61705134243994 tok/s`, `0.5434271950214579x` true AR, `draft_acceptance=0.14333333333333334`.
+- Current guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`), and best retained B1 target-graph metric remains `0.7510349576460698`.
+- Additional blocker: `python3 scripts/check_lineage.py --kind kernel --diff stat` failed because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent, so the kernel-lineage guard could not run in this environment.
+- The regular MTP guard plus added GGUF op/hidden-seed tests passed, but the metric did not improve and B2/B3 regressed. Reverted the prototype.
