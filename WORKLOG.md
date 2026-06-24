@@ -124496,3 +124496,15 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - Avg target verify `18.7 ms`, avg draft `386.73 ms`, throughput `2.47 tok/s`.
   - Target/draft tokens matched the retained smoke (`[148368]`, `[248068]` targets; `[248045]`, `[1710]` drafts), acceptance unchanged (`0/2`), but F32 GEMV/head bandwidth is far too slow.
 - Focused parser/py_compile guard passed before the smoke, and prompt verifier had no gaming concern. No full-suite run was needed for this non-viable candidate.
+
+## 2026-06-24 — mtp-gguf-final iteration 16 aborted: top-4 routed experts
+
+### Hypothesis
+- The MTP FFN evaluates 8 routed experts per draft row. Reducing `experts_used` to 4 might reduce expert GEMV work while preserving draft tokens/acceptance.
+
+### Result
+- Aborted before full-suite verify and reverted; no code retained.
+- Smoke: `/tmp/hipengine-mtp-top4-experts-smoke-20260624-053237.json`.
+  - Avg target verify `18.05 ms`, avg draft `8.02 ms`, throughput `38.36 tok/s` on 2 cycles.
+  - Cycle 0 draft stayed `[248045]`, but cycle 1 draft changed from the retained path's `[1710]` to `[3709]`.
+- This is a proposal/math change, it changed the draft token stream, and it did not improve smoke draft latency over the retained ~7ms path. No expensive full-suite run was needed.
