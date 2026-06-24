@@ -124453,3 +124453,18 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - B2: `35.28572422017262 tok/s`, `0.6263244285922397x` true AR, `draft_acceptance=0.185`.
   - B3: `30.80436000172332 tok/s`, `0.5467798551006932x` true AR, `draft_acceptance=0.14333333333333334`.
 - Current guard baseline remains better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`). Guard passed (`py_compile` + 436 tests), prompt verifier passed, but B1/B2 regressed. Reverted.
+
+## 2026-06-24 — mtp-gguf-final iteration 13 rejected: device top-k draft output
+
+### Hypothesis
+- The MTP draft path copied full vocab logits to host only to derive top-k candidate ids. Returning device-computed top-k token ids from the shared-head logits path could avoid full-logit D2H/CPU selection overhead while preserving candidate order, draft tokens, and acceptance.
+
+### Result
+- Rejected by the optimize loop and reverted; no code retained.
+- Prototype added optional `return_top_tokens` through `qwen35_gguf_mtp_shared_head_logits_f32()` / `qwen35_gguf_mtp_nextn_layer_logits_f32()` and used the existing sampler top-k kernel in `scripts/gguf_mtp_bench.py`.
+- Smoke: `/tmp/hipengine-mtp-device-topk-smoke-20260624-041957.json`, target tokens and draft top-10 matched the retained path, but draft latency increased (`~10.8 ms` vs retained `~7 ms`), and first warmup included sampler build/JIT cost.
+- Full-suite summary: `/tmp/hipengine-mtp-gguf-final/run-device-topk-20260624-042242/summary.json`.
+  - B1: `37.87901383329655 tok/s`, `0.6720998374039534x` true AR, `draft_acceptance=0.27`, `accepted_per_output=0.2125984251968504`.
+  - B2: `30.29659705083636 tok/s`, `0.5375625152590757x` true AR, `draft_acceptance=0.185`.
+  - B3: `25.484381460201597 tok/s`, `0.4521777866530902x` true AR, `draft_acceptance=0.14333333333333334`.
+- Current guard baseline remains much better (`B1=0.7498638500816287`, `B2=0.6306149074019507`, `B3=0.5464714321700803`). The sampler top-k launch cost outweighed saved logits D2H, so the candidate was reverted.
