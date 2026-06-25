@@ -125059,3 +125059,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - `mtp_vs_true_ar_decode_ratio=0.8071296183364971`.
 - Guard failed as expected because `tests/test_gguf_mtp_bench_metrics.py::test_default_mtp_policy_is_b1_root_top40_speed_first` intentionally locks the default to root-top40.
 - Prompt verifier rejected the iteration: no prompt/token hardcoding, but all keep metrics failed or stayed flat.
+
+## 2026-06-25 — mtp-acceptance iteration 5 skipped: F32 shared head diagnostic too slow
+
+### Hypothesis
+- The retained path uses a raw Q6_K shared-head GEMV for MTP logits. If that quantized draft head misranks top-1 while still placing targets in top-40, a dequantized F32 shared head could improve strict draft acceptance and accepted/output enough to offset extra work.
+
+### Result
+- Skipped after smoke and reverted; no F32 shared-head flag/default retained.
+- Prototype added `--mtp-shared-head-f32` / `--no-mtp-shared-head-f32`, defaulted F32 on for the diagnostic, and passed dequantized `output.weight` with `shared_head_qtype=None`.
+- One-prompt smoke: `/tmp/hipengine-mtp-shared-head-f32-smoke.json` using prompt `Write a Python function that implements merge sort:`, `--cycles 4 --draft-n-max 1`.
+  - F32 shared head size: `2034MB`.
+  - `tokens_per_sec=4.25`, `avg_cycle_ms=411.70`, `accepted_per_output=0.429`, `total_accepted=3/160`.
+  - Draft cost was ~`377ms` per cycle, so the path cannot meet the raw tok/s keep gate (`>45.77`).
+- Loop action recorded as `skip` rather than full-suite verify. This suggests top-1 ranking is not fixed by exact F32 head enough to justify the cost; the raw Q6_K head remains necessary for speed.
