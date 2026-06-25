@@ -124997,3 +124997,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests).
 - Prompt verifier passed policy-wise (generic root top-K policy, no prompt/token/benchmark gaming), but same-denominator performance acceptance failed. Reverted.
 - Loop stopped automatically after iteration 40 / pivot exhaustion. Retained best remains root-top40: `45.77177230711414 tok/s`, `0.8112315701300644x` true AR, `draft_acceptance=0.0225`, `accepted_per_output=0.47368421052631576`.
+
+## 2026-06-25 — mtp-acceptance iteration 1 rejected: skip MTP attention diagnostic
+
+### Hypothesis
+- The retained B1 root-top40 path has very low strict draft acceptance (`draft_acceptance=0.0225`). Without an MTP KV cache, the attention sublayer sees a single-row cache and acts as a fixed transform instead of true context attention; bypassing that transform could improve draft ranking while saving time.
+
+### Result
+- Rejected by the optimize loop and reverted; no skip-attention code retained.
+- Prototype added a `skip_attention` diagnostic path in `qwen35_gguf_mtp_nextn_layer_logits_f32`, a `--skip-mtp-attention` bench flag defaulted on for the iteration, and recorded the flag in output config.
+- Full-suite B1 run: `/tmp/hipengine-mtp-acceptance/run-20260625-021801/summary.json` with objective `/tmp/hipengine-mtp-acceptance/run-20260625-021801/objective-b1.json`.
+  - `decode_tok_s_weighted=46.70751805272111` improved raw tok/s versus the loop baseline/current `45.915568519319585` and retained root-top40 threshold `45.77177230711414`.
+  - `accepted_per_output=0.4318181818181818` regressed versus `0.47368421052631576`.
+  - `draft_acceptance=0.019` regressed versus `0.0225`.
+  - `mtp_vs_true_ar_decode_ratio=0.8273738486979872`.
+- Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests in `5.77s`).
+- Prompt verifier rejected the iteration because accepted/output and draft acceptance both regressed despite the raw tok/s gain. This supports the opposite conclusion: the one-row attention transform still contributes useful signal; the likely llama.cpp parity gap is missing persistent MTP KV context, not attention removal.
