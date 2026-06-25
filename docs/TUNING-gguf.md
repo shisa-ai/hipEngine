@@ -206,6 +206,12 @@ Evidence:
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`,
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json`, and
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`.
+The stable format/policy summary for future runs is now in
+[`docs/GGUF.md` "GGUF Q8 / INT8 KV cache status"](GGUF.md#gguf-q8--int8-kv-cache-status):
+hipEngine GGUF `int8_per_token_head` is not llama.cpp `GGML_TYPE_Q8_0` KV, PARO
+KV8 passing does not transfer automatically to GGUF Q4_K_M, and a relaxed GGUF
+INT8 KV option should only be exposed if it beats a refreshed llama.cpp ROCm
+`q8_0` divergence baseline while documenting that it is approximate.
 
 The older Q4_K_S gate (`512/128` `1958.693 / 126.924`, `4K/128` `2293.994 /
 114.991`, stable IDs `220/570`, `21.335 GiB`) is now secondary memory context,

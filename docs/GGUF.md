@@ -58,6 +58,71 @@ The intake implementation is now past scanner/GEMV bring-up for the local Q4_K_M
 
 Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the accelerated runtime pieces land.
 
+## GGUF Q8 / INT8 KV cache status
+
+Last updated: 2026-06-24. Evidence artifact:
+[`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json).
+
+Terminology matters:
+
+- **GGUF `Q8_0` weights** are GGML tensor blocks: 32 int8 values plus one fp16
+  scale in each `block_q8_0`.
+- **llama.cpp `-ctk q8_0 -ctv q8_0` KV** stores K/V as `GGML_TYPE_Q8_0`
+  tensors with those same 32-value blocks and interleaved fp16 scales.
+- **hipEngine GGUF `int8_per_token_head` KV** is not `GGML_TYPE_Q8_0`. It stores
+  signed int8 K/V payloads in hipEngine paged-KV layout plus separate `k_scale`
+  and `v_scale` tensors keyed by `(token, kv_head)` for the default path.
+- **hipEngine PARO KV8** currently uses the same per-token/per-KV-head INT8
+  payload/scale idea as hipEngine GGUF, but on a different packed PARO model and
+  activation distribution. PARO quality results do not automatically transfer to
+  GGUF Q4_K_M.
+
+Current format comparison:
+
+| Path | Payload | Scale granularity/storage | Current role |
+| --- | --- | --- | --- |
+| hipEngine GGUF default INT8 KV | int8 K + int8 V | one fp16/fp32 sideband scale per token x KV-head x K/V side, over the full 256-dim head | Admitted only as the guarded hybrid long-context path; pure/no-mirror fails strict gate. |
+| hipEngine GGUF block16 diagnostic | int8 K + int8 V | sideband scale per token x KV-head x 16-dim block x K/V side | Primitive-correct but model-quality rejected; do not promote. |
+| llama.cpp ROCm Q8 KV | `GGML_TYPE_Q8_0` K + V | interleaved fp16 scale per 32 values | External comparator; completes but does not pass hipEngine's strict BF16-vs-candidate quality bar on this GGUF. |
+| hipEngine PARO KV8 | int8 K + int8 V | sideband scale per token x KV-head x K/V side | Passing control case for the packed PARO model. |
+
+Strict hipEngine GGUF KV quality is judged against the BF16-KV candidate with the
+repository logit guard (KL mean <= `0.05` and top-1 agreement >= `0.9`). Under
+that guard, the current GGUF results are:
+
+- Actual no-mirror pure GGUF `int8_per_token_head` FP32-scale runtime fails at
+  `128/1`, `512/1`, and `4K/1`: `KL mean=0.0824` / top-1 `0.5`,
+  `KL mean=0.05698` / top-1 `1.0`, and `KL mean=0.15398` / top-1 `0.5`.
+- Host QDQ `q8_0_block32` probes, which approximate llama.cpp's 32-value scale
+  granularity but replay through BF16 storage, also fail the `4K/1` pure gate:
+  fp16 scales `KL=0.5715`, fp32 scales `KL=0.1235`, both top-1 `0.0`.
+- Finer host QDQ proves pure INT8 payload can be exact enough only with
+  per-scalar scale metadata: `block1_fp16` / `block1_fp32` pass, but they are
+  about `150%` / `250%` of BF16 KV, so they are not useful compact KV formats.
+- External llama.cpp ROCm `q8_0` K+V on the same GGUF at `ctx=4K`, `chunks=1`
+  has mean KLD `1.424879`, max KLD `23.208828`, and same-top-p `0.84563`; it is
+  useful as a compatibility/perplexity comparator, not as evidence that Q8 KV is
+  BF16-exact by this project's guard.
+- PARO is the positive control, not the GGUF answer: packed PARO
+  `int8_per_token_head` KV passes the same KL/top-1 style `4K/1` comparison with
+  mean KL `2.09e-7` and top-1 `1.0`.
+
+Operational policy:
+
+1. **Exact/admitted GGUF path:** keep BF16 KV or the current guarded hybrid
+   (`8` BF16 full-attention layers + `2` INT8 layers for long contexts) when the
+   strict BF16-vs-candidate gate must pass.
+2. **Approximate/relaxed option:** a future pure or mostly-INT8 GGUF KV path may
+   be exposed as an explicit opt-in if it clearly beats the local llama.cpp ROCm
+   `q8_0` divergence on the same model, corpus, context, hardware, and command
+   while providing a memory or throughput benefit. The artifact must report mean
+   and max KLD, top-1/same-top agreement, generated-token drift, memory, and the
+   exact llama.cpp baseline used for comparison. This is a "better than
+   llama.cpp-Q8" relaxed mode, not an exactness claim.
+3. **Rejected:** any GGUF INT8 KV layout that fails the strict guard and is not
+   better than the refreshed llama.cpp `q8_0` comparator should remain
+   diagnostic-only.
+
 ## True `LLM.generate()` E2E acceptance gate
 
 The first native GGUF E2E target was fixed to the local file:

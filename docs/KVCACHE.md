@@ -1,6 +1,6 @@
 # KV Cache Roadmap — Dense INT8 First, Compact DMS Next
 
-_Status: K1 dense INT8 KV landed as a diagnostic/capacity path; 256K now passes both sampled and tracked 24GiB-class capacity targets after prefill buffer lifetime reductions and AOTriton query-scratch reuse. Correctness-preserving removal of the transient BF16 INT8-prefill oracle is deferred as future work. K2 compact DMS remains planned. Last updated: 2026-05-18._
+_Status: K1 dense INT8 KV landed as a Qwen3.5/PARO diagnostic/capacity path; 256K now passes both sampled and tracked 24GiB-class capacity targets after prefill buffer lifetime reductions and AOTriton query-scratch reuse. Correctness-preserving removal of the transient BF16 INT8-prefill oracle is deferred as future work. GGUF Q4_K_M INT8 KV has separate quality behavior; see [docs/GGUF.md](GGUF.md#gguf-q8--int8-kv-cache-status). K2 compact DMS remains planned. Last updated: 2026-06-24._
 
 This document is the focused plan for extending hipEngine's KV-cache stack past
 current dense BF16 paged KV. It turns the current 128K-under-24GiB milestone
@@ -56,6 +56,11 @@ Artifacts:
   [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-single-buffer-capacity-diagnostic.json)
 - Superseded 256K blocked attempt:
   [`benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json`](../benchmarks/results/2026-05-18-hipengine-qwen35-int8-kv-256k-capacity-blocked.json)
+
+These K1 rows are PARO-specific. The same `int8_per_token_head` storage idea is
+implemented for GGUF, but GGUF Q4_K_M fails the pure/no-mirror strict guard where
+PARO passes; the current GGUF policy and llama.cpp `q8_0` comparison live in
+[`docs/GGUF.md` "GGUF Q8 / INT8 KV cache status"](GGUF.md#gguf-q8--int8-kv-cache-status).
 
 For Qwen3.5/PARO, only the 10 full-attention layers own a dense KV cache:
 
