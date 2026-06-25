@@ -125073,3 +125073,20 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - `tokens_per_sec=4.25`, `avg_cycle_ms=411.70`, `accepted_per_output=0.429`, `total_accepted=3/160`.
   - Draft cost was ~`377ms` per cycle, so the path cannot meet the raw tok/s keep gate (`>45.77`).
 - Loop action recorded as `skip` rather than full-suite verify. This suggests top-1 ranking is not fixed by exact F32 head enough to justify the cost; the raw Q6_K head remains necessary for speed.
+
+## 2026-06-25 — stopped mtp-acceptance loop after no-win acceptance probes
+
+### Summary
+- Stopped `mtp-acceptance/run-20260624-152435` after 5 no-win attempts (3 full-suite reverts + 2 smoke skips) and a concrete blocker.
+- Retained/default path remains B1 root-top40: loop baseline/current `decode_tok_s_weighted=45.915568519319585`, retained threshold `45.77177230711414`, `accepted_per_output=0.47368421052631576`, `draft_acceptance=0.0225`.
+
+### What failed
+- Iteration 1 skip-attention: raw tok/s improved (`46.7075`) but `accepted_per_output` and `draft_acceptance` regressed.
+- Iteration 2 host-side KV-prefix cache: `accepted_per_output` and `draft_acceptance` barely improved (`0.47644`, `0.02275`) but raw tok/s collapsed to `6.10596` due host copies/concats.
+- Iteration 3 context replay default: smoke fell to `0.26 tok/s` with a `27097ms` draft step.
+- Iteration 4 root-top41: full-suite tok/s regressed (`45.5344`), accepted/output stayed flat, draft acceptance regressed.
+- Iteration 5 F32 shared head: smoke fell to `4.25 tok/s` and did not improve acceptance.
+
+### Blocker / next viable work
+- llama.cpp MTP achieves much higher reported acceptance because its MTP path keeps draft-model KV context cheaply. hipEngine's diagnostic path can only approximate context via Python/host replay today, which is too slow.
+- Next viable work is not more selector/root-K probing; it is an in-tree device-resident MTP KV implementation: expose/store post-RoPE K/V from `qwen35_gguf_mtp_attention_sublayer_f32`, keep a persistent device cache (or use the paged/KVLiveSpans ABI), and avoid host downloads/concats. Add a narrow RED fixture against the current host-prefix prototype before porting the cache write path.
