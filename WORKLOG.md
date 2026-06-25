@@ -125180,3 +125180,25 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - The clean branch-wide optimize-loop count is `79` iterations without retained progress.
 - The harsher all-loop count is `773` non-keep iterations, but that includes long-running diagnostic/dev/log-only loops whose purpose was exploration and bookkeeping rather than keep/revert optimization.
 - This reinforces the current speculative-decode conclusion: more selector/root-K probing is unlikely to solve the break-even problem; the remaining performance path is improving actual committed tokens per verifier call and/or reducing verifier/draft overhead, especially around MTP KV context and MoE verifier cost.
+
+## 2026-06-25 — documented llama.cpp vs hipEngine MTP parity trace
+
+### Scope
+- Added `docs/MTP-LLAMACPP-PARITY.md` as the detailed trace/roadmap requested after the branch-wide no-progress count.
+- Goal: explain why llama.cpp gets much higher committed tokens per verifier call, what hipEngine does differently, and what roadmap should replace further root-K probing.
+
+### Runtime evidence
+- llama.cpp source/runtime checkout: `/home/lhl/llama.cpp/llama.cpp-hip` at `6e9007ae61f4e994c27484759caac6ef2aa32b30`.
+- Working llama.cpp runtime path is `llama-cli`/server-style; `llama-completion` rejects `--spec-type`, and `llama-cli --no-conversation` is unsupported.
+- llama.cpp debug trace command used `--spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0 -n 12 --temp 0 --log-verbosity 5` on `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+  - Artifact: `/tmp/hipengine-llamacpp-mtp-cli-debug.log`.
+  - Result: `draft acceptance = 1.00000 (8 accepted / 8 generated)`, `#gen drafts=3`, `#acc drafts=3`, `#gen tokens=8`, `#acc tokens=8`, visible output/verifier `11/3=3.67`.
+- hipEngine strict B3 trace command used `scripts/gguf_mtp_bench.py --cycles 3 --draft-n-max 3 --root-topk-accept 1` on the same prompt string/model.
+  - Artifact: `/tmp/hipengine-mtp-b3-strict-trace.json`.
+  - Result: `accept_per_draft=0.2222`, `accepted_per_output=0.4000`, `visible/cycle=1.6667`, `total_accepted=2/9`, `tokens_per_sec=33.38`.
+- Caveat recorded in the doc: prompt wrappers/token counts are close but not byte-identical (`llama-cli` server/chat path `task.n_tokens=19`; hipEngine GGUF harness `Prompt tokens=21`). The acceptance gap is large enough that this remains a useful diagnostic, but true tensor parity still requires an instrumented llama.cpp copy or patch.
+
+### Key conclusion
+- llama.cpp is not winning through wider candidate selection; it runs a real MTP draft context with verifier-row `process()`, persistent draft K/V, hidden-row handoff, and B>1 accept/rollback semantics.
+- hipEngine's retained root-top40 path proves the target often appears near the MTP distribution, but not that top-1 draft chains are predictive.
+- Next roadmap: exact trace parity on one prompt, B3 transactional device KV, strict full-suite acceptance, then only after parity optimize resident kernels/verifier cost.

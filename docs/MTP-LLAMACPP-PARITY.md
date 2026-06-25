@@ -1,0 +1,473 @@
+# GGUF MTP llama.cpp Parity Trace and Roadmap
+
+Date: 2026-06-25  
+Branch: `mtp-gguf`  
+hipEngine commit used for source links: `98df03ddd00ae682c07e302721343040373e1b55`  
+llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
+
+## Executive summary
+
+We have **not yet matched llama.cpp's effective MTP behavior**.  The largest
+measured gap is not just speed; it is **committed tokens per verifier call**:
+
+| Engine / trace | Draft budget | Verifier calls | Accepted draft tokens | Visible output tokens | Accepted draft / verifier | Visible output / verifier | Strict draft acceptance |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| llama.cpp CLI MTP debug trace | B3 | 3 | 8 | 11 | 2.67 | 3.67 | 1.000 |
+| hipEngine GGUF MTP strict trace | B3 | 3 | 2 | 5 | 0.67 | 1.67 | 0.222 |
+| hipEngine retained root-top40 B1 smoke | B1 + root top40 accounting | 10 | 9 | 19 | 0.90 | 1.90 | 0.0225 by benchmark denominator |
+| hipEngine device-KV B1 smoke | B1 + root top40 accounting | 4 | 3 | 7 | 0.75 | 1.75 | 0.0187 by benchmark denominator |
+
+The meaningful result is the first two rows: with comparable B3 strict matching,
+llama.cpp accepted every drafted token in the short debug trace, while hipEngine
+accepted only 2/9.  Our root-top40 rows can make visible-output accounting look
+less bad, but they do not prove the MTP draft chain is predictive.  That is why
+root-K probing plateaued.
+
+**Current conclusion:** the next win is not more root/sibling selector tuning.  We
+need to make hipEngine's actual MTP logits/hidden/KV lifecycle match llama.cpp,
+then reduce its overhead.  The first in-tree device-resident cache exists, but it
+is B1-only and still does not reproduce llama.cpp's B3 acceptance.
+
+## Source evidence: what llama.cpp does
+
+All llama.cpp source links below point to commit
+`6e9007ae61f4e994c27484759caac6ef2aa32b30`.
+
+### 1. Qwen35MoE MTP graph
+
+The Qwen35MoE MTP graph is built as a one-layer decoder graph:
+[`src/models/qwen35moe.cpp#L550-L736`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/src/models/qwen35moe.cpp#L550-L736).
+Important details:
+
+- It requires one NextN/MTP block.
+- It chooses `nextn.embed_tokens` when present, otherwise `model.tok_embd`.
+- It takes a separate hidden-state input tensor named `mtp_h_input`.
+- It calls `build_attn_inp_kv()`, so the MTP block has its own draft-context K/V state.
+- It computes:
+  1. `h_norm = RMSNorm(h_input, nextn.hnorm)`
+  2. `e_norm = RMSNorm(token_embedding, nextn.enorm)`
+  3. `concat = [e_norm, h_norm]`
+  4. `eh_proj`
+  5. attention + gated output projection + residual
+  6. MoE/shared-expert FFN + residual
+  7. shared-head norm, then LM head fallback to `model.output`.
+
+This graph shape matches our Python/GPU wrapper at a high level.  The gap is in
+**state lifecycle and numerical/runtime parity**, not the obvious concat order or
+which head/embedding tensors are chosen.
+
+### 2. MTP state maintained by llama.cpp
+
+The MTP speculative implementation stores per-sequence state in
+[`common/speculative.cpp#L816-L918`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/common/speculative.cpp#L816-L918):
+
+- `pending_h`: hidden row used to seed the next MTP draft.
+- `verify_h`: hidden rows captured from the target verifier batch.
+- `verify_h_rows`: how many verifier hidden rows are available.
+- `last_n_drafted`: last draft length, used for recurrent/rollback bookkeeping.
+
+This is the critical lifecycle we only partially approximate today.
+
+### 3. `process()` mirrors target verifier rows into the draft/MTP context
+
+llama.cpp's MTP `process()` is in
+[`common/speculative.cpp#L955-L1045`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/common/speculative.cpp#L955-L1045).
+The important behavior:
+
+- It copies target `h_nextn` rows from the target context.
+- It builds an MTP batch with token/hidden pairs.
+- It calls `llama_decode(ctx_dft, batch)` on the draft/MTP context.
+- That decode advances the MTP graph and its K/V state, not just a single isolated
+  row.
+- It stashes verifier hidden rows in `verify_h` and refreshes `pending_h`.
+
+This is what our old no-context path lacked.  Our new `--mtp-device-kv-cache`
+implements a first B1 approximation of the K/V portion, but not the full
+llama.cpp process lifecycle or B>1 rollback/transactional semantics.
+
+### 4. `draft()` seeds from `pending_h`, samples from `ctx_dft`, and chains `h_nextn`
+
+llama.cpp's MTP `draft()` is in
+[`common/speculative.cpp#L1048-L1168`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/common/speculative.cpp#L1048-L1168):
+
+- It adds the last accepted token `dp.id_last` at `dp.n_past`.
+- It overwrites the draft batch embedding with `pending_h`.
+- It calls `llama_decode(ctx_dft, batch)`.
+- It samples a draft token from the draft/MTP logits.
+- It reads `llama_get_embeddings_nextn_ith(ctx_dft, i_batch)` and uses that as
+  the hidden seed for the next draft step.
+- It repeats up to `n_max`, respecting `p_min`.
+
+This is where llama.cpp gets an actual predictive draft chain.  hipEngine's
+`run_draft()` also chains `return_hidden_seed`, but our state before/around that
+chain has not matched llama.cpp's `process()`/draft context yet.
+
+### 5. `accept()` chooses the verifier hidden row for the next seed
+
+llama.cpp's MTP `accept()` is in
+[`common/speculative.cpp#L1171-L1184`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/common/speculative.cpp#L1171-L1184):
+
+- It chooses `i_h = min(n_accepted, n_rows - 1)`.
+- It copies `verify_h[i_h]` into `pending_h`.
+
+This matches our conceptual `pending_hidden_row_index = accepted` logic, but we
+must still validate that our captured row is numerically the same row at the same
+point in the graph.
+
+### 6. Runtime stats are reported by common speculative stats
+
+The aggregate counters are printed by
+[`common/speculative.cpp#L2079-L2103`](https://github.com/ggerganov/llama.cpp/blob/6e9007ae61f4e994c27484759caac6ef2aa32b30/common/speculative.cpp#L2079-L2103):
+
+- `#gen drafts`
+- `#acc drafts`
+- `#gen tokens`
+- `#acc tokens`
+- begin/draft/accept durations
+
+These counters are the cleanest runtime evidence we have without editing the
+read-only llama.cpp checkout.
+
+## Source evidence: what hipEngine currently does
+
+All hipEngine source links below point to commit
+`98df03ddd00ae682c07e302721343040373e1b55`.
+
+### 1. Acceptance accounting
+
+hipEngine's benchmark implements llama.cpp-style strict acceptance in
+[`scripts/gguf_mtp_bench.py#L259-L297`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/scripts/gguf_mtp_bench.py#L259-L297):
+
+- The target samples `[last_token] + accepted_draft_prefix`.
+- The first mismatch emits a corrective target token.
+- Visible output tokens are accepted draft targets plus the corrective token.
+
+The benchmark also has root/sibling top-K acceptance diagnostics; those are useful
+for measuring whether the target is somewhere in the draft distribution, but they
+are **not** evidence that the draft chain matches llama.cpp.
+
+### 2. Device-resident MTP KV cache, default off
+
+The new opt-in dense device cache is in
+[`hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py#L636-L760`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py#L636-L760),
+with the device-to-device write and dense attention read in
+[`mtp_nextn.py#L975-L1002`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py#L975-L1002).
+
+Accepted-row cheap commit is handled via `kv_write_only` in
+[`mtp_nextn.py#L880-L930`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py#L880-L930),
+and the benchmark uses it in
+[`scripts/gguf_mtp_bench.py#L1126-L1155`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/scripts/gguf_mtp_bench.py#L1126-L1155).
+
+The fixture proving sequential cache writes match two-row dense attention is
+[`tests/test_mtp_dense_device_kv_cache.py#L1-L120`](https://github.com/shisa-ai/hipEngine/blob/98df03ddd00ae682c07e302721343040373e1b55/tests/test_mtp_dense_device_kv_cache.py#L1-L120).
+
+This is useful infrastructure, but it remains default-off because it has not yet
+improved same-suite speed/acceptance.
+
+## Runtime trace commands and artifacts
+
+### llama.cpp CLI MTP debug trace
+
+Command:
+
+```bash
+/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-cli \
+  -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --spec-type draft-mtp \
+  --spec-draft-n-max 3 \
+  --spec-draft-p-min 0.0 \
+  -p 'Write a Python function that implements merge sort:' \
+  -n 12 \
+  -ngl 99 \
+  --spec-draft-ngl 99 \
+  --temp 0 \
+  --no-warmup \
+  --no-display-prompt \
+  --single-turn \
+  --simple-io \
+  --log-file /tmp/hipengine-llamacpp-mtp-cli-debug.log \
+  --log-verbosity 5
+```
+
+Artifact: `/tmp/hipengine-llamacpp-mtp-cli-debug.log`.
+
+Caveat: `llama-cli --no-conversation` is not supported by this binary.  The
+working CLI path is server/chat-style.  The debug trace had `task.n_tokens = 19`.
+A `--no-jinja` probe used `task.n_tokens = 17` and still had 100% draft
+acceptance, but generation timing collapsed to 0.88 tok/s, so it is not used for
+performance comparison.
+
+Aggregate llama.cpp result for the debug trace:
+
+```text
+draft acceptance = 1.00000 (8 accepted / 8 generated)
+statistics draft-mtp: #calls(b,g,a) = 1 3 3,
+  #gen drafts = 3, #acc drafts = 3,
+  #gen tokens = 8, #acc tokens = 8,
+  dur(b,g,a) = 0.004, 26.710, 0.001 ms
+```
+
+Per-draft-call table parsed from the debug log:
+
+| call | history size before draft | drafted | accepted | top-1 draft IDs | corrective / sampled token | new token count |
+| ---: | ---: | ---: | ---: | --- | ---: | ---: |
+| 1 | 19 | 3 | 3 | `[579, 264, 7047]` | 1817 | 23 |
+| 2 | 23 | 3 | 3 | `[25, 271, 16]` | 13 | 27 |
+| 3 | 27 | 2 | 2 | `[220, 2972, 15771]` | 15771 | 30 |
+
+Interpretation:
+
+- `accepted == drafted` for every MTP call in the trace.
+- The verifier call commits `accepted_draft_tokens + 1` visible tokens: 4, 4, and
+  3 respectively.
+- Visible output / verifier call is therefore `11 / 3 = 3.67`.
+- Accepted draft tokens / verifier call is `8 / 3 = 2.67`.
+
+### hipEngine strict B3 trace
+
+Command:
+
+```bash
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt "Write a Python function that implements merge sort:" \
+  --cycles 3 \
+  --draft-n-max 3 \
+  --root-topk-accept 1 \
+  --output /tmp/hipengine-mtp-b3-strict-trace.json
+```
+
+Artifact: `/tmp/hipengine-mtp-b3-strict-trace.json`.
+
+Caveat: the hipEngine benchmark applies the Qwen chat prompt wrapper used by its
+GGUF harness and reported `Prompt tokens: 21`; this is close but not byte-for-byte
+identical to the llama.cpp CLI trace (`19` chat/server tokens).  The strict B3
+numbers are still useful because the acceptance gap is large and consistent with
+full-suite behavior.
+
+Metrics:
+
+```text
+accept_per_draft     = 0.2222
+accepted_per_output  = 0.4000
+visible/cycle        = 1.6667
+tokens_per_sec       = 33.38
+speedup_vs_ar_visible= 0.598x
+total_accepted       = 2 / 9 draft tokens
+```
+
+Per-cycle table:
+
+| cycle | accepted / drafted | target samples | draft IDs | target rank in draft top-10 | visible output | target verify ms | MTP draft ms |
+| ---: | ---: | --- | --- | --- | ---: | ---: | ---: |
+| 0 | 0/3 | `[198]` | `[803, 328, 760]` | `[None]` | 1 | 17.94 | 20.31 |
+| 1 | 0/3 | `[17]` | `[760, 21397, 25]` | `[2]` | 1 | 18.00 | 19.51 |
+| 2 | 2/3 | `[15, 15, 15]` | `[15, 15, 248046]` | `[1, 1, 2]` | 3 | 53.60 | 20.42 |
+
+Interpretation:
+
+- hipEngine's MTP top-1 is often wrong even when the target is near the top of
+  the distribution (`target_rank_in_draft_top10 = 2` in cycles 1 and 2).
+- This is exactly why root-top40 raised `accepted_per_output` while strict
+  `draft_acceptance` stayed extremely low: the target is often in the top-K but
+  not the actual draft token.
+- B3 strict verification currently commits only `5/3 = 1.67` visible tokens per
+  verifier call, far below llama.cpp's `3.67` in the debug trace.
+
+### hipEngine retained/default and device-KV smoke context
+
+Retained root-top40 B1 smoke artifact: `/tmp/hipengine-mtp-with-attn-smoke.json`
+
+```text
+accept_per_draft    = 0.0225
+accepted_per_output = 0.4737
+visible/cycle       = 1.9
+tokens_per_sec      = 46.6
+total_accepted      = 9 / 400 candidate-count denominator
+```
+
+Device-KV B1 smoke artifact:
+`/tmp/hipengine-mtp-device-kv-smoke-fastcommit.json`
+
+```text
+accept_per_draft    = 0.0187
+accepted_per_output = 0.4286
+visible/cycle       = 1.75
+tokens_per_sec      = 43.68
+total_accepted      = 3 / 160 candidate-count denominator
+KV rows             = 7 / 12
+commit cost         = ~1.2-1.9 ms per accepted-row KV write
+```
+
+The device-KV path is much faster than prior host replay/prefix diagnostics, but
+it did not reproduce llama.cpp's high B3 acceptance and remains default-off.
+
+## What llama.cpp is doing that hipEngine is not yet doing
+
+### A. Full draft-context lifecycle, not just K/V rows
+
+llama.cpp's `process()` decodes verifier rows through `ctx_dft` and updates all
+relevant draft-model state.  For Qwen35MoE MTP this primarily means attention K/V,
+but it also means the exact graph scheduling, output IDs, and hidden-row selection
+are controlled by the same decode path as `draft()`.
+
+hipEngine now has device K/V row writes, but still drives MTP from a Python wrapper
+that repeatedly uploads/downloads intermediates and manually chooses which rows to
+commit.  It does not yet have the same transactional draft context abstraction.
+
+**Roadmap item:** add an in-tree `GGUFMTPDraftContext` owning device K/V, position,
+pending hidden row, accepted verifier rows, and rollback/commit state.  The
+benchmark should call this object rather than open-coding row bookkeeping.
+
+### B. B>1 transactional semantics
+
+llama.cpp B3 drafts can be generated, verified, accepted, and rolled forward while
+preserving draft context.  hipEngine's `--mtp-device-kv-cache` intentionally
+rejects `--draft-n-max != 1` today because we do not yet have safe rollback for
+unaccepted draft rows.
+
+**Roadmap item:** implement draft transaction:
+
+1. Save `kv_len_before_draft`.
+2. Append draft rows while generating B tokens.
+3. Verify target batch.
+4. Roll back unaccepted draft rows.
+5. Commit accepted target rows and the corrective pending hidden row exactly like
+   llama.cpp's `accept()`.
+
+### C. Numeric parity of MTP logits has not been proven
+
+The largest unexplained delta is that llama.cpp's top-1 MTP tokens are accepted
+in the debug trace, while hipEngine's top-1 tokens often miss even when the target
+is rank 2.  That could be due to:
+
+- hidden seed captured at the wrong point,
+- RoPE position/context count mismatch,
+- missing or stale MTP K/V context,
+- output ID / row selection mismatch,
+- quantized GEMV/layout differences in attention, FFN, or shared head,
+- sampler/logit post-processing differences.
+
+**Roadmap item:** create a one-step parity harness that records, for the same
+prompt/token position:
+
+- token ID entering MTP,
+- `pending_h` checksum/norm,
+- K/V cache length,
+- MTP top-10 logits/tokens,
+- `h_nextn` checksum/norm,
+- accepted prefix length.
+
+Without editing the read-only llama.cpp checkout, we can only get aggregate and
+some debug candidate logs.  For true tensor parity we need either a temporary
+instrumented llama.cpp worktree/copy or a local patch that is not committed to the
+reference repo.
+
+### D. hipEngine wrapper overhead is still high
+
+Even when B1 device K/V is active, hipEngine draft time is ~8.5 ms/cycle on the
+smoke.  The source-level issue is that the correctness-first Python wrapper still
+allocates/copies many intermediates.  The WORKLOG follow-up already identified:
+
+- remove Q/gate D2H split,
+- avoid Q6_K temporary H2D uploads in attention,
+- keep more MTP intermediates resident,
+- move from Python orchestration to one or a few persistent launch wrappers.
+
+**Roadmap item:** after numeric parity, port MTP attention+FFN+head into a real
+resident path.  Do not optimize the wrong math first.
+
+### E. Root-topK is not a substitute for draft quality
+
+Root-top40 showed the target is frequently *near* the draft distribution, but the
+speculative algorithm commits actual draft tokens.  llama.cpp's debug trace has
+true top-1 acceptance.  hipEngine's root-topK acceptance is therefore a diagnostic
+for rank quality, not a path to B3/B5 break-even.
+
+**Roadmap item:** keep root-topK as diagnostic only.  Promote only changes that
+raise strict top-1 chain acceptance and committed tokens/verifier call.
+
+## What we can adopt from llama.cpp
+
+| llama.cpp behavior | Adopt in hipEngine? | Notes |
+| --- | --- | --- |
+| `pending_h` / `verify_h` lifecycle | Yes | We already use a similar concept; needs parity checksum tests. |
+| Draft context with persistent MTP K/V | Yes | Started with default-off B1 dense device cache; must become transactional and resident. |
+| `process()` verifier-row mirroring | Yes | Need a resident `process_verifier_rows()` equivalent. |
+| B>1 rollback/commit semantics | Yes | Required before meaningful MTP speedups. |
+| `p_min` early stop | Yes, diagnostic first | We already have `--draft-p-min`; tune after top-1 parity. |
+| Backend sampling | Maybe | llama.cpp logs backend TOP_K support missing on ROCm in this run; hipEngine top-k is already explicit. |
+| Chat/server prompt handling | No as-is | hipEngine benchmark prompt protocol must stay fixed and anti-gaming compliant. |
+| Loading full model twice for MTP | No | Must keep hipEngine torch-free/lean and use in-model MTP weights only. |
+
+## Prioritized roadmap to effective MTP
+
+### Phase 1 — exact trace parity on one prompt
+
+1. Add a hipEngine trace mode that emits per-step JSON:
+   - prompt token IDs,
+   - previous token,
+   - position,
+   - pending hidden norm/checksum,
+   - MTP KV length,
+   - MTP top-10 IDs/logits/probs,
+   - target samples,
+   - accepted prefix length,
+   - committed output tokens.
+2. Produce a temporary instrumented llama.cpp copy or local patch that emits the
+   same fields from `common_speculative_impl_draft_mtp`.
+3. Compare the first divergence.
+4. Fix math/state mismatches before doing more performance work.
+
+Success criterion: on the same prompt/token positions, hipEngine and llama.cpp
+produce the same MTP top-1/top-K tokens for at least the first several draft
+steps, or we can explain every difference.
+
+### Phase 2 — B3 transactional device KV
+
+1. Promote the B1 device cache into a draft-context object.
+2. Add rollback/commit around B>1 draft rows.
+3. Validate with a CPU/synthetic fixture and then a GGUF smoke.
+4. Run strict B3, no root-topK, same prompt.
+
+Success criterion: strict B3 `accepted_draft_tokens / generated_draft_tokens`
+substantially improves over the current `2/9 = 22.2%` smoke and approaches the
+llama.cpp debug trace on the same prompt.
+
+### Phase 3 — full-suite strict acceptance before speed claims
+
+Run `mtpbench-code-general-ja.jsonl` in strict mode and record:
+
+- accepted draft tokens / verifier call,
+- visible output tokens / verifier call,
+- strict draft acceptance,
+- rank histogram for target token in MTP top-K,
+- raw tok/s.
+
+Success criterion: committed tokens/verifier call rises enough that speed work is
+worthwhile.  If strict acceptance remains low, return to Phase 1.
+
+### Phase 4 — performance optimization only after parity
+
+Once strict acceptance is credible:
+
+- fuse resident MTP attention/FFN/head launches,
+- eliminate host-side intermediate copies,
+- pre-upload/cache Q6_K weights and scratch buffers,
+- profile verifier MoE grouping/budgeting to reduce `eta`,
+- revisit B2/B3/B5 economics.
+
+Success criterion: same-protocol full-suite row improves all three: raw weighted
+decode tok/s, accepted/output, and strict draft acceptance.
+
+## Bottom line
+
+llama.cpp is not just using a wider candidate set.  It is running a real MTP draft
+context with verifier-row processing, persistent draft K/V state, hidden-row
+handoff, and B>1 accept/rollback semantics.  In the short debug trace it commits
+`3.67` visible tokens per verifier call with `100%` strict draft acceptance.
+
+hipEngine currently commits far fewer strict draft tokens.  The retained root-top40
+path is useful evidence that the target often lies near the MTP distribution, but
+it does not solve the speculative break-even problem.  The actionable path is to
+reach numeric/state parity with llama.cpp first, then optimize the resident path.
