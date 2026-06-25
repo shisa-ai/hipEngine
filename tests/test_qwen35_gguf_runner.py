@@ -136,6 +136,40 @@ def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
     assert float(np.max(np.abs(graph_second.logits - eager_second.logits))) == 0.0
 
 
+def test_qwen35_gguf_target_block_verify_matches_eager_steps() -> None:
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    prompt_ids = [760, 4087, 369, 220]
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=32) as eager:
+        first = eager.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        block_inputs: list[int] = []
+        expected_tokens: list[int] = []
+        current = int(first.token_id)
+        for _ in range(4):
+            block_inputs.append(current)
+            result = eager.step(current, return_logits=False, capture_hidden_seed_fp32=True)
+            expected_tokens.append(int(result.token_id))
+            current = int(result.token_id)
+        eager_after = eager.step(current, return_logits=False)
+
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=32) as block_session:
+        block_first = block_session.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        assert int(block_first.token_id) == int(first.token_id)
+        hidden_size = int(block_session.runner.hidden_size)
+        block_result = block_session.verify_target_block(block_inputs)
+        block_after = block_session.step(block_result.token_ids[-1], return_logits=False)
+        final_position = int(block_session.position)
+
+    assert block_result.start_position == len(prompt_ids)
+    assert block_result.input_token_ids == block_inputs
+    assert block_result.token_ids == expected_tokens
+    assert block_result.hidden_seeds.shape == (4, hidden_size)
+    assert block_result.hidden_seeds.dtype == np.float32
+    assert np.all(np.isfinite(block_result.hidden_seeds))
+    assert final_position == len(prompt_ids) + len(block_inputs) + 1
+    assert int(block_after.token_id) == int(eager_after.token_id)
+
+
 def test_qwen35_gguf_decode_graph_replay_context_cap_matches_two_eager_steps() -> None:
     if not _hip_available():
         pytest.skip("HIP runtime is not available")

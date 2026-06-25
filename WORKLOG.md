@@ -125348,3 +125348,35 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - `python3 -m py_compile hipengine/kernels/hip_gfx1100/runtime/state.py hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py tests/test_runtime_state_plan.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py tests/test_qwen35_gguf_runner.py`
 - `python3 -m pytest -q tests/test_runtime_state_plan.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py tests/test_qwen35_gguf_runner.py` — passed (`51 passed, 7 skipped`).
 - New runtime kernel trace: `rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-rocprof-record-f32-row -- python3 -m pytest -q tests/test_runtime_state_plan.py::test_record_f32_row_indexed_copies_row_without_advancing_index`; trace includes `(anonymous namespace)::record_f32_row_indexed_kernel(...)`, duration about `8.3 us` on gfx1151.
+
+
+## 2026-06-25 — MTP target block verifier implemented, but generic prefill shape is slower
+
+### Changes
+- Added `Qwen35GGUFResidentSession.verify_target_block(input_token_ids)`:
+  - consumes a continuation block at the current resident target cursor;
+  - reuses row-bulk GGUF target layer paths over absolute positions;
+  - bulk-records FP32 post-output_norm hidden seeds for every consumed row;
+  - samples greedy row IDs on device using the existing single-row decode lm-head path plus `record_i64_scalar_indexed`;
+  - advances the resident target cursor by the consumed block length.
+- Added linear-attention state snapshot/restore helpers for rollback-safe verifier probing. Full-attention KV rows beyond the restored cursor are ignored by live-count metadata and overwritten later; linear conv/recurrent state is D2D-restored and the consumed prefix is replayed on partial accept.
+- Added `scripts/gguf_mtp_bench.py --target-block-verify` with `--target-block-verify-mode {bulk,native}`. The benchmark uses it only for strict top-1 cycles, and falls back/replays safely on partial accepts.
+- Added parser coverage and a small-fixture GPU test that compares block verification against eager steps when `/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf` exists.
+
+### Measurements (single-prompt diagnostics only)
+- B3/C1 block verifier smoke: `python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 1 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --output /tmp/hipengine-mtp-b3-block-verify-decode-head-c1.json`
+  - Result: `3/3`, targets `[12305, 198, 727, 10562]`, verifier `ar_decode_ms=94.8`, total `34.6 tok/s`.
+- B3/C5 block verifier + 32k draft cap: `/tmp/hipengine-mtp-b3-block-verify-vocab32k-c5.json`
+  - Result: `15/15`, `37.77 tok/s`, warm `37.94 tok/s`, verifier `~89-93 ms/cycle`.
+  - This is slower than the one-step graph + 32k cap diagnostic (`44.51 tok/s`, verifier `~72 ms/cycle`).
+- B5/C5 block verifier + 32k cap: `/tmp/hipengine-mtp-b5-block-verify-vocab32k-c5.json`
+  - Result: `23/25`, `33.93 tok/s`; full-accept cycles verify in `~98-102 ms` for 6 visible rows, but the partial-accept rollback/replay cycle costs `302.5 ms`.
+- `--target-block-verify-mode native` was worse on B3/C1 (`ar_decode_ms=158.3`), so the default mode stays `bulk`.
+
+### Conclusion
+- The rollback-safe block verifier is implemented and exact, but the generic row-bulk/full-prefill target kernels are the wrong shape for small speculative budgets. It is now a correctness scaffold and profiling harness, not a retained performance path.
+- Performance parity still needs a dedicated small-B/fused target verifier that avoids full-prefill overhead and handles rollback/prefix replay cheaply.
+
+### Validation
+- `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py tests/test_qwen35_gguf_runner.py tests/test_gguf_mtp_bench_metrics.py`
+- `python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_qwen35_gguf_runner.py` — passed on this host (`44 passed, 8 skipped`; small GGUF fixture tests skipped where the fixture is absent).

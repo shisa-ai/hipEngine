@@ -604,17 +604,21 @@ Once strict acceptance is credible:
 - profile verifier MoE grouping/budgeting to reduce `eta`,
 - revisit B2/B3/B5 economics.
 
-**2026-06-25 status:** first draft-side performance wins landed, but performance
-parity is still blocked by target verification.  Batching accepted-row MTP KV
+**2026-06-25 status:** first draft-side performance wins landed, and a
+rollback-safe target continuation block verifier now exists, but performance
+parity is still blocked by verifier kernel shape.  Batching accepted-row MTP KV
 commit into one `kv_write_only` pass improved the corrected B3 merge-sort smoke
 from `41.7` to `42.3 tok/s` (`15/15` strict accepts over five cycles).  A
-hot-token draft LM-head cap of `32768` improved the same smoke to `44.5 tok/s`
-with unchanged `15/15`, but it is prompt-sensitive and remains diagnostic until
-full-suite validation.  An opt-in batched target graph replay that records target
-IDs + FP32 hidden seeds stayed exact but did not improve speed (`~41.7 tok/s`)
-because it still executes the target decode kernels sequentially inside the
-graph.  Therefore the next material parity task is a true block verifier / target
-batch path, not more one-step graph replay tuning.
+hot-token draft LM-head cap of `32768` improved the same one-step-graph smoke to
+`44.5 tok/s` with unchanged `15/15`, but it is prompt-sensitive and remains
+diagnostic until full-suite validation.  The new `--target-block-verify` path
+snapshots linear recurrent state, runs the target over `[prev]+drafts` as a
+continuation block, records target IDs + FP32 hidden seeds, and restores/replays
+the consumed prefix on partial accepts.  It is exact (`15/15`) but slower on the
+same B3+32k smoke (`37.8 tok/s`, verifier `~90 ms/cycle`) because current
+small-row prefill kernels are the wrong shape for B3.  Therefore the next
+material parity task is a dedicated small-B/fused target verifier kernel, not
+more one-step graph replay tuning and not the generic full-prefill block path.
 
 Success criterion: same-protocol full-suite row improves all three: raw weighted
 decode tok/s, accepted/output, and strict draft acceptance.

@@ -10,7 +10,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
@@ -310,6 +310,34 @@ class Qwen35GGUFFullAttentionPrefillResult:
     hidden_bits: np.ndarray
     mode: str
     used_aotriton: bool
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFBlockVerifyResult:
+    """Host-visible target block verification result.
+
+    ``token_ids[row]`` is the greedy target token produced after consuming
+    ``input_token_ids[row]`` at ``start_position + row``.  ``hidden_seeds[row]``
+    is the FP32 post-output_norm row for that consumed target input, matching the
+    MTP seed contract used by llama.cpp's shifted draft model.
+    """
+
+    input_token_ids: list[int]
+    token_ids: list[int]
+    hidden_seeds: np.ndarray
+    start_position: int
+
+    def __post_init__(self) -> None:
+        if self.start_position < 0:
+            raise ValueError("start_position must be non-negative")
+        if len(self.input_token_ids) == 0:
+            raise ValueError("input_token_ids must be non-empty")
+        if len(self.token_ids) != len(self.input_token_ids):
+            raise ValueError("token_ids must match input_token_ids length")
+        if self.hidden_seeds.shape[0] != len(self.input_token_ids):
+            raise ValueError("hidden_seeds rows must match input_token_ids length")
+        if self.hidden_seeds.dtype != np.float32:
+            raise ValueError("hidden_seeds must be float32")
 
 
 @dataclass(frozen=True)
@@ -3288,6 +3316,59 @@ class Qwen35GGUFResidentSession:
         self._position = 0
         self._hidden_seed_fp32_populated = False
 
+    def _linear_state_snapshot(self) -> list[tuple[DeviceBuffer, DeviceBuffer]]:
+        """D2D-copy linear-attention state for rollback-safe block verification."""
+
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        snapshot: list[tuple[DeviceBuffer, DeviceBuffer]] = []
+        try:
+            for conv_state, recurrent_state in zip(
+                self.scratch.layer_conv_states,
+                self.scratch.layer_recurrent_states,
+                strict=True,
+            ):
+                for state in (conv_state, recurrent_state):
+                    if state is None:
+                        continue
+                    backup = malloc(state.nbytes, runtime=runtime)
+                    runtime.memcpy(backup.ptr, state.ptr, state.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+                    snapshot.append((state, backup))
+        except Exception:
+            for _, backup in reversed(snapshot):
+                free(backup, runtime=runtime)
+            raise
+        return snapshot
+
+    def _restore_linear_state_snapshot(
+        self,
+        snapshot: list[tuple[DeviceBuffer, DeviceBuffer]],
+        *,
+        position: int,
+    ) -> None:
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        for state, backup in snapshot:
+            runtime.memcpy(state.ptr, backup.ptr, state.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+        self._position = int(position)
+        self.scratch.position_host[0] = int(position)
+        self.scratch.context_host[0] = int(position) + 1
+        set_decode_position_i64(
+            self.scratch.position_buf.ptr,
+            self.scratch.context_buf.ptr,
+            int(position),
+            library=self._runtime_state_library,
+            runtime=runtime,
+        )
+        self._hidden_seed_fp32_populated = False
+
+    def _free_linear_state_snapshot(self, snapshot: list[tuple[DeviceBuffer, DeviceBuffer]]) -> None:
+        runtime = self.runtime or get_hip_runtime()
+        for _, backup in reversed(snapshot):
+            free(backup, runtime=runtime)
+
     @staticmethod
     def _smallest_positive_or_total(total: int, *sizes: int) -> int:
         positives = [int(size) for size in sizes if int(size) > 0]
@@ -3524,6 +3605,216 @@ class Qwen35GGUFResidentSession:
         )
         last_hidden_ptr = last_bulk_scratch.norm.ptr
         return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
+
+    def verify_target_block(
+        self,
+        input_token_ids: list[int] | tuple[int, ...],
+        *,
+        bulk_attention_mode: str = "bulk",
+        stream: int = 0,
+    ) -> Qwen35GGUFBlockVerifyResult:
+        """Consume a continuation block and return greedy target rows.
+
+        The current resident decode state is treated as the prefix state.  The
+        method consumes ``input_token_ids`` at absolute positions beginning at
+        :attr:`position`, runs the existing row-bulk target path over that
+        continuation block, records FP32 post-output_norm hidden rows, samples
+        greedy target IDs row-wise on device, and advances the resident cursor by
+        the block length.
+
+        Callers that need partial-accept rollback should snapshot linear state
+        with :meth:`_linear_state_snapshot` before this call, restore on mismatch,
+        and replay the accepted prefix.  Full-attention KV rows beyond the
+        restored cursor are ignored by live-count metadata and overwritten later.
+        """
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
+            raise RuntimeError("GGUF resident bulk prefill buffers are closed")
+        if self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        if bulk_attention_mode not in {"bulk", "native"}:
+            raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
+        rows = int(len(input_token_ids))
+        if rows <= 0:
+            raise ValueError("input_token_ids must be non-empty")
+        min_rows = int(self.runner.weights.config.ssm_conv_kernel)
+        if rows < min_rows:
+            raise ValueError(
+                f"GGUF target block verification requires at least {min_rows} rows; got {rows}"
+            )
+        if rows > int(self._bulk_prefill_scratch.rows):
+            raise ValueError(
+                f"target block rows {rows} exceed resident bulk scratch rows {self._bulk_prefill_scratch.rows}"
+            )
+        start = int(self._position)
+        end = start + rows
+        if end > int(self.scratch.max_positions):
+            raise ValueError(f"target block end position {end} exceeds cache capacity {self.scratch.max_positions}")
+        tokens = np.asarray([int(token) for token in input_token_ids], dtype=np.int64)
+        for token in tokens.tolist():
+            if token < 0 or token >= self.runner.vocab_size:
+                raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+        runtime = self.runtime or get_hip_runtime()
+        row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+        hidden_seed_buf = None
+        out_indices = None
+        out_index_counter = None
+        try:
+            hidden_seed_buf = malloc(rows * self.runner.hidden_size * DType.FP32.itemsize, runtime=runtime)
+            out_indices = malloc(rows * DType.INT64.itemsize, runtime=runtime)
+            out_index_counter = malloc(DType.INT64.itemsize, runtime=runtime)
+            zero_index = np.zeros((1,), dtype=np.int64)
+            copy_host_to_device(out_index_counter, host_array_ptr(zero_index), runtime=runtime)
+            copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+            launch_gguf_embedding(
+                self.runner.weights.root("token_embedding"),
+                self._prefill_token_buf.ptr,
+                self._prefill_hidden_a.ptr + start * row_nbytes,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                vocab_size=self.runner.vocab_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            src = self._prefill_hidden_a
+            dst = self._prefill_hidden_b
+            use_wmma_prefill = gguf_wmma_prefill_enabled(self.use_wmma_prefill)
+            with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+                for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                    expert_sidecar = None
+                    if (
+                        self.use_expert_sidecar
+                        and bulk_attention_mode == "bulk"
+                        and self.runner.weights.config.is_moe
+                        and not use_wmma_prefill
+                    ):
+                        expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
+                    try:
+                        bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                            start,
+                            rows,
+                            total_tokens=end,
+                            runtime=runtime,
+                            stream=stream,
+                        )
+                        src_chunk_ptr = src.ptr + start * row_nbytes
+                        dst_chunk_ptr = dst.ptr + start * row_nbytes
+                        if bulk_attention_mode == "native":
+                            self.runner._run_native_attention_bulk_ffn_layer_rows(
+                                layer_id,
+                                layer_type,
+                                src_chunk_ptr,
+                                dst_chunk_ptr,
+                                bulk_scratch,
+                                rows=rows,
+                                stream=stream,
+                                decode_scratch=self.scratch,
+                            )
+                        elif layer_type == LINEAR_ATTENTION:
+                            self.runner._run_linear_attention_prefill_layer_rows(
+                                layer_id,
+                                src_chunk_ptr,
+                                dst_chunk_ptr,
+                                bulk_scratch,
+                                rows=rows,
+                                stream=stream,
+                                decode_scratch=self.scratch,
+                                expert_sidecar=expert_sidecar,
+                            )
+                        elif layer_type == FULL_ATTENTION:
+                            key_cache, value_cache = self.scratch.full_cache(layer_id)
+                            layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
+                            self.runner._run_full_attention_prefill_layer_aotriton(
+                                layer_id,
+                                src_chunk_ptr,
+                                dst_chunk_ptr,
+                                layer_scratch,
+                                stream=stream,
+                                expert_sidecar=expert_sidecar,
+                            )
+                        else:
+                            raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                    finally:
+                        if expert_sidecar is not None:
+                            expert_sidecar.free(runtime=runtime)
+                    src, dst = dst, src
+                final_scratch = self._bulk_prefill_scratch.for_chunk(
+                    start,
+                    rows,
+                    total_tokens=end,
+                    runtime=runtime,
+                    stream=stream,
+                )
+                output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
+                gguf_rmsnorm_bf16_f32_weight(
+                    src.ptr + start * row_nbytes,
+                    output_norm_weight_ptr,
+                    final_scratch.norm.ptr,
+                    rows=rows,
+                    hidden_size=self.runner.hidden_size,
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                gguf_rmsnorm_bf16_f32_weight_out_f32(
+                    src.ptr + start * row_nbytes,
+                    output_norm_weight_ptr,
+                    hidden_seed_buf.ptr,
+                    rows=rows,
+                    hidden_size=self.runner.hidden_size,
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                for row in range(rows):
+                    self._sample_device_from_hidden(
+                        final_scratch.norm.ptr + row * row_nbytes,
+                        stream=stream,
+                    )
+                    record_i64_scalar_indexed(
+                        self._lm_out_index.ptr,
+                        out_indices.ptr,
+                        out_index_counter.ptr,
+                        rows,
+                        stream=stream,
+                        library=self._runtime_state_library,
+                        runtime=runtime,
+                    )
+                runtime.memcpy_async(
+                    self.scratch.hidden_seed_fp32.ptr,
+                    hidden_seed_buf.ptr + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
+                    self.runner.hidden_size * DType.FP32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            runtime.device_synchronize()
+            token_host = np.empty((rows,), dtype=np.int64)
+            hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(token_host), out_indices, runtime=runtime)
+            copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, runtime=runtime)
+        finally:
+            for buffer in (out_index_counter, out_indices, hidden_seed_buf):
+                if buffer is not None:
+                    free(buffer, runtime=runtime)
+        self._position = end
+        self.scratch.position_host[0] = end
+        self.scratch.context_host[0] = end + 1
+        set_decode_position_i64(
+            self.scratch.position_buf.ptr,
+            self.scratch.context_buf.ptr,
+            end,
+            library=self._runtime_state_library,
+            runtime=runtime,
+        )
+        self._hidden_seed_fp32_populated = True
+        return Qwen35GGUFBlockVerifyResult(
+            input_token_ids=[int(token) for token in tokens.tolist()],
+            token_ids=[int(token) for token in token_host.tolist()],
+            hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
+            start_position=start,
+        )
 
     def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
         if self._expert_sidecar_reader is None or self._expert_sidecar_model_map is None:

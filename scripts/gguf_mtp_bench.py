@@ -463,6 +463,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "FP32 hidden seeds. Requires top-1 strict acceptance; aborts if the whole draft prefix is not accepted."
         ),
     )
+    parser.add_argument(
+        "--target-block-verify",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic: verify strict top-1 draft chains with the GGUF target row-bulk continuation path. "
+            "Snapshots linear recurrent state and rolls back/replays the consumed prefix on partial accepts."
+        ),
+    )
+    parser.add_argument(
+        "--target-block-verify-mode",
+        choices=("bulk", "native"),
+        default="bulk",
+        help="Attention scheduler for --target-block-verify (default: bulk).",
+    )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument(
@@ -831,7 +846,7 @@ def main(argv: list[str] | None = None):
         target_graph_verify_enabled = False
         target_graph_verify_fallback_reason: str | None = None
         current_device_token = int(prev_token)
-        if args.target_graph_verify:
+        if args.target_graph_verify and not args.target_block_verify:
             try:
                 target_graph = session.capture_decode_graph(
                     position=seq_position,
@@ -998,6 +1013,49 @@ def main(argv: list[str] | None = None):
             redraft_start_depth: int | None = None
             redraft_ms = 0.0
             batched_verify_used = False
+            block_verify_used = False
+            can_block_verify = (
+                bool(args.target_block_verify)
+                and args.root_topk_accept == 1
+                and args.sibling_topk_accept == 1
+                and not args.topk_branch_redraft
+                and len(draft_tokens) + 1 >= int(session.runner.weights.config.ssm_conv_kernel)
+                and int(verify_input_token) == current_device_token
+            )
+            if can_block_verify:
+                t0 = time.perf_counter()
+                snapshot = session._linear_state_snapshot()
+                try:
+                    block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
+                    block_result = session.verify_target_block(
+                        block_inputs,
+                        bulk_attention_mode=args.target_block_verify_mode,
+                    )
+                    block_target_tokens = [int(token) for token in block_result.token_ids]
+                    block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
+                    consumed_rows = int(block_acceptance["accepted_draft_tokens"]) + 1
+                    if consumed_rows < len(block_inputs):
+                        session._restore_linear_state_snapshot(snapshot, position=seq_position)
+                        replay_tokens: list[int] = []
+                        replay_hidden: list[np.ndarray] = []
+                        for replay_token in block_inputs[:consumed_rows]:
+                            replay_result = session.step(int(replay_token), capture_hidden_seed_fp32=True)
+                            replay_tokens.append(int(replay_result.token_id))
+                            replay_hidden.append(copy_pending_hidden_seed())
+                        target_tokens.extend(replay_tokens)
+                        target_hidden_seeds.extend(replay_hidden)
+                    else:
+                        target_tokens.extend(block_target_tokens)
+                        target_hidden_seeds.extend(
+                            np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                            for row in range(len(block_target_tokens))
+                        )
+                    current_device_token = int(target_tokens[-1])
+                    block_verify_used = True
+                finally:
+                    session._free_linear_state_snapshot(snapshot)
+                t1 = time.perf_counter()
+                ar_decode_ms += (t1 - t0) * 1000
             can_batched_verify = (
                 bool(args.target_graph_batched_verify)
                 and target_graph_verify_enabled
@@ -1009,7 +1067,7 @@ def main(argv: list[str] | None = None):
                 and len(draft_tokens) == int(args.draft_n_max)
                 and int(target_graph.steps_per_replay) == len(draft_tokens) + 1
             )
-            if can_batched_verify:
+            if (not block_verify_used) and can_batched_verify:
                 t0 = time.perf_counter()
                 record_start = int(target_graph.replayed_steps)
                 replay_steps = len(draft_tokens) + 1
@@ -1030,7 +1088,7 @@ def main(argv: list[str] | None = None):
                         "batched target graph verify requires full strict draft acceptance; "
                         "rerun without --target-graph-batched-verify for mismatch diagnostics"
                     )
-            else:
+            elif not block_verify_used:
                 if target_graph is not None and int(target_graph.steps_per_replay) != 1:
                     target_graph.close()
                     target_graph = None
@@ -1347,6 +1405,7 @@ def main(argv: list[str] | None = None):
                 "mtp_device_kv_rows_after": int(mtp_device_kv_len),
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
+                "target_block_verify": bool(block_verify_used),
                 "target_graph_batched_verify": bool(batched_verify_used),
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
@@ -1387,7 +1446,7 @@ def main(argv: list[str] | None = None):
         f"Target graph verify: requested={args.target_graph_verify} "
         f"effective={target_graph_verify_enabled} steps_per_replay={target_graph_steps_per_replay} "
         f"max_replay_steps={target_graph_max_replay_steps} context_cap={target_graph_context_cap} "
-        f"batched={args.target_graph_batched_verify}"
+        f"batched={args.target_graph_batched_verify} block_verify={args.target_block_verify}"
     )
     if target_graph_verify_fallback_reason:
         print(f"Target graph verify fallback: {target_graph_verify_fallback_reason}")
@@ -1455,6 +1514,8 @@ def main(argv: list[str] | None = None):
             "target_graph_verify_effective": bool(target_graph_verify_enabled),
             "target_graph_steps_per_replay": int(target_graph_steps_per_replay),
             "target_graph_batched_verify": bool(args.target_graph_batched_verify),
+            "target_block_verify": bool(args.target_block_verify),
+            "target_block_verify_mode": str(args.target_block_verify_mode),
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
             "target_graph_context_cap": int(target_graph_context_cap),
             "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,

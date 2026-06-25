@@ -313,6 +313,13 @@ def test_arg_parser_exposes_batched_target_graph_verify_diagnostic() -> None:
     assert args.target_graph_batched_verify is True
 
 
+def test_arg_parser_exposes_target_block_verify_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--target-block-verify", "--target-block-verify-mode", "native"])
+
+    assert args.target_block_verify is True
+    assert args.target_block_verify_mode == "native"
+
+
 def test_arg_parser_exposes_draft_vocab_cap_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--mtp-draft-vocab-cap", "65536"])
 
