@@ -125043,3 +125043,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - `tokens_per_sec=0.26`, `avg_cycle_ms=6813.55`, `accepted_per_output=0.429`, `total_accepted=3/160`.
   - One draft step took `27097.2ms`, making the path clearly incapable of meeting the raw tok/s keep gate (`>45.77`) even before full-suite verify.
 - Loop action recorded as `skip` rather than spending hours on a full-suite run that could not pass raw tok/s. The result reinforces that llama.cpp-parity context must be device-resident and cheap; replaying committed rows through the Python/NumPy diagnostic path is not viable.
+
+## 2026-06-25 — mtp-acceptance iteration 4 rejected: root-top41 default
+
+### Hypothesis
+- Try the smallest generic root-topK increase from the retained root-top40 default. If rank-41 candidates add enough exact-verified target hits, accepted/output and draft_acceptance could both improve while runtime stays near root-top40.
+
+### Result
+- Rejected by the optimize loop and reverted; root-top40 remains the default.
+- Prototype changed `DEFAULT_ROOT_TOPK_ACCEPT` from `40` to `41`.
+- Full-suite B1 run: `/tmp/hipengine-mtp-acceptance/run-20260625-064806/summary.json` with objective `/tmp/hipengine-mtp-acceptance/run-20260625-064806/objective-b1.json`.
+  - `decode_tok_s_weighted=45.53439404505988` regressed versus loop baseline/current `45.915568519319585` and retained root-top40 threshold `45.77177230711414`.
+  - `accepted_per_output=0.47368421052631576` stayed flat, not improved.
+  - `draft_acceptance=0.02195121951219512` regressed versus `0.0225` because denominator increased without extra accepted target hits.
+  - `mtp_vs_true_ar_decode_ratio=0.8071296183364971`.
+- Guard failed as expected because `tests/test_gguf_mtp_bench_metrics.py::test_default_mtp_policy_is_b1_root_top40_speed_first` intentionally locks the default to root-top40.
+- Prompt verifier rejected the iteration: no prompt/token hardcoding, but all keep metrics failed or stayed flat.
