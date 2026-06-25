@@ -125202,3 +125202,45 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - llama.cpp is not winning through wider candidate selection; it runs a real MTP draft context with verifier-row `process()`, persistent draft K/V, hidden-row handoff, and B>1 accept/rollback semantics.
 - hipEngine's retained root-top40 path proves the target often appears near the MTP distribution, but not that top-1 draft chains are predictive.
 - Next roadmap: exact trace parity on one prompt, B3 transactional device KV, strict full-suite acceptance, then only after parity optimize resident kernels/verifier cost.
+
+## 2026-06-25 — MTP parity diagnosis: target AR diverges before MTP
+
+### Question answered
+- User asked why hipEngine strict B3 accepts only `2/9` draft tokens vs llama.cpp `8/8`, and whether this is an MTP head issue or a model issue.
+- Diagnosis: not a model-quality issue. Same GGUF in llama.cpp has high MTP acceptance. The first confirmed blocker is earlier: hipEngine target autoregressive generation diverges from llama.cpp at the first token after prefill, so MTP is being asked to predict a different verifier stream.
+
+### New evidence
+- Added diagnostic prompt suffix mode in `scripts/gguf_mtp_bench.py`:
+  - `--prompt-reasoning off` retained default: `<think>\n\n</think>\n\n` (21 tokens for merge-sort prompt).
+  - `--prompt-reasoning open`: stops at `<think>\n\n` (19 tokens, matching llama.cpp default thinking trace).
+  - `--prompt-reasoning none`: no thinking block (17 tokens, matching llama.cpp `--no-jinja` trace).
+- Added per-cycle trace fields: `initial_prev_token`, `initial_prev_position`, `cycle_prev_token`, `cycle_seq_position`.
+- llama.cpp `--reasoning off` verbose prompt artifact: `/tmp/hipengine-llamacpp-reasoning-off-verbose-prompt.log`.
+  - Prompt tail confirmed: `248045 assistant 198 248068 <think> 271 248069 </think> 271`.
+  - `task.n_tokens=21`.
+  - First target token after prompt: `71093` = ``` ` ```.
+- hipEngine retained/default same 21-token prompt artifact: `/tmp/hipengine-mtp-b3-strict-off-trace-v2.json`.
+  - Initial target token after prefill: `760` = `The`.
+  - Cycle 0 target token: `198` = newline.
+  - Strict B3 result remains `2/9` accepted, `5` visible tokens over `3` verifier calls.
+- hipEngine fastpath toggles for same prompt:
+  - `/tmp/hipengine-mtp-target-parity-off-default.json`: WMMA+GEMV+graph first token `760` (`The`).
+  - `/tmp/hipengine-mtp-target-parity-off-no_wmma.json`: no WMMA first token `248069` (`</think>`), then target `271,16` (`\n\n1`).
+  - `/tmp/hipengine-mtp-target-parity-off-no_fast.json`: no WMMA/GEMV/graph/repack same `248069` (`</think>`).
+  - Direct token-serial `prefill(..., use_bulk=False)` probe: first token `1919` (`This`), top-10 did not include llama.cpp's `71093` code fence.
+- llama.cpp `--no-jinja` artifact `/tmp/hipengine-llamacpp-mtp-cli-nojinja-debug.log` confirms 17-token prompt still had `8/8` accepted and target starts `<think>`, whereas hipEngine `--prompt-reasoning none` starts `1`.
+
+### Conclusion
+- The MTP acceptance gap is downstream of target-runtime divergence. Before optimizing MTP head/KV/acceptance, hipEngine must match llama.cpp target AR logits for the exact prompt.
+- Likely investigation order now:
+  1. Target prompt scheduling/output row selection: llama.cpp evaluates 17 cached tokens then a 4-token tail; hipEngine may be sampling the wrong row or using incompatible prefill chunk state.
+  2. Qwen3.6 Gated Delta Net/recurrent state parity: toggling WMMA changes the first token, so recurrent/prefill state affects semantics.
+  3. LM-head/logit parity after prefill: direct token-serial hipEngine top-10 lacks llama.cpp's code-fence token.
+  4. Only after target AR parity should we revisit MTP device KV/B3 rollback and head parity.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` accordingly: Phase 0 is now target AR parity before MTP parity.
+
+### Validation
+- Guard passed:
+  - `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py hipengine/runtime/qwen35_gguf_runner.py hipengine/speculative/gguf_mtp.py hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py tests/test_mtp_dense_device_kv_cache.py`
+  - `python3 -m pytest -q tests/test_mtp_dense_device_kv_cache.py tests/test_gguf_mtp_bench_prompt.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py`
+  - Result: `444 passed in 6.47s`.

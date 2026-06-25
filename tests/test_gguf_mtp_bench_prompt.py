@@ -44,6 +44,17 @@ def test_build_chat_prompt_can_omit_reasoning_suffix_for_legacy_diagnostics() ->
     assert decoded_text_parts == "user\nSay hi\nassistant\n"
 
 
+def test_build_chat_prompt_can_leave_reasoning_block_open_for_llamacpp_trace_parity() -> None:
+    tokens = build_chat_prompt(FakeTokenizer(), "Say hi", reasoning="open")
+
+    assert tokens.count(THINK_START_TOKEN) == 1
+    assert THINK_END_TOKEN not in tokens
+    decoded_text_parts = FakeTokenizer().decode(
+        [t for t in tokens if t not in (IM_START_TOKEN, IM_END_TOKEN, THINK_START_TOKEN)]
+    )
+    assert decoded_text_parts == "user\nSay hi\nassistant\n\n\n"
+
+
 def test_build_chat_prompt_rejects_unimplemented_reasoning_modes() -> None:
     with pytest.raises(ValueError, match="reasoning"):
         build_chat_prompt(FakeTokenizer(), "Say hi", reasoning="auto")
@@ -65,6 +76,70 @@ def test_build_chat_prompt_matches_logged_llamacpp_reasoning_off_greeting_tokens
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(GGUFReader(model).info)
+
+    assert build_chat_prompt(tokenizer, "Write a Python function that implements merge sort:") == [
+        248045,
+        846,
+        198,
+        7734,
+        264,
+        12654,
+        709,
+        421,
+        5004,
+        10562,
+        3269,
+        25,
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        271,
+        248069,
+        271,
+    ]
+    assert build_chat_prompt(tokenizer, "Write a Python function that implements merge sort:", reasoning="open") == [
+        248045,
+        846,
+        198,
+        7734,
+        264,
+        12654,
+        709,
+        421,
+        5004,
+        10562,
+        3269,
+        25,
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        271,
+    ]
+    assert build_chat_prompt(tokenizer, "Write a Python function that implements merge sort:", reasoning="none") == [
+        248045,
+        846,
+        198,
+        7734,
+        264,
+        12654,
+        709,
+        421,
+        5004,
+        10562,
+        3269,
+        25,
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+    ]
 
     assert build_chat_prompt(tokenizer, "Write a short greeting.") == [
         248045,

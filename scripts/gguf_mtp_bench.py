@@ -43,13 +43,14 @@ THINK_END_TOKEN = 248069
 def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT, *, reasoning: str = "off") -> list[int]:
     """Build the llama.cpp-compatible Qwen chat prompt for GGUF MTP.
 
-    llama.cpp ``--reasoning off`` still renders an empty thinking block for this
-    GGUF chat template, ending with exactly two newlines after ``</think>``.
-    Include that suffix by default so native accepted/output diagnostics compare
-    against the same token stream as llama-server.
+    ``reasoning='off'`` is hipEngine's retained default: an empty thinking block
+    ending with exactly two newlines after ``</think>``.  ``reasoning='open'`` is
+    a parity diagnostic for llama.cpp CLI/server traces that stop the prompt at
+    ``<think>\n\n`` and let the model generate the closing reasoning text.
+    ``reasoning='none'`` omits the thinking block entirely.
     """
-    if reasoning not in {"off", "none"}:
-        raise ValueError("build_chat_prompt currently supports only reasoning='off'/'none'")
+    if reasoning not in {"off", "none", "open"}:
+        raise ValueError("build_chat_prompt supports only reasoning='off'/'none'/'open'")
     prompt = (
         [IM_START_TOKEN]
         + tokenizer.encode(f"user\n{user_prompt}")
@@ -60,6 +61,8 @@ def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT, *, reasoning
     )
     if reasoning == "off":
         prompt += [THINK_START_TOKEN] + tokenizer.encode("\n\n") + [THINK_END_TOKEN] + tokenizer.encode("\n\n")
+    elif reasoning == "open":
+        prompt += [THINK_START_TOKEN] + tokenizer.encode("\n\n")
     return prompt
 
 
@@ -454,6 +457,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
+    parser.add_argument(
+        "--prompt-reasoning",
+        choices=("off", "open", "none"),
+        default="off",
+        help=(
+            "Diagnostic prompt suffix mode: off keeps the retained </think> default; "
+            "open stops at <think>\\n\\n to match llama.cpp CLI/server traces; none omits thinking tags."
+        ),
+    )
     parser.add_argument("--output", default=None, help="Output JSON path (default: benchmarks/results/mtp-bench-<timestamp>.json)")
     parser.add_argument(
         "--mtp-context-replay",
@@ -628,7 +640,7 @@ def main(argv: list[str] | None = None):
     )
 
     # Build chat-formatted prompt
-    prompt = build_chat_prompt(tok, args.prompt)
+    prompt = build_chat_prompt(tok, args.prompt, reasoning=args.prompt_reasoning)
 
     print(f"Prompt: {repr(tok.decode(prompt))}")
     print(f"Prompt tokens: {len(prompt)}")
@@ -765,6 +777,8 @@ def main(argv: list[str] | None = None):
         # After prefill, session.position = len(prompt). The first sampled
         # token (prev_token) will be verified at this position.
         seq_position = int(session.position)
+        initial_prev_token = int(prev_token)
+        initial_prev_position = int(seq_position)
         # Positions of the committed MTP context tokens (for replay mode).
         if args.mtp_context_replay:
             mtp_context_positions = list(range(len(mtp_context_tokens)))
@@ -1194,6 +1208,8 @@ def main(argv: list[str] | None = None):
 
             cycle_details.append({
                 "cycle": cycle,
+                "cycle_prev_token": int(cycle_prev_token),
+                "cycle_seq_position": int(seq_position),
                 "target_token": target_tokens[0],
                 "target_tokens": target_tokens,
                 "comparison_target_tokens": comparison_target_tokens,
@@ -1320,6 +1336,8 @@ def main(argv: list[str] | None = None):
             "quant": "Q4_K_M",
             "prompt": args.prompt,
             "prompt_tokens": len(prompt),
+            "initial_prev_token": int(initial_prev_token),
+            "initial_prev_position": int(initial_prev_position),
             "cycles": args.cycles,
             "draft_n_max": args.draft_n_max,
             "decode_repack": bool(args.decode_repack),
@@ -1336,6 +1354,7 @@ def main(argv: list[str] | None = None):
             "target_graph_context_cap": int(target_graph_context_cap),
             "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,
             "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
+            "prompt_reasoning": args.prompt_reasoning,
             "root_topk_accept": args.root_topk_accept,
             "sibling_topk_accept": args.sibling_topk_accept,
             "sibling_tail_min_prev_accepted": args.sibling_tail_min_prev_accepted,

@@ -7,8 +7,15 @@ llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759c
 
 ## Executive summary
 
-We have **not yet matched llama.cpp's effective MTP behavior**.  The largest
-measured gap is not just speed; it is **committed tokens per verifier call**:
+We have **not yet matched llama.cpp's effective MTP behavior**.  A follow-up
+apples-to-apples trace found an earlier blocker than MTP itself: **hipEngine's
+target autoregressive stream diverges from llama.cpp at the first sampled token
+after prefill**.  Until target AR parity is fixed, MTP acceptance comparisons are
+partly measuring different verifier targets.
+
+The original measured MTP gap is still real, but now has a clearer first cause:
+hipEngine is asking the MTP head to predict a different target stream.  The gap is
+not just speed; it is **committed tokens per verifier call**:
 
 | Engine / trace | Draft budget | Verifier calls | Accepted draft tokens | Visible output tokens | Accepted draft / verifier | Visible output / verifier | Strict draft acceptance |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -23,10 +30,14 @@ accepted only 2/9.  Our root-top40 rows can make visible-output accounting look
 less bad, but they do not prove the MTP draft chain is predictive.  That is why
 root-K probing plateaued.
 
-**Current conclusion:** the next win is not more root/sibling selector tuning.  We
-need to make hipEngine's actual MTP logits/hidden/KV lifecycle match llama.cpp,
-then reduce its overhead.  The first in-tree device-resident cache exists, but it
-is B1-only and still does not reproduce llama.cpp's B3 acceptance.
+**Current conclusion:** the next win is not more root/sibling selector tuning.
+The immediate parity blocker is target AR: for the exact 21-token reasoning-off
+prompt, llama.cpp's first target token is code fence token `71093` (`````), while
+hipEngine's retained fast path samples token `760` (`The`), and its slower
+non-WMMA/bulk variants still do not match.  Fix target prefill/decode/logit
+parity first; then make hipEngine's MTP logits/hidden/KV lifecycle match
+llama.cpp and reduce overhead.  The first in-tree device-resident MTP cache
+exists, but it is B1-only and cannot rescue a mismatched target stream.
 
 ## Source evidence: what llama.cpp does
 
@@ -223,6 +234,67 @@ Interpretation:
 - Visible output / verifier call is therefore `11 / 3 = 3.67`.
 - Accepted draft tokens / verifier call is `8 / 3 = 2.67`.
 
+### Target-AR parity trace (new primary blocker)
+
+The cleanest apples-to-apples prompt mode is llama.cpp `--reasoning off`, which
+renders the same 21-token text as hipEngine's retained `reasoning='off'` prompt:
+
+```text
+<|im_start|>user
+Write a Python function that implements merge sort:<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+```
+
+llama.cpp verbose prompt evidence:
+
+```text
+common_sampler_init prefill tail:
+  248045 <|im_start|>, 74455 assistant, 198 \n,
+  248068 <think>, 271 \n\n, 248069 </think>, 271 \n\n
+task.n_tokens = 21
+next token: 71093 '```'
+```
+
+Command/artifact:
+
+```bash
+/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-cli \
+  -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --spec-type draft-mtp \
+  --spec-draft-n-max 3 \
+  --spec-draft-p-min 0.0 \
+  -p 'Write a Python function that implements merge sort:' \
+  -n 1 \
+  -ngl 99 \
+  --spec-draft-ngl 99 \
+  --temp 0 \
+  --no-warmup \
+  --no-display-prompt \
+  --single-turn \
+  --simple-io \
+  --reasoning off \
+  --verbose-prompt \
+  --log-file /tmp/hipengine-llamacpp-reasoning-off-verbose-prompt.log \
+  --log-verbosity 5
+```
+
+hipEngine target traces for the same 21-token prompt:
+
+| hipEngine mode | First token after prefill | Next verifier target | Notes |
+| --- | --- | --- | --- |
+| retained default (`WMMA prefill + GEMV + graph`) | `760` = `The` | `198` = `\n` | `/tmp/hipengine-mtp-target-parity-off-default.json` |
+| no WMMA prefill | `248069` = `</think>` | `271, 16` = `\n\n1` | `/tmp/hipengine-mtp-target-parity-off-no_wmma.json` |
+| no WMMA/GEMV/graph/decode-repack | `248069` = `</think>` | `271, 16` = `\n\n1` | `/tmp/hipengine-mtp-target-parity-off-no_fast.json` |
+| true token-serial `prefill(..., use_bulk=False)` probe | `1919` = `This` | n/a | top-1 from direct session probe |
+
+None match llama.cpp's `71093` code-fence first token.  Therefore the first
+confirmed divergence is **target AR prefill/decode/logit parity**, before MTP
+draft acceptance.  The MTP acceptance gap is downstream of this target mismatch.
+
 ### hipEngine strict B3 trace
 
 Command:
@@ -303,6 +375,31 @@ The device-KV path is much faster than prior host replay/prefix diagnostics, but
 it did not reproduce llama.cpp's high B3 acceptance and remains default-off.
 
 ## What llama.cpp is doing that hipEngine is not yet doing
+
+### 0. Target AR parity before speculation
+
+llama.cpp and hipEngine must first agree on the target model's greedy token after
+the prompt.  They currently do not.  For the same reasoning-off prompt tail,
+llama.cpp picks code fence token `71093`; hipEngine picks `760`, `248069`, or
+`1919` depending on prefill path.  This points to a target runtime issue, not an
+MTP model-quality issue.
+
+Likely places to investigate in order:
+
+1. Prompt/output-row scheduling: llama.cpp decodes the 21-token prompt as a 17-row
+   cached prefix plus a 4-row tail; hipEngine bulk/serial row selection may be
+   sampling the wrong hidden row.
+2. Qwen3.6 hybrid recurrent/Gated Delta Net state: fastpath toggles change the
+   first sampled token, which means recurrent/prefill state is affecting target
+   semantics.
+3. LM-head/argmax parity: direct token-serial hipEngine top-10 does not contain
+   llama.cpp's code fence token, so verify output logits against llama.cpp after
+   the prompt.
+4. Logit processors/biases: llama.cpp biases EOG tokens to `-inf`; confirm
+   hipEngine has equivalent generation-time biasing.  This is unlikely to explain
+   `71093` vs `760`, but should be checked.
+
+Until this stage matches, MTP token acceptance is not the primary bug.
 
 ### A. Full draft-context lifecycle, not just K/V rows
 
@@ -402,7 +499,24 @@ raise strict top-1 chain acceptance and committed tokens/verifier call.
 
 ## Prioritized roadmap to effective MTP
 
-### Phase 1 — exact trace parity on one prompt
+### Phase 0 — target AR parity on one prompt
+
+1. Reproduce llama.cpp's 21-token reasoning-off prompt exactly.
+2. Add a hipEngine target-only trace that emits:
+   - prompt token IDs,
+   - chunking/prefill schedule,
+   - final hidden-row index sampled,
+   - top-20 target logits after prefill,
+   - first generated token.
+3. Instrument a temporary llama.cpp copy or use verbose prompt + a small tensor
+   dump to get the same target top-20 logits.
+4. Fix target parity before changing MTP acceptance logic.
+
+Success criterion: hipEngine target prefill chooses `71093` for the documented
+reasoning-off prompt, matching llama.cpp, under the narrowest correctness-first
+path.  Then optimize back toward the retained fast path.
+
+### Phase 1 — exact MTP trace parity on one prompt
 
 1. Add a hipEngine trace mode that emits per-step JSON:
    - prompt token IDs,
@@ -462,12 +576,16 @@ decode tok/s, accepted/output, and strict draft acceptance.
 
 ## Bottom line
 
-llama.cpp is not just using a wider candidate set.  It is running a real MTP draft
-context with verifier-row processing, persistent draft K/V state, hidden-row
-handoff, and B>1 accept/rollback semantics.  In the short debug trace it commits
-`3.67` visible tokens per verifier call with `100%` strict draft acceptance.
+llama.cpp is not just using a wider candidate set.  It is running a real target
+and MTP draft context with verifier-row processing, persistent draft K/V state,
+hidden-row handoff, and B>1 accept/rollback semantics.  In the short debug trace
+it commits `3.67` visible tokens per verifier call with `100%` strict draft
+acceptance.
 
-hipEngine currently commits far fewer strict draft tokens.  The retained root-top40
-path is useful evidence that the target often lies near the MTP distribution, but
-it does not solve the speculative break-even problem.  The actionable path is to
-reach numeric/state parity with llama.cpp first, then optimize the resident path.
+hipEngine currently commits far fewer strict draft tokens, but the first confirmed
+reason is even earlier: hipEngine's target AR stream does not match llama.cpp
+immediately after prefill.  The retained root-top40 path is useful evidence that
+the target often lies near the MTP distribution for hipEngine's own target stream,
+but it does not solve the speculative break-even problem and does not establish
+llama.cpp parity.  The actionable path is: target AR parity first, MTP state/logit
+parity second, then resident performance optimization.
