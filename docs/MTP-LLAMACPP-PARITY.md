@@ -521,9 +521,13 @@ paths.  The blocker was Qwen3.5 linear-attention GDN K-head broadcast semantics:
 llama.cpp/GGML maps value head `v_head` to key head `v_head % num_k_heads`, while
 hipEngine inherited the grouped `v_head / repeat` mapping.  After switching the
 GDN decode/prefill kernels and CPU replay oracles to the interleaved mapping, the
-same 21-token reasoning-off prompt has `initial_prev_token=71093` and the
-single-prompt B3 smoke improves from the prior `2/9` accepted drafts / `5` visible
-output tokens to `7/9` accepted drafts / `10` visible output tokens.
+same 21-token reasoning-off prompt has `initial_prev_token=71093`.  A follow-up
+12-token greedy target trace also matches llama.cpp exactly:
+`[71093, 12305, 198, 727, 10562, 17885, 10620, 25, 1103, 8, 1411, 1103]`
+(decoded as a Python code fence followed by `def merge_sort(arr: list) -> list`).
+The single-prompt B3 smoke improves from
+the prior `2/9` accepted drafts / `5` visible output tokens to `7/9` accepted
+drafts / `10` visible output tokens.
 
 Evidence command:
 

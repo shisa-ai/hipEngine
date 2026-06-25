@@ -125277,3 +125277,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next
 - Investigate the remaining cycle-1 B3 draft divergence (`drafts=[17885,20250,17145]` vs target `[17885,10620]`) with exact MTP state/logit trace parity before making speed claims.
+
+
+## 2026-06-25 — MTP target parity: 12-token AR trace matches llama.cpp
+
+### Evidence
+- hipEngine target-only greedy trace for the 21-token reasoning-off merge-sort prompt now emits:
+  - IDs: `[71093, 12305, 198, 727, 10562, 17885, 10620, 25, 1103, 8, 1411, 1103]`
+  - Text: Python code fence followed by `def merge_sort(arr: list) -> list`.
+- llama.cpp command for the same prompt:
+  - `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-cli -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -p 'Write a Python function that implements merge sort:' -n 12 -ngl 99 --temp 0 --no-warmup --no-display-prompt --single-turn --simple-io --reasoning off --log-file /tmp/hipengine-llamacpp-target-ar-n12.log --log-verbosity 5`
+  - llama.cpp log reports the same next-token sequence through `n_decoded=12`: `71093,12305,198,727,10562,17885,10620,25,1103,8,1411,1103` and parsed content: Python code fence followed by `def merge_sort(arr: list) -> list`.
+
+### Conclusion
+- Task #18 target AR multi-token parity is achieved for this prompt. The remaining 7/9 B3 gap is now in the MTP draft side or verifier/draft context semantics, not the target AR stream.
