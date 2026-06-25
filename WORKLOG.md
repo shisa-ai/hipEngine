@@ -125129,3 +125129,54 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Follow-up
 - If we want this to become default, next work should move more of the correctness-first wrapper off host: eliminate the q/gate D2H split and Q6_K temporary H2D in attention, then rerun the full suite with `--mtp-device-kv-cache`.
 - For B>1, add transactional rollback/commit semantics before enabling device KV cache; current flag intentionally rejects `--draft-n-max != 1`.
+
+## 2026-06-25 — branch-wide MTP no-progress iteration count
+
+### Count command / scope
+- Branch: `mtp-gguf`
+- Branch point against `origin/main`: `828b7818a9534ed2425abd2129f50d5587c0d582`
+- Counted persisted `.multiloop/**/state.json` records with `mtp` in the lane/run name, after commit `78ae7ee0e0832edad6c5d1a30376dd1850989d17`.
+- Recompute command used:
+  ```bash
+  python3 - <<'PY'
+  import json
+  from pathlib import Path
+  rows=[]
+  for p in sorted(Path('.multiloop').rglob('state.json')):
+      if 'mtp' not in str(p):
+          continue
+      d=json.loads(p.read_text())
+      lane=d.get('lane') or p.parts[-3]
+      run=d.get('runTag') or p.parts[-2]
+      if 'mtp' not in lane and 'mtp' not in run:
+          continue
+      rows.append((str(p), lane, run, d.get('mode'), d.get('iteration') or 0, d.get('keeps') or 0, d.get('reverts') or 0, d.get('logs') or 0, d.get('crashes') or 0, d.get('blocked') or 0, d.get('status')))
+  print('all_iter', sum(r[4] for r in rows), 'all_keeps', sum(r[5] for r in rows), 'all_non_keeps', sum(r[4] for r in rows)-sum(r[5] for r in rows))
+  opt=[r for r in rows if r[3]=='optimize']
+  print('opt_iter', sum(r[4] for r in opt), 'opt_keeps', sum(r[5] for r in opt), 'opt_non_keeps', sum(r[4] for r in opt)-sum(r[5] for r in opt))
+  PY
+  ```
+
+### Result
+- All persisted MTP loops, including diagnostic/dev/log-only loops:
+  - Total iterations: `808`
+  - Keeps: `35`
+  - Non-keeps / no retained progress: `773`
+- Optimize-style MTP loops only:
+  - Total iterations: `114`
+  - Keeps: `35`
+  - Non-keeps / no retained progress: `79`
+
+### Optimize-loop breakdown
+| Loop | Mode | Iterations | Keeps | Non-keeps | Status |
+| --- | --- | ---: | ---: | ---: | --- |
+| `mtp-acceptance/run-20260621-044226` | optimize | 34 | 9 | 25 | archived |
+| `mtp-native-b345/run-20260621-110303` | optimize | 35 | 14 | 21 | archived |
+| `mtp-gguf-final/run-20260623-224120` | optimize | 40 | 12 | 28 | stopped |
+| `mtp-acceptance/run-20260624-152435` | optimize | 5 | 0 | 5 | stopped |
+| **Total** | optimize | **114** | **35** | **79** | — |
+
+### Interpretation
+- The clean branch-wide optimize-loop count is `79` iterations without retained progress.
+- The harsher all-loop count is `773` non-keep iterations, but that includes long-running diagnostic/dev/log-only loops whose purpose was exploration and bookkeeping rather than keep/revert optimization.
+- This reinforces the current speculative-decode conclusion: more selector/root-K probing is unlikely to solve the break-even problem; the remaining performance path is improving actual committed tokens per verifier call and/or reducing verifier/draft overhead, especially around MTP KV context and MoE verifier cost.
