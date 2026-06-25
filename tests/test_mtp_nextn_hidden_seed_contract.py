@@ -76,6 +76,35 @@ def test_nextn_layer_can_return_llamacpp_h_nextn_seed(monkeypatch) -> None:
     np.testing.assert_array_equal(result_hidden, h_nextn)
 
 
+def test_nextn_layer_forwards_draft_vocab_cap_to_shared_head(monkeypatch) -> None:
+    logits = np.array([[0.1, 0.2]], dtype=np.float32)
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_eh_proj_f32", lambda *a, **k: np.zeros((1, 2), dtype=np.float32))
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_attention_sublayer_f32", lambda *a, **k: np.zeros((1, 2), dtype=np.float32))
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_ffn_sublayer_f32", lambda *a, **k: np.zeros((1, 2), dtype=np.float32))
+
+    def fake_shared_head(*args, **kwargs):
+        assert kwargs["draft_vocab_cap"] == 32768
+        return logits
+
+    monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_shared_head_logits_f32", fake_shared_head)
+
+    result = mtp_nextn.qwen35_gguf_mtp_nextn_layer_logits_f32(
+        np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        np.zeros((2, 2), dtype=np.float32), np.ones(2, dtype=np.float32), np.ones(2, dtype=np.float32),
+        np.ones(2, dtype=np.float32), np.zeros((2, 2), dtype=np.float32), np.zeros((2, 2), dtype=np.float32),
+        np.zeros((2, 2), dtype=np.float32), np.zeros((2, 2), dtype=np.float32), np.ones(2, dtype=np.float32),
+        np.ones(2, dtype=np.float32), np.ones(2, dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        GGMLQuantizationType.F32, GGMLQuantizationType.F32, GGMLQuantizationType.F32,
+        np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32), np.zeros((1, 2), dtype=np.float32),
+        np.zeros((2, 1), dtype=np.float32), GGMLQuantizationType.F32, np.ones(2, dtype=np.float32),
+        np.zeros((2, 2), dtype=np.float32), num_heads=1, num_kv_heads=1, experts_used=1,
+        draft_vocab_cap=32768,
+    )
+
+    np.testing.assert_array_equal(result, logits)
+
+
 def test_nextn_layer_default_returns_logits_only(monkeypatch) -> None:
     logits = np.array([[0.1, 0.2]], dtype=np.float32)
     monkeypatch.setattr(mtp_nextn, "qwen35_gguf_mtp_eh_proj_f32", lambda *a, **k: np.zeros((1, 2), dtype=np.float32))

@@ -307,6 +307,18 @@ def test_arg_parser_allows_b3_device_kv_context_replay() -> None:
     assert args.mtp_context_replay is True
 
 
+def test_arg_parser_exposes_batched_target_graph_verify_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--target-graph-batched-verify"])
+
+    assert args.target_graph_batched_verify is True
+
+
+def test_arg_parser_exposes_draft_vocab_cap_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--mtp-draft-vocab-cap", "65536"])
+
+    assert args.mtp_draft_vocab_cap == 65536
+
+
 def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
     for budget in range(1, 6):
         assert validate_draft_n_max(budget) == budget

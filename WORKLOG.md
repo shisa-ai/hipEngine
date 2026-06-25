@@ -125319,3 +125319,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next
 - Turn the diagnostic lifecycle into the retained B3 path without serial prompt replay overhead (bulk all-row hidden tap or resident prompt MTP prefill) and then re-run the full multi-prompt mtp-bench suite before making speedup claims.
+
+
+## 2026-06-25 — MTP performance parity: draft-side wins and verifier blocker
+
+### Scope
+- Continued task #20 after strict B3 correctness parity. The goal was stage-level performance parity, without turning single-prompt diagnostics into retained benchmark claims.
+
+### Changes
+- Added `record_f32_row_indexed` runtime-state kernel/wrapper/registry entry so decode graphs can record FP32 target hidden-seed rows alongside generated token IDs.
+- Added `scripts/gguf_mtp_bench.py --target-graph-batched-verify` diagnostic. It replays one full strict verifier block per cycle and records target IDs + FP32 hidden seeds. It aborts on partial acceptance instead of trying to roll back mutated target state.
+- Batched accepted-row MTP KV commit: accepted verifier hidden rows are now committed with one multi-row `kv_write_only` MTP pass instead of one pass per accepted token.
+- Added `--mtp-draft-vocab-cap N` diagnostic to cap the draft lm-head to the first N token IDs. Default remains full vocab (`0`) until full-suite validation.
+
+### Measurements (single-prompt diagnostic only)
+- Baseline corrected lifecycle, B3/C5, full draft vocab, before batched commit: `/tmp/hipengine-mtp-lifecycle-b3-c5.json` — `15/15` strict accepts, `41.71 tok/s`, `0.759x`, draft ~`22.9-23.7 ms/cycle`.
+- After batched commit, B3/C5, full draft vocab: `/tmp/hipengine-mtp-b3-batched-commit-c5.json` — `15/15`, `42.29 tok/s`, `0.769x`, commit ~`1.6 ms/cycle`, draft ~`21.5-22.1 ms/cycle`.
+- Batched target graph verifier diagnostic: `/tmp/hipengine-mtp-b3-batched-verify-commit-c5.json` — exact `15/15` but slower/neutral (`41.73 tok/s`, `0.760x`) because target kernels still execute sequentially inside the graph and hidden-row recording adds overhead.
+- Draft vocab cap 65k: `/tmp/hipengine-mtp-b3-vocab65k-c5.json` — `15/15`, `43.88 tok/s`, `0.800x`, draft mostly `17-19.7 ms/cycle`.
+- Draft vocab cap 32k: `/tmp/hipengine-mtp-b3-vocab32k-c5.json` — `15/15`, `44.51 tok/s`, `0.810x` (warm `45.02 tok/s`, `0.818x`).
+- Wider budgets with 32k cap remained below AR: B4 `/tmp/hipengine-mtp-b4-vocab32k-c5.json` `44.79 tok/s`, `0.812x`, `20/20`; B5 `/tmp/hipengine-mtp-b5-vocab32k-c5.json` `43.80 tok/s`, `0.794x`, `23/25`.
+
+### Conclusion
+- Draft-side cleanups help but cannot reach performance parity alone. The decisive blocker is target verification: hipEngine still performs one full target decode per visible token (sequential graph replay), so accepting more draft tokens does not reduce verifier compute the way a true block verifier should.
+- The next material task is a rollback-safe GGUF target block verifier / batched verifier path that processes the candidate chain as a block and records per-row hidden seeds for accept/commit. After that, move the MTP draft wrapper off correctness-first NumPy-in/out allocations into persistent resident buffers.
+
+### Validation
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/runtime/state.py hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py tests/test_runtime_state_plan.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py tests/test_qwen35_gguf_runner.py`
+- `python3 -m pytest -q tests/test_runtime_state_plan.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_nextn_hidden_seed_contract.py tests/test_qwen35_gguf_runner.py` — passed (`51 passed, 7 skipped`).
+- New runtime kernel trace: `rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-rocprof-record-f32-row -- python3 -m pytest -q tests/test_runtime_state_plan.py::test_record_f32_row_indexed_copies_row_without_advancing_index`; trace includes `(anonymous namespace)::record_f32_row_indexed_kernel(...)`, duration about `8.3 us` on gfx1151.

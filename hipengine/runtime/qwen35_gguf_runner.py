@@ -62,6 +62,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgat
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     build_runtime_state,
+    record_f32_row_indexed,
     record_i64_scalar_indexed,
     set_decode_position_i64,
     set_i64_scalar,
@@ -4058,6 +4059,7 @@ class Qwen35GGUFResidentSession:
         record_steps: int = 0,
         attention_max_context_len: int | None = None,
         capture_hidden_seed_fp32: bool = False,
+        record_hidden_seeds: bool = False,
     ) -> "Qwen35GGUFDecodeGraph":
         """Capture one-step resident GGUF decode for graph replay.
 
@@ -4083,6 +4085,8 @@ class Qwen35GGUFResidentSession:
             raise ValueError("max_replay_steps must be positive")
         if record_steps < 0:
             raise ValueError("record_steps must be non-negative")
+        if record_hidden_seeds and record_steps <= 0:
+            raise ValueError("record_hidden_seeds requires record_steps > 0")
         replay_span = int(max_replay_steps) if max_replay_steps is not None else int(steps_per_replay)
         if position < 0 or position + replay_span - 1 >= self.scratch.max_positions:
             raise ValueError("decode graph replay span exceeds GGUF resident cache capacity")
@@ -4109,11 +4113,19 @@ class Qwen35GGUFResidentSession:
 
         runtime = self.runtime or get_hip_runtime()
         generated_buf: DeviceBuffer | None = None
+        generated_hidden_seed_buf: DeviceBuffer | None = None
         generated_index_buf: DeviceBuffer | None = None
         if record_steps:
             generated_buf = malloc(int(record_steps) * DType.INT64.itemsize, runtime=runtime)
+            if record_hidden_seeds:
+                generated_hidden_seed_buf = malloc(
+                    int(record_steps) * self.runner.hidden_size * DType.FP32.itemsize,
+                    runtime=runtime,
+                )
             generated_index_buf = malloc(DType.INT64.itemsize, runtime=runtime)
             runtime.memset(generated_buf.ptr, 0xFF, generated_buf.nbytes)
+            if generated_hidden_seed_buf is not None:
+                runtime.memset(generated_hidden_seed_buf.ptr, 0, generated_hidden_seed_buf.nbytes)
             zero = np.zeros((1,), dtype=np.int64)
             copy_host_to_device(generated_index_buf, host_array_ptr(zero), runtime=runtime)
 
@@ -4131,10 +4143,13 @@ class Qwen35GGUFResidentSession:
                             advance_position=True,
                             stream=stream,
                             record_output_ptr=None if generated_buf is None else generated_buf.ptr,
+                            record_hidden_seed_ptr=(
+                                None if generated_hidden_seed_buf is None else generated_hidden_seed_buf.ptr
+                            ),
                             record_index_ptr=None if generated_index_buf is None else generated_index_buf.ptr,
                             record_capacity=record_steps,
                             attention_max_context_len=replay_context_cap,
-                            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+                            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32 or record_hidden_seeds),
                         )
                 graph = runtime.stream_end_capture(stream)
             except Exception:
@@ -4153,6 +4168,8 @@ class Qwen35GGUFResidentSession:
             runtime.stream_destroy(stream)
             if generated_index_buf is not None:
                 free(generated_index_buf, runtime=runtime)
+            if generated_hidden_seed_buf is not None:
+                free(generated_hidden_seed_buf, runtime=runtime)
             if generated_buf is not None:
                 free(generated_buf, runtime=runtime)
             raise
@@ -4165,11 +4182,12 @@ class Qwen35GGUFResidentSession:
             steps_per_replay=int(steps_per_replay),
             max_replay_steps=replay_span,
             generated=generated_buf,
+            generated_hidden_seeds=generated_hidden_seed_buf,
             generated_index=generated_index_buf,
             record_steps=int(record_steps),
             bucket_key=bucket_key,
             attention_max_context_len=int(replay_context_cap),
-            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32 or record_hidden_seeds),
         )
 
     def _step_from_device_token(
@@ -4179,6 +4197,7 @@ class Qwen35GGUFResidentSession:
         advance_position: bool,
         stream: int,
         record_output_ptr: int | None = None,
+        record_hidden_seed_ptr: int | None = None,
         record_index_ptr: int | None = None,
         record_capacity: int = 0,
         attention_max_context_len: int | None = None,
@@ -4201,6 +4220,21 @@ class Qwen35GGUFResidentSession:
             attention_max_context_len=attention_max_context_len,
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
         )
+        if record_hidden_seed_ptr is not None:
+            if record_index_ptr is None:
+                raise ValueError("record_index_ptr is required when recording GGUF hidden seeds")
+            if not capture_hidden_seed_fp32:
+                raise ValueError("record_hidden_seed_ptr requires capture_hidden_seed_fp32")
+            record_f32_row_indexed(
+                self.scratch.hidden_seed_fp32.ptr,
+                record_hidden_seed_ptr,
+                record_index_ptr,
+                self.runner.hidden_size,
+                int(record_capacity),
+                stream=stream,
+                library=self._runtime_state_library,
+                runtime=self.runtime or get_hip_runtime(),
+            )
         self._sample_device_from_hidden(hidden_ptr, stream=stream)
         if record_output_ptr is not None:
             if record_index_ptr is None:
@@ -4270,6 +4304,7 @@ class Qwen35GGUFDecodeGraph:
     steps_per_replay: int = 1
     max_replay_steps: int = 1
     generated: DeviceBuffer | None = None
+    generated_hidden_seeds: DeviceBuffer | None = None
     generated_index: DeviceBuffer | None = None
     record_steps: int = 0
     bucket_key: Qwen35GGUFDecodeGraphBucketKey | None = None
@@ -4326,6 +4361,30 @@ class Qwen35GGUFDecodeGraph:
         )
         return [int(item) for item in host.tolist()]
 
+    def read_generated_hidden_seeds(self, start: int = 0, count: int | None = None) -> np.ndarray:
+        if self.closed:
+            raise RuntimeError("GGUF decode graph is closed")
+        if self.generated_hidden_seeds is None:
+            raise RuntimeError("GGUF decode graph was captured without hidden-seed recording")
+        if self.session.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        start = int(start)
+        row_count = int((self.record_steps - start) if count is None else count)
+        if start < 0 or row_count < 0 or start + row_count > self.record_steps:
+            raise ValueError("hidden-seed slice outside decode graph record capacity")
+        hidden_size = int(self.session.runner.hidden_size)
+        host = np.empty((row_count, hidden_size), dtype=np.float32)
+        byte_offset = start * hidden_size * DType.FP32.itemsize
+        copy_device_to_host(
+            host_array_ptr(host),
+            DeviceBuffer(
+                self.generated_hidden_seeds.ptr + byte_offset,
+                row_count * hidden_size * DType.FP32.itemsize,
+            ),
+            runtime=self.session.runtime or get_hip_runtime(),
+        )
+        return host
+
     def close(self) -> None:
         if self.closed:
             return
@@ -4338,6 +4397,9 @@ class Qwen35GGUFDecodeGraph:
         if self.generated_index is not None:
             free(self.generated_index, runtime=runtime)
             self.generated_index = None
+        if self.generated_hidden_seeds is not None:
+            free(self.generated_hidden_seeds, runtime=runtime)
+            self.generated_hidden_seeds = None
         if self.generated is not None:
             free(self.generated, runtime=runtime)
             self.generated = None

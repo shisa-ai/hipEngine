@@ -1453,6 +1453,7 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
     eps: float = 1e-6,
     shared_head_qtype: "GGMLQuantizationType | None" = None,
     return_normed_hidden: bool = False,
+    draft_vocab_cap: int | None = None,
 ) -> "np.ndarray | tuple[np.ndarray, np.ndarray]":
     """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_shared_head_logits``.
 
@@ -1474,12 +1475,19 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         # K-quant: raw block bytes, shape = [vocab, block_bytes_per_row]
         if head_weight.ndim != 2:
             raise ValueError("shared_head_weight must be 2D [vocab, block_bytes]")
-        vocab = head_weight.shape[0]
+        full_vocab = int(head_weight.shape[0])
     else:
         head_weight = head_weight.astype(np.float32)
         if head_weight.ndim != 2 or head_weight.shape[1] != hidden_size:
             raise ValueError("shared_head_weight must have shape [vocab, hidden]")
-        vocab = head_weight.shape[0]
+        full_vocab = int(head_weight.shape[0])
+    if draft_vocab_cap is not None and int(draft_vocab_cap) <= 0:
+        raise ValueError("draft_vocab_cap must be positive when provided")
+    vocab = min(full_vocab, int(draft_vocab_cap)) if draft_vocab_cap is not None else full_vocab
+    if vocab <= 0:
+        raise ValueError("shared_head vocab must be positive")
+    if shared_head_qtype is None or shared_head_qtype == GGMLQuantizationType.F32:
+        head_weight = head_weight[:vocab]
 
     runtime = get_hip_runtime()
     _sh_lib = build_mtp_nextn(load=True)
@@ -1598,6 +1606,7 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     dense_cache_len: int = 0,
     dense_cache_write_index: int | None = None,
     kv_write_only: bool = False,
+    draft_vocab_cap: int | None = None,
 ) -> "np.ndarray | tuple[np.ndarray, np.ndarray]":
     """Native GPU Qwen35 GGUF MTP NextN draft layer (M3, correctness-first).
 
@@ -1647,6 +1656,7 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     head_result = qwen35_gguf_mtp_shared_head_logits_f32(
         ffn_out, shared_head_norm_weight, shared_head_weight, eps=eps,
         shared_head_qtype=shared_head_qtype, return_normed_hidden=return_hidden_seed,
+        draft_vocab_cap=draft_vocab_cap,
     )
     if return_hidden_seed:
         logits, h_nextn = head_result

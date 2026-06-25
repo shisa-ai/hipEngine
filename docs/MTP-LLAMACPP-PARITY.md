@@ -600,8 +600,21 @@ Once strict acceptance is credible:
 - fuse resident MTP attention/FFN/head launches,
 - eliminate host-side intermediate copies,
 - pre-upload/cache Q6_K weights and scratch buffers,
+- replace sequential target verification with a rollback-safe block verifier,
 - profile verifier MoE grouping/budgeting to reduce `eta`,
 - revisit B2/B3/B5 economics.
+
+**2026-06-25 status:** first draft-side performance wins landed, but performance
+parity is still blocked by target verification.  Batching accepted-row MTP KV
+commit into one `kv_write_only` pass improved the corrected B3 merge-sort smoke
+from `41.7` to `42.3 tok/s` (`15/15` strict accepts over five cycles).  A
+hot-token draft LM-head cap of `32768` improved the same smoke to `44.5 tok/s`
+with unchanged `15/15`, but it is prompt-sensitive and remains diagnostic until
+full-suite validation.  An opt-in batched target graph replay that records target
+IDs + FP32 hidden seeds stayed exact but did not improve speed (`~41.7 tok/s`)
+because it still executes the target decode kernels sequentially inside the
+graph.  Therefore the next material parity task is a true block verifier / target
+batch path, not more one-step graph replay tuning.
 
 Success criterion: same-protocol full-suite row improves all three: raw weighted
 decode tok/s, accepted/output, and strict draft acceptance.
@@ -614,8 +627,10 @@ hidden-row handoff, and B>1 accept/rollback semantics.  In the short debug trace
 it commits `3.67` visible tokens per verifier call with `100%` strict draft
 acceptance.
 
-hipEngine now matches llama.cpp's first target AR token for the documented
-reasoning-off prompt after fixing Qwen3.5 GDN K-head interleaving.  The retained
-root-topK path remains diagnostic only: the next actionable path is exact MTP
-state/logit parity around the first remaining B3 divergence, then resident
-performance optimization, and only then full-suite speed claims.
+hipEngine now matches llama.cpp's documented reasoning-off target AR trace and,
+with the llama.cpp-style context replay + device MTP KV lifecycle, reaches strict
+B3 `9/9` on the merge-sort smoke.  That is still a single-prompt diagnostic, not
+a retained speed claim.  Performance parity now depends on making target
+verification block/batch-shaped and moving the MTP draft wrapper from
+correctness-first NumPy-in/out calls to persistent resident buffers, followed by
+the full multi-prompt suite and true-AR comparison.

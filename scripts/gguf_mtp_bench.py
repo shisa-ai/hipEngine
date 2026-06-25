@@ -454,8 +454,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "and fp32 hidden-seed capture (default: true; use --no-target-graph-verify for eager-step diagnostics)."
         ),
     )
+    parser.add_argument(
+        "--target-graph-batched-verify",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic only: replay one full strict verifier block per cycle and record generated IDs plus "
+            "FP32 hidden seeds. Requires top-1 strict acceptance; aborts if the whole draft prefix is not accepted."
+        ),
+    )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
+    parser.add_argument(
+        "--mtp-draft-vocab-cap",
+        type=int,
+        default=0,
+        help=(
+            "Diagnostic only: limit MTP draft lm-head/argmax to the first N token IDs "
+            "(0 = full vocabulary). Must be full-suite validated before becoming a retained default."
+        ),
+    )
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
     parser.add_argument(
         "--prompt-reasoning",
@@ -586,6 +604,8 @@ def main(argv: list[str] | None = None):
         parser.error("--root-tail-max-prev-accepted must be >= -1")
     if args.topk_branch_redraft_max_branches < 1:
         parser.error("--topk-branch-redraft-max-branches must be positive")
+    if args.mtp_draft_vocab_cap < 0:
+        parser.error("--mtp-draft-vocab-cap must be non-negative")
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
@@ -691,6 +711,8 @@ def main(argv: list[str] | None = None):
             gpu_kwargs["dense_cache_len"] = int(dense_cache_len or 0)
         if kv_write_only:
             gpu_kwargs["kv_write_only"] = True
+        if args.mtp_draft_vocab_cap:
+            gpu_kwargs["draft_vocab_cap"] = int(args.mtp_draft_vocab_cap)
         result = gpu_kernel(*gpu_args, **gpu_kwargs)
         if return_hidden_seed:
             logits, next_hidden_seed = result
@@ -803,6 +825,7 @@ def main(argv: list[str] | None = None):
             )
             mtp_draft_warmup_ms = (time.perf_counter() - t_warmup0) * 1000
 
+        target_graph_steps_per_replay = int(args.draft_n_max) + 1 if args.target_graph_batched_verify else 1
         target_graph_max_replay_steps = int(args.cycles) * (int(args.draft_n_max) + 1)
         target_graph_context_cap = int(seq_position) + target_graph_max_replay_steps
         target_graph_verify_enabled = False
@@ -812,11 +835,12 @@ def main(argv: list[str] | None = None):
             try:
                 target_graph = session.capture_decode_graph(
                     position=seq_position,
-                    steps_per_replay=1,
+                    steps_per_replay=target_graph_steps_per_replay,
                     max_replay_steps=target_graph_max_replay_steps,
-                    record_steps=0,
+                    record_steps=target_graph_max_replay_steps if args.target_graph_batched_verify else 0,
                     attention_max_context_len=target_graph_context_cap,
                     capture_hidden_seed_fp32=True,
+                    record_hidden_seeds=bool(args.target_graph_batched_verify),
                 )
                 target_graph_verify_enabled = True
             except Exception as exc:  # pragma: no cover - graph capture failures depend on runtime state
@@ -973,157 +997,196 @@ def main(argv: list[str] | None = None):
             redraft_top10_by_depth: list[list[int]] = list(draft_top10_tokens)
             redraft_start_depth: int | None = None
             redraft_ms = 0.0
-            while True:
+            batched_verify_used = False
+            can_batched_verify = (
+                bool(args.target_graph_batched_verify)
+                and target_graph_verify_enabled
+                and target_graph is not None
+                and int(verify_input_token) == current_device_token
+                and args.root_topk_accept == 1
+                and args.sibling_topk_accept == 1
+                and not args.topk_branch_redraft
+                and len(draft_tokens) == int(args.draft_n_max)
+                and int(target_graph.steps_per_replay) == len(draft_tokens) + 1
+            )
+            if can_batched_verify:
                 t0 = time.perf_counter()
-                if target_graph_verify_enabled and target_graph is not None and int(verify_input_token) == current_device_token:
-                    target_graph.replay(1)
-                    target_result = target_graph.read_sample(return_logits=False)
-                else:
-                    if target_graph is not None:
-                        target_graph.close()
-                        target_graph = None
-                    if target_graph_verify_enabled and int(verify_input_token) != current_device_token:
-                        target_graph_verify_fallback_reason = "verify input diverged from device sample token"
-                    target_graph_verify_enabled = False
-                    target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
+                record_start = int(target_graph.replayed_steps)
+                replay_steps = len(draft_tokens) + 1
+                target_graph.replay(replay_steps)
+                recorded_tokens = target_graph.read_generated_token_ids(record_start + replay_steps)[record_start:record_start + replay_steps]
+                recorded_hidden = target_graph.read_generated_hidden_seeds(start=record_start, count=replay_steps)
                 t1 = time.perf_counter()
                 ar_decode_ms += (t1 - t0) * 1000
-                target_token = int(target_result.token_id)
-                current_device_token = target_token
-                target_tokens.append(target_token)
-                target_hidden_seed = copy_pending_hidden_seed()
-                target_hidden_seeds.append(target_hidden_seed)
-
-                depth = len(target_tokens) - 1
-                if (
-                    pending_branch_redraft
-                    and args.topk_branch_redraft
-                    and depth > 0
-                    and depth < args.draft_n_max
-                ):
-                    t_redraft0 = time.perf_counter()
-                    current_hidden_seed = np.ascontiguousarray(target_hidden_seed, dtype=np.float32)
-                    current_token = int(target_tokens[depth - 1])
-                    current_pos = seq_position + depth
-                    remaining_drafts = args.draft_n_max - depth
-                    branch_redraft_tokens: list[int] = []
-                    branch_redraft_top10: list[list[int]] = []
-                    for redraft_depth in range(remaining_drafts):
-                        token_embed = token_embd_f32[current_token:current_token + 1].copy()
-                        need_next_seed = redraft_depth + 1 < remaining_drafts
-                        pos_arr = np.asarray([current_pos], dtype=np.int64)
-                        rope_cos_slice = _rope_cos[pos_arr]
-                        rope_sin_slice = _rope_sin[pos_arr]
-                        if need_next_seed:
-                            draft_logits, current_hidden_seed = run_draft(
-                                current_hidden_seed,
-                                token_embed,
-                                return_hidden_seed=True,
-                                positions=pos_arr,
-                                rope_cos=rope_cos_slice,
-                                rope_sin=rope_sin_slice,
-                                rotary_dim=rope_dim,
-                            )
-                        else:
-                            draft_logits = run_draft(
-                                current_hidden_seed,
-                                token_embed,
-                                positions=pos_arr,
-                                rope_cos=rope_cos_slice,
-                                rope_sin=rope_sin_slice,
-                                rotary_dim=rope_dim,
-                            )
-                        redraft_token, redraft_top10 = select_topk_tokens(
-                            draft_logits[0], k=topk_candidate_count, draft_depth=depth + redraft_depth
-                        )
-                        branch_redraft_tokens.append(redraft_token)
-                        branch_redraft_top10.append(redraft_top10)
-                        current_token = redraft_token
-                        current_pos += 1
-                        if args.draft_p_min > 0.0 and redraft_depth + 1 < remaining_drafts:
-                            if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
-                                break
-                    redraft_tokens.extend(branch_redraft_tokens)
-                    redraft_top10_tokens.extend(branch_redraft_top10)
-                    for redraft_depth, redraft_token in enumerate(branch_redraft_tokens):
-                        absolute_depth = depth + redraft_depth
-                        if absolute_depth < len(redraft_tokens_by_depth):
-                            redraft_tokens_by_depth[absolute_depth] = redraft_token
-                        else:
-                            redraft_tokens_by_depth.append(redraft_token)
-                    for redraft_depth, redraft_top10 in enumerate(branch_redraft_top10):
-                        absolute_depth = depth + redraft_depth
-                        if absolute_depth < len(redraft_top10_by_depth):
-                            redraft_top10_by_depth[absolute_depth] = redraft_top10
-                        else:
-                            redraft_top10_by_depth.append(redraft_top10)
-                    redraft_ms += (time.perf_counter() - t_redraft0) * 1000
-                    if redraft_start_depth is None:
-                        redraft_start_depth = depth
-                    pending_branch_redraft = False
-                if stop_after_branch_corrective:
-                    break
-
-                proposal_tokens = redraft_tokens_by_depth
-                proposal_top10_tokens = redraft_top10_by_depth
-                proposal_depth = depth
-
-                if proposal_depth < len(proposal_tokens) and target_token == proposal_tokens[proposal_depth]:
-                    verify_input_token = target_token
-                    continue
-                topk_limit = (
-                    args.root_topk_accept if depth == 0
-                    else args.sibling_topk_accept if depth <= args.sibling_topk_max_depth
-                    else 1
+                target_tokens.extend(int(token) for token in recorded_tokens)
+                target_hidden_seeds.extend(
+                    np.ascontiguousarray(recorded_hidden[row:row + 1], dtype=np.float32)
+                    for row in range(replay_steps)
                 )
-                if (
-                    depth == 0
-                    and args.root_tail_max_prev_accepted >= 0
-                    and topk_limit > 4
-                    and previous_cycle_accepted > args.root_tail_max_prev_accepted
-                    and proposal_depth < len(proposal_top10_tokens)
-                    and target_token in proposal_top10_tokens[proposal_depth][4:topk_limit]
-                ):
-                    topk_limit = 4
-                if (
-                    depth > 0
-                    and args.sibling_tail_min_prev_accepted >= 0
-                    and topk_limit > 8
-                    and previous_cycle_accepted < args.sibling_tail_min_prev_accepted
-                ):
-                    topk_limit = 8
-                can_accept_topk_branch = (
-                    proposal_depth < len(proposal_top10_tokens)
-                    and topk_limit > 1
-                    and target_token in proposal_top10_tokens[proposal_depth][:topk_limit]
-                    and (
-                        not topk_branch_accepted
-                        or (
+                current_device_token = int(target_tokens[-1])
+                batched_verify_used = True
+                if target_tokens[:len(draft_tokens)] != draft_tokens:
+                    raise RuntimeError(
+                        "batched target graph verify requires full strict draft acceptance; "
+                        "rerun without --target-graph-batched-verify for mismatch diagnostics"
+                    )
+            else:
+                if target_graph is not None and int(target_graph.steps_per_replay) != 1:
+                    target_graph.close()
+                    target_graph = None
+                    target_graph_verify_enabled = False
+                    target_graph_verify_fallback_reason = "batched verify conditions not met; fell back to eager step"
+                while True:
+                    t0 = time.perf_counter()
+                    if target_graph_verify_enabled and target_graph is not None and int(verify_input_token) == current_device_token:
+                        target_graph.replay(1)
+                        target_result = target_graph.read_sample(return_logits=False)
+                    else:
+                        if target_graph is not None:
+                            target_graph.close()
+                            target_graph = None
+                        if target_graph_verify_enabled and int(verify_input_token) != current_device_token:
+                            target_graph_verify_fallback_reason = "verify input diverged from device sample token"
+                        target_graph_verify_enabled = False
+                        target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
+                    t1 = time.perf_counter()
+                    ar_decode_ms += (t1 - t0) * 1000
+                    target_token = int(target_result.token_id)
+                    current_device_token = target_token
+                    target_tokens.append(target_token)
+                    target_hidden_seed = copy_pending_hidden_seed()
+                    target_hidden_seeds.append(target_hidden_seed)
+
+                    depth = len(target_tokens) - 1
+                    if (
+                        pending_branch_redraft
+                        and args.topk_branch_redraft
+                        and depth > 0
+                        and depth < args.draft_n_max
+                    ):
+                        t_redraft0 = time.perf_counter()
+                        current_hidden_seed = np.ascontiguousarray(target_hidden_seed, dtype=np.float32)
+                        current_token = int(target_tokens[depth - 1])
+                        current_pos = seq_position + depth
+                        remaining_drafts = args.draft_n_max - depth
+                        branch_redraft_tokens: list[int] = []
+                        branch_redraft_top10: list[list[int]] = []
+                        for redraft_depth in range(remaining_drafts):
+                            token_embed = token_embd_f32[current_token:current_token + 1].copy()
+                            need_next_seed = redraft_depth + 1 < remaining_drafts
+                            pos_arr = np.asarray([current_pos], dtype=np.int64)
+                            rope_cos_slice = _rope_cos[pos_arr]
+                            rope_sin_slice = _rope_sin[pos_arr]
+                            if need_next_seed:
+                                draft_logits, current_hidden_seed = run_draft(
+                                    current_hidden_seed,
+                                    token_embed,
+                                    return_hidden_seed=True,
+                                    positions=pos_arr,
+                                    rope_cos=rope_cos_slice,
+                                    rope_sin=rope_sin_slice,
+                                    rotary_dim=rope_dim,
+                                )
+                            else:
+                                draft_logits = run_draft(
+                                    current_hidden_seed,
+                                    token_embed,
+                                    positions=pos_arr,
+                                    rope_cos=rope_cos_slice,
+                                    rope_sin=rope_sin_slice,
+                                    rotary_dim=rope_dim,
+                                )
+                            redraft_token, redraft_top10 = select_topk_tokens(
+                                draft_logits[0], k=topk_candidate_count, draft_depth=depth + redraft_depth
+                            )
+                            branch_redraft_tokens.append(redraft_token)
+                            branch_redraft_top10.append(redraft_top10)
+                            current_token = redraft_token
+                            current_pos += 1
+                            if args.draft_p_min > 0.0 and redraft_depth + 1 < remaining_drafts:
+                                if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
+                                    break
+                        redraft_tokens.extend(branch_redraft_tokens)
+                        redraft_top10_tokens.extend(branch_redraft_top10)
+                        for redraft_depth, redraft_token in enumerate(branch_redraft_tokens):
+                            absolute_depth = depth + redraft_depth
+                            if absolute_depth < len(redraft_tokens_by_depth):
+                                redraft_tokens_by_depth[absolute_depth] = redraft_token
+                            else:
+                                redraft_tokens_by_depth.append(redraft_token)
+                        for redraft_depth, redraft_top10 in enumerate(branch_redraft_top10):
+                            absolute_depth = depth + redraft_depth
+                            if absolute_depth < len(redraft_top10_by_depth):
+                                redraft_top10_by_depth[absolute_depth] = redraft_top10
+                            else:
+                                redraft_top10_by_depth.append(redraft_top10)
+                        redraft_ms += (time.perf_counter() - t_redraft0) * 1000
+                        if redraft_start_depth is None:
+                            redraft_start_depth = depth
+                        pending_branch_redraft = False
+                    if stop_after_branch_corrective:
+                        break
+
+                    proposal_tokens = redraft_tokens_by_depth
+                    proposal_top10_tokens = redraft_top10_by_depth
+                    proposal_depth = depth
+
+                    if proposal_depth < len(proposal_tokens) and target_token == proposal_tokens[proposal_depth]:
+                        verify_input_token = target_token
+                        continue
+                    topk_limit = (
+                        args.root_topk_accept if depth == 0
+                        else args.sibling_topk_accept if depth <= args.sibling_topk_max_depth
+                        else 1
+                    )
+                    if (
+                        depth == 0
+                        and args.root_tail_max_prev_accepted >= 0
+                        and topk_limit > 4
+                        and previous_cycle_accepted > args.root_tail_max_prev_accepted
+                        and proposal_depth < len(proposal_top10_tokens)
+                        and target_token in proposal_top10_tokens[proposal_depth][4:topk_limit]
+                    ):
+                        topk_limit = 4
+                    if (
+                        depth > 0
+                        and args.sibling_tail_min_prev_accepted >= 0
+                        and topk_limit > 8
+                        and previous_cycle_accepted < args.sibling_tail_min_prev_accepted
+                    ):
+                        topk_limit = 8
+                    can_accept_topk_branch = (
+                        proposal_depth < len(proposal_top10_tokens)
+                        and topk_limit > 1
+                        and target_token in proposal_top10_tokens[proposal_depth][:topk_limit]
+                        and (
+                            not topk_branch_accepted
+                            or (
+                                args.topk_branch_redraft
+                                and topk_branch_accept_count < args.topk_branch_redraft_max_branches
+                            )
+                        )
+                    )
+                    if can_accept_topk_branch:
+                        topk_branch_accepted = True
+                        topk_branch_accept_count += 1
+                        if topk_branch_depth is None:
+                            topk_branch_depth = depth
+                        topk_branch_depths.append(depth)
+                        if depth < len(redraft_tokens_by_depth):
+                            redraft_tokens_by_depth[depth] = target_token
+                        else:
+                            redraft_tokens_by_depth.append(target_token)
+                        can_redraft_after_branch = (
                             args.topk_branch_redraft
                             and topk_branch_accept_count < args.topk_branch_redraft_max_branches
+                            and depth + 1 < args.draft_n_max
                         )
-                    )
-                )
-                if can_accept_topk_branch:
-                    topk_branch_accepted = True
-                    topk_branch_accept_count += 1
-                    if topk_branch_depth is None:
-                        topk_branch_depth = depth
-                    topk_branch_depths.append(depth)
-                    if depth < len(redraft_tokens_by_depth):
-                        redraft_tokens_by_depth[depth] = target_token
-                    else:
-                        redraft_tokens_by_depth.append(target_token)
-                    can_redraft_after_branch = (
-                        args.topk_branch_redraft
-                        and topk_branch_accept_count < args.topk_branch_redraft_max_branches
-                        and depth + 1 < args.draft_n_max
-                    )
-                    pending_branch_redraft = can_redraft_after_branch
-                    stop_after_branch_corrective = not can_redraft_after_branch
-                    verify_input_token = target_token
-                    continue
-                break
+                        pending_branch_redraft = can_redraft_after_branch
+                        stop_after_branch_corrective = not can_redraft_after_branch
+                        verify_input_token = target_token
+                        continue
+                    break
 
             draft_ms += redraft_ms
             if redraft_start_depth is not None:
@@ -1168,28 +1231,32 @@ def main(argv: list[str] | None = None):
                 # speculative rows.
                 mtp_device_kv_len = min(mtp_device_kv_len, cycle_mtp_kv_base_len + 1)
             if args.mtp_device_kv_cache and accepted_draft_tokens > 0:
+                if mtp_device_kv_len + accepted_draft_tokens > mtp_device_kv_capacity:
+                    raise RuntimeError("MTP device KV cache capacity exhausted while committing accepted rows")
                 t_commit0 = time.perf_counter()
-                for commit_index in range(accepted_draft_tokens):
-                    if mtp_device_kv_len >= mtp_device_kv_capacity:
-                        raise RuntimeError("MTP device KV cache capacity exhausted while committing accepted rows")
-                    commit_token = int(output_tokens[commit_index])
-                    commit_hidden_seed = np.ascontiguousarray(
-                        target_hidden_seeds[commit_index], dtype=np.float32
-                    )
-                    commit_pos = np.asarray([seq_position + 1 + commit_index], dtype=np.int64)
-                    _ = run_draft(
-                        commit_hidden_seed,
-                        token_embd_f32[commit_token:commit_token + 1].copy(),
-                        positions=commit_pos,
-                        rope_cos=_rope_cos[commit_pos],
-                        rope_sin=_rope_sin[commit_pos],
-                        rotary_dim=rope_dim,
-                        dense_key_cache=mtp_device_key_cache,
-                        dense_value_cache=mtp_device_value_cache,
-                        dense_cache_len=mtp_device_kv_len,
-                        kv_write_only=True,
-                    )
-                    mtp_device_kv_len += 1
+                commit_tokens = np.asarray(output_tokens[:accepted_draft_tokens], dtype=np.int64)
+                commit_hidden_seed = np.ascontiguousarray(
+                    np.concatenate(target_hidden_seeds[:accepted_draft_tokens], axis=0),
+                    dtype=np.float32,
+                )
+                commit_pos = np.arange(
+                    seq_position + 1,
+                    seq_position + 1 + accepted_draft_tokens,
+                    dtype=np.int64,
+                )
+                _ = run_draft(
+                    commit_hidden_seed,
+                    token_embd_f32[commit_tokens].copy(),
+                    positions=commit_pos,
+                    rope_cos=_rope_cos[commit_pos],
+                    rope_sin=_rope_sin[commit_pos],
+                    rotary_dim=rope_dim,
+                    dense_key_cache=mtp_device_key_cache,
+                    dense_value_cache=mtp_device_value_cache,
+                    dense_cache_len=mtp_device_kv_len,
+                    kv_write_only=True,
+                )
+                mtp_device_kv_len += accepted_draft_tokens
                 mtp_device_kv_commit_ms = (time.perf_counter() - t_commit0) * 1000
                 draft_ms += mtp_device_kv_commit_ms
 
@@ -1280,6 +1347,7 @@ def main(argv: list[str] | None = None):
                 "mtp_device_kv_rows_after": int(mtp_device_kv_len),
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
+                "target_graph_batched_verify": bool(batched_verify_used),
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
             })
@@ -1317,8 +1385,9 @@ def main(argv: list[str] | None = None):
     print(f"MTP draft warmup: {args.mtp_draft_warmup} ({mtp_draft_warmup_ms:.2f}ms)")
     print(
         f"Target graph verify: requested={args.target_graph_verify} "
-        f"effective={target_graph_verify_enabled} max_replay_steps={target_graph_max_replay_steps} "
-        f"context_cap={target_graph_context_cap}"
+        f"effective={target_graph_verify_enabled} steps_per_replay={target_graph_steps_per_replay} "
+        f"max_replay_steps={target_graph_max_replay_steps} context_cap={target_graph_context_cap} "
+        f"batched={args.target_graph_batched_verify}"
     )
     if target_graph_verify_fallback_reason:
         print(f"Target graph verify fallback: {target_graph_verify_fallback_reason}")
@@ -1373,6 +1442,7 @@ def main(argv: list[str] | None = None):
             "initial_prev_position": int(initial_prev_position),
             "cycles": args.cycles,
             "draft_n_max": args.draft_n_max,
+            "mtp_draft_vocab_cap": int(args.mtp_draft_vocab_cap),
             "decode_repack": bool(args.decode_repack),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
             "use_wmma_prefill": bool(args.use_wmma_prefill),
@@ -1383,6 +1453,8 @@ def main(argv: list[str] | None = None):
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
             "target_graph_verify": bool(args.target_graph_verify),
             "target_graph_verify_effective": bool(target_graph_verify_enabled),
+            "target_graph_steps_per_replay": int(target_graph_steps_per_replay),
+            "target_graph_batched_verify": bool(args.target_graph_batched_verify),
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
             "target_graph_context_cap": int(target_graph_context_cap),
             "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,
