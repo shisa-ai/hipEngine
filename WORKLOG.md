@@ -96045,3 +96045,9 @@ Validation and measurements:
 - Documented the GGUF Q8/INT8 KV distinction in `docs/GGUF.md`: hipEngine GGUF `int8_per_token_head` KV is sideband-scale INT8, not llama.cpp `GGML_TYPE_Q8_0` KV; llama.cpp `q8_0` uses 32-value blocks with interleaved fp16 scales; PARO KV8 is a passing control on a different packed model, not proof that GGUF Q4_K_M pure INT8 should pass the same guard.
 - Added the relaxed-option policy: strict/admitted GGUF KV remains BF16 or the prefix-8 hybrid; a future pure/mostly-INT8 GGUF option can be exposed only as an explicit approximate mode if it beats a refreshed local llama.cpp ROCm `q8_0` divergence baseline on the same model/corpus/context/hardware while documenting mean/max KLD, top-1/same-top drift, generated-token drift, memory, and exact commands.
 - Cross-linked `docs/TUNING-gguf.md` and `docs/KVCACHE.md` to the new GGUF KV section so future tuning runs do not transfer the PARO INT8 KV result to GGUF by assumption.
+
+
+## 2026-06-24 — Commit INT8 KV quality sweep scripts
+
+- Added the two quality harnesses used by the GGUF/PARO INT8 KV comparison so future runs can reproduce the evidence instead of relying on `/tmp` scripts: `scripts/llamacpp_q8_kv_quality_sweep.py` automates llama.cpp F16-vs-`q8_0` KV KL/same-top-p checks via `llama-perplexity`, and `scripts/qwen35_paro_int8_kv_quality_sweep.py` runs PARO BF16-vs-candidate KV logit KL/top-1 gates.
+- Validation before commit: `python3 -m py_compile scripts/llamacpp_q8_kv_quality_sweep.py scripts/qwen35_paro_int8_kv_quality_sweep.py`; `python3 -m ruff check scripts/llamacpp_q8_kv_quality_sweep.py scripts/qwen35_paro_int8_kv_quality_sweep.py` -> passed.
