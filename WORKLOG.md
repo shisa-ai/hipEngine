@@ -125013,3 +125013,20 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - `mtp_vs_true_ar_decode_ratio=0.8273738486979872`.
 - Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests in `5.77s`).
 - Prompt verifier rejected the iteration because accepted/output and draft acceptance both regressed despite the raw tok/s gain. This supports the opposite conclusion: the one-row attention transform still contributes useful signal; the likely llama.cpp parity gap is missing persistent MTP KV context, not attention removal.
+
+## 2026-06-25 — mtp-acceptance iteration 2 rejected: host-side MTP KV-prefix cache
+
+### Hypothesis
+- llama.cpp's MTP path keeps an MTP KV context, while hipEngine's B1 diagnostic attention normally sees only the current row. A minimal persistent prefix cache could raise strict draft acceptance and accepted/output by letting MTP attention attend to prior generated positions.
+
+### Result
+- Rejected by the optimize loop and reverted; no KV-prefix code retained.
+- Prototype threaded `prefix_key_cache` / `prefix_value_cache` and `return_kv` through `qwen35_gguf_mtp_attention_sublayer_f32` / `qwen35_gguf_mtp_nextn_layer_logits_f32`, then maintained a host-side growing K/V prefix in `scripts/gguf_mtp_bench.py` with `context_counts = prefix_len + 1`.
+- Full-suite B1 run: `/tmp/hipengine-mtp-acceptance/run-20260625-063330/summary.json` with objective `/tmp/hipengine-mtp-acceptance/run-20260625-063330/objective-b1.json`.
+  - `decode_tok_s_weighted=6.1059585204015745` collapsed versus loop baseline/current `45.915568519319585` and retained root-top40 threshold `45.77177230711414`.
+  - `accepted_per_output=0.47643979057591623` barely improved versus `0.47368421052631576`.
+  - `draft_acceptance=0.02275` barely improved versus `0.0225`.
+  - `mtp_vs_true_ar_decode_ratio=0.1082324707181403`.
+- Guard passed: configured `py_compile` plus MTP pytest guard (`437` tests in `5.74s`).
+- Prompt verifier rejected the iteration because raw tok/s collapsed. The tiny acceptance lift confirms directionally that context helps, but host copy/concat per draft is unusable; any future KV-context attempt must stay device-resident and likely use the existing paged/KVLiveSpans ABI rather than NumPy prefix caches.
+- True-AR denominator note: the current verify rerun initially timed out rebuilding AR after a doc-only WORKLOG commit changed `HEAD`. To proceed without changing measured denominator values, reused the complete same-protocol `/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json` and updated only the repo commit marker for the cache check; MTP raw tok/s and acceptance metrics are independent of that denominator, while `mtp_vs_true_ar_decode_ratio` used the reused value.
