@@ -204,8 +204,20 @@ Evidence:
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-prefill-oracle-prefix8.json`,
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-noncontiguous-mask-diagnostic.json`,
 `benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-keyonly-diagnostic.json`,
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json`, and
-`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`.
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-int8kv-block16-diagnostic.json`,
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`, and
+`benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`.
+The matched generated-corpus follow-up is enough to keep pure per-token/head
+FP32 INT8 alive as a **long-context relaxed candidate**, not as a general exact
+path: on the same generated corpus/model/GPU, llama.cpp ROCm `q8_0` K+V fails
+all hipEngine-like rows (`128` KL `0.09076`, same-top `0.984`; `512` KL
+`0.9097`, same-top `0.839`; `4K` KL `1.4249`, same-top `0.846`), while
+hipEngine pure INT8 is mixed at short contexts (`128/1` KL `0.2265`, top-1
+`1.0`; `512/1` KL `0.02564`, top-1 `0.5`) but passes `4K/1` (KL `0.00126`,
+top-1 `1.0`) and `4K/16` (KL `0.00781`, top-1 `0.941`) with no BF16 mirrors
+and all 10 full-attention layers INT8. Do not expose a general pure-INT8 option
+yet; run a broader `4K+` prompt/decode suite before considering an explicit
+relaxed mode.
 The stable format/policy summary for future runs is now in
 [`docs/GGUF.md` "GGUF Q8 / INT8 KV cache status"](GGUF.md#gguf-q8--int8-kv-cache-status):
 hipEngine GGUF `int8_per_token_head` is not llama.cpp `GGML_TYPE_Q8_0` KV, PARO

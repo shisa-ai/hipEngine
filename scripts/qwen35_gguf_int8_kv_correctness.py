@@ -35,7 +35,9 @@ from hipengine.benchmark.correctness import evaluate_logits
 from hipengine.core.dtype import DType
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.kvcache import FixedPagedKVPolicy
+from hipengine.loading import load_gguf_index
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 
@@ -93,6 +95,10 @@ def _command(args: argparse.Namespace) -> str:
         f"--kl-threshold {args.kl_threshold}",
         f"--top1-threshold {args.top1_threshold}",
     ]
+    if args.prompt_file is not None:
+        parts.append(f"--prompt-file {args.prompt_file}")
+    if args.prompt_text is not None:
+        parts.append(f"--prompt-text {args.prompt_text!r}")
     if args.compiler_version_file is not None:
         parts.append(f"--compiler-version-file {args.compiler_version_file}")
     if args.require_cached_build:
@@ -268,6 +274,36 @@ def _summarise_pair(
     }
 
 
+def _prompt_tokens_for_length(
+    *,
+    model: Path,
+    prompt_file: Path | None,
+    prompt_text: str | None,
+    token_id: int,
+    prompt_length: int,
+) -> tuple[list[int], dict[str, Any]]:
+    if prompt_file is not None and prompt_text is not None:
+        raise ValueError("--prompt-file and --prompt-text are mutually exclusive")
+    if prompt_file is None and prompt_text is None:
+        return [int(token_id)] * int(prompt_length), {
+            "type": "repeated_token",
+            "token_id": int(token_id),
+            "available_tokens": int(prompt_length),
+        }
+    source_text = prompt_file.read_text(encoding="utf-8") if prompt_file is not None else str(prompt_text)
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(load_gguf_index(model))
+    tokens = [int(item) for item in tokenizer.encode(source_text)]
+    if len(tokens) < int(prompt_length):
+        source = str(prompt_file) if prompt_file is not None else "--prompt-text"
+        raise ValueError(f"{source} tokenized to {len(tokens)} tokens, less than requested {prompt_length}")
+    return tokens[: int(prompt_length)], {
+        "type": "prompt_file" if prompt_file is not None else "prompt_text",
+        "path": None if prompt_file is None else str(prompt_file),
+        "available_tokens": int(len(tokens)),
+        "prefix_token_ids_sample": tokens[: min(16, len(tokens))],
+    }
+
+
 def _run_to_json(run: SequenceRun) -> dict[str, Any]:
     return {
         "kv_storage": run.kv_storage,
@@ -295,10 +331,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     blocked: list[str] = []
     failures: list[str] = []
+    prompt_sources: dict[int, dict[str, Any]] = {}
     for prompt_length in prompt_lengths:
         max_sequence_length = int(args.max_sequence_length or (prompt_length + int(args.decode_steps) + 2))
-        prompt_tokens = [int(args.token_id)] * int(prompt_length)
         try:
+            prompt_tokens, prompt_source = _prompt_tokens_for_length(
+                model=args.model,
+                prompt_file=args.prompt_file,
+                prompt_text=args.prompt_text,
+                token_id=int(args.token_id),
+                prompt_length=int(prompt_length),
+            )
+            prompt_sources[int(prompt_length)] = prompt_source
             print(
                 f"[gguf-int8-kv] prompt={prompt_length} max_sequence={max_sequence_length}: running BF16 reference",
                 file=sys.stderr,
@@ -373,6 +417,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
             "hipengine_gguf_int8_kv_block16": os.environ.get("HIPENGINE_GGUF_INT8_KV_BLOCK16"),
         },
+        "prompt_sources": {str(key): value for key, value in prompt_sources.items()},
         "rows": rows,
         "blocked_reasons": blocked,
         "correctness_failures": failures,
@@ -386,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt-lengths", dest="prompt_lengths_raw", default="512")
     parser.add_argument("--decode-steps", type=int, default=1)
     parser.add_argument("--token-id", type=int, default=9707)
+    parser.add_argument("--prompt-file", type=Path, help="Tokenize this text file and use its token prefix as the prompt")
+    parser.add_argument("--prompt-text", help="Tokenize this text and use its token prefix as the prompt")
     parser.add_argument("--max-sequence-length", type=int, default=0)
     parser.add_argument("--kv-scale-dtype", choices=("fp16", "fp32"), default="fp16")
     parser.add_argument("--kl-threshold", type=float, default=0.05)

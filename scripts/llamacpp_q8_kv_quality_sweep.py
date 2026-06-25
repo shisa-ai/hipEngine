@@ -96,6 +96,30 @@ def _tail(text: str, max_lines: int = 80) -> str:
     return "\n".join(lines[-max_lines:])
 
 
+def _parse_chunk_table_metrics(text: str) -> dict[str, float]:
+    """Parse llama-perplexity's per-chunk KL table when no mean summary is printed."""
+    kl_values: list[float] = []
+    same_top_values: list[float] = []
+    for line in text.splitlines():
+        if not re.match(r"^\s*\d+\s+", line) or "±" not in line:
+            continue
+        values = [float(item) for item in re.findall(_FLOAT_RE, line)]
+        # Columns are: chunk, PPL, PPL±, ln-ratio, ln±, KL, KL±, Δp, Δp±,
+        # same-top-p(%), same-top-p±.  Short one-chunk runs sometimes print
+        # only this table and no "Mean KLD" footer.
+        if len(values) >= 10:
+            kl_values.append(float(values[5]))
+            same_top = float(values[9])
+            same_top_values.append(same_top / 100.0 if same_top > 1.0 else same_top)
+    metrics: dict[str, float] = {}
+    if kl_values:
+        metrics["kl_mean"] = float(sum(kl_values) / len(kl_values))
+        metrics["kl_max"] = float(max(kl_values))
+    if same_top_values:
+        metrics["same_top_p"] = float(sum(same_top_values) / len(same_top_values))
+    return metrics
+
+
 def _parse_metrics(text: str) -> dict[str, float]:
     metrics: dict[str, float] = {}
     for name, patterns in _METRIC_PATTERNS.items():
@@ -107,6 +131,9 @@ def _parse_metrics(text: str) -> dict[str, float]:
                     value /= 100.0
                 metrics[name] = value
                 break
+    table_metrics = _parse_chunk_table_metrics(text)
+    for name, value in table_metrics.items():
+        metrics.setdefault(name, value)
     return metrics
 
 

@@ -1,0 +1,255 @@
+{
+  "commands": {
+    "hipengine_pure_int8_128_512_4k_1": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 128,512,4K --decode-steps 1 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --prompt-file /tmp/hipengine-final-matched-int8kv-20260624/generated-corpus.txt --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-final-matched-int8kv-20260624/hipengine-gguf-pure-int8-quality.json",
+    "hipengine_pure_int8_4k_16": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 python3 scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-lengths 4K --decode-steps 16 --token-id 9707 --max-sequence-length 131202 --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --prompt-file /tmp/hipengine-final-matched-int8kv-20260624/generated-corpus.txt --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --require-no-bf16-mirror --json /tmp/hipengine-final-matched-int8kv-20260624/hipengine-gguf-pure-int8-quality-4k16.json",
+    "llamacpp_q8_sweep": "HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_q8_kv_quality_sweep.py --llama-perplexity /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-perplexity --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --contexts 128,512,4K --chunks 1 --prompt-file /tmp/hipengine-final-matched-int8kv-20260624/generated-corpus.txt --work-dir /tmp/hipengine-final-matched-int8kv-20260624 --reference-cache-type-k f16 --reference-cache-type-v f16 --candidate-cache-type-k q8_0 --candidate-cache-type-v q8_0 --kl-threshold 0.05 --top1-threshold 0.9 --no-warmup --env HIP_VISIBLE_DEVICES=0 --json /tmp/hipengine-final-matched-int8kv-20260624/llamacpp-q8-quality.json"
+  },
+  "date": "2026-06-24",
+  "decision": "do_not_promote_general_pure_gguf_int8_kv_yet; retain as promising long-context relaxed-mode candidate",
+  "extra_hipengine_4k_16_row": {
+    "candidate_bf16_primary_layer_count": 0,
+    "candidate_current_gib": 23.751805305480957,
+    "candidate_int8_layer_count": 10,
+    "candidate_mirror_cache_count": 0,
+    "candidate_peak_gib": 26.256688117980957,
+    "candidate_top1": [
+      472,
+      199061,
+      12656,
+      246873,
+      650,
+      2761,
+      137518,
+      128576,
+      118171,
+      17285,
+      96454,
+      224717,
+      207648,
+      187080,
+      30695,
+      13084,
+      98391
+    ],
+    "decode_steps": 16,
+    "errors": [],
+    "metrics": {
+      "first_top1_mismatch_index": 3,
+      "kl_max": 0.08838262404381322,
+      "kl_mean": 0.0078119038632089985,
+      "passed": true,
+      "top1_agreement": 0.9411764705882353,
+      "top1_mismatch_count": 1
+    },
+    "passed_strict_guard": true,
+    "prompt_length": 4096,
+    "reference_top1": [
+      472,
+      199061,
+      12656,
+      198046,
+      650,
+      2761,
+      137518,
+      128576,
+      118171,
+      17285,
+      96454,
+      224717,
+      207648,
+      187080,
+      30695,
+      13084,
+      98391
+    ]
+  },
+  "hardware": "AMD Radeon Pro W7900 48GB / gfx1100 GPU0",
+  "hipengine_commit_before_artifact": "98780a36",
+  "matched_scope": {
+    "contexts": [
+      128,
+      512,
+      4096
+    ],
+    "important_metric_caveat": "llama.cpp llama-perplexity reports corpus chunk KL/same-top-p across the prompt; hipEngine records BF16-vs-INT8 logits at prefill seed plus decode positions (2 positions for 128/512/4K rows, 17 positions for the extra 4K/16 row). This is matched by model/prompt/context/hardware, not identical per-token metric implementation.",
+    "prompt_available_tokens_by_hipengine_tokenizer": 47345,
+    "prompt_sha256": "c01fa9e3432b6810e7219eef6ade23b119e75198a902a4cf9140bf680d172210",
+    "same_generated_prompt_file": "/tmp/hipengine-final-matched-int8kv-20260624/generated-corpus.txt",
+    "same_gpu": true,
+    "same_model_file": true
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "performance_claim": false,
+  "quality_thresholds": {
+    "kl_mean_max": 0.05,
+    "top1_or_same_top_min": 0.9
+  },
+  "quant": "gguf_q4_k_m",
+  "raw_tmp_artifacts": {
+    "hipengine_pure_int8_quality": "/tmp/hipengine-final-matched-int8kv-20260624/hipengine-gguf-pure-int8-quality.json",
+    "hipengine_pure_int8_quality_4k16": "/tmp/hipengine-final-matched-int8kv-20260624/hipengine-gguf-pure-int8-quality-4k16.json",
+    "llamacpp_q8_quality": "/tmp/hipengine-final-matched-int8kv-20260624/llamacpp-q8-quality.json",
+    "prompt_file": "/tmp/hipengine-final-matched-int8kv-20260624/generated-corpus.txt"
+  },
+  "rows": [
+    {
+      "comparison": {
+        "hipengine_kl_mean_div_llamacpp_kl_mean": 2.495902670202786,
+        "hipengine_top1_or_same_top_delta": 0.01587000000000005,
+        "interpretation": "mixed_or_rejected"
+      },
+      "context": 128,
+      "hipengine_pure_int8_per_token_head_fp32": {
+        "candidate_bf16_primary_layer_count": 0,
+        "candidate_current_gib": 23.751805305480957,
+        "candidate_int8_layer_count": 10,
+        "candidate_mirror_cache_count": 0,
+        "candidate_peak_gib": 26.256688117980957,
+        "candidate_top1": [
+          7371,
+          15
+        ],
+        "errors": [
+          "KL/top1 gate failed: kl_mean=0.226528 <= 0.05, top1=1 >= 0.9"
+        ],
+        "metrics": {
+          "first_top1_mismatch_index": null,
+          "kl_max": 0.45305625269520966,
+          "kl_mean": 0.22652812634760483,
+          "passed": false,
+          "top1_agreement": 1.0,
+          "top1_mismatch_count": 0
+        },
+        "passed_strict_guard": false,
+        "reference_top1": [
+          7371,
+          15
+        ]
+      },
+      "llamacpp_q8_0": {
+        "metrics": {
+          "kl_max": 0.09076,
+          "kl_mean": 0.09076,
+          "same_top_p": 0.98413
+        },
+        "passed_hipengine_like_quality_guard": false
+      }
+    },
+    {
+      "comparison": {
+        "hipengine_kl_mean_div_llamacpp_kl_mean": 0.02818203219570508,
+        "hipengine_top1_or_same_top_delta": -0.33921999999999997,
+        "interpretation": "mixed_or_rejected"
+      },
+      "context": 512,
+      "hipengine_pure_int8_per_token_head_fp32": {
+        "candidate_bf16_primary_layer_count": 0,
+        "candidate_current_gib": 23.751805305480957,
+        "candidate_int8_layer_count": 10,
+        "candidate_mirror_cache_count": 0,
+        "candidate_peak_gib": 26.256688117980957,
+        "candidate_top1": [
+          98732,
+          75839
+        ],
+        "errors": [
+          "KL/top1 gate failed: kl_mean=0.0256373 <= 0.05, top1=0.5 >= 0.9"
+        ],
+        "metrics": {
+          "first_top1_mismatch_index": 1,
+          "kl_max": 0.051274614833123386,
+          "kl_mean": 0.025637307416561693,
+          "passed": false,
+          "top1_agreement": 0.5,
+          "top1_mismatch_count": 1
+        },
+        "passed_strict_guard": false,
+        "reference_top1": [
+          98732,
+          38118
+        ]
+      },
+      "llamacpp_q8_0": {
+        "metrics": {
+          "kl_max": 13.891315,
+          "kl_mean": 0.909704,
+          "same_top_p": 0.83922
+        },
+        "passed_hipengine_like_quality_guard": false
+      }
+    },
+    {
+      "comparison": {
+        "hipengine_kl_mean_div_llamacpp_kl_mean": 0.0008844533343677965,
+        "hipengine_top1_or_same_top_delta": 0.15437,
+        "interpretation": "hipengine_strict_pass_and_llamacpp_guard_fail"
+      },
+      "context": 4096,
+      "hipengine_pure_int8_per_token_head_fp32": {
+        "candidate_bf16_primary_layer_count": 0,
+        "candidate_current_gib": 23.751805305480957,
+        "candidate_int8_layer_count": 10,
+        "candidate_mirror_cache_count": 0,
+        "candidate_peak_gib": 26.256688117980957,
+        "candidate_top1": [
+          472,
+          199061
+        ],
+        "errors": [],
+        "metrics": {
+          "first_top1_mismatch_index": null,
+          "kl_max": 0.002520477965241303,
+          "kl_mean": 0.0012602389826206514,
+          "passed": true,
+          "top1_agreement": 1.0,
+          "top1_mismatch_count": 0
+        },
+        "passed_strict_guard": true,
+        "reference_top1": [
+          472,
+          199061
+        ]
+      },
+      "llamacpp_q8_0": {
+        "metrics": {
+          "kl_max": 23.208828,
+          "kl_mean": 1.424879,
+          "same_top_p": 0.84563
+        },
+        "passed_hipengine_like_quality_guard": false
+      }
+    }
+  ],
+  "runtime_env": {
+    "hipengine_pure_int8": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0"
+    },
+    "llamacpp_q8_sweep": {
+      "HIP_VISIBLE_DEVICES": "0"
+    }
+  },
+  "schema": 1,
+  "software": {
+    "hip_visible_devices": "0",
+    "hipcc_version_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "hipengine_hip_arch": "gfx1100",
+    "llama_cpp_commit": "e37abd6b5",
+    "llama_cpp_repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12"
+  },
+  "status": "diagnostic_retained",
+  "summary": {
+    "hipengine": "Pure per-token/head FP32 INT8 has mixed short rows on the same generated corpus (128 KL fail with top1 ok; 512 KL ok with top1 fail) but passes 4K/1 and 4K/16 with no BF16 mirrors and all 10 full-attention layers INT8.",
+    "llamacpp": "q8_0 K+V fails hipEngine-like guard at all matched contexts: 128 KL=0.09076 same-top=0.98413; 512 KL=0.909704 same-top=0.83922; 4K KL=1.424879 same-top=0.84563.",
+    "recommendation": "Do not expose a general pure GGUF INT8 KV option yet. Do not give up: a long-context-only relaxed mode is plausible because 4K/16 passes strict hipEngine logits while llama.cpp q8_0 fails its matched corpus guard. Require a broader prompt/decode suite before user-facing exposure."
+  },
+  "task": "matched GGUF INT8 KV quality comparison vs llama.cpp q8_0 KV",
+  "validation": [
+    "python3 -m py_compile scripts/llamacpp_q8_kv_quality_sweep.py scripts/qwen35_gguf_int8_kv_correctness.py",
+    "python3 -m ruff check scripts/llamacpp_q8_kv_quality_sweep.py scripts/qwen35_gguf_int8_kv_correctness.py",
+    "python3 -m json.tool benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json"
+  ]
+}

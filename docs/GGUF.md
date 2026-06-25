@@ -60,8 +60,9 @@ Do not treat this document as a performance claim. It is an implementation plan.
 
 ## GGUF Q8 / INT8 KV cache status
 
-Last updated: 2026-06-24. Evidence artifact:
-[`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json).
+Last updated: 2026-06-24. Evidence artifacts:
+[`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json) and
+[`benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json).
 
 Terminology matters:
 
@@ -90,9 +91,19 @@ Strict hipEngine GGUF KV quality is judged against the BF16-KV candidate with th
 repository logit guard (KL mean <= `0.05` and top-1 agreement >= `0.9`). Under
 that guard, the current GGUF results are:
 
-- Actual no-mirror pure GGUF `int8_per_token_head` FP32-scale runtime fails at
-  `128/1`, `512/1`, and `4K/1`: `KL mean=0.0824` / top-1 `0.5`,
-  `KL mean=0.05698` / top-1 `1.0`, and `KL mean=0.15398` / top-1 `0.5`.
+- Actual no-mirror pure GGUF `int8_per_token_head` FP32-scale runtime fails on
+  the fixed repeated-token prompt at `128/1`, `512/1`, and `4K/1`: `KL mean=0.0824`
+  / top-1 `0.5`, `KL mean=0.05698` / top-1 `1.0`, and `KL mean=0.15398` /
+  top-1 `0.5`.
+- A later same-corpus/same-context W7900 comparison against llama.cpp's `q8_0`
+  KV gives a more nuanced result. On the generated corpus used by
+  `llama-perplexity`, hipEngine pure per-token/head FP32 INT8 has mixed short
+  rows (`128/1` KL `0.2265`, top-1 `1.0`; `512/1` KL `0.02564`, top-1 `0.5`),
+  but it passes `4K/1` (KL `0.00126`, top-1 `1.0`) and `4K/16` (KL `0.00781`,
+  top-1 `0.941`) with no BF16 mirrors and all 10 full-attention layers stored
+  as INT8. The matching llama.cpp `q8_0` corpus rows fail the hipEngine-like
+  guard at every context (`128` KL `0.09076`, same-top `0.984`; `512` KL
+  `0.9097`, same-top `0.839`; `4K` KL `1.4249`, same-top `0.846`).
 - Host QDQ `q8_0_block32` probes, which approximate llama.cpp's 32-value scale
   granularity but replay through BF16 storage, also fail the `4K/1` pure gate:
   fp16 scales `KL=0.5715`, fp32 scales `KL=0.1235`, both top-1 `0.0`.
@@ -112,13 +123,16 @@ Operational policy:
 1. **Exact/admitted GGUF path:** keep BF16 KV or the current guarded hybrid
    (`8` BF16 full-attention layers + `2` INT8 layers for long contexts) when the
    strict BF16-vs-candidate gate must pass.
-2. **Approximate/relaxed option:** a future pure or mostly-INT8 GGUF KV path may
-   be exposed as an explicit opt-in if it clearly beats the local llama.cpp ROCm
-   `q8_0` divergence on the same model, corpus, context, hardware, and command
-   while providing a memory or throughput benefit. The artifact must report mean
-   and max KLD, top-1/same-top agreement, generated-token drift, memory, and the
-   exact llama.cpp baseline used for comparison. This is a "better than
-   llama.cpp-Q8" relaxed mode, not an exactness claim.
+2. **Approximate/relaxed option:** pure per-token/head FP32 INT8 is now a
+   plausible long-context relaxed candidate because it passes the matched
+   generated-corpus `4K/16` gate while llama.cpp ROCm `q8_0` fails its matched
+   `4K` corpus row. It is still **not user-facing**: short rows remain mixed and
+   the metric implementations differ, so expose it only after a broader prompt
+   and decode-length suite confirms the `4K+` behavior. Any exposed mode must be
+   explicit opt-in, report mean/max KLD, top-1/same-top agreement,
+   generated-token drift, memory, and the exact llama.cpp baseline used for
+   comparison. This is a "better than llama.cpp-Q8" relaxed mode, not an
+   exactness claim.
 3. **Rejected:** any GGUF INT8 KV layout that fails the strict guard and is not
    better than the refreshed llama.cpp `q8_0` comparator should remain
    diagnostic-only.
