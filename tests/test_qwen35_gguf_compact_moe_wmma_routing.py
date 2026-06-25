@@ -185,7 +185,11 @@ def _buf(ptr: int):
 
 
 def _patch_common_moe_kernels(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[str, object]]) -> None:
-    monkeypatch.setattr(qgr, "qwen35_router_logits_bf16", lambda *args, **kwargs: calls.append(("router", None)))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_qwen35_router_logits_bf16_hidden",
+        lambda *args, **kwargs: calls.append(("router", (args[1].spec.source.name, args[3], args[5]))),
+    )
     monkeypatch.setattr(qgr, "qwen35_router_select", lambda *args, **kwargs: calls.append(("router_select", None)))
     monkeypatch.setattr(qgr, "copy_host_to_device", lambda *args, **kwargs: calls.append(("zero", None)))
     monkeypatch.setattr(qgr, "silu_mul_separate_out_bf16", lambda *args, **kwargs: calls.append(("silu_separate", None)))

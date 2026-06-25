@@ -166,6 +166,53 @@ __global__ void dense_gemv_out_kernel(
 }
 
 
+__global__ void dense_gemv_bf16_f32w_bf16_out_kernel(
+    const uint16_t* __restrict__ x,
+    const float* __restrict__ weight,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const uint16_t* x_ptr = x + x_base + k_base;
+    const float* w_ptr = weight + w_base + k_base;
+    acc = fmaf(bf16_bits_to_float(x_ptr[0]), w_ptr[0], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[1]), w_ptr[1], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[2]), w_ptr[2], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[3]), w_ptr[3], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[4]), w_ptr[4], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[5]), w_ptr[5], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[6]), w_ptr[6], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[7]), w_ptr[7], acc);
+  }
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    acc = fmaf(bf16_bits_to_float(x[x_base + in_col]), weight[w_base + in_col], acc);
+  }
+
+  __shared__ float sdata[256];
+  sdata[tid] = acc;
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    out[row * out_features + out_col] = float_to_bf16_bits(sdata[0]);
+  }
+}
+
+
 template <typename scalar_t, int TILE_M, int TILE_N, int TILE_K>
 __global__ void dense_prefill_gemm_out_kernel(
     const scalar_t* __restrict__ x,
@@ -521,6 +568,33 @@ extern "C" int hipengine_dense_gemv_out_bf16(
   }
   hipLaunchKernelGGL(
       (dense_gemv_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_bf16_f32w_bf16_out(
+    const uint16_t* x,
+    const float* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dense_gemv_bf16_f32w_bf16_out_kernel,
       dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,

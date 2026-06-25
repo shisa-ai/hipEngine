@@ -285,14 +285,11 @@ def gguf_decode_repack_enabled(value: bool | None = None) -> bool:
 def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: bool) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
-        bf16_linear_weight = slot_path.endswith(
-            (".ffn_gate_inp", ".ffn_gate_inp_shexp", ".ssm_alpha", ".ssm_beta")
-        )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
-            quant_key="bf16" if bf16_linear_weight else "f32",
-            layout=LAYOUT_DENSE_BF16 if bf16_linear_weight else LAYOUT_DENSE_F32,
+            quant_key="f32",
+            layout=LAYOUT_DENSE_F32,
             allocation_names=("raw",),
         )
     if qtype == GGMLQuantizationType.Q4_K:
@@ -400,20 +397,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
 
 
 def _precision_contraction_contract(slot_path: str) -> str:
-    known = {
-        ".ffn_gate_inp": (
-            "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
-        ),
-        ".ffn_gate_inp_shexp": (
-            "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
-        ),
-        ".ssm_alpha": (
-            "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
-        ),
-        ".ssm_beta": (
-            "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
-        ),
-    }
+    known = {}
     for suffix, contract in known.items():
         if slot_path.endswith(suffix):
             return contract

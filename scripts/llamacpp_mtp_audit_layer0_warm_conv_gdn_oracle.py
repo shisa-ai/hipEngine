@@ -546,11 +546,12 @@ def gdn_recurrent_step(
         raise ValueError("gate width does not match value dimensions")
     if state.shape != expected_state:
         raise ValueError(f"recurrent_state shape mismatch: {state.shape} != {expected_state}")
-    repeat = int(num_v_heads) // int(num_k_heads)
     out = np.empty((value_dim,), dtype=np.float32)
     inv_sqrt_head_k = np.float32(1.0 / math.sqrt(float(head_k_dim)))
     for v_head in range(int(num_v_heads)):
-        k_head = v_head // repeat
+        # llama.cpp maps Qwen3.5 linear-attention K groups interleaved across
+        # V heads: iv1 % neq1 in GGML_OP_GATED_DELTA_NET.
+        k_head = v_head % int(num_k_heads)
         q_base = k_head * int(head_k_dim)
         k_base = key_dim + q_base
         value_offset = 2 * key_dim + v_head * int(head_v_dim)

@@ -125244,3 +125244,36 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py hipengine/runtime/qwen35_gguf_runner.py hipengine/speculative/gguf_mtp.py hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py tests/test_mtp_dense_device_kv_cache.py`
   - `python3 -m pytest -q tests/test_mtp_dense_device_kv_cache.py tests/test_gguf_mtp_bench_prompt.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py`
   - Result: `444 passed in 6.47s`.
+
+
+## 2026-06-25 — MTP target parity: Qwen3.5 GDN K-head mapping fixed
+
+### Finding
+- Root cause for the first-token target AR mismatch was Qwen3.5 linear-attention GDN K/V broadcast semantics, not prompt tokens or LM-head precision.
+- llama.cpp/GGML maps value head `v_head` to key head `v_head % num_k_heads` (`iv1 % neq1` in `GGML_OP_GATED_DELTA_NET`). hipEngine inherited the grouped Qwen3Next-style mapping `v_head / repeat`, so GDN recurrent outputs diverged at linear-attention layers.
+- F32 router retention and BF16-hidden/F32-weight alpha/beta projections are still valid llama.cpp parity cleanups, but alone they did not move the first target token.
+
+### Changes
+- Switched all qwen35 GDN decode/prefill HIP kernels to the llama.cpp interleaved K-head mapping.
+- Updated Python GDN replay/oracle helpers and GDN correctness expectations to the same mapping.
+- Kept MoE router/shared-gate weights and SSM alpha/beta projection weights as F32 and routed BF16-hidden/F32-weight dense/router kernels through the registry.
+
+### Evidence
+- Direct target probe after the GDN fix, exact 21-token reasoning-off merge-sort prompt:
+  - default WMMA+GEMV+decode-repack: token `71093` (code-fence token); code-fence rank 1.
+  - no-WMMA/no-fast bulk: token `71093`; rank 1.
+  - token-serial correctness path: token `71093`; rank 1.
+- Single-prompt B3 smoke after fix:
+  - Command: `python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 3 --draft-n-max 3 --root-topk-accept 1 --output /tmp/hipengine-mtp-target-parity-final-c3.json`
+  - Result on gfx1151/Radeon 8060S: `initial_prev_token=71093`, `total_accepted=7/9`, `total_output_tokens=10`, `accept_per_draft=0.7778`, `tokens_per_sec=41.44`, `speedup_vs_ar_visible=0.752x`.
+  - This fixes the prior target mismatch (`760`/`248069`/`1919`) and improves the old smoke from `2/9` accepted drafts and `5` visible tokens, but it is still a single-prompt diagnostic, not a retained benchmark claim.
+
+### Validation
+- ROCm guard: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')" && rocminfo | grep -E 'Name:|gfx' | head -40`.
+- Lineage check attempted: `python3 scripts/check_lineage.py --kind kernel --diff stat`; blocked because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent on this host.
+- Build checks: `build_dense_gemv(load=False)`, `build_qwen35_router(load=False)`, `build_qwen35_linear_attn_gdn(load=False)`.
+- Focused tests: `python3 -m pytest -q tests/test_dense_gemv_plan.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_materialize.py tests/test_qwen35_gguf_materialize_helpers.py tests/test_qwen35_router_plan.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_gguf_gdn_prefill_correctness.py` — passed (`... 100%`).
+- rocprofv3 kernel trace: `rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-rocprof-gdn-khead -- python3 -m pytest -q tests/test_dense_gemv_plan.py::test_dense_gemv_bf16_hidden_f32_weight_matches_cpu_reference tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_paths_match_cpu_oracle_small_shape`; trace includes `dense_gemv_bf16_f32w_bf16_out_kernel`, `qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel`, `qwen35_linear_attn_prefill_prepare_kernel`, and split GDN recurrent/rmsnorm kernels.
+
+### Next
+- Investigate the remaining cycle-1 B3 draft divergence (`drafts=[17885,20250,17145]` vs target `[17885,10620]`) with exact MTP state/logit trace parity before making speed claims.

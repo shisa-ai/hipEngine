@@ -67,7 +67,7 @@ def test_compact_gemv_off_by_default_uses_legacy_selected_decode(monkeypatch: py
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
-def test_c1_decode_uses_split_router_coop_launch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_c1_decode_uses_f32_router_logits_and_select(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
@@ -86,11 +86,10 @@ def test_c1_decode_uses_split_router_coop_launch(monkeypatch: pytest.MonkeyPatch
     runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
 
     names = [name for name, _ in calls]
-    assert names.count("router_split_coop") == 1
-    assert "router" not in names
-    assert "router_select" not in names
-    assert ("router_split_coop", (10, 11, 110, 1, 256, 4, 2)) in calls
-    assert ("router_split_coop_threads", 256) in calls
+    assert names[:3] == ["router", "router", "router_select"]
+    assert ("router", ("ffn_gate_inp", 1, 4)) in calls
+    assert ("router", ("ffn_gate_inp_shexp", 1, 1)) in calls
+    assert "router_split_coop" not in names
 
 
 
@@ -357,7 +356,11 @@ def _buf(ptr: int):
 
 
 def _patch_common_moe_kernels(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[str, object]]) -> None:
-    monkeypatch.setattr(qgr, "qwen35_router_logits_bf16", lambda *args, **kwargs: calls.append(("router", None)))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_qwen35_router_logits_bf16_hidden",
+        lambda *args, **kwargs: calls.append(("router", (args[1].spec.source.name, args[3], args[5]))),
+    )
     monkeypatch.setattr(qgr, "qwen35_router_select", lambda *args, **kwargs: calls.append(("router_select", None)))
     monkeypatch.setattr(
         qgr,

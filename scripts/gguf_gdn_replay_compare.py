@@ -232,7 +232,9 @@ def replay_gdn(
         gate_token = gate[token_idx]
         out_token = np.empty((shape.num_v_heads, shape.head_v_dim), dtype=np.float32)
         for v_head in range(shape.num_v_heads):
-            k_head = v_head // shape.repeat
+            # Qwen3.5 interleaves K heads across V heads, matching llama.cpp's
+            # iv1 % neq1 mapping in GGML_OP_GATED_DELTA_NET.
+            k_head = v_head % shape.num_k_heads
             q_base = k_head * shape.head_k_dim
             k_base = shape.key_dim + k_head * shape.head_k_dim
             v_base = 2 * shape.key_dim + v_head * shape.head_v_dim

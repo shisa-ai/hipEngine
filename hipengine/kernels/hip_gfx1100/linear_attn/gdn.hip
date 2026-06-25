@@ -85,6 +85,12 @@ __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
 }
 
+__device__ inline int64_t qwen35_gdn_k_head_from_v_head(int64_t v_head, int64_t num_k_heads) {
+  // llama.cpp Qwen3.5 interleaves K groups across V heads
+  // ([k0_v0, k1_v1, k0_v2, ...]), unlike Qwen3Next's grouped repeat.
+  return v_head % num_k_heads;
+}
+
 template <>
 __device__ inline float scalar_to_float_qwen35<uint16_t>(uint16_t value) {
   return bf16_bits_to_float(value);
@@ -118,8 +124,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
   if (v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_offset = 2 * key_dim + v_head * head_v_dim;
 
@@ -315,8 +320,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
   if (v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t conv_stride = (2 * key_dim) + value_dim;
@@ -742,8 +746,7 @@ __global__ void qwen35_linear_attn_prefill_prepare_kernel(
   if (token >= tokens || v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t qkv_width = 2 * key_dim + value_dim;
@@ -980,8 +983,7 @@ __global__ void qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel(
   if (v_head >= num_v_heads || dv_idx >= head_v_dim) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t conv_stride = (2 * key_dim) + value_dim;
@@ -1137,8 +1139,7 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
   if (v_head >= num_v_heads || dv_base + VTILE > head_v_dim) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t conv_stride = (2 * key_dim) + value_dim;
@@ -1302,8 +1303,7 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
   if (v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t qkv_width = 2 * key_dim + num_v_heads * head_v_dim;
   const int64_t value_idx = threadIdx.x;
@@ -1517,8 +1517,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
     return;
   }
   const int64_t state_slot = state_indices[segment];
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t qkv_width = 2 * key_dim + num_v_heads * head_v_dim;
   const int64_t value_idx = threadIdx.x;

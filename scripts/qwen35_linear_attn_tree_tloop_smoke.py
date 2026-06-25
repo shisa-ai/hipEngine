@@ -288,14 +288,13 @@ def _gdn_tree_ref(
     max_nodes = conv_out.shape[0]
     key_dim = num_k_heads * head_k_dim
     value_dim = num_v_heads * head_v_dim
-    repeat = num_v_heads // num_k_heads
     tree = np.zeros((max_nodes, num_v_heads, head_k_dim, head_v_dim), dtype=np.float32)
     acc = np.zeros((max_nodes, num_v_heads, head_v_dim), dtype=np.float32)
     out = np.zeros((max_nodes, value_dim), dtype=np.float32)
     for t in range(max_nodes):
         parent = int(parent_ids[t])
         for v_head in range(num_v_heads):
-            k_head = v_head // repeat
+            k_head = v_head % num_k_heads
             q = conv_out[t, k_head * head_k_dim : (k_head + 1) * head_k_dim].astype(np.float32)
             k = conv_out[t, key_dim + k_head * head_k_dim : key_dim + (k_head + 1) * head_k_dim].astype(np.float32)
             q_scale = np.float32(1.0) / np.sqrt(np.sum(q * q, dtype=np.float32) + np.float32(1.0e-6))

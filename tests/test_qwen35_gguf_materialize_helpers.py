@@ -30,7 +30,7 @@ def test_gguf_ssm_a_materialization_converts_decay_coefficients_to_kernel_log() 
         _gguf_ssm_a_to_kernel_a_log(np.asarray([-1.0, np.nan], dtype=np.float32))
 
 
-def test_precision_contraction_audit_flags_source_f32_tensors_planned_as_bf16() -> None:
+def test_precision_contraction_audit_ignores_source_f32_tensors_retained_as_f32() -> None:
     plan = Qwen35GGUFMaterializationPlan(
         config=None,  # helper audit does not inspect model config
         root_specs=MappingProxyType(
@@ -51,15 +51,15 @@ def test_precision_contraction_audit_flags_source_f32_tensors_planned_as_bf16() 
                         "layers.0.ffn_gate_inp",
                         "blk.0.ffn_gate_inp.weight",
                         GGMLQuantizationType.F32,
-                        LAYOUT_DENSE_BF16,
-                        "bf16",
+                        LAYOUT_DENSE_F32,
+                        "f32",
                     ),
                     "ssm_alpha": _spec(
                         "layers.0.ssm_alpha",
                         "blk.0.ssm_alpha.weight",
                         GGMLQuantizationType.F32,
-                        LAYOUT_DENSE_BF16,
-                        "bf16",
+                        LAYOUT_DENSE_F32,
+                        "f32",
                     ),
                     "attn_qkv": _spec(
                         "layers.0.attn_qkv",
@@ -75,17 +75,7 @@ def test_precision_contraction_audit_flags_source_f32_tensors_planned_as_bf16() 
 
     findings = audit_qwen35_gguf_precision_contractions(plan)
 
-    assert [finding.slot_path for finding in findings] == [
-        "layers.0.ffn_gate_inp",
-        "layers.0.ssm_alpha",
-    ]
-    assert findings[0].source_name == "blk.0.ffn_gate_inp.weight"
-    assert findings[0].source_type == "F32"
-    assert findings[0].resident_layout == LAYOUT_DENSE_BF16
-    assert findings[0].resident_quant_key == "bf16"
-    assert "llama.cpp" in findings[0].llama_cpp_contract
-    assert "MoE router" in findings[0].hipengine_contract
-    assert "GDN alpha" in findings[1].hipengine_contract
+    assert findings == ()
 
 
 def _spec(

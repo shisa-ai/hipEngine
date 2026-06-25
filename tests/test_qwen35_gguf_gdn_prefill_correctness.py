@@ -144,7 +144,6 @@ def _cpu_prepare(
     qk_eps: float = 1.0e-6,
 ):
     tokens = conv_out_f32.shape[0]
-    repeat = num_v_heads // num_k_heads
     key_offset = num_k_heads * head_k_dim
     value_offset = 2 * num_k_heads * head_k_dim
 
@@ -160,7 +159,9 @@ def _cpu_prepare(
     for token in range(tokens):
         conv_row = conv_out_f32[token]
         for v_head in range(num_v_heads):
-            k_head = v_head // repeat
+            # Match llama.cpp/GGML_OP_GATED_DELTA_NET for Qwen3.5: K heads are
+            # interleaved across V heads, not grouped by contiguous repeats.
+            k_head = v_head % num_k_heads
             q_base = k_head * head_k_dim
             k_base = key_offset + k_head * head_k_dim
             v_base = value_offset + v_head * head_v_dim

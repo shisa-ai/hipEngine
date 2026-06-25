@@ -13,6 +13,7 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
@@ -57,6 +58,7 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     q5 = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
     q6 = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
     q41 = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
+    f32 = _fake_weight(layout=LAYOUT_DENSE_F32, quant_key="f32")
 
     assert resolve_gguf_linear_dispatch(q4).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_bf16_out"
@@ -75,6 +77,9 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     )
     assert resolve_gguf_linear_dispatch(q41, rows=4).key == KernelKey(
         "hip_gfx1100", "dense_gemv", "bf16", "prefill_out"
+    )
+    assert resolve_gguf_linear_dispatch(f32).key == KernelKey(
+        "hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"
     )
     q8_t16 = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     assert resolve_gguf_linear_dispatch(q8_t16).key == KernelKey(
@@ -113,6 +118,12 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
             _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1"),
             GGUF_OUTPUT_BF16,
             KernelKey("hip_gfx1100", "dense_gemv", "bf16", "prefill_out"),
+            (100, 10, 200, 2, 1024, 2048),
+        ),
+        (
+            _fake_weight(layout=LAYOUT_DENSE_F32, quant_key="f32"),
+            GGUF_OUTPUT_BF16,
+            KernelKey("hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"),
             (100, 10, 200, 2, 1024, 2048),
         ),
         (

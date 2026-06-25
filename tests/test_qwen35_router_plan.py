@@ -10,7 +10,9 @@ from hipengine.kernels.hip_gfx1100.moe import (
     build_qwen35_router,
     plan_qwen35_router_build,
     qwen35_router_logits_bf16,
+    qwen35_router_logits_bf16_f32w,
     qwen35_router_logits_fp16,
+    qwen35_router_logits_fp16_f32w,
     qwen35_router_select,
     qwen35_router_topk_shared_coop_out_bf16,
     qwen35_router_topk_shared_coop_out_fp16,
@@ -51,7 +53,19 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
     register_qwen35_router_kernels()
 
     assert resolve(backend="hip_gfx1100", layer="router_logits", quant="bf16") is qwen35_router_logits_bf16
+    assert (
+        resolve(backend="hip_gfx1100", layer="router_logits", quant="bf16", variant="bf16_hidden")
+        is qwen35_router_logits_bf16
+    )
     assert resolve(backend="hip_gfx1100", layer="router_logits", quant="fp16") is qwen35_router_logits_fp16
+    assert (
+        resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="bf16_hidden")
+        is qwen35_router_logits_bf16_f32w
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="fp16_hidden")
+        is qwen35_router_logits_fp16_f32w
+    )
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="w4_paro", variant="fp16_hidden")
         is qwen35_router_logits_fp16
@@ -145,6 +159,10 @@ def test_qwen35_router_wrappers_validate_shape_before_gpu_load() -> None:
         qwen35_router_logits_bf16(0, 0, 0, 1, 16, 8, threads=32)
     with pytest.raises(ValueError, match="tokens must be positive"):
         qwen35_router_logits_fp16(0, 0, 0, 0, 16, 8)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        qwen35_router_logits_bf16_f32w(0, 0, 0, 0, 16, 8)
+    with pytest.raises(ValueError, match="threads must be one of"):
+        qwen35_router_logits_fp16_f32w(0, 0, 0, 1, 16, 8, threads=32)
     with pytest.raises(ValueError, match="top_k must be <= 16"):
         qwen35_router_select(0, 0, 0, 1, 8, 8, 17)
     with pytest.raises(ValueError, match="top_k must be <= num_experts"):

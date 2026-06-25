@@ -57,10 +57,6 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
-from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
-    dense_dual_gemv_out_bf16,
-    dense_gemv_out_bf16,
-)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
 from hipengine.kernels.hip_gfx1100.runtime import (
@@ -136,7 +132,6 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     register_qwen35_moe_group_scatter_kernels,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
-    qwen35_router_logits_bf16,
     qwen35_router_select,
     qwen35_router_topk_split_shared_coop_out_bf16,
 )
@@ -563,6 +558,44 @@ def qwen35_gguf_decode_graph_active_symbol_groups(
     elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q6_k", rank=2, slot_contains="root.lm_head"):
         add("dense_q6_k_lm_head")
     return tuple(groups)
+
+
+def _launch_qwen35_router_logits_bf16_hidden(
+    hidden_ptr: int,
+    weight: Qwen35GGUFDeviceWeight,
+    logits_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    *,
+    stream: int = 0,
+    runtime=None,
+) -> None:
+    """Launch BF16-hidden router logits through the kernel registry.
+
+    Qwen3.6 stores the MoE router and shared-gate vectors as GGUF F32 tensors;
+    llama.cpp consumes them as F32.  Older hipEngine builds contracted those
+    tensors to BF16 and called the BF16-weight router kernel.  Keeping this as a
+    tiny registry adapter avoids quant/layout branches at the call sites while
+    preserving the BF16-weight path for fixtures and legacy materializations.
+    """
+
+    fn = resolve(
+        backend="hip_gfx1100",
+        layer="router_logits",
+        quant=weight.spec.quant_key,
+        variant="bf16_hidden",
+    )
+    fn(
+        hidden_ptr,
+        weight.allocation().tensor.ptr,
+        logits_ptr,
+        tokens,
+        hidden_size,
+        num_rows,
+        stream=stream,
+        runtime=runtime,
+    )
 
 
 def build_qwen35_gguf_decode_graph_bucket_key(
@@ -1658,19 +1691,23 @@ class Qwen35GGUFFullStackRunner:
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
         if cfg.is_moe:
-            linear_alpha_ptr = scratch.linear_alpha_beta.ptr
-            linear_beta_ptr = (
-                scratch.linear_alpha_beta.ptr + cfg.ssm_time_step_rank * DType.BF16.itemsize
-            )
-            dense_dual_gemv_out_bf16(
+            launch_gguf_linear(
+                layer.weight("ssm_alpha"),
                 scratch.norm.ptr,
-                layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
-                layer.weight("ssm_beta").allocation("raw").tensor.ptr,
-                scratch.linear_alpha_beta.ptr,
-                1,
-                self.hidden_size,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_time_step_rank,
+                scratch.linear_alpha.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ssm_beta"),
+                scratch.norm.ptr,
+                scratch.linear_beta.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
                 stream=stream,
                 runtime=runtime,
             )
@@ -1862,25 +1899,26 @@ class Qwen35GGUFFullStackRunner:
             )
         if cfg.is_moe:
             # The small dense time-step projections feed the recurrent update.
-            # Use the GEMV-order dense kernel even for multi-row qwen35moe prefill
-            # so BF16 alpha/beta bits match the token-serial path exactly.
-            dense_gemv_out_bf16(
+            # Use the registry-dispatched GGUF linear path so qwen35moe's GGUF
+            # F32 alpha/beta tensors are consumed as F32, matching llama.cpp's
+            # materialized weights while keeping the existing BF16 stream ABI.
+            launch_gguf_linear(
+                layer.weight("ssm_alpha"),
                 scratch.norm.ptr,
-                layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
                 scratch.linear_alpha.ptr,
-                rows,
-                self.hidden_size,
-                cfg.ssm_time_step_rank,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
                 stream=stream,
                 runtime=runtime,
             )
-            dense_gemv_out_bf16(
+            launch_gguf_linear(
+                layer.weight("ssm_beta"),
                 scratch.norm.ptr,
-                layer.weight("ssm_beta").allocation("raw").tensor.ptr,
                 scratch.linear_beta.ptr,
-                rows,
-                self.hidden_size,
-                cfg.ssm_time_step_rank,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
                 stream=stream,
                 runtime=runtime,
             )
@@ -2309,26 +2347,36 @@ class Qwen35GGUFFullStackRunner:
         if top_k > scratch.moe_selected_host.shape[0]:
             raise ValueError("qwen35moe scratch top-k capacity is too small")
 
-        # Router weights are GGUF F32 tensors converted to BF16 at materialization time.
-        # Decode fuses expert logits, shared-gate logit, and top-k selection into one
-        # cooperative launch while preserving the existing logits scratch ABI.  The
-        # cooperative kernel uses the first int32 in the selected-expert buffer as
-        # its block-completion counter before overwriting it with top-k results.
-        # Reset that counter for every MoE layer/token; otherwise later layers see
-        # the previous layer's expert id as the counter and may skip top-k selection.
-        if stream:
-            runtime.memset_async(scratch.moe_selected_experts.ptr, 0, DType.INT64.itemsize, stream)
-        else:
-            runtime.memset(scratch.moe_selected_experts.ptr, 0, DType.INT64.itemsize)
-        qwen35_router_topk_split_shared_coop_out_bf16(
+        # llama.cpp keeps the qwen35moe router and shared-gate tensors in F32.
+        # Compute expert logits and the adjacent shared-gate logit separately via
+        # the registry-resolved router adapter so GGUF F32 weights do not get
+        # silently contracted to BF16 on the correctness-first decode path.
+        _launch_qwen35_router_logits_bf16_hidden(
             scratch.post_norm.ptr,
-            layer.weight("ffn_gate_inp").allocation().tensor.ptr,
-            layer.weight("ffn_gate_inp_shexp").allocation().tensor.ptr,
+            layer.weight("ffn_gate_inp"),
+            scratch.moe_router_logits.ptr,
+            1,
+            self.hidden_size,
+            cfg.expert_count,
+            stream=stream,
+            runtime=runtime,
+        )
+        _launch_qwen35_router_logits_bf16_hidden(
+            scratch.post_norm.ptr,
+            layer.weight("ffn_gate_inp_shexp"),
+            scratch.moe_router_logits.ptr + cfg.expert_count * DType.FP32.itemsize,
+            1,
+            self.hidden_size,
+            1,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_router_select(
             scratch.moe_router_logits.ptr,
             scratch.moe_selected_experts.ptr,
             scratch.moe_routing_weights.ptr,
             1,
-            self.hidden_size,
+            cfg.expert_count,
             cfg.expert_count,
             top_k,
             threads=256,
@@ -2584,9 +2632,9 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("qwen35moe GGUF expert_used_count must be positive")
         selected_rows = rows * top_k
 
-        qwen35_router_logits_bf16(
+        _launch_qwen35_router_logits_bf16_hidden(
             scratch.post_norm.ptr,
-            layer.weight("ffn_gate_inp").allocation().tensor.ptr,
+            layer.weight("ffn_gate_inp"),
             scratch.moe_router_logits.ptr,
             rows,
             self.hidden_size,
@@ -2594,9 +2642,9 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        qwen35_router_logits_bf16(
+        _launch_qwen35_router_logits_bf16_hidden(
             scratch.post_norm.ptr,
-            layer.weight("ffn_gate_inp_shexp").allocation().tensor.ptr,
+            layer.weight("ffn_gate_inp_shexp"),
             scratch.moe_shared_gate_logits.ptr,
             rows,
             self.hidden_size,
@@ -3612,9 +3660,6 @@ class Qwen35GGUFResidentSession:
         ssm_inner_size = int(cfg.ssm_inner_size)
         alpha_ptr = int(self.scratch.linear_alpha.ptr)
         beta_ptr = int(self.scratch.linear_beta.ptr)
-        if cfg.is_moe:
-            alpha_ptr = int(self.scratch.linear_alpha_beta.ptr)
-            beta_ptr = alpha_ptr + rank * DType.BF16.itemsize
 
         return Qwen35GGUFLinearAttentionBoundaryCapture(
             layer_id=int(layer_id),

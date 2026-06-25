@@ -516,6 +516,25 @@ Success criterion: hipEngine target prefill chooses `71093` for the documented
 reasoning-off prompt, matching llama.cpp, under the narrowest correctness-first
 path.  Then optimize back toward the retained fast path.
 
+**2026-06-25 status:** achieved for both correctness-first and retained fast
+paths.  The blocker was Qwen3.5 linear-attention GDN K-head broadcast semantics:
+llama.cpp/GGML maps value head `v_head` to key head `v_head % num_k_heads`, while
+hipEngine inherited the grouped `v_head / repeat` mapping.  After switching the
+GDN decode/prefill kernels and CPU replay oracles to the interleaved mapping, the
+same 21-token reasoning-off prompt has `initial_prev_token=71093` and the
+single-prompt B3 smoke improves from the prior `2/9` accepted drafts / `5` visible
+output tokens to `7/9` accepted drafts / `10` visible output tokens.
+
+Evidence command:
+
+```bash
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompt "Write a Python function that implements merge sort:" \
+  --prompt-reasoning off --cycles 3 --draft-n-max 3 --root-topk-accept 1 \
+  --output /tmp/hipengine-mtp-target-parity-final-c3.json
+```
+
 ### Phase 1 — exact MTP trace parity on one prompt
 
 1. Add a hipEngine trace mode that emits per-step JSON:
@@ -545,8 +564,11 @@ steps, or we can explain every difference.
 4. Run strict B3, no root-topK, same prompt.
 
 Success criterion: strict B3 `accepted_draft_tokens / generated_draft_tokens`
-substantially improves over the current `2/9 = 22.2%` smoke and approaches the
-llama.cpp debug trace on the same prompt.
+substantially improves over the old `2/9 = 22.2%` smoke and approaches the
+llama.cpp debug trace on the same prompt.  The post-GDN-fix single-prompt smoke is
+`7/9 = 77.8%` with `10` visible output tokens over three verifier calls; remaining
+parity work should focus on the cycle-1 draft divergence before promoting speed
+claims.
 
 ### Phase 3 — full-suite strict acceptance before speed claims
 
@@ -582,10 +604,8 @@ hidden-row handoff, and B>1 accept/rollback semantics.  In the short debug trace
 it commits `3.67` visible tokens per verifier call with `100%` strict draft
 acceptance.
 
-hipEngine currently commits far fewer strict draft tokens, but the first confirmed
-reason is even earlier: hipEngine's target AR stream does not match llama.cpp
-immediately after prefill.  The retained root-top40 path is useful evidence that
-the target often lies near the MTP distribution for hipEngine's own target stream,
-but it does not solve the speculative break-even problem and does not establish
-llama.cpp parity.  The actionable path is: target AR parity first, MTP state/logit
-parity second, then resident performance optimization.
+hipEngine now matches llama.cpp's first target AR token for the documented
+reasoning-off prompt after fixing Qwen3.5 GDN K-head interleaving.  The retained
+root-topK path remains diagnostic only: the next actionable path is exact MTP
+state/logit parity around the first remaining B3 divergence, then resident
+performance optimization, and only then full-suite speed claims.

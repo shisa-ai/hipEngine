@@ -40,6 +40,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
@@ -120,6 +121,10 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     ),
     (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
+        "dense_bf16",
+    ),
+    (LAYOUT_DENSE_F32, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"),
         "dense_bf16",
     ),
     (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
