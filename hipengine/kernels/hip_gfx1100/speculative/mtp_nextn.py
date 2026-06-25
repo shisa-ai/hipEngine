@@ -24,7 +24,7 @@ import numpy as np
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
-from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.hip import HIP_SUCCESS, HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -663,6 +663,11 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
     rotary_dim: int | None = None,
     scale: float | None = None,
     eps: float = 1e-6,
+    dense_key_cache: "DeviceBuffer | None" = None,
+    dense_value_cache: "DeviceBuffer | None" = None,
+    dense_cache_len: int = 0,
+    dense_cache_write_index: int | None = None,
+    kv_write_only: bool = False,
 ) -> np.ndarray:
     """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_attention_sublayer``.
 
@@ -673,6 +678,18 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
     The RoPE and KVLiveSpans paged-cache branches raise ``NotImplementedError``
     (M6 work).  ``value_head_dim`` must equal ``qk_head_dim`` for gated Qwen35
     attention, matching the cpu_reference contract.
+
+    ``dense_key_cache`` / ``dense_value_cache`` are an opt-in device-resident
+    extension for llama.cpp-parity MTP diagnostics.  When provided, the current
+    post-RoPE K/V rows are appended (device-to-device) at
+    ``dense_cache_write_index`` or ``dense_cache_len`` and dense attention reads
+    directly from that persistent cache.  The default remains the existing
+    current-row dense cache so CPU-reference and fixture behavior are unchanged.
+
+    ``kv_write_only=True`` writes the current post-RoPE K/V row and returns
+    without computing query attention, FFN input, or output projection.  It is
+    used to commit accepted target rows into the MTP KV cache after verifier
+    acceptance, matching llama.cpp's ``process()`` lifecycle cheaply.
     """
 
     x = np.ascontiguousarray(hidden, dtype=np.float32)
@@ -783,6 +800,27 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
 
     # Paged KVLiveSpans path: if kv_base_offsets provided, use paged attention
     use_paged = kv_base_offsets is not None
+    use_dense_device_cache = dense_key_cache is not None or dense_value_cache is not None
+    if kv_write_only and not use_dense_device_cache:
+        raise ValueError("kv_write_only requires dense device cache buffers")
+    if use_dense_device_cache:
+        if use_paged:
+            raise ValueError("dense device cache cannot be combined with paged KVLiveSpans")
+        if dense_key_cache is None or dense_value_cache is None:
+            raise ValueError("dense device cache requires both key and value buffers")
+        if dense_cache_len < 0:
+            raise ValueError("dense_cache_len must be non-negative")
+        write_index = int(dense_cache_len if dense_cache_write_index is None else dense_cache_write_index)
+        if write_index < 0:
+            raise ValueError("dense_cache_write_index must be non-negative")
+        dense_key_row_nbytes = kv_heads * qk_head_dim * 4
+        dense_value_row_nbytes = kv_heads * value_head_dim * 4
+        dense_required_key_nbytes = (write_index + tokens) * dense_key_row_nbytes
+        dense_required_value_nbytes = (write_index + tokens) * dense_value_row_nbytes
+        if dense_required_key_nbytes > dense_key_cache.nbytes:
+            raise ValueError("dense_key_cache capacity is too small")
+        if dense_required_value_nbytes > dense_value_cache.nbytes:
+            raise ValueError("dense_value_cache capacity is too small")
     if use_paged:
         if key_cache is None or value_cache is None:
             raise ValueError("paged KVLiveSpans attention requires key_cache and value_cache")
@@ -829,6 +867,36 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         copy_host_to_device(hidden_dev, host_array_ptr(x), runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, attn_norm_dev.ptr, normed_dev.ptr, tokens, hidden_size,
                         eps=eps, library=_attn_mtp_lib, runtime=runtime)
+
+        if kv_write_only:
+            key_cur_dev = malloc(tokens * kv_heads * qk_head_dim * 4, runtime=runtime)
+            buffers.append(key_cur_dev)
+            wk_dev = _cached_upload("attn_wk", wk, runtime=runtime)
+            k_norm_dev = _cached_upload("attn_k_norm", k_norm, runtime=runtime)
+            _attn_dispatch_gemv(normed_dev, wk_dev, key_cur_dev, tokens, hidden_size,
+                                kv_heads * qk_head_dim, wk_qtype, runtime=runtime)
+            mtp_rmsnorm_f32(key_cur_dev.ptr, k_norm_dev.ptr, key_cur_dev.ptr, tokens * kv_heads,
+                            qk_head_dim, eps=eps, runtime=runtime)
+            if apply_rope:
+                cos_dev = malloc(cos_arr.nbytes, runtime=runtime); buffers.append(cos_dev)
+                sin_dev = malloc(sin_arr.nbytes, runtime=runtime); buffers.append(sin_dev)
+                copy_host_to_device(cos_dev, host_array_ptr(cos_arr), runtime=runtime)
+                copy_host_to_device(sin_dev, host_array_ptr(sin_arr), runtime=runtime)
+                mtp_rope_f32(key_cur_dev.ptr, cos_dev.ptr, sin_dev.ptr, key_cur_dev.ptr,
+                             tokens, kv_heads, qk_head_dim, rot_dim, half, runtime=runtime)
+            value_cur_dev = malloc(tokens * kv_heads * value_head_dim * 4, runtime=runtime)
+            buffers.append(value_cur_dev)
+            wv_dev = _cached_upload("attn_wv", wv, runtime=runtime)
+            _attn_dispatch_gemv(normed_dev, wv_dev, value_cur_dev, tokens, hidden_size,
+                                kv_heads * value_head_dim, wv_qtype, runtime=runtime)
+            key_copy_nbytes = tokens * dense_key_row_nbytes
+            value_copy_nbytes = tokens * dense_value_row_nbytes
+            key_dst = dense_key_cache.ptr + write_index * dense_key_row_nbytes
+            value_dst = dense_value_cache.ptr + write_index * dense_value_row_nbytes
+            runtime.memcpy(key_dst, key_cur_dev.ptr, key_copy_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+            runtime.memcpy(value_dst, value_cur_dev.ptr, value_copy_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+            runtime.device_synchronize()
+            return np.empty((tokens, hidden_size), dtype=np.float32)
 
         # q_full = normed @ wq.T  -> [tokens, heads*2*qk_head_dim]
         q_full_dev = malloc(tokens * heads * 2 * qk_head_dim * 4, runtime=runtime)
@@ -906,9 +974,28 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
                 blk, max_blocks, scale_value, runtime=runtime,
             )
         else:
+            if use_dense_device_cache:
+                key_copy_nbytes = tokens * dense_key_row_nbytes
+                value_copy_nbytes = tokens * dense_value_row_nbytes
+                key_dst = dense_key_cache.ptr + write_index * dense_key_row_nbytes
+                value_dst = dense_value_cache.ptr + write_index * dense_value_row_nbytes
+                runtime.memcpy(key_dst, key_cur_dev.ptr, key_copy_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+                runtime.memcpy(value_dst, value_cur_dev.ptr, value_copy_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+                dense_cache_tokens = write_index + tokens
+                if int(np.max(ctx)) > dense_cache_tokens:
+                    raise ValueError(
+                        f"context_counts max {int(np.max(ctx))} exceeds dense cache rows {dense_cache_tokens}"
+                    )
+                attn_key_ptr = dense_key_cache.ptr
+                attn_value_ptr = dense_value_cache.ptr
+                attn_cache_tokens = dense_cache_tokens
+            else:
+                attn_key_ptr = key_cur_dev.ptr
+                attn_value_ptr = value_cur_dev.ptr
+                attn_cache_tokens = tokens
             mtp_dense_attn_f32(
-                query_dev.ptr, key_cur_dev.ptr, value_cur_dev.ptr, pos_dev.ptr, ctx_dev.ptr,
-                attn_dev.ptr, tokens, heads, kv_heads, qk_head_dim, value_head_dim, tokens,
+                query_dev.ptr, attn_key_ptr, attn_value_ptr, pos_dev.ptr, ctx_dev.ptr,
+                attn_dev.ptr, tokens, heads, kv_heads, qk_head_dim, value_head_dim, attn_cache_tokens,
                 scale_value, runtime=runtime,
             )
 
@@ -1506,6 +1593,11 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     shared_head_qtype: "GGMLQuantizationType | None" = None,
     eps: float = 1e-6,
     return_hidden_seed: bool = False,
+    dense_key_cache: "DeviceBuffer | None" = None,
+    dense_value_cache: "DeviceBuffer | None" = None,
+    dense_cache_len: int = 0,
+    dense_cache_write_index: int | None = None,
+    kv_write_only: bool = False,
 ) -> "np.ndarray | tuple[np.ndarray, np.ndarray]":
     """Native GPU Qwen35 GGUF MTP NextN draft layer (M3, correctness-first).
 
@@ -1514,6 +1606,10 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
     ``cpu_reference.qwen35_gguf_mtp_nextn_layer_logits`` exactly so the M3
     fixture gate runs on a real GPU backend instead of the registry's
     cpu_reference fallback.
+
+    ``dense_key_cache`` / ``dense_value_cache`` are an opt-in B1 diagnostic path
+    for device-resident MTP KV context.  They do not change the default no-cache
+    fixture behavior.
 
     M3 scope: F32 qtype, DEFAULT dense attention path (no RoPE, no KVLiveSpans
     paged cache).  K-quant, RoPE and paged-KV branches raise NotImplementedError
@@ -1535,7 +1631,12 @@ def qwen35_gguf_mtp_nextn_layer_logits_f32(
         kv_token_positions=kv_token_positions, kv_evict_mask=kv_evict_mask,
         block_size=block_size,
         rope_cos=rope_cos, rope_sin=rope_sin, rotary_dim=rotary_dim, scale=scale, eps=eps,
+        dense_key_cache=dense_key_cache, dense_value_cache=dense_value_cache,
+        dense_cache_len=dense_cache_len, dense_cache_write_index=dense_cache_write_index,
+        kv_write_only=kv_write_only,
     )
+    if kv_write_only:
+        return attended
     ffn_out = qwen35_gguf_mtp_ffn_sublayer_f32(
         attended, attn_post_norm_weight, router_weight,
         gate_qweight, up_qweight, down_qweight, gate_qtype, up_qtype, down_qtype,

@@ -125090,3 +125090,42 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Blocker / next viable work
 - llama.cpp MTP achieves much higher reported acceptance because its MTP path keeps draft-model KV context cheaply. hipEngine's diagnostic path can only approximate context via Python/host replay today, which is too slow.
 - Next viable work is not more selector/root-K probing; it is an in-tree device-resident MTP KV implementation: expose/store post-RoPE K/V from `qwen35_gguf_mtp_attention_sublayer_f32`, keep a persistent device cache (or use the paged/KVLiveSpans ABI), and avoid host downloads/concats. Add a narrow RED fixture against the current host-prefix prototype before porting the cache write path.
+
+## 2026-06-25 — implemented opt-in device-resident GGUF MTP KV context
+
+### Scope
+- Implemented the first device-resident B1 MTP KV context path matching the llama.cpp lifecycle shape without the rejected host K/V concat/replay diagnostics.
+- Files changed:
+  - `hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py`
+  - `scripts/gguf_mtp_bench.py`
+  - `tests/test_mtp_dense_device_kv_cache.py`
+  - `docs/REFACTOR.md`
+
+### Implementation
+- Added opt-in dense device cache parameters to `qwen35_gguf_mtp_attention_sublayer_f32` and threaded them through `qwen35_gguf_mtp_nextn_layer_logits_f32`:
+  - `dense_key_cache`, `dense_value_cache`, `dense_cache_len`, `dense_cache_write_index`.
+  - The current post-RoPE K/V rows are copied device-to-device into persistent cache buffers before dense attention runs.
+  - Dense attention then reads directly from those device buffers with `cache_tokens = dense_cache_len + current_rows` and explicit `context_counts`.
+- Added `kv_write_only=True` to cheaply commit accepted target rows into the MTP cache after verifier acceptance, skipping query attention output, FFN, and shared head. This mirrors llama.cpp `process()`/`draft()` lifecycle better than the prior host-prefix prototype.
+- Added `scripts/gguf_mtp_bench.py --mtp-device-kv-cache/--no-mtp-device-kv-cache` (default off). It is B1-only and incompatible with the old `--mtp-context-replay` diagnostic until transactional rollback for deeper drafts exists.
+- The benchmark allocates persistent device K/V buffers, appends the cycle-start row during draft, then appends accepted target rows via the KV-write-only path after verification. Artifacts record `mtp_device_kv_cache`, row counts, capacity, and per-cycle commit timing.
+- Kept the retained B1 root-top40 no-cache default unchanged because the new path is not yet a same-suite speed win.
+
+### Validation
+- Lineage check attempted but blocked by missing configured reference checkout:
+  - Command: `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  - Failure: `fatal: cannot change to '/home/lhl/amd-gpu-tuning/nano-vllm-amd': No such file or directory`.
+- Added HIP-guarded RED/GREEN fixture `tests/test_mtp_dense_device_kv_cache.py`:
+  - Sequential device-cache row0,row1 attention matches the existing two-row dense attention oracle at `atol=rtol=2e-5`.
+- Guard passed:
+  - Command: `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py hipengine/runtime/qwen35_gguf_runner.py hipengine/speculative/gguf_mtp.py hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py tests/test_mtp_dense_device_kv_cache.py && python3 -m pytest -q tests/test_mtp_dense_device_kv_cache.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_b1_prompt_suite.py tests/test_gguf_mtp_oracle_gate.py tests/test_gguf_mtp_context.py tests/test_qwen35_gguf_mtp_mapping.py`
+  - Result: `438 passed in 6.01s`.
+- Smoke with the new opt-in path:
+  - Command: `python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --cycles 4 --draft-n-max 1 --mtp-device-kv-cache --output /tmp/hipengine-mtp-device-kv-smoke-fastcommit.json`
+  - Result: `tokens_per_sec=43.68`, `accepted_per_output=0.4286`, `total_accepted=3/160`, `rows=7/12`.
+  - Per accepted-row KV commit cost after `kv_write_only`: ~`1.2-1.9ms`, down from ~`7ms` when using full MTP logits for commit rows.
+  - This is much faster than the rejected host-prefix (`6.11 tok/s`), context replay (`0.26 tok/s`), and F32 head (`4.25 tok/s`) diagnostics, but still below the retained no-cache/root-top40 default on this smoke, so the path remains default-off.
+
+### Follow-up
+- If we want this to become default, next work should move more of the correctness-first wrapper off host: eliminate the q/gate D2H split and Q6_K temporary H2D in attention, then rerun the full suite with `--mtp-device-kv-cache`.
+- For B>1, add transactional rollback/commit semantics before enabling device KV cache; current flag intentionally rejects `--draft-n-max != 1`.

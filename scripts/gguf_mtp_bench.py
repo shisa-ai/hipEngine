@@ -33,6 +33,7 @@ DEFAULT_SIBLING_TOPK_ACCEPT = 1
 DEFAULT_TOPK_BRANCH_REDRAFT = False
 DEFAULT_MTP_DRAFT_WARMUP = True
 DEFAULT_TARGET_GRAPH_VERIFY = True
+DEFAULT_MTP_DEVICE_KV_CACHE = False
 IM_START_TOKEN = 248045
 IM_END_TOKEN = 248046
 THINK_START_TOKEN = 248068
@@ -463,6 +464,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--mtp-device-kv-cache",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_MTP_DEVICE_KV_CACHE,
+        help=(
+            "Use the device-resident MTP dense KV cache for B1 drafting (default: false). "
+            "This matches llama.cpp's draft-model context lifecycle without host K/V concat."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -564,6 +574,10 @@ def main(argv: list[str] | None = None):
         parser.error("--root-tail-max-prev-accepted must be >= -1")
     if args.topk_branch_redraft_max_branches < 1:
         parser.error("--topk-branch-redraft-max-branches must be positive")
+    if args.mtp_device_kv_cache and args.draft_n_max != 1:
+        parser.error("--mtp-device-kv-cache currently supports B1 only (--draft-n-max 1)")
+    if args.mtp_device_kv_cache and args.mtp_context_replay:
+        parser.error("--mtp-device-kv-cache cannot be combined with --mtp-context-replay")
 
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
@@ -587,6 +601,7 @@ def main(argv: list[str] | None = None):
     )
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.core.hip import get_hip_runtime, HipMemcpyKind
+    from hipengine.core.memory import free, malloc
 
     # Load model info + weights
     r = GGUFReader(args.model)
@@ -625,7 +640,9 @@ def main(argv: list[str] | None = None):
 
     # Build GPU kernel args
     def run_draft(hidden_seed, token_embed, *, return_hidden_seed: bool = False,
-                   positions=None, rope_cos=None, rope_sin=None, rotary_dim=None):
+                   positions=None, rope_cos=None, rope_sin=None, rotary_dim=None,
+                   dense_key_cache=None, dense_value_cache=None, dense_cache_len: int | None = None,
+                   kv_write_only: bool = False):
         gpu_args = [
             hidden_seed, token_embed,
             get("blk.40.nextn.eh_proj.weight"), get("blk.40.nextn.hnorm.weight"),
@@ -653,11 +670,20 @@ def main(argv: list[str] | None = None):
         )
         if positions is not None:
             gpu_kwargs["positions"] = positions
-            gpu_kwargs["context_counts"] = np.arange(1, len(positions) + 1, dtype=np.int64)
+            if dense_cache_len is None:
+                gpu_kwargs["context_counts"] = np.arange(1, len(positions) + 1, dtype=np.int64)
+            else:
+                gpu_kwargs["context_counts"] = int(dense_cache_len) + np.arange(1, len(positions) + 1, dtype=np.int64)
         if rope_cos is not None and rope_sin is not None:
             gpu_kwargs["rope_cos"] = rope_cos
             gpu_kwargs["rope_sin"] = rope_sin
             gpu_kwargs["rotary_dim"] = rotary_dim or rope_dim
+        if dense_key_cache is not None:
+            gpu_kwargs["dense_key_cache"] = dense_key_cache
+            gpu_kwargs["dense_value_cache"] = dense_value_cache
+            gpu_kwargs["dense_cache_len"] = int(dense_cache_len or 0)
+        if kv_write_only:
+            gpu_kwargs["kv_write_only"] = True
         result = gpu_kernel(*gpu_args, **gpu_kwargs)
         if return_hidden_seed:
             logits, next_hidden_seed = result
@@ -668,12 +694,14 @@ def main(argv: list[str] | None = None):
         return np.asarray(result, dtype=np.float32)
 
     # Run benchmark
+    mtp_device_kv_buffers = []
     session = Qwen35GGUFResidentSession(
         model_path=args.model,
         use_wmma_prefill=bool(args.use_wmma_prefill),
         use_gemv_decode=bool(args.use_gemv_decode),
     )
     target_graph = None
+    runtime = None
     try:
         runtime = session.runtime or get_hip_runtime()
         hidden_size = 2048
@@ -787,6 +815,23 @@ def main(argv: list[str] | None = None):
         decode_times = []
         previous_cycle_accepted = 0
 
+        mtp_device_key_cache = None
+        mtp_device_value_cache = None
+        mtp_device_kv_len = 0
+        mtp_device_kv_capacity = 0
+        if args.mtp_device_kv_cache:
+            qk_head_dim = int(np.asarray(get("blk.40.attn_q_norm.weight")).shape[0])
+            kv_heads = 2
+            value_head_dim = qk_head_dim
+            # B1 lifecycle: one draft-start row per cycle plus up to one accepted
+            # draft target row committed after verification; keep a small guard.
+            mtp_device_kv_capacity = max(1, int(args.cycles) * 2 + 4)
+            key_nbytes = mtp_device_kv_capacity * kv_heads * qk_head_dim * 4
+            value_nbytes = mtp_device_kv_capacity * kv_heads * value_head_dim * 4
+            mtp_device_key_cache = malloc(key_nbytes, runtime=runtime)
+            mtp_device_value_cache = malloc(value_nbytes, runtime=runtime)
+            mtp_device_kv_buffers.extend([mtp_device_key_cache, mtp_device_value_cache])
+
         for cycle in range(args.cycles):
             cycle_prev_token = int(prev_token)
             cycle_pending_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
@@ -796,99 +841,65 @@ def main(argv: list[str] | None = None):
             draft_top10_tokens = []
             draft_diagnostic_logits: list[tuple[int, int, np.ndarray]] = []
             replay_tokens = [cycle_prev_token]
-            if args.mtp_context_replay:
-                # Use the same sequential single-seed draft approach as non-replay.
-                # The batch replay approach (processing all committed MTP rows at
-                # once) produces wrong draft logits because the MTP layer's
-                # self-attention over synthetic catch-up rows doesn't match
-                # llama.cpp's sequential KV-cache build-up.
-                current_hidden_seed = cycle_pending_hidden_seed
-                current_token = cycle_prev_token
-                current_pos = seq_position
-                for draft_depth in range(args.draft_n_max):
-                    token_embed = token_embd_f32[current_token:current_token + 1].copy()
-                    need_next_seed = draft_depth + 1 < args.draft_n_max
-                    pos_arr = np.asarray([current_pos], dtype=np.int64)
-                    rope_cos_slice = _rope_cos[pos_arr]
-                    rope_sin_slice = _rope_sin[pos_arr]
-                    if need_next_seed:
-                        draft_logits, current_hidden_seed = run_draft(
-                            current_hidden_seed,
-                            token_embed,
-                            return_hidden_seed=True,
-                            positions=pos_arr,
-                            rope_cos=rope_cos_slice,
-                            rope_sin=rope_sin_slice,
-                            rotary_dim=rope_dim,
-                        )
-                    else:
-                        draft_logits = run_draft(
-                            current_hidden_seed,
-                            token_embed,
-                            positions=pos_arr,
-                            rope_cos=rope_cos_slice,
-                            rope_sin=rope_sin_slice,
-                            rotary_dim=rope_dim,
-                        )
-                    draft_logits_row = draft_logits[0]
-                    draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
+            # Sequential single-seed draft path.  Context replay and the normal
+            # path both use this shape; llama.cpp parity comes from the optional
+            # device-resident MTP KV cache rather than Python batch replay.
+            current_hidden_seed = cycle_pending_hidden_seed
+            current_token = cycle_prev_token
+            current_pos = seq_position
+            for draft_depth in range(args.draft_n_max):
+                token_embed = token_embd_f32[current_token:current_token + 1].copy()
+                need_next_seed = draft_depth + 1 < args.draft_n_max
+                pos_arr = np.asarray([current_pos], dtype=np.int64)
+                rope_cos_slice = _rope_cos[pos_arr]
+                rope_sin_slice = _rope_sin[pos_arr]
+                kv_kwargs = {}
+                if args.mtp_device_kv_cache:
+                    if mtp_device_kv_len >= mtp_device_kv_capacity:
+                        raise RuntimeError("MTP device KV cache capacity exhausted")
+                    kv_kwargs = {
+                        "dense_key_cache": mtp_device_key_cache,
+                        "dense_value_cache": mtp_device_value_cache,
+                        "dense_cache_len": mtp_device_kv_len,
+                    }
+                if need_next_seed:
+                    draft_logits, current_hidden_seed = run_draft(
+                        current_hidden_seed,
+                        token_embed,
+                        return_hidden_seed=True,
+                        positions=pos_arr,
+                        rope_cos=rope_cos_slice,
+                        rope_sin=rope_sin_slice,
+                        rotary_dim=rope_dim,
+                        **kv_kwargs,
                     )
-                    draft_tokens.append(draft_token)
-                    draft_top10_tokens.append(top10_tokens)
-                    if diagnostic_topk_candidate_count > topk_candidate_count:
-                        draft_diagnostic_logits.append(
-                            (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
-                        )
-                    current_token = draft_token
-                    current_pos += 1
-                    if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
-                        if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
-                            break
-            else:
-                current_hidden_seed = cycle_pending_hidden_seed
-                current_token = cycle_prev_token
-                current_pos = seq_position
-                for draft_depth in range(args.draft_n_max):
-                    token_embed = token_embd_f32[current_token:current_token + 1].copy()
-                    need_next_seed = draft_depth + 1 < args.draft_n_max
-                    pos_arr = np.asarray([current_pos], dtype=np.int64)
-                    rope_cos_slice = _rope_cos[pos_arr]
-                    rope_sin_slice = _rope_sin[pos_arr]
-                    if need_next_seed:
-                        draft_logits, current_hidden_seed = run_draft(
-                            current_hidden_seed,
-                            token_embed,
-                            return_hidden_seed=True,
-                            positions=pos_arr,
-                            rope_cos=rope_cos_slice,
-                            rope_sin=rope_sin_slice,
-                            rotary_dim=rope_dim,
-                        )
-                    else:
-                        draft_logits = run_draft(
-                            current_hidden_seed,
-                            token_embed,
-                            positions=pos_arr,
-                            rope_cos=rope_cos_slice,
-                            rope_sin=rope_sin_slice,
-                            rotary_dim=rope_dim,
-                        )
-                    draft_logits_row = draft_logits[0]
-                    draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
+                else:
+                    draft_logits = run_draft(
+                        current_hidden_seed,
+                        token_embed,
+                        positions=pos_arr,
+                        rope_cos=rope_cos_slice,
+                        rope_sin=rope_sin_slice,
+                        rotary_dim=rope_dim,
+                        **kv_kwargs,
                     )
-                    draft_tokens.append(draft_token)
-                    draft_top10_tokens.append(top10_tokens)
-                    if diagnostic_topk_candidate_count > topk_candidate_count:
-                        draft_diagnostic_logits.append(
-                            (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
-                        )
-                    current_token = draft_token
-                    current_pos += 1
-                    if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
-                        if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
-                            break
+                if args.mtp_device_kv_cache:
+                    mtp_device_kv_len += 1
+                draft_logits_row = draft_logits[0]
+                draft_token, top10_tokens = select_topk_tokens(
+                    draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
+                )
+                draft_tokens.append(draft_token)
+                draft_top10_tokens.append(top10_tokens)
+                if diagnostic_topk_candidate_count > topk_candidate_count:
+                    draft_diagnostic_logits.append(
+                        (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
+                    )
+                current_token = draft_token
+                current_pos += 1
+                if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
+                    if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
+                        break
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
             if diagnostic_topk_candidate_count > topk_candidate_count:
@@ -1112,6 +1123,33 @@ def main(argv: list[str] | None = None):
                 dtype=np.float32,
             )
 
+            mtp_device_kv_commit_ms = 0.0
+            if args.mtp_device_kv_cache and accepted_draft_tokens > 0:
+                t_commit0 = time.perf_counter()
+                for commit_index in range(accepted_draft_tokens):
+                    if mtp_device_kv_len >= mtp_device_kv_capacity:
+                        raise RuntimeError("MTP device KV cache capacity exhausted while committing accepted rows")
+                    commit_token = int(output_tokens[commit_index])
+                    commit_hidden_seed = np.ascontiguousarray(
+                        target_hidden_seeds[commit_index], dtype=np.float32
+                    )
+                    commit_pos = np.asarray([seq_position + 1 + commit_index], dtype=np.int64)
+                    _ = run_draft(
+                        commit_hidden_seed,
+                        token_embd_f32[commit_token:commit_token + 1].copy(),
+                        positions=commit_pos,
+                        rope_cos=_rope_cos[commit_pos],
+                        rope_sin=_rope_sin[commit_pos],
+                        rotary_dim=rope_dim,
+                        dense_key_cache=mtp_device_key_cache,
+                        dense_value_cache=mtp_device_value_cache,
+                        dense_cache_len=mtp_device_kv_len,
+                        kv_write_only=True,
+                    )
+                    mtp_device_kv_len += 1
+                mtp_device_kv_commit_ms = (time.perf_counter() - t_commit0) * 1000
+                draft_ms += mtp_device_kv_commit_ms
+
             if args.mtp_context_replay:
                 # Persist the MTP rows that are now committed in the target
                 # history: the cycle-start sampled token plus any accepted
@@ -1189,6 +1227,9 @@ def main(argv: list[str] | None = None):
                 "pending_hidden_row_index": acceptance["pending_hidden_row_index"],
                 "mtp_context_rows_before_draft": len(replay_tokens),
                 "mtp_context_mode": mtp_context_mode,
+                "mtp_device_kv_cache": bool(args.mtp_device_kv_cache),
+                "mtp_device_kv_rows_after": int(mtp_device_kv_len),
+                "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
@@ -1198,6 +1239,9 @@ def main(argv: list[str] | None = None):
     finally:
         if target_graph is not None:
             target_graph.close()
+        if runtime is not None:
+            for _buf in mtp_device_kv_buffers:
+                free(_buf, runtime=runtime)
         session.close()
 
     # Compute metrics
@@ -1236,6 +1280,11 @@ def main(argv: list[str] | None = None):
     print(f"Root tail max previous accepted: {args.root_tail_max_prev_accepted}")
     print(f"Top-k branch redraft: {args.topk_branch_redraft}")
     print(f"Top-k branch redraft max branches: {args.topk_branch_redraft_max_branches}")
+    print(
+        f"MTP device KV cache: {args.mtp_device_kv_cache} "
+        f"rows={int(mtp_device_kv_len) if args.mtp_device_kv_cache else 0} "
+        f"capacity={int(mtp_device_kv_capacity) if args.mtp_device_kv_cache else 0}"
+    )
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
     print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
@@ -1294,6 +1343,9 @@ def main(argv: list[str] | None = None):
             "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
             "topk_branch_redraft": args.topk_branch_redraft,
             "topk_branch_redraft_max_branches": args.topk_branch_redraft_max_branches,
+            "mtp_device_kv_cache": bool(args.mtp_device_kv_cache),
+            "mtp_device_kv_rows": int(mtp_device_kv_len) if args.mtp_device_kv_cache else 0,
+            "mtp_device_kv_capacity": int(mtp_device_kv_capacity) if args.mtp_device_kv_cache else 0,
             "engine": "hipEngine GGUF MTP",
             "target_prefill_mode": target_prefill_mode,
             "mtp_context_mode": mtp_context_mode,
