@@ -125291,3 +125291,31 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Conclusion
 - Task #18 target AR multi-token parity is achieved for this prompt. The remaining 7/9 B3 gap is now in the MTP draft side or verifier/draft context semantics, not the target AR stream.
+
+
+## 2026-06-25 — MTP strict B3 acceptance parity diagnostic reaches 9/9
+
+### Finding
+- After target AR parity, the remaining cycle-1 B3 miss was draft-context lifecycle, not target logits: hipEngine's single-seed MTP path had no llama.cpp-style prompt replay / persistent MTP KV history.
+- llama.cpp's draft model processes shifted prompt rows, then each cycle keeps the cycle-start token row, drops rejected speculative rows, and commits accepted rows with verifier-derived target hidden seeds.
+
+### Changes
+- `scripts/gguf_mtp_bench.py --mtp-context-replay` now captures serial target hidden rows and builds llama.cpp-style shifted prompt catch-up rows.
+- `--mtp-device-kv-cache` can now be combined with B3 and context replay. The diagnostic path preloads prompt rows into the device MTP KV cache, rolls back speculative rows to the cycle-start row, and commits accepted target-hidden rows.
+- Added a parser unit test covering the B3 device-KV + context-replay flag combination.
+
+### Evidence
+- Command: `python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 3 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --output /tmp/hipengine-mtp-b3-device-kv-context-final-c3.json`
+- Result on gfx1151/Radeon 8060S: `initial_prev_token=71093`, `total_accepted=9/9`, `total_output_tokens=12`, `accept_per_draft=1.0`, `tokens_per_sec=41.47`, `speedup_vs_ar_visible=0.754x`.
+- Per-cycle strict B3 drafts now match verifier targets:
+  - cycle 0 drafts `[12305, 198, 727]`, targets `[12305, 198, 727, 10562]`
+  - cycle 1 drafts `[17885, 10620, 25]`, targets `[17885, 10620, 25, 1103]`
+  - cycle 2 drafts `[8, 1411, 1103]`, targets `[8, 1411, 1103, 25]`
+- This is still a single-prompt diagnostic and intentionally not a benchmark-rollup speed claim; the context-replay path is correctness-first and slower than pure AR on this short run.
+
+### Validation
+- `python3 -m py_compile scripts/gguf_mtp_bench.py tests/test_gguf_mtp_bench_metrics.py`
+- `python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py` — 41 passed.
+
+### Next
+- Turn the diagnostic lifecycle into the retained B3 path without serial prompt replay overhead (bulk all-row hidden tap or resident prompt MTP prefill) and then re-run the full multi-prompt mtp-bench suite before making speedup claims.

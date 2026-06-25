@@ -569,10 +569,16 @@ steps, or we can explain every difference.
 
 Success criterion: strict B3 `accepted_draft_tokens / generated_draft_tokens`
 substantially improves over the old `2/9 = 22.2%` smoke and approaches the
-llama.cpp debug trace on the same prompt.  The post-GDN-fix single-prompt smoke is
-`7/9 = 77.8%` with `10` visible output tokens over three verifier calls; remaining
-parity work should focus on the cycle-1 draft divergence before promoting speed
-claims.
+llama.cpp debug trace on the same prompt.
+
+**2026-06-25 status:** achieved for the diagnostic llama.cpp-lifecycle path.  The
+missing piece after target parity was the draft model context lifecycle: replay
+the shifted prompt rows into a device-resident MTP KV cache, keep the cycle-start
+row, roll back rejected speculative rows, and commit accepted rows with
+verifier-derived target hidden seeds.  With `--mtp-context-replay`,
+`--mtp-device-kv-cache`, `--draft-n-max 3`, and `--root-topk-accept 1`, the same
+single-prompt smoke reaches `9/9 = 100%` accepted drafts and `12` visible output
+tokens over three verifier calls.
 
 ### Phase 3 — full-suite strict acceptance before speed claims
 

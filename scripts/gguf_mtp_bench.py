@@ -586,11 +586,6 @@ def main(argv: list[str] | None = None):
         parser.error("--root-tail-max-prev-accepted must be >= -1")
     if args.topk_branch_redraft_max_branches < 1:
         parser.error("--topk-branch-redraft-max-branches must be positive")
-    if args.mtp_device_kv_cache and args.draft_n_max != 1:
-        parser.error("--mtp-device-kv-cache currently supports B1 only (--draft-n-max 1)")
-    if args.mtp_device_kv_cache and args.mtp_context_replay:
-        parser.error("--mtp-device-kv-cache cannot be combined with --mtp-context-replay")
-
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
@@ -755,15 +750,21 @@ def main(argv: list[str] | None = None):
             )
 
         if args.mtp_context_replay:
-            # Use bulk prefill (correct SSM state) instead of serial prefill
-            # (which has an SSM conv state bug: token 2493 'might' vs 303 'in').
-            prefill_result = session.prefill(prompt, return_logits=False, capture_hidden_seed_fp32=True)
+            # Build llama.cpp-style draft catch-up rows.  Row 0 uses a zero
+            # hidden seed and row i uses the target hidden from prompt token
+            # i-1; this mirrors llama.cpp's shifted MTP ``process()`` input.
+            prefill_result, prompt_hidden_rows = serial_prefill_with_hidden_trace()
             prev_token = int(prefill_result.token_id)
             pending_hidden_seed = copy_pending_hidden_seed()
-            mtp_context_tokens = []
-            mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
-            target_prefill_mode = "bulk_prefill_seed_only"
-            mtp_context_mode = "bulk_prefill_single_seed_replay"
+            mtp_context_tokens, mtp_context_hidden_rows = llama_cpp_mtp_catchup_rows(
+                prompt, prompt_hidden_rows
+            )
+            target_prefill_mode = "serial_prefill_hidden_rows"
+            mtp_context_mode = (
+                "llamacpp_shifted_prompt_replay"
+                if args.mtp_device_kv_cache
+                else "llamacpp_shifted_prompt_rows_host_only"
+            )
         else:
             prefill_result = session.prefill(prompt, return_logits=False, capture_hidden_seed_fp32=True)
             prev_token = int(prefill_result.token_id)
@@ -837,14 +838,35 @@ def main(argv: list[str] | None = None):
             qk_head_dim = int(np.asarray(get("blk.40.attn_q_norm.weight")).shape[0])
             kv_heads = 2
             value_head_dim = qk_head_dim
-            # B1 lifecycle: one draft-start row per cycle plus up to one accepted
-            # draft target row committed after verification; keep a small guard.
-            mtp_device_kv_capacity = max(1, int(args.cycles) * 2 + 4)
+            # Prompt replay rows + one draft-start row per cycle + accepted
+            # verifier rows.  Keep enough guard space for rejected draft rows
+            # written during speculative probing before rollback.
+            mtp_device_kv_capacity = max(
+                1,
+                len(mtp_context_tokens)
+                + int(args.cycles) * (2 * int(args.draft_n_max) + 2)
+                + 4,
+            )
             key_nbytes = mtp_device_kv_capacity * kv_heads * qk_head_dim * 4
             value_nbytes = mtp_device_kv_capacity * kv_heads * value_head_dim * 4
             mtp_device_key_cache = malloc(key_nbytes, runtime=runtime)
             mtp_device_value_cache = malloc(value_nbytes, runtime=runtime)
             mtp_device_kv_buffers.extend([mtp_device_key_cache, mtp_device_value_cache])
+            if len(mtp_context_tokens) > 0:
+                context_positions = np.asarray(mtp_context_positions, dtype=np.int64)
+                _ = run_draft(
+                    mtp_context_hidden_rows,
+                    token_embd_f32[np.asarray(mtp_context_tokens, dtype=np.int64)].copy(),
+                    positions=context_positions,
+                    rope_cos=_rope_cos[context_positions],
+                    rope_sin=_rope_sin[context_positions],
+                    rotary_dim=rope_dim,
+                    dense_key_cache=mtp_device_key_cache,
+                    dense_value_cache=mtp_device_value_cache,
+                    dense_cache_len=0,
+                    kv_write_only=True,
+                )
+                mtp_device_kv_len = len(mtp_context_tokens)
 
         for cycle in range(args.cycles):
             cycle_prev_token = int(prev_token)
@@ -861,6 +883,7 @@ def main(argv: list[str] | None = None):
             current_hidden_seed = cycle_pending_hidden_seed
             current_token = cycle_prev_token
             current_pos = seq_position
+            cycle_mtp_kv_base_len = int(mtp_device_kv_len)
             for draft_depth in range(args.draft_n_max):
                 token_embed = token_embd_f32[current_token:current_token + 1].copy()
                 need_next_seed = draft_depth + 1 < args.draft_n_max
@@ -1138,6 +1161,12 @@ def main(argv: list[str] | None = None):
             )
 
             mtp_device_kv_commit_ms = 0.0
+            if args.mtp_device_kv_cache:
+                # Draft probing writes every proposed row.  llama.cpp keeps the
+                # cycle-start token row, then replaces accepted draft-token rows
+                # with verifier-derived target hidden rows and drops rejected
+                # speculative rows.
+                mtp_device_kv_len = min(mtp_device_kv_len, cycle_mtp_kv_base_len + 1)
             if args.mtp_device_kv_cache and accepted_draft_tokens > 0:
                 t_commit0 = time.perf_counter()
                 for commit_index in range(accepted_draft_tokens):
@@ -1241,7 +1270,11 @@ def main(argv: list[str] | None = None):
                 "accepted_draft_tokens": accepted_draft_tokens,
                 "visible_output_tokens": visible_output_tokens,
                 "pending_hidden_row_index": acceptance["pending_hidden_row_index"],
-                "mtp_context_rows_before_draft": len(replay_tokens),
+                "mtp_context_rows_before_draft": (
+                    int(cycle_mtp_kv_base_len)
+                    if args.mtp_device_kv_cache
+                    else len(replay_tokens)
+                ),
                 "mtp_context_mode": mtp_context_mode,
                 "mtp_device_kv_cache": bool(args.mtp_device_kv_cache),
                 "mtp_device_kv_rows_after": int(mtp_device_kv_len),

@@ -297,6 +297,16 @@ def test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank(top3: list[
         assert returned_top3 == top3
 
 
+def test_arg_parser_allows_b3_device_kv_context_replay() -> None:
+    args = build_arg_parser().parse_args(
+        ["--draft-n-max", "3", "--mtp-device-kv-cache", "--mtp-context-replay"]
+    )
+
+    assert args.draft_n_max == 3
+    assert args.mtp_device_kv_cache is True
+    assert args.mtp_context_replay is True
+
+
 def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
     for budget in range(1, 6):
         assert validate_draft_n_max(budget) == budget
