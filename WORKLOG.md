@@ -125473,3 +125473,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next
 - Wire `rowtile_*` into the rows>1 verifier dispatch (`launch_gguf_linear` / `verify_target_block`) behind the small-B path; keep per-row/WMMA for rows>8 and rows==1. Then re-measure the B3 merge-sort verifier ms/cycle and end-to-end tok/s. Apply the same amortization idea to the MoE selected-expert GEMV (`_launch_selected_raw_gguf_moe_*`, the other 28%).
+
+
+## 2026-06-27 — Rowtile wired into verifier; clean rocprof reveals MoE expert GEMV is the real #1
+
+### Wiring
+- `_rowtile_dispatch` in `hipengine/runtime/gguf_linear.py` rewrites the per-row raw `prefill_*` alias -> weight-amortized `rowtile_*` for rows in [2,8] when WMMA is off (the small-B target verifier). Default-on, opt-out `HIPENGINE_GGUF_Q4K_ROWTILE=0` / `q4k_rowtile_session(False)`. It does NOT override an explicit WMMA opt-in (only fires when `not use_wmma`).
+- Ported the row-tile transform to the raw-K GEMV `gguf_k_gemv.hip` (`gguf_k_prefill_out_rowtile_kernel<...,qtype,ROW_TILE>`, qtype 8/5/6 = Q8_0/Q5_K/Q6_K) + extern C + Python wrappers + registry keys. Q8_0 is the qwen35moe dense projection quant (attn_qkv/gate, ssm_out).
+- `tests/test_gguf_k_rowtile_gemv.py` (16 passed): bit-exact vs per-row + CPU Q8_0 oracle. Dispatch isolation fixtures added to `test_gguf_linear_dispatch.py` / `test_gguf_gemv_decode_dispatch.py` (WMMA/gemv-decode axes tested with rowtile disabled).
+- Dispatch confirmed live: an instrumented single verify shows **250 `gguf_q8_0 -> rowtile_bf16_bf16_out` calls at rows=4** (plus 60 f32 dense, 4 Q6_K lm-head).
+
+### Clean rocprof breakdown (the correction)
+- The earlier per-family probe (`verify_family.py`) was **corrupted by per-call device-synchronize overhead** (250 dense calls x 2 syncs each), which over-attributed the dense `launch_gguf_linear` family to 44%. A sync-free `rocprofv3 --kernel-trace` of `verify_target_block` (scratchpad `verify_rocprof_driver.py`, 7 passes) gives the true GPU-time shares per pass:
+  - `gguf_q4_k_selected_dual_prefill_out_kernel` (MoE expert gate+up): **36%**
+  - `gguf_k_selected_pack8_prefill_out_kernel` (MoE expert down, Q5_K): **18%**
+  - `gguf_k_prefill_out_kernel` (residual per-row dense): 17%
+  - `gguf_k_prefill_out_rowtile_kernel` (my Q8_0 dense amortized): 11%
+  - GDN recurrent rmsnorm-gate: 8%; Q6_K lm-head pack8: 6%
+- So the **MoE selected-expert GEMV is the real #1 (~54% combined)**, not the dense projections. (This driver uses out-of-distribution dummy tokens that diverge MoE routing, inflating the MoE share vs coherent tokens; re-profile with coherent tokens pending. But MoE selected is clearly the top family.)
+
+### End-to-end (single-prompt B3/C5 merge-sort smoke, target-block-verify + 32k draft cap)
+- rowtile ON: `48.77 tok/s`, `15/15`, verifier `~61 ms/cycle` (warm). Baseline (pre-rowtile) was `48.1`. **Flat within run-to-run noise** — expected, because the dense projections the rowtile amortizes are only ~11-17% of the verifier; the bottleneck is the MoE expert GEMV (separate selected kernel, not yet amortized). The dense rowtile is retained as a bit-exact, non-regressive kernel-level win (microbench ~3x on its share; microseconds compound) and as the proven pattern to port to the MoE path.
+
+### Next (the real win)
+- Port the weight-amortized row-tile idea to the **MoE selected-expert GEMV** (`gguf_q4_k_selected_dual_prefill_out_kernel`, `gguf_k_selected_*prefill_out_kernel`): group the selected (row,expert) pairs by expert so each expert's weight is dequantized once and applied to all rows that selected it. This is the 54% family. Then re-profile with coherent tokens and re-measure end-to-end.

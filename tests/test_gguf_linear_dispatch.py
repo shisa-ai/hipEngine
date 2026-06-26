@@ -33,6 +33,23 @@ from hipengine.runtime.gguf_linear import (
 )
 from hipengine.runtime.prefill import PrefillConfig
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_wmma_axis_from_rowtile():
+    """These tests exercise the WMMA-prefill axis. The default-on raw row-tile
+    rewrite is a separate small-B path (covered in test_gguf_{q4_k,k}_rowtile_gemv);
+    disable it here so the WMMA on/off assertions see the per-row baseline."""
+
+    from hipengine.runtime.gguf_linear import set_q4k_rowtile_enabled
+
+    set_q4k_rowtile_enabled(False)
+    try:
+        yield
+    finally:
+        set_q4k_rowtile_enabled(None)
+
 
 def _fake_weight(*, layout: str, quant_key: str):
     allocations = {

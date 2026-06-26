@@ -98,6 +98,35 @@ def test_rowtile_registry_binds() -> None:
         assert callable(fn)
 
 
+def test_rowtile_dispatch_rewrites_small_b_raw_q4k() -> None:
+    from hipengine.kernels.registry import KernelKey
+    from hipengine.runtime.gguf_linear import GGUFLinearDispatch, _rowtile_dispatch
+
+    base = GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out"), "raw"
+    )
+    # rows in [2, 8] rewrite to the rowtile variant; abi stays "raw".
+    for rows in (2, 4, 8):
+        d = _rowtile_dispatch(base, rows=rows, in_features=2048, use_rowtile=True)
+        assert d.key.variant == "rowtile_bf16_bf16_out"
+        assert d.abi == "raw"
+    # rows==1 (decode) and rows>8 (WMMA/per-row) are untouched.
+    for rows in (1, 9, 64):
+        d = _rowtile_dispatch(base, rows=rows, in_features=2048, use_rowtile=True)
+        assert d is base
+    # Disabled, non-raw layout, unsupported dtype, and misaligned K are no-ops.
+    assert _rowtile_dispatch(base, rows=4, in_features=2048, use_rowtile=False) is base
+    assert _rowtile_dispatch(base, rows=4, in_features=2050, use_rowtile=True) is base
+    pack8 = GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out"), "pack8"
+    )
+    assert _rowtile_dispatch(pack8, rows=4, in_features=2048, use_rowtile=True) is pack8
+    fp16 = GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_fp16_out"), "raw"
+    )
+    assert _rowtile_dispatch(fp16, rows=4, in_features=2048, use_rowtile=True) is fp16
+
+
 # ---------------------------------------------------------------------------
 # GPU correctness
 # ---------------------------------------------------------------------------

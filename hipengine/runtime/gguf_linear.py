@@ -72,6 +72,28 @@ _wmma_prefill_session_enabled: bool | None = None
 _GEMV_DECODE_ENV = "HIPENGINE_GGUF_GEMV_DECODE"
 _gemv_decode_session_enabled: bool | None = None
 
+# Small-B weight-amortized raw Q4_K row-tile GEMV (verifier continuation
+# blocks). Default ON: it is bit-identical to the per-row prefill alias and
+# ~3x faster at B=4 (see WORKLOG 2026-06-26 and docs/REFACTOR.md). The opt-out
+# exists only for bisection; set HIPENGINE_GGUF_Q4K_ROWTILE=0 to disable.
+_Q4K_ROWTILE_ENV = "HIPENGINE_GGUF_Q4K_ROWTILE"
+_q4k_rowtile_session_enabled: bool | None = None
+_ROWTILE_MIN_ROWS = 2
+_ROWTILE_MAX_ROWS = 8
+_ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
+    {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
+)
+# Raw-layout quants that ship a ``rowtile_*`` family, with their K-block
+# alignment (Q8_0 is 32-wide; the K-quants are 256-wide). Q8_0 is the dense
+# projection quant for qwen35moe (attn_qkv/gate, ssm_out); the K-quants cover
+# other GGUF dense weights.
+_ROWTILE_QUANT_BLOCKS: Mapping[str, int] = {
+    "gguf_q4_k": 256,
+    "gguf_q5_k": 256,
+    "gguf_q6_k": 256,
+    "gguf_q8_0": 32,
+}
+
 # Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
 # the raw GGUF K-block alignment constraints enforced before dispatching to
 # the WMMA wrappers. Q4_K is raw-layout only for now: dense 2D Q4_K resident
@@ -254,6 +276,80 @@ def _resolve_use_wmma_prefill(kwarg: bool | None) -> bool:
     return _env_wmma_prefill_enabled()
 
 
+def set_q4k_rowtile_enabled(enabled: bool | None) -> None:
+    """Set the session-scoped opt-out for the raw Q4_K row-tile GEMV.
+
+    Pass ``False`` to force the legacy per-row prefill alias (bisection only);
+    ``None`` clears the override and falls back to the env var, which itself
+    defaults to ON.
+    """
+
+    global _q4k_rowtile_session_enabled
+    _q4k_rowtile_session_enabled = None if enabled is None else bool(enabled)
+
+
+@contextlib.contextmanager
+def q4k_rowtile_session(enabled: bool | None) -> Iterator[None]:
+    """Context manager wrapper around :func:`set_q4k_rowtile_enabled`."""
+
+    previous = _q4k_rowtile_session_enabled
+    set_q4k_rowtile_enabled(enabled)
+    try:
+        yield
+    finally:
+        set_q4k_rowtile_enabled(previous)
+
+
+def _resolve_use_q4k_rowtile(kwarg: bool | None) -> bool:
+    if kwarg is not None:
+        return bool(kwarg)
+    if _q4k_rowtile_session_enabled is not None:
+        return _q4k_rowtile_session_enabled
+    raw = os.environ.get(_Q4K_ROWTILE_ENV, "")
+    if not raw:
+        return True  # default ON
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _rowtile_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    use_rowtile: bool,
+) -> GGUFLinearDispatch:
+    """Rewrite the per-row raw quantized prefill alias -> weight-amortized rowtile.
+
+    No-op unless ``use_rowtile`` and: ``rows`` in [2, 8], ``dispatch.abi`` is
+    ``"raw"`` for a quant in ``_ROWTILE_QUANT_BLOCKS`` (Q4_K/Q5_K/Q6_K/Q8_0),
+    the variant is one of the supported rows>1 ``prefill_*`` aliases, and
+    ``in_features`` is K-block aligned for that quant. The
+    rowtile wrapper shares the ``"raw"`` launch ABI, so only the variant name
+    changes. Takes priority over ``_wmma_prefill_dispatch`` for small B.
+    """
+
+    if not use_rowtile or rows < _ROWTILE_MIN_ROWS or rows > _ROWTILE_MAX_ROWS:
+        return dispatch
+    block = _ROWTILE_QUANT_BLOCKS.get(dispatch.key.quant)
+    if dispatch.abi != "raw" or block is None:
+        return dispatch
+    variant = dispatch.key.variant
+    if variant not in _ROWTILE_SUPPORTED_PREFILL_VARIANTS:
+        return dispatch
+    if in_features % block != 0:
+        return dispatch
+    rowtile_variant = "rowtile_" + variant[len("prefill_") :]
+    return GGUFLinearDispatch(
+        KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            rowtile_variant,
+        ),
+        "raw",
+    )
+
+
 def resolve_gguf_linear_dispatch(
     weight: Qwen35GGUFDeviceWeight,
     *,
@@ -327,11 +423,21 @@ def launch_gguf_linear(
         rows=rows,
         use_gemv_decode=_resolve_use_gemv_decode(use_gemv_decode),
     )
+    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     dispatch = _wmma_prefill_dispatch(
         dispatch,
         rows=rows,
         in_features=in_features,
-        use_wmma=_resolve_use_wmma_prefill(use_wmma_prefill),
+        use_wmma=use_wmma,
+    )
+    # The small-B row-tile path is the weight-amortized replacement for the
+    # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
+    # opt-in: only fires when WMMA is off (e.g. the small-B target verifier).
+    dispatch = _rowtile_dispatch(
+        dispatch,
+        rows=rows,
+        in_features=in_features,
+        use_rowtile=(not use_wmma) and _resolve_use_q4k_rowtile(None),
     )
     _ensure_linear_kernel_registered(dispatch.key)
     fn = resolve(
