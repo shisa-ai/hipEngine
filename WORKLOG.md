@@ -125511,3 +125511,9 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Implication
 - The verifier MoE is structurally in the worst MoE regime (few tokens, ~no expert overlap), so each of ~30 experts must be dequantized + applied independently — the same fundamental constraint llama.cpp faces. Closing the gap is therefore a raw kernel-efficiency problem (faster Q4_K dequant / MMA / better coalescing on the selected GEMV), not an amortization win. Realistic ceiling ~1.5-2x on the MoE (≈36% HBM has ~2x headroom vs floor; 64% compute needs a faster dequant), uncertain, and a substantial kernel grind.
 - Recorded so the next attempt targets dequant/bandwidth efficiency of `gguf_q4_k_selected_dual_prefill_out_kernel` / `gguf_k_selected_pack8_prefill_out_kernel`, not row amortization.
+
+
+## 2026-06-27 — MoE cheap lever (expert_sidecar / pack8 gate+up) ruled out
+
+- Hypothesis: route the verifier gate+up through the faster pack8 pre-unpacked dequant (`expert_sidecar`) to cut the 64% dequant-compute term. A/B (scratchpad `sidecar_ab.py`, single-process verify of 4 coherent rows, best-of-6): sidecar OFF `103.4 ms`, sidecar ON `1588.4 ms` (**15x slower**). The per-layer H2D copy of selected experts every cycle dominates. Ruled out for the small-B verifier.
+- Remaining MoE lever is a hand-tuned faster raw Q4_K selected-expert GEMV (vectorized per-subblock dequant: unpack d/dmin + 6-bit scale/min once per 32-element subblock instead of per element; better coalescing). Targets the 64% compute term; realistic ceiling ~1.3-1.5x on the MoE overall (≈0.7-0.8x verifier), uncertain, substantial kernel effort. No cheap MoE win exists.
