@@ -125517,3 +125517,22 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 - Hypothesis: route the verifier gate+up through the faster pack8 pre-unpacked dequant (`expert_sidecar`) to cut the 64% dequant-compute term. A/B (scratchpad `sidecar_ab.py`, single-process verify of 4 coherent rows, best-of-6): sidecar OFF `103.4 ms`, sidecar ON `1588.4 ms` (**15x slower**). The per-layer H2D copy of selected experts every cycle dominates. Ruled out for the small-B verifier.
 - Remaining MoE lever is a hand-tuned faster raw Q4_K selected-expert GEMV (vectorized per-subblock dequant: unpack d/dmin + 6-bit scale/min once per 32-element subblock instead of per element; better coalescing). Targets the 64% compute term; realistic ceiling ~1.3-1.5x on the MoE overall (≈0.7-0.8x verifier), uncertain, substantial kernel effort. No cheap MoE win exists.
+
+
+## 2026-06-27 — llama.cpp comparison: CONFIRMED path is q8_1 + dp4a int8 dot (not amortization)
+
+### Question (from lead): before grinding/punting on the MoE, compare to llama.cpp — is there a confirmed path?
+### Answer: yes, and it is systemic (all GGUF GEMVs), not MoE-specific.
+- llama.cpp is decisively faster: it runs the entire 4-token verifier (40 layers: MoE + attn + dense) in roughly the time hipEngine spends on the MoE GEMV alone (eval ~11 ms/token vs hipEngine ~15 ms/token for verify alone).
+- The gap is not algorithmic (both must touch ~30 distinct experts at B=4 — no amortization trick exists, confirmed by the same-vs-distinct microbench). It is the inner-GEMV instruction path:
+  - hipEngine: every GGUF kernel does float dequant-then-FMA (~5 instr/weight element: unpack 6-bit scale/min, nibble, scale, fma).
+  - GGML/llama.cpp: quantizes activations to **q8_1** (int8 + per-block scale) once per row, then **`v_dot4_i32_iu8` (sudot4) dp4a** int8 dot products directly on the packed Q4_K nibbles (~1 VALU per 4 weights; scale applied once per block). GGML files: `ggml/src/ggml-cuda/{mmvq.cu,mmq.cuh,mmid.cu,vecdotq.cuh}`.
+- This matches hipEngine's OWN prior analysis: `docs/ROOFLINE.md` §6.3 names "dp4a with block-aligned layout" as the missing piece to realize W4's throughput advantage; §9.1 confirms `v_dot4_i32_iu8` is available on gfx1100/gfx1151 (use sudot4: W4 nibble unsigned 0-15 minus zero-point, activation signed int8). hipEngine currently has ZERO dp4a/q8_1 usage (`grep` of hipengine/kernels = 0 hits).
+
+### Caveats (also from hipEngine's own docs)
+- A prior dp4a attempt regressed 3.9-9.7x — but on the **PARO/AWQ layout** (not dp4a-friendly). GGML's win is on its **GGUF-native q8_1 layout**, which it proves works on gfx1151. So the failed attempt used the wrong layout; the GGUF recipe is the confirmed-working one.
+- RDNA3 INT8 peak (~75 TOPS) ≈ BF16 (~85 TFLOP/s), so the win is from instruction-count / dequant elimination, not raw TOPS. ROOFLINE §6.3 estimates ~2x on the W4 GEMV bucket. For the verifier (MoE GEMV ~54%, dense GEMV more), ~2x on the GEMV bucket could cut verifier ~30-40% — meaningful, not full 1.9x parity by itself.
+
+### Decision
+- This is a CONFIRMED path (GGML running it on gfx1151 + hipEngine roofline naming it), but a substantial systemic kernel effort: q8_1 activation quantization + sudot4 dp4a Q4_K/Q5_K/Q6_K/Q8_0 vec-dot kernels, for dense AND MoE GEMVs. Captured as task #7. Highest-impact slice is the selected-MoE dual gate+up (36% alone). The row-tile dense work already landed is complementary (and could be combined with dp4a).
+- Cheap MoE levers are exhausted (expert_sidecar/pack8 = 15x slower; row-grouping ~nothing at B=4). The dp4a port is the only confirmed lever; whether to start it now or punt-and-re-review is a lead decision given its size.
