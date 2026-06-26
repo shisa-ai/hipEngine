@@ -125497,3 +125497,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next (the real win)
 - Port the weight-amortized row-tile idea to the **MoE selected-expert GEMV** (`gguf_q4_k_selected_dual_prefill_out_kernel`, `gguf_k_selected_*prefill_out_kernel`): group the selected (row,expert) pairs by expert so each expert's weight is dequantized once and applied to all rows that selected it. This is the 54% family. Then re-profile with coherent tokens and re-measure end-to-end.
+
+
+## 2026-06-27 — MoE selected-expert GEMV: amortization does NOT apply at B=4 (decisive microbench)
+
+### Finding
+- The user-approved plan was to amortize the MoE selected-expert GEMV (54% of the verifier) the way the dense row-tile amortized the dense projections. A decisive microbench (scratchpad `moe_micro.py`, qwen35moe shape in=2048/out=512/256 experts/top_k=8, 32 selected rows) shows that premise is wrong:
+  - 32 rows **same expert** (weight L2-cached): `0.567 ms` — the pure dequant-compute floor.
+  - 32 rows **distinct experts** (full HBM weight stream): `0.882 ms` (HBM floor `0.147 ms`).
+  - ratio `1.56x` ⇒ cost ≈ **64% dequant-compute + 36% HBM weight load**.
+- At B=4 the 32 selections hit ~30 **distinct** experts (32 picks among 256, top_k=8 ⇒ ~30 distinct, near-zero overlap). So there are essentially no same-expert rows to share a weight load across — the dense row-tile trick (4 rows share 1 weight) does not transfer. The dominant term (dequant-compute, per (row,element)) is irreducible by grouping; grouping-by-expert would save at most the ~few overlapping picks (~14%).
+
+### Implication
+- The verifier MoE is structurally in the worst MoE regime (few tokens, ~no expert overlap), so each of ~30 experts must be dequantized + applied independently — the same fundamental constraint llama.cpp faces. Closing the gap is therefore a raw kernel-efficiency problem (faster Q4_K dequant / MMA / better coalescing on the selected GEMV), not an amortization win. Realistic ceiling ~1.5-2x on the MoE (≈36% HBM has ~2x headroom vs floor; 64% compute needs a faster dequant), uncertain, and a substantial kernel grind.
+- Recorded so the next attempt targets dequant/bandwidth efficiency of `gguf_q4_k_selected_dual_prefill_out_kernel` / `gguf_k_selected_pack8_prefill_out_kernel`, not row amortization.
