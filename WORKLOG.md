@@ -125407,3 +125407,20 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next
 - Keep B3 as the small-B verifier focus. The next performance issue is rollback/partial-accept cost and the linear-attention small-B layer path, not selected-prefill or B5 breadth.
+
+
+## 2026-06-26 — MTP llama.cpp parity doc updated: correctness solved, ~1.9x perf gap
+
+### Scope
+- Re-reviewed the current MTP status summary against `docs/MTP-LLAMACPP-PARITY.md` and refreshed the doc to reflect solved correctness and the remaining performance gap. Docs-only logical unit; no code/kernel change.
+
+### Updates to `docs/MTP-LLAMACPP-PARITY.md`
+- Header now dates the correctness-solved update (2026-06-26) and states all runtime numbers are gfx1151/Radeon 8060S single-prompt diagnostics, not W7900 and not retained rows.
+- Replaced the stale "target AR is the blocker" executive summary with a correctness-solved status table (target AR first-token `71093`, 12-token greedy trace, strict B3 `2/9`→`9/9`/`15/15`, F32 retention) plus current perf tables.
+- Anchored the llama.cpp reference to its own debug-log eval timing: `89.55 tok/s` (`134.01 ms / 12 tokens`) from `/tmp/hipengine-llamacpp-mtp-cli-reasoning-off-debug.log:3813`, rather than the unsourced "92.4". The ~1.9x framing (48 vs ~90 tok/s) is unchanged.
+- Added the per-cycle "where the time goes" table (target verify ~64–73 ms vs ~8.9 ms = 7–8x; draft ~17–22 ms = ~2x) and the per-layer probe result (30 linear-attention layers ≈ 82 ms vs 10 full-attention ≈ 23.5 ms).
+- Added ordered next steps: (1) captured-graph/C-level small-B target continuation as #1 blocker, (2) resident MTP draft path, (3) partial-accept rollback cost (~303 ms B5), (4) full-suite validation vs true no-MTP AR, (5) longer-term GGML-graph-style architecture.
+- Rewrote the bottom line to match.
+
+### Validation
+- Docs-only; re-read changed sections end-to-end. No GPU run needed.

@@ -1,43 +1,91 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-Date: 2026-06-25  
+Date: 2026-06-26 (correctness-solved update; original trace 2026-06-25)  
 Branch: `mtp-gguf`  
+Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers are single-prompt diagnostics, not retained benchmark rows.  
 hipEngine commit used for source links: `98df03ddd00ae682c07e302721343040373e1b55`  
 llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
 
-## Executive summary
+## Executive summary (2026-06-26)
 
-We have **not yet matched llama.cpp's effective MTP behavior**.  A follow-up
-apples-to-apples trace found an earlier blocker than MTP itself: **hipEngine's
-target autoregressive stream diverges from llama.cpp at the first sampled token
-after prefill**.  Until target AR parity is fixed, MTP acceptance comparisons are
-partly measuring different verifier targets.
+**Correctness is solved. The remaining gap is pure performance — roughly 1.9x.**
 
-The original measured MTP gap is still real, but now has a clearer first cause:
-hipEngine is asking the MTP head to predict a different target stream.  The gap is
-not just speed; it is **committed tokens per verifier call**:
+| Milestone | Status |
+| --- | --- |
+| Target AR first-token parity | ✅ `71093` matches llama.cpp (Qwen3.5 GDN K-head broadcast fix) |
+| Target AR 12-token greedy trace | ✅ identical sequence `[71093,12305,198,727,10562,17885,10620,25,1103,8,1411,1103]` |
+| Strict B3 draft acceptance | ✅ `2/9` → `9/9`, and `15/15` over 5 cycles (context replay + device MTP KV) |
+| F32 router/alpha/beta retention | ✅ landed (registry-dispatched mixed kernels) |
 
-| Engine / trace | Draft budget | Verifier calls | Accepted draft tokens | Visible output tokens | Accepted draft / verifier | Visible output / verifier | Strict draft acceptance |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| llama.cpp CLI MTP debug trace | B3 | 3 | 8 | 11 | 2.67 | 3.67 | 1.000 |
-| hipEngine GGUF MTP strict trace | B3 | 3 | 2 | 5 | 0.67 | 1.67 | 0.222 |
-| hipEngine retained root-top40 B1 smoke | B1 + root top40 accounting | 10 | 9 | 19 | 0.90 | 1.90 | 0.0225 by benchmark denominator |
-| hipEngine device-KV B1 smoke | B1 + root top40 accounting | 4 | 3 | 7 | 0.75 | 1.75 | 0.0187 by benchmark denominator |
+The earlier blocker — hipEngine's target autoregressive stream diverging from
+llama.cpp at the first sampled token — is fixed. The root cause was Qwen3.5
+linear-attention Gated-Delta-Net K-head mapping: GGML maps value head `v_head` to
+key head `v_head % num_k_heads`, while hipEngine inherited grouped `v_head /
+repeat`. With the interleaved mapping, target AR and strict B3 acceptance both
+match llama.cpp on the merge-sort prompt.
 
-The meaningful result is the first two rows: with comparable B3 strict matching,
-llama.cpp accepted every drafted token in the short debug trace, while hipEngine
-accepted only 2/9.  Our root-top40 rows can make visible-output accounting look
-less bad, but they do not prove the MTP draft chain is predictive.  That is why
-root-K probing plateaued.
+### Performance: current numbers (single-prompt diagnostic, gfx1151)
 
-**Current conclusion:** the next win is not more root/sibling selector tuning.
-The immediate parity blocker is target AR: for the exact 21-token reasoning-off
-prompt, llama.cpp's first target token is code fence token `71093` (`````), while
-hipEngine's retained fast path samples token `760` (`The`), and its slower
-non-WMMA/bulk variants still do not match.  Fix target prefill/decode/logit
-parity first; then make hipEngine's MTP logits/hidden/KV lifecycle match
-llama.cpp and reduce overhead.  The first in-tree device-resident MTP cache
-exists, but it is B1-only and cannot rescue a mismatched target stream.
+llama.cpp B3 MTP on the same reasoning-off 12-token trace:
+**`eval time = 89.55 tok/s`** (`134.01 ms / 12 tokens`), 100% strict draft
+acceptance, from `/tmp/hipengine-llamacpp-mtp-cli-reasoning-off-debug.log:3813`.
+
+hipEngine best diagnostic configs (all `15/15` strict accepts, B3/C5, merge-sort
+prompt):
+
+| Configuration | tok/s | vs AR | verify ms/cycle | draft ms/cycle | accept |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Block verify GEMV prefill + 32k draft cap | 48.1 | 0.80x | ~61–66 | ~17 | 15/15 |
+| One-step graph + 32k draft cap | 44.5 | 0.81x | ~72 | ~17 | 15/15 |
+| One-step graph, full vocab | 42.3 | 0.77x | ~73 | ~22 | 15/15 |
+
+Gap to llama.cpp: **~48 vs ~90 tok/s ≈ 1.9x slower**, and it is almost entirely
+target verification overhead, not acceptance and not draft quality.
+
+### Where the time goes (per B3 cycle)
+
+| Stage | hipEngine | llama.cpp | Gap |
+| --- | --- | --- | --- |
+| Target verify (4 tokens) | ~64 ms (block GEMV) / ~73 ms (graph) | ~8.9 ms (`dur(g)=26.7 ms / 3 calls`) | 7–8x |
+| MTP draft (3 tokens) | ~17 ms (32k cap) / ~22 ms (full vocab) | included in `dur(g)` | ~2x |
+| Commit / bookkeeping | ~1.6 ms | negligible | minor |
+
+A synchronized per-layer probe over the first B3 verifier block shows the cost is
+in the linear-attention layers: **30 linear-attention layers ≈ 82 ms** vs **10
+full-attention layers ≈ 23.5 ms**; snapshot/restore is only ~9 ms / ~0.8 ms.
+llama.cpp runs the equivalent layers inside one fused GGML compute graph with
+batched ops; hipEngine dispatches each kernel individually from Python.
+
+### Next steps, ordered by impact
+
+1. **Target verifier (the #1 blocker, 7–8x).** Make the 4-row target continuation
+   run through a captured HIP graph or C-level dispatch loop instead of ~40
+   per-layer Python launches. Priority is a dedicated small-B linear-attention
+   layer path — that is where ~82 of the ~106 verifier ms live. Not more
+   one-step-graph tuning and not selected/WMMA prefill for tiny verifier blocks.
+2. **MTP draft resident path.** Keep all MTP intermediates (embeddings,
+   projections, KV, hidden seeds) on device across draft depths; only D2H the
+   final top-1 token ID. Chain the B draft steps in one call instead of B separate
+   `run_draft()` calls with full alloc/copy per depth. Validate the 32k draft
+   vocab cap on the full suite before promoting (saved ~5 ms/cycle here but is
+   prompt-sensitive).
+3. **Partial-accept rollback is catastrophic (~303 ms for a B5 partial cycle).**
+   Track which linear-attention buffers were modified and copy-on-write only
+   those, or replay only the accepted prefix instead of full target decodes. Or
+   just keep B3 (100% accept on this prompt) and skip B5 until rollback is cheap.
+4. **Full-suite validation before any retained speed claim.** Everything above is
+   single-prompt merge-sort diagnostics. Need the full
+   `mtpbench-code-general-ja.jsonl` category suite, category heldouts, a true
+   no-MTP AR baseline from the same protocol, and the draft vocab cap validated
+   for non-regressive acceptance across prompts.
+5. **Longer-term: match llama.cpp's architecture.** Both target verification and
+   MTP drafting run through one optimized GGML compute graph in a single process
+   with shared weight memory; hipEngine dispatches each kernel individually from
+   Python with generic GEMV/prefill kernels not tuned for B=4. Closing this means
+   a C-level dispatch loop or HIP graph capture for the multi-layer forward pass.
+
+The historical trace evidence below is retained as the record of how correctness
+parity was reached.
 
 ## Source evidence: what llama.cpp does
 
@@ -639,8 +687,12 @@ acceptance.
 
 hipEngine now matches llama.cpp's documented reasoning-off target AR trace and,
 with the llama.cpp-style context replay + device MTP KV lifecycle, reaches strict
-B3 `9/9` on the merge-sort smoke.  That is still a single-prompt diagnostic, not
-a retained speed claim.  Performance parity now depends on making target
-verification block/batch-shaped and moving the MTP draft wrapper from
-correctness-first NumPy-in/out calls to persistent resident buffers, followed by
-the full multi-prompt suite and true-AR comparison.
+B3 `9/9` (and `15/15` over five cycles) on the merge-sort smoke.  Correctness
+parity is therefore solved.  The remaining gap is purely performance: ~48 vs
+~90 tok/s (~1.9x) on gfx1151, and ~7–8x of that lives in target verification of
+the 4-row continuation block — specifically the 30 Python-dispatched
+linear-attention layers (~82 ms) that llama.cpp runs inside one fused GGML graph.
+The highest-ROI next step is a captured-graph / C-level small-B target
+continuation path, then a resident MTP draft path, then full-suite validation
+against a true no-MTP AR baseline before any retained speed claim.  These remain
+single-prompt diagnostics, not benchmark rows.
