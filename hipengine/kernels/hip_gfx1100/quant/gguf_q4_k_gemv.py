@@ -18,6 +18,9 @@ _SYMBOL_FP16_FP16_OUT = "hipengine_gguf_q4_k_gemv_fp16_fp16_out"
 _SYMBOL_BF16_F32_OUT = "hipengine_gguf_q4_k_gemv_bf16_f32_out"
 _SYMBOL_BF16_FP16_OUT = "hipengine_gguf_q4_k_gemv_bf16_fp16_out"
 _SYMBOL_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_bf16_bf16_out"
+_SYMBOL_ROWTILE_F32_F32_OUT = "hipengine_gguf_q4_k_gemv_rowtile_f32_f32_out"
+_SYMBOL_ROWTILE_BF16_F32_OUT = "hipengine_gguf_q4_k_gemv_rowtile_bf16_f32_out"
+_SYMBOL_ROWTILE_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_rowtile_bf16_bf16_out"
 _SYMBOL_SELECTED_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out"
 _SYMBOL_SELECTED_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out"
 _SYMBOL_SELECTED_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_pack8_gemv_bf16_bf16_out"
@@ -728,6 +731,10 @@ gguf_q4_k_prefill_fp16_fp16_out = _make_raw_wrapper(_SYMBOL_FP16_FP16_OUT)
 gguf_q4_k_prefill_bf16_f32_out = _make_raw_wrapper(_SYMBOL_BF16_F32_OUT)
 gguf_q4_k_prefill_bf16_fp16_out = _make_raw_wrapper(_SYMBOL_BF16_FP16_OUT)
 gguf_q4_k_prefill_bf16_bf16_out = _make_raw_wrapper(_SYMBOL_BF16_BF16_OUT)
+# Small-B weight-amortized verifier variant (rows in [2, 8]); same launch ABI.
+gguf_q4_k_gemv_rowtile_f32_f32_out = _make_raw_wrapper(_SYMBOL_ROWTILE_F32_F32_OUT)
+gguf_q4_k_gemv_rowtile_bf16_f32_out = _make_raw_wrapper(_SYMBOL_ROWTILE_BF16_F32_OUT)
+gguf_q4_k_gemv_rowtile_bf16_bf16_out = _make_raw_wrapper(_SYMBOL_ROWTILE_BF16_BF16_OUT)
 gguf_q4_k_pack8_gemv_f32_fp16_out = _make_pack8_wrapper(_SYMBOL_PACK8_F32_FP16_OUT)
 gguf_q4_k_pack8_gemv_fp16_fp16_out = _make_pack8_wrapper(_SYMBOL_PACK8_FP16_FP16_OUT)
 gguf_q4_k_pack8_gemv_bf16_fp16_out = _make_pack8_wrapper(_SYMBOL_PACK8_BF16_FP16_OUT)
@@ -752,6 +759,9 @@ _EXTRA_Q4_K_WRAPPERS = {
     "prefill_bf16_f32_out": gguf_q4_k_prefill_bf16_f32_out,
     "prefill_bf16_fp16_out": gguf_q4_k_prefill_bf16_fp16_out,
     "prefill_bf16_bf16_out": gguf_q4_k_prefill_bf16_bf16_out,
+    "rowtile_f32_f32_out": gguf_q4_k_gemv_rowtile_f32_f32_out,
+    "rowtile_bf16_f32_out": gguf_q4_k_gemv_rowtile_bf16_f32_out,
+    "rowtile_bf16_bf16_out": gguf_q4_k_gemv_rowtile_bf16_bf16_out,
     "pack8_f32_fp16_out": gguf_q4_k_pack8_gemv_f32_fp16_out,
     "pack8_fp16_fp16_out": gguf_q4_k_pack8_gemv_fp16_fp16_out,
     "pack8_bf16_fp16_out": gguf_q4_k_pack8_gemv_bf16_fp16_out,
@@ -779,6 +789,9 @@ __all__ = [
     "gguf_q4_k_gemv_f32_fp16_out",
     "gguf_q4_k_gemv_fp16_f32_out",
     "gguf_q4_k_gemv_fp16_fp16_out",
+    "gguf_q4_k_gemv_rowtile_f32_f32_out",
+    "gguf_q4_k_gemv_rowtile_bf16_f32_out",
+    "gguf_q4_k_gemv_rowtile_bf16_bf16_out",
     "gguf_q4_k_pack8_dual_prefill_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_bf16_f32_out",

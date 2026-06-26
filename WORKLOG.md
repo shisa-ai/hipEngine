@@ -125453,3 +125453,23 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next
 - RED test: bit-exact small-B Q4_K matmul vs `dense_gemv_out_kernel` per-row output and vs CPU reference (KL/top-1 gate downstream). Then wire into the rows>1 dispatch behind the verifier, rocprof kernel-trace, and re-measure the B3 smoke before any retained claim.
+
+
+## 2026-06-26 — Small-B weight-amortized GGUF Q4_K row-tile GEMV (kernel + RED/GREEN)
+
+### Change
+- Added `gguf_q4_k_prefill_out_rowtile_kernel<scalar_t,out_t,ROW_TILE>` in `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip`: one block per output column, accumulates into ROW_TILE row accumulators, dequantizing each Q4_K weight element exactly once and reusing it across all rows. Replaces the per-row `gguf_q4_k_prefill_out_kernel` (grid `(out_col,row)`, which re-dequantizes the weight per row) for the verifier small-B (rows 2..8) path. Per-row k-order + within-wave shfl + cross-wave sum order match the per-row kernel, so outputs are bit-identical.
+- extern "C" launchers `hipengine_gguf_q4_k_gemv_rowtile_{f32_f32,bf16_f32,bf16_bf16}_out` dispatch ROW_TILE by exact rows (2..8; rejects rows<2 / rows>8). Python wrappers + registry keys `rowtile_{f32_f32,bf16_f32,bf16_bf16}_out`.
+
+### Correctness (RED/GREEN)
+- New `tests/test_gguf_q4_k_rowtile_gemv.py`: bit-exact vs the per-row kernel for bf16->bf16, bf16->f32, f32->f32 across rows {2,3,4,5,8} and shapes {256x16, 512x48, 768x128, 1024x64, 512x80}, plus within-tolerance of a CPU Q4_K dequant oracle, plus registry binding and rows-out-of-range rejection.
+- `python3 -m pytest tests/test_gguf_q4_k_rowtile_gemv.py` — **47 passed in 1.00s** (gfx1151).
+
+### Performance (microbench, scratchpad `rowtile_micro.py`, bf16/bf16)
+- per-row vs rowtile ms at B=4: 2048x4096 `0.370 -> 0.119` (**3.11x**), 2048x2048 `0.187 -> 0.063` (2.98x), 4096x2048 `0.375 -> 0.124` (3.02x), 2048x6144 `0.579 -> 0.182` (3.19x). Scales 1.7x @B=2 -> ~3x @B=4 -> ~5x @B=8; per-row grows linearly with rows, rowtile stays ~flat (weight load amortized). This is the dense-projection family that is 44% of the rows=4 verifier.
+
+### Kernel-trace gate
+- `rocprofv3 --kernel-trace` (scratchpad `rowtile_trace.py`): dispatches recorded as `void (anonymous namespace)::gguf_q4_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 4>(...)`, warm duration ~0.10 ms at 2048x4096 B=4, consistent with the microbench. Grid 512 wg, block 128.
+
+### Next
+- Wire `rowtile_*` into the rows>1 verifier dispatch (`launch_gguf_linear` / `verify_target_block`) behind the small-B path; keep per-row/WMMA for rows>8 and rows==1. Then re-measure the B3 merge-sort verifier ms/cycle and end-to-end tok/s. Apply the same amortization idea to the MoE selected-expert GEMV (`_launch_selected_raw_gguf_moe_*`, the other 28%).

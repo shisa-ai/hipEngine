@@ -201,6 +201,80 @@ __global__ void gguf_q4_k_prefill_out_kernel(
   }
 }
 
+// Small-B weight-load-amortized variant of gguf_q4_k_prefill_out_kernel.
+//
+// The per-row kernel above launches one block per (out_col, row), so the Q4_K
+// weight column is re-dequantized once *per row* — at the verifier's B=4
+// continuation block that streams the whole weight from HBM 4x.  This kernel
+// launches one block per out_col and accumulates into ROW_TILE row
+// accumulators, dequantizing each weight element exactly once and reusing it
+// across all rows.  Activations are tiny and stay L2-resident, so HBM weight
+// traffic drops ~ROW_TILE-fold.  ROW_TILE is the exact row count (dispatched
+// per-rows), so there are no in-loop row guards.
+//
+// Numerics: each row's k-iteration order and the within-wave shfl reduction
+// match the per-row kernel, and the cross-wave sum walks waves 0..waves-1 in
+// the same order, so per-row outputs are bit-identical to the per-row kernel.
+template <typename scalar_t, typename out_t, int ROW_TILE>
+__launch_bounds__(256, 2)
+__global__ void gguf_q4_k_prefill_out_rowtile_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  if (out_col >= out_features) return;
+
+  const int row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ weight_row =
+      qweight + static_cast<int64_t>(out_col) * row_bytes;
+
+  float acc[ROW_TILE];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    acc[r] = 0.0f;
+  }
+
+  for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+    const float wv = gguf_q4_k_weight(weight_row, k);  // dequantize once
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      const scalar_t* __restrict__ x_row = x + static_cast<int64_t>(r) * in_features;
+      acc[r] = fmaf(scalar_to_float<scalar_t>(x_row[k]), wv, acc[r]);
+    }
+  }
+
+  // Within-wave reduce every accumulator, then one cross-wave pass.  The first
+  // ROW_TILE threads each finalize one row's output column.
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc[r] += __shfl_down(acc[r], offset);
+    }
+  }
+  __shared__ float red[8][ROW_TILE];
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  if (lane == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      red[wave][r] = acc[r];
+    }
+  }
+  __syncthreads();
+  if (threadIdx.x < ROW_TILE) {
+    const int r = threadIdx.x;
+    const int waves = (blockDim.x + 31) >> 5;
+    float total = 0.0f;
+    for (int w = 0; w < waves; ++w) {
+      total += red[w][r];
+    }
+    store_output<out_t>(out, static_cast<int64_t>(r) * out_features + out_col, total);
+  }
+}
+
 template <typename scalar_t, typename out_t>
 __launch_bounds__(256, 2)
 __global__ void gguf_q4_k_selected_prefill_out_kernel(
@@ -457,6 +531,48 @@ int launch_gguf_q4_k_gemv_out(
       static_cast<int>(rows),
       static_cast<int>(in_features),
       static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+// Dispatch the row-tile kernel by exact row count (small-B verifier path).
+// Supports rows in [2, 8]; callers must route rows==1 / rows>8 elsewhere.
+template <typename scalar_t, typename out_t>
+int launch_gguf_q4_k_gemv_rowtile_out(
+    const scalar_t* x,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows < 2 || rows > 8 ||
+      in_features <= 0 || out_features <= 0 || (in_features % QK_K) != 0 ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>(out_features));
+  const int r = static_cast<int>(rows);
+  const int infe = static_cast<int>(in_features);
+  const int outf = static_cast<int>(out_features);
+#define GGUF_Q4K_ROWTILE_CASE(N)                                              \
+  case N:                                                                     \
+    gguf_q4_k_prefill_out_rowtile_kernel<scalar_t, out_t, N>                  \
+        <<<grid, block, 0, stream>>>(x, qweight, out, r, infe, outf);         \
+    break;
+  switch (r) {
+    GGUF_Q4K_ROWTILE_CASE(2)
+    GGUF_Q4K_ROWTILE_CASE(3)
+    GGUF_Q4K_ROWTILE_CASE(4)
+    GGUF_Q4K_ROWTILE_CASE(5)
+    GGUF_Q4K_ROWTILE_CASE(6)
+    GGUF_Q4K_ROWTILE_CASE(7)
+    GGUF_Q4K_ROWTILE_CASE(8)
+    default:
+      return static_cast<int>(hipErrorInvalidValue);
+  }
+#undef GGUF_Q4K_ROWTILE_CASE
   return static_cast<int>(hipGetLastError());
 }
 
@@ -808,6 +924,45 @@ extern "C" int hipengine_gguf_q4_k_gemv_f32_f32_out(
     int64_t threads,
     hipStream_t stream) {
   return launch_gguf_q4_k_gemv_out<float, float>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_gemv_rowtile_f32_f32_out(
+    const float* x,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_gemv_rowtile_out<float, float>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_gemv_rowtile_bf16_f32_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_gemv_rowtile_out<uint16_t, float>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_gemv_rowtile_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_gemv_rowtile_out<uint16_t, uint16_t>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }
 
