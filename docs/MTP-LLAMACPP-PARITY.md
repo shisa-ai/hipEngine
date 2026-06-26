@@ -669,10 +669,37 @@ defaults to the GEMV prefill fallback internally (`--no-target-block-wmma-prefil
 while leaving normal prompt prefill WMMA enabled; that lifts the same B3+32k
 smoke to `48.1 tok/s` with unchanged `15/15` and verifier `~61-66 ms/cycle`
 (except variance on late cycles).  B5 remains unattractive because a partial
-rollback cycle costs hundreds of ms in the generic restore/replay path.  The next
-material parity task is a dedicated small-B linear-attention/rollback kernel, not
-more one-step graph replay tuning and not selected-prefill for tiny verifier
-blocks.
+rollback cycle costs hundreds of ms in the generic restore/replay path.
+
+**2026-06-26 profiling — the verifier is WORK-bound, not launch-bound.**  Two
+single-process diagnostics overturn the earlier "captured HIP graph / C-level
+dispatch loop" hypothesis for the #1 verifier fix:
+
+- *Row-scaling* (`verify_rowscale.py`): `verify_target_block` GEMV wall-time is
+  ~flat per row (`24 ms/row`, fit `23 ms + 24 ms·rows`); rows=128 costs **26× rows=4**.
+  If launch-overhead-bound, rows=4 and rows=128 would cost nearly the same
+  (~420 launches either way).  WMMA per-row falls `31.5 → 8.86 ms/row` (amortizes
+  but high fixed cost at B=4).
+- *Per-family* (`verify_family.py`, rows=4 GEMV): dense Q4_K projections
+  (`launch_gguf_linear`) **44%**, MoE selected-expert GEMV **28%**, GDN 6%,
+  router 7%, Q6_K lm-head sample 5%.  72% is quantized matmuls run per-row.
+  Cross-check: `launch_gguf_linear` ≈ 89 µs/call vs ~20 µs B=4 weight-bandwidth
+  floor ⇒ **~4× over floor**, i.e. the Q4_K weight is reloaded once per row.
+
+Root cause: at rows>1 with WMMA off, `launch_gguf_linear` uses the decode-shaped
+`dense_gemv:prefill_out` = `dense_gemv_out_kernel`
+(`hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip:122`), grid `(out_col, row)`
+— one block per (column,row), so the column is re-dequantized per row.  This is
+exactly llama.cpp's advantage: GGML batches the 4 rows into one weight-load-
+amortized matmul (~8.9 ms total ≈ 2.2 ms/row).
+
+**Revised #1 verifier task:** a small-B (B≈2–8) weight-load-amortized Q4_K matmul
+that dequantizes each weight tile once and applies it to all B row-vectors
+(registers/LDS), avoiding per-row reload (GEMV) and 16-row WMMA tile waste; apply
+the same to the MoE selected-expert GEMV.  Captured-graph/C-loop is deprioritized
+to a later launch-overhead layer once kernels are efficient.  A dedicated small-B
+linear-attention/rollback kernel and cheaper partial-accept rollback remain on the
+list but are smaller shares (GDN ~6%, rollback only on partial-accept cycles).
 
 Success criterion: same-protocol full-suite row improves all three: raw weighted
 decode tok/s, accepted/output, and strict draft acceptance.

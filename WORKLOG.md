@@ -125424,3 +125424,32 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Validation
 - Docs-only; re-read changed sections end-to-end. No GPU run needed.
+
+
+## 2026-06-26 — MTP verifier is WORK-bound, not launch-bound: graph capture deprioritized
+
+### Why this matters
+- The retained Phase-4 plan named "captured HIP graph / C-level dispatch loop for the 4-row continuation" as the #1 verifier fix, on the theory that ~420 Python kernel launches/cycle were the bottleneck. Two diagnostics (single-process, gfx1151, Qwen3.6-35B-A3B-UD-Q4_K_M, merge-sort reasoning-off prompt) show that theory is wrong.
+
+### Diagnostic 1 — verifier wall-time scales ~linearly with rows (scratchpad `verify_rowscale.py`)
+- `verify_target_block` timed with device-synchronize brackets, best-of-3, at rows = 4/8/16/32/64/128:
+  - GEMV (no-WMMA, the verifier default): `118.9 / 212.6 / 409.3 / 792.5 / 1528.6 / 3089.9 ms` → ~flat `23.9–29.7 ms/row`. Fit `total ≈ 23 ms fixed + 24 ms/row`.
+  - WMMA: `126.1 / 195.1 / 321.6 / 481.8 / 719.8 / 1134.1 ms` → per-row falls `31.5 → 8.86 ms/row` (amortizes, but high fixed cost at B=4).
+- If the verifier were launch-overhead-bound, rows=4 and rows=128 would cost nearly the same (~420 launches either way). Instead rows=128 costs **26× rows=4**. ⇒ work/compute-bound, not Python-launch-bound. (Absolute numbers are inflated vs the ~64 ms bench because the probe snapshots/restores linear state and uses out-of-distribution dummy tokens that diverge MoE routing; the *scaling* is the robust signal.)
+
+### Diagnostic 2 — per-family breakdown at rows=4 GEMV (scratchpad `verify_family.py`)
+- Each launch wrapper wrapped with device-synchronize + timer (serializes the stream, so absolute total ~199 ms is ~3× inflated; relative shares valid):
+  - `launch_gguf_linear` (dense Q4_K projections): **44.2%**, 314 calls, 0.278 ms/call.
+  - `_launch_selected_raw_gguf_moe_pair` + `_launch_selected_raw_gguf_moe_linear` (MoE selected-expert gate/up/down GEMV): **28.1%**, 80 calls.
+  - `_run_gdn_prefill` 5.8%, router logits+select 7.1%, `_sample_device_from_hidden` (Q6_K lm-head) 5.0% (2.47 ms/row).
+- 72% of the verifier is quantized matmuls executed per-row. Cross-check vs the real ~64 ms run: `launch_gguf_linear` ≈ 44% × 64 ≈ 28 ms over 314 calls ≈ 89 µs/call; the B=4 Q4_K weight-bandwidth floor (weight loaded once) is ~20 µs ⇒ **~4× over floor**, consistent with reloading the weight once per row.
+
+### Root cause in code
+- At rows>1 with WMMA off, `launch_gguf_linear` dispatches the decode-shaped `dense_gemv:prefill_out` alias = `dense_gemv_out_kernel` (`hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip:122`), grid `(out_col, row)` — one block per (column,row), so the Q4_K column is re-dequantized/re-loaded per row. The tiled `dense_prefill_gemm_out_kernel` that would amortize is not on this path; the WMMA path amortizes but wastes a 16-row tile on 4 rows + fixed cost (why WORKLOG found WMMA net-slower at B=4). This is llama.cpp's exact advantage: GGML batches the 4 rows into one weight-load-amortized matmul (~8.9 ms total ≈ 2.2 ms/row).
+
+### Decision
+- Deprioritize the captured-graph / C-level dispatch loop for the verifier — it removes launch overhead, which is a small fraction here. (Keep it as a possible later layer once kernels are efficient.)
+- New #1 verifier task: a **small-B (B≈2–8) weight-load-amortized Q4_K matmul** that dequantizes each weight tile once and applies it to all B row-vectors held in registers/LDS, avoiding both per-row reload (GEMV) and 16-row WMMA tile waste. Apply the same idea to the MoE selected-expert GEMV. Target: dense-projection share from ~89 µs/call toward the ~20 µs floor; verifier ~64 ms → toward llama.cpp's ~9 ms.
+
+### Next
+- RED test: bit-exact small-B Q4_K matmul vs `dense_gemv_out_kernel` per-row output and vs CPU reference (KL/top-1 gate downstream). Then wire into the rows>1 dispatch behind the verifier, rocprof kernel-trace, and re-measure the B3 smoke before any retained claim.
