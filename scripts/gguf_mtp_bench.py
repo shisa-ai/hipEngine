@@ -478,6 +478,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="bulk",
         help="Attention scheduler for --target-block-verify (default: bulk).",
     )
+    parser.add_argument(
+        "--target-block-wmma-prefill",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Use WMMA/selected-prefill kernels inside --target-block-verify. Default false because B3/B5 "
+            "small blocks benchmark faster on the GEMV prefill fallback."
+        ),
+    )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument(
@@ -1030,6 +1039,7 @@ def main(argv: list[str] | None = None):
                     block_result = session.verify_target_block(
                         block_inputs,
                         bulk_attention_mode=args.target_block_verify_mode,
+                        use_wmma_prefill=bool(args.target_block_wmma_prefill),
                     )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
@@ -1516,6 +1526,7 @@ def main(argv: list[str] | None = None):
             "target_graph_batched_verify": bool(args.target_graph_batched_verify),
             "target_block_verify": bool(args.target_block_verify),
             "target_block_verify_mode": str(args.target_block_verify_mode),
+            "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
             "target_graph_context_cap": int(target_graph_context_cap),
             "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,

@@ -125380,3 +125380,30 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Validation
 - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py tests/test_qwen35_gguf_runner.py tests/test_gguf_mtp_bench_metrics.py`
 - `python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_qwen35_gguf_runner.py` — passed on this host (`44 passed, 8 skipped`; small GGUF fixture tests skipped where the fixture is absent).
+
+
+## 2026-06-26 — MTP small-B verifier: selected-prefill disabled for target blocks
+
+### Finding
+- The rollback-safe target block verifier's slow B3 result was not caused by linear-state snapshot allocation alone. A local synchronized per-layer probe over the first B3 block showed linear-attention layers dominate (`~82 ms` across 30 linear layers vs `~23.5 ms` across 10 full-attention layers), and snapshot/restore was only about `9 ms`/`0.8 ms`.
+- For tiny B3/B5 verifier blocks, the selected/WMMA prefill route is the wrong scheduler. Forcing the verifier block onto the GEMV prefill fallback while leaving normal prompt prefill WMMA-enabled cuts B3 verifier time substantially.
+
+### Changes
+- `Qwen35GGUFResidentSession.verify_target_block(...)` now accepts `use_wmma_prefill` so target-block verification can select a small-B scheduler independently of the resident prompt-prefill setting.
+- `scripts/gguf_mtp_bench.py --target-block-verify` now defaults to `--no-target-block-wmma-prefill`; `--target-block-wmma-prefill` is available only as an explicit diagnostic override.
+- Linear-attention rollback snapshot buffers are now allocated lazily once per resident session and reused across verifier cycles instead of allocating/freeing every cycle.
+
+### Measurements (single-prompt diagnostics only)
+- Old block verifier, B3/C5, 32k draft cap, selected/WMMA prefill inside block: `/tmp/hipengine-mtp-b3-block-verify-vocab32k-c5.json` — `15/15`, `37.77 tok/s`, verifier `~90 ms/cycle`.
+- Persistent snapshot buffers alone: `/tmp/hipengine-mtp-b3-block-verify-persistent-snapshot-c5.json` — `15/15`, `37.04 tok/s`; neutral within variance, so snapshot malloc/free was not the main blocker.
+- Session-wide `--no-use-wmma-prefill` block verifier, B3/C5, 32k cap: `/tmp/hipengine-mtp-b3-block-verify-no-wmma-c5.json` — `15/15`, `48.69 tok/s`, verifier `~62-70 ms/cycle`.
+- New default (`use_wmma_prefill=True` for session, but target block verifier internally uses GEMV prefill fallback), B3/C5, 32k cap: `/tmp/hipengine-mtp-b3-block-verify-smallb-default-c5.json` — `15/15`, `48.07 tok/s`, warm `48.25 tok/s`, verifier mostly `~61-66 ms/cycle` with one late-cycle `79.8 ms` outlier.
+- B5/C5 with new default and 32k cap: `/tmp/hipengine-mtp-b5-block-verify-smallb-default-c5.json` — `23/25`, `38.04 tok/s`; full-accept cycles verify in `~71-80 ms`, but the partial rollback cycle still costs `302.7 ms`, so B5 is not retained.
+- No-WMMA one-step graph comparison, B3/C5, 32k cap: `/tmp/hipengine-mtp-b3-graph-no-wmma-c5.json` — `15/15`, `45.28 tok/s`, verifier `~72 ms/cycle`. The small-B block verifier is now faster than this same-scheduler one-step verifier on the fixed prompt, but still not a full-suite speed claim.
+
+### Validation
+- `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py tests/test_gguf_mtp_bench_metrics.py tests/test_qwen35_gguf_runner.py`
+- `python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_qwen35_gguf_runner.py` — passed (`45 passed, 8 skipped`).
+
+### Next
+- Keep B3 as the small-B verifier focus. The next performance issue is rollback/partial-accept cost and the linear-attention small-B layer path, not selected-prefill or B5 breadth.

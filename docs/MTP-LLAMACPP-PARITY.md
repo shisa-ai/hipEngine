@@ -614,11 +614,17 @@ hot-token draft LM-head cap of `32768` improved the same one-step-graph smoke to
 diagnostic until full-suite validation.  The new `--target-block-verify` path
 snapshots linear recurrent state, runs the target over `[prev]+drafts` as a
 continuation block, records target IDs + FP32 hidden seeds, and restores/replays
-the consumed prefix on partial accepts.  It is exact (`15/15`) but slower on the
-same B3+32k smoke (`37.8 tok/s`, verifier `~90 ms/cycle`) because current
-small-row prefill kernels are the wrong shape for B3.  Therefore the next
-material parity task is a dedicated small-B/fused target verifier kernel, not
-more one-step graph replay tuning and not the generic full-prefill block path.
+the consumed prefix on partial accepts.  Its first version was exact (`15/15`) but
+slow on the B3+32k smoke (`37.8 tok/s`, verifier `~90 ms/cycle`) because the
+selected/WMMA prefill kernels are the wrong shape for tiny B.  The verifier now
+defaults to the GEMV prefill fallback internally (`--no-target-block-wmma-prefill`)
+while leaving normal prompt prefill WMMA enabled; that lifts the same B3+32k
+smoke to `48.1 tok/s` with unchanged `15/15` and verifier `~61-66 ms/cycle`
+(except variance on late cycles).  B5 remains unattractive because a partial
+rollback cycle costs hundreds of ms in the generic restore/replay path.  The next
+material parity task is a dedicated small-B linear-attention/rollback kernel, not
+more one-step graph replay tuning and not selected-prefill for tiny verifier
+blocks.
 
 Success criterion: same-protocol full-suite row improves all three: raw weighted
 decode tok/s, accepted/output, and strict draft acceptance.

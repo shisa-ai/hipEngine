@@ -314,10 +314,19 @@ def test_arg_parser_exposes_batched_target_graph_verify_diagnostic() -> None:
 
 
 def test_arg_parser_exposes_target_block_verify_diagnostic() -> None:
-    args = build_arg_parser().parse_args(["--target-block-verify", "--target-block-verify-mode", "native"])
+    args = build_arg_parser().parse_args(
+        ["--target-block-verify", "--target-block-verify-mode", "native", "--target-block-wmma-prefill"]
+    )
 
     assert args.target_block_verify is True
     assert args.target_block_verify_mode == "native"
+    assert args.target_block_wmma_prefill is True
+
+
+def test_arg_parser_defaults_target_block_wmma_prefill_off() -> None:
+    args = build_arg_parser().parse_args(["--target-block-verify"])
+
+    assert args.target_block_wmma_prefill is False
 
 
 def test_arg_parser_exposes_draft_vocab_cap_diagnostic() -> None:

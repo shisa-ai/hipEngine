@@ -3139,6 +3139,7 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
     _expert_pack8_library: object | None = field(default=None, init=False)
@@ -3317,28 +3318,37 @@ class Qwen35GGUFResidentSession:
         self._hidden_seed_fp32_populated = False
 
     def _linear_state_snapshot(self) -> list[tuple[DeviceBuffer, DeviceBuffer]]:
-        """D2D-copy linear-attention state for rollback-safe block verification."""
+        """D2D-copy linear-attention state for rollback-safe block verification.
+
+        Snapshot buffers are allocated lazily and reused across verifier cycles;
+        allocating/freeing them per cycle cost several milliseconds in the B3
+        verifier path and is independent of the model math we want to measure.
+        """
 
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
-        snapshot: list[tuple[DeviceBuffer, DeviceBuffer]] = []
-        try:
-            for conv_state, recurrent_state in zip(
-                self.scratch.layer_conv_states,
-                self.scratch.layer_recurrent_states,
-                strict=True,
-            ):
-                for state in (conv_state, recurrent_state):
-                    if state is None:
-                        continue
-                    backup = malloc(state.nbytes, runtime=runtime)
-                    runtime.memcpy(backup.ptr, state.ptr, state.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
-                    snapshot.append((state, backup))
-        except Exception:
-            for _, backup in reversed(snapshot):
+        states: list[DeviceBuffer] = []
+        for conv_state, recurrent_state in zip(
+            self.scratch.layer_conv_states,
+            self.scratch.layer_recurrent_states,
+            strict=True,
+        ):
+            for state in (conv_state, recurrent_state):
+                if state is not None:
+                    states.append(state)
+        backups = list(self._linear_state_snapshot_backups)
+        if len(backups) != len(states) or any(
+            int(backup.nbytes) != int(state.nbytes)
+            for state, backup in zip(states, backups, strict=False)
+        ):
+            for backup in reversed(backups):
                 free(backup, runtime=runtime)
-            raise
+            backups = [malloc(state.nbytes, runtime=runtime) for state in states]
+            self._linear_state_snapshot_backups = tuple(backups)
+        snapshot = list(zip(states, backups, strict=True))
+        for state, backup in snapshot:
+            runtime.memcpy(backup.ptr, state.ptr, state.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
         return snapshot
 
     def _restore_linear_state_snapshot(
@@ -3365,9 +3375,8 @@ class Qwen35GGUFResidentSession:
         self._hidden_seed_fp32_populated = False
 
     def _free_linear_state_snapshot(self, snapshot: list[tuple[DeviceBuffer, DeviceBuffer]]) -> None:
-        runtime = self.runtime or get_hip_runtime()
-        for _, backup in reversed(snapshot):
-            free(backup, runtime=runtime)
+        # Backing buffers are persistent and freed with the session.
+        del snapshot
 
     @staticmethod
     def _smallest_positive_or_total(total: int, *sizes: int) -> int:
@@ -3611,6 +3620,7 @@ class Qwen35GGUFResidentSession:
         input_token_ids: list[int] | tuple[int, ...],
         *,
         bulk_attention_mode: str = "bulk",
+        use_wmma_prefill: bool | None = None,
         stream: int = 0,
     ) -> Qwen35GGUFBlockVerifyResult:
         """Consume a continuation block and return greedy target rows.
@@ -3680,15 +3690,17 @@ class Qwen35GGUFResidentSession:
             )
             src = self._prefill_hidden_a
             dst = self._prefill_hidden_b
-            use_wmma_prefill = gguf_wmma_prefill_enabled(self.use_wmma_prefill)
-            with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+            block_wmma_prefill = gguf_wmma_prefill_enabled(
+                self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
+            )
+            with wmma_prefill_session(block_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
                 for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                     expert_sidecar = None
                     if (
                         self.use_expert_sidecar
                         and bulk_attention_mode == "bulk"
                         and self.runner.weights.config.is_moe
-                        and not use_wmma_prefill
+                        and not block_wmma_prefill
                     ):
                         expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
                     try:
@@ -4554,6 +4566,10 @@ class Qwen35GGUFResidentSession:
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._buffers = ()
+        for buffer in reversed(self._linear_state_snapshot_backups):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._linear_state_snapshot_backups = ()
         if self.scratch is not None:
             for buffer in reversed(self.scratch.buffers):
                 free(buffer, runtime=runtime)
