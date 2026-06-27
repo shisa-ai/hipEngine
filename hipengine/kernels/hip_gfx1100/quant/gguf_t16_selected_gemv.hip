@@ -181,6 +181,14 @@ __device__ inline uint8_t t16_q5_quant(const uint8_t* __restrict__ tile, int sb,
   return low | (high << 4);
 }
 
+__device__ inline uint32_t t16_q5_pack4(const uint8_t* __restrict__ tile, int sb, int lane4, int col) {
+  const uint32_t q0 = static_cast<uint32_t>(t16_q5_quant(tile, sb, lane4 + 0, col));
+  const uint32_t q1 = static_cast<uint32_t>(t16_q5_quant(tile, sb, lane4 + 1, col));
+  const uint32_t q2 = static_cast<uint32_t>(t16_q5_quant(tile, sb, lane4 + 2, col));
+  const uint32_t q3 = static_cast<uint32_t>(t16_q5_quant(tile, sb, lane4 + 3, col));
+  return q0 | (q1 << 8) | (q2 << 16) | (q3 << 24);
+}
+
 __device__ inline float t16_q4_weight(const uint8_t* __restrict__ tile, int k_in_block, int col) {
   const int sb = k_in_block >> 5;
   const int lane32 = k_in_block & 31;
@@ -192,12 +200,16 @@ __device__ inline float t16_q4_weight(const uint8_t* __restrict__ tile, int k_in
   return d * scale * q - dmin * minv;
 }
 
-__device__ inline int t16_q6_quant(const uint8_t* __restrict__ tile, int k_in_block, int col) {
+__device__ inline uint8_t t16_q6_quant_unsigned(const uint8_t* __restrict__ tile, int k_in_block, int col) {
   const uint8_t low_packed = tile[Q6_T16_QL_OFFSET + k_in_block * (T16_COLS / 2) + (col >> 1)];
   const uint8_t low = (col & 1) ? (low_packed >> 4) : (low_packed & 0x0Fu);
   const uint8_t high_packed = tile[Q6_T16_QH_OFFSET + k_in_block * (T16_COLS / 4) + (col >> 2)];
   const uint8_t high = (high_packed >> (2 * (col & 3))) & 0x03u;
-  return static_cast<int>(low | (high << 4)) - 32;
+  return low | (high << 4);
+}
+
+__device__ inline int t16_q6_quant(const uint8_t* __restrict__ tile, int k_in_block, int col) {
+  return static_cast<int>(t16_q6_quant_unsigned(tile, k_in_block, col)) - 32;
 }
 
 template <typename scalar_t>
@@ -767,6 +779,85 @@ __global__ __launch_bounds__(128, 4) void qk_t16_selected_direct_gemv_kernel(
 }
 
 template <typename scalar_t>
+__global__ __launch_bounds__(128, 4) void qk_t16_selected_q8_1_dp4a_direct_gemv_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    int64_t q8_blocks_per_row) {
+  const int64_t out_tile = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t lanes_per_x_row = rows / x_rows;
+  const int64_t x_row_idx = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  const gguf_q8_1_block* __restrict__ xq_row = xq + x_row_idx * q8_blocks_per_row;
+
+  float acc[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) acc[col] = 0.0f;
+
+  const int64_t groups4 = in_features >> 2;
+  for (int64_t group = tid; group < groups4; group += blockDim.x) {
+    const int64_t k4 = group << 2;
+    const int64_t blk = k4 / QK_K;
+    const int within = static_cast<int>(k4 - blk * QK_K);
+    const int lane4 = within & 31;
+    const int q8_index = static_cast<int>(blk * Q4_SUBBLOCKS + (within >> 5));
+    const gguf_q8_1_block* __restrict__ xb = xq_row + q8_index;
+    const uint32_t x_pack = *reinterpret_cast<const uint32_t*>(xb->qs + lane4);
+    const int q8_sum = t16_dp4a_u8_s8(0x01010101u, x_pack, 0);
+    const float xd = static_cast<float>(xb->d);
+
+    const uint8_t* __restrict__ tile = expert_tile_ptr<Q5_T16_BLOCK_BYTES>(
+        tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const int sb = within >> 5;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      const float d = fp16_bytes_to_float(tile + Q5_T16_D_OFFSET + col * 2);
+      const float dmin = fp16_bytes_to_float(tile + Q5_T16_DMIN_OFFSET + col * 2);
+      const float scale = static_cast<float>(tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+      const float minv = static_cast<float>(tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + col]);
+      const int dot = t16_dp4a_u8_s8(t16_q5_pack4(tile, sb, lane4, col), x_pack, 0);
+      acc[col] += xd * (d * scale * static_cast<float>(dot) -
+                        dmin * minv * static_cast<float>(q8_sum));
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc[col]);
+
+  __shared__ float xchg[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) xchg[sub_id * T16_COLS + col] = acc[col];
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row = out + row * out_features + out_tile * T16_COLS;
+    const int sub_groups = blockDim.x >> 5;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total = 0.0f;
+      for (int g = 0; g < sub_groups; ++g) total += xchg[g * T16_COLS + col];
+      out_row[col] = float_to_scalar<scalar_t>(total);
+    }
+  }
+}
+
+template <typename scalar_t>
 int launch_q4_dual(const void* x,
                    const void* expert_start_compact,
                    const void* tiles_a,
@@ -942,6 +1033,34 @@ int launch_qk_direct(const void* x,
   return hipGetLastError();
 }
 
+template <typename scalar_t>
+int launch_qk_q8_1_dp4a_direct(const void* xq,
+                               const void* selected,
+                               const void* tiles,
+                               void* out,
+                               int64_t x_rows,
+                               int64_t rows,
+                               int64_t in_features,
+                               int64_t out_features,
+                               int64_t num_experts,
+                               hipStream_t stream) {
+  if (!xq || !selected || !tiles || !out || x_rows <= 0 || rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || out_features <= 0 || (rows % x_rows) != 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL((qk_t16_selected_q8_1_dp4a_direct_gemv_kernel<scalar_t>),
+                     grid, block, 0, stream,
+                     reinterpret_cast<const gguf_q8_1_block*>(xq),
+                     reinterpret_cast<const int64_t*>(selected),
+                     reinterpret_cast<const uint8_t*>(tiles), reinterpret_cast<scalar_t*>(out),
+                     x_rows, rows, in_features, out_features, num_experts, q8_blocks_per_row);
+  return hipGetLastError();
+}
+
 }  // namespace
 
 
@@ -1015,6 +1134,16 @@ extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out(
   return launch_qk_direct<uint16_t, 5>(x, selected, tiles, out, x_rows, rows,
                                       in_features, out_features, num_experts,
                                       stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_q8_1_dp4a_bf16_bf16_out(
+    const void* xq, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_q8_1_dp4a_direct<uint16_t>(xq, selected, tiles, out,
+                                             x_rows, rows, in_features,
+                                             out_features, num_experts,
+                                             stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_fp16_fp16_out(

@@ -109,6 +109,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
     register_gguf_t16_selected_gemv_kernels,
 )
@@ -2637,6 +2638,12 @@ class Qwen35GGUFFullStackRunner:
             num_experts=cfg.expert_count,
             in_features=cfg.expert_feed_forward_length,
             out_features=self.hidden_size,
+            q8_1_workspace_ptr=_optional_q8_1_workspace_ptr(
+                scratch,
+                selected_rows,
+                cfg.expert_feed_forward_length,
+                enabled=_gguf_t16_selected_dp4a_enabled(),
+            ),
             stream=stream,
             runtime=runtime,
         )
@@ -2847,6 +2854,12 @@ class Qwen35GGUFFullStackRunner:
                 num_experts=cfg.expert_count,
                 in_features=cfg.expert_feed_forward_length,
                 out_features=self.hidden_size,
+                q8_1_workspace_ptr=_optional_q8_1_workspace_ptr(
+                    scratch,
+                    selected_rows,
+                    cfg.expert_feed_forward_length,
+                    enabled=_gguf_t16_selected_dp4a_enabled(),
+                ),
                 stream=stream,
                 runtime=runtime,
             )
@@ -2957,6 +2970,7 @@ _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
+_GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
 
@@ -3013,6 +3027,10 @@ def _gguf_q4k_selected_dual_dp4a_enabled() -> bool:
     return _env_flag(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV, False)
 
 
+def _gguf_t16_selected_dp4a_enabled() -> bool:
+    return _env_flag(_GGUF_T16_SELECTED_DP4A_ENV, False)
+
+
 def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
     rows = int(rows)
     in_features = int(in_features)
@@ -3021,8 +3039,10 @@ def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
     return rows * (in_features // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES
 
 
-def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int) -> int | None:
-    if not _gguf_q4k_selected_dual_dp4a_enabled():
+def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enabled: bool | None = None) -> int | None:
+    if enabled is None:
+        enabled = _gguf_q4k_selected_dual_dp4a_enabled() or _gguf_t16_selected_dp4a_enabled()
+    if not enabled:
         return None
     workspace = getattr(scratch, "moe_q8_1", None)
     if workspace is None:
@@ -7011,11 +7031,23 @@ def _launch_selected_raw_gguf_moe_linear(
     num_experts: int,
     in_features: int,
     out_features: int,
+    q8_1_workspace_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime,
 ) -> None:
     quant_key = weight.spec.quant_key
-    if quant_key == "gguf_q4_k":
+    allocation = "tiles" if quant_key.endswith("_t16_v1") else "raw"
+    if q8_1_workspace_ptr is not None and quant_key == "gguf_q5_k_t16_v1":
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            q8_1_workspace_ptr,
+            x_rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        fn = gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out
+    elif quant_key == "gguf_q4_k":
         fn = gguf_q4_k_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k" and out_features % 8 == 0:
         fn = gguf_q5_k_selected_pack8_gemv_bf16_bf16_out
@@ -7033,9 +7065,8 @@ def _launch_selected_raw_gguf_moe_linear(
         fn = gguf_q6_k_t16_selected_gemv_bf16_bf16_out
     else:
         raise ValueError(f"unsupported selected GGUF MoE quant {quant_key!r} for {weight.spec.source.name}")
-    allocation = "tiles" if quant_key.endswith("_t16_v1") else "raw"
     fn(
-        x_ptr,
+        q8_1_workspace_ptr if q8_1_workspace_ptr is not None and quant_key == "gguf_q5_k_t16_v1" else x_ptr,
         selected_ptr,
         weight.allocation(allocation).tensor.ptr,
         out_ptr,

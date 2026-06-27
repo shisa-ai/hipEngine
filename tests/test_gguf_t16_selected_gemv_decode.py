@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
@@ -445,6 +446,54 @@ def _run_direct_single(fn, x_dev, selected, tiles, out_features, out_dtype, libr
             free(buf)
 
 
+def _run_direct_single_q8_dp4a(
+    fn,
+    x_dev,
+    selected,
+    tiles,
+    out_features,
+    out_dtype,
+    t16_library,
+    q4_library,
+) -> np.ndarray:
+    rows = int(selected.size)
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    sel_buf = malloc(selected.nbytes)
+    copy_host_to_device(sel_buf, host_array_ptr(selected), selected.nbytes)
+    w_buf = malloc(tiles.nbytes)
+    copy_host_to_device(w_buf, host_array_ptr(tiles), tiles.nbytes)
+    xq_buf = malloc(x_dev.shape[0] * (in_features // 32) * 36)
+    out_arr = np.zeros((rows, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_buf.ptr,
+            xq_buf.ptr,
+            x_dev.shape[0],
+            in_features,
+            library=q4_library,
+        )
+        fn(
+            xq_buf.ptr,
+            sel_buf.ptr,
+            w_buf.ptr,
+            out_buf.ptr,
+            x_dev.shape[0],
+            rows,
+            tiles.shape[0],
+            in_features,
+            out_features,
+            library=t16_library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, sel_buf, w_buf, xq_buf, out_buf):
+            free(buf)
+
+
 def _run_raw_direct_dual(x_dev, selected, qa, qb, out_features, library) -> tuple[np.ndarray, np.ndarray]:
     rows = int(selected.size)
     in_features = x_dev.shape[1]
@@ -516,6 +565,7 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_t16_gemv_decode_compact_fp16_fp16_out",
             "selected_t16_gemv_decode_bf16_bf16_out",
             "selected_t16_gemv_decode_fp16_fp16_out",
+            "selected_t16_q8_1_dp4a_gemv_decode_bf16_bf16_out",
         ),
         "gguf_q6_k_t16_v1": (
             "selected_t16_gemv_decode_compact_bf16_bf16_out",
@@ -549,6 +599,8 @@ def test_p9_h3d_wrappers_validate_args() -> None:
         gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(0, 0, 0, 0, 0, 0, 3, 8, 1, 256, 16)
     with pytest.raises(ValueError, match="rows must be divisible by x_rows"):
         gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out(0, 0, 0, 0, 0, 3, 8, 1, 256, 16)
+    with pytest.raises(ValueError, match="rows must be divisible by x_rows"):
+        gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out(0, 0, 0, 0, 3, 8, 1, 256, 16)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -634,7 +686,7 @@ def test_p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits(t16_selected_li
     qb = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=37)
     ta = repack_gguf_q4_k_tile16(qa).tiles
     tb = repack_gguf_q4_k_tile16(qb).tiles
-    x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x = rng.normal(0.0, 0.1, size=(x_rows, in_features)).astype(np.float32)
     x_bf16 = _f32_to_bf16_u16(x)
 
     gate_bits, up_bits = _run_direct_dual(
@@ -799,6 +851,54 @@ def test_t16_q4_direct_dual_silu_q8_1_dp4a_matches_split_dp4a_rounding(t16_selec
     with np.errstate(over="ignore"):
         expected_bits = _f32_to_bf16_u16((gate / (1.0 + np.exp(-gate))) * up)
     np.testing.assert_array_equal(fused_bits, expected_bits)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "name,builder,repack,fn_float,fn_dp4a",
+    [
+        pytest.param(
+            "Q5_K",
+            make_q5_k_weight,
+            repack_gguf_q5_k_tile16,
+            gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+            id="Q5_K",
+        ),
+    ],
+)
+def test_t16_qk_direct_selected_down_q8_1_dp4a_matches_float_path_quality_gate(
+    name, builder, repack, fn_float, fn_dp4a, t16_selected_library
+) -> None:
+    x_rows, top_k = 4, 8
+    rows = x_rows * top_k
+    selected = (np.arange(rows, dtype=np.int64) * 7) % 5
+    in_features, out_features = 512, 2048
+    num_experts = 5
+    rng = np.random.default_rng(20260629 if name == "Q5_K" else 20260630)
+    qw = _stack_experts(builder, out_features, in_features, num_experts, seed=61 if name == "Q5_K" else 67)
+    tiles = repack(qw).tiles
+    x = rng.normal(0.0, 0.1, size=(x_rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    ref_bits = _run_direct_single(fn_float, x_bf16, selected, tiles, out_features, np.uint16, t16_selected_library)
+    dp4a_bits = _run_direct_single_q8_dp4a(
+        fn_dp4a,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        build_gguf_q4_k_gemv(load=True),
+    )
+
+    ref = _bf16_u16_to_f32(ref_bits)
+    dp4a = _bf16_u16_to_f32(dp4a_bits)
+    kl_mean, kl_max = _softmax_kl(ref, dp4a)
+    assert kl_mean <= 0.05
+    assert kl_max <= 0.10
+    assert _top1(ref, dp4a) >= 0.90
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

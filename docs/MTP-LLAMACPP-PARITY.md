@@ -106,36 +106,56 @@ avg, `43.9 ms` in the same two-cycle trace). Artifacts:
 and
 `benchmarks/results/2026-06-27-hipengine-mtp-b3-q4k-t16-dp4a-verifier-diagnostic.json`.
 
+**T16 selected-down Q5_K dp4a diagnostic (2026-06-27): kernel-positive, not a
+runtime win.** The next bucket was ported under a new default-off broad env gate:
+`HIPENGINE_GGUF_T16_SELECTED_DP4A=1`. The Q5T16 selected-down microbench at the
+c1-like down shape (`rows=8`, `E=256`, `in=512`, `out=2048`, gfx1151) measured
+current T16 `0.0335 ms` vs q8_1 quantize+dp4a `0.0306 ms` (**1.10x**),
+`KL_mean=0.00678`, `KL_max=0.03093`, but only `0.875` top-1 on that small
+synthetic fixture. `rocprofv3 --kernel-trace` confirms
+`qk_t16_selected_q8_1_dp4a_direct_gemv_kernel<unsigned short>` launches, and
+extracted device ISA contains `v_dot4_i32_iu8`. B3/C5 merge-sort smoke remained
+exact (`15/15`) but regressed to `47.62 tok/s` (warm `48.44`), so the Q5 path is
+kept diagnostic/default-off. Q6_K was not routed: a synthetic probe had
+acceptable KL but only `0.75` top-1 vs the T16 float path. Artifacts:
+`benchmarks/results/2026-06-27-hipengine-gguf-q5-k-t16-selected-down-dp4a-poc.json`
+and
+`benchmarks/results/2026-06-27-hipengine-mtp-b3-q5-t16-dp4a-verifier-diagnostic.json`.
+
 ### Next steps, ordered by impact
 
-1. **Port q8_1+sudot4 to selected-down Q5_K T16.** Q4_K T16 split gate/up now
-   launches and is exact enough, but it is only a small row-bulk bucket in B3.
-   The next active production bucket is
-   `qk_t16_selected_direct_gemv_kernel<unsigned short,5>` (selected down),
-   which still does float dequant-then-FMA and accounts for ~44 ms in the
-   two-cycle trace. Adapt the q8_1 dot4 recipe to Q5_T16 high-bit + min
-   compensation and measure before touching Q6.
-2. **Then extend to remaining production GGUF GEMVs.** After Q5_K/Q6_K selected
-   down are measured, carry q8_1+sudot4 into dense/raw
-   Q4_K/Q5_K/Q6_K/Q8_0 GEMVs. The existing small-B rowtile dense kernels are
-   complementary and should be combined with dp4a where rows 2..8 share an
-   activation tile.
-3. **MTP draft resident path.** Keep all MTP intermediates (embeddings,
+1. **Do not promote the current T16 dp4a diagnostics.** Raw Q4_K q8_1+sudot4 is
+   a strong isolated win, but production B3 uses T16. T16 Q4 split is only
+   `1.04x` in its small row-bulk bucket, and T16 Q5 selected-down is only
+   `1.10x` in isolation while regressing B3. Keep
+   `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` and
+   `HIPENGINE_GGUF_T16_SELECTED_DP4A` as diagnostic gates only.
+2. **Audit the real selected-down distribution before Q6.** Q6_T16 selected-down
+   dp4a should not be routed until a fixture clears top-1. If continuing dp4a,
+   first inspect real-weight Q5/Q6 intermediate distributions and compare
+   GGML's exact q8_1/x4 vector-dot layout against our T16 layout; the current
+   straightforward T16 port is not enough to move B3.
+3. **Then extend only proven production GGUF GEMVs.** Carry q8_1+sudot4 into
+   dense/raw Q4_K/Q5_K/Q6_K/Q8_0 GEMVs only when the local shape clears the
+   quality gate and improves the same B3/full-suite protocol. The existing
+   small-B rowtile dense kernels are complementary and should be combined with
+   dp4a where rows 2..8 share an activation tile.
+4. **MTP draft resident path.** Keep all MTP intermediates (embeddings,
    projections, KV, hidden seeds) on device across draft depths; only D2H the
    final top-1 token ID. Chain the B draft steps in one call instead of B separate
    `run_draft()` calls with full alloc/copy per depth. Validate the 32k draft
    vocab cap on the full suite before promoting (saved ~5 ms/cycle here but is
    prompt-sensitive).
-4. **Partial-accept rollback is catastrophic (~303 ms for a B5 partial cycle).**
+5. **Partial-accept rollback is catastrophic (~303 ms for a B5 partial cycle).**
    Track which linear-attention buffers were modified and copy-on-write only
    those, or replay only the accepted prefix instead of full target decodes. Or
    just keep B3 (100% accept on this prompt) and skip B5 until rollback is cheap.
-5. **Full-suite validation before any retained speed claim.** Everything above is
+6. **Full-suite validation before any retained speed claim.** Everything above is
    single-prompt merge-sort diagnostics. Need the full
    `mtpbench-code-general-ja.jsonl` category suite, category heldouts, a true
    no-MTP AR baseline from the same protocol, and the draft vocab cap validated
    for non-regressive acceptance across prompts.
-6. **Longer-term: match llama.cpp's architecture.** Both target verification and
+7. **Longer-term: match llama.cpp's architecture.** Both target verification and
    MTP drafting run through one optimized GGML compute graph in a single process
    with shared weight memory. C-level dispatch or HIP graph capture remains a
    later layer, after the hot GEMV kernels stop wasting instruction issue on
@@ -803,17 +823,19 @@ Two cheap MoE ideas are now ruled out:
 - `expert_sidecar`/pack8 gate+up for the verifier is ~15x slower (`103.4 ms`
   raw vs `1588.4 ms` sidecar) because per-layer H2D movement dominates.
 
-**Current #1 verifier task:** selected-down Q5_K T16 q8_1+sudot4. The raw
+**Current #1 verifier task:** selected-MoE remains the verifier bottleneck, but
+the straightforward T16 dp4a ports are not retainable defaults. The raw
 selected-dual Q4_K POC is positive (`0.946 ms -> 0.357 ms` at the qwen35moe
 verifier shape), but production B3 uses T16 decode-repack. The T16 Q4_K split
-gate/up port now launches in production under
-`HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1` and cuts the row-bulk split kernel in
-the short trace (`~172 us -> ~142 us`), but that bucket is only `80` calls in a
-two-cycle B3 profile and the B3 smoke stays flat. The c1 fused-SiLU T16 dp4a
-variant is callable but not routed because it regressed the c1 profile. The next
-material production bucket is `qk_t16_selected_direct_gemv_kernel<unsigned
-short,5>`: `851` calls, `~51.6 us` avg, `~43.9 ms` total in the split-only
-two-cycle trace.
+gate/up port launches under `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1` and cuts
+the row-bulk split kernel in the short trace (`~172 us -> ~142 us`), but B3
+stays flat. The T16 Q5_K selected-down port launches under
+`HIPENGINE_GGUF_T16_SELECTED_DP4A=1` and is `1.10x` faster in isolation, but B3
+regresses (`47.62 tok/s`, warm `48.44`) and the c1 synthetic top-1 is marginal
+(`0.875`). Next work should either adapt the layout closer to GGML's q8_1/x4
+vector-dot path or find a selected-down reduction/layout change that improves
+B3 without top-1 drift; do not keep porting Q6/dense dp4a as a default path
+without that gate.
 
 Captured-graph/C-loop work is deprioritized to a later launch-overhead layer
 after GEMV instruction efficiency improves. Cheaper partial-accept rollback
@@ -837,12 +859,13 @@ B3 `9/9` (and `15/15` over five cycles) on the merge-sort smoke. Correctness
 parity is therefore solved.
 
 The remaining gap is performance: ~48.8 vs ~89.6 tok/s (~1.8-1.9x) on gfx1151.
-The latest evidence says the q8_1+sudot4 recipe is valid but layout-sensitive:
-raw Q4_K selected-dual is `~2.65x` faster in isolation, while T16 Q4_K split
-gate/up is only `~1.04x` including q8 quantization and is too small to move B3.
-Dense rowtile is already landed and retained as a kernel-level win, but it does
-not move end-to-end because selected MoE dominates. Next: port q8_1+sudot4 into
-the active T16 selected-down Q5_K/Q6_K kernels, then extend to dense/raw GGUF
-GEMVs. Graph/C-loop work, resident MTP draft consolidation, and rollback
-improvements remain on the roadmap after the GEMV instruction path is de-risked.
-These remain single-prompt diagnostics, not benchmark rows.
+The latest evidence says the q8_1+sudot4 recipe is valid but highly
+layout/shape-sensitive: raw Q4_K selected-dual is `~2.65x` faster in isolation,
+T16 Q4_K split gate/up is only `~1.04x`, and T16 Q5_K selected-down is only
+`~1.10x` while regressing B3. Dense rowtile is already landed and retained as a
+kernel-level win, but it does not move end-to-end because selected MoE
+dominates. Next: either move closer to GGML's q8_1/x4 layout or find a
+selected-down reduction/layout change that wins B3 without top-1 drift. Graph/C
+loop work, resident MTP draft consolidation, and rollback improvements remain
+on the roadmap after the GEMV instruction path is de-risked. These remain
+single-prompt diagnostics, not benchmark rows.

@@ -125722,3 +125722,51 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - T16 Q4_K row-bulk split dp4a is correct and emits the intended instruction, but it is not a retained/default performance win. Keep it behind the existing diagnostic env flag for comparison.
 - Do not route the T16 fused-SiLU dp4a variant in production; the c1 profile regressed and the fused intermediate is more sensitive to q8 approximation.
 - Next broad-port target is `qk_t16_selected_direct_gemv_kernel<unsigned short,5>` (selected-down Q5_K T16), then Q6_K if Q5 is positive. This is now the largest remaining selected-MoE GEMV bucket in the B3 trace.
+
+
+## 2026-06-27 — T16 Q5_K selected-down dp4a diagnostic: kernel-positive, B3-regressive
+
+### Scope
+- Added a direct selected-down Q5T16 q8_1+sudot4 diagnostic kernel:
+  `qk_t16_selected_q8_1_dp4a_direct_gemv_kernel<unsigned short>`.
+- Added Python wrapper/registry variant:
+  `gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out(...)` /
+  `selected_t16_q8_1_dp4a_gemv_decode_bf16_bf16_out` for `gguf_q5_k_t16_v1`.
+- Added default-off runtime routing under a new broad selected-MoE diagnostic env:
+  `HIPENGINE_GGUF_T16_SELECTED_DP4A=1`.
+- Kept the older `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1` narrow: it still gates the raw/T16 Q4 selected-dual diagnostic, while Q5 selected-down only routes under the new broad env.
+- Added microbench: `scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py`.
+- Did not land Q6_K dp4a routing. A synthetic Q6 selected-down probe had acceptable KL but only `0.75` top-1 vs the T16 float path, so Q6 stays on the existing float-dequant kernel until it has a passing quality gate.
+
+### Validation
+- No-GPU syntax:
+  `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py`
+  -> passed.
+- Routing:
+  `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q`
+  -> `16 passed`.
+- HIP correctness:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q`
+  -> `88 passed`.
+- New Q5 dp4a test gates selected-down against the existing T16 float path on fixture inputs (`KL_mean<=0.05`, `KL_max<=0.10`, top-1 `>=90%`).
+- Cached `rocprofv3 --kernel-trace` microbench confirmed `qk_t16_selected_q8_1_dp4a_direct_gemv_kernel<unsigned short>` launches; extracted AMDGPU device image contains `v_dot4_i32_iu8` in that kernel.
+
+### Microbench result
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py --iters 120 --warmup 30 --json benchmarks/results/2026-06-27-hipengine-gguf-q5-k-t16-selected-down-dp4a-poc.json`
+- Shape: T16 selected-down qwen35moe c1-like (`rows=8`, `experts=256`, `in_features=512`, `out_features=2048`, input scale `0.1`) on gfx1151.
+- Result:
+  - current T16 selected-down: `0.03349 ms`
+  - q8_1 quantize only: `0.00234 ms`
+  - Q5T16 dp4a dot prequantized: `0.02760 ms`
+  - q8_1 quantize + Q5T16 dp4a: `0.03056 ms`
+  - speedup down / quant+dp4a: `1.10x`
+  - correctness vs T16 float: `KL_mean=0.00678`, `KL_max=0.03093`, top-1 `0.875` on the c1-shaped microbench artifact.
+- Artifact: `benchmarks/results/2026-06-27-hipengine-gguf-q5-k-t16-selected-down-dp4a-poc.json`.
+
+### B3 diagnostic / decision
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A=1 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-q5-t16-dp4a-verifier-diagnostic.json`
+  -> exact `15/15`, but slower: `47.62 tok/s`, warm `48.44 tok/s`, avg cycle `84.00 ms`.
+- Decision: keep Q5T16 dp4a default-off behind `HIPENGINE_GGUF_T16_SELECTED_DP4A`. The isolated kernel is faster, but synthetic c1 top-1 is marginal and the same B3 smoke regresses vs the Q4 split-only diagnostic (`49.31 tok/s`, warm `50.60`) and the previous best (`~48.8 tok/s`) within this single-prompt protocol.
+- Next: do not automatically port Q6 as a retained path. If continuing dp4a, first inspect real-weight Q5/Q6 selected-down distributions and the B3 trace under `HIPENGINE_GGUF_T16_SELECTED_DP4A=1`; otherwise focus on a layout-level GGML-style q8_1/x4 vector-dot port or non-dp4a selected-down reductions that improve B3 without top-1 drift.
