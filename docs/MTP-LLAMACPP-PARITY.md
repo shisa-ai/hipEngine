@@ -1,14 +1,15 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-Date: 2026-06-26 (correctness-solved update; original trace 2026-06-25)  
-Branch: `mtp-gguf`  
-Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers are single-prompt diagnostics, not retained benchmark rows.  
-hipEngine commit used for source links: `98df03ddd00ae682c07e302721343040373e1b55`  
-llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
+- Date: 2026-06-27 (performance-path update; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Branch: `mtp-gguf`
+- Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers are single-prompt diagnostics, not retained benchmark rows.
+- hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
+- llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
 
-## Executive summary (2026-06-26)
+## Executive summary (2026-06-27)
 
-**Correctness is solved. The remaining gap is pure performance — roughly 1.9x.**
+**Correctness is solved. The remaining gap is GGUF quantized GEMV performance,
+roughly 1.9x on the single-prompt gfx1151 diagnostic.**
 
 | Milestone | Status |
 | --- | --- |
@@ -35,11 +36,12 @@ prompt):
 
 | Configuration | tok/s | vs AR | verify ms/cycle | draft ms/cycle | accept |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Block verify GEMV prefill + 32k draft cap | 48.1 | 0.80x | ~61–66 | ~17 | 15/15 |
+| Block verify GEMV prefill + dense rowtile + 32k draft cap | 48.8 | 0.80x | ~61 | ~17 | 15/15 |
+| Block verify GEMV prefill + 32k draft cap, pre-rowtile | 48.1 | 0.80x | ~61–66 | ~17 | 15/15 |
 | One-step graph + 32k draft cap | 44.5 | 0.81x | ~72 | ~17 | 15/15 |
 | One-step graph, full vocab | 42.3 | 0.77x | ~73 | ~22 | 15/15 |
 
-Gap to llama.cpp: **~48 vs ~90 tok/s ≈ 1.9x slower**, and it is almost entirely
+Gap to llama.cpp: **~48.8 vs ~89.6 tok/s ≈ 1.8-1.9x slower**, and it is almost entirely
 target verification overhead, not acceptance and not draft quality.
 
 ### Where the time goes (per B3 cycle)
@@ -50,39 +52,50 @@ target verification overhead, not acceptance and not draft quality.
 | MTP draft (3 tokens) | ~17 ms (32k cap) / ~22 ms (full vocab) | included in `dur(g)` | ~2x |
 | Commit / bookkeeping | ~1.6 ms | negligible | minor |
 
-A synchronized per-layer probe over the first B3 verifier block shows the cost is
-in the linear-attention layers: **30 linear-attention layers ≈ 82 ms** vs **10
-full-attention layers ≈ 23.5 ms**; snapshot/restore is only ~9 ms / ~0.8 ms.
-llama.cpp runs the equivalent layers inside one fused GGML compute graph with
-batched ops; hipEngine dispatches each kernel individually from Python.
+A synchronized per-layer probe over the first B3 verifier block showed most time
+inside the 30 linear-attention layers, but a later sync-free rocprof trace
+narrowed the actual hot bucket: selected-expert MoE GEMV is ~54% of verifier GPU
+time (`gguf_q4_k_selected_dual_prefill_out_kernel` gate+up ~36% plus
+`gguf_k_selected_pack8_prefill_out_kernel` down ~18%). Dense rowtile kernels are
+now default-on and are ~3x faster on their microbench share, but end-to-end is
+flat because dense projections are only ~11-17% of the verifier after clean
+profiling.
 
 ### Next steps, ordered by impact
 
-1. **Target verifier (the #1 blocker, 7–8x).** Make the 4-row target continuation
-   run through a captured HIP graph or C-level dispatch loop instead of ~40
-   per-layer Python launches. Priority is a dedicated small-B linear-attention
-   layer path — that is where ~82 of the ~106 verifier ms live. Not more
-   one-step-graph tuning and not selected/WMMA prefill for tiny verifier blocks.
-2. **MTP draft resident path.** Keep all MTP intermediates (embeddings,
+1. **Bounded dp4a proof of concept for selected MoE gate+up.** The next
+   implementation step is not graph capture and not MoE row amortization. It is
+   a q8_1 activation-quantized, `v_dot4_i32_iu8`/sudot4 raw GGUF Q4_K selected
+   dual GEMV POC against `gguf_q4_k_selected_dual_prefill_out_kernel`, the
+   ~36% verifier bucket. Correctness must compare against the existing kernel
+   and CPU GGUF Q4_K oracle first; performance must include kernel trace proof
+   that dot4 instructions are emitted and a B3 verifier smoke before any
+   default-path decision.
+2. **Extend only if the POC wins.** If selected-dual Q4_K dp4a is materially
+   faster and correct, port the same q8_1+sudot4 recipe to selected down Q5_K
+   and then dense Q4_K/Q5_K/Q6_K/Q8_0 GEMVs. The existing small-B rowtile dense
+   kernels are complementary and should be combined with dp4a where rows 2..8
+   share an activation tile.
+3. **MTP draft resident path.** Keep all MTP intermediates (embeddings,
    projections, KV, hidden seeds) on device across draft depths; only D2H the
    final top-1 token ID. Chain the B draft steps in one call instead of B separate
    `run_draft()` calls with full alloc/copy per depth. Validate the 32k draft
    vocab cap on the full suite before promoting (saved ~5 ms/cycle here but is
    prompt-sensitive).
-3. **Partial-accept rollback is catastrophic (~303 ms for a B5 partial cycle).**
+4. **Partial-accept rollback is catastrophic (~303 ms for a B5 partial cycle).**
    Track which linear-attention buffers were modified and copy-on-write only
    those, or replay only the accepted prefix instead of full target decodes. Or
    just keep B3 (100% accept on this prompt) and skip B5 until rollback is cheap.
-4. **Full-suite validation before any retained speed claim.** Everything above is
+5. **Full-suite validation before any retained speed claim.** Everything above is
    single-prompt merge-sort diagnostics. Need the full
    `mtpbench-code-general-ja.jsonl` category suite, category heldouts, a true
    no-MTP AR baseline from the same protocol, and the draft vocab cap validated
    for non-regressive acceptance across prompts.
-5. **Longer-term: match llama.cpp's architecture.** Both target verification and
+6. **Longer-term: match llama.cpp's architecture.** Both target verification and
    MTP drafting run through one optimized GGML compute graph in a single process
-   with shared weight memory; hipEngine dispatches each kernel individually from
-   Python with generic GEMV/prefill kernels not tuned for B=4. Closing this means
-   a C-level dispatch loop or HIP graph capture for the multi-layer forward pass.
+   with shared weight memory. C-level dispatch or HIP graph capture remains a
+   later layer, after the hot GEMV kernels stop wasting instruction issue on
+   float dequant-then-FMA.
 
 The historical trace evidence below is retained as the record of how correctness
 parity was reached.
@@ -114,6 +127,29 @@ Important details:
 This graph shape matches our Python/GPU wrapper at a high level.  The gap is in
 **state lifecycle and numerical/runtime parity**, not the obvious concat order or
 which head/embedding tensors are chosen.
+
+### 1b. GGUF GEMV inner loop
+
+The current performance-path delta is below the graph shape: llama.cpp/GGML
+quantizes activations to q8_1 and runs quantized weight x q8_1 dot products,
+while hipEngine's raw GGUF kernels dequantize weights to float and then FMA.
+Local source evidence in `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src`:
+
+- `ggml-common.h` defines `block_q8_1` as 32 signed int8 activation quants plus
+  `d` and `s` fp16 metadata.
+- `ggml-cuda/mmvq.cu` dispatches `GGML_TYPE_Q4_K`, `Q5_K`, `Q6_K`, and `Q8_0`
+  through `vec_dot_*_q8_1` functions and allocates/quantizes `src1_q8_1` before
+  `mul_mat_vec_q_switch_type(...)`.
+- `ggml-cuda/vecdotq.cuh` uses repeated `ggml_cuda_dp4a(...)` calls in those
+  vector-dot functions.
+- `ggml-cuda/common.cuh` maps ROCm `ggml_cuda_dp4a(...)` to
+  `__builtin_amdgcn_sudot4(...)` on AMD targets.
+
+hipEngine's corresponding hot raw kernels are in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip` and
+`gguf_k_gemv.hip`; they currently unpack scales/mins/nibbles and accumulate in
+float. This is why the bounded POC targets q8_1 activation quantization plus
+sudot4 inside the raw selected Q4_K dual gate+up kernel before any broad port.
 
 ### 2. MTP state maintained by llama.cpp
 
@@ -686,20 +722,54 @@ dispatch loop" hypothesis for the #1 verifier fix:
   Cross-check: `launch_gguf_linear` ≈ 89 µs/call vs ~20 µs B=4 weight-bandwidth
   floor ⇒ **~4× over floor**, i.e. the Q4_K weight is reloaded once per row.
 
-Root cause: at rows>1 with WMMA off, `launch_gguf_linear` uses the decode-shaped
+Initial root cause: at rows>1 with WMMA off, `launch_gguf_linear` uses the decode-shaped
 `dense_gemv:prefill_out` = `dense_gemv_out_kernel`
 (`hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip:122`), grid `(out_col, row)`
 — one block per (column,row), so the column is re-dequantized per row.  This is
 exactly llama.cpp's advantage: GGML batches the 4 rows into one weight-load-
 amortized matmul (~8.9 ms total ≈ 2.2 ms/row).
 
-**Revised #1 verifier task:** a small-B (B≈2–8) weight-load-amortized Q4_K matmul
-that dequantizes each weight tile once and applies it to all B row-vectors
-(registers/LDS), avoiding per-row reload (GEMV) and 16-row WMMA tile waste; apply
-the same to the MoE selected-expert GEMV.  Captured-graph/C-loop is deprioritized
-to a later launch-overhead layer once kernels are efficient.  A dedicated small-B
-linear-attention/rollback kernel and cheaper partial-accept rollback remain on the
-list but are smaller shares (GDN ~6%, rollback only on partial-accept cycles).
+**2026-06-27 update: dense rowtile landed, but the bottleneck moved.**
+The small-B rowtile idea is implemented for raw Q4_K and raw K-family
+Q8_0/Q5_K/Q6_K dense GEMVs, bit-exact against the per-row kernels, and default-on
+for rows 2..8 when WMMA is off. Microbench speedups at B=4 are ~3x on dense
+projection shapes, and a B3 verifier smoke with the 32k draft cap stayed exact at
+`48.77 tok/s` (`15/15`, verifier ~61 ms/cycle), flat vs the pre-rowtile `48.1`
+within run noise.
+
+A clean sync-free rocprof pass corrected the family attribution: selected-expert
+MoE GEMV is the real top bucket, not dense projection row reload. The hot verifier
+GPU-time shares are:
+
+| Kernel family | Share |
+| --- | ---: |
+| `gguf_q4_k_selected_dual_prefill_out_kernel` (MoE gate+up) | ~36% |
+| `gguf_k_selected_pack8_prefill_out_kernel` (MoE down, Q5_K) | ~18% |
+| residual per-row dense `gguf_k_prefill_out_kernel` | ~17% |
+| dense rowtile `gguf_k_prefill_out_rowtile_kernel` | ~11% |
+| GDN recurrent/rmsnorm-gate | ~8% |
+| Q6_K lm-head pack8 | ~6% |
+
+Two cheap MoE ideas are now ruled out:
+
+- Row amortization/group-by-expert does not apply at B=4. A microbench with
+  qwen35moe shapes showed 32 same-expert rows at `0.567 ms` vs 32 distinct
+  experts at `0.882 ms`; B=4/top_k=8 selects ~30 distinct experts, so there is
+  essentially no expert overlap to reuse.
+- `expert_sidecar`/pack8 gate+up for the verifier is ~15x slower (`103.4 ms`
+  raw vs `1588.4 ms` sidecar) because per-layer H2D movement dominates.
+
+**Current #1 verifier task:** a bounded q8_1+sudot4 dp4a proof of concept for
+the raw selected Q4_K dual gate+up kernel, then extend only if it wins. This is
+the path llama.cpp already proves on gfx1151/GGUF: quantize activations once to
+q8_1 and use `v_dot4_i32_iu8` (`__builtin_amdgcn_sudot4`) vector-dot kernels for
+Q4_K/Q5_K/Q6_K/Q8_0. hipEngine currently has no q8_1/dp4a GGUF GEMV path and
+still spends instruction issue on float dequant-then-FMA.
+
+Captured-graph/C-loop work is deprioritized to a later launch-overhead layer
+after GEMV instruction efficiency improves. Cheaper partial-accept rollback
+remains important for B5, but it does not address the full-accept B3 verifier
+hot path.
 
 Success criterion: same-protocol full-suite row improves all three: raw weighted
 decode tok/s, accepted/output, and strict draft acceptance.
@@ -714,12 +784,15 @@ acceptance.
 
 hipEngine now matches llama.cpp's documented reasoning-off target AR trace and,
 with the llama.cpp-style context replay + device MTP KV lifecycle, reaches strict
-B3 `9/9` (and `15/15` over five cycles) on the merge-sort smoke.  Correctness
-parity is therefore solved.  The remaining gap is purely performance: ~48 vs
-~90 tok/s (~1.9x) on gfx1151, and ~7–8x of that lives in target verification of
-the 4-row continuation block — specifically the 30 Python-dispatched
-linear-attention layers (~82 ms) that llama.cpp runs inside one fused GGML graph.
-The highest-ROI next step is a captured-graph / C-level small-B target
-continuation path, then a resident MTP draft path, then full-suite validation
-against a true no-MTP AR baseline before any retained speed claim.  These remain
-single-prompt diagnostics, not benchmark rows.
+B3 `9/9` (and `15/15` over five cycles) on the merge-sort smoke. Correctness
+parity is therefore solved.
+
+The remaining gap is performance: ~48.8 vs ~89.6 tok/s (~1.8-1.9x) on gfx1151.
+The latest evidence says the highest-ROI next step is a bounded q8_1+sudot4 dp4a
+POC for the raw selected-MoE Q4_K dual gate+up kernel, because that single family
+is ~36% of verifier GPU time and llama.cpp already proves the q8_1/vector-dot
+recipe on GGUF. Dense rowtile is already landed and retained as a kernel-level
+win, but it does not move end-to-end because selected MoE dominates. Graph/C-loop
+work, resident MTP draft consolidation, and rollback improvements remain on the
+roadmap after the GEMV instruction path is de-risked. These remain single-prompt
+diagnostics, not benchmark rows.

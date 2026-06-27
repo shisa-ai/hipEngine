@@ -125536,3 +125536,27 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Decision
 - This is a CONFIRMED path (GGML running it on gfx1151 + hipEngine roofline naming it), but a substantial systemic kernel effort: q8_1 activation quantization + sudot4 dp4a Q4_K/Q5_K/Q6_K/Q8_0 vec-dot kernels, for dense AND MoE GEMVs. Captured as task #7. Highest-impact slice is the selected-MoE dual gate+up (36% alone). The row-tile dense work already landed is complementary (and could be combined with dp4a).
 - Cheap MoE levers are exhausted (expert_sidecar/pack8 = 15x slower; row-grouping ~nothing at B=4). The dp4a port is the only confirmed lever; whether to start it now or punt-and-re-review is a lead decision given its size.
+
+
+## 2026-06-27 — MTP llama.cpp parity tracker refreshed after harness crash
+
+### Scope
+- Docs-only recovery pass after the harness crashed before all project-tracking docs were refreshed. Per lead direction, `docs/MTP-LLAMACPP-PARITY.md` is now the main tracking file for the llama.cpp perf-parity lane; `docs/REFACTOR.md` remains only a cleanup/debt ledger.
+
+### Updates
+- Updated `docs/MTP-LLAMACPP-PARITY.md` top-level summary and Phase 4 section with the current state:
+  - correctness parity solved;
+  - dense rowtile landed and is default-on, but B3 E2E is flat (`48.77 tok/s`, `15/15`) because dense projections are only ~11-17% after clean profiling;
+  - sync-free rocprof identifies selected-expert MoE GEMV as the real top verifier bucket (`~36%` Q4_K dual gate+up + `~18%` Q5_K down);
+  - MoE row amortization/group-by-expert is ruled out at B=4 because selected experts are nearly all distinct;
+  - `expert_sidecar`/pack8 gate+up is ruled out for the verifier (`103.4 ms` raw vs `1588.4 ms` sidecar);
+  - the current #1 task is a bounded q8_1+sudot4 dp4a POC for raw selected Q4_K dual gate+up, not graph/C-loop work and not MoE amortization.
+- Added local llama.cpp source evidence in the tracker:
+  - `ggml-common.h` `block_q8_1`,
+  - `ggml-cuda/mmvq.cu` q8_1 activation quantization and Q4_K/Q5_K/Q6_K/Q8_0 `vec_dot_*_q8_1` dispatch,
+  - `ggml-cuda/vecdotq.cuh` dp4a vector dots,
+  - `ggml-cuda/common.cuh` ROCm `__builtin_amdgcn_sudot4` mapping.
+- Corrected one stale `docs/REFACTOR.md` cleanup trigger so the rowtile opt-out no longer waits on the now-ruled-out MoE amortization path. No strategy was moved into `REFACTOR`.
+
+### Validation
+- Docs-only; re-read the edited sections and checked the tracker for stale `captured graph first` / `MoE amortization next` guidance. No GPU run needed.
