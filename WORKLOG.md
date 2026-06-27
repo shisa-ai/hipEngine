@@ -126262,3 +126262,21 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Conclusion (#8)
 - The model's signature (correct for <=2 launches, GDN linear-state corruption from the 3rd composite-graph launch, KV/full-attn always correct, individual kernels relaunch-safe in isolation) resists a faithful minimal reproducer precisely because it needs the full composite: ~30 separate in-place conv+recurrent state buffers updated once per step inside a large captured graph, relaunched >=3x. That strongly indicates a ROCm/HIP hipGraph relaunch hazard with large composites containing many independent in-place state buffers, not a single-kernel or test-constructible bug.
 - Practical resolution: single-launch capture (#1, shipped) is the correct production/bench path. A definitive deep fix needs either (a) a faithful multi-buffer in-place-state minimal reproducer to file a ROCm hipGraph bug, or (b) restructuring the GDN decode to avoid persistent in-place state across the replayed region (large kernel change). Both are larger follow-ups; the xfail regression tracks it. Not resolved this session beyond the shipped workaround.
+
+
+## 2026-06-28 — RESOLVED: verifier is ~50/50 host-dispatch-bound (875 launches); graph/C-dispatch is the lever
+
+### The decisive measurements (warm, gfx1151, verify_target_block rows=4)
+1. Warm rocprof composition (scratchpad verify_warm_rocprof.py): MoE selected dual 36% + down 18% = 54% GPU, dense per-row 16% + my rowtile 12% = 28%, GDN 8%, Q6_K lm-head 7%. Same as the cold/standalone profile.
+2. dp4a A/B rocprof (vwarm vs vwarm_dp4a): dp4a genuinely cuts GPU kernel time — MoE dual `1256.6 -> 400.0 ms` (3.14x), down `637.6 -> 276.7 ms` (2.3x), total kernel sum `3481 -> 2254 ms` (-35%). The 2.73x per-piece win IS real and DOES fire in the bench.
+3. Host-vs-GPU split (scratchpad host_vs_gpu.py): one warm verify issues **875 kernel launches**; the pure HOST dispatch time (sum of Python launch-wrapper wall, no GPU wait) is **~54 ms**, ~52% of the wall. The GPU kernel sum (rocprof, de-inflated) is the other ~half.
+
+### Synthesis — answers "why llama.cpp gains and we don't (E2E)"
+- The rows=4 verifier is roughly BALANCED between ~54 ms of HOST kernel-launch dispatch (875 launches, ~22/layer x 40 layers, ~61 us each) and the GPU kernel time. It is NOT purely GPU-bound. My 2026-06-26 "work-bound, not launch-bound" conclusion was wrong: the rows-scaling test's LINEAR term was the GPU component growing with rows, but the ~constant ~54 ms host-dispatch floor at rows=4 was underweighted.
+- This is exactly why dp4a does not move E2E: it cuts GPU time (-35%) but ADDS launches (per-layer q8_1 activation quantize), raising the host-dispatch floor, so wall stays flat/worse. dp4a's GPU savings can only materialize once the host-launch floor is removed.
+- llama.cpp runs the whole 4-token verifier as ONE fused GGML graph compute (~9 ms). hipEngine issues 875 host launches per verify. The PRIMARY lever to close the gap is collapsing those launches: HIP graph capture or a C-level multi-layer dispatch loop for the verifier forward. This is the ORIGINAL docs/MTP-LLAMACPP-PARITY.md plan (deprioritized 2026-06-26 in error).
+
+### Path forward (re-prioritized)
+1. Collapse verifier host dispatch via graph capture or a C-level dispatch loop (the ~54 ms host floor). This is gated by #8 (HIP graph relaunch corrupts GDN state on the 3rd launch) for the graph route, OR a C-dispatch loop that sidesteps graphs entirely.
+2. THEN promote dp4a (its -35% GPU then translates) + the dense rowtile.
+3. Together these compound toward llama.cpp's ~9 ms verifier. Neither alone suffices.
