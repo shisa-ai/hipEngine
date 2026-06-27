@@ -158,9 +158,17 @@ def run_prompt_true_ar(
         graph = None
         capture_start = time.perf_counter()
         try:
+            # The HIP decode graph corrupts the in-place GDN linear state on the
+            # 3rd+ graph_launch, so any steps_per_replay that yields >=3 launches
+            # (e.g. the legacy default of 1) produces a token stream that diverges
+            # from exact eager. Capture the whole window as a SINGLE launch
+            # (steps_per_replay == decode_tokens), which is bit-exact. See WORKLOG
+            # 2026-06-28. The --graph-steps-per-replay arg is retained only for
+            # provenance metadata. Remove this override once the relaunch hazard
+            # is fixed.
             graph = session.capture_decode_graph(
                 position=session.position,
-                steps_per_replay=int(graph_steps_per_replay),
+                steps_per_replay=int(decode_tokens),
                 max_replay_steps=int(decode_tokens),
                 record_steps=int(decode_tokens),
             )
