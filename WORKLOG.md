@@ -125560,3 +125560,57 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Validation
 - Docs-only; re-read the edited sections and checked the tracker for stale `captured graph first` / `MoE amortization next` guidance. No GPU run needed.
+
+
+## 2026-06-27 — Selected Q4_K dual q8_1+sudot4 dp4a POC is GREEN
+
+### Scope
+- Implemented the bounded llama.cpp-parity POC for the raw selected-MoE Q4_K dual gate/up verifier bucket. This is diagnostic-only, not a runtime default.
+- Added:
+  - `gguf_quantize_q8_1_kernel<unsigned short>`: BF16 activation rows -> GGML-compatible q8_1 blocks (`d`, `sum`, 32 int8 quants).
+  - `gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel<unsigned short>`: selected-dual Q4_K gate/up dot using `__builtin_amdgcn_sudot4` / `v_dot4_i32_iu8`, with Q4_K min compensation from the q8 integer sum.
+  - Python wrappers:
+    - `gguf_q4_k_quantize_bf16_q8_1(...)`
+    - `gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(...)` (prequantized)
+    - `gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out(...)` (same ABI as selected-dual, owns temporary q8_1 buffer; diagnostic only because it synchronizes before free)
+  - Test gate: `tests/test_gguf_q4_k_selected_dual_dp4a_gemv.py`.
+  - Microbench: `scripts/gguf_q4_k_selected_dual_dp4a_microbench.py`.
+
+### Lineage / environment
+- ROCm live on gfx1151 (`hip OK`; `rocminfo` shows Radeon 8060S / `gfx1151`).
+- Required lineage command was attempted before coding:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  failed because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing:
+  `fatal: cannot change to '/home/lhl/amd-gpu-tuning/nano-vllm-amd': No such file or directory`.
+  Proceeded from in-tree code plus local llama.cpp source evidence already captured in `docs/MTP-LLAMACPP-PARITY.md`.
+
+### Validation
+- Correctness/regression:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_q4_k_selected_dual_dp4a_gemv.py tests/test_gguf_q4_k_gemv.py tests/test_gguf_q4_k_rowtile_gemv.py -q`
+  -> `57 passed`.
+- The new POC test compares GPU dp4a against a CPU q8_1+Q4_K oracle and against the existing float-dequant selected-dual kernel; fixture gate clears `KL<=0.05` and top-1 `>=90%`.
+- AMDGPU disassembly of the cached `.so` after extracting `.hip_fatbin` confirms `v_dot4_i32_iu8` inside `gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel`.
+- `rocprofv3 --kernel-trace` cached smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-gguf-q4k-dp4a-rocprof -o dp4a-poc -- python3 scripts/gguf_q4_k_selected_dual_dp4a_microbench.py --iters 2 --warmup 1 --require-cached-build --json /tmp/hipengine-gguf-q4k-dp4a-rocprof/profile-bench.json`
+  produced `/tmp/hipengine-gguf-q4k-dp4a-rocprof/dp4a-poc_kernel_trace.csv`.
+  Trace summary:
+  - `gguf_quantize_q8_1_kernel<unsigned short>`: 8 calls, avg `2847 ns`.
+  - existing `gguf_q4_k_selected_dual_prefill_out_kernel<unsigned short, unsigned short>`: 4 calls, avg `1,007,197 ns`.
+  - new `gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel<unsigned short>`: 7 calls, avg `338,098 ns`.
+
+### Microbench result
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_q4_k_selected_dual_dp4a_microbench.py --iters 80 --warmup 20 --json benchmarks/results/2026-06-27-hipengine-gguf-q4-k-selected-dual-dp4a-poc.json`
+- Shape: qwen35moe verifier selected-dual gate/up (`x_rows=4`, `rows=32`, `experts=256`, `in_features=2048`, `out_features=512`, `threads=256`) on gfx1151.
+- Result:
+  - existing raw selected-dual: `0.9458 ms`
+  - q8_1 quantize only: `0.00247 ms`
+  - dp4a dot prequantized: `0.3565 ms`
+  - q8_1 quantize + dp4a dot: `0.3575 ms`
+  - speedup raw / quant+dp4a: `2.65x`
+  - correctness vs raw: gate/up `KL_mean=0.00311`, `KL_max=0.01245`, top-1 `1.0`, max_abs `2.0`, mean_abs `0.231`.
+- Compact artifact: `benchmarks/results/2026-06-27-hipengine-gguf-q4-k-selected-dual-dp4a-poc.json`.
+
+### Implication / next
+- The confirmed llama.cpp path is real in hipEngine too: raw GGUF Q4_K selected-dual benefits from q8_1 activation quantization + sudot4 by ~2.65x at the isolated verifier-shaped kernel.
+- Do not promote the convenience wrapper as-is; it allocates/synchronizes internally. Next step is a diagnostic verifier integration with caller-owned/preallocated q8_1 workspace, then B3 verifier smoke + sync-free rocprof. If it holds, port the same q8_1+sudot4 recipe to selected Q5_K down and then dense GGUF GEMVs.

@@ -23,6 +23,10 @@ _SYMBOL_ROWTILE_BF16_F32_OUT = "hipengine_gguf_q4_k_gemv_rowtile_bf16_f32_out"
 _SYMBOL_ROWTILE_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_rowtile_bf16_bf16_out"
 _SYMBOL_SELECTED_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out"
 _SYMBOL_SELECTED_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out"
+_SYMBOL_QUANTIZE_BF16_Q8_1 = "hipengine_gguf_q4_k_quantize_bf16_q8_1"
+_SYMBOL_SELECTED_DUAL_Q8_1_DP4A_BF16_BF16_OUT = (
+    "hipengine_gguf_q4_k_selected_dual_gemv_q8_1_dp4a_bf16_bf16_out"
+)
 _SYMBOL_SELECTED_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_pack8_gemv_bf16_bf16_out"
 _SYMBOL_PACK8_F32_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_f32_f32_out"
 _SYMBOL_PACK8_F32_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_f32_fp16_out"
@@ -34,6 +38,8 @@ _SYMBOL_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out"
 _SYMBOL_PACK8_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_dual_gemv_bf16_bf16_out"
 _ALLOWED_THREADS = {64, 128, 256}
 _Q4_K_BLOCK = 256
+_Q8_1_BLOCK = 32
+_Q8_1_BLOCK_BYTES = 36
 
 
 def plan_gguf_q4_k_gemv_build(
@@ -708,6 +714,164 @@ def gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
     _check_launch(runtime, err)
 
 
+def gguf_q4_k_quantize_bf16_q8_1(
+    x_ptr: int,
+    xq_ptr: int,
+    rows: int,
+    in_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Quantize BF16 activation rows to GGML-compatible q8_1 blocks."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if in_features <= 0 or in_features % _Q8_1_BLOCK != 0:
+        raise ValueError("in_features must be positive and divisible by q8_1 block size 32")
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_QUANTIZE_BF16_Q8_1)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+    xq_ptr: int,
+    selected_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch selected-dual Q4_K GEMV against prequantized q8_1 activation rows."""
+
+    _validate_selected(x_rows, rows, num_experts, in_features, out_features, threads)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SELECTED_DUAL_Q8_1_DP4A_BF16_BF16_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Diagnostic q8_1+sudot4 POC with the same ABI as selected-dual GEMV."""
+
+    _validate_selected(x_rows, rows, num_experts, in_features, out_features, threads)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+
+    from hipengine.core.memory import free, malloc
+
+    q8_blocks = x_rows * (in_features // _Q8_1_BLOCK)
+    xq = malloc(q8_blocks * _Q8_1_BLOCK_BYTES, runtime=runtime)
+    try:
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            xq.ptr,
+            x_rows,
+            in_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+            xq.ptr,
+            selected_ptr,
+            qweight_a_ptr,
+            qweight_b_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            threads=threads,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+    finally:
+        free(xq, runtime=runtime)
+
+
 def _make_selected_wrapper(symbol: str):
     def wrapper(*args, **kwargs) -> None:
         kwargs.setdefault("threads", 128)
@@ -751,6 +915,7 @@ _EXTRA_Q4_K_WRAPPERS = {
     "gemv_fp16_fp16_out": gguf_q4_k_gemv_fp16_fp16_out,
     "gemv_bf16_fp16_out": gguf_q4_k_gemv_bf16_fp16_out,
     "selected_dual_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+    "selected_dual_dp4a_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out,
     "selected_pack8_gemv_bf16_bf16_out": gguf_q4_k_selected_pack8_gemv_bf16_bf16_out,
     "prefill_f32_f32_out": gguf_q4_k_prefill_f32_f32_out,
     "prefill_f32_fp16_out": gguf_q4_k_prefill_f32_fp16_out,
@@ -782,8 +947,11 @@ __all__ = [
     "gguf_q4_k_gemv_bf16_bf16_out",
     "gguf_q4_k_gemv_bf16_f32_out",
     "gguf_q4_k_gemv_bf16_fp16_out",
+    "gguf_q4_k_quantize_bf16_q8_1",
     "gguf_q4_k_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_dual_gemv_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_pack8_gemv_bf16_bf16_out",
     "gguf_q4_k_gemv_f32_f32_out",
     "gguf_q4_k_gemv_f32_fp16_out",

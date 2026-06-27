@@ -61,21 +61,33 @@ now default-on and are ~3x faster on their microbench share, but end-to-end is
 flat because dense projections are only ~11-17% of the verifier after clean
 profiling.
 
+**dp4a POC result (2026-06-27): positive, not runtime-default.** A bounded
+q8_1+sudot4 selected-dual Q4_K variant now exists as a diagnostic wrapper. At
+the qwen35moe verifier shape (`x_rows=4`, `rows=32`, `experts=256`, `in=2048`,
+`out=512`, gfx1151), the existing raw selected-dual kernel measured `0.946 ms`
+vs q8_1 quantize+dp4a at `0.357 ms` (**2.65x**). q8_1 quantization alone was
+`0.0025 ms`. Correctness vs the existing float-dequant kernel on that diagnostic
+was `KL_mean=0.0031`, top-1 `1.0` for both gate/up outputs. Disassembly confirms
+`v_dot4_i32_iu8` emission, and `rocprofv3 --kernel-trace` shows
+`gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel` averaging `~338 us` vs
+`~1007 us` for `gguf_q4_k_selected_dual_prefill_out_kernel` in the same short
+trace. Artifact:
+`benchmarks/results/2026-06-27-hipengine-gguf-q4-k-selected-dual-dp4a-poc.json`.
+
 ### Next steps, ordered by impact
 
-1. **Bounded dp4a proof of concept for selected MoE gate+up.** The next
-   implementation step is not graph capture and not MoE row amortization. It is
-   a q8_1 activation-quantized, `v_dot4_i32_iu8`/sudot4 raw GGUF Q4_K selected
-   dual GEMV POC against `gguf_q4_k_selected_dual_prefill_out_kernel`, the
-   ~36% verifier bucket. Correctness must compare against the existing kernel
-   and CPU GGUF Q4_K oracle first; performance must include kernel trace proof
-   that dot4 instructions are emitted and a B3 verifier smoke before any
-   default-path decision.
-2. **Extend only if the POC wins.** If selected-dual Q4_K dp4a is materially
-   faster and correct, port the same q8_1+sudot4 recipe to selected down Q5_K
-   and then dense Q4_K/Q5_K/Q6_K/Q8_0 GEMVs. The existing small-B rowtile dense
-   kernels are complementary and should be combined with dp4a where rows 2..8
-   share an activation tile.
+1. **Diagnostic verifier integration for selected-dual Q4_K dp4a.** The POC won
+   at the isolated kernel level. The next implementation step is a diagnostic
+   verifier path with caller-owned/preallocated q8_1 activation workspace, not
+   the current convenience wrapper that allocates and synchronizes internally.
+   Run a B3 verifier smoke and sync-free rocprof before any default-path
+   decision.
+2. **Extend only if the verifier smoke wins.** If selected-dual Q4_K dp4a stays
+   materially faster in the verifier and clears correctness, port the same
+   q8_1+sudot4 recipe to selected down Q5_K and then dense
+   Q4_K/Q5_K/Q6_K/Q8_0 GEMVs. The existing small-B rowtile dense kernels are
+   complementary and should be combined with dp4a where rows 2..8 share an
+   activation tile.
 3. **MTP draft resident path.** Keep all MTP intermediates (embeddings,
    projections, KV, hidden seeds) on device across draft depths; only D2H the
    final top-1 token ID. Chain the B draft steps in one call instead of B separate
@@ -759,12 +771,17 @@ Two cheap MoE ideas are now ruled out:
 - `expert_sidecar`/pack8 gate+up for the verifier is ~15x slower (`103.4 ms`
   raw vs `1588.4 ms` sidecar) because per-layer H2D movement dominates.
 
-**Current #1 verifier task:** a bounded q8_1+sudot4 dp4a proof of concept for
-the raw selected Q4_K dual gate+up kernel, then extend only if it wins. This is
-the path llama.cpp already proves on gfx1151/GGUF: quantize activations once to
-q8_1 and use `v_dot4_i32_iu8` (`__builtin_amdgcn_sudot4`) vector-dot kernels for
-Q4_K/Q5_K/Q6_K/Q8_0. hipEngine currently has no q8_1/dp4a GGUF GEMV path and
-still spends instruction issue on float dequant-then-FMA.
+**Current #1 verifier task:** diagnostic verifier integration for the now-green
+selected-dual Q4_K q8_1+sudot4 POC. The isolated kernel result is positive:
+`0.946 ms` raw selected-dual vs `0.357 ms` q8_1 quantize+dp4a at the qwen35moe
+verifier shape (`x_rows=4`, `rows=32`, `experts=256`, `in=2048`, `out=512`,
+gfx1151), with `KL_mean=0.0031` and top-1 `1.0` vs the existing float-dequant
+kernel. `rocprofv3 --kernel-trace` confirms
+`gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel` runs at the expected name,
+and AMDGPU disassembly shows `v_dot4_i32_iu8` emission. Next step is a
+caller-owned/preallocated q8_1 workspace path in the verifier and a B3 smoke
+before any default-path decision; the current wrapper is diagnostic and owns a
+temporary q8_1 buffer.
 
 Captured-graph/C-loop work is deprioritized to a later launch-overhead layer
 after GEMV instruction efficiency improves. Cheaper partial-accept rollback
@@ -788,11 +805,12 @@ B3 `9/9` (and `15/15` over five cycles) on the merge-sort smoke. Correctness
 parity is therefore solved.
 
 The remaining gap is performance: ~48.8 vs ~89.6 tok/s (~1.8-1.9x) on gfx1151.
-The latest evidence says the highest-ROI next step is a bounded q8_1+sudot4 dp4a
-POC for the raw selected-MoE Q4_K dual gate+up kernel, because that single family
-is ~36% of verifier GPU time and llama.cpp already proves the q8_1/vector-dot
-recipe on GGUF. Dense rowtile is already landed and retained as a kernel-level
-win, but it does not move end-to-end because selected MoE dominates. Graph/C-loop
-work, resident MTP draft consolidation, and rollback improvements remain on the
-roadmap after the GEMV instruction path is de-risked. These remain single-prompt
-diagnostics, not benchmark rows.
+The latest evidence says the q8_1+sudot4 recipe is the right next lever: the
+selected-MoE Q4_K dual gate/up POC is already `~2.65x` faster in isolation, and
+that family is ~36% of verifier GPU time. Dense rowtile is already landed and
+retained as a kernel-level win, but it does not move end-to-end because selected
+MoE dominates. The next de-risking step is verifier integration/B3 smoke; if it
+holds, extend q8_1+sudot4 to selected Q5_K down and the dense GGUF GEMV bucket.
+Graph/C-loop work, resident MTP draft consolidation, and rollback improvements
+remain on the roadmap after the GEMV instruction path is de-risked. These remain
+single-prompt diagnostics, not benchmark rows.

@@ -1,0 +1,42 @@
+{
+  "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_q4_k_selected_dual_dp4a_microbench.py --iters 80 --warmup 20 --json benchmarks/results/2026-06-27-hipengine-gguf-q4-k-selected-dual-dp4a-poc.json",
+  "correctness_vs_raw": {
+    "gate": {
+      "kl_max": 0.012451213693840456,
+      "kl_mean": 0.003112803423460114,
+      "max_abs": 2.0,
+      "mean_abs": 0.23107124865055084,
+      "top1": 1.0
+    },
+    "up": {
+      "kl_max": 0.012451213693840456,
+      "kl_mean": 0.0031128034234601133,
+      "max_abs": 2.0,
+      "mean_abs": 0.23107124865055084,
+      "top1": 1.0
+    }
+  },
+  "hip_arch": "gfx1151",
+  "host": "gfx1151",
+  "iters": 80,
+  "schema": "hipengine.gguf_q4_k_selected_dual_dp4a_microbench.v1",
+  "shape": {
+    "experts": 256,
+    "in_features": 2048,
+    "out_features": 512,
+    "rows": 32,
+    "threads": 256,
+    "x_rows": 4
+  },
+  "speedup": {
+    "raw_over_dp4a_dot": 2.652960029600912,
+    "raw_over_dp4a_quantize_plus_dot": 2.645897301070381
+  },
+  "timing_ms": {
+    "dp4a_dot_prequantized": 0.35651880025397986,
+    "dp4a_quantize_plus_dot": 0.3574704605853185,
+    "q8_1_quantize": 0.0024695153115317225,
+    "raw_selected_dual": 0.9458301268750802
+  },
+  "warmup": 20
+}
