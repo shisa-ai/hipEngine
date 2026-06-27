@@ -126162,3 +126162,24 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   speed denominator for production parity. The true-AR speed-claim validator was
   restored to require graph replay production timing; next blocker is graph
   replay correctness.
+
+
+## 2026-06-28 — Graph-replay AR divergence ROOT-CAUSED: HIP graph corrupts GDN state on 3rd+ relaunch
+
+### Triage result (priority handoff item)
+- The graph-AR vs exact-eager token divergence is a REAL correctness bug, but it is NOT model/kernel math and NOT a recording artifact. It is the HIP graph replay mechanism corrupting the linear-attention (GDN) recurrent/conv state on the **3rd and later `graph_launch`** of a captured decode graph.
+
+### Decisive evidence (scratchpad harnesses, gfx1151, merge-sort reasoning-off)
+- `graph_parity.py`: graph recorded tokens == fed-forward `_lm_out_index` tokens (NOT a recording bug); graph AR diverges from eager.
+- `graph_localize2.py` (teacher-forced identical tokens): step 0 recurrent+conv+KV all bit-exact; step 1+ recurrent/conv diverge while **KV cache stays bit-exact every step**. So full-attention (KV/RoPE/position, all device-scalar driven) is correct; only GDN linear state corrupts.
+- `graph_spr2.py` (12 tokens): `steps_per_replay=12` (1 launch) and `=6` (2 launches) match eager exactly; `=4` (3 launches) diverges at token 9, `=2` at token 5, `=1` at token 3 — i.e. **divergence begins exactly at the start of the 3rd graph_launch**, regardless of steps_per_replay. First two launches always correct.
+- `graph_isolate.py`: calling `session._step_from_device_token(...)` eagerly N times (no graph capture, device-token autoregression) matches eager `step()` exactly. So the per-step device-token logic is correct; the corruption requires the HIP graph relaunch.
+- Eager `step()` and eager `_step_from_device_token` both reproduce the llama.cpp oracle `[71093,12305,198,727,10562,17885,10620,25,1103,8,1411,1103,25]`; graph spr=1 produces `[...,198,82,10980,17885,261,...]`.
+
+### Conclusion
+- The captured GGUF decode graph is only safe for <=2 `graph_launch` calls. The bench/production default `--graph-steps-per-replay 1` (one launch per token) corrupts from the 3rd token, so the ~55.5 tok/s graph-AR denominator is invalid as currently produced — exact eager (19.67 tok/s) remains the correctness oracle, consistent with the prior handoff.
+- Immediate valid path: capture the whole decode window as a SINGLE-launch graph (`steps_per_replay = decode_tokens`, one `replay`), which is bit-exact. The deeper bug is a HIP-graph relaunch hazard on the in-place GDN conv/recurrent update (corrupts on launch #3); root-causing it at the ROCm/graph level (or a re-capture-every-<=2-launches policy, or moving the GDN state update out of the replayed region) is the real fix and is the next blocker for a fast+correct graph AR.
+
+### Next
+- Add a regression test asserting graph replay (>=3 launches) token parity vs eager once fixed; until then it documents the failure.
+- Decide fix: (a) single-launch window graph as production decode, (b) re-capture cadence <=2, or (c) ROCm-level root cause of the 3rd-relaunch in-place-state hazard.
