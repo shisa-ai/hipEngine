@@ -126200,3 +126200,17 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next for #2
 - Decisive minimal reproducer: capture a graph containing only an in-place overlapping shift (mimicking the conv window shift), relaunch 3x. If it breaks, the fix is making the conv/recurrent decode relaunch-safe (no in-place overlap / explicit double-buffer captured in-graph). If it does not, escalate as a ROCm hipGraph bug and keep single-launch as the production path. Also reproduce on the small Qwen3.5-0.8B fixture for a CI-able regression and a possible upstream ROCm report.
+
+
+## 2026-06-28 — Graph-replay #2 root-cause concluded: composite-graph relaunch hazard
+
+### Minimal reproducer + workaround sweep (scratchpad conv_minrepro.py, graph_freshexec.py, graph_devsync.py)
+- conv decode kernel `qwen35_linear_attn_conv_decode_bf16` captured ALONE in a graph and relaunched 3x is bit-exact vs eager (state checksums `[1772102,1518261,1269169]` both paths). So individual GDN kernels are graph-relaunch-safe.
+- The corruption only appears in the FULL composite 40-layer decode-step graph relaunched >=3x. None of these workarounds fix it: fresh `graph_exec` per launch, inter-launch `stream_synchronize`, full `device_synchronize` between launches.
+- Simple in-place increment kernel (`advance_decode_position_i64`) is relaunch-safe; KV/full-attn always correct; only the persistent in-place GDN conv/recurrent state corrupts.
+
+### Conclusion
+- This is a HIP/ROCm hipGraph-level hazard with the large composite decode graph (40 interleaved layers, many shared scratch buffers, two persistent in-place GDN state buffers) on the 3rd+ relaunch — not a kernel-math bug and not resolvable by exec re-instantiation or synchronization. The robust, shipped fix is single-launch (or <=2-launch) capture (#1). A deeper fix needs either isolating the exact shared-scratch read-before-write across the 40-layer composite or a ROCm hipGraph bug report; deferred since #1 restores correctness. The spr=1 relaunch xfail test tracks it.
+
+### Status
+- Production greedy decode is now CORRECT (single-launch). Benchmark fast-AR denominator is valid when captured single-launch. Moving on to: re-measure true-AR + MTP categories against the valid denominator, and continue the q8_1+dp4a systemic GEMV port (task #7).
