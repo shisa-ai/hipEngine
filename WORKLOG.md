@@ -126251,3 +126251,14 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Decision (#7)
 - Do NOT promote dp4a to default on current evidence. Keep the `_gguf_*_dp4a_enabled()` flags default-OFF. The per-piece 2.73x is real but does not produce an E2E verifier win in the bench; integration overhead (per-layer q8_1 activation quantization + dispatch) and/or a different real bottleneck cancel it.
 - Open question for closing the llama.cpp gap: the per-piece->E2E gap means the bench verifier's actual bottleneck is not where the standalone rocprof (snapshot/dummy-token, ~102 ms path) suggested. NEXT: a clean rocprof of the WARM BENCH verifier (not the standalone harness) to find the true per-family composition before any further kernel investment. dp4a stays an opt-in experiment per docs/REFACTOR.md.
+
+
+## 2026-06-28 — Graph-replay #8: deeper isolation; minimal reproducer resists; ROCm-level
+
+### Additional #8 isolation (scratchpad graph_size.py)
+- 60 in-place conv-decode calls captured in one graph, relaunched 3x, with FIXED input: bit-exact (but degenerate — fixed input drives the conv window to a fixed point, so it cannot detect corruption).
+- Same with VARYING input (ping-pong out->next-hidden chained through ONE shared conv_state): graph diverges from eager even on launch 0 — but this is an ARTIFACT of chaining 60 in-place RMW on a single conv_state buffer (a WAR/RAW chain the graph capture orders differently than eager's per-call sync). The real model gives each of the ~30 linear layers its OWN conv/recurrent state, so there is no such single-buffer chain; this test is not faithful.
+
+### Conclusion (#8)
+- The model's signature (correct for <=2 launches, GDN linear-state corruption from the 3rd composite-graph launch, KV/full-attn always correct, individual kernels relaunch-safe in isolation) resists a faithful minimal reproducer precisely because it needs the full composite: ~30 separate in-place conv+recurrent state buffers updated once per step inside a large captured graph, relaunched >=3x. That strongly indicates a ROCm/HIP hipGraph relaunch hazard with large composites containing many independent in-place state buffers, not a single-kernel or test-constructible bug.
+- Practical resolution: single-launch capture (#1, shipped) is the correct production/bench path. A definitive deep fix needs either (a) a faithful multi-buffer in-place-state minimal reproducer to file a ROCm hipGraph bug, or (b) restructuring the GDN decode to avoid persistent in-place state across the replayed region (large kernel change). Both are larger follow-ups; the xfail regression tracks it. Not resolved this session beyond the shipped workaround.
