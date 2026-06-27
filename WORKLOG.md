@@ -125839,3 +125839,86 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Decision / next
 - Raw q8_1+sudot4 selected-down is a real win and improves raw no-decode-repack B3 by about `25%`, but the default decode-repack verifier is still faster. Keep `HIPENGINE_GGUF_RAW_SELECTED_DP4A` default-off.
 - This supersedes the older "keep porting straight T16 dp4a" next step. The broad GGUF perf-parity port should target a GGML-style q8_1/x4 vector-dot layout/routing for the production verifier, then promote only the pieces that improve the same B3/full-suite protocol.
+
+
+## 2026-06-27 — X8 selected-down production-layout dp4a slice stays opt-in
+
+### Scope
+- Added byte-neutral X8 replacement layouts for selected-down Q5_K/Q6_K experts:
+  `gguf_q5_k_x8_v1` and `gguf_q6_k_x8_v1`.
+  Layout: `tiles[expert, out_pack8, k_block, 8 * block_bytes]`; raw GGUF block
+  bytes are preserved exactly.
+- Added direct and compact selected q8_1+sudot4 HIP kernels:
+  `gguf_x8_selected_q8_1_dp4a_gemv_kernel<unsigned short,5/6>` and compact
+  variants.
+- Added runtime decode-repack materialization gate:
+  `HIPENGINE_GGUF_SELECTED_X8_REPACK=1`. Gate/up remains on the current Q4_K
+  T16 path; selected-down Q5/Q6 can materialize as X8.
+- Added diagnostic microbench:
+  `scripts/gguf_x8_selected_down_dp4a_microbench.py`.
+
+### Validation
+- No-GPU syntax:
+  `python3 -m py_compile hipengine/quant/gguf_x8.py hipengine/loading/qwen35_gguf_materialize.py hipengine/kernels/hip_gfx1100/quant/gguf_x8_selected_gemv.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_x8_repack.py tests/test_gguf_x8_selected_gemv.py tests/test_qwen35_gguf_materialize.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py scripts/qwen35_gguf_decode_graph_smoke.py scripts/gguf_x8_selected_down_dp4a_microbench.py`
+  -> passed.
+- Whitespace:
+  `git diff --check`
+  -> passed.
+- Routing/materialization:
+  `python3 -m pytest tests/test_gguf_x8_repack.py tests/test_qwen35_gguf_materialize.py::test_qwen35moe_decode_repack_can_plan_selected_down_x8 tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py -q`
+  -> `25` tests passed (`1` expected skip).
+- HIP correctness:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_x8_selected_gemv.py -q`
+  -> `5 passed`.
+- Lineage check remains blocked because `/home/lhl/amd-gpu-tuning/nano-vllm-amd`
+  is missing:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  -> `RuntimeError: git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd rev-parse --short HEAD failed`.
+
+### Microbench result
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --iters 80 --warmup 20 --json benchmarks/results/2026-06-27-hipengine-gguf-x8-selected-down-dp4a-poc.json`
+- Shape: selected-down (`rows=8`, `experts=256`, `in_features=512`,
+  `out_features=2048`, input scale `0.1`) on gfx1151.
+- Q5_K:
+  - production T16 float: `0.03352 ms`
+  - raw selected-pack8 float: `0.09424 ms`
+  - q8_1 quantize only: `0.00244 ms`
+  - raw dp4a quantize+dot: `0.03994 ms`
+  - X8 dp4a quantize+dot: `0.03864 ms`
+  - speedup production T16 / X8 quant+dot: `0.87x` (regression)
+  - correctness vs production T16: `KL_mean=0.000714`, `KL_max=0.00515`, top-1 `1.0`
+  - X8 output exactly matched raw dp4a (`max_abs=0.0`).
+- Q6_K:
+  - production T16 float: `0.03206 ms`
+  - raw selected-pack8 float: `0.04459 ms`
+  - q8_1 quantize only: `0.00262 ms`
+  - raw dp4a quantize+dot: `0.02771 ms`
+  - X8 dp4a quantize+dot: `0.02602 ms`
+  - speedup production T16 / X8 quant+dot: `1.23x`
+  - correctness vs production T16: `KL_mean=0.00137`, `KL_max=0.00579`, top-1 `1.0`
+  - X8 output exactly matched raw dp4a (`max_abs=0.0`).
+- Artifact: `benchmarks/results/2026-06-27-hipengine-gguf-x8-selected-down-dp4a-poc.json`.
+
+### B3 diagnostic / profiler
+- X8 materialization smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_SELECTED_X8_REPACK=1 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-x8-selected-down-verifier-diagnostic.json`
+  -> exact `15/15`, `49.74 tok/s`, warm `50.65 tok/s`, avg cycle `80.41 ms`.
+- Same-tree default control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-default-verifier-control-for-x8.json`
+  -> exact `15/15`, `51.43 tok/s`, warm `53.09 tok/s`, avg cycle `77.78 ms`.
+- Cached microbench profile:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-gguf-x8-dp4a-rocprof-20260627 --output-file x8-dp4a -- python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --quant both --iters 2 --warmup 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-x8-dp4a-rocprof-20260627/smoke.json`
+  -> confirms `gguf_x8_selected_q8_1_dp4a_gemv_kernel<unsigned short,5/6>`
+  launches. `scripts/qwen35_gguf_rocprof_summary.py --csv ... --top 30`
+  reports Q5 X8 `7` dispatches at `0.0372 ms` avg, Q6 X8 `7` dispatches at
+  `0.0229 ms` avg, and q8_1 quantize `24` dispatches at `0.0019 ms` avg.
+
+### Decision / next
+- Keep `HIPENGINE_GGUF_SELECTED_X8_REPACK` default-off. It is the right
+  sidecar-free broad-port mechanism, but the first selected-down slice is
+  Q5-negative and regresses B3 vs same-tree default.
+- Continue the broad GGML-style port by improving the Q5 X8 body and/or routing
+  only quant families that beat T16 on the production verifier, then extend
+  q8_1+sudot4 to the remaining hot GGUF GEMVs under the same B3/full-suite
+  gate.

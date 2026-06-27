@@ -251,10 +251,12 @@ _DECODE_GRAPH_SYMBOL_GROUP_REGEX: dict[str, tuple[str, ...]] = {
     "moe_q5_k_selected": (
         r"qk_t16_selected.*<[^>]*,\s*5>",
         r"gguf_k_selected_pack8_gemv_decode.*<[^>]*,\s*5>",
+        r"gguf_x8_selected_q8_1_dp4a.*<[^>]*,\s*5>",
     ),
     "moe_q6_k_selected": (
         r"qk_t16_selected.*<[^>]*,\s*6>",
         r"gguf_k_selected_pack8_gemv_decode.*<[^>]*,\s*6>",
+        r"gguf_x8_selected_q8_1_dp4a.*<[^>]*,\s*6>",
     ),
     "dense_q8_0_single": (
         r"q8_0_t16_gemv_kernel",

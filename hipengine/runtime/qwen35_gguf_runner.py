@@ -113,6 +113,13 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
     register_gguf_t16_selected_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
+    gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
+    gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
+    register_gguf_x8_selected_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
@@ -564,10 +571,14 @@ def qwen35_gguf_decode_graph_active_symbol_groups(
 
         if _has_role(weight_roles, quant_key="gguf_q5_k_t16_v1", slot_contains="ffn_down_exps"):
             add("moe_q5_k_selected")
+        elif _has_role(weight_roles, quant_key="gguf_q5_k_x8_v1", slot_contains="ffn_down_exps"):
+            add("moe_q5_k_selected")
         elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q5_k", rank=3, slot_contains="ffn_down_exps"):
             add("moe_q5_k_selected")
 
         if _has_role(weight_roles, quant_key="gguf_q6_k_t16_v1", slot_contains="ffn_down_exps"):
+            add("moe_q6_k_selected")
+        elif _has_role(weight_roles, quant_key="gguf_q6_k_x8_v1", slot_contains="ffn_down_exps"):
             add("moe_q6_k_selected")
         elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q6_k", rank=3, slot_contains="ffn_down_exps"):
             add("moe_q6_k_selected")
@@ -2644,7 +2655,11 @@ class Qwen35GGUFFullStackRunner:
                 scratch,
                 selected_rows,
                 cfg.expert_feed_forward_length,
-                enabled=_gguf_t16_selected_dp4a_enabled() or _gguf_raw_selected_dp4a_enabled(),
+                enabled=(
+                    _gguf_t16_selected_dp4a_enabled()
+                    or _gguf_raw_selected_dp4a_enabled()
+                    or _selected_gemv_requires_q8_1_input(down_weight)
+                ),
             ),
             stream=stream,
             runtime=runtime,
@@ -2860,7 +2875,11 @@ class Qwen35GGUFFullStackRunner:
                     scratch,
                     selected_rows,
                     cfg.expert_feed_forward_length,
-                    enabled=_gguf_t16_selected_dp4a_enabled() or _gguf_raw_selected_dp4a_enabled(),
+                    enabled=(
+                        _gguf_t16_selected_dp4a_enabled()
+                        or _gguf_raw_selected_dp4a_enabled()
+                        or _selected_gemv_requires_q8_1_input(down_weight)
+                    ),
                 ),
                 stream=stream,
                 runtime=runtime,
@@ -5554,6 +5573,18 @@ _COMPACT_MOE_DOWN_GEMV_KEYS = {
         "gguf_q6_k_t16_v1",
         "selected_t16_gemv_decode_compact_bf16_bf16_out",
     ),
+    "gguf_q5_k_x8_v1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q5_k_x8_v1",
+        "selected_x8_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
+    ),
+    "gguf_q6_k_x8_v1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q6_k_x8_v1",
+        "selected_x8_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
+    ),
 }
 _COMPACT_MOE_GEMV_DECODE_SCRATCH = (
     "moe_group_counts",
@@ -6268,8 +6299,27 @@ def _try_run_post_attention_moe_rows_compact_gemv(
         stream=stream,
         runtime=runtime,
     )
+    down_input_ptr = scratch.ffn_intermediate.ptr
+    if _selected_gemv_requires_q8_1_input(down_weight):
+        q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
+            scratch,
+            selected_rows,
+            expert_ffn,
+            enabled=True,
+        )
+        if q8_1_workspace_ptr is None:
+            return False
+        gguf_q4_k_quantize_bf16_q8_1(
+            scratch.ffn_intermediate.ptr,
+            q8_1_workspace_ptr,
+            selected_rows,
+            expert_ffn,
+            stream=stream,
+            runtime=runtime,
+        )
+        down_input_ptr = q8_1_workspace_ptr
     down_fn(
-        scratch.ffn_intermediate.ptr,
+        down_input_ptr,
         scratch.moe_expert_start_compact.ptr,
         down_weight.allocation(plan.down_allocation).tensor.ptr,
         scratch.moe_down_out.ptr,
@@ -6767,6 +6817,7 @@ def _ensure_compact_moe_gemv_registered() -> None:
     register_gguf_q4_k_selected_pack8_gemv_kernels()
     register_gguf_k_selected_pack8_gemv_kernels()
     register_gguf_t16_selected_gemv_kernels()
+    register_gguf_x8_selected_gemv_kernels()
 
 
 def _scratch_has_compact_moe_gemv_fields(scratch) -> bool:
@@ -6816,7 +6867,12 @@ def _resolve_compact_moe_gemv_kernels(
 
 
 def _selected_gemv_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
-    return "tiles" if weight.spec.quant_key.endswith("_t16_v1") else "raw"
+    quant_key = weight.spec.quant_key
+    return "tiles" if quant_key.endswith("_t16_v1") or quant_key.endswith("_x8_v1") else "raw"
+
+
+def _selected_gemv_requires_q8_1_input(weight: Qwen35GGUFDeviceWeight) -> bool:
+    return weight.spec.quant_key in {"gguf_q5_k_x8_v1", "gguf_q6_k_x8_v1"}
 
 
 def _validate_raw_rank3_expert_weight(
@@ -7051,7 +7107,7 @@ def _launch_selected_raw_gguf_moe_linear(
     runtime: HipRuntime,
 ) -> None:
     quant_key = weight.spec.quant_key
-    allocation = "tiles" if quant_key.endswith("_t16_v1") else "raw"
+    allocation = _selected_gemv_allocation_name(weight)
     use_q8_1_input = False
     if (
         q8_1_workspace_ptr is not None
@@ -7067,6 +7123,32 @@ def _launch_selected_raw_gguf_moe_linear(
             runtime=runtime,
         )
         fn = gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out
+        use_q8_1_input = True
+    elif quant_key == "gguf_q5_k_x8_v1":
+        if q8_1_workspace_ptr is None:
+            raise ValueError("gguf_q5_k_x8_v1 selected GEMV requires q8_1 workspace")
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            q8_1_workspace_ptr,
+            x_rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        fn = gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
+        use_q8_1_input = True
+    elif quant_key == "gguf_q6_k_x8_v1":
+        if q8_1_workspace_ptr is None:
+            raise ValueError("gguf_q6_k_x8_v1 selected GEMV requires q8_1 workspace")
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            q8_1_workspace_ptr,
+            x_rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        fn = gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
     elif (
         q8_1_workspace_ptr is not None

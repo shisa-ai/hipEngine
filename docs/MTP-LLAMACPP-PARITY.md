@@ -146,24 +146,51 @@ layout port; do not promote the raw env as a runtime default yet. Artifacts:
 and
 `benchmarks/results/2026-06-27-hipengine-mtp-b3-default-verifier-baseline-for-raw-dp4a.json`.
 
+**X8 selected-down production-layout slice (2026-06-27): correct and
+sidecar-free, not default yet.** The first broad-port slice now has a
+byte-neutral X8 replacement layout for selected-down Q5_K/Q6_K experts:
+`tiles[expert, out_pack8, k_block, 8 * block_bytes]`. It preserves the raw GGUF
+block bytes while giving the production decode-repack materializer the same
+eight-output q8_1+sudot4 dot shape as the raw sidecar diagnostic. It is opt-in
+via `HIPENGINE_GGUF_SELECTED_X8_REPACK=1`; gate/up remains on the current T16
+Q4_K path. On the selected-down microshape (`rows=8`, `E=256`, `in=512`,
+`out=2048`, gfx1151), X8 matched raw dp4a outputs exactly and cleared the
+quality gate versus production T16 float, but the timing is mixed: Q5_K
+production T16 `0.03352 ms` vs X8 q8_1 quantize+dot `0.03864 ms` (**0.87x**),
+while Q6_K production T16 `0.03206 ms` vs X8 q8_1 quantize+dot `0.02602 ms`
+(**1.23x**). A cached `rocprofv3 --kernel-trace` microbench confirms
+`gguf_x8_selected_q8_1_dp4a_gemv_kernel<unsigned short,5/6>` launches; the
+short trace averaged `~37.2 us` for Q5 X8, `~22.9 us` for Q6 X8, and `~1.9 us`
+for q8_1 quantization. B3/C5 merge-sort smoke with X8 materialization stayed
+exact (`15/15`) but was slower than the same-tree default control:
+`49.74 tok/s` (`50.65` warm) vs default `51.43 tok/s` (`53.09` warm). Keep X8
+default-off until the Q5 path beats T16 or a quant-selective production route
+improves the same B3/full-suite protocol. Artifacts:
+`benchmarks/results/2026-06-27-hipengine-gguf-x8-selected-down-dp4a-poc.json`,
+`benchmarks/results/2026-06-27-hipengine-mtp-b3-x8-selected-down-verifier-diagnostic.json`,
+and
+`benchmarks/results/2026-06-27-hipengine-mtp-b3-default-verifier-control-for-x8.json`.
+
 ### Next steps, ordered by impact
 
 1. **Do not promote the current straight dp4a diagnostics.** Raw Q4_K/Q5_K/Q6_K
    q8_1+sudot4 is strong in isolation and improves the raw no-decode-repack
-   verifier, but production B3 still uses T16 and remains faster. T16 Q4 split
-   is only `1.04x` in its small row-bulk bucket, T16 Q5 selected-down is only
-   `1.10x` in isolation while regressing B3, and raw selected-down still trails
-   default decode-repack at the verifier level. Keep
+   verifier, but production B3 still uses T16 and remains faster. The first
+   production-compatible X8 selected-down slice removes the raw sidecar but is
+   Q5-negative and still trails default B3. T16 Q4 split is only `1.04x` in its
+   small row-bulk bucket, T16 Q5 selected-down is only `1.10x` in isolation
+   while regressing B3, and raw selected-down still trails default
+   decode-repack at the verifier level. Keep
    `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` and
-   `HIPENGINE_GGUF_T16_SELECTED_DP4A` / `HIPENGINE_GGUF_RAW_SELECTED_DP4A` as
-   diagnostic gates only.
+   `HIPENGINE_GGUF_T16_SELECTED_DP4A` / `HIPENGINE_GGUF_RAW_SELECTED_DP4A` /
+   `HIPENGINE_GGUF_SELECTED_X8_REPACK` as diagnostic gates only.
 2. **Broad port target: match GGML's q8_1/x4 vector-dot layout.** The next
    implementation should make the production verifier consume a GGML-like
    q8_1 activation plus x4 packed K-quant dot path for the selected-MoE and dense
-   GGUF GEMVs, instead of continuing one-off T16 ports. The raw Q4/Q5/Q6 results
-   prove the instruction path; the missing piece is a production-compatible
-   layout/routing choice that keeps those gains while preserving the T16 path's
-   decode-repack coverage.
+   GGUF GEMVs, instead of continuing one-off T16 ports. The raw Q4/Q5/Q6 and X8
+   results prove the instruction path and a sidecar-free materialization route;
+   the missing piece is making the Q5 selected-down body and the remaining hot
+   GGUF GEMVs faster than T16 on the same production verifier protocol.
 3. **Extend only proven GGUF GEMVs into defaults.** Carry q8_1+sudot4 into
    dense/raw Q4_K/Q5_K/Q6_K/Q8_0 GEMVs when the local shape clears the quality
    gate and improves the same B3/full-suite protocol. The existing small-B

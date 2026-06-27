@@ -143,6 +143,21 @@ def test_decode_graph_symbol_coverage_accepts_all_active_groups() -> None:
     assert set(coverage["observed_symbol_groups"]) == set(expected)
 
 
+def test_decode_graph_symbol_coverage_accepts_x8_selected_down_names() -> None:
+    kernels = [
+        "void (anonymous namespace)::gguf_x8_selected_q8_1_dp4a_gemv_kernel<unsigned short, 5>(...)",
+        "void (anonymous namespace)::gguf_x8_selected_q8_1_dp4a_compact_gemv_kernel<unsigned short, 6>(...)",
+    ]
+
+    coverage = SMOKE.validate_decode_graph_symbol_coverage(
+        kernels,
+        expected_groups=("moe_q5_k_selected", "moe_q6_k_selected"),
+    )
+
+    assert coverage["passed"] is True
+    assert set(coverage["observed_symbol_groups"]) == {"moe_q5_k_selected", "moe_q6_k_selected"}
+
+
 def test_decode_graph_symbol_coverage_cli_fails_on_missing_group(tmp_path: Path) -> None:
     csv_path = tmp_path / "trace.csv"
     with csv_path.open("w", newline="") as fh:

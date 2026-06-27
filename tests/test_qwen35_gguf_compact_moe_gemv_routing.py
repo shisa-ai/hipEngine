@@ -38,6 +38,7 @@ def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_X8_REPACK", raising=False)
     set_gemv_decode_enabled(None)
     yield
     set_gemv_decode_enabled(None)
@@ -242,6 +243,45 @@ def test_t16_c1_selected_dp4a_env_routes_down_through_q8_workspace(monkeypatch: 
     assert ("t16_down_dp4a", (360, 130, 1014, 180, 2, 2, 4, 256, 256)) in calls
 
 
+def test_x8_c1_routes_down_through_q8_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k_t16_v1", 12, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k_t16_v1", 13, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q5_k_x8_v1", 14, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_pair_silu", args[:10])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: calls.append(("q8_quantize", args[:4])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("x8_down_dp4a", args[:9])),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
+
+    assert ("t16_pair_silu", (100, 130, 1012, 1013, 160, 1, 2, 4, 256, 256)) in calls
+    assert ("q8_quantize", (160, 360, 2, 256)) in calls
+    assert ("x8_down_dp4a", (360, 130, 1014, 180, 2, 2, 4, 256, 256)) in calls
+
+
 
 def test_row_bulk_t16_direct_selected_prefill_routes_without_compact_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
@@ -371,6 +411,50 @@ def test_row_bulk_t16_selected_dp4a_env_routes_pair_and_down_through_q8_workspac
     assert ("t16_pair_dp4a", (360, 130, 1012, 1013, 150, 150 + 4 * 256 * 2, 2, 4, 4, 256, 256)) in calls
     assert ("q8_quantize", (160, 360, 4, 256)) in calls
     assert ("t16_down_dp4a", (360, 130, 1014, 180, 4, 4, 4, 256, 256)) in calls
+
+
+def test_row_bulk_x8_direct_routes_down_through_q8_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k_t16_v1", 12, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k_t16_v1", 13, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_q5_k_x8_v1", 14, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "_launch_selected_expert_pack8_moe_pair", _fail_if_called("sidecar_pair"))
+    monkeypatch.setattr(qgr, "_launch_selected_expert_pack8_moe_linear", _fail_if_called("sidecar_linear"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("t16_pair", (args[2], args[3], args[4], args[5], args[6:11]))),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: calls.append(("q8_quantize", args[:4])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("x8_down_dp4a", args[:9])),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_rows(0, rows=2, out_ptr=9000, scratch=scratch, stream=7)
+
+    names = [name for name, _ in calls]
+    assert "group_count" not in names
+    assert ("t16_pair", (1012, 1013, 150, 150 + 4 * 256 * 2, (2, 4, 4, 256, 256))) in calls
+    assert ("q8_quantize", (160, 360, 4, 256)) in calls
+    assert ("x8_down_dp4a", (360, 130, 1014, 180, 4, 4, 4, 256, 256)) in calls
+    assert ("weighted_shared_batch", None) in calls
 
 
 @pytest.mark.parametrize(
@@ -685,6 +769,7 @@ def _patch_compact_gemv_registry(
     def fake_down(*args, **kwargs):
         # compact_*_gemv signature:
         # (x, expert_start, qweight, out, compact_rows, in_f, out_f, num_experts)
+        calls.append(("compact_down_input", args[0]))
         calls.append(("compact_down", args[4:8]))
         calls.append(("compact_down_ptr", args[2]))
 

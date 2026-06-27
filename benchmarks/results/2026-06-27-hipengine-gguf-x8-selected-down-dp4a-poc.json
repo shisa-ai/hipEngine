@@ -1,0 +1,93 @@
+{
+  "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --iters 80 --warmup 20 --json benchmarks/results/2026-06-27-hipengine-gguf-x8-selected-down-dp4a-poc.json",
+  "hip_arch": "gfx1151",
+  "host": "gfx1151",
+  "iters": 80,
+  "results": [
+    {
+      "correctness_vs_production_t16_float": {
+        "kl_max": 0.005154759936085494,
+        "kl_mean": 0.0007142716814922277,
+        "max_abs": 2.0,
+        "mean_abs": 0.22446765005588531,
+        "top1": 1.0
+      },
+      "correctness_vs_raw_float": {
+        "kl_max": 0.005154759936085494,
+        "kl_mean": 0.0007142716814922277,
+        "max_abs": 2.0,
+        "mean_abs": 0.22446765005588531,
+        "top1": 1.0
+      },
+      "quant": "q5",
+      "speedup": {
+        "production_t16_over_x8_dp4a_dot": 0.9580435525691554,
+        "production_t16_over_x8_dp4a_quantize_plus_dot": 0.8675161303565571,
+        "raw_float_over_x8_dp4a_quantize_plus_dot": 2.4390674203896143,
+        "x8_dp4a_dot_over_raw_dp4a_dot": 1.055573269906621,
+        "x8_dp4a_quant_dot_over_raw_dp4a_quant_dot": 1.0337555040569293
+      },
+      "timing_ms": {
+        "production_t16_float": 0.0335178745444864,
+        "q8_1_quantize": 0.002437949297018349,
+        "raw_selected_pack8_dp4a_dot_prequantized": 0.03693002508953214,
+        "raw_selected_pack8_dp4a_quantize_plus_dot": 0.039940798887982965,
+        "raw_selected_pack8_float": 0.09423727460671216,
+        "x8_selected_dp4a_dot_prequantized": 0.03498575242701918,
+        "x8_selected_dp4a_quantize_plus_dot": 0.03863660094793886
+      },
+      "x8_vs_raw_dp4a": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "top1": 1.0
+      }
+    },
+    {
+      "correctness_vs_production_t16_float": {
+        "kl_max": 0.005789996658669243,
+        "kl_mean": 0.00136927413482377,
+        "max_abs": 0.5,
+        "mean_abs": 0.05207815021276474,
+        "top1": 1.0
+      },
+      "correctness_vs_raw_float": {
+        "kl_max": 0.005789996658669243,
+        "kl_mean": 0.00136927413482377,
+        "max_abs": 0.5,
+        "mean_abs": 0.05207815021276474,
+        "top1": 1.0
+      },
+      "quant": "q6",
+      "speedup": {
+        "production_t16_over_x8_dp4a_dot": 1.3461145068684492,
+        "production_t16_over_x8_dp4a_quantize_plus_dot": 1.231767570932253,
+        "raw_float_over_x8_dp4a_quantize_plus_dot": 1.7133538033886082,
+        "x8_dp4a_dot_over_raw_dp4a_dot": 1.0594798337722702,
+        "x8_dp4a_quant_dot_over_raw_dp4a_quant_dot": 1.0647681987670996
+      },
+      "timing_ms": {
+        "production_t16_float": 0.03205574757885188,
+        "q8_1_quantize": 0.0026229245122522116,
+        "raw_selected_pack8_dp4a_dot_prequantized": 0.02522996219340712,
+        "raw_selected_pack8_dp4a_quantize_plus_dot": 0.027709724963642657,
+        "raw_selected_pack8_float": 0.04458863695617765,
+        "x8_selected_dp4a_dot_prequantized": 0.023813536972738802,
+        "x8_selected_dp4a_quantize_plus_dot": 0.02602418535389006
+      },
+      "x8_vs_raw_dp4a": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "top1": 1.0
+      }
+    }
+  ],
+  "schema": "hipengine.gguf_x8_selected_down_dp4a_microbench.v1",
+  "shape": {
+    "experts": 256,
+    "in_features": 512,
+    "input_scale": 0.1,
+    "out_features": 2048,
+    "rows": 8
+  },
+  "warmup": 20
+}

@@ -11,16 +11,20 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DECODE_REPACK_ENV,
+    HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV,
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,
     LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
+    LAYOUT_GGUF_Q5_K_X8,
     LAYOUT_GGUF_Q6_K_T16,
+    LAYOUT_GGUF_Q6_K_X8,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     gguf_decode_repack_enabled,
+    gguf_selected_x8_repack_enabled,
     materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_materialization,
 )
@@ -115,6 +119,34 @@ def test_qwen35moe_decode_repack_plan_replaces_covered_weights(monkeypatch: pyte
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
     assert layer0["ffn_gate_shexp"].quant_key == "gguf_q8_0_t16_v1"
     assert layer0["ffn_gate_inp"].layout == LAYOUT_DENSE_F32
+
+
+def test_qwen35moe_decode_repack_can_plan_selected_down_x8(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_decode_repack_enabled() is True
+    assert gguf_selected_x8_repack_enabled() is True
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_gate_exps"].layout == LAYOUT_GGUF_Q4_K_T16
+    assert layer0["ffn_up_exps"].layout == LAYOUT_GGUF_Q4_K_T16
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_X8
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_x8_v1"
+    assert layer0["ffn_down_exps"].allocation_names == ("tiles",)
+
+    q6_down = next(
+        layer["ffn_down_exps"]
+        for layer in plan.layer_specs
+        if layer["ffn_down_exps"].source.ggml_type_name == "Q6_K"
+    )
+    assert q6_down.layout == LAYOUT_GGUF_Q6_K_X8
+    assert q6_down.quant_key == "gguf_q6_k_x8_v1"
 
 
 @pytest.mark.parametrize(
