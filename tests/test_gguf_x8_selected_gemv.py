@@ -15,6 +15,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     build_gguf_x8_selected_gemv,
+    gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -23,14 +24,15 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
-from hipengine.quant.gguf_x8 import repack_gguf_q5_k_x8, repack_gguf_q6_k_x8
-from tests._gguf_synthetic_weights import make_q5_k_weight, make_q6_k_weight
+from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8, repack_gguf_q5_k_x8, repack_gguf_q6_k_x8
+from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_k_weight, make_q6_k_weight
 
 QK_K = 256
 Q8_1_BLOCK = 32
 Q8_1_BLOCK_BYTES = 36
 Q5_K_BLOCK_BYTES = 176
 Q6_K_BLOCK_BYTES = 210
+Q4_K_BLOCK_BYTES = 144
 
 
 def _hip_available() -> bool:
@@ -99,6 +101,14 @@ def _q5_value(block: np.ndarray, k_in_block: int) -> int:
     return int(low | (high << 4))
 
 
+def _q4_value(block: np.ndarray, k_in_block: int) -> int:
+    subblock = k_in_block >> 5
+    lane = k_in_block & 31
+    qs = block[16:144]
+    packed = int(qs[(subblock >> 1) * 32 + lane])
+    return (packed >> 4) if (subblock & 1) else (packed & 0x0F)
+
+
 def _q6_value(block: np.ndarray, k_in_block: int) -> int:
     group32 = k_in_block >> 5
     lane = k_in_block & 31
@@ -124,7 +134,7 @@ def _q8_oracle(
     rows = int(expert_for_output.size)
     out_features = int(qweight.shape[1])
     in_features = int(x_f32.shape[1])
-    block_bytes = Q5_K_BLOCK_BYTES if quant == "q5" else Q6_K_BLOCK_BYTES
+    block_bytes = {"q4": Q4_K_BLOCK_BYTES, "q5": Q5_K_BLOCK_BYTES, "q6": Q6_K_BLOCK_BYTES}[quant]
     out = np.zeros((rows, out_features), dtype=np.float32)
     for row in range(rows):
         expert = int(expert_for_output[row])
@@ -133,7 +143,11 @@ def _q8_oracle(
             acc = 0.0
             for block_idx in range(in_features // QK_K):
                 block = qweight[expert, out_col, block_idx * block_bytes : (block_idx + 1) * block_bytes]
-                if quant == "q5":
+                if quant == "q4":
+                    d = block[0:2].view(np.float16).astype(np.float32)[0]
+                    dmin = block[2:4].view(np.float16).astype(np.float32)[0]
+                    scales = block[4:16]
+                elif quant == "q5":
                     d = block[0:2].view(np.float16).astype(np.float32)[0]
                     dmin = block[2:4].view(np.float16).astype(np.float32)[0]
                     scales = block[4:16]
@@ -143,7 +157,11 @@ def _q8_oracle(
                 for k in range(QK_K):
                     q8_idx = block_idx * 8 + (k >> 5)
                     xv = float(d8[x_row, q8_idx]) * float(q8[x_row, q8_idx, k & 31])
-                    if quant == "q5":
+                    if quant == "q4":
+                        sb = k >> 5
+                        wv = float(d) * _q4_k_scale(scales, sb) * _q4_value(block, k)
+                        wv -= float(dmin) * _q4_k_min(scales, sb)
+                    elif quant == "q5":
                         sb = k >> 5
                         wv = float(d) * _q4_k_scale(scales, sb) * _q5_value(block, k)
                         wv -= float(dmin) * _q4_k_min(scales, sb)
@@ -161,7 +179,11 @@ def _exact_oracle(
     expert_for_output: np.ndarray,
     qweight: np.ndarray,
 ) -> np.ndarray:
-    qtype = GGMLQuantizationType.Q5_K if quant == "q5" else GGMLQuantizationType.Q6_K
+    qtype = {
+        "q4": GGMLQuantizationType.Q4_K,
+        "q5": GGMLQuantizationType.Q5_K,
+        "q6": GGMLQuantizationType.Q6_K,
+    }[quant]
     rows = int(expert_for_output.size)
     out = np.zeros((rows, qweight.shape[1]), dtype=np.float32)
     for row in range(rows):
@@ -192,7 +214,7 @@ def _top1(ref: np.ndarray, cand: np.ndarray) -> float:
 
 
 def _weights(quant: str, *, out_features: int = 24, in_features: int = 512, experts: int = 4) -> np.ndarray:
-    make_weight = make_q5_k_weight if quant == "q5" else make_q6_k_weight
+    make_weight = {"q4": make_q4_k_weight, "q5": make_q5_k_weight, "q6": make_q6_k_weight}[quant]
     base = make_weight(out_features, in_features)
     return np.ascontiguousarray(
         np.stack([np.roll(base, shift=expert + 1, axis=0) for expert in range(experts)], axis=0)
@@ -200,6 +222,8 @@ def _weights(quant: str, *, out_features: int = 24, in_features: int = 512, expe
 
 
 def _tiles(quant: str, qweight: np.ndarray) -> np.ndarray:
+    if quant == "q4":
+        return repack_gguf_q4_k_x8(qweight).tiles
     return repack_gguf_q5_k_x8(qweight).tiles if quant == "q5" else repack_gguf_q6_k_x8(qweight).tiles
 
 
@@ -244,6 +268,65 @@ def _run_direct(wrapper, x_bits: np.ndarray, selected: np.ndarray, tiles: np.nda
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(out), out_buf, runtime=runtime)
         return out
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+
+def _run_dual_direct(
+    wrapper,
+    x_bits: np.ndarray,
+    selected: np.ndarray,
+    tiles_a: np.ndarray,
+    tiles_b: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    x8_library = build_gguf_x8_selected_gemv(load=True)
+    q4_library = build_gguf_q4_k_gemv(load=True)
+    x_rows, in_features = x_bits.shape
+    rows = int(selected.size)
+    num_experts = int(tiles_a.shape[0])
+    out_features = int(tiles_a.shape[1] * 8)
+    out_a = np.zeros((rows, out_features), dtype=np.uint16)
+    out_b = np.zeros((rows, out_features), dtype=np.uint16)
+    bufs = []
+    try:
+        x_buf = malloc(x_bits.nbytes, runtime=runtime)
+        selected_buf = malloc(selected.nbytes, runtime=runtime)
+        tiles_a_buf = malloc(tiles_a.nbytes, runtime=runtime)
+        tiles_b_buf = malloc(tiles_b.nbytes, runtime=runtime)
+        xq_buf = malloc(x_rows * (in_features // Q8_1_BLOCK) * Q8_1_BLOCK_BYTES, runtime=runtime)
+        out_a_buf = malloc(out_a.nbytes, runtime=runtime)
+        out_b_buf = malloc(out_b.nbytes, runtime=runtime)
+        bufs.extend((x_buf, selected_buf, tiles_a_buf, tiles_b_buf, xq_buf, out_a_buf, out_b_buf))
+        copy_host_to_device(x_buf, host_array_ptr(np.ascontiguousarray(x_bits)), runtime=runtime)
+        copy_host_to_device(selected_buf, host_array_ptr(np.ascontiguousarray(selected)), runtime=runtime)
+        copy_host_to_device(tiles_a_buf, host_array_ptr(np.ascontiguousarray(tiles_a)), runtime=runtime)
+        copy_host_to_device(tiles_b_buf, host_array_ptr(np.ascontiguousarray(tiles_b)), runtime=runtime)
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_buf.ptr, xq_buf.ptr, x_rows, in_features, library=q4_library, runtime=runtime
+        )
+        wrapper(
+            xq_buf.ptr,
+            selected_buf.ptr,
+            tiles_a_buf.ptr,
+            tiles_b_buf.ptr,
+            out_a_buf.ptr,
+            out_b_buf.ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            library=x8_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out_a), out_a_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(out_b), out_b_buf, runtime=runtime)
+        return out_a, out_b
     finally:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
@@ -299,6 +382,15 @@ def test_x8_selected_registry_and_contract() -> None:
         resolve(
             backend="hip_gfx1100",
             layer="moe_linear",
+            quant="gguf_q4_k_x8_v1",
+            variant="selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+        )
+        is gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
             quant="gguf_q5_k_x8_v1",
             variant="selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
         )
@@ -315,6 +407,41 @@ def test_x8_selected_registry_and_contract() -> None:
     )
     with pytest.raises(ValueError, match="divisible by 8"):
         gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(1, 2, 3, 4, 1, 1, 1, 256, 10)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_x8_selected_dual_direct_matches_q8_1_oracle_and_cpu_gate() -> None:
+    rng = np.random.default_rng(20260628)
+    x_f32 = (rng.standard_normal((2, 512)).astype(np.float32) * 0.1) + 0.002
+    x_bits = _bf16_bits(x_f32)
+    qweight_a = _weights("q4")
+    qweight_b = np.ascontiguousarray(np.roll(qweight_a, shift=3, axis=1))
+    selected = np.asarray([0, 2, 1, 3], dtype=np.int64)
+    rows = int(selected.size)
+    x_row_for_output = np.arange(rows, dtype=np.int64) // (rows // x_f32.shape[0])
+
+    got_a_bits, got_b_bits = _run_dual_direct(
+        gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+        x_bits,
+        selected,
+        _tiles("q4", qweight_a),
+        _tiles("q4", qweight_b),
+    )
+    got_a = _bf16_to_f32(got_a_bits)
+    got_b = _bf16_to_f32(got_b_bits)
+    x_bf16 = _bf16_to_f32(x_bits)
+    q8_ref_a = _q8_oracle("q4", x_bf16, x_row_for_output, selected, qweight_a)
+    q8_ref_b = _q8_oracle("q4", x_bf16, x_row_for_output, selected, qweight_b)
+    np.testing.assert_allclose(got_a, q8_ref_a, rtol=2e-2, atol=2e-2)
+    np.testing.assert_allclose(got_b, q8_ref_b, rtol=2e-2, atol=2e-2)
+
+    exact_a = _exact_oracle("q4", x_bf16, x_row_for_output, selected, qweight_a)
+    exact_b = _exact_oracle("q4", x_bf16, x_row_for_output, selected, qweight_b)
+    for exact, got in ((exact_a, got_a), (exact_b, got_b)):
+        kl_mean, kl_max = _softmax_kl(exact, got)
+        assert kl_mean <= 0.05
+        assert kl_max <= 0.10
+        assert _top1(exact, got) >= 0.90
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

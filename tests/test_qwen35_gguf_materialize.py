@@ -11,11 +11,14 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DECODE_REPACK_ENV,
+    HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV,
+    HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV,
     HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV,
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,
     LAYOUT_GGUF_Q4_K_T16,
+    LAYOUT_GGUF_Q4_K_X8,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q5_K_X8,
     LAYOUT_GGUF_Q6_K_T16,
@@ -24,6 +27,9 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     gguf_decode_repack_enabled,
+    gguf_selected_down_raw_enabled,
+    gguf_selected_down_raw_mode,
+    gguf_selected_gate_up_x8_enabled,
     gguf_selected_x8_repack_enabled,
     gguf_selected_x8_repack_mode,
     materialize_qwen35_gguf_weights,
@@ -175,6 +181,78 @@ def test_qwen35moe_decode_repack_can_plan_q6_only_x8(monkeypatch: pytest.MonkeyP
     assert q6_down.quant_key == "gguf_q6_k_x8_v1"
 
 
+def test_qwen35moe_decode_repack_can_keep_selected_down_raw(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV, "both")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_decode_repack_enabled() is True
+    assert gguf_selected_down_raw_enabled() is True
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_gate_exps"].layout == LAYOUT_GGUF_Q4_K_T16
+    assert layer0["ffn_up_exps"].layout == LAYOUT_GGUF_Q4_K_T16
+    assert layer0["ffn_down_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k"
+    assert layer0["ffn_down_exps"].allocation_names == ("raw",)
+    assert layer0["ffn_down_exps"].sidecar_layouts == ()
+
+    q6_down = next(
+        layer["ffn_down_exps"]
+        for layer in plan.layer_specs
+        if layer["ffn_down_exps"].source.ggml_type_name == "Q6_K"
+    )
+    assert q6_down.layout == LAYOUT_RAW_GGUF
+    assert q6_down.quant_key == "gguf_q6_k"
+
+
+def test_qwen35moe_decode_repack_can_plan_selected_gate_up_x8(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_selected_gate_up_x8_enabled() is True
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_gate_exps"].layout == LAYOUT_GGUF_Q4_K_X8
+    assert layer0["ffn_gate_exps"].quant_key == "gguf_q4_k_x8_v1"
+    assert layer0["ffn_gate_exps"].allocation_names == ("tiles",)
+    assert layer0["ffn_up_exps"].layout == LAYOUT_GGUF_Q4_K_X8
+    assert layer0["ffn_up_exps"].quant_key == "gguf_q4_k_x8_v1"
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
+
+
+def test_qwen35moe_selected_down_raw_takes_precedence_over_x8(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV, "q6")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "both")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    plan = plan_qwen35_gguf_materialization(model_map)
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_X8
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_x8_v1"
+
+    q6_down = next(
+        layer["ffn_down_exps"]
+        for layer in plan.layer_specs
+        if layer["ffn_down_exps"].source.ggml_type_name == "Q6_K"
+    )
+    assert q6_down.layout == LAYOUT_RAW_GGUF
+    assert q6_down.quant_key == "gguf_q6_k"
+
+
 def test_selected_x8_repack_mode_accepts_quant_family(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, raising=False)
     assert gguf_selected_x8_repack_mode() == "off"
@@ -190,6 +268,23 @@ def test_selected_x8_repack_mode_accepts_quant_family(monkeypatch: pytest.Monkey
     monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "bogus")
     with pytest.raises(ValueError, match="must be off, q5, q6, both"):
         gguf_selected_x8_repack_mode()
+
+
+def test_selected_down_raw_mode_accepts_quant_family(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV, raising=False)
+    assert gguf_selected_down_raw_mode() == "off"
+    assert gguf_selected_down_raw_enabled() is False
+
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV, "q5")
+    assert gguf_selected_down_raw_mode() == "q5"
+    assert gguf_selected_down_raw_enabled() is True
+
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV, "1")
+    assert gguf_selected_down_raw_mode() == "both"
+
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV, "bogus")
+    with pytest.raises(ValueError, match="must be one of off, q5, q6, or both"):
+        gguf_selected_down_raw_mode()
 
 
 @pytest.mark.parametrize(

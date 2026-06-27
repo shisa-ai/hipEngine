@@ -57,7 +57,12 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
-from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
+from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    argmax_f32,
+    argmax_f32_rows_i32,
+    build_lm_head,
+    lm_head_argmax_stage1_blocks,
+)
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
@@ -114,6 +119,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     register_gguf_t16_selected_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
+    gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -2589,7 +2595,17 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         if not expert_silu_ready:
-            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(scratch, 1, self.hidden_size)
+            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
+                scratch,
+                1,
+                self.hidden_size,
+                enabled=(
+                    _gguf_q4k_selected_dual_dp4a_enabled()
+                    or _gguf_t16_selected_dp4a_enabled()
+                    or _gguf_raw_selected_dp4a_enabled()
+                    or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
+                ),
+            )
             if not _launch_selected_raw_gguf_moe_pair(
                 gate_weight,
                 up_weight,
@@ -2740,6 +2756,21 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         ):
             return
+        if _gguf_row_compact_gemv_enabled() and _try_run_post_attention_moe_rows_compact_gemv(
+            self,
+            layer,
+            gate_weight,
+            up_weight,
+            down_weight,
+            out_ptr,
+            scratch,
+            rows=rows,
+            selected_rows=selected_rows,
+            top_k=top_k,
+            stream=stream,
+            runtime=runtime,
+        ):
+            return
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
         expert_silu_ready = False
         if expert_sidecar is not None and _launch_selected_expert_pack8_moe_pair(
@@ -2792,7 +2823,17 @@ class Qwen35GGUFFullStackRunner:
             # The Q4T16 dual+SiLU fusion is decode-only for now.  In rows>1
             # bulk prefill the extra exp/rounding work in the GEMV accumulator
             # did not pay for the removed SiLU launch, so keep the split path.
-            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(scratch, rows, self.hidden_size)
+            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
+                scratch,
+                rows,
+                self.hidden_size,
+                enabled=(
+                    _gguf_q4k_selected_dual_dp4a_enabled()
+                    or _gguf_t16_selected_dp4a_enabled()
+                    or _gguf_raw_selected_dp4a_enabled()
+                    or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
+                ),
+            )
             if not _launch_selected_raw_gguf_moe_pair(
                 gate_weight,
                 up_weight,
@@ -2993,6 +3034,8 @@ _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
+_GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
+_GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
 
@@ -3055,6 +3098,14 @@ def _gguf_t16_selected_dp4a_enabled() -> bool:
 
 def _gguf_raw_selected_dp4a_enabled() -> bool:
     return _env_flag(_GGUF_RAW_SELECTED_DP4A_ENV, False)
+
+
+def _gguf_row_compact_gemv_enabled() -> bool:
+    return _env_flag(_GGUF_ROW_COMPACT_GEMV_ENV, False)
+
+
+def _gguf_verify_row_lm_head_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_ROW_LM_HEAD_ENV, False)
 
 
 def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
@@ -3222,6 +3273,16 @@ class Qwen35GGUFResidentSession:
     _lm_block_indices: object | None = field(default=None, init=False)
     _lm_out_index: object | None = field(default=None, init=False)
     _lm_out_value: object | None = field(default=None, init=False)
+    _verify_hidden_seed_buf: object | None = field(default=None, init=False)
+    _verify_token_ids_i64: object | None = field(default=None, init=False)
+    _verify_token_counter_i64: object | None = field(default=None, init=False)
+    _verify_block_rows_capacity: int = field(default=0, init=False)
+    _verify_logits_buf: object | None = field(default=None, init=False)
+    _verify_lm_block_values: object | None = field(default=None, init=False)
+    _verify_lm_block_indices_i32: object | None = field(default=None, init=False)
+    _verify_lm_out_indices_i32: object | None = field(default=None, init=False)
+    _verify_lm_out_values: object | None = field(default=None, init=False)
+    _verify_lm_rows_capacity: int = field(default=0, init=False)
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
@@ -3736,11 +3797,6 @@ class Qwen35GGUFResidentSession:
         rows = int(len(input_token_ids))
         if rows <= 0:
             raise ValueError("input_token_ids must be non-empty")
-        min_rows = int(self.runner.weights.config.ssm_conv_kernel)
-        if rows < min_rows:
-            raise ValueError(
-                f"GGUF target block verification requires at least {min_rows} rows; got {rows}"
-            )
         if rows > int(self._bulk_prefill_scratch.rows):
             raise ValueError(
                 f"target block rows {rows} exceed resident bulk scratch rows {self._bulk_prefill_scratch.rows}"
@@ -3755,16 +3811,18 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
         runtime = self.runtime or get_hip_runtime()
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
-        hidden_seed_buf = None
-        out_indices = None
-        out_index_counter = None
+        self._ensure_verify_block_buffers(rows, runtime=runtime)
+        if self._verify_hidden_seed_buf is None:
+            raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
+        hidden_seed_buf = self._verify_hidden_seed_buf
+        token_ids_buf = self._verify_token_ids_i64
+        token_counter_buf = self._verify_token_counter_i64
+        if token_ids_buf is None or token_counter_buf is None:
+            raise RuntimeError("GGUF verifier token buffers are closed")
+        zero_index = np.zeros((1,), dtype=np.int64)
+        copy_host_to_device(token_counter_buf, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
+        copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
         try:
-            hidden_seed_buf = malloc(rows * self.runner.hidden_size * DType.FP32.itemsize, runtime=runtime)
-            out_indices = malloc(rows * DType.INT64.itemsize, runtime=runtime)
-            out_index_counter = malloc(DType.INT64.itemsize, runtime=runtime)
-            zero_index = np.zeros((1,), dtype=np.int64)
-            copy_host_to_device(out_index_counter, host_array_ptr(zero_index), runtime=runtime)
-            copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
             launch_gguf_embedding(
                 self.runner.weights.root("token_embedding"),
                 self._prefill_token_buf.ptr,
@@ -3867,20 +3925,6 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                     runtime=runtime,
                 )
-                for row in range(rows):
-                    self._sample_device_from_hidden(
-                        final_scratch.norm.ptr + row * row_nbytes,
-                        stream=stream,
-                    )
-                    record_i64_scalar_indexed(
-                        self._lm_out_index.ptr,
-                        out_indices.ptr,
-                        out_index_counter.ptr,
-                        rows,
-                        stream=stream,
-                        library=self._runtime_state_library,
-                        runtime=runtime,
-                    )
                 runtime.memcpy_async(
                     self.scratch.hidden_seed_fp32.ptr,
                     hidden_seed_buf.ptr + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
@@ -3888,15 +3932,36 @@ class Qwen35GGUFResidentSession:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     stream,
                 )
+            row_lm_head = _gguf_verify_row_lm_head_enabled()
+            if row_lm_head:
+                token_host = self._sample_target_block_rows_from_hidden(
+                    final_scratch.norm.ptr,
+                    rows,
+                    stream=stream,
+                )
+            else:
+                token_host = np.empty((rows,), dtype=np.int64)
+                for row in range(rows):
+                    self._sample_device_from_hidden(
+                        final_scratch.norm.ptr + row * row_nbytes,
+                        stream=stream,
+                    )
+                    record_i64_scalar_indexed(
+                        self._lm_out_index.ptr,
+                        token_ids_buf.ptr,
+                        token_counter_buf.ptr,
+                        rows,
+                        stream=stream,
+                        library=self._runtime_state_library,
+                        runtime=runtime,
+                    )
             runtime.device_synchronize()
-            token_host = np.empty((rows,), dtype=np.int64)
+            if not row_lm_head:
+                copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
             hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
-            copy_device_to_host(host_array_ptr(token_host), out_indices, runtime=runtime)
-            copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, runtime=runtime)
+            copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
         finally:
-            for buffer in (out_index_counter, out_indices, hidden_seed_buf):
-                if buffer is not None:
-                    free(buffer, runtime=runtime)
+            pass
         self._position = end
         self.scratch.position_host[0] = end
         self.scratch.context_host[0] = end + 1
@@ -4410,6 +4475,114 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
 
+    def _ensure_verify_block_buffers(self, rows: int, *, runtime: HipRuntime) -> None:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("verify block rows must be positive")
+        if rows <= int(self._verify_block_rows_capacity):
+            return
+        for buffer in (
+            self._verify_token_counter_i64,
+            self._verify_token_ids_i64,
+            self._verify_hidden_seed_buf,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        self._verify_hidden_seed_buf = malloc(
+            rows * self.runner.hidden_size * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        self._verify_token_ids_i64 = malloc(rows * DType.INT64.itemsize, runtime=runtime)
+        self._verify_token_counter_i64 = malloc(DType.INT64.itemsize, runtime=runtime)
+        self._verify_block_rows_capacity = rows
+
+    def _ensure_verify_lm_head_buffers(self, rows: int, *, runtime: HipRuntime) -> None:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("verify lm-head rows must be positive")
+        if rows <= int(self._verify_lm_rows_capacity):
+            return
+        for buffer in (
+            self._verify_lm_out_values,
+            self._verify_lm_out_indices_i32,
+            self._verify_lm_block_indices_i32,
+            self._verify_lm_block_values,
+            self._verify_logits_buf,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        stage1_blocks = int(self._lm_head_stage1_blocks)
+        vocab_size = int(self.runner.vocab_size if self.runner is not None else 0)
+        if stage1_blocks <= 0 or vocab_size <= 0:
+            raise RuntimeError("GGUF verifier lm-head buffers require initialized session state")
+        self._verify_logits_buf = malloc(rows * vocab_size * DType.FP32.itemsize, runtime=runtime)
+        self._verify_lm_block_values = malloc(rows * stage1_blocks * DType.FP32.itemsize, runtime=runtime)
+        self._verify_lm_block_indices_i32 = malloc(rows * stage1_blocks * DType.INT32.itemsize, runtime=runtime)
+        self._verify_lm_out_indices_i32 = malloc(rows * DType.INT32.itemsize, runtime=runtime)
+        self._verify_lm_out_values = malloc(rows * DType.FP32.itemsize, runtime=runtime)
+        self._verify_lm_rows_capacity = rows
+
+    def _sample_target_block_rows_from_hidden(self, hidden_ptr: int, rows: int, *, stream: int = 0) -> np.ndarray:
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        rows = int(rows)
+        self._ensure_verify_lm_head_buffers(rows, runtime=runtime)
+        if (
+            self._verify_logits_buf is None
+            or self._verify_lm_block_values is None
+            or self._verify_lm_block_indices_i32 is None
+            or self._verify_lm_out_indices_i32 is None
+            or self._verify_lm_out_values is None
+        ):
+            raise RuntimeError("GGUF verifier lm-head buffers are closed")
+        launch_gguf_linear(
+            self.runner.weights.root("lm_head"),
+            hidden_ptr,
+            self._verify_logits_buf.ptr,
+            rows=rows,
+            in_features=self.runner.hidden_size,
+            out_features=self.runner.vocab_size,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
+            runtime=runtime,
+        )
+        argmax_f32_rows_i32(
+            self._verify_logits_buf.ptr,
+            self._verify_lm_block_values.ptr,
+            self._verify_lm_block_indices_i32.ptr,
+            self._verify_lm_out_indices_i32.ptr,
+            self._verify_lm_out_values.ptr,
+            rows,
+            self.runner.vocab_size,
+            threads=self._lm_head_threads,
+            stream=stream,
+            library=self._lm_head_library,
+            runtime=runtime,
+        )
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+        token_i32 = np.empty((rows,), dtype=np.int32)
+        copy_device_to_host(
+            host_array_ptr(token_i32),
+            DeviceBuffer(self._verify_lm_out_indices_i32.ptr, token_i32.nbytes),
+            token_i32.nbytes,
+            runtime=runtime,
+        )
+        token_i64 = token_i32.astype(np.int64, copy=False)
+        if self._lm_out_index is not None and rows > 0:
+            set_i64_scalar(
+                self._lm_out_index.ptr,
+                int(token_i64[-1]),
+                library=self._runtime_state_library,
+                runtime=runtime,
+            )
+        return np.ascontiguousarray(token_i64, dtype=np.int64)
+
     def _sample_from_hidden(self, hidden_ptr: int, *, return_logits: bool = True) -> Qwen35GGUFNextTokenProbeResult:
         self._sample_device_from_hidden(hidden_ptr)
         (self.runtime or get_hip_runtime()).device_synchronize()
@@ -4649,6 +4822,28 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        for buffer in (
+            self._verify_lm_out_values,
+            self._verify_lm_out_indices_i32,
+            self._verify_lm_block_indices_i32,
+            self._verify_lm_block_values,
+            self._verify_logits_buf,
+            self._verify_token_counter_i64,
+            self._verify_token_ids_i64,
+            self._verify_hidden_seed_buf,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._verify_hidden_seed_buf = None
+        self._verify_token_ids_i64 = None
+        self._verify_token_counter_i64 = None
+        self._verify_block_rows_capacity = 0
+        self._verify_lm_out_values = None
+        self._verify_lm_out_indices_i32 = None
+        self._verify_lm_block_indices_i32 = None
+        self._verify_lm_block_values = None
+        self._verify_logits_buf = None
+        self._verify_lm_rows_capacity = 0
         for buffer in reversed(self._buffers):
             if buffer is not None:
                 free(buffer, runtime=runtime)
@@ -4887,6 +5082,7 @@ class _GGUFFullAttentionPrefillScratch:
     moe_group_counts_zero: np.ndarray
     moe_scatter_offsets_zero: np.ndarray
     moe_wmma_total_host: np.ndarray
+    moe_selected_host: np.ndarray
     moe_selected_rows_capacity: int
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
@@ -5076,6 +5272,7 @@ class _GGUFFullAttentionPrefillScratch:
             moe_group_counts_zero=moe_group_counts_zero,
             moe_scatter_offsets_zero=moe_scatter_offsets_zero,
             moe_wmma_total_host=moe_wmma_total_host,
+            moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
             moe_selected_rows_capacity=moe_selected_rows_capacity,
             moe_wmma_rows_capacity=moe_wmma_rows_capacity,
             buffers=tuple(value for value in fields.values() if value is not None),
@@ -6875,6 +7072,13 @@ def _selected_gemv_requires_q8_1_input(weight: Qwen35GGUFDeviceWeight) -> bool:
     return weight.spec.quant_key in {"gguf_q5_k_x8_v1", "gguf_q6_k_x8_v1"}
 
 
+def _selected_pair_requires_q8_1_input(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+) -> bool:
+    return weight_a.spec.quant_key == "gguf_q4_k_x8_v1" and weight_b.spec.quant_key == "gguf_q4_k_x8_v1"
+
+
 def _validate_raw_rank3_expert_weight(
     weight: Qwen35GGUFDeviceWeight,
     *,
@@ -7087,6 +7291,33 @@ def _launch_selected_raw_gguf_moe_pair(
                 stream=stream,
                 runtime=runtime,
             )
+        return True
+    if weight_a.spec.quant_key == "gguf_q4_k_x8_v1" and weight_b.spec.quant_key == "gguf_q4_k_x8_v1":
+        if q8_1_workspace_ptr is None:
+            raise ValueError("gguf_q4_k_x8_v1 selected-dual GEMV requires q8_1 workspace")
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            q8_1_workspace_ptr,
+            x_rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+            q8_1_workspace_ptr,
+            selected_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
         return True
     return False
 

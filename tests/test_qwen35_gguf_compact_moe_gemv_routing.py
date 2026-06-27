@@ -38,6 +38,8 @@ def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_ROW_COMPACT_GEMV", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_DOWN_RAW", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_X8_REPACK", raising=False)
     set_gemv_decode_enabled(None)
     yield

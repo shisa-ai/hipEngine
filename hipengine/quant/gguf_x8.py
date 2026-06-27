@@ -22,8 +22,23 @@ from hipengine.quant.gguf_t16 import GGUF_Q5_K_BLOCK_BYTES, GGUF_Q6_K_BLOCK_BYTE
 from hipengine.quant.registry import register_quant
 
 GGUF_X8_COLS = 8
+GGUF_Q4_K_BLOCK_BYTES = 144
+GGUF_Q4_K_X8_BLOCK_BYTES = GGUF_X8_COLS * GGUF_Q4_K_BLOCK_BYTES
 GGUF_Q5_K_X8_BLOCK_BYTES = GGUF_X8_COLS * GGUF_Q5_K_BLOCK_BYTES
 GGUF_Q6_K_X8_BLOCK_BYTES = GGUF_X8_COLS * GGUF_Q6_K_BLOCK_BYTES
+
+
+@dataclass(frozen=True)
+class GGUFQ4KX8Quant:
+    """X8 replacement-layout plugin key for GGUF block_q4_K experts."""
+
+    name: str = "gguf_q4_k_x8_v1"
+    weight_storage: str = "gguf_block_q4_k_x8_v1"
+    activation_preprocess: str = "q8_1"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block256_subblock32_scale_min"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_x8_gemv"
 
 
 @dataclass(frozen=True)
@@ -50,6 +65,24 @@ class GGUFQ6KX8Quant:
     scale_granularity: str = "block256_subblock16_scale"
     calibration_artifact: str = "gguf"
     kernel_family: str = "gguf_x8_gemv"
+
+
+@dataclass(frozen=True)
+class GGUFQ4KX8:
+    """Byte-exact X8 replacement layout for Q4_K selected experts."""
+
+    tiles: np.ndarray
+    experts: int
+    out_features: int
+    in_features: int
+
+    @property
+    def out_packed(self) -> int:
+        return self.out_features // GGUF_X8_COLS
+
+    @property
+    def blocks_per_row(self) -> int:
+        return self.in_features // QK_K
 
 
 @dataclass(frozen=True)
@@ -88,6 +121,7 @@ class GGUFQ6KX8:
         return self.in_features // QK_K
 
 
+GGUF_Q4_K_X8_V1 = register_quant(GGUFQ4KX8Quant())
 GGUF_Q5_K_X8_V1 = register_quant(GGUFQ5KX8Quant())
 GGUF_Q6_K_X8_V1 = register_quant(GGUFQ6KX8Quant())
 
@@ -153,6 +187,29 @@ def repack_gguf_q5_k_x8(raw_qweight: Any) -> GGUFQ5KX8:
     return GGUFQ5KX8(tiles=tiles, experts=experts, out_features=out_features, in_features=in_features)
 
 
+def repack_gguf_q4_k_x8(raw_qweight: Any) -> GGUFQ4KX8:
+    """Repack rank-3 raw GGUF Q4_K expert weights into byte-exact X8 tiles."""
+
+    tiles, experts, out_features, in_features = _repack_x8(
+        raw_qweight,
+        block_bytes=GGUF_Q4_K_BLOCK_BYTES,
+        quant_name="Q4_K",
+    )
+    return GGUFQ4KX8(tiles=tiles, experts=experts, out_features=out_features, in_features=in_features)
+
+
+def unpack_gguf_q4_k_x8(packed: GGUFQ4KX8 | np.ndarray, *, out_features: int | None = None) -> np.ndarray:
+    """Reconstruct raw GGUF Q4_K expert bytes from X8 tiles."""
+
+    if isinstance(packed, GGUFQ4KX8):
+        tiles = packed.tiles
+        expected_out = packed.out_features
+    else:
+        tiles = packed
+        expected_out = out_features
+    return _unpack_x8(tiles, block_bytes=GGUF_Q4_K_BLOCK_BYTES, out_features=expected_out)
+
+
 def unpack_gguf_q5_k_x8(packed: GGUFQ5KX8 | np.ndarray, *, out_features: int | None = None) -> np.ndarray:
     """Reconstruct raw GGUF Q5_K expert bytes from X8 tiles."""
 
@@ -189,17 +246,23 @@ def unpack_gguf_q6_k_x8(packed: GGUFQ6KX8 | np.ndarray, *, out_features: int | N
 
 
 __all__ = [
+    "GGUF_Q4_K_X8_BLOCK_BYTES",
+    "GGUF_Q4_K_X8_V1",
     "GGUF_Q5_K_X8_BLOCK_BYTES",
     "GGUF_Q5_K_X8_V1",
     "GGUF_Q6_K_X8_BLOCK_BYTES",
     "GGUF_Q6_K_X8_V1",
     "GGUF_X8_COLS",
+    "GGUFQ4KX8",
+    "GGUFQ4KX8Quant",
     "GGUFQ5KX8",
     "GGUFQ5KX8Quant",
     "GGUFQ6KX8",
     "GGUFQ6KX8Quant",
+    "repack_gguf_q4_k_x8",
     "repack_gguf_q5_k_x8",
     "repack_gguf_q6_k_x8",
+    "unpack_gguf_q4_k_x8",
     "unpack_gguf_q5_k_x8",
     "unpack_gguf_q6_k_x8",
 ]

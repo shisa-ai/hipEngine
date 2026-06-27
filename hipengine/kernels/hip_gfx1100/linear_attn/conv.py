@@ -577,8 +577,6 @@ def _launch_conv_prefill(
 ) -> None:
     _check_conv_shape(channels, kernel_size)
     _check_positive(tokens, "tokens")
-    if tokens < kernel_size:
-        raise ValueError("native prefill conv currently requires tokens >= kernel_size")
     library = library or build_qwen35_linear_attn_conv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)

@@ -136,7 +136,8 @@ def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
     assert float(np.max(np.abs(graph_second.logits - eager_second.logits))) == 0.0
 
 
-def test_qwen35_gguf_target_block_verify_matches_eager_steps() -> None:
+@pytest.mark.parametrize("block_rows", [1, 2, 3, 4])
+def test_qwen35_gguf_target_block_verify_matches_eager_steps(block_rows: int) -> None:
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
     prompt_ids = [760, 4087, 369, 220]
@@ -145,7 +146,7 @@ def test_qwen35_gguf_target_block_verify_matches_eager_steps() -> None:
         block_inputs: list[int] = []
         expected_tokens: list[int] = []
         current = int(first.token_id)
-        for _ in range(4):
+        for _ in range(block_rows):
             block_inputs.append(current)
             result = eager.step(current, return_logits=False, capture_hidden_seed_fp32=True)
             expected_tokens.append(int(result.token_id))
@@ -163,7 +164,7 @@ def test_qwen35_gguf_target_block_verify_matches_eager_steps() -> None:
     assert block_result.start_position == len(prompt_ids)
     assert block_result.input_token_ids == block_inputs
     assert block_result.token_ids == expected_tokens
-    assert block_result.hidden_seeds.shape == (4, hidden_size)
+    assert block_result.hidden_seeds.shape == (block_rows, hidden_size)
     assert block_result.hidden_seeds.dtype == np.float32
     assert np.all(np.isfinite(block_result.hidden_seeds))
     assert final_position == len(prompt_ids) + len(block_inputs) + 1

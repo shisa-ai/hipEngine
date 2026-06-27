@@ -39,6 +39,8 @@ _SOURCE = Path(__file__).with_name("mtp_nextn.hip")
 _OUTPUT_NAME = "mtp_nextn.so"
 _SYMBOL_RMSNORM_F32 = "hipengine_mtp_rmsnorm_f32"
 _SYMBOL_EH_PROJ_F32 = "hipengine_mtp_eh_proj_f32"
+_SYMBOL_SPLIT_Q_GATE_F32 = "hipengine_mtp_split_q_gate_f32"
+_SYMBOL_SIGMOID_ROW_SCALE_FROM_LOGITS_F32 = "hipengine_mtp_sigmoid_row_scale_from_logits_f32"
 
 # ptr(s) + rows(int64) + hidden(int64) + eps(float) + stream
 _ARGTYPES_RMSNORM_F32 = (
@@ -51,6 +53,16 @@ _ARGTYPES_RMSNORM_F32 = (
 _ARGTYPES_EH_PROJ_F32 = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
     ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ARGTYPES_SPLIT_Q_GATE_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ARGTYPES_SIGMOID_ROW_SCALE_FROM_LOGITS_F32 = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
     ctypes.c_void_p,
 )
 
@@ -179,6 +191,64 @@ def mtp_eh_proj_f32(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_EH_PROJ_F32, _ARGTYPES_EH_PROJ_F32, ctypes.c_int)
     err = fn(e_norm_ptr, h_norm_ptr, weight_ptr, out_ptr, rows, hidden, stream)
+    _check_launch(runtime, err)
+
+
+def mtp_split_q_gate_f32(
+    q_full_ptr: int,
+    query_ptr: int,
+    gate_ptr: int,
+    tokens: int,
+    heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Split ``[tokens, heads, 2, head_dim]`` into query/gate device buffers."""
+
+    _check_positive("tokens", tokens)
+    _check_positive("heads", heads)
+    _check_positive("head_dim", head_dim)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_SPLIT_Q_GATE_F32,
+        _ARGTYPES_SPLIT_Q_GATE_F32,
+        ctypes.c_int,
+    )
+    err = fn(q_full_ptr, query_ptr, gate_ptr, tokens, heads, head_dim, stream)
+    _check_launch(runtime, err)
+
+
+def mtp_sigmoid_row_scale_from_logits_f32(
+    logits_ptr: int,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden: int,
+    logits_stride: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch ``out[row] = sigmoid(logits[row, 0]) * x[row]``."""
+
+    _check_positive("rows", rows)
+    _check_positive("hidden", hidden)
+    _check_positive("logits_stride", logits_stride)
+    library = library or build_mtp_nextn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_SIGMOID_ROW_SCALE_FROM_LOGITS_F32,
+        _ARGTYPES_SIGMOID_ROW_SCALE_FROM_LOGITS_F32,
+        ctypes.c_int,
+    )
+    err = fn(logits_ptr, x_ptr, out_ptr, rows, hidden, logits_stride, stream)
     _check_launch(runtime, err)
 
 
@@ -1858,6 +1928,8 @@ __all__ = [
     "mtp_rmsnorm_f32",
     "mtp_row_scale_f32",
     "mtp_scale_f32",
+    "mtp_sigmoid_row_scale_from_logits_f32",
+    "mtp_split_q_gate_f32",
     "mtp_sigmoid_gate_mul_f32",
     "mtp_silu_mul_f32",
     "plan_mtp_nextn_build",

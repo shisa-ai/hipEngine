@@ -661,7 +661,7 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32(
     int64_t channels,
     int64_t kernel_size,
     hipStream_t stream) {
-  if (tokens <= 0 || !valid_conv_shape(channels, kernel_size) || tokens < kernel_size) {
+  if (tokens <= 0 || !valid_conv_shape(channels, kernel_size)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
@@ -711,7 +711,7 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_fp16(
     int64_t channels,
     int64_t kernel_size,
     hipStream_t stream) {
-  if (tokens <= 0 || !valid_conv_shape(channels, kernel_size) || tokens < kernel_size) {
+  if (tokens <= 0 || !valid_conv_shape(channels, kernel_size)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;

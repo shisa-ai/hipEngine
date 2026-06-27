@@ -782,3 +782,89 @@ extern "C" int hipengine_mtp_paged_attn_f32(
       tokens, heads, kv_heads, qk_head_dim, value_head_dim, block_size, max_blocks, scale);
   return static_cast<int>(hipGetLastError());
 }
+
+extern "C" __global__ void hipengine_mtp_split_q_gate_f32_kernel(
+    const float* __restrict__ q_full,
+    float* __restrict__ query,
+    float* __restrict__ gate,
+    int64_t tokens,
+    int64_t heads,
+    int64_t head_dim) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= tokens * heads) {
+    return;
+  }
+  const int64_t q_full_base = row * 2 * head_dim;
+  const int64_t out_base = row * head_dim;
+  for (int64_t d = static_cast<int64_t>(threadIdx.x); d < head_dim;
+       d += static_cast<int64_t>(blockDim.x)) {
+    query[out_base + d] = q_full[q_full_base + d];
+    gate[out_base + d] = q_full[q_full_base + head_dim + d];
+  }
+}
+
+extern "C" int hipengine_mtp_split_q_gate_f32(
+    const float* q_full,
+    float* query,
+    float* gate,
+    int64_t tokens,
+    int64_t heads,
+    int64_t head_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || heads <= 0 || head_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  int block = 256;
+  if (head_dim < block) {
+    block = static_cast<int>(head_dim);
+  }
+  hipLaunchKernelGGL(
+      hipengine_mtp_split_q_gate_f32_kernel,
+      dim3(static_cast<unsigned int>(tokens * heads)),
+      dim3(static_cast<unsigned int>(block)),
+      0,
+      stream,
+      q_full, query, gate, tokens, heads, head_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" __global__ void hipengine_mtp_sigmoid_row_scale_from_logits_f32_kernel(
+    const float* __restrict__ logits,
+    const float* __restrict__ x,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t logits_stride) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const float scale = 1.0f / (1.0f + __expf(-logits[row * logits_stride]));
+  const int64_t base = row * hidden;
+  for (int64_t i = static_cast<int64_t>(threadIdx.x); i < hidden;
+       i += static_cast<int64_t>(blockDim.x)) {
+    out[base + i] = x[base + i] * scale;
+  }
+}
+
+extern "C" int hipengine_mtp_sigmoid_row_scale_from_logits_f32(
+    const float* logits,
+    const float* x,
+    float* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t logits_stride,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden <= 0 || logits_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int block = 256;
+  hipLaunchKernelGGL(
+      hipengine_mtp_sigmoid_row_scale_from_logits_f32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(block),
+      0,
+      stream,
+      logits, x, out, rows, hidden, logits_stride);
+  return static_cast<int>(hipGetLastError());
+}

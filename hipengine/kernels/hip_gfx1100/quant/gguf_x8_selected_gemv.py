@@ -16,6 +16,7 @@ _X8_COLS = 8
 _ALLOWED_THREADS = {64, 128, 256}
 _DEFAULT_THREADS = 64
 
+_Q4_DUAL_DIRECT_BF16 = "hipengine_gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q5_DIRECT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q6_DIRECT_BF16 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q5_COMPACT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out"
@@ -59,6 +60,46 @@ def build_gguf_x8_selected_gemv(
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
+    )
+
+
+def gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+    xq_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch direct selected-dual Q4X8 q8_1+sudot4 GEMV."""
+
+    _launch_dual_direct(
+        _Q4_DUAL_DIRECT_BF16,
+        xq_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
 
 
@@ -202,6 +243,68 @@ def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out(
     )
 
 
+def _launch_dual_direct(
+    symbol: str,
+    xq_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if x_rows <= 0:
+        raise ValueError("x_rows must be positive")
+    if rows <= 0 or rows % x_rows != 0:
+        raise ValueError("rows must be positive and divisible by x_rows")
+    _check_common(rows, in_features, out_features, num_experts, threads)
+    library = library or build_gguf_x8_selected_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_direct(
     symbol: str,
     xq_ptr: int,
@@ -323,6 +426,16 @@ def _check_common(rows: int, in_features: int, out_features: int, num_experts: i
 def register_gguf_x8_selected_gemv_kernels(*, replace: bool = True) -> None:
     """Register selected X8 q8_1+sudot4 GEMV kernels."""
 
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k_x8_v1",
+            "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+        replace=replace,
+    )
     for quant_key, direct, compact in (
         (
             "gguf_q5_k_x8_v1",
@@ -357,6 +470,7 @@ register_gguf_x8_selected_gemv_kernels()
 
 __all__ = [
     "build_gguf_x8_selected_gemv",
+    "gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
     "gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
