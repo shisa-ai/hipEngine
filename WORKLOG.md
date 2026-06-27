@@ -126214,3 +126214,22 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Status
 - Production greedy decode is now CORRECT (single-launch). Benchmark fast-AR denominator is valid when captured single-launch. Moving on to: re-measure true-AR + MTP categories against the valid denominator, and continue the q8_1+dp4a systemic GEMV port (task #7).
+
+
+## 2026-06-28 — Valid fast-AR denominator restored + dp4a verifier E2E confirmed (default-off)
+
+### Valid fast-AR denominator (scratchpad valid_denom.py, merge-sort, gfx1151)
+- Single-launch graph AR is bit-exact vs eager (`[71093,12305,198,727,10562,17885,10620,25,1103,...]`) and ~2.2x faster (this single cold run: graph `35.5` vs eager `16.1` tok/s, capture excluded; warm/averaged prior runs were ~`55` vs ~`20`). So with the #1 fix the fast AR baseline is now usable as the MTP speedup denominator.
+- `scripts/gguf_true_ar_category_bench.py` now forces single-launch graph capture (steps_per_replay=decode_tokens) so graph-AR rows are valid.
+
+### dp4a verifier E2E (scratchpad dp4a_e2e.py, verify_target_block rows=4, single-prompt diagnostic)
+- Toggling the selected-MoE dp4a flags (`HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`, `HIPENGINE_GGUF_RAW_SELECTED_DP4A`): `104.58 ms -> 79.68 ms` = **1.31x verifier speedup**, target tokens bit-identical (`[12305,198,727,10562]`).
+- Consistent with the per-piece 2.73x MoE-dual win applied to the ~54% MoE share of the verifier. So the confirmed q8_1+dp4a path DOES translate to an E2E verifier gain; it is just default-OFF (all `_gguf_*_dp4a_enabled()` default False, opt-in env flags).
+
+### Answer to "why llama.cpp gains and we don't (E2E)"
+1. The fast AR path was corrupt (graph relaunch bug) -> the denominator was invalid; now fixed (#1).
+2. The dp4a gains (confirmed 2.73x per-piece, 1.31x verifier E2E, correct) are behind opt-in flags pending full-suite validation, so default runs don't show them.
+
+### Next (the promotion campaign)
+- Full mtpbench category-suite validation of the dp4a flags (anti-gaming: not a single prompt) for non-regressive acceptance + correctness, then promote to default and update benchmarks/README + CHANGELOG against the now-valid single-launch graph-AR denominator. Single-prompt numbers above are diagnostic only.
+- MTP bench target-graph path (scripts/gguf_mtp_bench.py:944/1241) also replays a 1-step graph repeatedly across cycles and likely hits the same 3rd-relaunch hazard for its one-step-graph verifier diagnostic; audit/convert to single-launch or re-capture<=2 before trusting those rows (retained path uses serial-fallback, not this graph).
