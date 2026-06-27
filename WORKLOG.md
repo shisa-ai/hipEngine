@@ -125770,3 +125770,72 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   -> exact `15/15`, but slower: `47.62 tok/s`, warm `48.44 tok/s`, avg cycle `84.00 ms`.
 - Decision: keep Q5T16 dp4a default-off behind `HIPENGINE_GGUF_T16_SELECTED_DP4A`. The isolated kernel is faster, but synthetic c1 top-1 is marginal and the same B3 smoke regresses vs the Q4 split-only diagnostic (`49.31 tok/s`, warm `50.60`) and the previous best (`~48.8 tok/s`) within this single-prompt protocol.
 - Next: do not automatically port Q6 as a retained path. If continuing dp4a, first inspect real-weight Q5/Q6 selected-down distributions and the B3 trace under `HIPENGINE_GGUF_T16_SELECTED_DP4A=1`; otherwise focus on a layout-level GGML-style q8_1/x4 vector-dot port or non-dp4a selected-down reductions that improve B3 without top-1 drift.
+
+
+## 2026-06-27 — Raw Q5_K/Q6_K selected-down dp4a diagnostic: raw layout wins, default still faster
+
+### Scope
+- Added raw selected-pack8 q8_1+sudot4 diagnostic kernels for selected-down Q5_K and Q6_K:
+  `gguf_k_selected_pack8_q8_1_dp4a_prefill_out_kernel<unsigned short,5/6>`.
+- Added wrappers/registry variants:
+  `gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out(...)` and
+  `gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out(...)`.
+- Added default-off raw routing under `HIPENGINE_GGUF_RAW_SELECTED_DP4A=1`.
+  This is intentionally a no-decode-repack diagnostic bundle: it also allows the
+  existing raw Q4_K selected-dual dp4a route, while T16 routes remain gated by
+  `HIPENGINE_GGUF_T16_SELECTED_DP4A` / `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`.
+- Added microbench:
+  `scripts/gguf_k_selected_pack8_dp4a_microbench.py`.
+
+### Validation
+- No-GPU syntax:
+  `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_k_selected_pack8_dp4a_gemv.py scripts/gguf_k_selected_pack8_dp4a_microbench.py`
+  -> passed.
+- Routing:
+  `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q`
+  -> `18 passed`.
+- HIP correctness:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_k_selected_pack8_dp4a_gemv.py -q`
+  -> `3 passed`.
+- Lineage check remains blocked because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  -> `RuntimeError: git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd rev-parse --short HEAD failed`.
+
+### Microbench result
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_k_selected_pack8_dp4a_microbench.py --iters 80 --warmup 20 --json benchmarks/results/2026-06-27-hipengine-gguf-raw-q5-q6-selected-pack8-dp4a-poc.json`
+- Shape: raw selected-down (`rows=8`, `experts=256`, `in_features=512`,
+  `out_features=2048`, input scale `0.1`) on gfx1151.
+- Q5_K:
+  - current raw selected-pack8 float: `0.09164 ms`
+  - q8_1 quantize only: `0.00238 ms`
+  - raw Q5 dp4a dot prequantized: `0.03591 ms`
+  - q8_1 quantize + raw Q5 dp4a: `0.03949 ms`
+  - speedup raw / quant+dp4a: `2.32x`
+  - correctness vs raw float: `KL_mean=0.000111`, `KL_max=0.000890`, top-1 `1.0`.
+- Q6_K:
+  - current raw selected-pack8 float: `0.04193 ms`
+  - q8_1 quantize only: `0.00247 ms`
+  - raw Q6 dp4a dot prequantized: `0.02305 ms`
+  - q8_1 quantize + raw Q6 dp4a: `0.02586 ms`
+  - speedup raw / quant+dp4a: `1.62x`
+  - correctness vs raw float: `KL_mean=0.00512`, `KL_max=0.02576`, top-1 `1.0`.
+
+### B3 diagnostics / profiler
+- Raw dp4a no-decode-repack smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_RAW_SELECTED_DP4A=1 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --no-decode-repack --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-raw-selected-dp4a-verifier-diagnostic.json`
+  -> exact `15/15`, `39.61 tok/s`, warm `40.29 tok/s`, avg cycle `100.99 ms`.
+- Raw float no-decode-repack baseline:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --no-decode-repack --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-raw-selected-float-verifier-baseline.json`
+  -> exact `15/15`, `31.63 tok/s`, warm `31.86 tok/s`, avg cycle `126.47 ms`.
+- Default decode-repack anchor:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-default-verifier-baseline-for-raw-dp4a.json`
+  -> exact `15/15`, `51.31 tok/s`, warm `52.00 tok/s`, avg cycle `77.96 ms`.
+- Cached microbench profile:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-gguf-raw-k-dp4a-rocprof-20260627 --output-file raw-k-dp4a -- python3 scripts/gguf_k_selected_pack8_dp4a_microbench.py --quant both --iters 2 --warmup 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-raw-k-dp4a-rocprof-20260627/smoke.json`
+  -> confirms `gguf_k_selected_pack8_q8_1_dp4a_prefill_out_kernel<unsigned short,5/6>` launches. Trace summary: Q5 raw float avg `141.45 us`, Q5 dp4a avg `44.68 us`; Q6 raw float avg `45.37 us`, Q6 dp4a avg `19.47 us`; q8_1 quantize avg `2.11 us`.
+- Plain `llvm-objdump` sees the host/device-stub symbols; `llvm-objdump --offloading --triple=amdgcn-amd-amdhsa --mcpu=gfx1151 -d` crashes in this ROCm/LLVM build, so retained ISA evidence for this diagnostic is source-level `__builtin_amdgcn_sudot4` plus profiler-visible kernel dispatch rather than extracted ISA.
+
+### Decision / next
+- Raw q8_1+sudot4 selected-down is a real win and improves raw no-decode-repack B3 by about `25%`, but the default decode-repack verifier is still faster. Keep `HIPENGINE_GGUF_RAW_SELECTED_DP4A` default-off.
+- This supersedes the older "keep porting straight T16 dp4a" next step. The broad GGUF perf-parity port should target a GGML-style q8_1/x4 vector-dot layout/routing for the production verifier, then promote only the pieces that improve the same B3/full-suite protocol.

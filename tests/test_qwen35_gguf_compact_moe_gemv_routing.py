@@ -37,6 +37,7 @@ def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_DECODE_REPACK", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)
     set_gemv_decode_enabled(None)
     yield
     set_gemv_decode_enabled(None)
@@ -370,6 +371,68 @@ def test_row_bulk_t16_selected_dp4a_env_routes_pair_and_down_through_q8_workspac
     assert ("t16_pair_dp4a", (360, 130, 1012, 1013, 150, 150 + 4 * 256 * 2, 2, 4, 4, 256, 256)) in calls
     assert ("q8_quantize", (160, 360, 4, 256)) in calls
     assert ("t16_down_dp4a", (360, 130, 1014, 180, 4, 4, 4, 256, 256)) in calls
+
+
+@pytest.mark.parametrize(
+    "down_quant,down_float_attr,down_dp4a_attr,down_name",
+    [
+        (
+            "gguf_q5_k",
+            "gguf_q5_k_selected_pack8_gemv_bf16_bf16_out",
+            "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
+            "raw_q5_down_dp4a",
+        ),
+        (
+            "gguf_q6_k",
+            "gguf_q6_k_selected_pack8_gemv_bf16_bf16_out",
+            "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
+            "raw_q6_down_dp4a",
+        ),
+    ],
+)
+def test_row_bulk_raw_selected_dp4a_env_routes_down_pack8_through_q8_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    down_quant: str,
+    down_float_attr: str,
+    down_dp4a_attr: str,
+    down_name: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", down_quant, 14, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "_launch_selected_expert_pack8_moe_pair", _fail_if_called("sidecar_pair"))
+    monkeypatch.setattr(qgr, "_launch_selected_expert_pack8_moe_linear", _fail_if_called("sidecar_linear"))
+    monkeypatch.setattr(qgr, "gguf_q4_k_selected_dual_gemv_bf16_bf16_out", _fail_if_called("raw_pair_float"))
+    monkeypatch.setattr(qgr, down_float_attr, _fail_if_called("raw_down_float"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: calls.append(("q8_quantize", args[:4])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("raw_pair_dp4a", args[:11])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        down_dp4a_attr,
+        lambda *args, **kwargs: calls.append((down_name, args[:9])),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_rows(0, rows=2, out_ptr=9000, scratch=scratch, stream=7)
+
+    assert ("q8_quantize", (100, 360, 2, 256)) in calls
+    assert ("raw_pair_dp4a", (360, 130, 12, 13, 150, 150 + 4 * 256 * 2, 2, 4, 4, 256, 256)) in calls
+    assert ("q8_quantize", (160, 360, 4, 256)) in calls
+    assert (down_name, (360, 130, 14, 180, 4, 4, 4, 256, 256)) in calls
 
 
 

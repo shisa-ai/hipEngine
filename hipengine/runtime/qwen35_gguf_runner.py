@@ -116,8 +116,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
+    gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q6_k_selected_gemv_bf16_bf16_out,
     gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
+    gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_quantize_bf16_q8_1,
@@ -2642,7 +2644,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch,
                 selected_rows,
                 cfg.expert_feed_forward_length,
-                enabled=_gguf_t16_selected_dp4a_enabled(),
+                enabled=_gguf_t16_selected_dp4a_enabled() or _gguf_raw_selected_dp4a_enabled(),
             ),
             stream=stream,
             runtime=runtime,
@@ -2858,7 +2860,7 @@ class Qwen35GGUFFullStackRunner:
                     scratch,
                     selected_rows,
                     cfg.expert_feed_forward_length,
-                    enabled=_gguf_t16_selected_dp4a_enabled(),
+                    enabled=_gguf_t16_selected_dp4a_enabled() or _gguf_raw_selected_dp4a_enabled(),
                 ),
                 stream=stream,
                 runtime=runtime,
@@ -2971,6 +2973,7 @@ _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
+_GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
 
@@ -3031,6 +3034,10 @@ def _gguf_t16_selected_dp4a_enabled() -> bool:
     return _env_flag(_GGUF_T16_SELECTED_DP4A_ENV, False)
 
 
+def _gguf_raw_selected_dp4a_enabled() -> bool:
+    return _env_flag(_GGUF_RAW_SELECTED_DP4A_ENV, False)
+
+
 def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
     rows = int(rows)
     in_features = int(in_features)
@@ -3041,7 +3048,11 @@ def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
 
 def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enabled: bool | None = None) -> int | None:
     if enabled is None:
-        enabled = _gguf_q4k_selected_dual_dp4a_enabled() or _gguf_t16_selected_dp4a_enabled()
+        enabled = (
+            _gguf_q4k_selected_dual_dp4a_enabled()
+            or _gguf_t16_selected_dp4a_enabled()
+            or _gguf_raw_selected_dp4a_enabled()
+        )
     if not enabled:
         return None
     workspace = getattr(scratch, "moe_q8_1", None)
@@ -6934,7 +6945,9 @@ def _launch_selected_raw_gguf_moe_pair(
     runtime: HipRuntime,
 ) -> bool:
     if weight_a.spec.quant_key == "gguf_q4_k" and weight_b.spec.quant_key == "gguf_q4_k":
-        if q8_1_workspace_ptr is not None:
+        if q8_1_workspace_ptr is not None and (
+            _gguf_q4k_selected_dual_dp4a_enabled() or _gguf_raw_selected_dp4a_enabled()
+        ):
             gguf_q4_k_quantize_bf16_q8_1(
                 x_ptr,
                 q8_1_workspace_ptr,
@@ -6976,7 +6989,9 @@ def _launch_selected_raw_gguf_moe_pair(
             )
         return True
     if weight_a.spec.quant_key == "gguf_q4_k_t16_v1" and weight_b.spec.quant_key == "gguf_q4_k_t16_v1":
-        if q8_1_workspace_ptr is not None:
+        if q8_1_workspace_ptr is not None and (
+            _gguf_q4k_selected_dual_dp4a_enabled() or _gguf_t16_selected_dp4a_enabled()
+        ):
             gguf_q4_k_quantize_bf16_q8_1(
                 x_ptr,
                 q8_1_workspace_ptr,
@@ -7037,7 +7052,12 @@ def _launch_selected_raw_gguf_moe_linear(
 ) -> None:
     quant_key = weight.spec.quant_key
     allocation = "tiles" if quant_key.endswith("_t16_v1") else "raw"
-    if q8_1_workspace_ptr is not None and quant_key == "gguf_q5_k_t16_v1":
+    use_q8_1_input = False
+    if (
+        q8_1_workspace_ptr is not None
+        and quant_key == "gguf_q5_k_t16_v1"
+        and _gguf_t16_selected_dp4a_enabled()
+    ):
         gguf_q4_k_quantize_bf16_q8_1(
             x_ptr,
             q8_1_workspace_ptr,
@@ -7047,6 +7067,39 @@ def _launch_selected_raw_gguf_moe_linear(
             runtime=runtime,
         )
         fn = gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out
+        use_q8_1_input = True
+    elif (
+        q8_1_workspace_ptr is not None
+        and quant_key == "gguf_q5_k"
+        and out_features % 8 == 0
+        and _gguf_raw_selected_dp4a_enabled()
+    ):
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            q8_1_workspace_ptr,
+            x_rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        fn = gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out
+        use_q8_1_input = True
+    elif (
+        q8_1_workspace_ptr is not None
+        and quant_key == "gguf_q6_k"
+        and out_features % 8 == 0
+        and _gguf_raw_selected_dp4a_enabled()
+    ):
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            q8_1_workspace_ptr,
+            x_rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        fn = gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out
+        use_q8_1_input = True
     elif quant_key == "gguf_q4_k":
         fn = gguf_q4_k_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k" and out_features % 8 == 0:
@@ -7066,7 +7119,7 @@ def _launch_selected_raw_gguf_moe_linear(
     else:
         raise ValueError(f"unsupported selected GGUF MoE quant {quant_key!r} for {weight.spec.source.name}")
     fn(
-        q8_1_workspace_ptr if q8_1_workspace_ptr is not None and quant_key == "gguf_q5_k_t16_v1" else x_ptr,
+        q8_1_workspace_ptr if use_q8_1_input else x_ptr,
         selected_ptr,
         weight.allocation(allocation).tensor.ptr,
         out_ptr,

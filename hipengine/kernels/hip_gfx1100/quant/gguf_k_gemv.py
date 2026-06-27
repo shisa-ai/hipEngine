@@ -123,6 +123,9 @@ gguf_q5_k_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q5_k", _symbol("gg
 gguf_q5_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_pack8_gemv_bf16_bf16_out"))
+gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out = _make_selected_pack8_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "selected_pack8_gemv_q8_1_dp4a_bf16_bf16_out")
+)
 gguf_q5_k_prefill_f32_f32_out = gguf_q5_k_gemv_f32_f32_out
 gguf_q5_k_prefill_f32_fp16_out = gguf_q5_k_gemv_f32_fp16_out
 gguf_q5_k_prefill_fp16_f32_out = gguf_q5_k_gemv_fp16_f32_out
@@ -142,6 +145,9 @@ gguf_q6_k_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q6_k", _symbol("gg
 gguf_q6_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "pack8_gemv_bf16_bf16_out"))
 gguf_q6_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "selected_gemv_bf16_bf16_out"))
 gguf_q6_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "selected_pack8_gemv_bf16_bf16_out"))
+gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out = _make_selected_pack8_wrapper(
+    "gguf_q6_k", _symbol("gguf_q6_k", "selected_pack8_gemv_q8_1_dp4a_bf16_bf16_out")
+)
 gguf_q6_k_prefill_f32_f32_out = gguf_q6_k_gemv_f32_f32_out
 gguf_q6_k_prefill_f32_fp16_out = gguf_q6_k_gemv_f32_fp16_out
 gguf_q6_k_prefill_fp16_f32_out = gguf_q6_k_gemv_fp16_f32_out
@@ -387,6 +393,7 @@ _WRAPPERS = {
         "pack8_gemv_bf16_bf16_out": gguf_q5_k_pack8_gemv_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
+        "selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q5_k_prefill_f32_f32_out,
         "prefill_f32_fp16_out": gguf_q5_k_prefill_f32_fp16_out,
         "prefill_fp16_f32_out": gguf_q5_k_prefill_fp16_f32_out,
@@ -410,6 +417,7 @@ _WRAPPERS = {
         "pack8_gemv_bf16_bf16_out": gguf_q6_k_pack8_gemv_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q6_k_selected_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
+        "selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out": gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q6_k_prefill_f32_f32_out,
         "prefill_f32_fp16_out": gguf_q6_k_prefill_f32_fp16_out,
         "prefill_fp16_f32_out": gguf_q6_k_prefill_fp16_f32_out,
@@ -436,6 +444,7 @@ __all__ = [
     "gguf_q5_k_gemv_bf16_fp16_out",
     "gguf_q5_k_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
+    "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_prefill_f32_f32_out",
     "gguf_q5_k_prefill_f32_fp16_out",
     "gguf_q5_k_prefill_fp16_f32_out",
@@ -451,6 +460,7 @@ __all__ = [
     "gguf_q6_k_gemv_bf16_fp16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",
+    "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q6_k_prefill_f32_f32_out",
     "gguf_q6_k_prefill_f32_fp16_out",
     "gguf_q6_k_prefill_fp16_f32_out",

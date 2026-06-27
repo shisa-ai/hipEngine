@@ -10,8 +10,17 @@ using half_t = _Float16;
 constexpr int QK_K = 256;
 constexpr int Q8_0_BLOCK = 32;
 constexpr int Q8_0_BLOCK_BYTES = 34;
+constexpr int Q8_1_BLOCK = 32;
 constexpr int Q5_K_BLOCK_BYTES = 176;
 constexpr int Q6_K_BLOCK_BYTES = 210;
+
+struct gguf_q8_1_block {
+  half_t d;
+  half_t s;
+  int8_t qs[Q8_1_BLOCK];
+};
+
+static_assert(sizeof(gguf_q8_1_block) == 36, "GGUF q8_1 block layout must match GGML");
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
@@ -130,6 +139,75 @@ __device__ inline float q6_k_weight(const uint8_t* row, int k) {
   const int q = static_cast<int>(low | (high << 4)) - 32;
   const int scale = static_cast<int>(scales[within >> 4]);
   return d * static_cast<float>(scale * q);
+}
+
+__device__ inline int gguf_k_dp4a_u8_s8(uint32_t a, uint32_t b, int c) {
+#if defined(__HIP_DEVICE_COMPILE__)
+  return __builtin_amdgcn_sudot4(true, static_cast<int>(a), true, static_cast<int>(b), c, false);
+#else
+  const int8_t b0 = static_cast<int8_t>(b & 0xFFu);
+  const int8_t b1 = static_cast<int8_t>((b >> 8) & 0xFFu);
+  const int8_t b2 = static_cast<int8_t>((b >> 16) & 0xFFu);
+  const int8_t b3 = static_cast<int8_t>((b >> 24) & 0xFFu);
+  return c + static_cast<int>(a & 0xFFu) * static_cast<int>(b0) +
+         static_cast<int>((a >> 8) & 0xFFu) * static_cast<int>(b1) +
+         static_cast<int>((a >> 16) & 0xFFu) * static_cast<int>(b2) +
+         static_cast<int>((a >> 24) & 0xFFu) * static_cast<int>(b3);
+#endif
+}
+
+__device__ inline uint32_t q5_k_pack4_unsigned(const uint8_t* block, int subblock, int lane4) {
+  const uint8_t* qh = block + 16;
+  const uint8_t* qs = block + 48;
+  uint32_t low = *reinterpret_cast<const uint32_t*>(qs + (subblock >> 1) * 32 + lane4);
+  low = (subblock & 1) ? ((low >> 4) & 0x0F0F0F0Fu) : (low & 0x0F0F0F0Fu);
+  const uint32_t high_bits = *reinterpret_cast<const uint32_t*>(qh + lane4);
+  const uint32_t high = ((high_bits >> subblock) & 0x01010101u) << 4;
+  return low | high;
+}
+
+__device__ inline uint32_t q6_k_pack4_unsigned(const uint8_t* block, int group32, int lane4) {
+  const uint8_t* ql = block;
+  const uint8_t* qh = block + 128;
+  const int base64 = (group32 >= 4) ? 64 : 0;
+  const bool low_nibble = (group32 & 2) == 0;
+  const int ql_group = group32 & 1;
+  uint32_t low = *reinterpret_cast<const uint32_t*>(ql + base64 + ql_group * 32 + lane4);
+  low = low_nibble ? (low & 0x0F0F0F0Fu) : ((low >> 4) & 0x0F0F0F0Fu);
+  const int qh_base = (group32 >= 4) ? 32 : 0;
+  const uint32_t high_bits = *reinterpret_cast<const uint32_t*>(qh + qh_base + lane4);
+  const uint32_t high = ((high_bits >> (2 * (group32 & 3))) & 0x03030303u) << 4;
+  return low | high;
+}
+
+__device__ inline float q5_k_q8_1_dp4a_term(
+    const uint8_t* block,
+    int subblock,
+    int lane4,
+    uint32_t x_pack,
+    int q8_sum,
+    float xd) {
+  const float d = fp16_bytes_to_float(block);
+  const float dmin = fp16_bytes_to_float(block + 2);
+  const uint8_t* scales = block + 4;
+  const int dot = gguf_k_dp4a_u8_s8(q5_k_pack4_unsigned(block, subblock, lane4), x_pack, 0);
+  return xd * (d * static_cast<float>(q4_k_scale(scales, subblock)) * static_cast<float>(dot) -
+               dmin * static_cast<float>(q4_k_min(scales, subblock)) * static_cast<float>(q8_sum));
+}
+
+__device__ inline float q6_k_q8_1_dp4a_term(
+    const uint8_t* block,
+    int group32,
+    int lane4,
+    int scale_index,
+    uint32_t x_pack,
+    int q8_sum,
+    float xd) {
+  const int dot_u = gguf_k_dp4a_u8_s8(q6_k_pack4_unsigned(block, group32, lane4), x_pack, 0);
+  const int dot = dot_u - 32 * q8_sum;
+  const int8_t* scales = reinterpret_cast<const int8_t*>(block + 192);
+  const float d = fp16_bytes_to_float(block + 208);
+  return xd * d * static_cast<float>(scales[scale_index]) * static_cast<float>(dot);
 }
 
 __device__ inline float reduce_block_sum(float acc) {
@@ -548,6 +626,107 @@ __global__ void gguf_k_selected_pack8_prefill_out_kernel(
   }
 }
 
+template <typename out_t, int qtype>
+__launch_bounds__(256, 2)
+__global__ void gguf_k_selected_pack8_q8_1_dp4a_prefill_out_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features,
+    int out_packed,
+    int q8_blocks_per_row) {
+  static_assert(qtype == 5 || qtype == 6, "q8_1 selected-pack8 dp4a supports Q5_K/Q6_K");
+  const int out_pack = blockIdx.x;
+  const int row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (out_pack >= out_packed || row >= rows) return;
+
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int out_col = out_pack << 3;
+  const int row_bytes = gguf_k_row_bytes(qtype, in_features);
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ expert_base = qweight + expert_id * expert_bytes;
+  const gguf_q8_1_block* __restrict__ xq_row =
+      xq + static_cast<int64_t>(x_row) * q8_blocks_per_row;
+  const uint8_t* __restrict__ w0 = expert_base + static_cast<int64_t>(out_col + 0) * row_bytes;
+  const uint8_t* __restrict__ w1 = expert_base + static_cast<int64_t>(out_col + 1) * row_bytes;
+  const uint8_t* __restrict__ w2 = expert_base + static_cast<int64_t>(out_col + 2) * row_bytes;
+  const uint8_t* __restrict__ w3 = expert_base + static_cast<int64_t>(out_col + 3) * row_bytes;
+  const uint8_t* __restrict__ w4 = expert_base + static_cast<int64_t>(out_col + 4) * row_bytes;
+  const uint8_t* __restrict__ w5 = expert_base + static_cast<int64_t>(out_col + 5) * row_bytes;
+  const uint8_t* __restrict__ w6 = expert_base + static_cast<int64_t>(out_col + 6) * row_bytes;
+  const uint8_t* __restrict__ w7 = expert_base + static_cast<int64_t>(out_col + 7) * row_bytes;
+  constexpr int block_bytes = (qtype == 5) ? Q5_K_BLOCK_BYTES : Q6_K_BLOCK_BYTES;
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  const int groups4 = in_features >> 2;
+  for (int group = tid; group < groups4; group += blockDim.x) {
+    const int k4 = group << 2;
+    const int block_idx = k4 / QK_K;
+    const int within = k4 - block_idx * QK_K;
+    const int subblock = within >> 5;
+    const int lane4 = within & 31;
+    const int q8_index = block_idx * 8 + subblock;
+
+    const gguf_q8_1_block* __restrict__ xb = xq_row + q8_index;
+    const uint32_t x_pack = *reinterpret_cast<const uint32_t*>(xb->qs + lane4);
+    const int q8_sum = gguf_k_dp4a_u8_s8(0x01010101u, x_pack, 0);
+    const float xd = static_cast<float>(xb->d);
+
+    const uint8_t* __restrict__ b0 = w0 + static_cast<int64_t>(block_idx) * block_bytes;
+    const uint8_t* __restrict__ b1 = w1 + static_cast<int64_t>(block_idx) * block_bytes;
+    const uint8_t* __restrict__ b2 = w2 + static_cast<int64_t>(block_idx) * block_bytes;
+    const uint8_t* __restrict__ b3 = w3 + static_cast<int64_t>(block_idx) * block_bytes;
+    const uint8_t* __restrict__ b4 = w4 + static_cast<int64_t>(block_idx) * block_bytes;
+    const uint8_t* __restrict__ b5 = w5 + static_cast<int64_t>(block_idx) * block_bytes;
+    const uint8_t* __restrict__ b6 = w6 + static_cast<int64_t>(block_idx) * block_bytes;
+    const uint8_t* __restrict__ b7 = w7 + static_cast<int64_t>(block_idx) * block_bytes;
+    if constexpr (qtype == 5) {
+      acc0 += q5_k_q8_1_dp4a_term(b0, subblock, lane4, x_pack, q8_sum, xd);
+      acc1 += q5_k_q8_1_dp4a_term(b1, subblock, lane4, x_pack, q8_sum, xd);
+      acc2 += q5_k_q8_1_dp4a_term(b2, subblock, lane4, x_pack, q8_sum, xd);
+      acc3 += q5_k_q8_1_dp4a_term(b3, subblock, lane4, x_pack, q8_sum, xd);
+      acc4 += q5_k_q8_1_dp4a_term(b4, subblock, lane4, x_pack, q8_sum, xd);
+      acc5 += q5_k_q8_1_dp4a_term(b5, subblock, lane4, x_pack, q8_sum, xd);
+      acc6 += q5_k_q8_1_dp4a_term(b6, subblock, lane4, x_pack, q8_sum, xd);
+      acc7 += q5_k_q8_1_dp4a_term(b7, subblock, lane4, x_pack, q8_sum, xd);
+    } else {
+      const int scale_index = within >> 4;
+      acc0 += q6_k_q8_1_dp4a_term(b0, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+      acc1 += q6_k_q8_1_dp4a_term(b1, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+      acc2 += q6_k_q8_1_dp4a_term(b2, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+      acc3 += q6_k_q8_1_dp4a_term(b3, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+      acc4 += q6_k_q8_1_dp4a_term(b4, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+      acc5 += q6_k_q8_1_dp4a_term(b5, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+      acc6 += q6_k_q8_1_dp4a_term(b6, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+      acc7 += q6_k_q8_1_dp4a_term(b7, subblock, lane4, scale_index, x_pack, q8_sum, xd);
+    }
+  }
+
+  GGUF_K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                      r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    const int64_t out_base = static_cast<int64_t>(row) * out_features + out_col;
+    store_output<out_t>(out, out_base + 0, r0);
+    store_output<out_t>(out, out_base + 1, r1);
+    store_output<out_t>(out, out_base + 2, r2);
+    store_output<out_t>(out, out_base + 3, r3);
+    store_output<out_t>(out, out_base + 4, r4);
+    store_output<out_t>(out, out_base + 5, r5);
+    store_output<out_t>(out, out_base + 6, r6);
+    store_output<out_t>(out, out_base + 7, r7);
+  }
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_dual_prefill_out_kernel(
@@ -692,6 +871,45 @@ int launch_gguf_k_selected_pack8_gemv_out(
       static_cast<int>(in_features),
       static_cast<int>(out_features),
       static_cast<int>(out_packed));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t, int qtype>
+int launch_gguf_k_selected_pack8_q8_1_dp4a_gemv_out(
+    const gguf_q8_1_block* xq,
+    const int64_t* selected,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  static_assert(qtype == 5 || qtype == 6, "q8_1 selected-pack8 dp4a supports Q5_K/Q6_K");
+  if (xq == nullptr || selected == nullptr || qweight == nullptr || out == nullptr ||
+      x_rows <= 0 || rows <= 0 || (rows % x_rows) != 0 || num_experts <= 0 ||
+      in_features <= 0 || out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % 8) != 0 || (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows));
+  gguf_k_selected_pack8_q8_1_dp4a_prefill_out_kernel<out_t, qtype><<<grid, block, 0, stream>>>(
+      xq,
+      selected,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features),
+      static_cast<int>(out_packed),
+      static_cast<int>(q8_blocks_per_row));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -905,3 +1123,16 @@ extern "C" int hipengine_##NAME##_gemv_rowtile_f32_f32_out( \
 HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)
+
+#define HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(NAME, QTYPE) \
+extern "C" int hipengine_##NAME##_selected_pack8_gemv_q8_1_dp4a_bf16_bf16_out( \
+    const void* xq, const int64_t* selected, const uint8_t* qweight, uint16_t* out, \
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features, \
+    int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_selected_pack8_q8_1_dp4a_gemv_out<uint16_t, QTYPE>( \
+      reinterpret_cast<const gguf_q8_1_block*>(xq), selected, qweight, out, x_rows, \
+      rows, num_experts, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(gguf_q5_k, 5)
+HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(gguf_q6_k, 6)

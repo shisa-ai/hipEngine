@@ -122,24 +122,53 @@ acceptable KL but only `0.75` top-1 vs the T16 float path. Artifacts:
 and
 `benchmarks/results/2026-06-27-hipengine-mtp-b3-q5-t16-dp4a-verifier-diagnostic.json`.
 
+**Raw selected-down Q5_K/Q6_K dp4a diagnostic (2026-06-27): broad raw layout
+is promising, but not enough yet.** The raw no-decode-repack selected-down path
+now has Q5_K and Q6_K q8_1+sudot4 variants under the default-off
+`HIPENGINE_GGUF_RAW_SELECTED_DP4A=1` gate. On the selected-down microshape
+(`rows=8`, `E=256`, `in=512`, `out=2048`, gfx1151), Q5_K measured raw
+float-dequant `0.0916 ms` vs q8_1 quantize+dp4a `0.0395 ms` (**2.32x**),
+and Q6_K measured `0.0419 ms` vs `0.0259 ms` (**1.62x**). Correctness vs the
+existing float-dequant path cleared the project gate on the diagnostic:
+Q5_K `KL_mean=0.00011`, top-1 `1.0`; Q6_K `KL_mean=0.00512`, top-1 `1.0`.
+A cached `rocprofv3 --kernel-trace` microbench confirms
+`gguf_k_selected_pack8_q8_1_dp4a_prefill_out_kernel<unsigned short,5/6>`
+launches, with q8_1 quantization at `~2.1 us` average and dp4a dot kernels at
+`~44.7 us` (Q5) / `~19.5 us` (Q6) in the short trace. B3/C5 raw-layout smoke
+stayed exact (`15/15`) and improved no-decode-repack from `31.63 tok/s` to
+`39.61 tok/s` (warm `31.86 -> 40.29`), but the production decode-repack
+baseline on the same short smoke was still `51.31 tok/s` (warm `52.00`). Keep
+this as a diagnostic proof that GGML-style raw q8_1 vector-dot is worth a broad
+layout port; do not promote the raw env as a runtime default yet. Artifacts:
+`benchmarks/results/2026-06-27-hipengine-gguf-raw-q5-q6-selected-pack8-dp4a-poc.json`,
+`benchmarks/results/2026-06-27-hipengine-mtp-b3-raw-selected-dp4a-verifier-diagnostic.json`,
+`benchmarks/results/2026-06-27-hipengine-mtp-b3-raw-selected-float-verifier-baseline.json`,
+and
+`benchmarks/results/2026-06-27-hipengine-mtp-b3-default-verifier-baseline-for-raw-dp4a.json`.
+
 ### Next steps, ordered by impact
 
-1. **Do not promote the current T16 dp4a diagnostics.** Raw Q4_K q8_1+sudot4 is
-   a strong isolated win, but production B3 uses T16. T16 Q4 split is only
-   `1.04x` in its small row-bulk bucket, and T16 Q5 selected-down is only
-   `1.10x` in isolation while regressing B3. Keep
+1. **Do not promote the current straight dp4a diagnostics.** Raw Q4_K/Q5_K/Q6_K
+   q8_1+sudot4 is strong in isolation and improves the raw no-decode-repack
+   verifier, but production B3 still uses T16 and remains faster. T16 Q4 split
+   is only `1.04x` in its small row-bulk bucket, T16 Q5 selected-down is only
+   `1.10x` in isolation while regressing B3, and raw selected-down still trails
+   default decode-repack at the verifier level. Keep
    `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` and
-   `HIPENGINE_GGUF_T16_SELECTED_DP4A` as diagnostic gates only.
-2. **Audit the real selected-down distribution before Q6.** Q6_T16 selected-down
-   dp4a should not be routed until a fixture clears top-1. If continuing dp4a,
-   first inspect real-weight Q5/Q6 intermediate distributions and compare
-   GGML's exact q8_1/x4 vector-dot layout against our T16 layout; the current
-   straightforward T16 port is not enough to move B3.
-3. **Then extend only proven production GGUF GEMVs.** Carry q8_1+sudot4 into
-   dense/raw Q4_K/Q5_K/Q6_K/Q8_0 GEMVs only when the local shape clears the
-   quality gate and improves the same B3/full-suite protocol. The existing
-   small-B rowtile dense kernels are complementary and should be combined with
-   dp4a where rows 2..8 share an activation tile.
+   `HIPENGINE_GGUF_T16_SELECTED_DP4A` / `HIPENGINE_GGUF_RAW_SELECTED_DP4A` as
+   diagnostic gates only.
+2. **Broad port target: match GGML's q8_1/x4 vector-dot layout.** The next
+   implementation should make the production verifier consume a GGML-like
+   q8_1 activation plus x4 packed K-quant dot path for the selected-MoE and dense
+   GGUF GEMVs, instead of continuing one-off T16 ports. The raw Q4/Q5/Q6 results
+   prove the instruction path; the missing piece is a production-compatible
+   layout/routing choice that keeps those gains while preserving the T16 path's
+   decode-repack coverage.
+3. **Extend only proven GGUF GEMVs into defaults.** Carry q8_1+sudot4 into
+   dense/raw Q4_K/Q5_K/Q6_K/Q8_0 GEMVs when the local shape clears the quality
+   gate and improves the same B3/full-suite protocol. The existing small-B
+   rowtile dense kernels are complementary and should be combined with dp4a where
+   rows 2..8 share an activation tile.
 4. **MTP draft resident path.** Keep all MTP intermediates (embeddings,
    projections, KV, hidden seeds) on device across draft depths; only D2H the
    final top-1 token ID. Chain the B draft steps in one call instead of B separate
@@ -859,13 +888,16 @@ B3 `9/9` (and `15/15` over five cycles) on the merge-sort smoke. Correctness
 parity is therefore solved.
 
 The remaining gap is performance: ~48.8 vs ~89.6 tok/s (~1.8-1.9x) on gfx1151.
-The latest evidence says the q8_1+sudot4 recipe is valid but highly
-layout/shape-sensitive: raw Q4_K selected-dual is `~2.65x` faster in isolation,
-T16 Q4_K split gate/up is only `~1.04x`, and T16 Q5_K selected-down is only
-`~1.10x` while regressing B3. Dense rowtile is already landed and retained as a
-kernel-level win, but it does not move end-to-end because selected MoE
-dominates. Next: either move closer to GGML's q8_1/x4 layout or find a
-selected-down reduction/layout change that wins B3 without top-1 drift. Graph/C
-loop work, resident MTP draft consolidation, and rollback improvements remain
-on the roadmap after the GEMV instruction path is de-risked. These remain
-single-prompt diagnostics, not benchmark rows.
+The latest evidence says the q8_1+sudot4 recipe is valid, but the layout
+decision matters more than the intrinsic itself: raw Q4_K selected-dual is
+`~2.65x` faster in isolation, raw Q5_K/Q6_K selected-down is `~2.32x`/`~1.62x`
+faster including q8_1 quantization, and the raw B3 verifier improves
+`31.63 -> 39.61 tok/s`; meanwhile T16 Q4_K split gate/up is only `~1.04x`, T16
+Q5_K selected-down is only `~1.10x`, and the production decode-repack smoke is
+still faster at `51.31 tok/s`. Dense rowtile is already landed and retained as a
+kernel-level win, but selected MoE dominates. Next: broad-port a GGML-like
+q8_1/x4 vector-dot layout into the production GGUF verifier path, then promote
+only the same-protocol B3/full-suite non-regressive pieces. Graph/C loop work,
+resident MTP draft consolidation, and rollback improvements remain on the
+roadmap after the GEMV instruction path is de-risked. These remain single-prompt
+diagnostics, not benchmark rows.
