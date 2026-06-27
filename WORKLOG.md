@@ -126097,3 +126097,68 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 - The per-piece data continues to support the systemic broad port: raw q8_1
   vector-dot is consistently strong, while production-compatible X8 selected
   down is only clearly positive for Q6 and not enough to move E2E.
+
+
+## 2026-06-28 — Production-safe resident verifier and exact-AR gate
+
+### Harness updates
+- `scripts/gguf_mtp_category_bench.py` now allows zero-draft AR fallback cycles:
+  `generated_draft_tokens=0`, `accepted_draft_tokens=0`, and aggregate
+  `draft_acceptance=0.0`.
+- Added `--reuse-existing` to the category wrapper so completed per-prompt JSONs
+  can be aggregated without rerunning long child jobs.
+- `scripts/gguf_mtp_parity_workbench.py` now passes
+  `--category-reuse-existing`, records category candidate failures instead of
+  aborting the top-level artifact, and defaults to
+  `default,resident-serial-fallback`.
+- The true-AR attachment validator now accepts exact eager-step AR timing
+  (`decode_path=eager_step`, `graph_replay_decode=false`) in addition to graph
+  replay. This is required because the graph true-AR baseline is currently
+  token-divergent from exact eager on the merge-sort diagnostic.
+
+### Exact eager AR baseline
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --decode-tokens 20 --warmup-decode-tokens 1 --no-graph-replay-decode --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-true-ar-eager-b3-c5/raw --output benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json`
+  -> completed.
+- Result: full suite exact no-MTP eager AR `19.67 tok/s` weighted over
+  `200` output tokens (`decode_ms=10167.46`).
+- Category exact AR tok/s: code `19.81`, general_en `19.79`,
+  general_ja `19.91`, mixed_ja_en `19.76`.
+
+### Resident serial-fallback full-suite result
+- Aggregation command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --budgets 3 --cycles 5 --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback --output benchmarks/results/2026-06-28-resident-serial-fallback-category-b3-c5-eager-ar-summary.json --true-ar-baseline-json benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json --reuse-existing --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--mtp-context-replay --extra-arg=--mtp-device-kv-cache --extra-arg=--target-block-verify --extra-arg=--mtp-draft-vocab-cap --extra-arg=32768 --extra-arg=--resident-mtp-draft --extra-arg=--adaptive-ar-fallback --extra-arg=--no-target-block-verify`
+  -> completed.
+- Result: resident serial-fallback MTP `47.62 tok/s`, `2.42x` exact eager AR,
+  `89` visible output tokens, `39/72` accepted/proposed drafts,
+  `accepted_per_output=0.438`, `draft_acceptance=0.542`.
+- Category ratios vs exact AR: code `2.40x`, general_en `2.54x`,
+  general_ja `2.51x`, mixed_ja_en `2.38x`.
+- This is the production-safe full-suite route. It is faster than exact AR but
+  still slower than the divergent graph-AR timing (`~55.5 tok/s`), which is not
+  a valid denominator until graph replay correctness is fixed.
+
+### Rejected routes
+- Always-block resident draft re-aggregated against exact eager AR:
+  `16.60 tok/s`, `0.84x` exact AR. Partial accepts make block rollback/replay
+  too expensive despite higher accepted/output.
+- B5 block promotion after a full B3 serial probe:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 5 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-block-after-full-accept --adaptive-probe-draft-n-max 3 --adaptive-ar-fallback --output benchmarks/results/2026-06-28-resident-production-selector-b5-merge-sort-smoke.json`
+  -> `38.40 tok/s`, `15/19` accepted/proposed drafts. B5 partial cycles cost
+  `~137-141 ms`, so do not promote this selector.
+
+### Validation
+- `python3 -m pytest tests/test_gguf_mtp_category_bench.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_parity_workbench.py -q`
+  -> passed in focused runs.
+- `python3 -m py_compile scripts/gguf_mtp_category_bench.py scripts/gguf_true_ar_category_bench.py scripts/gguf_mtp_bench.py scripts/gguf_mtp_parity_workbench.py`
+  -> passed in focused runs.
+
+### Correction
+- The `19.67 tok/s` AR number is exact eager `session.step()` AR from
+  `--no-graph-replay-decode`, not production graph AR and not a ROCm regression.
+  Production graph AR remains around `55.5 tok/s` on the same suite with
+  decode-repack/GEMV/WMMA enabled, but its token stream currently diverges from
+  exact eager AR. Therefore exact eager is a correctness control only, not the
+  speed denominator for production parity. The true-AR speed-claim validator was
+  restored to require graph replay production timing; next blocker is graph
+  replay correctness.

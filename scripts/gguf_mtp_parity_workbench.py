@@ -32,7 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPT = "Write a Python function that implements merge sort:"
 DEFAULT_STAGES = "e2e,pieces"
-DEFAULT_CANDIDATES = "default,x8-q6,x8-both"
+DEFAULT_CANDIDATES = "default,resident-serial-fallback"
 DEFAULT_RAW_ROOT = Path("/tmp/hipengine-gguf-mtp-parity-workbench")
 SCHEMA = "hipengine.gguf_mtp_parity_workbench.v1"
 
@@ -66,6 +66,49 @@ CANDIDATES: dict[str, Candidate] = {
         env={"HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6"},
         description="Sidecar-free X8 selected-down Q6_K diagnostic route.",
     ),
+    "resident-draft": Candidate(
+        name="resident-draft",
+        env={},
+        extra_args=("--resident-mtp-draft",),
+        description="Production-shaped resident GGUF MTP draft chain with resident MTP KV commit.",
+    ),
+    "resident-b5-adaptive": Candidate(
+        name="resident-b5-adaptive",
+        env={},
+        extra_args=("--resident-mtp-draft", "--adaptive-draft-window"),
+        description="Resident GGUF MTP draft with adaptive window; use with --draft-n-max 5 for B5 diagnostics.",
+    ),
+    "resident-serial-fallback": Candidate(
+        name="resident-serial-fallback",
+        env={},
+        extra_args=("--resident-mtp-draft", "--adaptive-ar-fallback", "--no-target-block-verify"),
+        description="Production-safe resident GGUF MTP draft with serial graph probe and AR fallback after zero-accept cycles.",
+    ),
+    "resident-production": Candidate(
+        name="resident-production",
+        env={},
+        extra_args=(
+            "--resident-mtp-draft",
+            "--adaptive-block-after-full-accept",
+            "--adaptive-probe-draft-n-max",
+            "3",
+            "--adaptive-ar-fallback",
+        ),
+        description="Production selector: serial B3 probe, B5 block verify after full accept, AR fallback after zero accept.",
+    ),
+    "q4-x8": Candidate(
+        name="q4-x8",
+        env={"HIPENGINE_GGUF_SELECTED_GATE_UP_X8": "1"},
+        description="Sidecar-free X8 selected gate/up Q4_K q8_1+sudot4 route.",
+    ),
+    "q4-x8-q6": Candidate(
+        name="q4-x8-q6",
+        env={
+            "HIPENGINE_GGUF_SELECTED_GATE_UP_X8": "1",
+            "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+        },
+        description="Sidecar-free X8 selected gate/up Q4_K plus selected-down Q6_K route.",
+    ),
     "t16-dp4a": Candidate(
         name="t16-dp4a",
         env={"HIPENGINE_GGUF_T16_SELECTED_DP4A": "1"},
@@ -82,10 +125,58 @@ CANDIDATES: dict[str, Candidate] = {
         extra_args=("--no-decode-repack",),
         description="Raw no-decode-repack selected-MoE q8_1+sudot4 diagnostic route.",
     ),
+    "selected-down-raw-dp4a": Candidate(
+        name="selected-down-raw-dp4a",
+        env={
+            "HIPENGINE_GGUF_SELECTED_DOWN_RAW": "both",
+            "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
+        },
+        description="Production decode-repack route with selected-down Q5_K/Q6_K kept raw and routed through q8_1+sudot4.",
+    ),
+    "block-wmma": Candidate(
+        name="block-wmma",
+        env={},
+        extra_args=("--target-block-wmma-prefill",),
+        description="Target block verifier with WMMA/selected-prefill kernels enabled.",
+    ),
+    "block-native": Candidate(
+        name="block-native",
+        env={},
+        extra_args=("--target-block-verify-mode", "native"),
+        description="Target block verifier through the native row loop attention scheduler.",
+    ),
+    "row-compact-gemv": Candidate(
+        name="row-compact-gemv",
+        env={"HIPENGINE_GGUF_ROW_COMPACT_GEMV": "1"},
+        description="Target block verifier with compact grouped selected-MoE GEMV routing.",
+    ),
+    "row-lm-head": Candidate(
+        name="row-lm-head",
+        env={"HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD": "1"},
+        description="Target block verifier with row-batched lm-head/argmax sampling.",
+    ),
 }
 
-ALL_CANDIDATE_NAMES = ("default", "x8-q6", "x8-both", "t16-dp4a", "q4-t16-dp4a", "raw-dp4a")
-STAGE_NAMES = ("e2e", "pieces", "rocprof", "category")
+ALL_CANDIDATE_NAMES = (
+    "default",
+    "x8-q6",
+    "resident-draft",
+    "resident-b5-adaptive",
+    "resident-serial-fallback",
+    "resident-production",
+    "x8-both",
+    "q4-x8",
+    "q4-x8-q6",
+    "t16-dp4a",
+    "q4-t16-dp4a",
+    "raw-dp4a",
+    "selected-down-raw-dp4a",
+    "block-wmma",
+    "block-native",
+    "row-compact-gemv",
+    "row-lm-head",
+)
+STAGE_NAMES = ("e2e", "pieces", "rocprof", "true-ar", "category")
 
 
 def parse_csv_set(text: str, *, valid: set[str], aliases: dict[str, tuple[str, ...]] | None = None, label: str) -> list[str]:
@@ -239,15 +330,27 @@ def run_e2e(args: argparse.Namespace, candidates: list[Candidate], root: Path, *
         log = root / "logs" / f"e2e-{candidate.name}.log"
         env = base_env(candidate.env, hip_arch=args.hip_arch, compiler_version_file=args.compiler_version_file)
         cmd = build_e2e_cmd(args, candidate, output)
-        command = run_command(cmd=cmd, env=env, cwd=REPO_ROOT, log_path=log, dry_run=dry_run)
         row = {
             "candidate": candidate.name,
             "description": candidate.description,
             "env": command_env_delta(candidate, hip_arch=args.hip_arch, compiler_version_file=args.compiler_version_file),
             "extra_args": list(candidate.extra_args),
-            "command": command,
             "artifact": str(output),
         }
+        try:
+            command = run_command(cmd=cmd, env=env, cwd=REPO_ROOT, log_path=log, dry_run=dry_run)
+        except RuntimeError as exc:
+            row["command"] = {
+                "command": quote_cmd(cmd),
+                "env": command_env_delta(candidate, hip_arch=args.hip_arch, compiler_version_file=args.compiler_version_file),
+                "log": str(log),
+                "status": "failed",
+            }
+            row["status"] = "failed"
+            row["error"] = str(exc).splitlines()[-1] if str(exc) else "command failed"
+            rows.append(row)
+            continue
+        row["command"] = command
         if not dry_run:
             row["metrics"] = summarize_e2e_artifact(output)
         rows.append(row)
@@ -345,6 +448,7 @@ def run_pieces(args: argparse.Namespace, root: Path, *, dry_run: bool) -> list[d
 
 def run_category(args: argparse.Namespace, candidates: list[Candidate], root: Path, *, dry_run: bool) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    true_ar_baseline = args.true_ar_baseline_json or getattr(args, "_generated_true_ar_baseline_json", None)
     for candidate in candidates:
         output = root / "category" / f"{args.tag}-{candidate.name}-summary.json"
         raw_root = root / "category" / candidate.name
@@ -376,26 +480,87 @@ def run_category(args: argparse.Namespace, candidates: list[Candidate], root: Pa
             str(raw_root),
             "--output",
             str(output),
+            *(("--limit", str(args.category_limit)) if args.category_limit is not None else ()),
+            *(("--true-ar-baseline-json", str(true_ar_baseline)) if true_ar_baseline is not None else ()),
+            *(("--reuse-existing",) if args.category_reuse_existing else ()),
             *(f"--extra-arg={extra}" for extra in extra_args),
             *(("--dry-run",) if dry_run else ()),
         ]
         env = base_env(candidate.env, hip_arch=args.hip_arch, compiler_version_file=args.compiler_version_file)
-        command = run_command(cmd=cmd, env=env, cwd=REPO_ROOT, log_path=log, dry_run=dry_run)
         row = {
             "candidate": candidate.name,
+            "description": candidate.description,
             "env": command_env_delta(candidate, hip_arch=args.hip_arch, compiler_version_file=args.compiler_version_file),
-            "command": command,
+            "extra_args": list(candidate.extra_args),
             "artifact": str(output),
         }
+        try:
+            command = run_command(cmd=cmd, env=env, cwd=REPO_ROOT, log_path=log, dry_run=dry_run)
+        except RuntimeError as exc:
+            row["command"] = {
+                "command": quote_cmd(cmd),
+                "env": command_env_delta(candidate, hip_arch=args.hip_arch, compiler_version_file=args.compiler_version_file),
+                "log": str(log),
+                "status": "failed",
+            }
+            row["status"] = "failed"
+            row["error"] = str(exc).splitlines()[-1] if str(exc) else "command failed"
+            rows.append(row)
+            continue
+        row["command"] = command
         if not dry_run and output.exists():
             data = json.loads(output.read_text(encoding="utf-8"))
             row["summary"] = {
                 "status": data.get("status"),
                 "best": data.get("best"),
                 "totals": data.get("totals"),
+                "true_ar_comparison_available": data.get("true_ar_comparison_available"),
             }
         rows.append(row)
     return rows
+
+
+def run_true_ar(args: argparse.Namespace, root: Path, *, dry_run: bool) -> dict[str, Any]:
+    output = root / "true_ar" / f"{args.tag}-true-ar-baseline.json"
+    raw_root = root / "true_ar" / "raw"
+    log = root / "logs" / "true-ar.log"
+    decode_tokens = int(args.true_ar_decode_tokens or (args.cycles * (args.draft_n_max + 1)))
+    cmd = [
+        sys.executable,
+        "scripts/gguf_true_ar_category_bench.py",
+        "--model",
+        str(args.model),
+        "--prompts",
+        str(args.prompts),
+        "--decode-tokens",
+        str(decode_tokens),
+        "--warmup-decode-tokens",
+        str(args.true_ar_warmup_decode_tokens),
+        "--raw-root",
+        str(raw_root),
+        "--output",
+        str(output),
+        *(("--limit", str(args.category_limit)) if args.category_limit is not None else ()),
+        *(("--compiler-version-file", str(args.compiler_version_file)) if args.compiler_version_file is not None else ()),
+        *(("--dry-run",) if dry_run else ()),
+    ]
+    env = base_env({}, hip_arch=args.hip_arch, compiler_version_file=args.compiler_version_file)
+    command = run_command(cmd=cmd, env=env, cwd=REPO_ROOT, log_path=log, dry_run=dry_run)
+    row: dict[str, Any] = {
+        "artifact": str(output),
+        "raw_root": str(raw_root),
+        "decode_tokens": decode_tokens,
+        "warmup_decode_tokens": int(args.true_ar_warmup_decode_tokens),
+        "command": command,
+    }
+    if not dry_run and output.exists():
+        data = json.loads(output.read_text(encoding="utf-8"))
+        row["summary"] = {
+            "status": data.get("status"),
+            "totals": data.get("totals"),
+            "categories": data.get("categories"),
+        }
+    return row
 
 
 def find_rocprof_csv(directory: Path) -> Path:
@@ -488,6 +653,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mtp-draft-vocab-cap", type=int, default=32768)
     parser.add_argument("--piece-iters", type=int, default=80)
     parser.add_argument("--piece-warmup", type=int, default=20)
+    parser.add_argument("--category-limit", type=int, default=None)
+    parser.add_argument(
+        "--category-reuse-existing",
+        action="store_true",
+        help="Pass --reuse-existing to the category stage so completed per-prompt child JSONs are aggregated without rerunning.",
+    )
+    parser.add_argument(
+        "--true-ar-baseline-json",
+        type=Path,
+        default=None,
+        help="Optional true no-MTP AR baseline artifact to attach to category summaries.",
+    )
+    parser.add_argument(
+        "--true-ar-decode-tokens",
+        type=int,
+        default=None,
+        help="Decode tokens for the true-ar stage; default cycles * (draft_n_max + 1).",
+    )
+    parser.add_argument("--true-ar-warmup-decode-tokens", type=int, default=1)
     parser.add_argument("--hip-arch", default=os.environ.get("HIPENGINE_HIP_ARCH", "gfx1151"))
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)
@@ -502,6 +686,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.category_limit is not None and args.category_limit < 0:
+        raise ValueError("--category-limit must be non-negative")
+    if args.true_ar_decode_tokens is not None and args.true_ar_decode_tokens <= 0:
+        raise ValueError("--true-ar-decode-tokens must be positive")
+    if args.true_ar_warmup_decode_tokens < 0:
+        raise ValueError("--true-ar-warmup-decode-tokens must be non-negative")
     stages = parse_csv_set(args.stages, valid=set(STAGE_NAMES), aliases={"all": STAGE_NAMES}, label="stage")
     candidate_names = parse_csv_set(args.candidates, valid=set(CANDIDATES), aliases={"all": ALL_CANDIDATE_NAMES}, label="candidate")
     candidates = [CANDIDATES[name] for name in candidate_names]
@@ -524,6 +714,11 @@ def main(argv: list[str] | None = None) -> int:
             "draft_n_max": args.draft_n_max,
             "root_topk_accept": args.root_topk_accept,
             "mtp_draft_vocab_cap": args.mtp_draft_vocab_cap,
+            "category_limit": args.category_limit,
+            "category_reuse_existing": args.category_reuse_existing,
+            "true_ar_baseline_json": None if args.true_ar_baseline_json is None else str(args.true_ar_baseline_json),
+            "true_ar_decode_tokens": args.true_ar_decode_tokens,
+            "true_ar_warmup_decode_tokens": args.true_ar_warmup_decode_tokens,
             "hip_arch": args.hip_arch,
             "raw_root": str(root),
             "stages": stages,
@@ -537,6 +732,7 @@ def main(argv: list[str] | None = None) -> int:
         "e2e": [],
         "pieces": [],
         "rocprof": [],
+        "true_ar": None,
         "category": [],
         "decision": {
             "promote_candidate": None,
@@ -555,6 +751,9 @@ def main(argv: list[str] | None = None) -> int:
             }
     if "pieces" in stages:
         artifact["pieces"] = run_pieces(args, root, dry_run=args.dry_run)
+    if "true-ar" in stages:
+        artifact["true_ar"] = run_true_ar(args, root, dry_run=args.dry_run)
+        args._generated_true_ar_baseline_json = Path(artifact["true_ar"]["artifact"])
     if "category" in stages:
         artifact["category"] = run_category(args, candidates, root, dry_run=args.dry_run)
     if "rocprof" in stages:

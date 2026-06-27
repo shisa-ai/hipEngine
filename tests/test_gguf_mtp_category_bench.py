@@ -238,7 +238,7 @@ def test_category_summary_rejects_accepted_tokens_exceeding_output_tokens() -> N
         build_summary(args=args, prompts=prompts, raw=raw, commands=[])
 
 
-def test_category_summary_rejects_zero_draft_denominator() -> None:
+def test_category_summary_allows_ar_fallback_zero_draft_denominator() -> None:
     args = SimpleNamespace(
         model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
         prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
@@ -246,10 +246,14 @@ def test_category_summary_rejects_zero_draft_denominator() -> None:
         raw_root="/tmp/raw",
     )
     prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
-    raw = {1: [_row("code_1", "code", output=10, accepted=0, drafts=0, ar_ms=100.0, draft_ms=10.0)]}
+    raw = {1: [_row("code_1", "code", output=10, accepted=0, drafts=0, ar_ms=100.0, draft_ms=0.0)]}
 
-    with pytest.raises(BenchError, match="non-positive draft token count in row code_1"):
-        build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=[])
+
+    assert summary["totals"]["b1"]["total_drafts"] == 0
+    assert summary["totals"]["b1"]["total_accepted"] == 0
+    assert summary["totals"]["b1"]["draft_acceptance"] == 0.0
+    assert summary["totals"]["b1"]["accepted_per_output"] == 0.0
 
 
 def test_category_summary_rejects_non_positive_total_cycle_ms() -> None:
@@ -421,7 +425,7 @@ def test_category_summary_rejects_missing_cycle_timing_fields(field: str, messag
     [
         ("total_output_tokens", "10", "non-positive output token count"),
         ("total_accepted", True, "negative metric in row"),
-        ("total_drafts", 1.5, "non-positive draft token count in row"),
+        ("total_drafts", 1.5, "invalid draft token count in row"),
     ],
 )
 def test_category_summary_rejects_non_integer_raw_metric_counts(field: str, value: object, message: str) -> None:
@@ -1017,6 +1021,7 @@ def test_speed_claim_contract_rejects_eager_or_raw_true_ar_timing_protocol() -> 
     timing = dict(TEST_TRUE_AR_TIMING_PROTOCOL)
     timing["decode_path"] = "eager_step"
     timing["graph_replay_decode"] = False
+    timing["graph_steps_per_replay"] = 0
     summary = _speed_claim_summary(true_ar_overrides={"timing_protocol": timing})
 
     with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires timing_protocol.decode_path='graph_replay'"):
@@ -3577,6 +3582,7 @@ def test_true_ar_category_artifact_schema_matches_attachment_contract() -> None:
     assert artifact["same_timing_protocol"] is True
     assert artifact["same_prompt_suite"] is True
     assert artifact["timing_protocol"]["decode_path"] == "eager_step"
+    assert artifact["timing_protocol"]["graph_steps_per_replay"] == 0
     assert artifact["timing_protocol"]["decode_repack"] is False
     assert artifact["timing_protocol"]["use_gemv_decode"] is False
     assert artifact["prompt_ids"] == ["code_1", "general_1"]

@@ -1,10 +1,72 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-28 (systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-28 (production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers are single-prompt diagnostics, not retained benchmark rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
 - llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
+
+## Production verifier status (2026-06-28)
+
+**Full-suite broad verifier path exists, but the production AR denominator is
+currently blocked by graph replay token divergence.**
+
+The most robust measured route is the resident GGUF MTP draft chain with serial
+target graph probing and adaptive AR fallback after zero-accept cycles:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_category_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --budgets 3 --cycles 5 \
+  --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback \
+  --output benchmarks/results/2026-06-28-resident-serial-fallback-category-b3-c5-eager-ar-summary.json \
+  --true-ar-baseline-json benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json \
+  --reuse-existing \
+  --extra-arg=--prompt-reasoning --extra-arg=off \
+  --extra-arg=--root-topk-accept --extra-arg=1 \
+  --extra-arg=--mtp-context-replay --extra-arg=--mtp-device-kv-cache \
+  --extra-arg=--target-block-verify --extra-arg=--mtp-draft-vocab-cap \
+  --extra-arg=32768 --extra-arg=--resident-mtp-draft \
+  --extra-arg=--adaptive-ar-fallback --extra-arg=--no-target-block-verify
+```
+
+Result on the full default 10-prompt `mtpbench-code-general-ja.jsonl` suite,
+B3/C5, gfx1151:
+
+| Route / baseline | tok/s | Ratio | accepted/output | draft accept | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Exact no-MTP eager AR | 19.67 | 1.00x exact eager control | n/a | n/a | `--no-graph-replay-decode`; token-correct, but not the production speed denominator |
+| Production graph no-MTP AR | ~55.5 | invalid denominator | n/a | n/a | graph replay settings; currently token-divergent |
+| Resident serial-fallback MTP | 47.62 | 2.42x exact eager / 0.858x divergent graph AR | 0.438 | 0.542 | best robust full-suite MTP route measured |
+| Always-block resident MTP | 16.60 | 0.84x exact eager | 0.597 | 0.493 | partial-accept block replay is too expensive |
+
+The exact eager artifact is useful because it emits the expected merge-sort AR
+trace. It is not evidence that production AR regressed to 19.67 tok/s; it is the
+slow non-graph decode path. Artifacts:
+`benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json` and
+`benchmarks/results/2026-06-28-resident-serial-fallback-category-b3-c5-eager-ar-summary.json`.
+
+Important caveat: the faster graph-replay true-AR baseline measured about
+`55.5 tok/s`, but it is currently token-divergent from exact eager AR on the
+merge-sort diagnostic. It is not a valid speed denominator until graph replay
+correctness is fixed. This is a graph correctness bug/denominator issue, not a
+ROCm regression and not evidence that AR is actually 19.67 tok/s in production.
+
+Rejected verifier routes from this update:
+
+- Always-block resident draft is not production-safe: it reaches high acceptance
+  but falls to `16.60 tok/s` full-suite because every partial accept triggers
+  expensive block rollback/replay.
+- B5 block promotion after a full B3 serial probe failed on the merge-sort smoke:
+  `38.40 tok/s`, with two B5 partial cycles costing `~137-141 ms`. Do not make
+  B5 block promotion a default without a stronger predictor and rollback fix.
+
+Next performance work is now unambiguous: fix graph replay correctness so the
+fast AR path is eligible as the denominator, then continue reducing verifier
+GEMV cost and improving draft acceptance. The current full-suite route is a
+useful robust MTP baseline, but it is not yet faster than the production graph
+AR path and remains far from llama.cpp's ~90 tok/s MTP diagnostic.
 
 ## Executive summary (2026-06-27)
 

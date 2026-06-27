@@ -1,0 +1,128 @@
+{
+  "category": [
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/2026-06-28-resident-serial-fallback-category-b3-c5-resident-serial-fallback-summary.json",
+      "candidate": "resident-serial-fallback",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts /home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl --budgets 3 --cycles 5 --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/2026-06-28-resident-serial-fallback-category-b3-c5-resident-serial-fallback-summary.json --true-ar-baseline-json /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/true_ar/2026-06-28-resident-serial-fallback-category-b3-c5-true-ar-baseline.json --reuse-existing --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--mtp-context-replay --extra-arg=--mtp-device-kv-cache --extra-arg=--target-block-verify --extra-arg=--mtp-draft-vocab-cap --extra-arg=32768 --extra-arg=--resident-mtp-draft --extra-arg=--adaptive-ar-fallback --extra-arg=--no-target-block-verify",
+        "env": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/logs/category-resident-serial-fallback.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 0.07088119396939874
+      },
+      "description": "Resident GGUF MTP draft with serial graph probe and AR fallback after zero-accept cycles.",
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "/home/lhl/hipEngine"
+      },
+      "extra_args": [
+        "--resident-mtp-draft",
+        "--adaptive-ar-fallback",
+        "--no-target-block-verify"
+      ],
+      "summary": {
+        "best": {
+          "categories_by_accepted_per_output": {
+            "code": "b3",
+            "general_en": "b3",
+            "general_ja": "b3",
+            "mixed_ja_en": "b3"
+          },
+          "categories_by_decode_tok_s": {
+            "code": "b3",
+            "general_en": "b3",
+            "general_ja": "b3",
+            "mixed_ja_en": "b3"
+          },
+          "total_by_accepted_per_output": "b3",
+          "total_by_decode_tok_s": "b3"
+        },
+        "status": "diagnostic_retained",
+        "totals": {
+          "b3": {
+            "accepted_per_output": 0.43820224719101125,
+            "ar_baseline_tok_s_weighted_for_this_budget": 54.7584475672483,
+            "avg_output_tokens_per_prompt": 8.9,
+            "budget": 3,
+            "decode_ms": 1868.96,
+            "decode_tok_s_weighted": 47.62006677510487,
+            "draft_acceptance": 0.5416666666666666,
+            "label": "b3",
+            "mtp_vs_ar_decode_ratio": 0.8696387295608252,
+            "mtp_vs_true_ar_decode_ratio": 0.8583069253343364,
+            "prompts": 10,
+            "total_accepted": 39,
+            "total_drafts": 72,
+            "total_output_tokens": 89,
+            "true_ar_decode_tok_s_weighted": 55.481396420698125
+          },
+          "off": {
+            "baseline_kind": "verifier_derived_from_b1_target_ar",
+            "budget": 0,
+            "decode_ms": 1625.32,
+            "decode_tok_s_weighted": 54.7584475672483,
+            "label": "off",
+            "mtp_vs_ar_decode_ratio": 1.0,
+            "prompts": 10,
+            "source": "B1 native target-AR verifier time over the same prompt rows",
+            "total_output_tokens": 89,
+            "true_ar_decode_tok_s_weighted": 55.481396420698125,
+            "true_autoregressive_path": false
+          }
+        },
+        "true_ar_comparison_available": true
+      }
+    }
+  ],
+  "decision": {
+    "promote_candidate": null,
+    "promotion_blocker": "A candidate must beat default on same-protocol E2E and clear full-suite validation before promotion."
+  },
+  "e2e": [],
+  "generated_at": "2026-06-27T18:23:36.845082+00:00",
+  "host": "gfx1151",
+  "notes": [
+    "Diagnostic workbench only; not a retained speed claim.",
+    "E2E commands use the B3/C5 llama.cpp-parity smoke shape with context replay, device MTP KV, block verify, and 32k draft vocab cap.",
+    "Per-piece commands measure selected-MoE q8_1+sudot4 slices outside the production runtime."
+  ],
+  "performance_claim": false,
+  "pieces": [],
+  "protocol": {
+    "candidates": [
+      "resident-serial-fallback"
+    ],
+    "category_limit": null,
+    "category_reuse_existing": true,
+    "cycles": 5,
+    "draft_n_max": 3,
+    "hip_arch": "gfx1151",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "mtp_draft_vocab_cap": 32768,
+    "prompt": "Write a Python function that implements merge sort:",
+    "prompt_reasoning": "off",
+    "raw_root": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5",
+    "root_topk_accept": 1,
+    "stages": [
+      "category"
+    ],
+    "true_ar_baseline_json": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/true_ar/2026-06-28-resident-serial-fallback-category-b3-c5-true-ar-baseline.json",
+    "true_ar_decode_tokens": null,
+    "true_ar_warmup_decode_tokens": 1
+  },
+  "repo": {
+    "git_branch": "mtp-gguf",
+    "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+    "git_tracked_dirty": true,
+    "git_untracked_count": 31,
+    "repo_root": "/home/lhl/hipEngine"
+  },
+  "rocprof": [],
+  "schema": "hipengine.gguf_mtp_parity_workbench.v1",
+  "status": "complete",
+  "true_ar": null
+}

@@ -31,6 +31,30 @@ def test_default_mtp_policy_is_b1_root_top40_speed_first() -> None:
     assert args.topk_branch_redraft is False
     assert args.mtp_draft_warmup is True
     assert args.target_graph_verify is True
+    assert args.adaptive_block_after_full_accept is False
+    assert args.adaptive_probe_draft_n_max == 3
+
+
+def test_mtp_policy_accepts_adaptive_production_selector_flags() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--draft-n-max",
+            "5",
+            "--resident-mtp-draft",
+            "--target-block-verify",
+            "--adaptive-block-after-full-accept",
+            "--adaptive-probe-draft-n-max",
+            "3",
+            "--adaptive-ar-fallback",
+        ]
+    )
+
+    assert args.draft_n_max == 5
+    assert args.resident_mtp_draft is True
+    assert args.target_block_verify is True
+    assert args.adaptive_block_after_full_accept is True
+    assert args.adaptive_probe_draft_n_max == 3
+    assert args.adaptive_ar_fallback is True
 
 
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
@@ -99,7 +123,6 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
     ("cycle_update", "message"),
     [
         ({"generated_draft_tokens": None}, r"cycles\[0\]\.generated_draft_tokens must be an integer"),
-        ({"generated_draft_tokens": 0}, r"cycles\[0\]\.generated_draft_tokens must be positive"),
         ({"accepted_draft_tokens": True}, r"cycles\[0\]\.accepted_draft_tokens must be an integer"),
         ({"accepted_draft_tokens": -1}, r"cycles\[0\]\.accepted_draft_tokens must be non-negative"),
         ({"visible_output_tokens": 0}, r"cycles\[0\]\.visible_output_tokens must be positive"),
@@ -122,6 +145,25 @@ def test_compute_speculative_metrics_rejects_malformed_explicit_cycle_fields(
 
     with pytest.raises(ValueError, match=message):
         compute_speculative_metrics([cycle])
+
+
+def test_compute_speculative_metrics_allows_ar_fallback_zero_draft_cycle() -> None:
+    metrics = compute_speculative_metrics(
+        [
+            {
+                "generated_draft_tokens": 0,
+                "accepted_draft_tokens": 0,
+                "visible_output_tokens": 1,
+                "ar_decode_ms": 18.0,
+                "mtp_draft_ms": 0.0,
+            }
+        ]
+    )
+
+    assert metrics["total_drafts"] == 0
+    assert metrics["total_accepted"] == 0
+    assert metrics["accept_per_draft"] == 0.0
+    assert metrics["tokens_per_sec"] == 1000.0 / 18.0
 
 
 @pytest.mark.parametrize(

@@ -34,6 +34,12 @@ DEFAULT_TOPK_BRANCH_REDRAFT = False
 DEFAULT_MTP_DRAFT_WARMUP = True
 DEFAULT_TARGET_GRAPH_VERIFY = True
 DEFAULT_MTP_DEVICE_KV_CACHE = False
+DEFAULT_RESIDENT_MTP_DRAFT = os.environ.get("HIPENGINE_GGUF_RESIDENT_MTP_DRAFT", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 IM_START_TOKEN = 248045
 IM_END_TOKEN = 248046
 THINK_START_TOKEN = 248068
@@ -181,7 +187,7 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
     for index, cycle in enumerate(cycles):
         if not isinstance(cycle, dict):
             raise ValueError(f"cycles[{index}] must be an object")
-        generated_drafts = require_int(cycle, index, "generated_draft_tokens", positive=True)
+        generated_drafts = require_int(cycle, index, "generated_draft_tokens")
         accepted_drafts = require_int(cycle, index, "accepted_draft_tokens")
         visible_output = require_int(cycle, index, "visible_output_tokens", positive=True)
         if accepted_drafts > generated_drafts:
@@ -195,7 +201,7 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
         total_draft_ms += require_timing(cycle, index, "mtp_draft_ms")
     total_cycle_ms = total_ar_ms + total_draft_ms
 
-    accept_per_draft = total_accepted / total_drafts
+    accept_per_draft = total_accepted / total_drafts if total_drafts > 0 else 0.0
     accepted_per_output = total_accepted / visible_output_tokens if visible_output_tokens > 0 else 0.0
     visible_tokens_per_cycle = visible_output_tokens / verify_cycle_count if verify_cycle_count > 0 else 0.0
     avg_cycle_ms = total_cycle_ms / verify_cycle_count if verify_cycle_count > 0 else 0.0
@@ -490,6 +496,48 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument(
+        "--adaptive-draft-window",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Reduce the measured draft window after a partial accept so later cycles avoid "
+            "known-bad deeper draft depths."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-ar-fallback",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "After a low-accept cycle, stop drafting for the rest of this prompt and run "
+            "plain target AR cycles through the graph verifier."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-ar-fallback-max-accepted",
+        type=int,
+        default=0,
+        help="Trigger --adaptive-ar-fallback when accepted draft tokens are <= this value.",
+    )
+    parser.add_argument(
+        "--adaptive-block-after-full-accept",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Production verifier selector: start with serial graph verification, then enable "
+            "--target-block-verify only after a cycle fully accepts its proposed draft chain."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-probe-draft-n-max",
+        type=int,
+        default=3,
+        help=(
+            "Draft window used before --adaptive-block-after-full-accept promotes to the "
+            "configured --draft-n-max block verifier window."
+        ),
+    )
+    parser.add_argument(
         "--mtp-draft-vocab-cap",
         type=int,
         default=0,
@@ -524,6 +572,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Use the device-resident MTP dense KV cache for B1 drafting (default: false). "
             "This matches llama.cpp's draft-model context lifecycle without host K/V concat."
+        ),
+    )
+    parser.add_argument(
+        "--resident-mtp-draft",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_RESIDENT_MTP_DRAFT,
+        help=(
+            "Use the production-shaped resident GGUF MTP draft chain for measured draft rows "
+            "(default: HIPENGINE_GGUF_RESIDENT_MTP_DRAFT or false)."
         ),
     )
     parser.add_argument(
@@ -630,6 +687,12 @@ def main(argv: list[str] | None = None):
         parser.error("--topk-branch-redraft-max-branches must be positive")
     if args.mtp_draft_vocab_cap < 0:
         parser.error("--mtp-draft-vocab-cap must be non-negative")
+    if args.adaptive_ar_fallback_max_accepted < 0:
+        parser.error("--adaptive-ar-fallback-max-accepted must be non-negative")
+    if args.adaptive_probe_draft_n_max < 1:
+        parser.error("--adaptive-probe-draft-n-max must be positive")
+    if args.adaptive_probe_draft_n_max > args.draft_n_max:
+        parser.error("--adaptive-probe-draft-n-max must be <= --draft-n-max")
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
@@ -650,6 +713,7 @@ def main(argv: list[str] | None = None):
     from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
         qwen35_gguf_mtp_nextn_layer_logits_f32 as gpu_kernel,
     )
+    from hipengine.speculative.mtp_resident_draft import Qwen35GGUFResidentMTPDraftRunner
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.core.hip import get_hip_runtime, HipMemcpyKind
     from hipengine.core.memory import free, malloc
@@ -748,6 +812,9 @@ def main(argv: list[str] | None = None):
 
     # Run benchmark
     mtp_device_kv_buffers = []
+    resident_draft = None
+    resident_mtp_draft_effective = False
+    resident_mtp_draft_fallback_reason = None
     session = Qwen35GGUFResidentSession(
         model_path=args.model,
         use_wmma_prefill=bool(args.use_wmma_prefill),
@@ -758,6 +825,19 @@ def main(argv: list[str] | None = None):
     try:
         runtime = session.runtime or get_hip_runtime()
         hidden_size = 2048
+        if args.resident_mtp_draft:
+            if args.draft_p_min > 0.0:
+                resident_mtp_draft_fallback_reason = "draft_p_min requires probability output from legacy logits path"
+            elif topk_candidate_count > 8:
+                resident_mtp_draft_fallback_reason = "resident draft top-k kernel supports production top-k up to 8"
+            else:
+                resident_draft = Qwen35GGUFResidentMTPDraftRunner(
+                    weights,
+                    token_embd_f32,
+                    runtime=runtime,
+                    vocab_cap=int(args.mtp_draft_vocab_cap or sh_raw.shape[0]),
+                )
+                resident_mtp_draft_effective = True
 
         def copy_pending_hidden_seed() -> np.ndarray:
             hidden_seed = np.empty((1, hidden_size), dtype=np.float32)
@@ -855,7 +935,11 @@ def main(argv: list[str] | None = None):
         target_graph_verify_enabled = False
         target_graph_verify_fallback_reason: str | None = None
         current_device_token = int(prev_token)
-        if args.target_graph_verify and not args.target_block_verify:
+        if args.target_graph_verify and (
+            not args.target_block_verify
+            or args.adaptive_ar_fallback
+            or args.adaptive_block_after_full_accept
+        ):
             try:
                 target_graph = session.capture_decode_graph(
                     position=seq_position,
@@ -877,6 +961,13 @@ def main(argv: list[str] | None = None):
         cycle_details = []
         decode_times = []
         previous_cycle_accepted = 0
+        adaptive_draft_n_max = (
+            int(args.adaptive_probe_draft_n_max)
+            if args.adaptive_block_after_full_accept
+            else int(args.draft_n_max)
+        )
+        adaptive_ar_fallback_active = False
+        adaptive_block_verify_active = not bool(args.adaptive_block_after_full_accept)
 
         mtp_device_key_cache = None
         mtp_device_value_cache = None
@@ -917,6 +1008,9 @@ def main(argv: list[str] | None = None):
                 mtp_device_kv_len = len(mtp_context_tokens)
 
         for cycle in range(args.cycles):
+            cycle_ar_fallback = bool(adaptive_ar_fallback_active)
+            cycle_draft_n_max = 0 if cycle_ar_fallback else int(adaptive_draft_n_max)
+            cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
             cycle_prev_token = int(prev_token)
             cycle_pending_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
 
@@ -932,59 +1026,76 @@ def main(argv: list[str] | None = None):
             current_token = cycle_prev_token
             current_pos = seq_position
             cycle_mtp_kv_base_len = int(mtp_device_kv_len)
-            for draft_depth in range(args.draft_n_max):
-                token_embed = token_embd_f32[current_token:current_token + 1].copy()
-                need_next_seed = draft_depth + 1 < args.draft_n_max
-                pos_arr = np.asarray([current_pos], dtype=np.int64)
-                rope_cos_slice = _rope_cos[pos_arr]
-                rope_sin_slice = _rope_sin[pos_arr]
-                kv_kwargs = {}
-                if args.mtp_device_kv_cache:
-                    if mtp_device_kv_len >= mtp_device_kv_capacity:
-                        raise RuntimeError("MTP device KV cache capacity exhausted")
-                    kv_kwargs = {
-                        "dense_key_cache": mtp_device_key_cache,
-                        "dense_value_cache": mtp_device_value_cache,
-                        "dense_cache_len": mtp_device_kv_len,
-                    }
-                if need_next_seed:
-                    draft_logits, current_hidden_seed = run_draft(
-                        current_hidden_seed,
-                        token_embed,
-                        return_hidden_seed=True,
-                        positions=pos_arr,
-                        rope_cos=rope_cos_slice,
-                        rope_sin=rope_sin_slice,
-                        rotary_dim=rope_dim,
-                        **kv_kwargs,
-                    )
-                else:
-                    draft_logits = run_draft(
-                        current_hidden_seed,
-                        token_embed,
-                        positions=pos_arr,
-                        rope_cos=rope_cos_slice,
-                        rope_sin=rope_sin_slice,
-                        rotary_dim=rope_dim,
-                        **kv_kwargs,
-                    )
-                if args.mtp_device_kv_cache:
-                    mtp_device_kv_len += 1
-                draft_logits_row = draft_logits[0]
-                draft_token, top10_tokens = select_topk_tokens(
-                    draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
+            if resident_draft is not None and cycle_draft_n_max > 0:
+                if args.mtp_device_kv_cache and mtp_device_kv_len + cycle_draft_n_max > mtp_device_kv_capacity:
+                    raise RuntimeError("MTP device KV cache capacity exhausted")
+                draft_tokens, draft_top10_tokens, mtp_device_kv_len = resident_draft.propose_chain(
+                    current_hidden_seed,
+                    start_token=current_token,
+                    start_position=current_pos,
+                    draft_n_max=cycle_draft_n_max,
+                    top_k=min(diagnostic_topk_candidate_count, 8),
+                    rope_cos=_rope_cos,
+                    rope_sin=_rope_sin,
+                    dense_key_cache=mtp_device_key_cache if args.mtp_device_kv_cache else None,
+                    dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
+                    dense_cache_len=mtp_device_kv_len,
+                    draft_p_min=float(args.draft_p_min),
                 )
-                draft_tokens.append(draft_token)
-                draft_top10_tokens.append(top10_tokens)
-                if diagnostic_topk_candidate_count > topk_candidate_count:
-                    draft_diagnostic_logits.append(
-                        (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
+            elif cycle_draft_n_max > 0:
+                for draft_depth in range(cycle_draft_n_max):
+                    token_embed = token_embd_f32[current_token:current_token + 1].copy()
+                    need_next_seed = draft_depth + 1 < cycle_draft_n_max
+                    pos_arr = np.asarray([current_pos], dtype=np.int64)
+                    rope_cos_slice = _rope_cos[pos_arr]
+                    rope_sin_slice = _rope_sin[pos_arr]
+                    kv_kwargs = {}
+                    if args.mtp_device_kv_cache:
+                        if mtp_device_kv_len >= mtp_device_kv_capacity:
+                            raise RuntimeError("MTP device KV cache capacity exhausted")
+                        kv_kwargs = {
+                            "dense_key_cache": mtp_device_key_cache,
+                            "dense_value_cache": mtp_device_value_cache,
+                            "dense_cache_len": mtp_device_kv_len,
+                        }
+                    if need_next_seed:
+                        draft_logits, current_hidden_seed = run_draft(
+                            current_hidden_seed,
+                            token_embed,
+                            return_hidden_seed=True,
+                            positions=pos_arr,
+                            rope_cos=rope_cos_slice,
+                            rope_sin=rope_sin_slice,
+                            rotary_dim=rope_dim,
+                            **kv_kwargs,
+                        )
+                    else:
+                        draft_logits = run_draft(
+                            current_hidden_seed,
+                            token_embed,
+                            positions=pos_arr,
+                            rope_cos=rope_cos_slice,
+                            rope_sin=rope_sin_slice,
+                            rotary_dim=rope_dim,
+                            **kv_kwargs,
+                        )
+                    if args.mtp_device_kv_cache:
+                        mtp_device_kv_len += 1
+                    draft_logits_row = draft_logits[0]
+                    draft_token, top10_tokens = select_topk_tokens(
+                        draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
                     )
-                current_token = draft_token
-                current_pos += 1
-                if args.draft_p_min > 0.0 and draft_depth + 1 < args.draft_n_max:
-                    if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
-                        break
+                    draft_tokens.append(draft_token)
+                    draft_top10_tokens.append(top10_tokens)
+                    if diagnostic_topk_candidate_count > topk_candidate_count:
+                        draft_diagnostic_logits.append(
+                            (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
+                        )
+                    current_token = draft_token
+                    current_pos += 1
+                    if args.draft_p_min > 0.0 and draft_depth + 1 < cycle_draft_n_max:
+                        if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
+                            break
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
             if diagnostic_topk_candidate_count > topk_candidate_count:
@@ -1025,7 +1136,8 @@ def main(argv: list[str] | None = None):
             block_verify_used = False
             can_block_verify = (
                 bool(args.target_block_verify)
-                and args.root_topk_accept == 1
+                and cycle_block_verify_allowed
+                and len(draft_tokens) > 0
                 and args.sibling_topk_accept == 1
                 and not args.topk_branch_redraft
                 and len(draft_tokens) + 1 >= int(session.runner.weights.config.ssm_conv_kernel)
@@ -1043,15 +1155,34 @@ def main(argv: list[str] | None = None):
                     )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
+                    if int(block_acceptance["accepted_draft_tokens"]) == 0 and args.root_topk_accept > 1:
+                        root_branch_acceptance = root_topk_acceptance_from_target_samples(
+                            draft_tokens,
+                            draft_top10_tokens,
+                            block_target_tokens,
+                            root_topk_accept=args.root_topk_accept,
+                        )
+                        if root_branch_acceptance is not None:
+                            block_acceptance = root_branch_acceptance
+                            topk_branch_accepted = True
+                            topk_branch_depth = 0
+                            topk_branch_depths.append(0)
+                            topk_branch_accept_count = 1
                     consumed_rows = int(block_acceptance["accepted_draft_tokens"]) + 1
                     if consumed_rows < len(block_inputs):
                         session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                        replay_tokens: list[int] = []
-                        replay_hidden: list[np.ndarray] = []
-                        for replay_token in block_inputs[:consumed_rows]:
-                            replay_result = session.step(int(replay_token), capture_hidden_seed_fp32=True)
-                            replay_tokens.append(int(replay_result.token_id))
-                            replay_hidden.append(copy_pending_hidden_seed())
+                        replay_tokens: list[int]
+                        replay_hidden: list[np.ndarray]
+                        replay_result = session.verify_target_block(
+                            block_inputs[:consumed_rows],
+                            bulk_attention_mode=args.target_block_verify_mode,
+                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                        )
+                        replay_tokens = [int(token) for token in replay_result.token_ids]
+                        replay_hidden = [
+                            np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                            for row in range(len(replay_tokens))
+                        ]
                         target_tokens.extend(replay_tokens)
                         target_hidden_seeds.extend(replay_hidden)
                     else:
@@ -1130,13 +1261,13 @@ def main(argv: list[str] | None = None):
                         pending_branch_redraft
                         and args.topk_branch_redraft
                         and depth > 0
-                        and depth < args.draft_n_max
+                        and depth < cycle_draft_n_max
                     ):
                         t_redraft0 = time.perf_counter()
                         current_hidden_seed = np.ascontiguousarray(target_hidden_seed, dtype=np.float32)
                         current_token = int(target_tokens[depth - 1])
                         current_pos = seq_position + depth
-                        remaining_drafts = args.draft_n_max - depth
+                        remaining_drafts = cycle_draft_n_max - depth
                         branch_redraft_tokens: list[int] = []
                         branch_redraft_top10: list[list[int]] = []
                         for redraft_depth in range(remaining_drafts):
@@ -1248,7 +1379,7 @@ def main(argv: list[str] | None = None):
                         can_redraft_after_branch = (
                             args.topk_branch_redraft
                             and topk_branch_accept_count < args.topk_branch_redraft_max_branches
-                            and depth + 1 < args.draft_n_max
+                            and depth + 1 < cycle_draft_n_max
                         )
                         pending_branch_redraft = can_redraft_after_branch
                         stop_after_branch_corrective = not can_redraft_after_branch
@@ -1282,8 +1413,42 @@ def main(argv: list[str] | None = None):
                 if acceptance is None or topk_branch_depth is None:
                     raise RuntimeError("top-k sibling acceptance accounting failed")
             else:
-                acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, target_tokens)
+                if draft_tokens:
+                    acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, target_tokens)
+                else:
+                    if not target_tokens:
+                        raise RuntimeError("AR fallback cycle produced no target token")
+                    acceptance = {
+                        "accepted_draft_tokens": 0,
+                        "visible_output_tokens": 1,
+                        "output_tokens": [int(target_tokens[0])],
+                        "comparison_target_tokens": [int(target_tokens[0])],
+                        "pending_hidden_row_index": 0,
+                    }
             accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
+            if args.adaptive_block_after_full_accept and draft_tokens:
+                if accepted_draft_tokens == len(draft_tokens):
+                    adaptive_block_verify_active = True
+                    adaptive_draft_n_max = int(args.draft_n_max)
+                else:
+                    adaptive_block_verify_active = False
+                    adaptive_draft_n_max = min(
+                        int(adaptive_draft_n_max),
+                        int(args.adaptive_probe_draft_n_max),
+                    )
+            if (
+                args.adaptive_ar_fallback
+                and draft_tokens
+                and accepted_draft_tokens <= int(args.adaptive_ar_fallback_max_accepted)
+                and accepted_draft_tokens < len(draft_tokens)
+            ):
+                adaptive_ar_fallback_active = True
+            if args.adaptive_draft_window and accepted_draft_tokens < len(draft_tokens):
+                adaptive_floor = 1
+                adaptive_draft_n_max = min(
+                    int(adaptive_draft_n_max),
+                    max(adaptive_floor, accepted_draft_tokens),
+                )
             output_tokens = list(acceptance["output_tokens"])
             comparison_target_tokens = list(acceptance["comparison_target_tokens"])
             pending_hidden_seed = np.ascontiguousarray(
@@ -1312,19 +1477,31 @@ def main(argv: list[str] | None = None):
                     seq_position + 1 + accepted_draft_tokens,
                     dtype=np.int64,
                 )
-                _ = run_draft(
-                    commit_hidden_seed,
-                    token_embd_f32[commit_tokens].copy(),
-                    positions=commit_pos,
-                    rope_cos=_rope_cos[commit_pos],
-                    rope_sin=_rope_sin[commit_pos],
-                    rotary_dim=rope_dim,
-                    dense_key_cache=mtp_device_key_cache,
-                    dense_value_cache=mtp_device_value_cache,
-                    dense_cache_len=mtp_device_kv_len,
-                    kv_write_only=True,
-                )
-                mtp_device_kv_len += accepted_draft_tokens
+                if resident_draft is not None:
+                    mtp_device_kv_len = resident_draft.write_kv_rows(
+                        commit_hidden_seed,
+                        commit_tokens,
+                        positions=commit_pos,
+                        rope_cos=_rope_cos,
+                        rope_sin=_rope_sin,
+                        dense_key_cache=mtp_device_key_cache,
+                        dense_value_cache=mtp_device_value_cache,
+                        dense_cache_len=mtp_device_kv_len,
+                    )
+                else:
+                    _ = run_draft(
+                        commit_hidden_seed,
+                        token_embd_f32[commit_tokens].copy(),
+                        positions=commit_pos,
+                        rope_cos=_rope_cos[commit_pos],
+                        rope_sin=_rope_sin[commit_pos],
+                        rotary_dim=rope_dim,
+                        dense_key_cache=mtp_device_key_cache,
+                        dense_value_cache=mtp_device_value_cache,
+                        dense_cache_len=mtp_device_kv_len,
+                        kv_write_only=True,
+                    )
+                    mtp_device_kv_len += accepted_draft_tokens
                 mtp_device_kv_commit_ms = (time.perf_counter() - t_commit0) * 1000
                 draft_ms += mtp_device_kv_commit_ms
 
@@ -1358,7 +1535,7 @@ def main(argv: list[str] | None = None):
             total_output_tokens += visible_output_tokens
             total_accepted += accepted_draft_tokens
             seq_position += visible_output_tokens
-            accepted = accepted_draft_tokens == len(draft_tokens)
+            accepted = bool(draft_tokens) and accepted_draft_tokens == len(draft_tokens)
 
             reported_draft_tokens = draft_tokens
             reported_draft_top10_tokens = draft_top10_tokens
@@ -1378,7 +1555,7 @@ def main(argv: list[str] | None = None):
                 "target_tokens": target_tokens,
                 "comparison_target_tokens": comparison_target_tokens,
                 "output_tokens": output_tokens,
-                "draft_token": reported_draft_tokens[0],
+                "draft_token": int(reported_draft_tokens[0]) if reported_draft_tokens else None,
                 "draft_tokens": reported_draft_tokens,
                 "draft_top10_tokens": reported_draft_top10_tokens,
                 "initial_draft_tokens": draft_tokens,
@@ -1389,6 +1566,15 @@ def main(argv: list[str] | None = None):
                 "accepted": accepted,
                 "generated_draft_tokens": draft_candidate_count,
                 "linear_draft_tokens": len(draft_tokens),
+                "cycle_draft_n_max": int(cycle_draft_n_max),
+                "adaptive_draft_window": bool(args.adaptive_draft_window),
+                "adaptive_ar_fallback": bool(args.adaptive_ar_fallback),
+                "cycle_ar_fallback": bool(cycle_ar_fallback),
+                "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
+                "cycle_block_verify_allowed": bool(cycle_block_verify_allowed),
+                "next_adaptive_block_verify_active": bool(adaptive_block_verify_active),
+                "next_cycle_ar_fallback": bool(adaptive_ar_fallback_active),
+                "next_adaptive_draft_n_max": int(adaptive_draft_n_max),
                 "root_topk_accept": args.root_topk_accept,
                 "sibling_topk_accept": args.sibling_topk_accept,
                 "sibling_tail_min_prev_accepted": args.sibling_tail_min_prev_accepted,
@@ -1425,6 +1611,8 @@ def main(argv: list[str] | None = None):
     finally:
         if target_graph is not None:
             target_graph.close()
+        if resident_draft is not None:
+            resident_draft.close()
         if runtime is not None:
             for _buf in mtp_device_kv_buffers:
                 free(_buf, runtime=runtime)
@@ -1468,10 +1656,21 @@ def main(argv: list[str] | None = None):
     print(f"Top-k branch redraft: {args.topk_branch_redraft}")
     print(f"Top-k branch redraft max branches: {args.topk_branch_redraft_max_branches}")
     print(
+        "Adaptive block after full accept: "
+        f"{args.adaptive_block_after_full_accept} "
+        f"probe_n_max={args.adaptive_probe_draft_n_max}"
+    )
+    print(
         f"MTP device KV cache: {args.mtp_device_kv_cache} "
         f"rows={int(mtp_device_kv_len) if args.mtp_device_kv_cache else 0} "
         f"capacity={int(mtp_device_kv_capacity) if args.mtp_device_kv_cache else 0}"
     )
+    print(
+        f"Resident MTP draft: requested={bool(args.resident_mtp_draft)} "
+        f"effective={bool(resident_mtp_draft_effective)}"
+    )
+    if resident_mtp_draft_fallback_reason:
+        print(f"Resident MTP draft fallback: {resident_mtp_draft_fallback_reason}")
     print(f"accept_per_draft: {accept_per_draft:.3f}")
     print(f"accepted_per_output: {accepted_per_output:.3f}")
     print(f"visible_tokens_per_cycle: {visible_tokens_per_cycle:.3f}")
@@ -1511,6 +1710,11 @@ def main(argv: list[str] | None = None):
             "initial_prev_position": int(initial_prev_position),
             "cycles": args.cycles,
             "draft_n_max": args.draft_n_max,
+            "adaptive_draft_window": bool(args.adaptive_draft_window),
+            "adaptive_ar_fallback": bool(args.adaptive_ar_fallback),
+            "adaptive_ar_fallback_max_accepted": int(args.adaptive_ar_fallback_max_accepted),
+            "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
+            "adaptive_probe_draft_n_max": int(args.adaptive_probe_draft_n_max),
             "mtp_draft_vocab_cap": int(args.mtp_draft_vocab_cap),
             "decode_repack": bool(args.decode_repack),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
@@ -1520,6 +1724,9 @@ def main(argv: list[str] | None = None):
             "effective_use_gemv_decode": bool(session.use_gemv_decode),
             "mtp_draft_warmup": bool(args.mtp_draft_warmup),
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
+            "resident_mtp_draft": bool(args.resident_mtp_draft),
+            "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
+            "resident_mtp_draft_fallback_reason": resident_mtp_draft_fallback_reason,
             "target_graph_verify": bool(args.target_graph_verify),
             "target_graph_verify_effective": bool(target_graph_verify_enabled),
             "target_graph_steps_per_replay": int(target_graph_steps_per_replay),

@@ -1,0 +1,485 @@
+{
+  "schema": 4,
+  "status": "ok",
+  "timestamp": "2026-06-27T18:02:05",
+  "run_tag": "mtp-bench-1782583325",
+  "hardware": {
+    "gpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "arch": "gfx1151"
+  },
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "prompt": "\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002",
+    "prompt_tokens": 43,
+    "initial_prev_token": 95872,
+    "initial_prev_position": 43,
+    "cycles": 5,
+    "draft_n_max": 1,
+    "adaptive_draft_window": false,
+    "mtp_draft_vocab_cap": 32768,
+    "decode_repack": true,
+    "decode_repack_env": "1",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "effective_use_wmma_prefill": true,
+    "effective_use_gemv_decode": true,
+    "mtp_draft_warmup": true,
+    "mtp_draft_warmup_ms": 67.95,
+    "resident_mtp_draft": true,
+    "resident_mtp_draft_effective": true,
+    "resident_mtp_draft_fallback_reason": null,
+    "target_graph_verify": true,
+    "target_graph_verify_effective": false,
+    "target_graph_steps_per_replay": 1,
+    "target_graph_batched_verify": false,
+    "target_block_verify": true,
+    "target_block_verify_mode": "bulk",
+    "target_block_wmma_prefill": false,
+    "target_graph_max_replay_steps": 10,
+    "target_graph_context_cap": 53,
+    "target_graph_verify_fallback_reason": null,
+    "fastpath_safety": {
+      "is_qwen35moe": true,
+      "allow_unsafe_qwen35moe_fastpaths": false,
+      "requested_wmma_prefill": true,
+      "requested_gemv_decode": true,
+      "effective_wmma_prefill": true,
+      "effective_gemv_decode": true,
+      "disabled_wmma_prefill": false,
+      "disabled_gemv_decode": false,
+      "reason": null
+    },
+    "prompt_reasoning": "off",
+    "root_topk_accept": 1,
+    "sibling_topk_accept": 1,
+    "sibling_tail_min_prev_accepted": 0,
+    "sibling_topk_max_depth": 4,
+    "root_tail_max_prev_accepted": -1,
+    "topk_branch_redraft": false,
+    "topk_branch_redraft_max_branches": 5,
+    "mtp_device_kv_cache": true,
+    "mtp_device_kv_rows": 51,
+    "mtp_device_kv_capacity": 67,
+    "engine": "hipEngine GGUF MTP",
+    "target_prefill_mode": "serial_prefill_hidden_rows",
+    "mtp_context_mode": "llamacpp_shifted_prompt_replay"
+  },
+  "metrics": {
+    "accept_per_draft": 0.6,
+    "accepted_per_output": 0.375,
+    "visible_tokens_per_cycle": 1.6,
+    "avg_cycle_ms": 84.76,
+    "avg_decode_ms": 84.76,
+    "avg_ar_decode_ms": 81.43,
+    "avg_mtp_draft_ms": 3.33,
+    "avg_ms_per_visible_token": 52.98,
+    "tokens_per_sec": 18.88,
+    "ar_baseline_tokens_per_sec": 19.65,
+    "speedup_vs_ar_visible": 0.9607,
+    "total_accepted": 3,
+    "total_drafts": 5,
+    "total_output_tokens": 8,
+    "verify_cycle_count": 5,
+    "denominators": {
+      "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
+      "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
+      "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
+      "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time"
+    },
+    "warm_excluding_cycle0": {
+      "accept_per_draft": 0.75,
+      "accepted_per_output": 0.4286,
+      "visible_tokens_per_cycle": 1.75,
+      "avg_cycle_ms": 92.12,
+      "avg_ar_decode_ms": 88.75,
+      "avg_mtp_draft_ms": 3.38,
+      "avg_ms_per_visible_token": 52.64,
+      "tokens_per_sec": 19.0,
+      "speedup_vs_ar_visible": 0.9634,
+      "total_accepted": 3,
+      "total_drafts": 4,
+      "total_output_tokens": 7,
+      "verify_cycle_count": 4
+    }
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "cycle_prev_token": 95872,
+      "cycle_seq_position": 44,
+      "target_token": 113652,
+      "target_tokens": [
+        113652
+      ],
+      "comparison_target_tokens": [
+        113652
+      ],
+      "output_tokens": [
+        113652
+      ],
+      "draft_token": 8998,
+      "draft_tokens": [
+        8998
+      ],
+      "draft_top10_tokens": [
+        [
+          8998,
+          5205,
+          653,
+          2,
+          21290,
+          9616,
+          7036,
+          1842
+        ]
+      ],
+      "initial_draft_tokens": [
+        8998
+      ],
+      "redraft_tokens": [],
+      "redraft_start_depth": null,
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 1,
+      "linear_draft_tokens": 1,
+      "cycle_draft_n_max": 1,
+      "adaptive_draft_window": false,
+      "next_adaptive_draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "sibling_tail_min_prev_accepted": 0,
+      "sibling_topk_max_depth": 4,
+      "root_tail_max_prev_accepted": -1,
+      "topk_branch_redraft": false,
+      "topk_branch_redraft_max_branches": 5,
+      "topk_branch_accept_count": 0,
+      "topk_branch_depths": [],
+      "redraft_candidate_count": 0,
+      "previous_cycle_accepted": 0,
+      "topk_branch_accepted": false,
+      "topk_branch_depth": null,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "mtp_context_rows_before_draft": 43,
+      "mtp_context_mode": "llamacpp_shifted_prompt_replay",
+      "mtp_device_kv_cache": true,
+      "mtp_device_kv_rows_after": 44,
+      "mtp_device_kv_commit_ms": 0.0,
+      "target_prefill_mode": "serial_prefill_hidden_rows",
+      "target_block_verify": false,
+      "target_graph_batched_verify": false,
+      "ar_decode_ms": 52.18,
+      "mtp_draft_ms": 3.14
+    },
+    {
+      "cycle": 1,
+      "cycle_prev_token": 113652,
+      "cycle_seq_position": 46,
+      "target_token": 24950,
+      "target_tokens": [
+        24950,
+        247818
+      ],
+      "comparison_target_tokens": [
+        24950
+      ],
+      "output_tokens": [
+        24950,
+        247818
+      ],
+      "draft_token": 24950,
+      "draft_tokens": [
+        24950
+      ],
+      "draft_top10_tokens": [
+        [
+          24950,
+          15303,
+          15685,
+          20565,
+          9616,
+          28743,
+          8998,
+          20996
+        ]
+      ],
+      "initial_draft_tokens": [
+        24950
+      ],
+      "redraft_tokens": [],
+      "redraft_start_depth": null,
+      "target_in_draft_top10": [
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 1,
+      "linear_draft_tokens": 1,
+      "cycle_draft_n_max": 1,
+      "adaptive_draft_window": false,
+      "next_adaptive_draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "sibling_tail_min_prev_accepted": 0,
+      "sibling_topk_max_depth": 4,
+      "root_tail_max_prev_accepted": -1,
+      "topk_branch_redraft": false,
+      "topk_branch_redraft_max_branches": 5,
+      "topk_branch_accept_count": 0,
+      "topk_branch_depths": [],
+      "redraft_candidate_count": 0,
+      "previous_cycle_accepted": 0,
+      "topk_branch_accepted": false,
+      "topk_branch_depth": null,
+      "accepted_draft_tokens": 1,
+      "visible_output_tokens": 2,
+      "pending_hidden_row_index": 1,
+      "mtp_context_rows_before_draft": 44,
+      "mtp_context_mode": "llamacpp_shifted_prompt_replay",
+      "mtp_device_kv_cache": true,
+      "mtp_device_kv_rows_after": 46,
+      "mtp_device_kv_commit_ms": 0.35,
+      "target_prefill_mode": "serial_prefill_hidden_rows",
+      "target_block_verify": false,
+      "target_graph_batched_verify": false,
+      "ar_decode_ms": 100.75,
+      "mtp_draft_ms": 3.45
+    },
+    {
+      "cycle": 2,
+      "cycle_prev_token": 247818,
+      "cycle_seq_position": 48,
+      "target_token": 29292,
+      "target_tokens": [
+        29292,
+        185865
+      ],
+      "comparison_target_tokens": [
+        29292
+      ],
+      "output_tokens": [
+        29292,
+        185865
+      ],
+      "draft_token": 29292,
+      "draft_tokens": [
+        29292
+      ],
+      "draft_top10_tokens": [
+        [
+          29292,
+          12654,
+          8998,
+          22542,
+          922,
+          12305,
+          9834,
+          20996
+        ]
+      ],
+      "initial_draft_tokens": [
+        29292
+      ],
+      "redraft_tokens": [],
+      "redraft_start_depth": null,
+      "target_in_draft_top10": [
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 1,
+      "linear_draft_tokens": 1,
+      "cycle_draft_n_max": 1,
+      "adaptive_draft_window": false,
+      "next_adaptive_draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "sibling_tail_min_prev_accepted": 0,
+      "sibling_topk_max_depth": 4,
+      "root_tail_max_prev_accepted": -1,
+      "topk_branch_redraft": false,
+      "topk_branch_redraft_max_branches": 5,
+      "topk_branch_accept_count": 0,
+      "topk_branch_depths": [],
+      "redraft_candidate_count": 0,
+      "previous_cycle_accepted": 1,
+      "topk_branch_accepted": false,
+      "topk_branch_depth": null,
+      "accepted_draft_tokens": 1,
+      "visible_output_tokens": 2,
+      "pending_hidden_row_index": 1,
+      "mtp_context_rows_before_draft": 46,
+      "mtp_context_mode": "llamacpp_shifted_prompt_replay",
+      "mtp_device_kv_cache": true,
+      "mtp_device_kv_rows_after": 48,
+      "mtp_device_kv_commit_ms": 0.46,
+      "target_prefill_mode": "serial_prefill_hidden_rows",
+      "target_block_verify": false,
+      "target_graph_batched_verify": false,
+      "ar_decode_ms": 101.66,
+      "mtp_draft_ms": 3.54
+    },
+    {
+      "cycle": 3,
+      "cycle_prev_token": 185865,
+      "cycle_seq_position": 50,
+      "target_token": 28452,
+      "target_tokens": [
+        28452,
+        114149
+      ],
+      "comparison_target_tokens": [
+        28452
+      ],
+      "output_tokens": [
+        28452,
+        114149
+      ],
+      "draft_token": 28452,
+      "draft_tokens": [
+        28452
+      ],
+      "draft_top10_tokens": [
+        [
+          28452,
+          27279,
+          9616,
+          5205,
+          20996,
+          15685,
+          14876,
+          18602
+        ]
+      ],
+      "initial_draft_tokens": [
+        28452
+      ],
+      "redraft_tokens": [],
+      "redraft_start_depth": null,
+      "target_in_draft_top10": [
+        true
+      ],
+      "target_rank_in_draft_top10": [
+        1
+      ],
+      "accepted": true,
+      "generated_draft_tokens": 1,
+      "linear_draft_tokens": 1,
+      "cycle_draft_n_max": 1,
+      "adaptive_draft_window": false,
+      "next_adaptive_draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "sibling_tail_min_prev_accepted": 0,
+      "sibling_topk_max_depth": 4,
+      "root_tail_max_prev_accepted": -1,
+      "topk_branch_redraft": false,
+      "topk_branch_redraft_max_branches": 5,
+      "topk_branch_accept_count": 0,
+      "topk_branch_depths": [],
+      "redraft_candidate_count": 0,
+      "previous_cycle_accepted": 1,
+      "topk_branch_accepted": false,
+      "topk_branch_depth": null,
+      "accepted_draft_tokens": 1,
+      "visible_output_tokens": 2,
+      "pending_hidden_row_index": 1,
+      "mtp_context_rows_before_draft": 48,
+      "mtp_context_mode": "llamacpp_shifted_prompt_replay",
+      "mtp_device_kv_cache": true,
+      "mtp_device_kv_rows_after": 50,
+      "mtp_device_kv_commit_ms": 0.35,
+      "target_prefill_mode": "serial_prefill_hidden_rows",
+      "target_block_verify": false,
+      "target_graph_batched_verify": false,
+      "ar_decode_ms": 102.28,
+      "mtp_draft_ms": 3.38
+    },
+    {
+      "cycle": 4,
+      "cycle_prev_token": 114149,
+      "cycle_seq_position": 51,
+      "target_token": 104119,
+      "target_tokens": [
+        104119
+      ],
+      "comparison_target_tokens": [
+        104119
+      ],
+      "output_tokens": [
+        104119
+      ],
+      "draft_token": 8998,
+      "draft_tokens": [
+        8998
+      ],
+      "draft_top10_tokens": [
+        [
+          8998,
+          9616,
+          5205,
+          19054,
+          12512,
+          14259,
+          267,
+          15685
+        ]
+      ],
+      "initial_draft_tokens": [
+        8998
+      ],
+      "redraft_tokens": [],
+      "redraft_start_depth": null,
+      "target_in_draft_top10": [
+        false
+      ],
+      "target_rank_in_draft_top10": [
+        null
+      ],
+      "accepted": false,
+      "generated_draft_tokens": 1,
+      "linear_draft_tokens": 1,
+      "cycle_draft_n_max": 1,
+      "adaptive_draft_window": false,
+      "next_adaptive_draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "sibling_tail_min_prev_accepted": 0,
+      "sibling_topk_max_depth": 4,
+      "root_tail_max_prev_accepted": -1,
+      "topk_branch_redraft": false,
+      "topk_branch_redraft_max_branches": 5,
+      "topk_branch_accept_count": 0,
+      "topk_branch_depths": [],
+      "redraft_candidate_count": 0,
+      "previous_cycle_accepted": 1,
+      "topk_branch_accepted": false,
+      "topk_branch_depth": null,
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "pending_hidden_row_index": 0,
+      "mtp_context_rows_before_draft": 50,
+      "mtp_context_mode": "llamacpp_shifted_prompt_replay",
+      "mtp_device_kv_cache": true,
+      "mtp_device_kv_rows_after": 51,
+      "mtp_device_kv_commit_ms": 0.0,
+      "target_prefill_mode": "serial_prefill_hidden_rows",
+      "target_block_verify": false,
+      "target_graph_batched_verify": false,
+      "ar_decode_ms": 50.29,
+      "mtp_draft_ms": 3.13
+    }
+  ]
+}

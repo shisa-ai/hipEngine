@@ -1,0 +1,173 @@
+{
+  "category": [
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/category/2026-06-28-resident-production-category-b3-c5-resident-draft-summary.json",
+      "candidate": "resident-draft",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts /home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl --budgets 3 --cycles 5 --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/category/resident-draft --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/category/2026-06-28-resident-production-category-b3-c5-resident-draft-summary.json --true-ar-baseline-json /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/true_ar/2026-06-28-resident-production-category-b3-c5-true-ar-baseline.json --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--mtp-context-replay --extra-arg=--mtp-device-kv-cache --extra-arg=--target-block-verify --extra-arg=--mtp-draft-vocab-cap --extra-arg=32768 --extra-arg=--resident-mtp-draft",
+        "env": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/logs/category-resident-draft.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 512.1439027360175
+      },
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "/home/lhl/hipEngine"
+      },
+      "summary": {
+        "best": {
+          "categories_by_accepted_per_output": {
+            "code": "b3",
+            "general_en": "b3",
+            "general_ja": "b3",
+            "mixed_ja_en": "b3"
+          },
+          "categories_by_decode_tok_s": {
+            "code": "b3",
+            "general_en": "b3",
+            "general_ja": "b3",
+            "mixed_ja_en": "b3"
+          },
+          "total_by_accepted_per_output": "b3",
+          "total_by_decode_tok_s": "b3"
+        },
+        "status": "diagnostic_retained",
+        "totals": {
+          "b3": {
+            "accepted_per_output": 0.5967741935483871,
+            "ar_baseline_tok_s_weighted_for_this_budget": 17.786269286985757,
+            "avg_output_tokens_per_prompt": 12.4,
+            "budget": 3,
+            "decode_ms": 7471.92,
+            "decode_tok_s_weighted": 16.59546676088609,
+            "draft_acceptance": 0.49333333333333335,
+            "label": "b3",
+            "mtp_vs_ar_decode_ratio": 0.9330493367166672,
+            "mtp_vs_true_ar_decode_ratio": 0.2988791782256789,
+            "prompts": 10,
+            "total_accepted": 74,
+            "total_drafts": 150,
+            "total_output_tokens": 124,
+            "true_ar_decode_tok_s_weighted": 55.52567047128027
+          },
+          "off": {
+            "baseline_kind": "verifier_derived_from_b1_target_ar",
+            "budget": 0,
+            "decode_ms": 6971.67,
+            "decode_tok_s_weighted": 17.786269286985757,
+            "label": "off",
+            "mtp_vs_ar_decode_ratio": 1.0,
+            "prompts": 10,
+            "source": "B1 native target-AR verifier time over the same prompt rows",
+            "total_output_tokens": 124,
+            "true_ar_decode_tok_s_weighted": 55.52567047128027,
+            "true_autoregressive_path": false
+          }
+        },
+        "true_ar_comparison_available": true
+      }
+    }
+  ],
+  "decision": {
+    "promote_candidate": null,
+    "promotion_blocker": "A candidate must beat default on same-protocol E2E and clear full-suite validation before promotion."
+  },
+  "e2e": [],
+  "generated_at": "2026-06-27T17:38:55.043353+00:00",
+  "host": "gfx1151",
+  "notes": [
+    "Diagnostic workbench only; not a retained speed claim.",
+    "E2E commands use the B3/C5 llama.cpp-parity smoke shape with context replay, device MTP KV, block verify, and 32k draft vocab cap.",
+    "Per-piece commands measure selected-MoE q8_1+sudot4 slices outside the production runtime."
+  ],
+  "performance_claim": false,
+  "pieces": [],
+  "protocol": {
+    "candidates": [
+      "resident-draft"
+    ],
+    "category_limit": null,
+    "cycles": 5,
+    "draft_n_max": 3,
+    "hip_arch": "gfx1151",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "mtp_draft_vocab_cap": 32768,
+    "prompt": "Write a Python function that implements merge sort:",
+    "prompt_reasoning": "off",
+    "raw_root": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5",
+    "root_topk_accept": 1,
+    "stages": [
+      "true-ar",
+      "category"
+    ],
+    "true_ar_baseline_json": null,
+    "true_ar_decode_tokens": null,
+    "true_ar_warmup_decode_tokens": 1
+  },
+  "repo": {
+    "git_branch": "mtp-gguf",
+    "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+    "git_tracked_dirty": true,
+    "git_untracked_count": 21,
+    "repo_root": "/home/lhl/hipEngine"
+  },
+  "rocprof": [],
+  "schema": "hipengine.gguf_mtp_parity_workbench.v1",
+  "status": "complete",
+  "true_ar": {
+    "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/true_ar/2026-06-28-resident-production-category-b3-c5-true-ar-baseline.json",
+    "command": {
+      "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts /home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl --decode-tokens 20 --warmup-decode-tokens 1 --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/true_ar/raw --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/true_ar/2026-06-28-resident-production-category-b3-c5-true-ar-baseline.json",
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "/home/lhl/hipEngine"
+      },
+      "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/logs/true-ar.log",
+      "returncode": 0,
+      "status": "passed",
+      "wall_seconds": 53.61187431495637
+    },
+    "decode_tokens": 20,
+    "raw_root": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-production-category-b3-c5/true_ar/raw",
+    "summary": {
+      "categories": {
+        "code": {
+          "decode_ms": 1440.2710548602045,
+          "decode_tok_s_weighted": 55.545100160167394,
+          "prompts": 4,
+          "total_output_tokens": 80
+        },
+        "general_en": {
+          "decode_ms": 720.5074920784682,
+          "decode_tok_s_weighted": 55.516424797486664,
+          "prompts": 2,
+          "total_output_tokens": 40
+        },
+        "general_ja": {
+          "decode_ms": 720.9194658789784,
+          "decode_tok_s_weighted": 55.48469959987854,
+          "prompts": 2,
+          "total_output_tokens": 40
+        },
+        "mixed_ja_en": {
+          "decode_ms": 720.2395829372108,
+          "decode_tok_s_weighted": 55.53707536716588,
+          "prompts": 2,
+          "total_output_tokens": 40
+        }
+      },
+      "status": "complete",
+      "totals": {
+        "decode_ms": 3601.937595754862,
+        "decode_tok_s_weighted": 55.52567047128027,
+        "prompts": 10,
+        "total_output_tokens": 200
+      }
+    },
+    "warmup_decode_tokens": 1
+  }
+}

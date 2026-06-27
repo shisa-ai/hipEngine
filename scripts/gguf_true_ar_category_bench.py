@@ -89,7 +89,11 @@ def build_true_ar_artifact(
         "timing_protocol": {
             "decode_path": "graph_replay" if bool(getattr(args, "graph_replay_decode", False)) else "eager_step",
             "graph_replay_decode": bool(getattr(args, "graph_replay_decode", False)),
-            "graph_steps_per_replay": int(getattr(args, "graph_steps_per_replay", 0) or 0),
+            "graph_steps_per_replay": (
+                int(getattr(args, "graph_steps_per_replay", 0) or 0)
+                if bool(getattr(args, "graph_replay_decode", False))
+                else 0
+            ),
             "decode_repack": bool(getattr(args, "decode_repack", False)),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
             "use_gemv_decode": bool(getattr(args, "use_gemv_decode", False)),

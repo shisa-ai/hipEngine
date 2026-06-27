@@ -492,7 +492,7 @@ def validate_summary_budget_totals_consistency(
     prompts = metric_int(row.get("prompts"), label=f"summary totals.{budget_label}.prompts")
     output = metric_int(row.get("total_output_tokens"), label=f"summary totals.{budget_label}.total_output_tokens")
     accepted = metric_nonnegative_int(row.get("total_accepted"), label=f"summary totals.{budget_label}.total_accepted")
-    drafts = metric_int(row.get("total_drafts"), label=f"summary totals.{budget_label}.total_drafts")
+    drafts = metric_nonnegative_int(row.get("total_drafts"), label=f"summary totals.{budget_label}.total_drafts")
     if accepted > output:
         raise BenchError(f"objective metrics require summary totals.{budget_label}.total_accepted <= total_output_tokens")
     if accepted > drafts:
@@ -501,7 +501,8 @@ def validate_summary_budget_totals_consistency(
     draft_acceptance = finite_unit_interval_objective(row.get("draft_acceptance"), label=f"summary totals.{budget_label}.draft_acceptance")
     if not math.isclose(accepted_per_output, accepted / output, rel_tol=1e-9, abs_tol=1e-12):
         raise BenchError(f"objective metrics require summary totals.{budget_label}.accepted_per_output to match total counts")
-    if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
+    expected_draft_acceptance = accepted / drafts if drafts else 0.0
+    if not math.isclose(draft_acceptance, expected_draft_acceptance, rel_tol=1e-9, abs_tol=1e-12):
         raise BenchError(f"objective metrics require summary totals.{budget_label}.draft_acceptance to match total counts")
     decode_tok_s = finite_nonnegative_objective(row.get("decode_tok_s_weighted"), label=f"summary totals.{budget_label}.decode_tok_s_weighted")
     decode_ms = validate_decode_tps_from_ms(
@@ -520,7 +521,7 @@ def validate_summary_budget_totals_consistency(
     full_prompts = metric_int(full_row.get("prompts"), label=f"full.{budget_label}.prompts")
     full_output = metric_int(full_row.get("total_output_tokens"), label=f"full.{budget_label}.total_output_tokens")
     full_accepted = metric_nonnegative_int(full_row.get("total_accepted"), label=f"full.{budget_label}.total_accepted")
-    full_drafts = metric_int(full_row.get("total_drafts"), label=f"full.{budget_label}.total_drafts")
+    full_drafts = metric_nonnegative_int(full_row.get("total_drafts"), label=f"full.{budget_label}.total_drafts")
     full_decode_tok_s = finite_nonnegative_objective(full_row.get("decode_tok_s_weighted"), label=f"full.{budget_label}.decode_tok_s_weighted")
     full_decode_ms = finite_positive_objective(full_row.get("decode_ms"), label=f"full.{budget_label}.decode_ms")
     if (prompts, output, accepted, drafts) != (full_prompts, full_output, full_accepted, full_drafts):
@@ -542,7 +543,7 @@ def validate_summary_budget_totals_consistency(
         category_prompts += metric_int(category_row.get("prompts"), label=f"category {category}.{budget_label}.prompts")
         category_output += metric_int(category_row.get("total_output_tokens"), label=f"category {category}.{budget_label}.total_output_tokens")
         category_accepted += metric_nonnegative_int(category_row.get("total_accepted"), label=f"category {category}.{budget_label}.total_accepted")
-        category_drafts += metric_int(category_row.get("total_drafts"), label=f"category {category}.{budget_label}.total_drafts")
+        category_drafts += metric_nonnegative_int(category_row.get("total_drafts"), label=f"category {category}.{budget_label}.total_drafts")
         category_decode_ms += finite_positive_objective(category_row.get("decode_ms"), label=f"category {category}.{budget_label}.decode_ms")
     if (category_prompts, category_output, category_accepted, category_drafts) != (prompts, output, accepted, drafts):
         raise BenchError(f"objective metrics require summary totals.{budget_label} counts to match category sums")
@@ -714,7 +715,7 @@ def validate_summary_category_budget_metrics(
             raise BenchError(f"{label} category {category}.{budget_label}.prompts must match prompt metadata")
         output = metric_int(row.get("total_output_tokens"), label=f"{label} category {category}.{budget_label}.total_output_tokens")
         accepted = metric_nonnegative_int(row.get("total_accepted"), label=f"{label} category {category}.{budget_label}.total_accepted")
-        drafts = metric_int(row.get("total_drafts"), label=f"{label} category {category}.{budget_label}.total_drafts")
+        drafts = metric_nonnegative_int(row.get("total_drafts"), label=f"{label} category {category}.{budget_label}.total_drafts")
         if accepted > output:
             raise BenchError(f"{label} category {category}.{budget_label}.total_accepted <= total_output_tokens")
         if accepted > drafts:
@@ -729,7 +730,8 @@ def validate_summary_category_budget_metrics(
         draft_acceptance = finite_unit_interval_objective(row["draft_acceptance"], label=f"{label} category {category}.{budget_label}.draft_acceptance")
         if not math.isclose(accepted_per_output, accepted / output, rel_tol=1e-9, abs_tol=1e-12):
             raise BenchError(f"objective metrics require {label} category {category}.{budget_label}.accepted_per_output to match category counts")
-        if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
+        expected_draft_acceptance = accepted / drafts if drafts else 0.0
+        if not math.isclose(draft_acceptance, expected_draft_acceptance, rel_tol=1e-9, abs_tol=1e-12):
             raise BenchError(f"objective metrics require {label} category {category}.{budget_label}.draft_acceptance to match category counts")
         decode_tok_s = finite_nonnegative_objective(row["decode_tok_s_weighted"], label=f"{label} category {category}.{budget_label}.decode_tok_s_weighted")
         decode_ms = validate_decode_tps_from_ms(
@@ -955,21 +957,15 @@ def run_one(
     extra_args: list[str],
     dry_run: bool,
 ) -> dict[str, Any] | None:
-    cmd = [
-        python,
-        "scripts/gguf_mtp_bench.py",
-        "--model",
-        str(model),
-        "--draft-n-max",
-        str(budget),
-        "--cycles",
-        str(cycles),
-        "--prompt",
-        prompt,
-        "--output",
-        str(output),
-        *extra_args,
-    ]
+    cmd = build_one_command(
+        python=python,
+        model=model,
+        prompt=prompt,
+        budget=budget,
+        cycles=cycles,
+        output=output,
+        extra_args=extra_args,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if dry_run:
@@ -986,6 +982,33 @@ def run_one(
     data["wrapper"]["command"] = quote_command(cmd)
     data["wrapper"]["log"] = str(log_path)
     return data
+
+
+def build_one_command(
+    *,
+    python: str,
+    model: Path,
+    prompt: str,
+    budget: int,
+    cycles: int,
+    output: Path,
+    extra_args: list[str],
+) -> list[str]:
+    return [
+        python,
+        "scripts/gguf_mtp_bench.py",
+        "--model",
+        str(model),
+        "--draft-n-max",
+        str(budget),
+        "--cycles",
+        str(cycles),
+        "--prompt",
+        prompt,
+        "--output",
+        str(output),
+        *extra_args,
+    ]
 
 
 def quote_command(cmd: list[str]) -> str:
@@ -1067,9 +1090,9 @@ def validate_metric_row(row: dict[str, Any], *, expected_cycles: int | None = No
         metrics.get("total_accepted"),
         message=f"negative metric in row {prompt_id}: accepted={metrics.get('total_accepted')!r}, drafts={metrics.get('total_drafts')!r}",
     )
-    total_drafts = require_positive_int(
+    total_drafts = require_nonnegative_int(
         metrics.get("total_drafts"),
-        message=f"non-positive draft token count in row {prompt_id}: drafts={metrics.get('total_drafts')!r}",
+        message=f"invalid draft token count in row {prompt_id}: drafts={metrics.get('total_drafts')!r}",
     )
     if total_accepted > total_output:
         raise BenchError(f"accepted draft tokens exceed output tokens for {prompt_id}: {total_accepted} > {total_output}")
@@ -1103,9 +1126,9 @@ def validate_metric_row(row: dict[str, Any], *, expected_cycles: int | None = No
             cycle.get("visible_output_tokens"),
             message=f"cycle {index} for {prompt_id} visible_output_tokens must be a positive integer",
         )
-        generated_drafts = require_positive_int(
+        generated_drafts = require_nonnegative_int(
             cycle.get("generated_draft_tokens"),
-            message=f"cycle {index} for {prompt_id} generated_draft_tokens must be a positive integer",
+            message=f"cycle {index} for {prompt_id} generated_draft_tokens must be a non-negative integer",
         )
         accepted_drafts = require_nonnegative_int(
             cycle.get("accepted_draft_tokens"),
@@ -1159,7 +1182,7 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, 
         "decode_tok_s_weighted": decode_tps,
         "ar_baseline_tok_s_weighted_for_this_budget": ar_tps,
         "mtp_vs_ar_decode_ratio": decode_tps / off_tps if off_tps else (decode_tps / ar_tps if ar_tps else None),
-        "draft_acceptance": total_accepted / total_drafts if total_drafts else None,
+        "draft_acceptance": total_accepted / total_drafts if total_drafts else 0.0,
         "accepted_per_output": total_accepted / total_output if total_output else None,
         "avg_output_tokens_per_prompt": total_output / len(rows) if rows else 0.0,
     }
@@ -1718,7 +1741,7 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
             raise BenchError(f"objective metrics require {split_name}.{label}.prompts to match splits.{split_name}.prompt_ids length")
         output = metric_int(row.get("total_output_tokens"), label=f"{split_name}.{label}.total_output_tokens")
         accepted = metric_nonnegative_int(row.get("total_accepted"), label=f"{split_name}.{label}.total_accepted")
-        drafts = metric_int(row.get("total_drafts"), label=f"{split_name}.{label}.total_drafts")
+        drafts = metric_nonnegative_int(row.get("total_drafts"), label=f"{split_name}.{label}.total_drafts")
         if accepted > output:
             raise BenchError(f"objective metrics require {split_name}.{label}.total_accepted <= total_output_tokens")
         if accepted > drafts:
@@ -1727,7 +1750,8 @@ def objective_metrics_for_budget(summary: dict[str, Any], budget_label: str | in
         draft_acceptance = finite_unit_interval_objective(row["draft_acceptance"], label=f"{split_name}.{label}.draft_acceptance")
         if not math.isclose(accepted_per_output, accepted / output, rel_tol=1e-9, abs_tol=1e-12):
             raise BenchError(f"objective metrics require {split_name}.{label}.accepted_per_output to match split counts")
-        if not math.isclose(draft_acceptance, accepted / drafts, rel_tol=1e-9, abs_tol=1e-12):
+        expected_draft_acceptance = accepted / drafts if drafts else 0.0
+        if not math.isclose(draft_acceptance, expected_draft_acceptance, rel_tol=1e-9, abs_tol=1e-12):
             raise BenchError(f"objective metrics require {split_name}.{label}.draft_acceptance to match split counts")
         true_ar_split = true_ar_splits.get(split_name)
         if not isinstance(true_ar_split, dict):
@@ -2302,6 +2326,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--extra-arg", action="append", default=[])
     parser.add_argument(
+        "--reuse-existing",
+        action="store_true",
+        help="Reuse existing per-prompt child JSON files under --raw-root instead of rerunning them; fails if any expected file is missing.",
+    )
+    parser.add_argument(
         "--true-ar-baseline-json",
         type=Path,
         default=None,
@@ -2515,6 +2544,40 @@ def main() -> int:
         for row in prompts:
             out = args.raw_root / f"b{budget}" / f"{safe_name(row['id'])}.json"
             log = args.raw_root / f"b{budget}" / f"{safe_name(row['id'])}.log"
+            if args.reuse_existing and not args.dry_run:
+                if not out.exists():
+                    raise BenchError(f"--reuse-existing missing child artifact: {out}")
+                child = json.loads(out.read_text(encoding="utf-8"))
+                if not isinstance(child, dict):
+                    raise BenchError(f"--reuse-existing child artifact must be a JSON object: {out}")
+                command = child.get("wrapper", {}).get("command") if isinstance(child.get("wrapper"), dict) else None
+                if not isinstance(command, str) or not command:
+                    command = quote_command(
+                        build_one_command(
+                            python=args.python,
+                            model=args.model,
+                            prompt=row["prompt"],
+                            budget=budget,
+                            cycles=args.cycles,
+                            output=out,
+                            extra_args=list(args.extra_arg),
+                        )
+                    )
+                commands.append(command)
+                child["suite"] = {
+                    "id": row["id"],
+                    "category": row["category"],
+                    "prompt_file": str(args.prompts),
+                }
+                child.setdefault("wrapper", {})["command"] = command
+                child["wrapper"].setdefault("log", str(log))
+                out.write_text(json.dumps(child, indent=2) + "\n", encoding="utf-8")
+                child["suite_id"] = row["id"]
+                child["suite_category"] = row["category"]
+                child["suite_prompt_chars"] = len(row["prompt"])
+                raw[budget].append(child)
+                print(f"B{budget} {row['id']}: {out} (reused)", flush=True)
+                continue
             result = run_one(
                 python=args.python,
                 model=args.model,
