@@ -25,6 +25,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_RAW_GGUF,
     gguf_decode_repack_enabled,
     gguf_selected_x8_repack_enabled,
+    gguf_selected_x8_repack_mode,
     materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_materialization,
 )
@@ -147,6 +148,48 @@ def test_qwen35moe_decode_repack_can_plan_selected_down_x8(monkeypatch: pytest.M
     )
     assert q6_down.layout == LAYOUT_GGUF_Q6_K_X8
     assert q6_down.quant_key == "gguf_q6_k_x8_v1"
+
+
+def test_qwen35moe_decode_repack_can_plan_q6_only_x8(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "q6")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_selected_x8_repack_enabled() is True
+    assert gguf_selected_x8_repack_mode() == "q6"
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_t16_v1"
+
+    q6_down = next(
+        layer["ffn_down_exps"]
+        for layer in plan.layer_specs
+        if layer["ffn_down_exps"].source.ggml_type_name == "Q6_K"
+    )
+    assert q6_down.layout == LAYOUT_GGUF_Q6_K_X8
+    assert q6_down.quant_key == "gguf_q6_k_x8_v1"
+
+
+def test_selected_x8_repack_mode_accepts_quant_family(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, raising=False)
+    assert gguf_selected_x8_repack_mode() == "off"
+    assert gguf_selected_x8_repack_enabled() is False
+
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "q6")
+    assert gguf_selected_x8_repack_mode() == "q6"
+    assert gguf_selected_x8_repack_enabled() is True
+
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "1")
+    assert gguf_selected_x8_repack_mode() == "both"
+
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "bogus")
+    with pytest.raises(ValueError, match="must be off, q5, q6, both"):
+        gguf_selected_x8_repack_mode()
 
 
 @pytest.mark.parametrize(

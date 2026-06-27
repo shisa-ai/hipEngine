@@ -52,6 +52,8 @@ def main() -> None:
     ap.add_argument("--in-features", type=int, default=512)
     ap.add_argument("--out-features", type=int, default=2048)
     ap.add_argument("--input-scale", type=float, default=0.1)
+    ap.add_argument("--raw-threads", type=int, choices=(64, 128, 256), default=128)
+    ap.add_argument("--x8-threads", type=int, choices=(64, 128, 256), default=64)
     ap.add_argument("--iters", type=int, default=120)
     ap.add_argument("--warmup", type=int, default=30)
     ap.add_argument("--json", type=Path, default=None)
@@ -183,6 +185,7 @@ def main() -> None:
                     args.experts,
                     args.in_features,
                     args.out_features,
+                    threads=args.raw_threads,
                     library=k_library,
                     runtime=rt,
                 )
@@ -208,6 +211,7 @@ def main() -> None:
                     args.experts,
                     args.in_features,
                     args.out_features,
+                    threads=args.raw_threads,
                     library=k_library,
                     runtime=rt,
                 )
@@ -223,6 +227,7 @@ def main() -> None:
                     args.experts,
                     args.in_features,
                     args.out_features,
+                    threads=args.x8_threads,
                     library=x8_library,
                     runtime=rt,
                 )
@@ -331,6 +336,8 @@ def main() -> None:
             "in_features": args.in_features,
             "out_features": args.out_features,
             "input_scale": args.input_scale,
+            "raw_threads": args.raw_threads,
+            "x8_threads": args.x8_threads,
         },
         "iters": args.iters,
         "warmup": args.warmup,

@@ -286,11 +286,33 @@ def gguf_decode_repack_enabled(value: bool | None = None) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def gguf_selected_x8_repack_enabled(value: bool | None = None) -> bool:
-    if value is not None:
-        return bool(value)
+def gguf_selected_x8_repack_mode(value: bool | str | None = None) -> str:
+    """Return selected-down X8 repack mode: ``off``, ``q5``, ``q6``, or ``both``."""
+
     raw = os.environ.get(HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV, "")
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    if value is not None:
+        raw = str(value)
+    mode = raw.strip().lower()
+    if mode in {"", "0", "false", "no", "off"}:
+        return "off"
+    if mode in {"1", "true", "yes", "on", "both", "all"}:
+        return "both"
+    if mode in {"q5", "q5_k", "gguf_q5_k"}:
+        return "q5"
+    if mode in {"q6", "q6_k", "gguf_q6_k"}:
+        return "q6"
+    raise ValueError(
+        f"{HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV} must be off, q5, q6, both, or a boolean value"
+    )
+
+
+def gguf_selected_x8_repack_enabled(value: bool | str | None = None) -> bool:
+    return gguf_selected_x8_repack_mode(value) != "off"
+
+
+def _gguf_selected_x8_repack_enabled_for(quant: str) -> bool:
+    mode = gguf_selected_x8_repack_mode()
+    return mode == "both" or mode == quant
 
 
 def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: bool) -> Qwen35GGUFWeightSpec:
@@ -330,7 +352,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
         )
     if qtype == GGMLQuantizationType.Q5_K:
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
-            if gguf_selected_x8_repack_enabled() and _is_selected_down_expert_tensor(slot_path, tensor):
+            if _gguf_selected_x8_repack_enabled_for("q5") and _is_selected_down_expert_tensor(slot_path, tensor):
                 return Qwen35GGUFWeightSpec(
                     slot_path=slot_path,
                     source=tensor,
@@ -363,7 +385,7 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
-            if gguf_selected_x8_repack_enabled() and _is_selected_down_expert_tensor(slot_path, tensor):
+            if _gguf_selected_x8_repack_enabled_for("q6") and _is_selected_down_expert_tensor(slot_path, tensor):
                 return Qwen35GGUFWeightSpec(
                     slot_path=slot_path,
                     source=tensor,
@@ -625,6 +647,7 @@ __all__ = [
     "audit_qwen35_gguf_precision_contractions",
     "gguf_decode_repack_enabled",
     "gguf_selected_x8_repack_enabled",
+    "gguf_selected_x8_repack_mode",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",
 ]

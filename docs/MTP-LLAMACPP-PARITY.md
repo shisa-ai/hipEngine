@@ -171,16 +171,36 @@ improves the same B3/full-suite protocol. Artifacts:
 and
 `benchmarks/results/2026-06-27-hipengine-mtp-b3-default-verifier-control-for-x8.json`.
 
+**X8 Q5 tuning / quant-selective route (2026-06-28): useful diagnostic, still
+not a default.** Reducing X8 selected-down launches from 128 to 64 threads helps
+the synthetic small-B shape: Q5_K X8 dot moved to `0.03026 ms` and q8_1
+quantize+dot to `0.03378 ms` versus production T16 `0.03364 ms` (roughly
+break-even), while Q6_K X8 quantize+dot moved to `0.02014 ms` versus T16
+`0.03304 ms` (**1.64x**). The materializer now accepts
+`HIPENGINE_GGUF_SELECTED_X8_REPACK=q5|q6|both`; `=1` remains `both`. This lets
+diagnostics route by quant family, but the B3 verifier still does not improve:
+full X8 with the 64-thread body measured `49.08 tok/s` (`49.41` warm), q6-only
+X8 measured `50.32 tok/s` (`51.07` warm), and same-tree default T16 measured
+`51.77 tok/s` (`52.56` warm), all exact `15/15`. Keep the selector opt-in and
+do not promote X8 until the production verifier, not just the microshape, wins.
+Artifacts:
+`benchmarks/results/2026-06-28-hipengine-gguf-x8-selected-down-t64-dp4a-poc.json`,
+`benchmarks/results/2026-06-28-hipengine-mtp-b3-x8-t64-selected-down-verifier-diagnostic.json`,
+`benchmarks/results/2026-06-28-hipengine-mtp-b3-x8-q6-only-selected-down-verifier-diagnostic.json`,
+and
+`benchmarks/results/2026-06-28-hipengine-mtp-b3-default-verifier-control-for-x8-t64.json`.
+
 ### Next steps, ordered by impact
 
 1. **Do not promote the current straight dp4a diagnostics.** Raw Q4_K/Q5_K/Q6_K
    q8_1+sudot4 is strong in isolation and improves the raw no-decode-repack
    verifier, but production B3 still uses T16 and remains faster. The first
-   production-compatible X8 selected-down slice removes the raw sidecar but is
-   Q5-negative and still trails default B3. T16 Q4 split is only `1.04x` in its
-   small row-bulk bucket, T16 Q5 selected-down is only `1.10x` in isolation
-   while regressing B3, and raw selected-down still trails default
-   decode-repack at the verifier level. Keep
+   production-compatible X8 selected-down slice removes the raw sidecar and the
+   64-thread body helps the isolated Q5/Q6 microshape, but full-X8 and q6-only
+   X8 still trail default B3. T16 Q4 split is only `1.04x` in its small
+   row-bulk bucket, T16 Q5 selected-down is only `1.10x` in isolation while
+   regressing B3, and raw selected-down still trails default decode-repack at
+   the verifier level. Keep
    `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` and
    `HIPENGINE_GGUF_T16_SELECTED_DP4A` / `HIPENGINE_GGUF_RAW_SELECTED_DP4A` /
    `HIPENGINE_GGUF_SELECTED_X8_REPACK` as diagnostic gates only.

@@ -125922,3 +125922,73 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   only quant families that beat T16 on the production verifier, then extend
   q8_1+sudot4 to the remaining hot GGUF GEMVs under the same B3/full-suite
   gate.
+
+
+## 2026-06-28 — X8 64-thread tuning and quant-family selector remain diagnostic
+
+### Scope
+- Tuned X8 selected-down wrappers to launch with `64` threads by default.
+  The selected-down shape has only `128` dp4a groups at `in_features=512`, so
+  the prior `128`-thread default overpaid cross-wave reduction overhead.
+- Extended `scripts/gguf_x8_selected_down_dp4a_microbench.py` with
+  `--raw-threads` / `--x8-threads` controls.
+- Extended `HIPENGINE_GGUF_SELECTED_X8_REPACK` parsing:
+  - `1` / `true` / `both` -> Q5 and Q6 selected-down X8
+  - `q5` -> Q5 selected-down X8 only
+  - `q6` -> Q6 selected-down X8 only
+  - `0` / unset -> default T16 selected-down
+
+### Validation
+- No-GPU syntax:
+  `python3 -m py_compile hipengine/loading/qwen35_gguf_materialize.py hipengine/kernels/hip_gfx1100/quant/gguf_x8_selected_gemv.py scripts/gguf_x8_selected_down_dp4a_microbench.py tests/test_qwen35_gguf_materialize.py tests/test_gguf_x8_selected_gemv.py`
+  -> passed.
+- Whitespace:
+  `git diff --check`
+  -> passed.
+- Routing/materialization:
+  `python3 -m pytest tests/test_gguf_x8_repack.py tests/test_qwen35_gguf_materialize.py::test_selected_x8_repack_mode_accepts_quant_family tests/test_qwen35_gguf_materialize.py::test_qwen35moe_decode_repack_can_plan_selected_down_x8 tests/test_qwen35_gguf_materialize.py::test_qwen35moe_decode_repack_can_plan_q6_only_x8 tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_decode_graph_policy.py -q`
+  -> `27` tests passed (`3` expected local-fixture skips).
+- HIP correctness:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_x8_selected_gemv.py -q`
+  -> `5 passed`.
+- Lineage check remains blocked because `/home/lhl/amd-gpu-tuning/nano-vllm-amd`
+  is missing:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  -> `RuntimeError: git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd rev-parse --short HEAD failed`.
+
+### Microbench result
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --iters 160 --warmup 40 --json benchmarks/results/2026-06-28-hipengine-gguf-x8-selected-down-t64-dp4a-poc.json`
+- Shape: selected-down (`rows=8`, `experts=256`, `in_features=512`,
+  `out_features=2048`, input scale `0.1`) on gfx1151.
+- Q5_K:
+  - production T16 float: `0.03364 ms`
+  - q8_1 quantize only: `0.00237 ms`
+  - X8 dp4a dot prequantized: `0.03026 ms`
+  - X8 q8_1 quantize+dot: `0.03378 ms`
+  - speedup production T16 / X8 quant+dot: `0.996x` (break-even/no win)
+  - correctness vs production T16: `KL_mean=0.000714`, `KL_max=0.00515`, top-1 `1.0`
+- Q6_K:
+  - production T16 float: `0.03304 ms`
+  - q8_1 quantize only: `0.00299 ms`
+  - X8 dp4a dot prequantized: `0.01670 ms`
+  - X8 q8_1 quantize+dot: `0.02014 ms`
+  - speedup production T16 / X8 quant+dot: `1.64x`
+  - correctness vs production T16: `KL_mean=0.00137`, `KL_max=0.00579`, top-1 `1.0`
+- Artifact:
+  `benchmarks/results/2026-06-28-hipengine-gguf-x8-selected-down-t64-dp4a-poc.json`.
+
+### B3 diagnostics / decision
+- Full X8 materialization with 64-thread body:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_SELECTED_X8_REPACK=1 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-28-hipengine-mtp-b3-x8-t64-selected-down-verifier-diagnostic.json`
+  -> exact `15/15`, `49.08 tok/s`, warm `49.41 tok/s`, avg cycle `81.51 ms`.
+- Q6-only X8 materialization:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_SELECTED_X8_REPACK=q6 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-28-hipengine-mtp-b3-x8-q6-only-selected-down-verifier-diagnostic.json`
+  -> exact `15/15`, `50.32 tok/s`, warm `51.07 tok/s`, avg cycle `79.50 ms`.
+- Same-tree default control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-28-hipengine-mtp-b3-default-verifier-control-for-x8-t64.json`
+  -> exact `15/15`, `51.77 tok/s`, warm `52.56 tok/s`, avg cycle `77.26 ms`.
+- Decision: keep X8 and the quant-family selector diagnostic/default-off. The
+  64-thread body is better for isolated selected-down and Q6-only routing works,
+  but neither full X8 nor q6-only beats the production T16 verifier on the same
+  B3 smoke.

@@ -14,6 +14,7 @@ _OUTPUT_NAME = "gguf_x8_selected_gemv.so"
 _QK_K = 256
 _X8_COLS = 8
 _ALLOWED_THREADS = {64, 128, 256}
+_DEFAULT_THREADS = 64
 
 _Q5_DIRECT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q6_DIRECT_BF16 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
@@ -72,7 +73,7 @@ def gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
     in_features: int,
     out_features: int,
     *,
-    threads: int = 128,
+    threads: int = _DEFAULT_THREADS,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -108,7 +109,7 @@ def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
     in_features: int,
     out_features: int,
     *,
-    threads: int = 128,
+    threads: int = _DEFAULT_THREADS,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -143,7 +144,7 @@ def gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out(
     out_features: int,
     num_experts: int,
     *,
-    threads: int = 128,
+    threads: int = _DEFAULT_THREADS,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -177,7 +178,7 @@ def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out(
     out_features: int,
     num_experts: int,
     *,
-    threads: int = 128,
+    threads: int = _DEFAULT_THREADS,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
