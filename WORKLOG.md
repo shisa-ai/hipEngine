@@ -126183,3 +126183,20 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Next
 - Add a regression test asserting graph replay (>=3 launches) token parity vs eager once fixed; until then it documents the failure.
 - Decide fix: (a) single-launch window graph as production decode, (b) re-capture cadence <=2, or (c) ROCm-level root cause of the 3rd-relaunch in-place-state hazard.
+
+
+## 2026-06-28 — Graph-replay fix #1 shipped; #2 root-cause narrowed (not exec reuse)
+
+### #1 production correctness fix (shipped, commit b2e25669)
+- `hipengine/generation/qwen35_gguf.py` `_generate_greedy` replayed a 1-step decode graph once per token (`steps_per_replay=1`), which hits the 3rd-relaunch GDN corruption -> production emitted WRONG tokens from the 3rd token. This is a shipped-path correctness bug, not just a benchmark artifact.
+- Fix: capture the whole window as a single-launch graph (`steps_per_replay=remaining`, one `replay`), proven bit-exact vs eager. Added GREEN single-launch parity test; the spr=1 relaunch xfail remains as the #2 tracker.
+- Caveat: single-launch capture cost scales with the window (host builds N unrolled steps); fine for benchmark decode lengths, but the cheap incremental-replay speed needs #2.
+
+### #2 root-cause narrowing (scratchpad `graph_freshexec.py`)
+- Instantiating a FRESH `graph_exec` from the same captured graph for every launch STILL corrupts at the 3rd launch -> NOT a `graph_exec` reuse/internal-state issue.
+- Inter-launch `stream_synchronize` does not help (the localize/spr harnesses already synced between launches).
+- The simple in-place increment kernel (`advance_decode_position_i64` on `position_buf`/`context_buf`) advances correctly across ALL launches (positions 22..27 observed), so it is NOT a general ROCm in-place-graph relaunch bug.
+- Conclusion: the corruption is specific to the multi-block in-place GDN conv/recurrent DECODE kernels (`qwen35_linear_attn_conv_decode_bf16` + `qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16`) when their nodes are replayed a 3rd time via HIP graph. Eager and <=2 launches are bit-exact; KV/full-attn always correct. Strongly resembles a ROCm hipGraph relaunch hazard on these specific kernels rather than a kernel-math error.
+
+### Next for #2
+- Decisive minimal reproducer: capture a graph containing only an in-place overlapping shift (mimicking the conv window shift), relaunch 3x. If it breaks, the fix is making the conv/recurrent decode relaunch-safe (no in-place overlap / explicit double-buffer captured in-graph). If it does not, escalate as a ROCm hipGraph bug and keep single-launch as the production path. Also reproduce on the small Qwen3.5-0.8B fixture for a CI-able regression and a possible upstream ROCm report.
