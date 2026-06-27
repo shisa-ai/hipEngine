@@ -1,6 +1,6 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-27 (performance-path update; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-28 (systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers are single-prompt diagnostics, not retained benchmark rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
@@ -190,6 +190,23 @@ Artifacts:
 and
 `benchmarks/results/2026-06-28-hipengine-mtp-b3-default-verifier-control-for-x8-t64.json`.
 
+**Systemic E2E/per-piece workbench (2026-06-28): landed.**
+`scripts/gguf_mtp_parity_workbench.py` is now the standard local gate for the
+GGML-style broad port. It runs the same B3/C5 E2E command shape across named
+runtime candidates (`default`, `x8-q5`, `x8-q6`, `x8-both`, `t16-dp4a`,
+`q4-t16-dp4a`, `raw-dp4a`), runs the selected-MoE per-piece microbenches
+(`Q4_K` gate/up, raw `Q5_K/Q6_K` down, X8 `Q5_K/Q6_K` down), and can optionally
+run rocprof bucket summaries and category-suite diagnostics. The first smoke
+validated the wrapper on gfx1151 with one default B3 cycle plus low-iteration
+piece runs:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_parity_workbench.py --tag 2026-06-28-gguf-mtp-parity-workbench-smoke --raw-root /tmp/hipengine-gguf-mtp-parity-workbench --output benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-smoke.json --stages e2e,pieces --candidates default --cycles 1 --draft-n-max 3 --piece-iters 4 --piece-warmup 1`.
+That smoke measured default E2E `49.3 tok/s`, AR baseline `60.62 tok/s`, exact
+`3/3` accepts for the one cycle. Treat the piece timings in this smoke as
+harness validation only because `--piece-iters 4` is intentionally noisy; use the
+full default `--piece-iters 80`/`--cycles 5` workbench or a higher-iteration run
+before making kernel decisions. Artifact:
+`benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-smoke.json`.
+
 ### Next steps, ordered by impact
 
 1. **Do not promote the current straight dp4a diagnostics.** Raw Q4_K/Q5_K/Q6_K
@@ -204,13 +221,15 @@ and
    `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` and
    `HIPENGINE_GGUF_T16_SELECTED_DP4A` / `HIPENGINE_GGUF_RAW_SELECTED_DP4A` /
    `HIPENGINE_GGUF_SELECTED_X8_REPACK` as diagnostic gates only.
-2. **Broad port target: match GGML's q8_1/x4 vector-dot layout.** The next
-   implementation should make the production verifier consume a GGML-like
+2. **Broad port target: match GGML's q8_1/x4 vector-dot layout, gated through
+   the workbench.** The next implementation should make the production verifier consume a GGML-like
    q8_1 activation plus x4 packed K-quant dot path for the selected-MoE and dense
    GGUF GEMVs, instead of continuing one-off T16 ports. The raw Q4/Q5/Q6 and X8
    results prove the instruction path and a sidecar-free materialization route;
    the missing piece is making the Q5 selected-down body and the remaining hot
-   GGUF GEMVs faster than T16 on the same production verifier protocol.
+   GGUF GEMVs faster than T16 on the same production verifier protocol. Use
+   `scripts/gguf_mtp_parity_workbench.py --stages e2e,pieces,rocprof` for local
+   acceptance of each broad-port slice before promoting any default.
 3. **Extend only proven GGUF GEMVs into defaults.** Carry q8_1+sudot4 into
    dense/raw Q4_K/Q5_K/Q6_K/Q8_0 GEMVs when the local shape clears the quality
    gate and improves the same B3/full-suite protocol. The existing small-B

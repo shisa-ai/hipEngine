@@ -125992,3 +125992,59 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   64-thread body is better for isolated selected-down and Q6-only routing works,
   but neither full X8 nor q6-only beats the production T16 verifier on the same
   B3 smoke.
+
+
+## 2026-06-28 — GGUF-MTP parity workbench for systemic port gates
+
+### Scope
+- Added `scripts/gguf_mtp_parity_workbench.py`.
+- Purpose: one driver for the broad GGML-style q8_1/x4 port gate:
+  - E2E B3/C5 GGUF-MTP smoke across named runtime candidates:
+    `default`, `x8-q5`, `x8-q6`, `x8-both`, `t16-dp4a`,
+    `q4-t16-dp4a`, `raw-dp4a`.
+  - Per-piece selected-MoE microbenches:
+    `gguf_q4_k_selected_dual_dp4a_microbench.py`,
+    `gguf_k_selected_pack8_dp4a_microbench.py`,
+    `gguf_x8_selected_down_dp4a_microbench.py`.
+  - Optional `rocprofv3` trace capture plus
+    `scripts/qwen35_gguf_rocprof_summary.py` bucket summary.
+  - Optional category-suite wrapper stage for later full-suite diagnostics.
+- Added `tests/test_gguf_mtp_parity_workbench.py` for candidate expansion and
+  no-model dry-run artifact shape.
+
+### Validation
+- Syntax:
+  `python3 -m py_compile scripts/gguf_mtp_parity_workbench.py tests/test_gguf_mtp_parity_workbench.py`
+  -> passed.
+- Unit tests:
+  `python3 -m pytest tests/test_gguf_mtp_parity_workbench.py -q`
+  -> `3 passed`.
+- Whitespace:
+  `git diff --check`
+  -> passed.
+- Real gfx1151 smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_parity_workbench.py --tag 2026-06-28-gguf-mtp-parity-workbench-smoke --raw-root /tmp/hipengine-gguf-mtp-parity-workbench --output benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-smoke.json --stages e2e,pieces --candidates default --cycles 1 --draft-n-max 3 --piece-iters 4 --piece-warmup 1`
+  -> completed.
+- Smoke artifact parsed:
+  `python3 -m json.tool benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-smoke.json`
+  -> passed.
+
+### Smoke result
+- Default E2E one-cycle smoke:
+  - `49.3 tok/s`
+  - AR baseline `60.62 tok/s`
+  - exact `3/3` draft accepts for the single cycle.
+- Per-piece stage launched all three selected-MoE dp4a microbenches and wrote
+  compact metrics into the workbench artifact. The piece timings are
+  low-iteration (`--piece-iters 4`) harness validation only, not performance
+  evidence for promotion.
+- Artifact:
+  `benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-smoke.json`.
+
+### Decision / next
+- Use the workbench as the acceptance gate for the systemic GGML-style port:
+  candidate kernels must improve same-protocol E2E vs `default`, keep strict
+  acceptance, and show their per-piece win plus rocprof bucket movement before
+  any default promotion.
+- Next implementation target remains the production GGUF verifier q8_1/x4
+  vector-dot layout for selected-MoE and dense GEMVs.
