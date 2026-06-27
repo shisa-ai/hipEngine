@@ -63,6 +63,56 @@ def test_qwen35_gguf_resident_session_can_allocate_benchmark_length_cache() -> N
         assert session.scratch.block_table_tensor.numel >= 3
 
 
+@pytest.mark.xfail(
+    reason="HIP graph corrupts GDN linear state on the 3rd+ graph_launch; "
+    "graph replay decode diverges from eager step(). See WORKLOG 2026-06-28.",
+    strict=False,
+)
+def test_qwen35_gguf_decode_graph_replay_matches_eager_step() -> None:
+    """Graph replay (steps_per_replay=1, >=3 launches) must match eager step().
+
+    Currently XFAIL: the captured decode graph corrupts the linear-attention
+    (GDN) conv/recurrent state on the 3rd and later ``graph_launch``, so the
+    fast graph-AR token stream diverges from the exact eager oracle. The
+    per-step device-token logic itself is correct (eager
+    ``_step_from_device_token`` matches), and 1-2 launches are correct; only
+    the in-place GDN state update is unsafe across >=3 HIP graph relaunches.
+    """
+
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    prompt = [760, 4087, 369, 1107, 290]
+    steps = 6  # >=3 launches at steps_per_replay=1
+
+    with Qwen35GGUFResidentSession(MODEL) as session:
+        session.reset()
+        first = session.prefill(prompt, return_logits=False)
+        nxt = int(first.token_id)
+        eager = []
+        for _ in range(steps):
+            r = session.step(nxt, return_logits=False)
+            nxt = int(r.token_id)
+            eager.append(nxt)
+
+    with Qwen35GGUFResidentSession(MODEL) as session:
+        session.reset()
+        session.prefill(prompt, return_logits=False)
+        graph = session.capture_decode_graph(
+            position=session.position,
+            steps_per_replay=1,
+            max_replay_steps=steps,
+            record_steps=steps,
+        )
+        try:
+            graph.replay(steps)
+            replayed = [int(t) for t in graph.read_generated_token_ids(steps)]
+        finally:
+            graph.close()
+
+    assert replayed == eager, f"graph replay {replayed} != eager {eager}"
+
+
+
 def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(
