@@ -1008,6 +1008,21 @@ after GEMV instruction efficiency improves. Cheaper partial-accept rollback
 remains important for B5, but it does not address the full-accept B3 verifier
 hot path.
 
+**2026-06-28 correction — the verifier is ~50/50 HOST-dispatch-bound; the
+deprioritization above was wrong.**  A warm `verify_target_block` (rows=4)
+issues **875 kernel launches** (~22/layer × 40 layers); the pure host launch
+dispatch is **~54 ms** (~52% of the wall).  A dp4a A/B under `rocprofv3` shows
+dp4a genuinely cuts GPU kernel time −35% (MoE dual `1256→400 ms`, 3.14×) yet the
+E2E wall stays flat/worse because dp4a *adds* launches (per-layer q8_1 quantize)
+and the host-dispatch floor dominates.  So GEMV instruction efficiency (dp4a,
+rowtile) cannot move E2E until the ~54 ms host-launch floor is removed.  The
+**primary lever is collapsing the 875 launches** — HIP graph capture (gated by
+the 3rd-relaunch GDN corruption, see WORKLOG 2026-06-28) or a C-level multi-layer
+dispatch loop — exactly the original plan.  dp4a/rowtile are complementary GPU
+wins that materialize *after* the launch floor is cut.  llama.cpp runs the whole
+4-token verifier as one fused GGML graph (~9 ms); the 875-launch host floor is
+the core of the gap.
+
 Success criterion: same-protocol full-suite row improves all three: raw weighted
 decode tok/s, accepted/output, and strict draft acceptance.
 
