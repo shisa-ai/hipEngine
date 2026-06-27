@@ -105,6 +105,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_pack8_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
@@ -2574,6 +2575,7 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         if not expert_silu_ready:
+            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(scratch, 1, self.hidden_size)
             if not _launch_selected_raw_gguf_moe_pair(
                 gate_weight,
                 up_weight,
@@ -2586,6 +2588,7 @@ class Qwen35GGUFFullStackRunner:
                 num_experts=cfg.expert_count,
                 in_features=self.hidden_size,
                 out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr,
                 stream=stream,
                 runtime=runtime,
             ):
@@ -5151,6 +5154,7 @@ class _FullStackScratch:
     ffn_gate_up: object
     ffn_intermediate: object
     ffn_down: object
+    moe_q8_1: object
     moe_router_logits: object
     moe_selected_experts: object
     moe_routing_weights: object
@@ -5206,6 +5210,9 @@ class _FullStackScratch:
         moe_top_k = max(1, int(cfg.expert_used_count))
         moe_experts = max(1, int(cfg.expert_count))
         moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or runner.ffn_size or 1))
+        q8_1_gate_blocks = (runner.hidden_size + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK
+        q8_1_down_blocks = moe_top_k * ((runner.ffn_size + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK)
+        q8_1_moe_bytes = max(q8_1_gate_blocks, q8_1_down_blocks) * _Q8_1_BLOCK_BYTES
         linear_qkv_bytes = runner.linear_qkv_width * 2
         ssm_inner_bytes = cfg.ssm_inner_size * 2
         alpha_bytes = cfg.ssm_time_step_rank * 2
@@ -5307,6 +5314,7 @@ class _FullStackScratch:
             "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
             "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
             "ffn_down": buf(hidden_bytes),
+            "moe_q8_1": buf(q8_1_moe_bytes),
             "moe_router_logits": buf((moe_experts + 1) * DType.FP32.itemsize),
             "moe_selected_experts": buf(moe_top_k * DType.INT64.itemsize),
             "moe_routing_weights": buf(moe_top_k * DType.FP32.itemsize),
@@ -6866,6 +6874,10 @@ def _launch_selected_raw_gguf_moe_pair_silu(
     runtime: HipRuntime,
 ) -> bool:
     if weight_a.spec.quant_key == "gguf_q4_k_t16_v1" and weight_b.spec.quant_key == "gguf_q4_k_t16_v1":
+        # The q8_1+sudot4 fused-SiLU T16 diagnostic is callable, but the
+        # production c1 trace regressed it on gfx1151. Keep c1 on the exact
+        # float-dequant fused kernel and reserve dp4a routing for rows>1 split
+        # gate/up where it measured faster.
         gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
             x_ptr,
             selected_ptr,
@@ -6944,21 +6956,46 @@ def _launch_selected_raw_gguf_moe_pair(
             )
         return True
     if weight_a.spec.quant_key == "gguf_q4_k_t16_v1" and weight_b.spec.quant_key == "gguf_q4_k_t16_v1":
-        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
-            x_ptr,
-            selected_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
-        )
+        if q8_1_workspace_ptr is not None:
+            gguf_q4_k_quantize_bf16_q8_1(
+                x_ptr,
+                q8_1_workspace_ptr,
+                x_rows,
+                in_features,
+                stream=stream,
+                runtime=runtime,
+            )
+            gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+                q8_1_workspace_ptr,
+                selected_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                x_rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
+                x_ptr,
+                selected_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                x_rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                stream=stream,
+                runtime=runtime,
+            )
         return True
     return False
 

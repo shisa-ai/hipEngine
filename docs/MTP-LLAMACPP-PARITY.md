@@ -87,16 +87,36 @@ route is T16 decode-repack (`q4_k_t16_selected_dual_*` and
 is much slower overall (`35.66 tok/s`, verifier `96.2 ms`) because it disables
 the production T16 materialization.
 
+**T16 selected-dual dp4a diagnostic (2026-06-27): launches in production, but
+too small to promote.** The same env gate now also has a T16 Q4_K selected-dual
+q8_1+sudot4 variant for the rows>1 split gate/up path. The isolated T16
+microbench at the verifier shape measured current T16 split dual `0.198 ms` vs
+q8_1 quantize+dp4a `0.191 ms` (**1.04x**), with gate/up `KL_mean=9.25e-05` and
+top-1 `1.0`; disassembly confirms `v_dot4_i32_iu8`. The callable fused-SiLU
+T16 dp4a variant is retained as a diagnostic but is **not routed** in production
+because the c1 profile regressed it. Split-only B3/C5 smoke stayed exact
+(`15/15`) but remained flat (`49.31 tok/s`, warm `50.60 tok/s`). A short
+production trace confirms only the row-bulk split path uses dp4a: `80`
+`q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv_kernel<unsigned short,false>`
+calls at `141.8 us` avg plus `80` q8_1 quantize calls at `3.35 us`; c1 fused
+stays on `q4_k_t16_selected_dual_silu_direct_gemv_kernel` at `62.5 us` avg. The
+next material bucket is still selected-down Q5_K T16 (`851` calls, `51.6 us`
+avg, `43.9 ms` in the same two-cycle trace). Artifacts:
+`benchmarks/results/2026-06-27-hipengine-gguf-q4-k-t16-selected-dual-dp4a-poc.json`
+and
+`benchmarks/results/2026-06-27-hipengine-mtp-b3-q4k-t16-dp4a-verifier-diagnostic.json`.
+
 ### Next steps, ordered by impact
 
-1. **Port q8_1+sudot4 to the active T16 selected-MoE kernels.** The production
-   B3 verifier uses T16 decode-repack for selected experts, so the broad port
-   should start with `q4_k_t16_selected_dual_{silu_,}direct_gemv_kernel` and
-   `qk_t16_selected_direct_gemv_kernel<...,5/6>` rather than the raw Q4_K
-   fallback. The T16 bodies still do float dequant-then-FMA; adapt the q8_1
-   activation workspace and dot4/min-compensation recipe to that tile layout.
-2. **Then extend to remaining production GGUF GEMVs.** After T16 selected
-   gate/up/down are measured, carry q8_1+sudot4 into dense/raw
+1. **Port q8_1+sudot4 to selected-down Q5_K T16.** Q4_K T16 split gate/up now
+   launches and is exact enough, but it is only a small row-bulk bucket in B3.
+   The next active production bucket is
+   `qk_t16_selected_direct_gemv_kernel<unsigned short,5>` (selected down),
+   which still does float dequant-then-FMA and accounts for ~44 ms in the
+   two-cycle trace. Adapt the q8_1 dot4 recipe to Q5_T16 high-bit + min
+   compensation and measure before touching Q6.
+2. **Then extend to remaining production GGUF GEMVs.** After Q5_K/Q6_K selected
+   down are measured, carry q8_1+sudot4 into dense/raw
    Q4_K/Q5_K/Q6_K/Q8_0 GEMVs. The existing small-B rowtile dense kernels are
    complementary and should be combined with dp4a where rows 2..8 share an
    activation tile.
@@ -783,18 +803,17 @@ Two cheap MoE ideas are now ruled out:
 - `expert_sidecar`/pack8 gate+up for the verifier is ~15x slower (`103.4 ms`
   raw vs `1588.4 ms` sidecar) because per-layer H2D movement dominates.
 
-**Current #1 verifier task:** broad q8_1+sudot4 port on the active T16
-selected-MoE verifier kernels. The raw selected-dual Q4_K POC is positive:
-`0.946 ms` raw selected-dual vs `0.357 ms` q8_1 quantize+dp4a at the qwen35moe
-verifier shape (`x_rows=4`, `rows=32`, `experts=256`, `in=2048`, `out=512`,
-gfx1151), with `KL_mean=0.0031` and top-1 `1.0` vs the existing float-dequant
-kernel. `rocprofv3 --kernel-trace` confirms
-`gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel` runs at the expected name,
-and AMDGPU disassembly shows `v_dot4_i32_iu8` emission. The verifier integration
-now owns reusable q8_1 workspace and proves the raw fallback can launch dp4a
-under `--no-decode-repack`, but the production B3 verifier uses T16
-decode-repack selected kernels and does not hit the raw-Q4_K dp4a path. Port the
-recipe to `gguf_t16_selected_gemv` first.
+**Current #1 verifier task:** selected-down Q5_K T16 q8_1+sudot4. The raw
+selected-dual Q4_K POC is positive (`0.946 ms -> 0.357 ms` at the qwen35moe
+verifier shape), but production B3 uses T16 decode-repack. The T16 Q4_K split
+gate/up port now launches in production under
+`HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1` and cuts the row-bulk split kernel in
+the short trace (`~172 us -> ~142 us`), but that bucket is only `80` calls in a
+two-cycle B3 profile and the B3 smoke stays flat. The c1 fused-SiLU T16 dp4a
+variant is callable but not routed because it regressed the c1 profile. The next
+material production bucket is `qk_t16_selected_direct_gemv_kernel<unsigned
+short,5>`: `851` calls, `~51.6 us` avg, `~43.9 ms` total in the split-only
+two-cycle trace.
 
 Captured-graph/C-loop work is deprioritized to a later launch-overhead layer
 after GEMV instruction efficiency improves. Cheaper partial-accept rollback
@@ -818,14 +837,12 @@ B3 `9/9` (and `15/15` over five cycles) on the merge-sort smoke. Correctness
 parity is therefore solved.
 
 The remaining gap is performance: ~48.8 vs ~89.6 tok/s (~1.8-1.9x) on gfx1151.
-The latest evidence says the q8_1+sudot4 recipe is still the right next lever,
-but the production surface is T16 decode-repack selected-MoE, not raw Q4_K. The
-raw selected-dual POC is `~2.65x` faster in isolation and the raw verifier
-fallback can launch it, but production B3 profiling shows the active kernels are
-`q4_k_t16_selected_dual_*` and `qk_t16_selected_direct_gemv_kernel<...,5/6>`.
+The latest evidence says the q8_1+sudot4 recipe is valid but layout-sensitive:
+raw Q4_K selected-dual is `~2.65x` faster in isolation, while T16 Q4_K split
+gate/up is only `~1.04x` including q8 quantization and is too small to move B3.
 Dense rowtile is already landed and retained as a kernel-level win, but it does
 not move end-to-end because selected MoE dominates. Next: port q8_1+sudot4 into
-the active T16 selected gate/up/down kernels, then extend to dense/raw GGUF
+the active T16 selected-down Q5_K/Q6_K kernels, then extend to dense/raw GGUF
 GEMVs. Graph/C-loop work, resident MTP draft consolidation, and rollback
 improvements remain on the roadmap after the GEMV instruction path is de-risked.
 These remain single-prompt diagnostics, not benchmark rows.

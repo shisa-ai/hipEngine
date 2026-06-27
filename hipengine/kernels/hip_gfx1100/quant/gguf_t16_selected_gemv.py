@@ -23,6 +23,8 @@ _OUTPUT_NAME = "gguf_t16_selected_gemv.so"
 _Q4_DUAL_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out"
 _Q4_DUAL_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out"
 _Q4_DUAL_SILU_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out"
+_Q4_DUAL_DIRECT_Q8_DP4A_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_q8_1_dp4a_bf16_bf16_out"
+_Q4_DUAL_SILU_DIRECT_Q8_DP4A_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_q8_1_dp4a_bf16_bf16_out"
 _Q4_SINGLE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out"
 _Q4_SINGLE_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out"
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
@@ -179,6 +181,80 @@ def gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
     _launch_dual_silu_direct(
         _Q4_DUAL_SILU_DIRECT_BF16,
         x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+    xq_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 selected Q4T16 dual GEMV from prequantized q8_1 activations."""
+
+    _launch_dual_direct(
+        _Q4_DUAL_DIRECT_Q8_DP4A_BF16,
+        xq_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out(
+    xq_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 selected Q4T16 q8_1+dp4a dual GEMV fused with SiLU."""
+
+    _launch_dual_silu_direct(
+        _Q4_DUAL_SILU_DIRECT_Q8_DP4A_BF16,
+        xq_ptr,
         selected_ptr,
         tiles_a_ptr,
         tiles_b_ptr,
@@ -990,6 +1066,14 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             "selected_dual_t16_silu_gemv_decode_bf16_bf16_out",
             gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
         ),
+        (
+            "selected_dual_t16_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+        ),
+        (
+            "selected_dual_t16_silu_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out,
+        ),
     ):
         register(
             KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k_t16_v1", variant),
@@ -1049,6 +1133,8 @@ __all__ = [
     "build_gguf_t16_selected_gemv",
     "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out",
+    "gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out",
     "gguf_q4_k_t16_selected_gemv_bf16_bf16_out",

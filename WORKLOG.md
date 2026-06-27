@@ -125656,3 +125656,69 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Decision / next
 - The raw POC and verifier workspace are useful diagnostics, but they do not move the production B3 verifier because production selected experts use T16 decode-repack.
 - Broad port should start with q8_1+sudot4 inside `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip`, specifically `q4_k_t16_selected_dual_{silu_,}direct_gemv_kernel` and `qk_t16_selected_direct_gemv_kernel<...,5/6>`, then proceed to dense/raw GGUF GEMVs.
+
+
+## 2026-06-27 — T16 Q4_K selected-dual dp4a diagnostic: exact, but B3-flat
+
+### Scope
+- Ported the q8_1+sudot4 recipe from the raw Q4_K selected-dual POC into the active T16 selected-MoE kernel family.
+- Added:
+  - `q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv_kernel<unsigned short,false>` for rows>1 split gate/up.
+  - `q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv_kernel<unsigned short,true>` as a callable fused-SiLU diagnostic.
+  - Python wrappers/registry variants:
+    - `gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(...)`
+    - `gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out(...)`
+  - Default-off runtime routing through existing `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1` for the T16 rows>1 split gate/up path only.
+  - Small c1 `_FullStackScratch.moe_q8_1` workspace for future selected-down/raw diagnostics; T16 c1 fused-SiLU stays on the exact float path after profiling showed dp4a regressed it.
+  - Microbench: `scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py`.
+
+### Lineage / environment
+- ROCm live on gfx1151 (`hip OK`; `rocminfo` shows Radeon 8060S / `gfx1151`).
+- Required lineage command still fails because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing:
+  `RuntimeError: git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd rev-parse --short HEAD failed`.
+  Proceeded from in-tree T16 code plus local llama.cpp/GGML q8_1+sudot4 evidence already recorded in `docs/MTP-LLAMACPP-PARITY.md`.
+
+### Validation
+- No-GPU syntax/routing:
+  `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py`
+  -> passed.
+- Routing:
+  `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q`
+  -> `14 passed`.
+- HIP correctness:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_t16_selected_gemv_decode.py -q`
+  -> `87 passed`.
+- New T16 dp4a tests gate split gate/up vs the existing T16 float path (`KL_mean<=0.05`, top-1 `>=90%`) and fused-SiLU dp4a vs split-dp4a BF16 rounding exactly.
+- Cached `rocprofv3 --kernel-trace` microbench confirmed both T16 dp4a specializations launch; extracted AMDGPU device image contains `v_dot4_i32_iu8` in `q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv_kernel`.
+
+### Microbench result
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --iters 80 --warmup 20 --json benchmarks/results/2026-06-27-hipengine-gguf-q4-k-t16-selected-dual-dp4a-poc.json`
+- Shape: T16 selected-dual qwen35moe verifier (`x_rows=4`, `rows=32`, `experts=256`, `in_features=2048`, `out_features=512`) on gfx1151.
+- Result:
+  - current T16 split dual: `0.1980 ms`
+  - q8_1 quantize only: `0.00252 ms`
+  - T16 dp4a split dot prequantized: `0.1851 ms`
+  - q8_1 quantize + T16 dp4a split: `0.1905 ms`
+  - speedup split / quant+dp4a: `1.04x`
+  - gate/up correctness vs T16 float: `KL_mean=9.25e-05`, top-1 `1.0`.
+- Fused-SiLU diagnostic microbench was `0.2029 ms` float vs `0.1891 ms` q8_1+dp4a, but synthetic fused-SiLU KL vs float was high (`KL_mean=2.28`) despite top-1 `0.9375`; kept callable but not production-routed.
+
+### B3 diagnostic / profiler
+- Split-only production smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-q4k-t16-dp4a-verifier-diagnostic.json`
+  -> `15/15`, `49.31 tok/s`, warm `50.60 tok/s`, avg cycle `81.12 ms`, draft `16.67 ms`.
+- Split-only production profile:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-mtp-b3-q4k-t16-dp4a-splitonly-rocprof-20260627 -o b3-q4k-t16-dp4a-splitonly -- python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 2 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-mtp-b3-q4k-t16-dp4a-splitonly-rocprof-20260627/smoke.json`
+  -> exact `6/6`.
+- Trace summary:
+  - c1 fused Q4T16 float: `840` calls, avg `62.5 us`, total `52.5 ms`.
+  - selected-down Q5T16 float: `851` calls, avg `51.6 us`, total `43.9 ms`.
+  - row-bulk split Q4T16 dp4a: `80` calls, avg `141.8 us`, total `11.3 ms`.
+  - Q6T16 selected down: `69` calls, avg `52.6 us`, total `3.6 ms`.
+  - q8_1 quantize: `80` calls, avg `3.35 us`, total `0.27 ms`.
+
+### Decision / next
+- T16 Q4_K row-bulk split dp4a is correct and emits the intended instruction, but it is not a retained/default performance win. Keep it behind the existing diagnostic env flag for comparison.
+- Do not route the T16 fused-SiLU dp4a variant in production; the c1 profile regressed and the fused intermediate is more sensitive to q8 approximation.
+- Next broad-port target is `qk_t16_selected_direct_gemv_kernel<unsigned short,5>` (selected-down Q5_K T16), then Q6_K if Q5 is positive. This is now the largest remaining selected-MoE GEMV bucket in the B3 trace.

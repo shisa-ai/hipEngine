@@ -11,13 +11,16 @@ from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
+    gguf_q4_k_quantize_bf16_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
@@ -151,6 +154,24 @@ def _expected_direct_single(
     return out
 
 
+def _softmax_kl(ref: np.ndarray, cand: np.ndarray) -> tuple[float, float]:
+    ref64 = ref.astype(np.float64)
+    cand64 = cand.astype(np.float64)
+
+    def logsm(x: np.ndarray) -> np.ndarray:
+        shifted = x - x.max(axis=-1, keepdims=True)
+        return shifted - np.log(np.exp(shifted).sum(axis=-1, keepdims=True))
+
+    log_ref = logsm(ref64)
+    log_cand = logsm(cand64)
+    row_kl = np.sum(np.exp(log_ref) * (log_ref - log_cand), axis=-1)
+    return float(np.mean(row_kl)), float(np.max(row_kl))
+
+
+def _top1(ref: np.ndarray, cand: np.ndarray) -> float:
+    return float(np.mean(ref.argmax(axis=-1) == cand.argmax(axis=-1)))
+
+
 def _run_dual(fn, x_dev, expert_start, ta, tb, out_features_a, out_features_b, out_dtype, library) -> np.ndarray:
     compact_rows = int(expert_start[-1])
     in_features = x_dev.shape[1]
@@ -253,6 +274,61 @@ def _run_direct_dual(fn, x_dev, selected, ta, tb, out_features, out_dtype, libra
             free(buf)
 
 
+def _run_direct_dual_q8_dp4a(
+    x_dev,
+    selected,
+    ta,
+    tb,
+    out_features,
+    out_dtype,
+    t16_library,
+    q4_library,
+) -> tuple[np.ndarray, np.ndarray]:
+    rows = int(selected.size)
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    sel_buf = malloc(selected.nbytes)
+    copy_host_to_device(sel_buf, host_array_ptr(selected), selected.nbytes)
+    ta_buf = malloc(ta.nbytes)
+    copy_host_to_device(ta_buf, host_array_ptr(ta), ta.nbytes)
+    tb_buf = malloc(tb.nbytes)
+    copy_host_to_device(tb_buf, host_array_ptr(tb), tb.nbytes)
+    xq_buf = malloc(x_dev.shape[0] * (in_features // 32) * 36)
+    out_a = np.zeros((rows, out_features), dtype=out_dtype)
+    out_b = np.zeros((rows, out_features), dtype=out_dtype)
+    out_a_buf = malloc(out_a.nbytes)
+    out_b_buf = malloc(out_b.nbytes)
+    try:
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_buf.ptr,
+            xq_buf.ptr,
+            x_dev.shape[0],
+            in_features,
+            library=q4_library,
+        )
+        gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+            xq_buf.ptr,
+            sel_buf.ptr,
+            ta_buf.ptr,
+            tb_buf.ptr,
+            out_a_buf.ptr,
+            out_b_buf.ptr,
+            x_dev.shape[0],
+            rows,
+            ta.shape[0],
+            in_features,
+            out_features,
+            library=t16_library,
+        )
+        copy_device_to_host(host_array_ptr(out_a), out_a_buf, out_a.nbytes)
+        copy_device_to_host(host_array_ptr(out_b), out_b_buf, out_b.nbytes)
+        return out_a, out_b
+    finally:
+        for buf in (x_buf, sel_buf, ta_buf, tb_buf, xq_buf, out_a_buf, out_b_buf):
+            free(buf)
+
+
 def _run_direct_dual_silu(fn, x_dev, selected, ta, tb, out_features, out_dtype, library) -> np.ndarray:
     rows = int(selected.size)
     in_features = x_dev.shape[1]
@@ -284,6 +360,57 @@ def _run_direct_dual_silu(fn, x_dev, selected, ta, tb, out_features, out_dtype, 
         return out_arr
     finally:
         for buf in (x_buf, sel_buf, ta_buf, tb_buf, out_buf):
+            free(buf)
+
+
+def _run_direct_dual_silu_q8_dp4a(
+    x_dev,
+    selected,
+    ta,
+    tb,
+    out_features,
+    out_dtype,
+    t16_library,
+    q4_library,
+) -> np.ndarray:
+    rows = int(selected.size)
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    sel_buf = malloc(selected.nbytes)
+    copy_host_to_device(sel_buf, host_array_ptr(selected), selected.nbytes)
+    ta_buf = malloc(ta.nbytes)
+    copy_host_to_device(ta_buf, host_array_ptr(ta), ta.nbytes)
+    tb_buf = malloc(tb.nbytes)
+    copy_host_to_device(tb_buf, host_array_ptr(tb), tb.nbytes)
+    xq_buf = malloc(x_dev.shape[0] * (in_features // 32) * 36)
+    out_arr = np.zeros((rows, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_buf.ptr,
+            xq_buf.ptr,
+            x_dev.shape[0],
+            in_features,
+            library=q4_library,
+        )
+        gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out(
+            xq_buf.ptr,
+            sel_buf.ptr,
+            ta_buf.ptr,
+            tb_buf.ptr,
+            out_buf.ptr,
+            x_dev.shape[0],
+            rows,
+            ta.shape[0],
+            in_features,
+            out_features,
+            library=t16_library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, sel_buf, ta_buf, tb_buf, xq_buf, out_buf):
             free(buf)
 
 
@@ -377,6 +504,8 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
             "selected_dual_t16_silu_gemv_decode_bf16_bf16_out",
+            "selected_dual_t16_q8_1_dp4a_gemv_decode_bf16_bf16_out",
+            "selected_dual_t16_silu_q8_1_dp4a_gemv_decode_bf16_bf16_out",
             "selected_t16_gemv_decode_compact_bf16_bf16_out",
             "selected_t16_gemv_decode_compact_fp16_fp16_out",
             "selected_t16_gemv_decode_bf16_bf16_out",
@@ -416,6 +545,10 @@ def test_p9_h3d_wrappers_validate_args() -> None:
         gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(0, 0, 0, 0, 0, 1, 256, 16, 8, 1)
     with pytest.raises(ValueError, match="rows must be divisible by x_rows"):
         gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(0, 0, 0, 0, 0, 3, 8, 1, 256, 16)
+    with pytest.raises(ValueError, match="rows must be divisible by x_rows"):
+        gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(0, 0, 0, 0, 0, 0, 3, 8, 1, 256, 16)
+    with pytest.raises(ValueError, match="rows must be divisible by x_rows"):
+        gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out(0, 0, 0, 0, 0, 3, 8, 1, 256, 16)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -577,6 +710,95 @@ def test_p9_h3d_q4_t16_direct_dual_matches_legacy_raw_reduction_order(t16_select
 
     np.testing.assert_array_equal(t16_a, raw_a)
     np.testing.assert_array_equal(t16_b, raw_b)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_t16_q4_direct_dual_q8_1_dp4a_matches_float_path_quality_gate(t16_selected_library) -> None:
+    x_rows, top_k = 4, 8
+    rows = x_rows * top_k
+    selected = (np.arange(rows, dtype=np.int64) * 5) % 4
+    in_features, out_features = 2048, 512
+    num_experts = 4
+    rng = np.random.default_rng(20260627)
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=41)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=43)
+    ta = repack_gguf_q4_k_tile16(qa).tiles
+    tb = repack_gguf_q4_k_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    ref_a_bits, ref_b_bits = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    dp4a_a_bits, dp4a_b_bits = _run_direct_dual_q8_dp4a(
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        build_gguf_q4_k_gemv(load=True),
+    )
+
+    for ref_bits, dp4a_bits in ((ref_a_bits, dp4a_a_bits), (ref_b_bits, dp4a_b_bits)):
+        ref = _bf16_u16_to_f32(ref_bits)
+        dp4a = _bf16_u16_to_f32(dp4a_bits)
+        kl_mean, kl_max = _softmax_kl(ref, dp4a)
+        assert kl_mean <= 0.05
+        assert kl_max <= 0.10
+        assert _top1(ref, dp4a) >= 0.90
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_t16_q4_direct_dual_silu_q8_1_dp4a_matches_split_dp4a_rounding(t16_selected_library) -> None:
+    x_rows, top_k = 2, 3
+    rows = x_rows * top_k
+    selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
+    in_features, out_features = 512, 256
+    num_experts = 3
+    rng = np.random.default_rng(20260628)
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=47)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=53)
+    ta = repack_gguf_q4_k_tile16(qa).tiles
+    tb = repack_gguf_q4_k_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+    q4_library = build_gguf_q4_k_gemv(load=True)
+
+    gate_bits, up_bits = _run_direct_dual_q8_dp4a(
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        q4_library,
+    )
+    fused_bits = _run_direct_dual_silu_q8_dp4a(
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        q4_library,
+    )
+
+    gate = _bf16_u16_to_f32(gate_bits)
+    up = _bf16_u16_to_f32(up_bits)
+    with np.errstate(over="ignore"):
+        expected_bits = _f32_to_bf16_u16((gate / (1.0 + np.exp(-gate))) * up)
+    np.testing.assert_array_equal(fused_bits, expected_bits)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
