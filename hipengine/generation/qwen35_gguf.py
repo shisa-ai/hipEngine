@@ -165,9 +165,18 @@ class Qwen35GGUFBringupGenerator:
                         ):
                             break
                 else:
+                    # Capture the whole decode window as a SINGLE-launch graph.
+                    # The HIP decode graph corrupts the in-place GDN linear state
+                    # on the 3rd+ ``graph_launch``, so replaying a 1-step graph
+                    # per token (steps_per_replay=1) emits wrong tokens from the
+                    # 3rd token. A single launch (steps_per_replay == remaining)
+                    # is bit-exact vs eager. See WORKLOG 2026-06-28 and the xfail
+                    # regression in tests/test_qwen35_gguf_runner.py. (The cheap
+                    # incremental-replay path is restored once the relaunch
+                    # hazard itself is fixed.)
                     with session.capture_decode_graph(
                         position=len(prompt_ids),
-                        steps_per_replay=1,
+                        steps_per_replay=remaining,
                         max_replay_steps=remaining,
                         record_steps=remaining,
                     ) as graph:

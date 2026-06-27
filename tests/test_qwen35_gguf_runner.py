@@ -112,6 +112,49 @@ def test_qwen35_gguf_decode_graph_replay_matches_eager_step() -> None:
     assert replayed == eager, f"graph replay {replayed} != eager {eager}"
 
 
+def test_qwen35_gguf_decode_graph_single_launch_matches_eager_step() -> None:
+    """A single-launch full-window decode graph must match eager step().
+
+    This is the production fix (generation/qwen35_gguf.py uses
+    steps_per_replay == remaining, one ``graph_launch``). Single and double
+    launches are unaffected by the 3rd-relaunch GDN corruption, so this is the
+    correct, retained path until the relaunch hazard itself is fixed.
+    """
+
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    prompt = [760, 4087, 369, 1107, 290]
+    steps = 6
+
+    with Qwen35GGUFResidentSession(MODEL) as session:
+        session.reset()
+        first = session.prefill(prompt, return_logits=False)
+        nxt = int(first.token_id)
+        eager = []
+        for _ in range(steps):
+            r = session.step(nxt, return_logits=False)
+            nxt = int(r.token_id)
+            eager.append(nxt)
+
+    with Qwen35GGUFResidentSession(MODEL) as session:
+        session.reset()
+        session.prefill(prompt, return_logits=False)
+        graph = session.capture_decode_graph(
+            position=session.position,
+            steps_per_replay=steps,  # single launch
+            max_replay_steps=steps,
+            record_steps=steps,
+        )
+        try:
+            graph.replay(steps)  # one graph_launch
+            replayed = [int(t) for t in graph.read_generated_token_ids(steps)]
+        finally:
+            graph.close()
+
+    assert replayed == eager, f"single-launch graph {replayed} != eager {eager}"
+
+
+
 
 def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
