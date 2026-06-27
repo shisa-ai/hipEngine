@@ -125614,3 +125614,45 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Implication / next
 - The confirmed llama.cpp path is real in hipEngine too: raw GGUF Q4_K selected-dual benefits from q8_1 activation quantization + sudot4 by ~2.65x at the isolated verifier-shaped kernel.
 - Do not promote the convenience wrapper as-is; it allocates/synchronizes internally. Next step is a diagnostic verifier integration with caller-owned/preallocated q8_1 workspace, then B3 verifier smoke + sync-free rocprof. If it holds, port the same q8_1+sudot4 recipe to selected Q5_K down and then dense GGUF GEMVs.
+
+
+## 2026-06-27 — Q4_K selected-dual dp4a verifier integration: exact, but production B3 uses T16
+
+### Scope
+- Wired the raw-Q4_K selected-dual q8_1+sudot4 POC into the rows>1 MoE verifier fallback behind `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1`.
+- Added caller-owned q8_1 workspace to `_GGUFFullAttentionPrefillScratch`; it is sized for the selected-MoE gate/up activation rows and future selected-down q8 reuse.
+- Kept the path default-off and recorded the env flag in `docs/REFACTOR.md`.
+
+### Validation
+- No-GPU dispatch/syntax:
+  `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py`
+  -> passed.
+- Routing test:
+  `python3 -m pytest tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q`
+  -> `5 passed`.
+- HIP correctness/regression:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_q4_k_selected_dual_dp4a_gemv.py tests/test_gguf_q4_k_gemv.py tests/test_gguf_q4_k_rowtile_gemv.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q`
+  -> `62 passed`.
+
+### B3 diagnostic smoke
+- Command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output benchmarks/results/2026-06-27-hipengine-mtp-b3-q4k-selected-dual-dp4a-verifier-diagnostic.json`
+- Result: `15/15` strict accepts, `50.44 tok/s`, warm `50.73 tok/s`, average verifier `63.19 ms` (`62.63 ms` warm), draft `16.11 ms`.
+- Artifact: `benchmarks/results/2026-06-27-hipengine-mtp-b3-q4k-selected-dual-dp4a-verifier-diagnostic.json`.
+
+### Profiler finding
+- Production decode-repack profile command:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-mtp-b3-q4k-dp4a-rocprof-20260627 -o b3-q4k-dp4a -- python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 2 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-mtp-b3-q4k-dp4a-rocprof-20260627/smoke.json`
+- Result stayed exact (`6/6`) but the kernel trace contained **no** `gguf_quantize_q8_1_kernel` and **no** `gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel`.
+- Active selected-MoE kernels in the production trace were T16 decode-repack:
+  - `q4_k_t16_selected_dual_silu_direct_gemv_kernel<unsigned short>`: 840 calls, avg `62.4 us`.
+  - `qk_t16_selected_direct_gemv_kernel<unsigned short, 5>`: 851 calls, avg `51.8 us`.
+  - `q4_k_t16_selected_dual_direct_gemv_kernel<unsigned short>`: 80 calls, avg `172.1 us`.
+  - Only 7 legacy raw `gguf_q4_k_selected_dual_prefill_out_kernel` calls appeared, and the raw dp4a branch did not fire in production mode.
+- Raw fallback confirmation:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-mtp-b3-q4k-dp4a-raw-rocprof-20260627 -o b3-q4k-dp4a-raw -- python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --no-decode-repack --prompt "Write a Python function that implements merge sort:" --prompt-reasoning off --cycles 1 --draft-n-max 3 --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-mtp-b3-q4k-dp4a-raw-rocprof-20260627/smoke.json`
+  -> raw fallback launched `40` `gguf_quantize_q8_1_kernel<unsigned short>` calls (avg `3.0 us`) and `40` `gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel<unsigned short>` calls (avg `247.4 us`), but `--no-decode-repack` is not a production route and was slower overall (`35.66 tok/s`, verifier `96.2 ms` non-profiled C1 smoke).
+
+### Decision / next
+- The raw POC and verifier workspace are useful diagnostics, but they do not move the production B3 verifier because production selected experts use T16 decode-repack.
+- Broad port should start with q8_1+sudot4 inside `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip`, specifically `q4_k_t16_selected_dual_{silu_,}direct_gemv_kernel` and `qk_t16_selected_direct_gemv_kernel<...,5/6>`, then proceed to dense/raw GGUF GEMVs.

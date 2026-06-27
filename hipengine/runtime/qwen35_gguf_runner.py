@@ -118,7 +118,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    gguf_q4_k_quantize_bf16_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_moe_ffn_fused import (
@@ -2763,6 +2765,7 @@ class Qwen35GGUFFullStackRunner:
             # The Q4T16 dual+SiLU fusion is decode-only for now.  In rows>1
             # bulk prefill the extra exp/rounding work in the GEMV accumulator
             # did not pay for the removed SiLU launch, so keep the split path.
+            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(scratch, rows, self.hidden_size)
             if not _launch_selected_raw_gguf_moe_pair(
                 gate_weight,
                 up_weight,
@@ -2775,6 +2778,7 @@ class Qwen35GGUFFullStackRunner:
                 num_experts=cfg.expert_count,
                 in_features=self.hidden_size,
                 out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr,
                 stream=stream,
                 runtime=runtime,
             ):
@@ -2949,6 +2953,9 @@ _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
+_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
+_Q8_1_BLOCK = 32
+_Q8_1_BLOCK_BYTES = 36
 
 
 @dataclass(frozen=True)
@@ -2997,6 +3004,33 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _gguf_q4k_selected_dual_dp4a_enabled() -> bool:
+    return _env_flag(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV, False)
+
+
+def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
+    rows = int(rows)
+    in_features = int(in_features)
+    if rows <= 0 or in_features <= 0 or in_features % _Q8_1_BLOCK != 0:
+        raise ValueError("q8_1 workspace requires positive rows and in_features divisible by 32")
+    return rows * (in_features // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES
+
+
+def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int) -> int | None:
+    if not _gguf_q4k_selected_dual_dp4a_enabled():
+        return None
+    workspace = getattr(scratch, "moe_q8_1", None)
+    if workspace is None:
+        return None
+    required = _q8_1_workspace_bytes(rows, in_features)
+    if int(getattr(workspace, "nbytes", required)) < required:
+        raise ValueError(
+            f"GGUF q8_1 workspace is too small: need {required} bytes, "
+            f"got {getattr(workspace, 'nbytes', 'unknown')}"
+        )
+    return int(workspace.ptr)
 
 
 def _gguf_aotriton_prefill_mode(start: int, rows: int, key_rows: int) -> str:
@@ -4754,6 +4788,7 @@ class _GGUFFullAttentionPrefillScratch:
     ffn_gate_up: object
     ffn_intermediate: object
     ffn_down: object
+    moe_q8_1: object
     moe_router_logits: object
     moe_shared_gate_logits: object
     moe_selected_experts: object
@@ -4845,6 +4880,9 @@ class _GGUFFullAttentionPrefillScratch:
         moe_scatter_offsets_zero = np.zeros((moe_experts,), dtype=np.int32)
         moe_wmma_total_host = np.empty((1,), dtype=np.int64)
         moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or runner.ffn_size or 1))
+        q8_1_gate_blocks = rows * ((runner.hidden_size + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK)
+        q8_1_down_blocks = moe_selected_rows_capacity * ((runner.ffn_size + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK)
+        q8_1_moe_bytes = max(q8_1_gate_blocks, q8_1_down_blocks) * _Q8_1_BLOCK_BYTES
         linear_qkv_bf16_bytes = rows * runner.linear_qkv_width * 2
         linear_qkv_f32_bytes = rows * runner.linear_qkv_width * 4
         linear_z_bytes = rows * cfg.ssm_inner_size * 2
@@ -4896,6 +4934,7 @@ class _GGUFFullAttentionPrefillScratch:
             "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
             "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
             "ffn_down": buf(hidden_bytes),
+            "moe_q8_1": buf(q8_1_moe_bytes),
             "moe_router_logits": buf(rows * moe_experts * DType.FP32.itemsize),
             "moe_shared_gate_logits": buf(rows * DType.FP32.itemsize),
             "moe_selected_experts": buf(rows * moe_top_k * DType.INT64.itemsize),
@@ -6858,25 +6897,51 @@ def _launch_selected_raw_gguf_moe_pair(
     num_experts: int,
     in_features: int,
     out_features: int,
+    q8_1_workspace_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime,
 ) -> bool:
     if weight_a.spec.quant_key == "gguf_q4_k" and weight_b.spec.quant_key == "gguf_q4_k":
-        gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
-            x_ptr,
-            selected_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
-        )
+        if q8_1_workspace_ptr is not None:
+            gguf_q4_k_quantize_bf16_q8_1(
+                x_ptr,
+                q8_1_workspace_ptr,
+                x_rows,
+                in_features,
+                stream=stream,
+                runtime=runtime,
+            )
+            gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
+                q8_1_workspace_ptr,
+                selected_ptr,
+                weight_a.allocation("raw").tensor.ptr,
+                weight_b.allocation("raw").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                x_rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+                x_ptr,
+                selected_ptr,
+                weight_a.allocation("raw").tensor.ptr,
+                weight_b.allocation("raw").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                x_rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                stream=stream,
+                runtime=runtime,
+            )
         return True
     if weight_a.spec.quant_key == "gguf_q4_k_t16_v1" and weight_b.spec.quant_key == "gguf_q4_k_t16_v1":
         gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(

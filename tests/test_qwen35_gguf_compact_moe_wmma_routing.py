@@ -13,6 +13,7 @@ from hipengine.runtime.gguf_linear import set_wmma_prefill_enabled
 @pytest.fixture(autouse=True)
 def _reset_wmma_prefill_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_WMMA_PREFILL", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
     set_wmma_prefill_enabled(None)
     yield
     set_wmma_prefill_enabled(None)
@@ -95,6 +96,64 @@ def test_qwen35moe_compact_wmma_missing_selected_kernel_falls_back(monkeypatch: 
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
+def test_q4k_selected_dual_dp4a_off_by_default_keeps_raw_pair(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "gguf_q4_k_quantize_bf16_q8_1", _fail_if_called("q8_quantize"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+        _fail_if_called("q8_dp4a_pair"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_selected_dual_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("raw_pair", args[:11])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+
+    assert ("raw_pair", (100, 130, 12, 13, 150, 3222, 3, 6, 4, 256, 256)) in calls
+    assert [payload for name, payload in calls if name == "raw_linear"] == ["ffn_down_exps"]
+
+
+def test_q4k_selected_dual_dp4a_env_uses_q8_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", "1")
+    runner, scratch = _fake_runner_and_scratch()
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "gguf_q4_k_selected_dual_gemv_bf16_bf16_out", _fail_if_called("raw_pair"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: calls.append(("q8_quantize", args[:4])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("q8_dp4a_pair", args[:11])),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+
+    assert ("q8_quantize", (100, 360, 3, 256)) in calls
+    assert ("q8_dp4a_pair", (360, 130, 12, 13, 150, 3222, 3, 6, 4, 256, 256)) in calls
+    assert [payload for name, payload in calls if name == "raw_linear"] == ["ffn_down_exps"]
+
+
 def _fake_runner_and_scratch():
     cfg = SimpleNamespace(
         is_moe=True,
@@ -118,6 +177,7 @@ def _fake_runner_and_scratch():
         ffn_gate_up=_buf(150),
         ffn_intermediate=_buf(160),
         ffn_down=_buf(170),
+        moe_q8_1=_buf(360, nbytes=3 * (256 // 32) * 36),
         moe_down_out=_buf(180),
         moe_group_counts=_buf(190),
         moe_padded_counts=_buf(200),
@@ -180,8 +240,8 @@ class _FakeLayer:
         return self._weights[slot]
 
 
-def _buf(ptr: int):
-    return SimpleNamespace(ptr=ptr, nbytes=8)
+def _buf(ptr: int, *, nbytes: int = 8):
+    return SimpleNamespace(ptr=ptr, nbytes=nbytes)
 
 
 def _patch_common_moe_kernels(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[str, object]]) -> None:
