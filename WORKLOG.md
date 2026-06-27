@@ -126233,3 +126233,21 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Next (the promotion campaign)
 - Full mtpbench category-suite validation of the dp4a flags (anti-gaming: not a single prompt) for non-regressive acceptance + correctness, then promote to default and update benchmarks/README + CHANGELOG against the now-valid single-launch graph-AR denominator. Single-prompt numbers above are diagnostic only.
 - MTP bench target-graph path (scripts/gguf_mtp_bench.py:944/1241) also replays a 1-step graph repeatedly across cycles and likely hits the same 3rd-relaunch hazard for its one-step-graph verifier diagnostic; audit/convert to single-launch or re-capture<=2 before trusting those rows (retained path uses serial-fallback, not this graph).
+
+
+## 2026-06-28 — dp4a promotion (#7): per-piece win does NOT translate to E2E; not promotable
+
+### Bench A/B (gguf_mtp_bench, merge-sort, B3/C5, target-block-verify, 32k draft cap; single runs)
+- dp4a OFF (both flags 0): `50.64 tok/s` (warm `52.03`), verifier ar `~60.6-62.6 ms/cycle`.
+- dp4a DUAL-only (Q4K_SELECTED_DUAL=1, RAW_SELECTED=0): `48.01 tok/s` (warm `49.72`), verifier `~63.9-64.7 ms`.
+- dp4a BOTH (dual + raw down): `44.56 tok/s` (warm `48.27`), verifier `~65.1-67.3 ms`.
+- All `15/15` strict accepts, target tokens identical across configs (correctness preserved).
+
+### Reconciling with the 2.73x per-piece win
+- The verifier genuinely uses the raw selected GEMV that dp4a targets (compact-WMMA MoE `_try_run_post_attention_moe_rows_compact_wmma` returns False inside the verifier because `gguf_wmma_prefill_enabled(None)` is False there). So dp4a IS exercised, yet E2E is neutral-to-negative, monotonically worse as more dp4a flags turn on.
+- An env-toggle interleaved standalone `verify_target_block` showed dp4a 1.30x, but its baseline (`~103 ms`) is a measurement artifact (env-toggle re-dispatch + snapshot/restore thrash); the bench verifier is `~61 ms`, so the standalone ratio is not trustworthy.
+- Single-run benches carry run-ordering/thermal variance (the workbench lesson: promotion needs repeated same-protocol wins). My runs are consistent with the other agent's workbench conclusion ("per-piece supports the broad port, but production-compatible selected dp4a is not enough to move E2E"; "do not promote").
+
+### Decision (#7)
+- Do NOT promote dp4a to default on current evidence. Keep the `_gguf_*_dp4a_enabled()` flags default-OFF. The per-piece 2.73x is real but does not produce an E2E verifier win in the bench; integration overhead (per-layer q8_1 activation quantization + dispatch) and/or a different real bottleneck cancel it.
+- Open question for closing the llama.cpp gap: the per-piece->E2E gap means the bench verifier's actual bottleneck is not where the standalone rocprof (snapshot/dummy-token, ~102 ms path) suggested. NEXT: a clean rocprof of the WARM BENCH verifier (not the standalone harness) to find the true per-family composition before any further kernel investment. dp4a stays an opt-in experiment per docs/REFACTOR.md.
