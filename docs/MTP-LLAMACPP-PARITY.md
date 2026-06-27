@@ -206,6 +206,15 @@ harness validation only because `--piece-iters 4` is intentionally noisy; use th
 full default `--piece-iters 80`/`--cycles 5` workbench or a higher-iteration run
 before making kernel decisions. Artifact:
 `benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-smoke.json`.
+The first full B3/C5 workbench matrix then showed why same-protocol repeats are
+required before routing decisions: `default,x8-q6,x8-both` measured `46.19`,
+`49.74`, and `50.49 tok/s`, but the reversed-order E2E repeat measured
+`x8-both=48.07 tok/s` and `default=51.33 tok/s`, all exact `15/15`. This keeps
+X8 diagnostic/default-off and confirms the workbench should be used as a
+multi-run gate, not a single-run promotion oracle. Artifacts:
+`benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-b3-current.json`
+and
+`benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-b3-repeat.json`.
 
 ### Next steps, ordered by impact
 

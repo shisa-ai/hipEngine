@@ -126048,3 +126048,52 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   any default promotion.
 - Next implementation target remains the production GGUF verifier q8_1/x4
   vector-dot layout for selected-MoE and dense GEMVs.
+
+
+## 2026-06-28 — Workbench full current-candidate matrix
+
+### Commands
+- Full current matrix:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_parity_workbench.py --tag 2026-06-28-gguf-mtp-parity-workbench-b3-current --raw-root /tmp/hipengine-gguf-mtp-parity-workbench --output benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-b3-current.json --stages e2e,pieces --candidates default,x8-q6,x8-both --cycles 5 --draft-n-max 3`
+  -> completed.
+- Reversed-order E2E repeat:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_parity_workbench.py --tag 2026-06-28-gguf-mtp-parity-workbench-b3-repeat --raw-root /tmp/hipengine-gguf-mtp-parity-workbench --output benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-b3-repeat.json --stages e2e --candidates x8-both,default --cycles 5 --draft-n-max 3`
+  -> completed.
+- JSON validation:
+  `python3 -m json.tool benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-b3-current.json`
+  and
+  `python3 -m json.tool benchmarks/results/2026-06-28-hipengine-gguf-mtp-parity-workbench-b3-repeat.json`
+  -> passed.
+
+### E2E result
+- Full matrix (`default,x8-q6,x8-both`):
+  - default: exact `15/15`, `46.19 tok/s`, warm `46.05`, AR baseline `57.7`,
+    avg cycle `86.59 ms`.
+  - x8-q6: exact `15/15`, `49.74 tok/s`, warm `49.92`, AR baseline `62.4`,
+    avg cycle `80.42 ms`.
+  - x8-both: exact `15/15`, `50.49 tok/s`, warm `51.22`, AR baseline `62.58`,
+    avg cycle `79.23 ms`.
+- Reversed-order repeat:
+  - x8-both: exact `15/15`, `48.07 tok/s`, warm `48.24`, AR baseline `59.47`,
+    avg cycle `83.21 ms`.
+  - default: exact `15/15`, `51.33 tok/s`, warm `52.02`, AR baseline `64.24`,
+    avg cycle `77.93 ms`.
+
+### Per-piece result from full matrix
+- Q4_K selected-dual raw float vs q8_1+sudot4:
+  `0.94235 ms -> 0.34571 ms` including quantize (`2.73x`), top-1 `1.0`.
+- Raw selected-down:
+  - Q5_K `0.09559 ms -> 0.04366 ms` including quantize (`2.19x`), top-1 `1.0`.
+  - Q6_K `0.04190 ms -> 0.02649 ms` including quantize (`1.58x`), top-1 `1.0`.
+- X8 selected-down vs production T16:
+  - Q5_K `0.03343 ms T16` vs `0.03338 ms` X8 quantize+dot (`1.00x`), top-1 `1.0`.
+  - Q6_K `0.03253 ms T16` vs `0.01939 ms` X8 quantize+dot (`1.68x`), top-1 `1.0`.
+
+### Decision
+- Do not promote X8 from this matrix. The first run made X8 look best because
+  the first default E2E process was slow; reversed order restored default as the
+  winner. Treat workbench E2E candidate promotion as requiring repeated
+  same-protocol wins, not a single run.
+- The per-piece data continues to support the systemic broad port: raw q8_1
+  vector-dot is consistently strong, while production-compatible X8 selected
+  down is only clearly positive for Q6 and not enough to move E2E.
