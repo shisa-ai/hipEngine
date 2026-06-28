@@ -126662,3 +126662,34 @@ bench) before any retained MTP speedup claim. Side-finding: raw (repack=0) eager
 the committed ssm_out f32-activation fusion (a12d8c4c) -- no (raw_gguf,f32,bf16) kernel -- so the exact
 reference must run through the T16-repack path. NEXT (#5): run the same-protocol true-AR category
 baseline + MTP suite, recompute the honest ratio, then proceed to #10 (bandwidth efficiency).
+
+## 2026-06-29 — Resident MTP draft device-chain (task #3 sub-win B): exact, non-regressive, flat e2e
+
+Device-chained the resident NextN draft so no host op runs per depth. New f32 row-gather kernel
+(`kernels/hip_gfx1100/convert/gather.{hip,py}`, 5/5 unit GREEN: row-select, offset-id top-1, OOB
+zeroing) gathers each depth's top-1 from a resident FP32 embedding table (exact copy of
+`token_embd_f32[:vocab]`, 268MB lazy). Per-depth `device_synchronize` + top-k D->H + host-embed H->D
+collapse to ONE drain + readback at chain end; rope/pos/ctx precomputed and uploaded once. `_run_one`
+now takes device cos/sin/pos/ctx pointers (one body for both paths). Gated
+`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` (default off).
+
+CORRECTNESS — BIT-EXACT vs legacy host loop. Unit parity (real 35B): 0/5 top-1 + 0/5 topk-row
+divergence, klen match (`tests/test_mtp_resident_draft_device_chain.py`). E2E B3 (24 cycles): drafts
+identical cycle-by-cycle, total_accepted 37/1008 == 37/1008, accept_per_draft/accepted_per_output
+identical. Acceptance unchanged BY CONSTRUCTION (exact embed copy/gather + zero-padded rope scratch).
+
+DEBUG (the trap that cost the most): qk_head_dim=256 but the rope table is 64-wide; the rope kernel
+reads d/2=128 cos values/token. Legacy's `self.cos` scratch leaves [64:128] ZEROED (observed), so it
+ropes with real[:64]+zeros. My first contiguous `cos_all` (stride rope_w=64) bled the NEXT depth's
+cos into [64:128] -> keys diverged while values stayed exact (single-token softmax at depth 0 hid it
+in the token; only the dense KV cache, read at depth>=1, exposed it). Fix: zero-padded rope scratch
+strided by d=256. Not a race (per-depth sync didn't change it).
+
+PERF — isolated propose_chain B5: 11.21 -> 10.97 ms (-2.1%, non-overlapping p10/p90). E2E B3 cycle:
+63.48 (off) vs 63.50 (on) ms, warm tok/s 39.81 vs 39.79 -> FLAT within noise. The draft is
+GPU-compute-bound (q6_k vocab GEMV + MoE), so removing host round-trips/syncs is a real sub-window +
+H2D/D2H reduction but doesn't move the e2e headline. Same story as the rest of the session:
+host/launch/sync is NOT the bottleneck. Kept default-OFF — concrete blocker for default-on: 268MB
+resident table not justified by a flat headline; flag retained for the clean resident-draft
+architecture + rollback. Artifact: benchmarks/results/2026-06-29-resident-mtp-draft-device-chain.json.
+REFACTOR.md updated with the flag's removal trigger. NEXT: #4 (partial-accept rollback) then #10.

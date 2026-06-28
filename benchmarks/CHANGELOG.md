@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-29
+
+- [efficiency retained, default-off] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151: device-chain the resident NextN draft (`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN`) — each depth's top-1 device-gathered from a resident FP32 embedding table (new `gather_f32_rows_by_i32id` kernel), top-k accumulated on device, per-depth `device_synchronize`/top-k D->H/host-embed H->D collapsed to one drain+readback. BIT-EXACT vs legacy (0/5 token+topk divergence; e2e B3 drafts + total_accepted 37/1008 identical). Isolated `propose_chain` B5 `11.21 -> 10.97 ms` (-2.1%, non-overlapping p10/p90) but e2e B3 cycle `63.48 -> 63.50 ms` / warm `39.81 -> 39.79 tok/s` FLAT — the draft is GPU-compute-bound (q6_k vocab GEMV + MoE), not host/sync-bound. FOURTH micro-proven/flat-wall result; kept default-off (268MB resident table not justified by a flat headline); `benchmarks/results/2026-06-29-resident-mtp-draft-device-chain.json`.
+
 ## 2026-06-28
 
 - [negative result, default-off] Qwen3.6-35B-A3B / hipEngine native GGUF UD-Q4_K_M / gfx1151 rows==1 resident decode: per-layer MoE FFN graph capture/replay (`HIPENGINE_GGUF_MOE_GRAPH`) is bit-exact (KL=0, token-identical; 40 captures / 920 replays / 0 rejects over 24 steps) but the wall is FLAT `18.09 -> 18.28 ms/step` (-1.1%, noise) despite cutting the FFN from ~440 to 40 launches/token (~64%). Decisive evidence that launch-count is NOT the decode bottleneck (host dispatch hidden behind GPU; bandwidth/compute bound) — third micro-proven/flat-wall result; refutes the prior "launch-count reduction (fusion/graph)" lever thesis on the clean path. Kept default-off as the validated A/B lever; next lever is per-GEMV memory traffic (#7 Q4_K dp4a on selected GEMVs), not launch count; `benchmarks/results/2026-06-28-moe-graph-rows1-ab.json`.
