@@ -14,12 +14,29 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Priority Cleanup (do first)
+
+**Retire the two remaining GGUF decode-graph bench blocks.** The decode-graph
+machinery was removed from production, the runtime, and `true_ar` on 2026-06-28
+(the lib cache made eager == graph; the graph corrupted GDN state on the 3rd+
+relaunch). Two GGUF benches still contain gated, default-off graph diagnostic
+blocks that call the now-removed method (so they'd `AttributeError` only if the
+flag is passed — not production, not CI, not the retained path):
+
+- `scripts/qwen35_gguf_bench.py` `--graph-replay-decode` (retained/reused-graph logic)
+- `scripts/gguf_mtp_bench.py` `--target-graph-verify` (54 refs woven into the MTP cycle)
+
+These were deferred deliberately: they're the concurrently-developed MTP/AR
+benches, and ripping the modes out cleanly is a careful coordinated edit better
+done deliberately than rushed at the end of a long session. They're gated off,
+so the tree stays green meanwhile. Convert any remaining decode in those modes
+to eager and drop the vestigial flags. (Ledger row below has the detail.)
+
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
 | GGUF decode-graph benches | `scripts/qwen35_gguf_bench.py` `--graph-replay-decode` block (retained/reused-graph logic) and `scripts/gguf_mtp_bench.py` `--target-graph-verify` / `--target-graph-batched-verify` mode still call the removed `Qwen35GGUFResidentSession.capture_decode_graph`. | The GGUF decode-graph machinery was retired 2026-06-28 (lib cache made eager == graph; the graph corrupted GDN state on the 3rd+ relaunch). Production decode + the runtime machinery + true_ar are eager-only and committed. These two benches' graph blocks are gated DEFAULT-OFF, so they only AttributeError if the flag is passed; not production, not unit-tested, not the retained path. | Remove the `--graph-replay-decode` / `--target-graph-verify` modes (and vestigial flags) from both benches, converting any remaining decode to eager. Coordinate since these are the concurrently-developed MTP/AR benches. |
-| --- | --- | --- | --- |
 | Qwen3.5/PARO native sampler | `HIPENGINE_QWEN35_NATIVE_SAMPLER` opt-in around the c=1 native GPU sampler route. | Default-off; supported c=1 PARO temperature requests can use the standalone sampler kernels with only selected-id/logprob/logit scalar readbacks, but c>N/GGUF routing, `top_logprobs`, and retained performance evidence are still missing. | After c=1 and c>N generated-token correctness plus retained benchmark/profiler evidence pass, either promote the native route to the default for covered shapes or remove the runtime flag and keep kernels as test-only until a faster route exists. |
 | MTP P1 verifier | `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL` opt-out around the promoted split-output dual W4 shared-gate/up route. | Default-on after 2026-06-11 D32 9-prompt exact A/B: same acceptance, verify `22.98 -> 22.37 ms/cycle`. | After the next retained MTP gate with defaults-on passes at the target sprint shape, remove the opt-out or demote it to a test-only override. |
 | MTP P1 verifier | `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` opt-out around promoted `f32_to_fp16 + paro_rotate1` fusion. | Default-on after raw-bit RED test and 2026-06-11 D32 9-prompt exact A/B; removes 30 launches/pass and contributes to the stacked `-0.60 ms/cycle` suite delta. | After the next retained MTP gate with defaults-on passes, collapse the old runtime dispatch branch if no other path still needs it. |
