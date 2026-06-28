@@ -126317,3 +126317,22 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next
 - Start C-dispatch. First measure the ~61 us/launch composition (Python registry-resolve + ctypes marshaling vs actual hipLaunchKernel) to decide between a full C++ orchestrator and a lighter precomputed-dispatch path that may capture most of the win.
+
+
+## 2026-06-28 — C-dispatch BREAKTHROUGH: ~98% of per-launch overhead is Python/ctypes tax, fixable in pure Python
+
+### Measurement (scratchpad launch_overhead.py, warm, launch_gguf_linear rows=4)
+- full `launch_gguf_linear` : **88.1 us/call**
+- dispatch-resolve only (registry resolve + dispatch chain): 15.8 us (18%)
+- precomputed fn() via the registry wrapper -> `_launch` (skips resolve): 72.7 us (83%)
+- LEAN ctypes (cached extern-C handle, `argtypes` set ONCE, raw int args, direct call): **1.39 us (2%)**
+
+### Implication — no C++ needed
+- ~98% of the ~88 us per-launch host cost is Python/ctypes WRAPPER tax: the per-call `fn.argtypes = [...]` reassignment, 8x `ctypes.c_void_p(ptr)` rebuilds, `_validate`, `getattr(library, symbol)`, and the wrapper-layer Python frames. The actual async kernel launch (lean handle) is ~1.4 us.
+- So the "C-dispatch" host-floor elimination is achievable in PURE PYTHON: cache the resolved extern-C function handle + set argtypes once + pass raw ints (no c_void_p) in the hot `_launch` helpers. Projected: 962 launches x 88 us = ~85 ms -> 962 x ~1.4 us = ~1.3 ms host. That removes the ~54 ms host floor, making the verifier GPU-bound (~30 ms), after which dp4a's -35% GPU then translates.
+- Bonus: this is graph-free, so it sidesteps the #8 HIP-graph relaunch bug entirely. The C++ orchestrator and the graph route (Routes B-original/C) are no longer needed for the host floor.
+
+### Plan (revised C-dispatch = Python lean-launch)
+1. Add a cached-handle + argtypes-once + raw-int fast path to the hot kernel `_launch` helpers (gguf_k_gemv, gguf_q4_k_gemv, gguf_linear ABI launchers, conv, router, moe selected, rmsnorm/silu/add). Keep correctness identical (same kernels, same args).
+2. Re-measure verifier host dispatch (host_vs_gpu.py) and E2E tok/s; expect the ~54 ms host floor to collapse and the verifier to become GPU-bound.
+3. THEN re-evaluate dp4a + rowtile (their GPU wins should now translate).
