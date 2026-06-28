@@ -8,6 +8,7 @@ by the Python acceptance harness.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -26,6 +27,14 @@ from hipengine.kernels.hip_gfx1100.convert.cast import (
     build_cast,
     f32_to_bf16,
 )
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    build_paro_combine,
+    weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
+)
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    build_paro_silu,
+    silu_mul_separate_out_bf16,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     build_lm_head,
     topk_f32_rows_i32,
@@ -37,6 +46,7 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q5_k_gemv_f32_f32_out,
+    gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_f32_f32_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
@@ -75,6 +85,77 @@ def _bf16_host_to_f32(array: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(out, dtype=np.float32)
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "off", "no", ""}
+
+
+def apply_moe_down_combine(
+    *,
+    gate_bf16_ptr: int,
+    up_bf16_ptr: int,
+    selected_ptr: int,
+    routing_ptr: int,
+    shared_out_ptr: int,
+    shared_gate_logit_ptr: int,
+    residual_ptr: int,
+    down_exps_ptr: int,
+    inter_bf16_ptr: int,
+    down_out_bf16_ptr: int,
+    attended_bf16_ptr: int,
+    shared_bf16_ptr: int,
+    ffn_out_bf16_ptr: int,
+    ffn_out_f32_ptr: int,
+    top_k: int,
+    inter: int,
+    hidden: int,
+    num_experts: int,
+    silu_lib,
+    k_lib,
+    combine_lib,
+    cast_lib,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Device-resident NextN selected-MoE down + combine (no host readback).
+
+    Mirrors the verifier's proven sequence so the draft path matches its bf16
+    precision: one ``silu_mul`` over all ``top_k`` experts, one selected-down
+    GEMV that reads the device ``selected`` indices (raw Q5_K, selected order:
+    ``out[k] = down[selected[k]] @ inter[k]``), and one combine that folds the
+    routing-weighted expert sum + sigmoid-gated shared expert + residual.  The
+    expert indices and routing weights never leave the GPU.
+
+    ``residual`` / ``shared_out`` are the draft's f32 buffers; they are cast to
+    bf16 to feed the bf16 combine kernel, whose bf16 output is cast back to f32
+    in ``ffn_out_f32_ptr`` for the downstream RMSNorm.
+    """
+    runtime = runtime or get_hip_runtime()
+    # SiLU(gate) * up over all top_k experts at once (bf16 in/out).
+    silu_mul_separate_out_bf16(
+        gate_bf16_ptr, up_bf16_ptr, inter_bf16_ptr, top_k, inter,
+        library=silu_lib, runtime=runtime,
+    )
+    # Selected-down GEMV: each expert consumes its own intermediate row
+    # (x_rows == rows == top_k  =>  lanes_per_x_row == 1  =>  x_row == row).
+    gguf_q5_k_selected_gemv_bf16_bf16_out(
+        inter_bf16_ptr, selected_ptr, down_exps_ptr, down_out_bf16_ptr,
+        top_k, top_k, num_experts, inter, hidden,
+        library=k_lib, runtime=runtime,
+    )
+    # Cast the f32 residual + shared-expert output to bf16 for the combine.
+    f32_to_bf16(residual_ptr, attended_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
+    f32_to_bf16(shared_out_ptr, shared_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
+    # routing-weighted expert sum + sigmoid(gate)*shared + residual, in one launch.
+    weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
+        down_out_bf16_ptr, routing_ptr, shared_bf16_ptr, shared_gate_logit_ptr,
+        attended_bf16_ptr, ffn_out_bf16_ptr, top_k, hidden,
+        library=combine_lib, runtime=runtime,
+    )
+    bf16_to_f32(ffn_out_bf16_ptr, ffn_out_f32_ptr, hidden, library=cast_lib, runtime=runtime)
+
+
 @dataclass
 class Qwen35GGUFResidentMTPDraftRunner:
     """Device-resident chain runner for the real Qwen3.6 GGUF NextN block."""
@@ -106,6 +187,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._cast_lib = build_cast(load=True)
         self._router_lib = build_qwen35_router(load=True)
         self._lm_head_lib = build_lm_head(load=True)
+        self._silu_lib = build_paro_silu(load=True)
+        self._combine_lib = build_paro_combine(load=True)
+        self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", False)
         self._upload_weights()
         self._allocate_buffers()
 
@@ -221,6 +305,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.gated_shared = self._malloc(h * 4)
         self.tmp = self._malloc(h * 4)
         self.ffn_out = self._malloc(h * 4)
+        # Device-resident MoE-down + combine scratch (bf16, matches the verifier).
+        self.inter_bf16 = self._malloc(top_k * inter * 2)
+        self.down_out_bf16 = self._malloc(top_k * h * 2)
+        self.attended_bf16 = self._malloc(h * 2)
+        self.shared_bf16 = self._malloc(h * 2)
+        self.ffn_out_bf16 = self._malloc(h * 2)
         self.head_normed_bf16 = self._malloc(h * 2)
         self.logits = self._malloc(self.vocab * 4)
         self.topk_values = self._malloc(64 * 4)
@@ -507,68 +597,98 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._q4_lib,
             runtime=runtime,
         )
-        bf16_to_f32(self.gate_bf16.ptr, self.gate_f32.ptr, top_k * inter, library=self._cast_lib, runtime=runtime)
-        bf16_to_f32(self.up_bf16.ptr, self.up_f32.ptr, top_k * inter, library=self._cast_lib, runtime=runtime)
-        down_per_expert = int(self._get("blk.40.ffn_down_exps.weight").nbytes // 256)
-        selected_host = np.empty((top_k,), dtype=np.int64)
-        routing_host = np.empty((top_k,), dtype=np.float32)
-        copy_device_to_host(host_array_ptr(selected_host), self.selected, selected_host.nbytes, runtime=runtime)
-        copy_device_to_host(host_array_ptr(routing_host), self.routing, routing_host.nbytes, runtime=runtime)
-        for k in range(top_k):
-            inter_ptr = self.inter_f32.ptr + k * inter * 4
-            mtp_silu_mul_f32(
-                self.gate_f32.ptr + k * inter * 4,
-                self.up_f32.ptr + k * inter * 4,
-                inter_ptr,
-                inter,
-                library=self._mtp_lib,
-                runtime=runtime,
-            )
-            expert = int(selected_host[k])
-            gguf_q5_k_gemv_f32_f32_out(
-                inter_ptr,
-                self.down_exps.ptr + expert * down_per_expert,
-                self.down_out.ptr,
-                1,
-                inter,
-                h,
-                library=self._k_lib,
-                runtime=runtime,
-            )
-            mtp_scale_f32(
-                self.down_out.ptr,
-                self.scaled.ptr,
-                float(routing_host[k]),
-                h,
-                library=self._mtp_lib,
-                runtime=runtime,
-            )
-            mtp_add_f32(
-                self.selected_out.ptr,
-                self.scaled.ptr,
-                self.selected_out.ptr,
-                h,
-                library=self._mtp_lib,
-                runtime=runtime,
-            )
-
         gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
         mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, library=self._mtp_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
         mtp_linear_f32(self.post_norm.ptr, self.shared_gate_vec_f32.ptr, self.shared_gate_logit.ptr, 1, h, 1, library=self._mtp_lib, runtime=runtime)
-        mtp_sigmoid_row_scale_from_logits_f32(
-            self.shared_gate_logit.ptr,
-            self.shared_out.ptr,
-            self.gated_shared.ptr,
-            1,
-            h,
-            1,
-            library=self._mtp_lib,
-            runtime=runtime,
-        )
-        mtp_add_f32(self.attended.ptr, self.selected_out.ptr, self.tmp.ptr, h, library=self._mtp_lib, runtime=runtime)
-        mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, library=self._mtp_lib, runtime=runtime)
+
+        if self._device_moe_enabled:
+            # Device-resident selected-MoE down + combine: no host readback of
+            # selected/routing, no per-expert Python loop (matches the verifier).
+            apply_moe_down_combine(
+                gate_bf16_ptr=self.gate_bf16.ptr,
+                up_bf16_ptr=self.up_bf16.ptr,
+                selected_ptr=self.selected.ptr,
+                routing_ptr=self.routing.ptr,
+                shared_out_ptr=self.shared_out.ptr,
+                shared_gate_logit_ptr=self.shared_gate_logit.ptr,
+                residual_ptr=self.attended.ptr,
+                down_exps_ptr=self.down_exps.ptr,
+                inter_bf16_ptr=self.inter_bf16.ptr,
+                down_out_bf16_ptr=self.down_out_bf16.ptr,
+                attended_bf16_ptr=self.attended_bf16.ptr,
+                shared_bf16_ptr=self.shared_bf16.ptr,
+                ffn_out_bf16_ptr=self.ffn_out_bf16.ptr,
+                ffn_out_f32_ptr=self.ffn_out.ptr,
+                top_k=top_k,
+                inter=inter,
+                hidden=h,
+                num_experts=256,
+                silu_lib=self._silu_lib,
+                k_lib=self._k_lib,
+                combine_lib=self._combine_lib,
+                cast_lib=self._cast_lib,
+                runtime=runtime,
+            )
+        else:
+            # Legacy host-readback per-expert down loop + shared-gate combine.
+            bf16_to_f32(self.gate_bf16.ptr, self.gate_f32.ptr, top_k * inter, library=self._cast_lib, runtime=runtime)
+            bf16_to_f32(self.up_bf16.ptr, self.up_f32.ptr, top_k * inter, library=self._cast_lib, runtime=runtime)
+            down_per_expert = int(self._get("blk.40.ffn_down_exps.weight").nbytes // 256)
+            selected_host = np.empty((top_k,), dtype=np.int64)
+            routing_host = np.empty((top_k,), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(selected_host), self.selected, selected_host.nbytes, runtime=runtime)
+            copy_device_to_host(host_array_ptr(routing_host), self.routing, routing_host.nbytes, runtime=runtime)
+            for k in range(top_k):
+                inter_ptr = self.inter_f32.ptr + k * inter * 4
+                mtp_silu_mul_f32(
+                    self.gate_f32.ptr + k * inter * 4,
+                    self.up_f32.ptr + k * inter * 4,
+                    inter_ptr,
+                    inter,
+                    library=self._mtp_lib,
+                    runtime=runtime,
+                )
+                expert = int(selected_host[k])
+                gguf_q5_k_gemv_f32_f32_out(
+                    inter_ptr,
+                    self.down_exps.ptr + expert * down_per_expert,
+                    self.down_out.ptr,
+                    1,
+                    inter,
+                    h,
+                    library=self._k_lib,
+                    runtime=runtime,
+                )
+                mtp_scale_f32(
+                    self.down_out.ptr,
+                    self.scaled.ptr,
+                    float(routing_host[k]),
+                    h,
+                    library=self._mtp_lib,
+                    runtime=runtime,
+                )
+                mtp_add_f32(
+                    self.selected_out.ptr,
+                    self.scaled.ptr,
+                    self.selected_out.ptr,
+                    h,
+                    library=self._mtp_lib,
+                    runtime=runtime,
+                )
+            mtp_sigmoid_row_scale_from_logits_f32(
+                self.shared_gate_logit.ptr,
+                self.shared_out.ptr,
+                self.gated_shared.ptr,
+                1,
+                h,
+                1,
+                library=self._mtp_lib,
+                runtime=runtime,
+            )
+            mtp_add_f32(self.attended.ptr, self.selected_out.ptr, self.tmp.ptr, h, library=self._mtp_lib, runtime=runtime)
+            mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, library=self._mtp_lib, runtime=runtime)
 
         mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         f32_to_bf16(next_seed.ptr, self.head_normed_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
