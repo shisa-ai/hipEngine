@@ -1642,20 +1642,14 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        f32_to_bf16(
-            scratch.recurrent_out.ptr,
-            scratch.recurrent_bf16.ptr,
-            cfg.ssm_inner_size,
-            stream=stream,
-            runtime=runtime,
-        )
         launch_gguf_linear(
             layer.weight("ssm_out"),
-            scratch.recurrent_bf16.ptr,
+            scratch.recurrent_out.ptr,
             attn_out_ptr,
             rows=1,
             in_features=cfg.ssm_inner_size,
             out_features=self.hidden_size,
+            activation_dtype=GGUF_ACTIVATION_F32,
             stream=stream,
             runtime=runtime,
         )
