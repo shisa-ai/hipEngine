@@ -277,23 +277,8 @@ def test_gguf_telemetry_reports_post_thinking_forced_queue_before_close() -> Non
     assert decode_state["post_thinking_forced_token_reason"] == "tool_choice_required"
 
 
-def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
+def test_gguf_greedy_equivalent_request_uses_eager_step(monkeypatch) -> None:
     calls = []
-
-    class FakeGraph:
-        def __enter__(self):
-            calls.append(("graph_enter",))
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            calls.append(("graph_exit", exc_type is None))
-
-        def replay(self, steps):
-            calls.append(("graph_replay", int(steps)))
-
-        def read_generated_token_ids(self, count):
-            calls.append(("graph_read", int(count)))
-            return [16]
 
     class FakeSession:
         def __init__(self, model_path):
@@ -313,9 +298,9 @@ def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
                 logits=np.array([[0.0, 1.0]], dtype=np.float32),
             )
 
-        def capture_decode_graph(self, **kwargs):
-            calls.append(("capture_decode_graph", kwargs["position"]))
-            return FakeGraph()
+        def step(self, token_id, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(token_id=16, logits=np.array([[0.0, 1.0]], dtype=np.float32))
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
@@ -339,7 +324,8 @@ def test_gguf_greedy_equivalent_request_keeps_graph_path(monkeypatch) -> None:
         "sampler_mode": "greedy_fast",
     }
     assert ("prefill", (10, 11), False) in calls
-    assert ("graph_replay", 1) in calls
+    assert ("step", 1, False) in calls
+    assert not any(call[0] == "capture_decode_graph" for call in calls)
 
 
 @pytest.mark.parametrize(
@@ -735,7 +721,6 @@ def test_gguf_greedy_host_decode_checks_deadline_after_step(monkeypatch) -> None
 
     monkeypatch.setattr(qwen35_gguf, "raise_if_generation_deadline_expired", check_deadline)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.setattr(qwen35_gguf, "_session_uses_host_routed_decode", lambda session: True)
 
     generator = _generator()
     with pytest.raises(GenerationDeadlineExceeded):
@@ -774,7 +759,6 @@ def test_gguf_greedy_host_decode_checks_cancellation_after_step(monkeypatch) -> 
             raise AssertionError("host-routed decode should not capture graph")
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.setattr(qwen35_gguf, "_session_uses_host_routed_decode", lambda session: True)
 
     generator = _generator()
     with pytest.raises(GenerationCancelled) as raised:

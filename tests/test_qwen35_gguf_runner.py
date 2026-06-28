@@ -63,99 +63,6 @@ def test_qwen35_gguf_resident_session_can_allocate_benchmark_length_cache() -> N
         assert session.scratch.block_table_tensor.numel >= 3
 
 
-@pytest.mark.xfail(
-    reason="HIP graph corrupts GDN linear state on the 3rd+ graph_launch; "
-    "graph replay decode diverges from eager step(). See WORKLOG 2026-06-28.",
-    strict=False,
-)
-def test_qwen35_gguf_decode_graph_replay_matches_eager_step() -> None:
-    """Graph replay (steps_per_replay=1, >=3 launches) must match eager step().
-
-    Currently XFAIL: the captured decode graph corrupts the linear-attention
-    (GDN) conv/recurrent state on the 3rd and later ``graph_launch``, so the
-    fast graph-AR token stream diverges from the exact eager oracle. The
-    per-step device-token logic itself is correct (eager
-    ``_step_from_device_token`` matches), and 1-2 launches are correct; only
-    the in-place GDN state update is unsafe across >=3 HIP graph relaunches.
-    """
-
-    if not _hip_available():
-        pytest.skip("HIP runtime is not available")
-    prompt = [760, 4087, 369, 1107, 290]
-    steps = 6  # >=3 launches at steps_per_replay=1
-
-    with Qwen35GGUFResidentSession(MODEL) as session:
-        session.reset()
-        first = session.prefill(prompt, return_logits=False)
-        nxt = int(first.token_id)
-        eager = []
-        for _ in range(steps):
-            r = session.step(nxt, return_logits=False)
-            nxt = int(r.token_id)
-            eager.append(nxt)
-
-    with Qwen35GGUFResidentSession(MODEL) as session:
-        session.reset()
-        session.prefill(prompt, return_logits=False)
-        graph = session.capture_decode_graph(
-            position=session.position,
-            steps_per_replay=1,
-            max_replay_steps=steps,
-            record_steps=steps,
-        )
-        try:
-            graph.replay(steps)
-            replayed = [int(t) for t in graph.read_generated_token_ids(steps)]
-        finally:
-            graph.close()
-
-    assert replayed == eager, f"graph replay {replayed} != eager {eager}"
-
-
-def test_qwen35_gguf_decode_graph_single_launch_matches_eager_step() -> None:
-    """A single-launch full-window decode graph must match eager step().
-
-    This is the production fix (generation/qwen35_gguf.py uses
-    steps_per_replay == remaining, one ``graph_launch``). Single and double
-    launches are unaffected by the 3rd-relaunch GDN corruption, so this is the
-    correct, retained path until the relaunch hazard itself is fixed.
-    """
-
-    if not _hip_available():
-        pytest.skip("HIP runtime is not available")
-    prompt = [760, 4087, 369, 1107, 290]
-    steps = 6
-
-    with Qwen35GGUFResidentSession(MODEL) as session:
-        session.reset()
-        first = session.prefill(prompt, return_logits=False)
-        nxt = int(first.token_id)
-        eager = []
-        for _ in range(steps):
-            r = session.step(nxt, return_logits=False)
-            nxt = int(r.token_id)
-            eager.append(nxt)
-
-    with Qwen35GGUFResidentSession(MODEL) as session:
-        session.reset()
-        session.prefill(prompt, return_logits=False)
-        graph = session.capture_decode_graph(
-            position=session.position,
-            steps_per_replay=steps,  # single launch
-            max_replay_steps=steps,
-            record_steps=steps,
-        )
-        try:
-            graph.replay(steps)  # one graph_launch
-            replayed = [int(t) for t in graph.read_generated_token_ids(steps)]
-        finally:
-            graph.close()
-
-    assert replayed == eager, f"single-launch graph {replayed} != eager {eager}"
-
-
-
-
 def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(
@@ -207,28 +114,6 @@ def test_qwen35_gguf_bulk_prefill_matches_serial_for_conv_length_prompt() -> Non
     assert float(np.max(np.abs(bulk_first.logits - serial_first.logits))) <= 0.2
 
 
-def test_qwen35_gguf_resident_decode_graph_matches_eager_logits() -> None:
-    if not _hip_available():
-        pytest.skip("HIP runtime is not available")
-    prompt_ids = [760, 4087, 369]
-    with Qwen35GGUFResidentSession(MODEL) as eager:
-        eager_first = eager.prefill(prompt_ids)
-        eager_second = eager.step(eager_first.token_id)
-    with Qwen35GGUFResidentSession(MODEL) as graph_session:
-        graph_first = graph_session.prefill(prompt_ids)
-        with graph_session.capture_decode_graph(position=len(prompt_ids), max_replay_steps=1, record_steps=1) as graph:
-            graph.replay(1)
-            graph_ids = [graph_first.token_id, *graph.read_generated_token_ids(1)]
-            graph_second = graph.read_sample()
-
-    assert [eager_first.token_id, eager_second.token_id] == [220, 16]
-    assert graph_ids == [220, 16]
-    assert graph_second.token_id == eager_second.token_id
-    assert graph_second.logits.shape == eager_second.logits.shape == (1, 248320)
-    assert np.all(np.isfinite(graph_second.logits))
-    assert float(np.max(np.abs(graph_second.logits - eager_second.logits))) == 0.0
-
-
 @pytest.mark.parametrize("block_rows", [1, 2, 3, 4])
 def test_qwen35_gguf_target_block_verify_matches_eager_steps(block_rows: int) -> None:
     if not _hip_available():
@@ -262,48 +147,3 @@ def test_qwen35_gguf_target_block_verify_matches_eager_steps(block_rows: int) ->
     assert np.all(np.isfinite(block_result.hidden_seeds))
     assert final_position == len(prompt_ids) + len(block_inputs) + 1
     assert int(block_after.token_id) == int(eager_after.token_id)
-
-
-def test_qwen35_gguf_decode_graph_replay_context_cap_matches_two_eager_steps() -> None:
-    if not _hip_available():
-        pytest.skip("HIP runtime is not available")
-    prompt_ids = [760, 4087, 369]
-    with Qwen35GGUFResidentSession(MODEL) as eager:
-        eager_first = eager.prefill(prompt_ids)
-        eager_second = eager.step(eager_first.token_id)
-        eager_third = eager.step(eager_second.token_id)
-    with Qwen35GGUFResidentSession(MODEL) as graph_session:
-        graph_first = graph_session.prefill(prompt_ids)
-        with graph_session.capture_decode_graph(
-            position=len(prompt_ids),
-            max_replay_steps=2,
-            record_steps=2,
-            attention_max_context_len=len(prompt_ids) + 2,
-        ) as graph:
-            graph.replay(2)
-            graph_ids = [graph_first.token_id, *graph.read_generated_token_ids(2)]
-            graph_third = graph.read_sample()
-
-    assert graph_ids == [eager_first.token_id, eager_second.token_id, eager_third.token_id]
-    assert graph_third.token_id == eager_third.token_id
-    assert graph_third.logits.shape == eager_third.logits.shape == (1, 248320)
-    assert np.all(np.isfinite(graph_third.logits))
-    assert float(np.max(np.abs(graph_third.logits - eager_third.logits))) == 0.0
-
-
-def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
-    ref = reference_logits.astype(np.float64, copy=False)
-    cand = candidate_logits.astype(np.float64, copy=False)
-    ref_exp = np.exp(ref - float(np.max(ref)))
-    cand_exp = np.exp(cand - float(np.max(cand)))
-    ref_prob = ref_exp / float(np.sum(ref_exp))
-    cand_prob = cand_exp / float(np.sum(cand_exp))
-    return float(np.sum(ref_prob * (np.log(ref_prob + 1.0e-30) - np.log(cand_prob + 1.0e-30))))
-
-
-def _hip_available() -> bool:
-    try:
-        ctypes.CDLL("libamdhip64.so")
-    except OSError:
-        return False
-    return True
