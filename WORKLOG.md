@@ -126537,3 +126537,30 @@ Caveat: GPU-busy-vs-wall (sync-stall) split still not cleanly measured on the re
 give it (instrumentation overhead). Confirm via the big-lever-as-test approach above.
 
 Artifact: benchmarks/results/2026-06-28-gguf-b3-verify-gpu-critical-path.json
+
+
+## 2026-06-28 — Dense Q8_0 dp4a is only 1.2x (bandwidth-bound) -> fusion is the lever
+
+Built + validated the dense Q8_0 q8_1+dp4a GEMV (single output, gguf_q8_0_dp4a_gemv.hip/.py,
+RED test green: q8_1 oracle rel_l2<=2e-2 + KL<=0.05/top1>=0.90). Isolated microbench at the
+verifier shape (rows=4, in=2048, out=2048):
+  t16 GEMV 26.47 us; quantize+dp4a 24.30 us (1.09x); dp4a alone 22.13 us (1.20x).
+
+Only 1.2x, NOT the 2-3x the 4-bit MoE dp4a got. Q8_0 is already int8 (1 byte/weight) so the dense
+GEMV is BANDWIDTH-bound on the weight read; dp4a (compute) doesn't cut bytes read. At rows=4 launch
+overhead also dominates the per-call wall.
+
+### Synthesis across all 2026-06-28 verifier experiments
+- dp4a MoE (27% GPU): flat wall.   - #9 dense dispatch host cache (-65% per-launch): flat wall.
+- dense Q8_0 dp4a: 1.2x isolated (bandwidth+launch-bound).   - ROOFLINE 5.3: dispatch overhead is a
+  hidden ~33% bucket invisible to rocprof.
+=> The B3 verifier wall is dominated by LAUNCH/DISPATCH COUNT (875 launches/verify) + bandwidth, NOT
+per-kernel GPU compute. Per-kernel GPU optimizations keep coming back flat. The real lever is
+LAUNCH-COUNT REDUCTION: kernel FUSION (962 -> ~700, WORKLOG 126309) and/or correct graph replay.
+
+### Decision
+Keep the correct q8_0 dp4a single kernel (committed) as a registered option for when fusion later
+shifts the balance back to GPU compute; do NOT pursue the dual/triple-split + raw-Q8_0
+materialization + dispatch integration (1.2x, poor ROI, likely flat). dp4a stays the right lever for
+the 4-bit MoE selected GEMVs (#7). NEXT: kernel fusion to cut launch count.
+Artifact: benchmarks/results/2026-06-28-dense-q8_0-dp4a-vs-t16-microbench.json
