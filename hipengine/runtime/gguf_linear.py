@@ -37,7 +37,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     register_gguf_q8_0_t16_prefill_kernels,
 )
-from hipengine.kernels.registry import KernelKey, is_registered, resolve
+from hipengine.kernels.registry import KernelKey, generation, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
@@ -376,6 +376,24 @@ def resolve_gguf_linear_dispatch(
     )
 
 
+# Memoized launch_gguf_linear dispatch resolution. The resolved (abi, fn) is a
+# pure function of the cache key below plus the registry contents; the registry
+# generation is part of the key, so any register/unregister invalidates stale
+# entries automatically. In production the registry is stable after import, so
+# this collapses the ~18us-per-launch dispatch-resolve chain to a dict lookup.
+_DISPATCH_RESOLVE_CACHE: dict[tuple, tuple] = {}
+
+
+def clear_gguf_linear_dispatch_cache() -> None:
+    """Drop all memoized launch_gguf_linear dispatch resolutions.
+
+    Not normally needed (the registry generation in the cache key invalidates
+    stale entries automatically); exposed for tests and defensive callers.
+    """
+
+    _DISPATCH_RESOLVE_CACHE.clear()
+
+
 def launch_gguf_linear(
     weight: Qwen35GGUFDeviceWeight,
     x_ptr: int,
@@ -410,49 +428,66 @@ def launch_gguf_linear(
     Otherwise the existing decode-shaped ``prefill_*`` aliases run.
     """
 
-    dispatch = resolve_gguf_linear_dispatch(
-        weight,
-        activation_dtype=activation_dtype,
-        output_dtype=output_dtype,
-        backend=backend,
-        rows=rows,
-    )
-    dispatch = _pack8_decode_dispatch(dispatch, rows=rows, out_features=out_features)
-    dispatch = _gemv_decode_dispatch(
-        dispatch,
-        rows=rows,
-        use_gemv_decode=_resolve_use_gemv_decode(use_gemv_decode),
-    )
+    f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
-    dispatch = _wmma_prefill_dispatch(
-        dispatch,
-        rows=rows,
-        in_features=in_features,
-        use_wmma=use_wmma,
+    f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
+    cache_key = (
+        generation(),
+        weight.spec.layout,
+        weight.spec.quant_key,
+        rows,
+        in_features,
+        out_features,
+        activation_dtype,
+        output_dtype,
+        backend,
+        f_gemv,
+        use_wmma,
+        f_rowtile,
     )
-    # The small-B row-tile path is the weight-amortized replacement for the
-    # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
-    # opt-in: only fires when WMMA is off (e.g. the small-B target verifier).
-    dispatch = _rowtile_dispatch(
-        dispatch,
-        rows=rows,
-        in_features=in_features,
-        use_rowtile=(not use_wmma) and _resolve_use_q4k_rowtile(None),
-    )
-    _ensure_linear_kernel_registered(dispatch.key)
-    fn = resolve(
-        backend=dispatch.key.backend,
-        layer=dispatch.key.layer,
-        quant=dispatch.key.quant,
-        variant=dispatch.key.variant,
-    )
-    library = None if libraries is None else libraries.get(dispatch.key.quant)
+    cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
+    if cached is None:
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            rows=rows,
+        )
+        dispatch = _pack8_decode_dispatch(dispatch, rows=rows, out_features=out_features)
+        dispatch = _gemv_decode_dispatch(dispatch, rows=rows, use_gemv_decode=f_gemv)
+        # The small-B row-tile path is the weight-amortized replacement for the
+        # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
+        # opt-in: only fires when WMMA is off (e.g. the small-B target verifier).
+        dispatch = _wmma_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            use_wmma=use_wmma,
+        )
+        dispatch = _rowtile_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            use_rowtile=f_rowtile,
+        )
+        _ensure_linear_kernel_registered(dispatch.key)
+        fn = resolve(
+            backend=dispatch.key.backend,
+            layer=dispatch.key.layer,
+            quant=dispatch.key.quant,
+            variant=dispatch.key.variant,
+        )
+        cached = (dispatch.abi, fn, dispatch.key.quant)
+        _DISPATCH_RESOLVE_CACHE[cache_key] = cached
+    abi, fn, quant = cached
+    library = None if libraries is None else libraries.get(quant)
     kwargs = {"stream": stream, "runtime": runtime}
     if threads:
         kwargs["threads"] = threads
     if library is not None:
         kwargs["library"] = library
-    _LAUNCH_ABI[dispatch.abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
+    _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
 def launch_gguf_linear_raw_ptr(

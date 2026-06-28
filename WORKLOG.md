@@ -126465,3 +126465,41 @@ GPU kernel time. So:
   dispatch-resolve + verifier kernel fusion 962->~700 launches), not GPU-kernel speed.
 - NEXT: profile WHERE the full B3 verify cycle (~67ms) actually goes (host dispatch vs GPU vs sync)
   to confirm the launch-count hypothesis before investing in fusion/#9.
+
+
+## 2026-06-28 — Cache launch_gguf_linear dispatch-resolve (task #9) + 2nd flat-wall finding
+
+### Change
+`launch_gguf_linear` now memoizes its dispatch-resolve (env reads + 5-stage transform chain +
+registry resolve) keyed on (registry generation, weight layout/quant, rows, in/out features,
+dtypes, backend, resolved gemv/wmma/rowtile flags). Added a registry generation counter
+(`hipengine/kernels/registry.py`: `_GENERATION` bumped on register/unregister/clear +
+`generation()`); the counter in the cache key auto-invalidates on any registry mutation, so the
+registry-swap idiom used by the dispatch tests still works. Exact: same kernels/outputs.
+
+### Measurements
+- Microbench (`scripts/gguf_launch_overhead_bench.py`, rows=4, best of 2000):
+  full launch_gguf_linear `25.71 -> 8.95 us/call (-65%)`, near the precomputed registry-fn floor.
+- Full-bench A/B (resident-draft B3, cycles=12, 3 runs each, warm, stash off vs on):
+  cache off `48.60` vs on `48.67 tok/s` (+0.1%, FLAT), acceptance identical (0.6944).
+- Validation: RED-first `tests/test_gguf_linear_dispatch_cache.py` (memoize + generation
+  invalidation); 282 dispatch/wmma/rowtile/gemv-decode tests green.
+- artifact: benchmarks/results/2026-06-28-gguf-linear-dispatch-resolve-cache.json
+
+### Key meta-finding (reshapes #10)
+This is the SECOND component win that is micro-proven but flat at the full-bench wall:
+  1. dp4a: -35% GPU MoE-GEMV kernel time -> flat wall.
+  2. dispatch-cache: -65% dense-projection per-launch host -> flat wall.
+Two independent levers (GPU MoE, dense host) both fail to move the B3 wall => the full B3 verify
+critical path is NEITHER dense-projection host dispatch NOR MoE GPU time. Candidates not yet ruled
+out: host dispatch of the MoE-SELECTED GEMVs (direct wrappers, NOT launch_gguf_linear, so untouched
+by #9), GDN/full-attention GPU time, or device-sync stalls.
+NEXT (before any fusion / more component work): a real WARM full-B3-verify profile (rocprof
+kernel-trace of the final child + a host-vs-GPU split on the actual bench path, not the isolated
+economics harness) to locate the true critical path. Optimizing components blind keeps yielding
+flat walls.
+
+### Kept (per perf policy)
+Exact + non-regressive + a measured -65% per-launch host reduction -> retained as the default
+(unconditional, no flag). Microseconds compound and it shrinks the host floor for whatever the
+profile reveals.

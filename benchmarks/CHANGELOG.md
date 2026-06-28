@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-06-28
 
+- [host-reduction retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151: memoized `launch_gguf_linear` dispatch-resolve (registry-generation-keyed) cuts the dense-projection per-launch host cost `25.71 -> 8.95 us/call` (-65%, microbench); full B3 bench wall flat `48.60 -> 48.67 tok/s` (+0.1%, acceptance identical) — kept as exact + non-regressive. SECOND micro-proven/flat-wall component (after dp4a -35% GPU MoE), evidence the full B3 verifier critical path is neither dense host dispatch nor MoE GPU; `benchmarks/results/2026-06-28-gguf-linear-dispatch-resolve-cache.json`.
 - [efficiency retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 B3/c5 resident draft: device-resident selected-MoE down+combine (`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE`, default-on) replaces the host-readback per-expert Python down loop — exact-acceptance (drafts byte-identical, accepted_per_output unchanged in all 4 categories) and tok/s consistently up per-category ~+0.7-1.4% (code 44.35 -> 44.98, general_en 44.51 -> 44.81, general_ja 42.81 -> 43.11, mixed_ja_en 44.22 -> 44.65); removes 2 blocking D->H + ~24 launches/depth from the MoE-down section; `benchmarks/results/2026-06-28-resident-mtp-draft-device-moe-down-ab.json`.
 
 ## 2026-06-24

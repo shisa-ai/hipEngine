@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-06-28 (Resident GGUF MTP draft MoE-down made device-resident: `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` default-on, exact-acceptance across all 4 categories with tok/s consistently up per-category ~+0.7-1.4%; removes 2 blocking D->H + ~24 launches/depth. No new headline AR row — exact eager AR is only 19.67 tok/s and production graph AR is ~55.5 tok/s but currently token-divergent.)
+Last updated: 2026-06-28 (Cached `launch_gguf_linear` dispatch-resolve: dense per-launch host `25.71 -> 8.95 us` (-65% microbench) but full B3 wall flat (+0.1%) — the SECOND micro-proven/flat-wall component after dp4a (-35% GPU MoE), so the B3 verifier critical path is neither dense host dispatch nor MoE GPU; next is a real warm full-B3-verify profile. Prior: resident draft MoE-down made device-resident (exact-acceptance, per-category tok/s +0.7-1.4%). No new headline AR row — exact eager AR is only 19.67 tok/s and production graph AR is ~55.5 tok/s but currently token-divergent.)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
