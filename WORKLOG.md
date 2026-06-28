@@ -126693,3 +126693,30 @@ host/launch/sync is NOT the bottleneck. Kept default-OFF — concrete blocker fo
 resident table not justified by a flat headline; flag retained for the clean resident-draft
 architecture + rollback. Artifact: benchmarks/results/2026-06-29-resident-mtp-draft-device-chain.json.
 REFACTOR.md updated with the flag's removal trigger. NEXT: #4 (partial-accept rollback) then #10.
+
+## 2026-06-29 — Partial-accept rollback: skip LM-head on the replay (task #4), exact +3.4% B5
+
+Profiled the B5 block-verifier rollback (instrumented, 24 cycles / 21 partial accepts): state
+snapshot is 66.85MB across 60 GDN conv+recurrent buffers; snapshot+restore D2D is only ~1.8ms/cycle.
+The DOMINANT rollback cost is the accepted-prefix REPLAY forward (~12ms/row); of that, the per-row
+LM-head vocab GEMV + greedy sampling is 15.9% and the layer stack is 84.1%.
+
+KEY: the replay's tokens are DISCARDED — they're already known from the first full-block pass
+(verifier is causal/prefix-deterministic, so `block_target_tokens[:consumed_rows]` == replay tokens).
+The replay exists only to advance the GDN linear + KV state. So added
+`verify_target_block(advance_state_only=True)` that runs the identical layer stack (state advance) +
+keeps the FP32 hidden rows (decode continuity) but SKIPS the per-row LM-head sample. Bench reuses
+`block_target_tokens[:consumed_rows]`.
+
+EXACT: `tests/test_qwen35_gguf_verify_advance_state_only.py` (35B) asserts committed linear state +
+hidden rows BIT-IDENTICAL to full replay and exact token reuse. E2E B5 (20 cycles, stash A/B): token
+stream BYTE-IDENTICAL to baseline, total_accepted 43/880 unchanged; avg_cycle_ms `126.68 -> 122.35`
+(-3.4%), tok/s `24.87 -> 25.75` (+3.5%). Default-on (no flag; the replay LM-head was always waste).
+
+HONEST: this is the only exact non-#10 lever in the rollback. The dominant cost (replay layer-stack
+forward, 84%) is the same GPU/bandwidth wall as #10 — confirms the task's "blocked by #10" for the
+bulk. D2D snapshot/restore ~1.8ms/cycle, not worth chasing. Eliminating the replay forward entirely
+needs per-row GDN linear-state checkpointing inside the bulk prefill (kernel surgery, O(rows) state
+memory) — deferred until #10 makes the forward cheaper. Artifact
+`benchmarks/results/2026-06-29-partial-accept-replay-lm-head-skip.json`. NEXT: #10 (verifier
+bandwidth) is now the gating lever for both verify and rollback.
