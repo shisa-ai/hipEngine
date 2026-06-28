@@ -1,0 +1,95 @@
+"""Exactness gate for verify_target_block(advance_state_only=True).
+
+Partial-accept rollback (task #4) replays the accepted prefix only to advance the
+GDN linear / KV state; its target tokens are already known from the first
+full-block pass and discarded. ``advance_state_only=True`` skips the replay's
+per-row LM-head vocab GEMV + greedy sampling (~16% of the forward). This test
+asserts that skip is EXACT: the committed linear state and the FP32 hidden rows
+are bit-identical to a full replay, and the reused first-pass tokens match.
+"""
+
+from __future__ import annotations
+
+import ctypes
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+def _read_linear_state(session) -> np.ndarray:
+    """Concatenate all GDN conv + recurrent state buffers to a host array."""
+    runtime = session.runtime
+    chunks: list[np.ndarray] = []
+    for conv, rec in zip(
+        session.scratch.layer_conv_states,
+        session.scratch.layer_recurrent_states,
+        strict=True,
+    ):
+        for state in (conv, rec):
+            if state is not None:
+                host = np.empty(int(state.nbytes) // 4, dtype=np.float32)
+                copy_device_to_host(
+                    host_array_ptr(host), DeviceBuffer(state.ptr, host.nbytes), host.nbytes, runtime=runtime
+                )
+                chunks.append(host)
+    return np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
+def test_advance_state_only_matches_full_replay(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
+    block_rows, consumed = 5, 2
+
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=256) as session:
+        first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        prefix_position = int(session.position)
+        snapshot = session._linear_state_snapshot()
+
+        # Build a continuation block by greedy stepping, then roll back to prefix.
+        block_inputs = [int(first.token_id)]
+        current = int(first.token_id)
+        for _ in range(block_rows - 1):
+            step = session.step(current, return_logits=False)
+            block_inputs.append(int(step.token_id))
+            current = int(step.token_id)
+
+        # Full-block pass: its first `consumed` target tokens are what the replay
+        # would re-derive (verifier is causal / prefix-deterministic).
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        full = session.verify_target_block(block_inputs)
+
+        # Reference accepted-prefix replay (full LM-head sampling).
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        ref = session.verify_target_block(block_inputs[:consumed])
+        ref_state = _read_linear_state(session)
+
+        # Fast accepted-prefix replay (state advance only, LM-head skipped).
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        fast = session.verify_target_block(block_inputs[:consumed], advance_state_only=True)
+        fast_state = _read_linear_state(session)
+
+        session._free_linear_state_snapshot(snapshot)
+
+    # Linear/KV state advance is bit-identical (same layer stack ran).
+    assert ref_state.shape == fast_state.shape and ref_state.size > 0
+    np.testing.assert_array_equal(ref_state, fast_state)
+    # FP32 hidden rows (used for decode continuity) are bit-identical.
+    np.testing.assert_array_equal(ref.hidden_seeds, fast.hidden_seeds)
+    # Reusing the first-pass tokens for the accepted prefix is exact.
+    assert [int(t) for t in full.token_ids[:consumed]] == [int(t) for t in ref.token_ids]

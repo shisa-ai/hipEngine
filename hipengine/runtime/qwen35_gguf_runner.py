@@ -3595,6 +3595,7 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         use_wmma_prefill: bool | None = None,
         stream: int = 0,
+        advance_state_only: bool = False,
     ) -> Qwen35GGUFBlockVerifyResult:
         """Consume a continuation block and return greedy target rows.
 
@@ -3609,6 +3610,13 @@ class Qwen35GGUFResidentSession:
         with :meth:`_linear_state_snapshot` before this call, restore on mismatch,
         and replay the accepted prefix.  Full-attention KV rows beyond the
         restored cursor are ignored by live-count metadata and overwritten later.
+
+        ``advance_state_only`` skips the per-row LM-head vocab GEMV + greedy
+        sampling (~16% of the forward).  Use it for the accepted-prefix REPLAY,
+        whose target tokens are already known from the first full-block pass and
+        are discarded here: only the linear/KV state advance and the FP32 hidden
+        rows (returned and used for decode continuity) are needed.  ``token_ids``
+        in the result echoes the input in this mode and must not be consumed.
         """
 
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -3757,32 +3765,40 @@ class Qwen35GGUFResidentSession:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     stream,
                 )
-            row_lm_head = _gguf_verify_row_lm_head_enabled()
-            if row_lm_head:
-                token_host = self._sample_target_block_rows_from_hidden(
-                    final_scratch.norm.ptr,
-                    rows,
-                    stream=stream,
-                )
+            if advance_state_only:
+                # Accepted-prefix replay: target tokens already known from the
+                # first full-block pass and discarded here. Skip the per-row
+                # LM-head vocab GEMV + greedy sampling; keep the FP32 hidden rows
+                # (decode continuity) and the linear/KV state advance above.
+                token_host = np.ascontiguousarray(tokens, dtype=np.int64)
+                runtime.device_synchronize()
             else:
-                token_host = np.empty((rows,), dtype=np.int64)
-                for row in range(rows):
-                    self._sample_device_from_hidden(
-                        final_scratch.norm.ptr + row * row_nbytes,
-                        stream=stream,
-                    )
-                    record_i64_scalar_indexed(
-                        self._lm_out_index.ptr,
-                        token_ids_buf.ptr,
-                        token_counter_buf.ptr,
+                row_lm_head = _gguf_verify_row_lm_head_enabled()
+                if row_lm_head:
+                    token_host = self._sample_target_block_rows_from_hidden(
+                        final_scratch.norm.ptr,
                         rows,
                         stream=stream,
-                        library=self._runtime_state_library,
-                        runtime=runtime,
                     )
-            runtime.device_synchronize()
-            if not row_lm_head:
-                copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
+                else:
+                    token_host = np.empty((rows,), dtype=np.int64)
+                    for row in range(rows):
+                        self._sample_device_from_hidden(
+                            final_scratch.norm.ptr + row * row_nbytes,
+                            stream=stream,
+                        )
+                        record_i64_scalar_indexed(
+                            self._lm_out_index.ptr,
+                            token_ids_buf.ptr,
+                            token_counter_buf.ptr,
+                            rows,
+                            stream=stream,
+                            library=self._runtime_state_library,
+                            runtime=runtime,
+                        )
+                runtime.device_synchronize()
+                if not row_lm_head:
+                    copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
             hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
             copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
         finally:

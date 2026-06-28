@@ -1173,12 +1173,17 @@ def main(argv: list[str] | None = None):
                         session._restore_linear_state_snapshot(snapshot, position=seq_position)
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
+                        # Accepted-prefix replay only needs to advance linear/KV
+                        # state; the target tokens are already known from the
+                        # full-block pass (deterministic), so skip the replay's
+                        # LM-head sampling and reuse block_target_tokens.
                         replay_result = session.verify_target_block(
                             block_inputs[:consumed_rows],
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                            advance_state_only=True,
                         )
-                        replay_tokens = [int(token) for token in replay_result.token_ids]
+                        replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
                         replay_hidden = [
                             np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
                             for row in range(len(replay_tokens))
