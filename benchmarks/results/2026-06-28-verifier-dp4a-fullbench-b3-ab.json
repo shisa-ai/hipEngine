@@ -1,0 +1,40 @@
+{
+  "schema": "hipengine-bench-ab-v1",
+  "status": "rejected-for-default",
+  "timestamp": "2026-06-28",
+  "run_tag": "verifier-dp4a-fullbench-b3-ab",
+  "hardware": "AMD Radeon 8060S (gfx1151, Ryzen AI Max+ 395)",
+  "change": "HIPENGINE_GGUF_T16_SELECTED_DP4A=1 (q8_1+dp4a for production T16 decode-repack MoE selected gate/up Q4_K + down Q5_K) vs off",
+  "workload": {
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "draft_n_max": 3,
+    "cycles": 12,
+    "root_topk_accept": 1,
+    "mtp_draft_vocab_cap": 32768,
+    "resident_mtp_draft_effective": true,
+    "prompt": "Write a Python function that implements merge sort:",
+    "protocol": "3 interleaved runs each, warm_excluding_cycle0"
+  },
+  "result": {
+    "off_warm_tok_s": [
+      48.64,
+      48.57,
+      48.58
+    ],
+    "off_mean": 48.6,
+    "on_warm_tok_s": [
+      48.39,
+      48.31,
+      48.55
+    ],
+    "on_mean": 48.42,
+    "delta_tok_s": -0.18,
+    "delta_pct": -0.4,
+    "accepted_per_output_off": 0.6944,
+    "accepted_per_output_on": 0.6944,
+    "acceptance": "identical"
+  },
+  "interpretation": "dp4a cuts the MoE selected GEMVs ~2.3-3.1x at the kernel level (WORKLOG 2026-06-28) and is +5% on the verify-ISOLATED economics harness (62.63->65.65), but is FLAT-NEGATIVE on the full resident-draft B3 bench wall with tight variance. A -35% GPU MoE-GEMV cut that does not move the full-bench wall means the full B3 verifier is NOT GPU-kernel-bound at the wall; the critical path is host dispatch (~875 launches/verify) / orchestration. dp4a stays default-off; the lever for #10 is launch-count/host-dispatch reduction (#9 + verifier kernel fusion), not GPU-kernel speed.",
+  "correctness": "dp4a unit gates pass (KL<=0.05/top1>=0.90): tests/test_gguf_q4_k_selected_dual_dp4a_gemv.py, tests/test_gguf_k_selected_pack8_dp4a_gemv.py, tests/test_gguf_x8_selected_gemv.py; target acceptance identical end-to-end."
+}

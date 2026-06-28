@@ -126440,3 +126440,28 @@ residual/shared/ffn buffers. Gated by `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` 
   is sub-win B (device argmax + embedding gather), still pending.
 - Commands:
   `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE=1 python3 scripts/gguf_mtp_bench.py --resident-mtp-draft --root-topk-accept 1 --draft-n-max 3 --cycles 5 --mtp-draft-vocab-cap 32768 --prompt <p> --output <o>`
+
+
+## 2026-06-28 — dp4a does NOT move the full B3 bench wall (tasks #7/#10 key finding)
+
+Clean interleaved A/B (3 runs each, 12 cycles, warm_excluding_cycle0), production resident-draft
+B3 merge-sort, `HIPENGINE_GGUF_T16_SELECTED_DP4A` off vs on (gates q8_1+dp4a for the T16
+decode-repack MoE selected gate/up Q4_K + down Q5_K):
+- off mean 48.60 tok/s (48.64/48.57/48.58 — very tight), on mean 48.42 (48.39/48.31/48.55).
+- delta -0.18 tok/s (-0.4%); acceptance IDENTICAL (0.6944). dp4a fires (moe_q8_1 scratch allocated
+  unconditionally; flag enables the q8_1 quantize + dp4a kernels at runner 6747-6759 / 6838-6851).
+- dp4a unit gates all pass (KL<=0.05/top1>=0.90): test_gguf_q4_k_selected_dual_dp4a_gemv,
+  test_gguf_k_selected_pack8_dp4a_gemv, test_gguf_x8_selected_gemv.
+- artifact: benchmarks/results/2026-06-28-verifier-dp4a-fullbench-b3-ab.json
+
+### Interpretation (reshapes #10)
+dp4a cuts the MoE selected GEMVs ~2.3-3.1x at the kernel level and is +5% on the verify-ISOLATED
+economics harness (62.63->65.65, WORKLOG 126366), but is flat-negative on the full B3 bench wall.
+A -35% GPU MoE-GEMV cut that doesn't move the wall => the full B3 verifier is NOT GPU-kernel-bound
+at the wall. The critical path is host dispatch (~875 launches/verify) + cycle orchestration, NOT
+GPU kernel time. So:
+- #7 (promote dp4a): NOT justified end-to-end; stays default-off (REFACTOR row updated).
+- #10 (verifier efficiency): the lever is LAUNCH-COUNT / host-dispatch reduction (#9 cache
+  dispatch-resolve + verifier kernel fusion 962->~700 launches), not GPU-kernel speed.
+- NEXT: profile WHERE the full B3 verify cycle (~67ms) actually goes (host dispatch vs GPU vs sync)
+  to confirm the launch-count hypothesis before investing in fusion/#9.
