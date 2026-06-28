@@ -126356,3 +126356,22 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Next
 - Verifier is now GPU-bound, so re-measure dp4a + rowtile E2E (their GPU wins should now translate). Optionally cache the dispatch-resolve (15.5 us, now 74% of the small per-launch cost) to shave host further, but GPU now dominates so it is lower priority.
+
+
+## 2026-06-28 — E2E payoff: lib cache +24%, and dp4a now POSITIVE (GPU-bound) -> #7 reopened
+
+### Bench A/B (gguf_mtp_bench, merge-sort B3/C5, target-block-verify, 32k cap; single runs, 15/15 accepts)
+| config | tok/s | warm | verifier ar/cycle | draft/cycle |
+| --- | ---: | ---: | ---: | ---: |
+| pre-lib-cache, dp4a off | 50.64 | 52.03 | ~61 ms | ~15 ms |
+| lib-cache, dp4a OFF | **62.63** | 64.54 | ~50 ms | ~11 ms |
+| lib-cache, dp4a ON (both) | **65.65** | 67.48 | ~48 ms | ~10 ms |
+
+- The build-lib cache (host-dispatch 5x) lifted E2E +24% (50.6 -> 62.6) across verify AND draft (draft 15 -> 11 ms too).
+- With the verifier now GPU-bound, dp4a flips from REGRESSING (host-bound: 50.6 -> 44.6) to HELPING (GPU-bound: 62.6 -> 65.65, +5%), target tokens bit-identical. This confirms the synthesis: GPU wins only translate after the host floor is removed.
+
+### #7 reopened — dp4a now promotable (was rejected under host-bound conditions)
+- The earlier #7 rejection (2026-06-28 "per-piece win does not translate") was correct ONLY under the host-bound regime. After the lib cache, dp4a is a clean +5% E2E with identical tokens. Promotion path: full mtpbench category-suite validation (anti-gaming) of the dp4a flags now that the host floor is gone, then default-on + benchmark rollup against the valid single-launch graph-AR denominator. Single-prompt +5% is diagnostic only.
+
+### Remaining gap
+- Verifier ~48 ms is now GPU-bound (host ~12%). Further wins: optionally cache the dispatch-resolve (~15 us/launch, the last host chunk, ~3 ms) but GPU dominates; the bigger remaining lever is GPU-side verifier efficiency (MoE/dense/GDN/lm-head). Still ~65 vs llama.cpp ~90.
