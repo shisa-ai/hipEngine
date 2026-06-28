@@ -126392,3 +126392,19 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 ### Conclusion / recommendation
 - No retained production path needs multi-relaunch graph replay. The single-launch fix is correct everywhere it is used. Eager is as fast as graph post-lib-cache, so the graph machinery is now dead weight.
 - DEPRIORITIZE #8 (do not deep-fix the relaunch hazard): switch production decode to eager (simpler, same speed, removes the #8 correctness risk) and mark the decode-graph machinery for removal in docs/REFACTOR.md. ONLY revisit graphs/#8 if future GPU-side verifier optimization (dp4a + fusion + resolve cache) shrinks GPU enough that the ~10 ms host floor becomes the bottleneck again - and even then, the resolve cache (pure Python) is the next lever before graphs.
+
+
+## 2026-06-28 — Retired the GGUF decode-graph machinery (production + runtime + true_ar)
+
+### Done (committed)
+- Production greedy decode -> eager step() loop (generation/qwen35_gguf.py); dropped _session_uses_host_routed_decode.
+- Removed the GGUF decode-graph machinery from qwen35_gguf_runner.py (~511 lines): capture_decode_graph, _step_from_device_token, Qwen35GGUFDecodeGraph, the decode-graph bucket-key helpers (WeightRole/BucketKey/weight_roles/active_symbol_groups/build_bucket_key/_has_role) + __all__ exports. KEPT the interleaved _launch_qwen35_router_logits_bf16_hidden (MoE router, used by the verifier) and the session close/__enter__/__exit__.
+- Deleted scripts/qwen35_gguf_decode_graph_smoke.py and tests/test_qwen35_gguf_decode_graph_policy.py; removed the 4 graph tests from test_qwen35_gguf_runner.py; updated the greedy generate-path tests (test_llm_gguf_generate_path.py, test_generation_qwen35_gguf_sampling.py) to the eager step() path.
+- gguf_true_ar_category_bench.py decode -> eager-only (decode_path=eager_step honestly recorded); fixed the category dry-run schema test.
+- Net ~1260+ deletions. Full test suite green; core imports OK. PARO decode-graph paths (qwen35_paro*, readme_sweep _run_paro_sweep, decode_graph_fixture_gate, batch_decode_graph_smoke) are a SEPARATE mechanism and were left untouched.
+
+### Remaining (bounded follow-up; see docs/REFACTOR.md)
+- Two GGUF benches still contain gated, DEFAULT-OFF graph diagnostic blocks that call the now-removed capture_decode_graph and would AttributeError only if their flag is passed (not production, not unit-tested, not the retained path):
+  - scripts/qwen35_gguf_bench.py `--graph-replay-decode` block (incl. retained/reused-graph logic).
+  - scripts/gguf_mtp_bench.py `--target-graph-verify` / `--target-graph-batched-verify` mode (54 refs, woven into the MTP cycle).
+- Deferred because these are the concurrently-developed MTP/AR benches; removing the modes is a careful, coordinated edit. They are gated off so the tree is green meanwhile.
