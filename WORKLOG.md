@@ -126280,3 +126280,40 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 1. Collapse verifier host dispatch via graph capture or a C-level dispatch loop (the ~54 ms host floor). This is gated by #8 (HIP graph relaunch corrupts GDN state on the 3rd launch) for the graph route, OR a C-dispatch loop that sidesteps graphs entirely.
 2. THEN promote dp4a (its -35% GPU then translates) + the dense rowtile.
 3. Together these compound toward llama.cpp's ~9 ms verifier. Neither alone suffices.
+
+
+## 2026-06-28 — Host-dispatch reduction: routes recorded; C-dispatch chosen
+
+### Decision
+- The verifier host-dispatch floor (875-962 launches/verify, ~54 ms) is the primary parity lever. Chosen route: C-dispatch (collapse all launches). Fusion and graph routes recorded below to revisit if C-dispatch underdelivers.
+
+### Per-family launch count (one warm verify_target_block rows=4; scratchpad launch_count.py) = 962
+| family | count | notes |
+| --- | ---: | --- |
+| launch_gguf_linear (dense singles) | 314 | ~half are pair/triple FALLBACKS (mismatched widths) + alpha/beta/ssm_out/o singles |
+| launch_gguf_linear_pair | 80 | returns False for Q8_0 rows>1 (no fused path) -> 2 singles each |
+| _launch_qwen35_router_logits_bf16_hidden | 80 | 2/MoE layer (main expert router 256 + shared router 1) |
+| silu_mul_separate_out_bf16 | 80 | 2/layer |
+| gguf_rmsnorm_bf16_f32_weight | 41 | |
+| bf16_to_f32 (cast) | 40 | per linear layer, casts linear_qkv bf16->f32 for the f32 conv |
+| gguf_add_rmsnorm_bf16_f32_weight | 40 | |
+| qwen35_router_select | 40 | |
+| _launch_selected_raw_gguf_moe_pair | 40 | MoE gate+up |
+| _launch_selected_raw_gguf_moe_linear | 40 | MoE down |
+| launch_gguf_linear_pair_concat | 40 | |
+| weighted_sum_shared_gate_combine_residual | 40 | |
+| qwen35_linear_attn_conv_prefill_f32 | 30 | |
+| full-attn (triple/split/rope/kv_write/attn) | 10 each | |
+
+### Route A — fusion (REJECTED for now: low ROI)
+- Every meaningful fusion needs a NEW custom kernel: mismatched widths (qkv 5120 vs gate 4096, q/k/v, router 256 vs 1) block the existing equal-width dual kernels; no bf16 conv-prefill exists (only f32/fp16) so the 40 casts can't be dropped without a new kernel. Each fusion saves ~5-8% of launches. A full pass ~= 962 -> ~700 (~25%), host ~54 -> ~40 ms, for substantial multi-kernel effort.
+- Candidate fusions if revisited: mismatched-width dual/triple rowtile (pairs/triples, ~50), dual-router main+shared (~40), bf16 conv-prefill to drop the cast (~40), silu+down, router_logits+select.
+
+### Route B — C-dispatch (CHOSEN): collapse all launches to ~1
+- A C/C++ host orchestrator that issues the verifier forward's kernels directly (calling the extern "C" launch entry points of the kernel .so's) at ~ns/launch instead of ~61 us Python/ctypes. Subsumes the host-side fusion benefit (~54 ms host floor -> near-zero). Biggest single host win, ~10x the fusion payoff. Does not need #8.
+
+### Route C — reusable verifier HIP graph (blocked): 1 launch/cycle
+- Capture a token/position-parameterized 4-row continuation graph (decode-graph pattern) once, replay per cycle. Biggest collapse but replay across cycles is >=3 launches -> hits the #8 GDN relaunch corruption. Gated by #8.
+
+### Next
+- Start C-dispatch. First measure the ~61 us/launch composition (Python registry-resolve + ctypes marshaling vs actual hipLaunchKernel) to decide between a full C++ orchestrator and a lighter precomputed-dispatch path that may capture most of the win.
