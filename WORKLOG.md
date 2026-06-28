@@ -126603,3 +126603,20 @@ graph is very unlikely to pay off; NOT building it.
   (#7 q4_k dp4a on the selected GEMVs is the right shape -- it cuts bytes read, unlike dense Q8_0),
   and #10 GPU-side GEMV efficiency. The bottleneck is per-GEMV memory traffic, not launch count.
 Artifact: benchmarks/results/2026-06-28-moe-graph-rows1-ab.json
+
+## 2026-06-28 — MoE graph rows==1: multi-trial refines "flat" -> consistent ~0.84% regression (default stays off)
+
+Follow-up to the MoE-graph A/B: ran a tighter multi-trial A/B (scratchpad/ab_moe_graph_nonreg.py,
+3 trials x 32 steps, reset() between, drop first 2 steps/trial). Tight enough to resolve the signal:
+  eager steady median 18.12 ms (p10-p90 18.07-18.20); graph steady median 18.27 ms (p10-p90 18.21-18.38).
+The bands are NON-OVERLAPPING -> the -0.84% is a real, consistent wall regression, NOT noise (my first
+single-run A/B called it "flat/noise"; correcting the record). Graph stats 40 cap / 3800 replay / 0 reject
+(still bit-exact). Mechanism: decode is bandwidth/compute bound and the host is already ahead of the GPU,
+so cutting launches reclaims no wall, and one hipGraphLaunch/layer overlaps marginally worse with the
+surrounding eager attention than the fully-eager stream did.
+
+Disposition: launch-count cut is real (~64%) but it costs ~0.8% wall here, so it FAILS the non-regressive
+gate -> NOT promoted to default; HIPENGINE_GGUF_MOE_GRAPH stays default-off (validated A/B lever). Artifact
++ REFACTOR ledger updated to the regression characterization. (On this APU the GPU-bound wall being slightly
+worse with less CPU also argues there's no power-headroom benefit to harvest.) NEXT: #7 dp4a selected-GEMV
+promotion (cuts bytes read, the actual bandwidth lever).

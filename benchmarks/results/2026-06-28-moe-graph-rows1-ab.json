@@ -21,14 +21,15 @@
     "note": "40 captures = one per layer; 920 replays across 24 tokens; zero parity rejects (bit-exact)"
   },
   "perf": {
-    "eager_steady_ms_per_step": 18.09,
-    "graph_steady_ms_per_step": 18.28,
-    "delta_pct": -1.1,
-    "eager_tok_s": 55.3,
+    "eager_steady_ms_per_step": 18.12,
+    "graph_steady_ms_per_step": 18.27,
+    "delta_pct": -0.84,
+    "eager_tok_s": 55.2,
     "graph_tok_s": 54.7,
-    "graph_first_step_ms": 43.5,
+    "graph_first_step_ms": 42.0,
+    "multitrial": "3 trials x 32 steps, reset() between; eager p10-p90 18.07-18.20, graph p10-p90 18.21-18.38 (non-overlapping)",
     "launch_count_ffn_per_token": {"eager": "~440", "graph": 40},
-    "verdict": "flat within noise"
+    "verdict": "consistent ~0.84% wall regression (not noise: distributions non-overlapping); fails the non-regressive gate for default-on"
   },
   "conclusion": "Launch-count is NOT the rows==1 decode wall lever. A ~64% FFN launch-count reduction (bit-exact) moved the wall by nothing -> host dispatch is fully hidden behind GPU work; the per-token decode wall is bandwidth/compute bound on the GEMVs. Refutes the prior 'launch-count reduction (fusion/graph)' thesis on the clean path; the harder rows=4 verifier graph is not pursued.",
   "next_lever": "Per-GEMV memory-traffic reduction on the MoE selected-expert GEMVs (#7 Q4_K dp4a cuts bytes read; #10 GPU-side GEMV efficiency), not launch-count.",
