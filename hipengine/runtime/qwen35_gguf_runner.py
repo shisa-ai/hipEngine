@@ -13,6 +13,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_compact_varlen,
     aotriton_attn_fwd_v3_compact_varlen,
@@ -2849,6 +2850,7 @@ _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
+_GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
 
@@ -2919,6 +2921,13 @@ def _gguf_row_compact_gemv_enabled() -> bool:
 
 def _gguf_verify_row_lm_head_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_ROW_LM_HEAD_ENV, False)
+
+
+def _gguf_moe_graph_enabled() -> bool:
+    # Default off: per-layer MoE FFN graph capture/replay for the rows==1 resident
+    # decode path. Experimental launch-count-reduction probe (task #15); promote to
+    # default only after the B3 acceptance + AR-tok/s gate (docs/REFACTOR.md).
+    return _env_flag(_GGUF_MOE_GRAPH_ENV, False)
 
 
 def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
@@ -3206,6 +3215,9 @@ class Qwen35GGUFResidentSession:
             self._prefill_hidden_b,
             *self._bulk_prefill_scratch.buffers,
         )
+        # Lazily-created per-layer MoE FFN graph cache (rows==1 resident decode),
+        # gated by HIPENGINE_GGUF_MOE_GRAPH. None until first graphed decode.
+        self._moe_graph: MoeGraphCache | None = None
         self.reset()
 
     @property
@@ -4147,8 +4159,20 @@ class Qwen35GGUFResidentSession:
         self.scratch.context_host[0] = int(position) + 1
         src = self._hidden_a
         dst = self._hidden_b
+        moe_graph = self._moe_graph_for_decode()
         for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-            if layer_type == LINEAR_ATTENTION:
+            if moe_graph is not None:
+                self._run_decode_layer_graphed(
+                    layer_id,
+                    layer_type,
+                    src.ptr,
+                    dst.ptr,
+                    moe_graph,
+                    position=position,
+                    stream=stream,
+                    attention_max_context_len=attention_max_context_len,
+                )
+            elif layer_type == LINEAR_ATTENTION:
                 self.runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, stream=stream)
             elif layer_type == FULL_ATTENTION:
                 self.runner._run_full_attention_layer(
@@ -4168,6 +4192,76 @@ class Qwen35GGUFResidentSession:
             self.scratch.norm.ptr,
             stream=stream,
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+        )
+
+    def _moe_graph_for_decode(self) -> MoeGraphCache | None:
+        """Return the rows==1 MoE FFN graph cache, lazily created when enabled.
+
+        Returns None (eager decode) unless HIPENGINE_GGUF_MOE_GRAPH is set.  The
+        cache is bound to this session's resident buffers and torn down in
+        :meth:`close` while those buffers are still alive.
+        """
+        if not _gguf_moe_graph_enabled():
+            return None
+        if self._moe_graph is None:
+            self._moe_graph = MoeGraphCache(
+                self.runtime or get_hip_runtime(), enabled=True
+            )
+        return self._moe_graph
+
+    def _run_decode_layer_graphed(
+        self,
+        layer_id: int,
+        layer_type: str,
+        src_ptr: int,
+        dst_ptr: int,
+        moe_graph: MoeGraphCache,
+        *,
+        position: int,
+        stream: int = 0,
+        attention_max_context_len: int | None = None,
+    ) -> None:
+        """Run one decode layer with the stateful attention eager and the
+        stateless MoE FFN routed through the capture/replay cache.
+
+        The attention (GDN conv/recurrent or full-attn paged-KV write) is
+        position-dependent and stateful, so it MUST stay eager; only the FFN
+        (rmsnorm -> router -> selected experts -> shared expert -> combine) is
+        graph-captured.  ``key`` is ``(layer_id, src_ptr, dst_ptr)``: stable per
+        layer across tokens because the decode loop ping-pongs ``hidden_a``/
+        ``hidden_b`` with fixed parity and scratch is session-resident.
+        """
+        runner = self.runner
+        scratch = self.scratch
+        attn_out_ptr = scratch.attn_out.ptr
+        if layer_type == LINEAR_ATTENTION:
+            runner._run_linear_attention_attn_only(
+                layer_id, src_ptr, attn_out_ptr, scratch, stream=stream
+            )
+        elif layer_type == FULL_ATTENTION:
+            runner._run_full_attention_attn_only(
+                layer_id,
+                src_ptr,
+                attn_out_ptr,
+                scratch,
+                position=position,
+                stream=stream,
+                attention_max_context_len=attention_max_context_len,
+            )
+        else:
+            raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+
+        def _ffn(capture_stream: int) -> None:
+            runner._run_post_attention_ffn(
+                layer_id, src_ptr, attn_out_ptr, dst_ptr, scratch, stream=capture_stream
+            )
+
+        moe_graph.run(
+            (layer_id, int(src_ptr), int(dst_ptr)),
+            eager=_ffn,
+            out_ptr=int(dst_ptr),
+            out_nbytes=runner.hidden_size * DType.BF16.itemsize,
+            stream=stream,
         )
 
     def _run_output_norm_hidden(
@@ -4428,6 +4522,9 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        if self._moe_graph is not None:
+            self._moe_graph.close()
+            self._moe_graph = None
         for buffer in (
             self._verify_lm_out_values,
             self._verify_lm_out_indices_i32,

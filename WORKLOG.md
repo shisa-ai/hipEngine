@@ -126564,3 +126564,42 @@ shifts the balance back to GPU compute; do NOT pursue the dual/triple-split + ra
 materialization + dispatch integration (1.2x, poor ROI, likely flat). dp4a stays the right lever for
 the 4-bit MoE selected GEMVs (#7). NEXT: kernel fusion to cut launch count.
 Artifact: benchmarks/results/2026-06-28-dense-q8_0-dp4a-vs-t16-microbench.json
+
+## 2026-06-28 — Per-layer MoE graph replay: bit-exact but FLAT -> launch-count is NOT the decode lever (#15)
+
+Built MoeGraphCache (hipengine/runtime/moe_graph.py): capture-on-first-use of the stateless
+rows==1 MoE FFN, self-validating bit-exact parity vs an eager reference, replay thereafter,
+eager fallback on any capture/mismatch. Wired into the resident decode loop
+(_run_current_hidden_to_final_hidden) gated by HIPENGINE_GGUF_MOE_GRAPH (default off): the
+stateful GDN/full-attn attention stays EAGER (position-dependent, KV/recurrent state), only the
+stateless FFN (rmsnorm->router->selected experts->shared expert->combine) is graph-captured.
+Key (layer_id, src_ptr, dst_ptr) is stable per layer across tokens (hidden_a/hidden_b ping-pong
+parity + session-resident scratch). Foundation unit gate tests/test_moe_graph_cache.py GREEN.
+
+### Decisive A/B on the real model (35B-A3B Q4_K_M, production decode-repack config)
+scratchpad/validate_moe_graph.py, prompt-12 + 24 serial steps, eager vs graph:
+- PARITY: token IDs identical, final-step KL=0.000000, top1 agree. Graph stats:
+  capture=40 (one per layer), replay=920, reject=0, eager=0 -> all 40 layers captured + replayed
+  bit-exactly across 24 tokens (960 FFN runs = 40 first-use captures + 920 replays). Mechanic proven.
+- PERF: eager steady 18.09 ms/step (55.3 tok/s) vs graph steady 18.28 ms/step (54.7 tok/s) = -1.1%
+  (within run noise). Capture amortizes (first graphed step 43.5 ms, one-time).
+
+### Conclusion: launch-count is NOT the decode wall lever (refutes the prior fusion/graph thesis)
+Cutting the FFN from ~440 launches/token to 40 graph launches/token (~64% FFN launch reduction,
+total ~840->~440/token) moved the wall by NOTHING. The host-side dispatch overhead is fully hidden
+behind GPU work on the rows==1 decode path -- the GPU is the bottleneck, the host stays ahead of the
+async queue. This converges with the three prior micro-proven-but-flat results (dp4a MoE, #9 dispatch
+cache, dense Q8_0 dp4a): the per-token decode wall is BANDWIDTH/COMPUTE bound on the GEMVs, not
+launch/dispatch bound. The prior WORKLOG "real lever is LAUNCH-COUNT REDUCTION (fusion/graph replay)"
+hypothesis is REFUTED on the clean rows==1 path -- and graph replay was the cleanest possible test of
+it (bit-exact, zero risk, decisive). This also means the harder position-dependent rows=4 verifier
+graph is very unlikely to pay off; NOT building it.
+
+### Disposition
+- Graph code kept committed, default OFF, as the proven A/B lever + correctness-gated foundation.
+  Concrete blocker for promotion: flat wall (launch-count is not the bottleneck). REFACTOR removal
+  trigger recorded. Re-A/B only if a future GEMV bandwidth cut shifts the bottleneck back to dispatch.
+- NEXT LEVER (re-pointed): make each MoE selected-expert GEMV move fewer bytes / higher BW efficiency
+  (#7 q4_k dp4a on the selected GEMVs is the right shape -- it cuts bytes read, unlike dense Q8_0),
+  and #10 GPU-side GEMV efficiency. The bottleneck is per-GEMV memory traffic, not launch count.
+Artifact: benchmarks/results/2026-06-28-moe-graph-rows1-ab.json
