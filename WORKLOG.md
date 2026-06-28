@@ -126645,3 +126645,20 @@ compute or launch count. Kernel-compute/launch micro-optimization is exhausted a
    rollback -> fewer weight-read passes per output token (orthogonal to the BW wall, control-flow bound).
 DEAD as levers (measured flat): #7 dp4a, #14 fusion, MOE_GRAPH. Artifact:
 benchmarks/results/2026-06-28-ar-flag-sweep-bandwidth-bound.json
+
+## 2026-06-28 — Parity doc updated; AR denominator corrected (MTP may not be winning)
+
+Updated docs/MTP-LLAMACPP-PARITY.md "Production verifier status": the "AR denominator blocked by
+graph replay token divergence" framing is STALE — the divergent --graph-replay-decode path was
+retired (#8). Current no-MTP AR = eager resident step() + DECODE_REPACK=1 + gemv-decode, ~55.1 tok/s
+(no graph), measured this session. Folded in today's bandwidth-bound finding (AR flag sweep all-flat,
+~35% of peak BW, 1.9x = bandwidth efficiency).
+
+CONSEQUENCE (the #5 crux): the honest fast eager AR denominator is ~55 tok/s, NOT the 19.67 slow
+"exact eager" control. Against ~55, the resident-serial MTP route (~47.6 tok/s full-suite) is ~0.86x
+AR -- i.e. MTP is currently NOT winning -- vs the 2.42x implied by the stale 19.67 denominator. This
+must be settled on the SAME protocol (gguf_true_ar_category_bench with repack+gemv vs the MTP category
+bench) before any retained MTP speedup claim. Side-finding: raw (repack=0) eager decode is BROKEN by
+the committed ssm_out f32-activation fusion (a12d8c4c) -- no (raw_gguf,f32,bf16) kernel -- so the exact
+reference must run through the T16-repack path. NEXT (#5): run the same-protocol true-AR category
+baseline + MTP suite, recompute the honest ratio, then proceed to #10 (bandwidth efficiency).

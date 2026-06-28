@@ -8,6 +8,53 @@
 
 ## Production verifier status (2026-06-28)
 
+### Update 2026-06-28 (later) — graph replay retired; AR denominator corrected; bandwidth-bound
+
+The "AR denominator blocked by graph replay token divergence" framing **below is
+superseded**. The GGUF decode-graph machinery (the divergent `--graph-replay-decode`
+path) was **retired** (task #8). The current no-MTP AR path is the **eager** resident
+`step()` loop with `HIPENGINE_GGUF_DECODE_REPACK=1` + `--use-gemv-decode`, with no graph
+on the hot path. Measured this session (35B-A3B Q4_K_M, gfx1151, prompt-12 + 32 steps,
+short-context diagnostic):
+
+| Path | tok/s | Notes |
+| --- | ---: | --- |
+| **Eager AR (repack + gemv-decode), current production** | **~55.1** | no graph; the ~55.5 "divergent graph AR" row below was the now-retired graph path |
+| MoE-FFN graph replay (`HIPENGINE_GGUF_MOE_GRAPH`, default off) | ~54.7 | bit-exact (KL=0, 40 cap / 3800 replay / 0 reject) but **−0.84% wall** — launch-count is not the bottleneck |
+
+**Today's decisive finding: the decode/verify wall is weight-bandwidth bound, and every
+kernel-compute/launch lever is flat.** A one-model-load AR flag sweep toggling every gated
+path — `RAW`/`Q4K`/`T16` selected dp4a, `FUSED_MOE_FFN`, `COMPACT_MOE_C1`, `MOE_GRAPH`,
+all-dp4a — moved AR tok/s within **−0.9%..+0.0% with bit-identical tokens** (baseline 55.15).
+Bandwidth arithmetic: ~1.6–1.7 GB active Q4_K weights/token at 18.1 ms/token ≈ **~90 GB/s
+achieved on ~256 GB/s peak LPDDR5X ≈ ~35% of peak**; llama.cpp's 1.9× implies ~68% of peak.
+**The 1.9× gap is a memory-bandwidth-efficiency gap, not compute or launch count.** dp4a
+(compute), fusion (launches), and graph (launches) are therefore exhausted as levers and
+not promotable (matches the prior full-B3 dp4a −0.4% e2e; the "1.31x verifier" was an
+env-toggle dispatch-thrash artifact). Artifacts:
+`benchmarks/results/2026-06-28-ar-flag-sweep-bandwidth-bound.json`,
+`benchmarks/results/2026-06-28-moe-graph-rows1-ab.json`.
+
+**Open denominator question (task #5, in progress):** the honest fast eager AR is ~55 tok/s,
+NOT the 19.67 "exact eager" slow control quoted below. The MTP ratio must be recomputed on the
+**same protocol** with this eager-repack denominator: if AR is ~55 and resident-serial MTP is
+~47.6, MTP is currently **~0.86× AR (not winning)** rather than the 2.42× implied by the 19.67
+denominator. Settling this same-protocol (true-AR category bench with repack + gemv-decode vs the
+MTP category bench) is the #5 deliverable. Caveat: the raw (`repack=0`) eager path is currently
+**broken** by the committed `ssm_out` f32-activation fusion (`a12d8c4c`) — no `(raw_gguf, f32,
+bf16)` dispatch — so the exact reference must come via the T16-repack path, and a clean eager
+token-trace re-validation vs the established llama.cpp reference is part of #5.
+
+**Re-pointed next work:** (1) #10 raise the selected-expert GEMV's *achieved* bandwidth toward
+peak (coalesced/vectorized Q4_K block loads, occupancy, llama.cpp `mul_mat_vec_q` RDNA3 layout)
+— the actual 1.9×; (2) #4/#3 speculative amortization (cut the ~303 ms partial-accept rollback,
+keep the draft chain on-device) — fewer weight-read passes per output token. Kernel-compute and
+launch-count micro-optimization is closed as a line of work.
+
+---
+
+_Historical (superseded above):_
+
 **Full-suite broad verifier path exists, but the production AR denominator is
 currently blocked by graph replay token divergence.**
 
