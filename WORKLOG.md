@@ -126375,3 +126375,20 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 
 ### Remaining gap
 - Verifier ~48 ms is now GPU-bound (host ~12%). Further wins: optionally cache the dispatch-resolve (~15 us/launch, the last host chunk, ~3 ms) but GPU dominates; the bigger remaining lever is GPU-side verifier efficiency (MoE/dense/GDN/lm-head). Still ~65 vs llama.cpp ~90.
+
+
+## 2026-06-28 — #8 largely MOOT: lib cache obsoletes HIP graph replay (eager == graph)
+
+### Question: do MTP/prefill/decode need multi-launch graph replay, or is single-launch/fusion enough?
+### Answer: post-lib-cache, NONE of them need graph replay at all.
+- Eager AR vs single-launch graph AR (valid_denom.py, POST lib cache): eager **35.95 tok/s** vs graph **35.16 tok/s** — eager is now equal/faster. Before the cache: eager 16 vs graph 35 (graph 2.2x). The graph's only value was amortizing the 61 us/launch Python tax; the lib cache cut that to ~12 us, erasing the advantage.
+
+### Graph-replay call-site classification
+- Production greedy decode (generation/qwen35_gguf.py): single-launch (fixed). Provides ~no benefit over eager now; could switch to eager step() loop to drop the #8 risk surface entirely.
+- Production MTP verifier: uses verify_target_block (eager), NOT a graph. The one-step/target graph in gguf_mtp_bench.py (replay per cycle = multi-relaunch -> would hit #8) is a DIAGNOSTIC only; the retained path is serial-fallback (eager) and is as fast.
+- Prefill: bulk one-shot, never graph-replayed. No relaunch.
+- AR/readme benchmarks with steps_per_replay=1: multi-relaunch, benchmark-only; true-AR bench already forced single-launch.
+
+### Conclusion / recommendation
+- No retained production path needs multi-relaunch graph replay. The single-launch fix is correct everywhere it is used. Eager is as fast as graph post-lib-cache, so the graph machinery is now dead weight.
+- DEPRIORITIZE #8 (do not deep-fix the relaunch hazard): switch production decode to eager (simpler, same speed, removes the #8 correctness risk) and mark the decode-graph machinery for removal in docs/REFACTOR.md. ONLY revisit graphs/#8 if future GPU-side verifier optimization (dp4a + fusion + resolve cache) shrinks GPU enough that the ~10 ms host floor becomes the bottleneck again - and even then, the resolve cache (pure Python) is the next lever before graphs.
