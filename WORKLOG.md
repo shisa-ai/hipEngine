@@ -126503,3 +126503,37 @@ flat walls.
 Exact + non-regressive + a measured -65% per-launch host reduction -> retained as the default
 (unconditional, no flag). Microseconds compound and it shrinks the host floor for whatever the
 profile reveals.
+
+
+## 2026-06-28 — Full B3 verify GPU critical path: dense Q8_0 attention GEMVs (47%), not MoE
+
+Profiled the REAL resident-draft B3 path (scripts/gguf_mtp_bench.py, prefill+4 cycles) under
+rocprofv3 --kernel-trace after a non-profiled warmup (NOT the isolated economics harness, which has
+been disagreeing with the full bench). rocprof inflates absolute wall (~1135 ms/cyc under profiler
+vs ~74 unprofiled) so only the relative family breakdown is used.
+
+GPU-busy family breakdown (% of 395 ms GPU across prefill+4cyc):
+  dense GEMV          47.2%   <-- Q8_0 attention q/k/v/o/gate projections (+ Q6_K lm-head)
+  MoE-selected GEMV   27.4%   <-- what dp4a targeted
+  GDN (lin-attn)      11.1%   (qwen35_gdn_prefill_recurrent = 1.1 ms/dispatch)
+  memcpy 4.8%, router 3.3%, rmsnorm 2.2%, lm-head 1.9%, full-attn 0.8%
+Top kernels: q8_0_t16_dual_split 59ms, q4_k_t16_selected_dual_silu_down 34ms,
+  qwen35_gdn_prefill_recurrent 33ms, q8_0_t16_gemv 32ms, gguf_q4_k_t16_selected_dual_wmma 29ms,
+  q6_k_t16_gemv(lm-head) 28ms, qk_t16_selected_direct 22ms, copyBuffer 18ms, q8_0_t16_triple_split 16ms.
+
+### Why both prior wins were flat
+- dp4a optimized MoE-selected (27% of GPU); at the rows=4 B3 shape its real cut is small -> flat.
+- #9 cached the dense-projection DISPATCH (host), not the dense GEMV GPU time -> flat.
+- The dominant GPU cost -- DENSE Q8_0 attention projections (~35% alone, the q8_0_t16_* family) --
+  is UNADDRESSED by both. Q6_K lm-head (~7%, 1.87 ms/dispatch) is the next chunk.
+
+### Recommended next lever
+Build q8_1 + dp4a (v_dot4) for the DENSE Q8_0 attention GEMVs (q8_0_t16_dual_split / gemv /
+triple_split). Q8_0 weights are already int8, so dp4a is the natural fit (ROOFLINE.md 6.3 W4 lever).
+This attacks the 47% GPU bottleneck -- a bigger lever than the 27% MoE dp4a that was chased. Existing
+dp4a is selected-MoE only; no dense Q8_0 t16 dp4a path exists yet. Measure end-to-end: a real ~35%
+GPU cut is large enough that a flat wall would finally prove sync-bound rather than GPU-bound.
+Caveat: GPU-busy-vs-wall (sync-stall) split still not cleanly measured on the real path; rocprof can't
+give it (instrumentation overhead). Confirm via the big-lever-as-test approach above.
+
+Artifact: benchmarks/results/2026-06-28-gguf-b3-verify-gpu-critical-path.json
