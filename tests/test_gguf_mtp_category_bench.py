@@ -3708,7 +3708,7 @@ def test_true_ar_category_cli_dry_run_emits_attachable_schema(tmp_path: Path) ->
     assert artifact["true_autoregressive_path"] is True
     assert artifact["same_timing_protocol"] is True
     assert artifact["same_prompt_suite"] is True
-    assert artifact["timing_protocol"]["decode_path"] == "graph_replay"
+    assert artifact["timing_protocol"]["decode_path"] == "eager_step"
     assert artifact["timing_protocol"]["decode_repack"] is True
     assert artifact["timing_protocol"]["use_gemv_decode"] is True
     assert artifact["prompt_ids"] == ["code_1", "general_1"]
