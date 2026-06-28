@@ -126620,3 +126620,28 @@ gate -> NOT promoted to default; HIPENGINE_GGUF_MOE_GRAPH stays default-off (val
 + REFACTOR ledger updated to the regression characterization. (On this APU the GPU-bound wall being slightly
 worse with less CPU also argues there's no power-headroom benefit to harvest.) NEXT: #7 dp4a selected-GEMV
 promotion (cuts bytes read, the actual bandwidth lever).
+
+## 2026-06-28 — AR flag sweep: EVERY kernel lever flat -> bandwidth-efficiency is the gap (#7 dead)
+
+Ran a one-model-load AR (rows==1 decode) sweep toggling every gated kernel path (decode-time env
+flags read live): RAW/Q4K/T16 selected dp4a, FUSED_MOE_FFN, COMPACT_MOE_C1, MOE_GRAPH, and all-dp4a.
+Baseline 55.15 tok/s; ALL configs within -0.9%..+0.0% with bit-identical tokens (0 divergence/31):
+  RAW_dp4a 55.10, Q4K_dual 55.12, T16_dp4a 54.99, FUSED 55.14, COMPACT 55.17, GRAPH 54.64, all-dp4a 54.87.
+
+This empirically unifies every 2026-06-28 finding: dp4a (compute), fusion (launches), graph (launches),
+compact -- ALL flat-to-negative because none read the weights faster. Confirms #7 is not promotable
+(matches the prior full-B3 dp4a -0.4% e2e; the "1.31x" was an env-toggle dispatch-thrash artifact).
+
+### Bandwidth arithmetic (the real gap)
+Decode 18.13 ms/tok. Active weights ~1.6-1.7 GB/tok (A3B ~3B active @ Q4_K ~0.55 B/param) ->
+~90-95 GB/s achieved on gfx1151 (Radeon 8060S, ~256 GB/s peak LPDDR5X) = ~35% of peak. llama.cpp's
+1.9x faster implies ~174 GB/s ~= 68% of peak. THE 1.9x GAP IS A MEMORY-BANDWIDTH-EFFICIENCY GAP, not
+compute or launch count. Kernel-compute/launch micro-optimization is exhausted as a lever (7 flags, all flat).
+
+### Re-pointed levers
+1. #10 raise the selected-expert GEMV's ACHIEVED bandwidth toward peak (coalesced Q4_K block loads,
+   occupancy, vector-width, llama.cpp mul_mat_vec_q layout). Targets the actual 1.9x. HARD but real.
+2. #3/#4 speculative AMORTIZATION: accept more tokens per weight-read pass + cut the 303ms partial-accept
+   rollback -> fewer weight-read passes per output token (orthogonal to the BW wall, control-flow bound).
+DEAD as levers (measured flat): #7 dp4a, #14 fusion, MOE_GRAPH. Artifact:
+benchmarks/results/2026-06-28-ar-flag-sweep-bandwidth-bound.json
