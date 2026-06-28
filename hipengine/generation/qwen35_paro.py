@@ -1852,21 +1852,46 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _is_eos(tokenizer: Any | None, token_id: int) -> bool:
-    eos_id = _tokenizer_eos_id(tokenizer)
-    return eos_id is not None and int(token_id) == int(eos_id)
+    return int(token_id) in _tokenizer_eos_ids(tokenizer)
 
 
 def _tokenizer_eos_id(tokenizer: Any | None) -> int | None:
+    """Primary EOS token id; first element of :func:`_tokenizer_eos_ids`."""
+    ids = _tokenizer_eos_ids(tokenizer)
+    return ids[0] if ids else None
+
+
+# Chat-model end-of-turn tokens, in priority order. ``<|im_end|>`` is the
+# ChatML/Qwen turn terminator the model actually emits (and the ``eos_token``
+# declared by these tokenizers); ``main`` only looked up ``<|endoftext|>``, so
+# chat turns never hit EOS and ran to ``max_tokens``. ``</s>`` covers the
+# Llama-2 / Mistral family. ``<|im_start|>`` is a turn *start* marker, not an
+# end token, so it is deliberately excluded.
+_EOS_TOKEN_CANDIDATES: tuple[str, ...] = (
+    "<|im_end|>",
+    "<|endoftext|>",
+    "</s>",
+)
+
+
+def _tokenizer_eos_ids(tokenizer: Any | None) -> tuple[int, ...]:
+    """All EOS token ids for ``tokenizer``: explicit attr, then candidates."""
     if tokenizer is None:
-        return None
-    try:
-        token_to_id = getattr(tokenizer, "token_to_id")
-        eos_id = token_to_id("<|endoftext|>")
-    except Exception:
-        eos_id = None
-    if eos_id is None:
-        eos_id = getattr(tokenizer, "eos_token_id", None)
-    return None if eos_id is None else int(eos_id)
+        return ()
+    found: list[int] = []
+    attr_id = getattr(tokenizer, "eos_token_id", None)
+    if attr_id is not None:
+        found.append(int(attr_id))
+    token_to_id = getattr(tokenizer, "token_to_id", None)
+    if callable(token_to_id):
+        for candidate in _EOS_TOKEN_CANDIDATES:
+            try:
+                value = token_to_id(candidate)
+            except Exception:
+                value = None
+            if value is not None and int(value) not in found:
+                found.append(int(value))
+    return tuple(found)
 
 
 def _request_with_tokenizer_eos(
