@@ -87,13 +87,9 @@ def build_true_ar_artifact(
         "decode_tokens": int(args.decode_tokens),
         "warmup_decode_tokens": int(args.warmup_decode_tokens),
         "timing_protocol": {
-            "decode_path": "graph_replay" if bool(getattr(args, "graph_replay_decode", False)) else "eager_step",
-            "graph_replay_decode": bool(getattr(args, "graph_replay_decode", False)),
-            "graph_steps_per_replay": (
-                int(getattr(args, "graph_steps_per_replay", 0) or 0)
-                if bool(getattr(args, "graph_replay_decode", False))
-                else 0
-            ),
+            "decode_path": "eager_step",
+            "graph_replay_decode": False,
+            "graph_steps_per_replay": 0,
             "decode_repack": bool(getattr(args, "decode_repack", False)),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
             "use_gemv_decode": bool(getattr(args, "use_gemv_decode", False)),
@@ -153,43 +149,12 @@ def run_prompt_true_ar(
     warmup_ms = 1000.0 * (time.perf_counter() - warmup_start)
 
     final = None
-    graph_capture_ms = 0.0
-    if graph_replay_decode:
-        graph = None
-        capture_start = time.perf_counter()
-        try:
-            # The HIP decode graph corrupts the in-place GDN linear state on the
-            # 3rd+ graph_launch, so any steps_per_replay that yields >=3 launches
-            # (e.g. the legacy default of 1) produces a token stream that diverges
-            # from exact eager. Capture the whole window as a SINGLE launch
-            # (steps_per_replay == decode_tokens), which is bit-exact. See WORKLOG
-            # 2026-06-28. The --graph-steps-per-replay arg is retained only for
-            # provenance metadata. Remove this override once the relaunch hazard
-            # is fixed.
-            graph = session.capture_decode_graph(
-                position=session.position,
-                steps_per_replay=int(decode_tokens),
-                max_replay_steps=int(decode_tokens),
-                record_steps=int(decode_tokens),
-            )
-            graph_capture_ms = 1000.0 * (time.perf_counter() - capture_start)
-            decode_start = time.perf_counter()
-            graph.replay(int(decode_tokens))
-            decode_ms = 1000.0 * (time.perf_counter() - decode_start)
-            generated.extend(int(token) for token in graph.read_generated_token_ids(int(decode_tokens)))
-            final = graph.read_sample()
-            if final is not None:
-                next_token = int(final.token_id)
-        finally:
-            if graph is not None:
-                graph.close()
-    else:
-        decode_start = time.perf_counter()
-        for step_index in range(int(decode_tokens)):
-            final = session.step(next_token, return_logits=(step_index == int(decode_tokens) - 1))
-            next_token = int(final.token_id)
-            generated.append(next_token)
-        decode_ms = 1000.0 * (time.perf_counter() - decode_start)
+    decode_start = time.perf_counter()
+    for step_index in range(int(decode_tokens)):
+        final = session.step(next_token, return_logits=(step_index == int(decode_tokens) - 1))
+        next_token = int(final.token_id)
+        generated.append(next_token)
+    decode_ms = 1000.0 * (time.perf_counter() - decode_start)
     finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
 
     return {
@@ -204,9 +169,9 @@ def run_prompt_true_ar(
         "prefill_ms": prefill_ms,
         "warmup_decode_ms": warmup_ms,
         "warmup_decode_tokens": int(warmup_decode_tokens),
-        "graph_replay_decode": bool(graph_replay_decode),
-        "graph_steps_per_replay": int(graph_steps_per_replay if graph_replay_decode else 0),
-        "graph_capture_ms_excluded": graph_capture_ms,
+        "graph_replay_decode": False,
+        "graph_steps_per_replay": 0,
+        "graph_capture_ms_excluded": 0.0,
         "finite_final_logits": finite_logits,
         "final_token_id": None if final is None else int(final.token_id),
         "generated_preview_token_ids": generated[:16],
@@ -226,7 +191,9 @@ def main() -> int:
     parser.add_argument("--force-bulk-prefill", action="store_true")
     parser.add_argument("--no-bulk-prefill", action="store_true")
     parser.add_argument("--bulk-prefill-attention-mode", choices=("bulk", "native"), default="bulk")
-    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=True)
+    # Decode is always eager (the HIP decode graph was retired; see WORKLOG
+    # 2026-06-28 "#8 moot"). These flags are vestigial and ignored.
+    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
     parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True)
