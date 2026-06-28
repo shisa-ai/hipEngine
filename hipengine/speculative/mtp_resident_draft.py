@@ -27,6 +27,10 @@ from hipengine.kernels.hip_gfx1100.convert.cast import (
     build_cast,
     f32_to_bf16,
 )
+from hipengine.kernels.hip_gfx1100.convert.gather import (
+    build_gather,
+    gather_f32_rows_by_i32id,
+)
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
@@ -189,7 +193,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._lm_head_lib = build_lm_head(load=True)
         self._silu_lib = build_paro_silu(load=True)
         self._combine_lib = build_paro_combine(load=True)
+        self._gather_lib = build_gather(load=True)
         self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
+        self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
+        # Max draft depth the precomputed-rope / topk-accumulator buffers cover.
+        self._draft_chain_cap = 16
+        self._embed_table_f32: DeviceBuffer | None = None
         self._upload_weights()
         self._allocate_buffers()
 
@@ -315,6 +324,14 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.logits = self._malloc(self.vocab * 4)
         self.topk_values = self._malloc(64 * 4)
         self.topk_indices = self._malloc(64 * 4)
+        # Device-chain (sub-win B) scratch: per-depth rope/pos/ctx precomputed
+        # once, top-k accumulated on device, single D->H at chain end.
+        cap = self._draft_chain_cap
+        self.cos_all = self._malloc(cap * d * 4)
+        self.sin_all = self._malloc(cap * d * 4)
+        self.pos_all = self._malloc(cap * 8)
+        self.ctx_all = self._malloc(cap * 8)
+        self.topk_all = self._malloc(cap * top_k * 4)
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
@@ -351,6 +368,24 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if hidden.shape != (1, self.hidden_size):
             raise ValueError("hidden_seed must have shape [1, hidden_size]")
         copy_host_to_device(self.seed_a, host_array_ptr(hidden), hidden.nbytes, runtime=self.runtime)
+        if (
+            self._device_chain_enabled
+            and draft_p_min <= 0.0
+            and int(draft_n_max) <= self._draft_chain_cap
+        ):
+            return self._propose_chain_device(
+                current_seed=self.seed_a,
+                next_seed=self.seed_b,
+                start_token=int(start_token),
+                start_position=int(start_position),
+                draft_n_max=int(draft_n_max),
+                top_k=int(top_k),
+                rope_cos=rope_cos,
+                rope_sin=rope_sin,
+                dense_key_cache=dense_key_cache,
+                dense_value_cache=dense_value_cache,
+                dense_cache_len=int(dense_cache_len),
+            )
         current_seed = self.seed_a
         next_seed = self.seed_b
         current_token = int(start_token)
@@ -367,13 +402,17 @@ class Qwen35GGUFResidentMTPDraftRunner:
             ctx = np.asarray([current_cache_len + 1], dtype=np.int64)
             cos = np.ascontiguousarray(rope_cos[pos], dtype=np.float32)
             sin = np.ascontiguousarray(rope_sin[pos], dtype=np.float32)
+            copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=self.runtime)
+            copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=self.runtime)
+            copy_host_to_device(self.position_i64, host_array_ptr(pos), pos.nbytes, runtime=self.runtime)
+            copy_host_to_device(self.context_i64, host_array_ptr(ctx), ctx.nbytes, runtime=self.runtime)
             self._run_one(
                 current_seed,
                 next_seed,
-                pos,
-                ctx,
-                cos,
-                sin,
+                cos_ptr=self.cos.ptr,
+                sin_ptr=self.sin.ptr,
+                pos_ptr=self.position_i64.ptr,
+                ctx_ptr=self.context_i64.ptr,
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
@@ -391,6 +430,118 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 # The resident production path is greedy/top-k only.  Preserve
                 # the old path for probability-threshold diagnostics.
                 raise NotImplementedError("resident GGUF MTP draft does not support draft_p_min")
+        return tokens, topk_rows, current_cache_len
+
+    def _ensure_embed_table(self) -> None:
+        """Lazily upload the vocab-capped FP32 embedding rows for device gather.
+
+        Draft tokens are always top-k of the capped LM head (``< self.vocab``),
+        so the resident table covers every reachable depth-1+ token id.  The
+        rows are an exact copy of ``token_embd_f32`` -> the device-chain draft
+        embeddings are bit-identical to the host-gather path.
+        """
+        if self._embed_table_f32 is not None:
+            return
+        rows = int(self.vocab)
+        table = np.ascontiguousarray(self.token_embd_f32[:rows], dtype=np.float32)
+        buf = self._malloc(table.nbytes)
+        copy_host_to_device(buf, host_array_ptr(table), table.nbytes, runtime=self.runtime)
+        self._embed_table_f32 = buf
+
+    def _propose_chain_device(
+        self,
+        *,
+        current_seed: DeviceBuffer,
+        next_seed: DeviceBuffer,
+        start_token: int,
+        start_position: int,
+        draft_n_max: int,
+        top_k: int,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        dense_key_cache: DeviceBuffer | None,
+        dense_value_cache: DeviceBuffer | None,
+        dense_cache_len: int,
+    ) -> tuple[list[int], list[list[int]], int]:
+        """Device-chained NextN draft: one drain + one D->H for the whole chain.
+
+        Removes the per-depth ``device_synchronize`` + top-1 readback + host
+        embedding re-upload (each a blocking transfer).  Per-depth rope / pos /
+        ctx are precomputed and uploaded once; each depth's top-1 is gathered
+        device-side from the resident embedding table to feed the next depth.
+        """
+        runtime = self.runtime or get_hip_runtime()
+        n = int(draft_n_max)
+        d = self.qk_head_dim
+        self._ensure_embed_table()
+        if start_token < 0 or start_token >= int(self.token_embd_f32.shape[0]):
+            raise ValueError("draft token id outside embedding table")
+        # Depth-0 embedding: single host gather + upload (start_token may exceed
+        # the capped resident table; depths 1+ are device-gathered).
+        embed0 = np.ascontiguousarray(self.token_embd_f32[start_token:start_token + 1], dtype=np.float32)
+        copy_host_to_device(self.token_embed, host_array_ptr(embed0), embed0.nbytes, runtime=runtime)
+        # Precompute per-depth rope / position / context once; upload once.
+        # The rope kernel reads ``qk_head_dim/2`` cos/sin values per token but the
+        # table only supplies ``rope_w`` (rotary_dim) real columns; the legacy
+        # path leaves the remainder of its ``self.cos`` scratch zeroed, so each
+        # depth's slot is real[:rope_w] + zeros, strided by ``d`` -> bit-identical.
+        rope_w = int(np.asarray(rope_cos).shape[1])
+        if rope_w > d:
+            raise ValueError("rope table width exceeds qk_head_dim scratch stride")
+        positions = np.arange(n, dtype=np.int64) + int(start_position)
+        if dense_key_cache is not None:
+            ctxs = np.arange(n, dtype=np.int64) + int(dense_cache_len) + 1
+        else:
+            ctxs = np.full(n, int(dense_cache_len) + 1, dtype=np.int64)
+        cos_strided = np.zeros((n, d), dtype=np.float32)
+        sin_strided = np.zeros((n, d), dtype=np.float32)
+        cos_strided[:, :rope_w] = np.asarray(rope_cos[positions], dtype=np.float32)
+        sin_strided[:, :rope_w] = np.asarray(rope_sin[positions], dtype=np.float32)
+        copy_host_to_device(self.cos_all, host_array_ptr(np.ascontiguousarray(cos_strided)), cos_strided.nbytes, runtime=runtime)
+        copy_host_to_device(self.sin_all, host_array_ptr(np.ascontiguousarray(sin_strided)), sin_strided.nbytes, runtime=runtime)
+        copy_host_to_device(self.pos_all, host_array_ptr(np.ascontiguousarray(positions)), positions.nbytes, runtime=runtime)
+        copy_host_to_device(self.ctx_all, host_array_ptr(np.ascontiguousarray(ctxs)), ctxs.nbytes, runtime=runtime)
+        current_cache_len = int(dense_cache_len)
+        for depth in range(n):
+            self._run_one(
+                current_seed,
+                next_seed,
+                cos_ptr=self.cos_all.ptr + depth * d * 4,
+                sin_ptr=self.sin_all.ptr + depth * d * 4,
+                pos_ptr=self.pos_all.ptr + depth * 8,
+                ctx_ptr=self.ctx_all.ptr + depth * 8,
+                dense_key_cache=dense_key_cache,
+                dense_value_cache=dense_value_cache,
+                dense_cache_len=current_cache_len,
+            )
+            if dense_key_cache is not None:
+                current_cache_len += 1
+            # Record this depth's top-k on device (no sync, no readback).
+            self._topk_indices_into(self.topk_all.ptr + depth * top_k * 4, top_k)
+            # Device-gather the next depth's embedding from this depth's top-1.
+            if depth + 1 < n:
+                gather_f32_rows_by_i32id(
+                    self._embed_table_f32.ptr,
+                    self.topk_all.ptr + depth * top_k * 4,
+                    self.token_embed.ptr,
+                    1,
+                    self.hidden_size,
+                    self.vocab,
+                    library=self._gather_lib,
+                    runtime=runtime,
+                )
+            current_seed, next_seed = next_seed, current_seed
+        # Single drain + readback of the whole chain's top-k.
+        runtime.device_synchronize()
+        topk_host = np.empty((n, int(top_k)), dtype=np.int32)
+        copy_device_to_host(
+            host_array_ptr(topk_host),
+            DeviceBuffer(self.topk_all.ptr, topk_host.nbytes),
+            topk_host.nbytes,
+            runtime=runtime,
+        )
+        tokens = [int(topk_host[depth, 0]) for depth in range(n)]
+        topk_rows = [[int(token) for token in topk_host[depth].tolist()] for depth in range(n)]
         return tokens, topk_rows, current_cache_len
 
     def write_kv_rows(
@@ -491,11 +642,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self,
         hidden_seed: DeviceBuffer,
         next_seed: DeviceBuffer,
-        pos: np.ndarray,
-        ctx: np.ndarray,
-        cos: np.ndarray,
-        sin: np.ndarray,
         *,
+        cos_ptr: int,
+        sin_ptr: int,
+        pos_ptr: int,
+        ctx_ptr: int,
         dense_key_cache: DeviceBuffer | None,
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
@@ -515,13 +666,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
         mtp_rmsnorm_f32(self.query.ptr, self.q_norm.ptr, self.query.ptr, heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
-        copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=runtime)
-        copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=runtime)
-        mtp_rope_f32(self.query.ptr, self.cos.ptr, self.sin.ptr, self.query.ptr, 1, heads, d, d, d // 2, runtime=runtime)
-        mtp_rope_f32(self.key_cur.ptr, self.cos.ptr, self.sin.ptr, self.key_cur.ptr, 1, kv_heads, d, d, d // 2, runtime=runtime)
+        mtp_rope_f32(self.query.ptr, cos_ptr, sin_ptr, self.query.ptr, 1, heads, d, d, d // 2, runtime=runtime)
+        mtp_rope_f32(self.key_cur.ptr, cos_ptr, sin_ptr, self.key_cur.ptr, 1, kv_heads, d, d, d // 2, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
-        copy_host_to_device(self.position_i64, host_array_ptr(pos), pos.nbytes, runtime=runtime)
-        copy_host_to_device(self.context_i64, host_array_ptr(ctx), ctx.nbytes, runtime=runtime)
         if dense_key_cache is not None:
             if dense_value_cache is None:
                 raise ValueError("dense_value_cache is required with dense_key_cache")
@@ -550,8 +697,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.query.ptr,
             key_ptr,
             value_ptr,
-            self.position_i64.ptr,
-            self.context_i64.ptr,
+            pos_ptr,
+            ctx_ptr,
             self.attn.ptr,
             1,
             heads,
@@ -703,12 +850,13 @@ class Qwen35GGUFResidentMTPDraftRunner:
             runtime=runtime,
         )
 
-    def _read_topk(self, top_k: int) -> list[int]:
+    def _topk_indices_into(self, out_indices_ptr: int, top_k: int) -> None:
+        """Write the top-``top_k`` logit indices to a device buffer (no sync)."""
         runtime = self.runtime or get_hip_runtime()
         topk_f32_rows_i32(
             self.logits.ptr,
             self.topk_values.ptr,
-            self.topk_indices.ptr,
+            out_indices_ptr,
             1,
             self.vocab,
             int(top_k),
@@ -716,6 +864,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._lm_head_lib,
             runtime=runtime,
         )
+
+    def _read_topk(self, top_k: int) -> list[int]:
+        runtime = self.runtime or get_hip_runtime()
+        self._topk_indices_into(self.topk_indices.ptr, top_k)
         runtime.device_synchronize()
         out = np.empty((int(top_k),), dtype=np.int32)
         copy_device_to_host(host_array_ptr(out), DeviceBuffer(self.topk_indices.ptr, out.nbytes), out.nbytes, runtime=runtime)
