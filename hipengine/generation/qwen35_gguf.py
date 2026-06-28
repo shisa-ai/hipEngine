@@ -153,44 +153,21 @@ class Qwen35GGUFBringupGenerator:
         if request.ignore_eos or int(result.token_id) != self.tokenizer.eos_token_id:
             remaining = request.max_tokens - 1
             if remaining > 0:
-                if _session_uses_host_routed_decode(session):
-                    for _ in range(remaining):
-                        raise_if_generation_deadline_expired(request)
-                        step = session.step(generated_ids[-1], return_logits=False)
-                        raise_if_generation_deadline_expired(request)
-                        generated_ids.append(int(step.token_id))
-                        if (
-                            not request.ignore_eos
-                            and int(step.token_id) == self.tokenizer.eos_token_id
-                        ):
-                            break
-                else:
-                    # Capture the whole decode window as a SINGLE-launch graph.
-                    # The HIP decode graph corrupts the in-place GDN linear state
-                    # on the 3rd+ ``graph_launch``, so replaying a 1-step graph
-                    # per token (steps_per_replay=1) emits wrong tokens from the
-                    # 3rd token. A single launch (steps_per_replay == remaining)
-                    # is bit-exact vs eager. See WORKLOG 2026-06-28 and the xfail
-                    # regression in tests/test_qwen35_gguf_runner.py. (The cheap
-                    # incremental-replay path is restored once the relaunch
-                    # hazard itself is fixed.)
-                    with session.capture_decode_graph(
-                        position=len(prompt_ids),
-                        steps_per_replay=remaining,
-                        max_replay_steps=remaining,
-                        record_steps=remaining,
-                    ) as graph:
-                        raise_if_generation_deadline_expired(request)
-                        graph.replay(remaining)
-                        raise_if_generation_deadline_expired(request)
-                        for token_id in graph.read_generated_token_ids(remaining):
-                            raise_if_generation_deadline_expired(request)
-                            generated_ids.append(int(token_id))
-                            if (
-                                not request.ignore_eos
-                                and int(token_id) == self.tokenizer.eos_token_id
-                            ):
-                                break
+                # Eager per-token decode. The HIP decode graph provided no speed
+                # benefit once build_hip loaded-library caching cut the per-launch
+                # Python tax (~61 us -> ~12 us); eager == single-launch graph and
+                # avoids the graph's 3rd-relaunch GDN corruption entirely. See
+                # WORKLOG 2026-06-28 "#8 moot".
+                for _ in range(remaining):
+                    raise_if_generation_deadline_expired(request)
+                    step = session.step(generated_ids[-1], return_logits=False)
+                    raise_if_generation_deadline_expired(request)
+                    generated_ids.append(int(step.token_id))
+                    if (
+                        not request.ignore_eos
+                        and int(step.token_id) == self.tokenizer.eos_token_id
+                    ):
+                        break
         return generated_ids
 
     def _generate_sampled(
@@ -683,13 +660,6 @@ def _gguf_sampler_plan(request: GenerationRequest):
 def _native_gpu_sampler_requested() -> bool:
     value = os.environ.get("HIPENGINE_QWEN35_NATIVE_SAMPLER")
     return value is not None and value.strip().lower() not in {"", "0", "false", "no", "off"}
-
-
-def _session_uses_host_routed_decode(session: Qwen35GGUFResidentSession) -> bool:
-    """Return True for GGUF paths whose decode step cannot be graph-captured yet."""
-
-    _ = session
-    return False
 
 
 def make_qwen35_gguf_bringup_generator(
