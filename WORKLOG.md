@@ -126408,3 +126408,35 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
   - scripts/qwen35_gguf_bench.py `--graph-replay-decode` block (incl. retained/reused-graph logic).
   - scripts/gguf_mtp_bench.py `--target-graph-verify` / `--target-graph-batched-verify` mode (54 refs, woven into the MTP cycle).
 - Deferred because these are the concurrently-developed MTP/AR benches; removing the modes is a careful, coordinated edit. They are gated off so the tree is green meanwhile.
+
+
+## 2026-06-28 — Device-resident MoE-down+combine for GGUF MTP draft (task #3, sub-win A)
+
+### Change
+Resident GGUF MTP draft (`hipengine/speculative/mtp_resident_draft.py`) `_run_one` MoE-down
+no longer reads selected/routing back to host + runs a Python per-expert loop. New
+`apply_moe_down_combine` reuses the verifier's device kernels: `silu_mul_separate_out_bf16`
+(all top_k) + `gguf_q5_k_selected_gemv_bf16_bf16_out` (raw Q5_K, selected order,
+x_rows=rows=top_k so out[k]=down[selected[k]]@inter[k]) + `weighted_sum_shared_gate_combine_residual_out_bf16_f32w`
+(routing-weighted expert sum + sigmoid-gated shared + residual). Removes 2 blocking D->H and
+~24 launches/depth. bf16 path == verifier precision; 3 cheap casts bridge the draft's f32
+residual/shared/ffn buffers. Gated by `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` (default on).
+
+### Correctness
+- RED-first model-free unit gate `tests/test_mtp_resident_draft_moe_down.py`: device sequence
+  vs bf16-aware `cpu_reference.gguf_quant_gemv` oracle, rel_l2<=2e-2. GREEN.
+- A/B `=0` vs `=1`, B3/c5, `--resident-mtp-draft --root-topk-accept 1`:
+  - merge-sort single prompt: drafts byte-identical across all 5 cycles; accepted_per_output
+    0.722 both; draft 7.3->6.9 ms/cycle; tok/s 48.10->48.82.
+  - 4-category (one prompt each): acceptance IDENTICAL off->on in all 4
+    (code/general_en 0.5, general_ja 0.375, mixed_ja_en 0.5); tok/s consistently up in every
+    category (44.35->44.98, 44.51->44.81, 42.81->43.11, 44.22->44.65). Exact-acceptance,
+    non-regressive across the category set -> flipped default on.
+  - artifact: benchmarks/results/2026-06-28-resident-mtp-draft-device-moe-down-ab.json
+
+### Notes / next
+- Win is modest (host-dispatch + 2 syncs removed from the MoE-down section); the bigger draft
+  serialization (per-depth `device_synchronize()` in `_read_topk` + host embed gather/upload)
+  is sub-win B (device argmax + embedding gather), still pending.
+- Commands:
+  `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE=1 python3 scripts/gguf_mtp_bench.py --resident-mtp-draft --root-topk-accept 1 --draft-n-max 3 --cycles 5 --mtp-draft-vocab-cap 32768 --prompt <p> --output <o>`

@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-28
+
+- [efficiency retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 B3/c5 resident draft: device-resident selected-MoE down+combine (`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE`, default-on) replaces the host-readback per-expert Python down loop — exact-acceptance (drafts byte-identical, accepted_per_output unchanged in all 4 categories) and tok/s consistently up per-category ~+0.7-1.4% (code 44.35 -> 44.98, general_en 44.51 -> 44.81, general_ja 42.81 -> 43.11, mixed_ja_en 44.22 -> 44.65); removes 2 blocking D->H + ~24 launches/depth from the MoE-down section; `benchmarks/results/2026-06-28-resident-mtp-draft-device-moe-down-ab.json`.
+
 ## 2026-06-24
 
 - [diagnostic retained] Qwen3.6-35B-A3B / hipEngine native GGUF-MTP UD-Q4_K_M / gfx1151 full category suite: B1 default diagnostic MTP tok/s `45.58 -> 45.77` (+0.43%) and same-denominator ratio `0.808 -> 0.811x` current true AR by promoting generic exact-verified root top-40 proposals with active-K timing; accepted/output `0.454 -> 0.474`, draft acceptance `0.0415 -> 0.0225` due widened root candidate accounting; still below true AR, so no speed claim; `benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-root-top40-gfx1151.json`.

@@ -189,7 +189,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._lm_head_lib = build_lm_head(load=True)
         self._silu_lib = build_paro_silu(load=True)
         self._combine_lib = build_paro_combine(load=True)
-        self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", False)
+        self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
         self._upload_weights()
         self._allocate_buffers()
 
