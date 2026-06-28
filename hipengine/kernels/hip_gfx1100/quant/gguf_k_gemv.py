@@ -10,6 +10,26 @@ from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_k_gemv.hip")
+
+# Cached configured extern-C handles. Setting ``fn.argtypes`` and rebuilding
+# ``ctypes.c_void_p``/``c_int64`` per call dominates the host launch cost
+# (~88 us full vs ~1.4 us lean; see WORKLOG 2026-06-28). Configure each
+# (library, symbol) once and call with raw ints thereafter.
+_VOID = ctypes.c_void_p
+_I64 = ctypes.c_int64
+_CACHED_FNS: dict[tuple[int, str], ctypes._CFuncPtr] = {}
+
+
+def _cached_fn(library: ctypes.CDLL, symbol: str, argtypes: list) -> ctypes._CFuncPtr:
+    key = (id(library), symbol)
+    fn = _CACHED_FNS.get(key)
+    if fn is None:
+        fn = getattr(library, symbol)
+        fn.argtypes = argtypes
+        fn.restype = ctypes.c_int
+        _CACHED_FNS[key] = fn
+    return fn
+
 _OUTPUT_NAME = "gguf_k_gemv.so"
 _ALLOWED_THREADS = {64, 128, 256}
 _QTYPE_BLOCK_SIZE = {"gguf_q8_0": 32, "gguf_q5_k": 256, "gguf_q6_k": 256}
@@ -193,28 +213,8 @@ def _launch(
     _validate(quant, rows, in_features, out_features, threads, require_pack8=require_pack8)
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(qweight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
-    )
+    fn = _cached_fn(library, symbol, [_VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID])
+    err = fn(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
     _check_launch(runtime, err)
 
 

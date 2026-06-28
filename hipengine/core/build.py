@@ -164,11 +164,37 @@ def build_hip(
     computed without probing ``hipcc --version``.
     """
 
+    # Process-level loaded-library cache. Without it, every ``build_hip(load=True)``
+    # re-hashes the sources (plan_hip_build) and rebuilds a fresh ``ctypes.CDLL``,
+    # which dominates the per-kernel-launch host cost (~90 us; see WORKLOG
+    # 2026-06-28 "C-dispatch breakthrough"). On a cache hit this is a dict lookup.
+    # The key must capture every build-affecting param (notably extra_flags /
+    # include_dirs / target_arch / compiler_version) so different builds of the
+    # same family (e.g. WMMA tile variants) do not collide.
     version = _resolve_compiler_version(
         compiler=compiler,
         compiler_version=compiler_version,
         dry_run=dry_run,
     )
+    cache_key: tuple | None = None
+    if load and not dry_run:
+        cache_key = (
+            family,
+            profile,
+            output_name,
+            tuple(str(Path(s)) for s in sources),
+            None if cache_root is None else str(cache_root),
+            target_arch,
+            compiler,
+            version,
+            tuple(str(Path(d)) for d in include_dirs),
+            tuple(extra_flags),
+        )
+        if not force:
+            cached_lib = _LOADED_LIB_CACHE.get(cache_key)
+            if cached_lib is not None:
+                return cached_lib
+
     artifact = plan_hip_build(
         sources=sources,
         family=family,
@@ -196,7 +222,10 @@ def build_hip(
         subprocess.run(artifact.command, check=True)
     if not load:
         return artifact
-    return ctypes.CDLL(str(artifact.output_path))
+    lib = ctypes.CDLL(str(artifact.output_path))
+    if cache_key is not None:
+        _LOADED_LIB_CACHE[cache_key] = lib
+    return lib
 
 
 def compiler_version_text(compiler: str) -> str:
@@ -211,6 +240,8 @@ def compiler_version_text(compiler: str) -> str:
 
 
 _COMPILER_VERSION_CACHE: dict[str, str] = {}
+# Process-level cache of loaded ``ctypes.CDLL`` handles keyed by build identity.
+_LOADED_LIB_CACHE: dict[tuple, "ctypes.CDLL"] = {}
 
 
 def _resolve_compiler_version(

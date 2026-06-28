@@ -126336,3 +126336,23 @@ python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_ca
 1. Add a cached-handle + argtypes-once + raw-int fast path to the hot kernel `_launch` helpers (gguf_k_gemv, gguf_q4_k_gemv, gguf_linear ABI launchers, conv, router, moe selected, rmsnorm/silu/add). Keep correctness identical (same kernels, same args).
 2. Re-measure verifier host dispatch (host_vs_gpu.py) and E2E tok/s; expect the ~54 ms host floor to collapse and the verifier to become GPU-bound.
 3. THEN re-evaluate dp4a + rowtile (their GPU wins should now translate).
+
+
+## 2026-06-28 — C-dispatch realized in pure Python: build-lib cache cuts verifier host 5x -> GPU-bound
+
+### Root cause of the per-launch tax (scripts/gguf_launch_overhead_bench.py)
+- The ~88-101 us/call host cost of `launch_gguf_linear` was NOT the ctypes argtypes or the kernel launch. It was `build_*(load=True)` being called per launch (when no `library` kwarg is passed): every call re-hashed the .hip sources (plan_hip_build) and constructed a fresh `ctypes.CDLL`. `build_hip` had no loaded-library memoization.
+
+### Fix (hipengine/core/build.py)
+- Added a process-level `_LOADED_LIB_CACHE` keyed by all build-affecting params (family, profile, output_name, source paths, cache_root, target_arch, compiler, compiler_version, include_dirs, extra_flags). On a `load=True` non-force non-dry_run hit it returns the cached CDLL (dict lookup) instead of re-hashing + reloading. Benefits every kernel family.
+- Complement: `gguf_k_gemv.py` `_launch` now caches the configured extern-C handle (argtypes set once) and passes raw ints.
+
+### Measured impact
+- `launch_gguf_linear` (rows=4): **101 us -> 20.8 us/call** (5x). Remaining 20.8 us = dispatch-resolve 15.5 us (74%) + lean launch ~5 us; lean floor is ~1.5 us.
+- Verifier host dispatch (host_vs_gpu.py, 875 launches): **53.8 ms -> 10.7 ms** (5x). Host fraction of wall **52% -> 12%**: the verifier is now GPU-bound. This realizes the "C-dispatch" host-floor collapse in pure Python, no C++ and no #8 dependency.
+
+### Validation
+- `pytest tests/test_gguf_k_gemv.py tests/test_gguf_k_rowtile_gemv.py tests/test_gguf_q4_k_rowtile_gemv.py tests/test_qwen35_gguf_runner.py tests/test_gguf_q4_k_gemv.py tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_linear_dispatch.py` pass. The 4 `test_dense_gemv_wmma` fp16-WMMA failures are PRE-EXISTING (fp16 WMMA "device kernel image is invalid" on gfx1151), confirmed by stash-test without the change.
+
+### Next
+- Verifier is now GPU-bound, so re-measure dp4a + rowtile E2E (their GPU wins should now translate). Optionally cache the dispatch-resolve (15.5 us, now 74% of the small per-launch cost) to shave host further, but GPU now dominates so it is lower priority.
