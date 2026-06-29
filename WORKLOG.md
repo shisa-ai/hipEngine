@@ -128500,3 +128500,32 @@ committing kernel work.
 
 Net: next step is now a SPECIFIC kernel experiment (f32 selected-expert MoE GEMV in
 the draft) gated by the cpu_reference disambiguation, not a broad "f32 draft" rewrite.
+
+## 2026-06-30 — seed-contract hypothesis RULED OUT (verified vs llama qwen35moe source); ja gap narrowed to bf16 MoE/lm-head activations
+
+Tested the hypothesis that hipEngine seeds the NextN draft with the wrong hidden
+(post- vs pre-output_norm). Checked llama's ACTUAL qwen35moe graph
+(llama.cpp-hip/src/models/qwen35moe.cpp:228-234):
+    cur = build_norm(cur, model.output_norm, ...);   // apply output_norm
+    cb(cur, "h_nextn", -1);
+    res->t_h_nextn = cur;                            // seed = POST output_norm
+with the comment "post-norm hidden state feeds both the LM head and the MTP seed".
+The generic llama-graph.h:737 comment ("before final output norm") is STALE for
+qwen35moe. hipEngine uses post_output_norm (qwen35_gguf_runner.py:243,258) -> the
+seed contract is CORRECT and matches llama. NOT the bug.
+
+Eliminations so far for the ja draft gap (draft_acc 0.52 vs llama 0.80):
+- target divergence: ruled out (hip ja greedy matches llama token-for-token 22/24).
+- seed contract: ruled out (post_output_norm matches llama qwen35moe source).
+- draft kernel correctness: ruled out (27 cpu_reference tests pass).
+- draft non-MoE precision: already f32 (mtp_*_f32 for norms/eh_proj/attn/rope/gate).
+
+SOLE remaining suspect: bf16 ACTIVATIONS in (a) the selected-expert MoE GEMV
+(gguf_q4_k_selected_dual_gemv_bf16_bf16_out) and (b) the draft lm-head
+(gguf_q6_k_pack8_gemv_decode_bf16_f32_out, bf16 activations -> f32 logits). On
+high-entropy ja with many near-tied CJK candidates, bf16 activation rounding can
+flip the argmax far more than on code/en. Next: disambiguate cheaply by capturing
+the draft's pre-lm-head f32 hidden and recomputing the lm-head argmax in f32
+(numpy, dequant lm-head) vs the bf16 path, and likewise the MoE GEMV; if f32
+argmax agrees with target markedly more, build/select f32-activation draft
+MoE+lm-head GEMVs. (No new HIP kernel needed for the disambiguation.)
