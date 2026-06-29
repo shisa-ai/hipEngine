@@ -253,6 +253,23 @@ The S1–S3 acceptance/policy probes in the shootout below are therefore
 **confirmed dead-ends** for tok/s (acceptance restored, speed flat/down); skip
 them and go straight to the three kernel/model levers above.
 
+**Quantified roadmap (where each lever lands).** Cost model fit to the measured
+block structure (`block(rows) ≈ 16.7 + 6.82·rows ms`, c1 = 18.9 ms) and llama's
+own B2 (block(3)≈34 ms, draft ~1.5 ms, acc/out 0.598 → 14.86 ms/out = 1.34×):
+- **Today:** B2 1.0399× (code-only contribution; en/mixed/ja ≈ AR).
+- **+ general_ja draft quality to ~llama (0.56) realized cheaply:** aggregate
+  acc/out ≈ 0.58 → B2 ≈ (36.6 + ~1.4)/2.4 ≈ 15.8 ms/out ≈ **1.16×**. This is the
+  single highest-leverage lever. Blocker: ja full-vocab draft is ~0.5 draft_acc
+  but only 0.13 acc/out when escalated (the chain collapses) AND full-vocab draft
+  costs ~4 ms — so it needs BOTH cheaper full-vocab draft AND a draft-quality fix.
+- **+ block ~llama (34 vs 36.6 ms) via a more BW-efficient small-batch MoE verify
+  GEMV:** closes the rest toward **~1.34×**. (WMMA confirmed slower than
+  gemv-decode here; gemv-decode is already near-peak, so this is hard.)
+Net: ~1.16× is reachable with the draft levers; the last ~1.16→1.34× is the
+hardware-limited MoE verify GEMV. Each is a correctness-gated kernel/model
+sub-project (new kernel ⇒ RED test + `kernels/cpu_reference/` gate), not a
+benchmark-policy change.
+
 ### Next shootout matrix
 
 > **Order note (2026-06-29):** the S5 precondition ("a route with good
