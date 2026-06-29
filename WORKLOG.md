@@ -126887,3 +126887,30 @@ isolates state, no cross-prompt contamination. Speed: 104s -> 55s = 1.89x on 2 p
 construct (token_embd upload); cacheable later if needed, but the 51s session load was the whole cost.
 Updated docs/MTP-LLAMACPP-PARITY.md suite section. NEXT: run --scope partial/full (now fast) for the
 real same-protocol ratio.
+
+## 2026-06-29 — #5 DONE: full-suite apple-to-apple AR vs MTP baseline (MTP does NOT beat AR)
+
+Ran the load-once suite at --scope full (10-prompt category suite, cycles=10, budgets B1-B5,
+resident-serial-fallback route, gfx1151). apple_to_apple_ok=True. Fresh same-protocol baseline on
+CURRENT code:
+  AR (no-MTP) = 54.55 tok/s
+  B1 48.43 (0.888x AR) acc/out 0.476 | B2 45.45 (0.833x) 0.565 | B3 42.95 (0.787x) 0.611 |
+  B4 40.23 (0.738x) 0.617 | B5 38.44 (0.705x) 0.644
+  verdict: MTP does NOT beat AR at any budget (best B1 @ 0.89x). off/B0 diagnostic 54.98 ~= AR (sanity).
+Artifact benchmarks/results/2026-06-29-ar-mtp-suite-full.json. Wall ~3-4 min (load-once: per-prompt
+child ~2.3s after the single ~51s load).
+
+KEY AMORTIZATION INSIGHT (quantified): acceptance RISES with budget (acc/out 0.48->0.64) but tok/s
+FALLS (48.4->38.4) -- drafting more tokens costs more than the extra acceptance saves at current
+acceptance rates. So the lever is higher acceptance WITHOUT more draft/verify work per output token,
+not bigger budgets. This is the whole gap to llama.cpp's 1.9x; the verifier kernels are near-peak and
+AR already beats llama.cpp's AR.
+
+BUGS FIXED to make the full sweep run (both pre-existing, surfaced by first-ever B1/B2 runs):
+1. gguf_mtp_bench: `--adaptive-probe-draft-n-max` (default 3) was validated `<= --draft-n-max`
+   UNCONDITIONALLY, so B1/B2 errored even for routes that never use the probe. Now gated on
+   `--adaptive-block-after-full-accept` (the only consumer). B1/B2 now runnable.
+2. gguf_ar_mtp_suite default route -> resident-serial-fallback (works at all budgets; the documented
+   robust full-suite route). resident-production (probes at 3) kept available; suite now auto-drops
+   budgets < probe for any such route. Updated docs/MTP-LLAMACPP-PARITY.md with the measured numbers.
+NEXT: settle the verify host-vs-GPU split on current code, then work acceptance-per-verify-pass.

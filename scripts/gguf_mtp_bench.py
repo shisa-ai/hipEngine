@@ -705,7 +705,9 @@ def main(argv: list[str] | None = None):
         parser.error("--adaptive-ar-fallback-max-accepted must be non-negative")
     if args.adaptive_probe_draft_n_max < 1:
         parser.error("--adaptive-probe-draft-n-max must be positive")
-    if args.adaptive_probe_draft_n_max > args.draft_n_max:
+    # The probe window is only consumed when --adaptive-block-after-full-accept is
+    # set; otherwise its default (3) is unused and must not block B1/B2 runs.
+    if args.adaptive_block_after_full_accept and args.adaptive_probe_draft_n_max > args.draft_n_max:
         parser.error("--adaptive-probe-draft-n-max must be <= --draft-n-max")
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)

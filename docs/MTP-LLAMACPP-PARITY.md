@@ -21,10 +21,11 @@ tooling or a since-corrected methodology — flagged inline below).
   resident path measures **~55 tok/s** (54.65 tok/s, code prompt, gfx1151, this
   session, `scripts/gguf_ar_mtp_suite.py --scope smoke`). llama.cpp's AR is
   ~47 tok/s (its 89.55 tok/s MTP ÷ its own 1.9× MTP-over-AR ratio).
-- **MTP is the entire gap.** Best robust full-suite MTP route (resident
-  serial-fallback) is ~47.6 tok/s = **~0.86× our AR (MTP currently does NOT
-  win)**, whereas llama.cpp's MTP is **1.9× its AR**. The 1.9× we chase is
-  **speculative amortization**, not kernel throughput.
+- **MTP is the entire gap.** Fresh full-suite measurement on current code
+  (`gguf_ar_mtp_suite.py --scope full`, resident-serial-fallback, 10 prompts):
+  **AR 54.55 tok/s; MTP best is B1 at 48.43 tok/s = 0.89× AR — MTP does NOT beat
+  AR at any budget** (B1 0.89× → B5 0.71×). llama.cpp's MTP is **1.9× its AR**.
+  The 1.9× we chase is **speculative amortization**, not kernel throughput.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
   ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
@@ -67,7 +68,7 @@ on current code; (M) are current-session measurements.
 | MTP draft (resident NextN, c=1×B) | (M) ~3.3 ms/depth (B3) | folded in graph | ~2× | device-resident + device-chained (#3) |
 | MTP verify (block, B+1 rows) | (S) ~60–100 ms/cycle (B3) | ~9 ms (one fused GGML graph) | **~7×** | the core MTP cost; re-measure host-vs-GPU |
 | Partial-accept rollback (B5) | (M) replay-forward dominates; LM-head skip landed (#4) | n/a | — | replay forward is the same GPU wall |
-| **Net MTP throughput (full suite)** | **~47.6 tok/s (~0.86× AR)** | **~89.6 tok/s (1.9× AR)** | **1.9×** | **amortization gap = the whole story** |
+| **Net MTP throughput (full suite)** | **B1 48.4 / B3 43.0 / B5 38.4 tok/s (0.89× → 0.71× AR)** | **~89.6 tok/s (1.9× AR)** | **2–2.5×** | **amortization gap = the whole story** |
 
 ### Everything we tried — expected vs actual
 
@@ -144,8 +145,12 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
    for the 4-token verify).
 3. **If GPU-bound:** the verify is then the same near-peak streaming wall as AR,
    and the only lever left is **acceptance** — raise accepted-tokens-per-verify so
-   each weight-read pass yields more output tokens. Work draft quality on the full
-   category suite (not the single merge-sort prompt — anti-gaming).
+   each weight-read pass yields more output tokens. The full-suite sweep makes the
+   problem concrete: acceptance *rises* with budget (acc/out 0.48 → 0.64 from
+   B1→B5) but tok/s *falls* (48.4 → 38.4) — drafting more currently costs more
+   than the extra acceptance saves. The win is higher acceptance **without** more
+   draft/verify work per output token. Work draft quality on the full category
+   suite (not the single merge-sort prompt — anti-gaming).
 4. **Make MTP actually beat AR before any retained speedup claim.** Use
    `--scope full`; a retained claim needs `mtp_beats_ar=true` on the full suite
    with the true-AR denominator from the same run.

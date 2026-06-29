@@ -201,7 +201,7 @@ def main() -> int:
     ap.add_argument("--scope", choices=tuple(SCOPES), default="smoke")
     ap.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     ap.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
-    ap.add_argument("--mtp-route", choices=tuple(MTP_ROUTES), default="resident-production")
+    ap.add_argument("--mtp-route", choices=tuple(MTP_ROUTES), default="resident-serial-fallback")
     ap.add_argument("--budgets", default=None, help="override scope budgets, e.g. 1,3,5")
     ap.add_argument("--cycles", type=int, default=None, help="override scope cycles")
     ap.add_argument("--limit", type=int, default=None, help="override scope prompt limit")
@@ -220,6 +220,23 @@ def main() -> int:
     budgets = (
         [int(x) for x in args.budgets.split(",")] if args.budgets else list(scope["budgets"])
     )
+    route_args = MTP_ROUTES[args.mtp_route]
+    # Some routes carry a fixed --adaptive-probe-draft-n-max N that gguf_mtp_bench
+    # requires N <= draft budget; drop incompatible low budgets so a multi-budget
+    # sweep doesn't error (e.g. resident-production probes at 3, so B1/B2 are out).
+    _probe = None
+    for i, a in enumerate(route_args):
+        if a == "--adaptive-probe-draft-n-max" and i + 1 < len(route_args):
+            _probe = int(route_args[i + 1])
+    dropped_budgets: list[int] = []
+    if _probe is not None:
+        dropped_budgets = [b for b in budgets if b < _probe]
+        if dropped_budgets:
+            print(f"[ar-mtp-suite] route '{args.mtp_route}' needs draft budget >= probe "
+                  f"{_probe}; dropping budgets {dropped_budgets}", flush=True)
+            budgets = [b for b in budgets if b >= _probe]
+    if not budgets:
+        raise SuiteError(f"no budgets left after route '{args.mtp_route}' probe filter")
     max_budget = max(budgets)
     stamp = args.timestamp or time.strftime("%Y-%m-%dT%H:%M:%S")
     raw_root = args.raw_root or Path(f"/tmp/hipengine-ar-mtp-suite-{args.scope}-{int(time.time())}")
@@ -256,7 +273,6 @@ def main() -> int:
     if args.require_cached_build:
         ar_cmd += ["--require-cached-build"]
 
-    route_args = MTP_ROUTES[args.mtp_route]
     mtp_cmd = [
         args.python, str(REPO_ROOT / "scripts" / "gguf_mtp_category_bench.py"),
         "--model", str(args.model),
