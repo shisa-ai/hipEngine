@@ -128409,3 +128409,36 @@ Session perf summary (committed): GGUF MTP default 1.0356x -> 1.0399x (B2 block)
 -> 1.0534x (draft-confidence gate) AR. llama.cpp B2 remains 1.342x; the remaining
 gap is the ja draft top-1 ranking quality (0.52 vs llama 0.80), a correctness-gated
 model investigation with a now-precise, data-motivated entry point.
+
+## 2026-06-30 — ja root-cause REFINED: target matches llama (92%, small late drift); gap is precision, not a discrete bug
+
+Completed the llama-vs-hipEngine ja comparison (tokenization-alignment blocker
+solved: llama-tokenize with default special parsing gives the IDENTICAL 43-token
+prompt as hipEngine build_chat_prompt; llama-simple does raw no-template greedy).
+
+Result (24-token greedy on the ja_explain prompt, identical 43-token input):
+- hipEngine: 小規模な社内Pythonツールを運用環境へ移行するための実践的な計画書を作成しました。\n小規模ツールであっても
+- llama:     小規模な社内Pythonツールを運用環境へ移行するための実践的な計画書を作成しました。\n小規模ツール\n
+- TOKEN-IDENTICAL for ~22 tokens (50-char common prefix), then diverges at ~token
+  23 (llama -> "\n", hipEngine -> "で").
+
+Interpretation (important roadmap correction):
+- hipEngine's ja TARGET is ~correct: matches llama token-for-token for 22/24,
+  vs CODE where it was bit-exact for the full trace. So there is a SMALL ja
+  numerical divergence that accumulates and flips an argmax by ~token 23.
+- This is accumulated NUMERICAL PRECISION drift, NOT a discrete kernel bug like
+  the GDN K-head (which would diverge immediately / grossly). It rarely flips the
+  target argmax but more often degrades the DRAFT (sensitive to the exact hidden
+  seed), explaining ja draft_acc 0.52 vs llama 0.80 while code draft ~matches.
+- Therefore the remaining ja lever is precision-tuning the ja-sensitive path
+  (find where hipEngine accumulates in lower precision than llama: NextN
+  eh_proj/block, attention, or MoE on high-magnitude ja activations) via the
+  layer audit, NOT a one-line correctness fix. Harder than the earlier
+  "GDN-K-head-analogy" framing suggested; gated by KL<=0.05/top1>=90%.
+
+Artifacts: scratchpad/ja_audit_hip.json (hip greedy), scratchpad/llama_simple.out
+(llama greedy), scratchpad/llama_ids.txt (matching 43-token tokenization).
+
+Session perf (committed, unchanged): 1.0356x -> 1.0399x -> 1.0534x AR. The
+remaining gap to llama 1.342x is dominated by ja acceptance, now root-caused to
+numerical precision in the target/draft hiddens.
