@@ -1,6 +1,6 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite retained diagnostics, not speed rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
@@ -94,6 +94,7 @@ on current code; (M) are current-session measurements.
 | device-chain resident draft (#3) | cut per-depth host sync | bit-exact, flat e2e | kept default-off (clean arch) |
 | partial-accept LM-head skip (#4) | cut discardable replay work | **+3.5% B5, bit-exact** | **kept, default-on** |
 | serial verifier no-logits cleanup | remove unused full-logits D2H | **+0.7% B1 full-suite, acceptance unchanged** | **kept, default-on** |
+| deferred serial hidden-seed D2H copies | avoid copying intermediate verifier hidden rows that production route does not consume | full-suite flat/noise: B1 **50.18 → 50.19 tok/s**, ratio **0.9206 → 0.9202x AR** | rejected/reverted |
 | resident top-k40 draft route | avoid full legacy draft fallback for root top-k40 | **+2.9% B1 full-suite, acceptance unchanged** | **kept, default-on** |
 | one-block device top-k40 | avoid resident root-K40 host logits readback + NumPy top-k | correctness passed, but smoke B3 **45.58 → 24.74 tok/s** at identical acceptance | rejected/reverted; serial K40 merge dominates |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
@@ -224,9 +225,10 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 ### Don't re-chase (closed lines of work)
 
 GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, cache
-hints, and the one-block device top-k40 extension are all measured flat or
-negative e2e and are not the lever. The per-kernel GEMV bandwidth is already
-near-peak. Kernel micro-optimization is exhausted; the gap is amortization.
+hints, deferred hidden-seed D2H copies, and the one-block device top-k40
+extension are all measured flat or negative e2e and are not the lever. The
+per-kernel GEMV bandwidth is already near-peak. Kernel micro-optimization is
+exhausted; the gap is amortization.
 
 ## Production verifier status (2026-06-28)
 

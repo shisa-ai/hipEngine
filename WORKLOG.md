@@ -127072,3 +127072,19 @@ Decision: rejected and reverted. The one-block wide top-k kernel's local K40 ins
 merge costs far more than the avoided 128 KiB logits D2H/NumPy selection. Do not re-chase this shape;
 any future device top-k replacement needs a different multi-stage/parallel merge design and must beat
 the committed host fallback in `gguf_ar_mtp_suite.py --scope smoke` before a full gate.
+
+## 2026-06-29 — GGUF MTP deferred verifier hidden-copy probe rejected
+
+Prototyped deferring serial verifier hidden-seed D2H copies for the production route
+(`mtp_context_replay=off`, `mtp_device_kv_cache=off`, `topk_branch_redraft=off`), copying only the
+final pending hidden seed after acceptance instead of every target row. Smoke activated the path and
+deferred all 11 row copies on the one-prompt B3 run, but the full gate was flat/noise:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --output benchmarks/results/2026-06-29-ar-mtp-suite-full-defer-hidden.json`
+=> `apple_to_apple_ok=True`; AR 54.54 tok/s; B1 50.19 tok/s = 0.9202x AR; B2
+47.61 (0.873x); B3 45.37 (0.832x); B4 42.90 (0.787x); B5 41.38 (0.759x).
+Acceptance unchanged vs retained resident-topk40 baseline (B1 accepted/output 91/191 = 0.476,
+draft acceptance 0.0247), but the ratio is slightly below the retained 0.9206x because AR varied.
+
+Decision: rejected and reverted. Intermediate hidden-seed D2H copies are not a goal-closing lever on
+the current full suite. Per user direction, next work pivots to reading llama.cpp's MTP implementation
+and identifying structural patterns to adopt instead of continuing hipEngine-local micro-cleanups.

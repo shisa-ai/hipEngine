@@ -1,0 +1,129 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-06-29T14:47:25",
+  "scope": "full",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "04b012c5c383a4dcd218339e6ccf7f7a836be347",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 10,
+    "budgets": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "prompt_limit": null,
+    "ar_decode_tokens": 60,
+    "mtp_route": "resident-serial-fallback",
+    "mtp_route_extra_args": [
+      "--resident-mtp-draft",
+      "--adaptive-ar-fallback",
+      "--no-target-block-verify"
+    ]
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.53968860538221,
+    "total_output_tokens": 600,
+    "decode_ms": 11001.162920845672,
+    "prompts": 10,
+    "per_category": {
+      "code": 54.57949726398318,
+      "general_en": 54.619475980169724,
+      "general_ja": 54.6111467194958,
+      "mixed_ja_en": 54.31006477750477
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 55.40809074162714,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 191,
+      "vs_ar_ratio": 1.0159
+    },
+    "b1": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 50.18985429175809,
+      "accepted_per_output": 0.47643979057591623,
+      "draft_acceptance": 0.024728260869565217,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 91,
+      "total_output_tokens": 191,
+      "vs_ar_ratio": 0.9202
+    },
+    "b2": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 47.61303437868096,
+      "accepted_per_output": 0.5652173913043478,
+      "draft_acceptance": 0.03603104212860311,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 130,
+      "total_output_tokens": 230,
+      "vs_ar_ratio": 0.873
+    },
+    "b3": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 45.36612403839705,
+      "accepted_per_output": 0.6108949416342413,
+      "draft_acceptance": 0.042478354978354976,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 157,
+      "total_output_tokens": 257,
+      "vs_ar_ratio": 0.8318
+    },
+    "b4": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 42.9035688865291,
+      "accepted_per_output": 0.6168582375478927,
+      "draft_acceptance": 0.04254756871035941,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 161,
+      "total_output_tokens": 261,
+      "vs_ar_ratio": 0.7866
+    },
+    "b5": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 41.38493735557614,
+      "accepted_per_output": 0.6441281138790036,
+      "draft_acceptance": 0.04674586776859504,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 181,
+      "total_output_tokens": 281,
+      "vs_ar_ratio": 0.7588
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.53968860538221,
+    "best_mtp_budget": "b1",
+    "best_mtp_vs_ar_ratio": 0.9202,
+    "mtp_beats_ar": false
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-full-1782712045/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-full-1782712045/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope full --output benchmarks/results/2026-06-29-ar-mtp-suite-full-defer-hidden.json"
+}
