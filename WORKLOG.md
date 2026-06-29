@@ -127718,3 +127718,31 @@ keep exact per-row `h_nextn` plus Conv/GDN state, advance/rollback the resident
 target to the accepted row without serial restore/replay, and prove
 `apple_to_apple_ok=true` plus `verdict.mtp_beats_ar=true` on
 `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full`.
+
+## 2026-06-29 — current verifier profile and row-capture diagnostic
+
+Current verifier profile command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_verifier_rocprof.py --steps 8 --warmup 2 --raw-root /tmp/hipengine-gguf-mtp-verifier-rocprof-20260629-current --out benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-current.json`
+
+Result: artifact
+`benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-current.json`,
+`status=diagnostic_retained`, `performance_claim=false`. Average host wall was
+`19.030 ms/step`, average kernel time `16.755 ms/step`, kernel share `88.0%`,
+and launch count `708.5/step`. Kernel buckets: dense Q8_0 GEMV `48.9%`,
+selected-MoE GEMV `24.0%`, LM-head `11.1%`, router `5.0%`, GDN linear-attn
+`4.3%`. Decision unchanged: the retained serial target verifier is
+GPU/weight-streaming bound; do not start the next optimization from launch
+collapse unless a new route profile moves host residual back onto the critical
+path.
+
+Diagnostic code alignment: changed the `capture_linear_state_rows` chain-conv
+path from F32 input (`scratch.linear_qkv_f32`) to the BF16 input
+(`scratch.linear_qkv`) used by serial decode. Validation:
+`python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py` passed.
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+passed (`3 passed`). This is not a speed win and not a completed rollback-slot
+fix: the wrong-child row-0 direct-commit probe still produced matching target
+tokens but non-identical hidden/state vs serial (`hidden_max 0.109558`,
+`state_max 0.28125`). Treat the BF16 change only as row-capture alignment for
+future exactness work; the structural goal remains a serial-exact transactional
+target verifier / rollback-slot implementation.

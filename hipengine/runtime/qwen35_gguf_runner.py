@@ -75,7 +75,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
 )
 from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
-    qwen35_linear_attn_chain_conv_decode_f32_tloop,
+    qwen35_linear_attn_chain_conv_decode_bf16_tloop,
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_prefill_f32,
 )
@@ -1842,8 +1842,8 @@ class Qwen35GGUFFullStackRunner:
         )
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
-            qwen35_linear_attn_chain_conv_decode_f32_tloop(
-                scratch.linear_qkv_f32.ptr,
+            qwen35_linear_attn_chain_conv_decode_bf16_tloop(
+                scratch.linear_qkv.ptr,
                 conv_state.ptr,
                 conv_state_rows.ptr,
                 layer.weight("ssm_conv1d").allocation().tensor.ptr,
