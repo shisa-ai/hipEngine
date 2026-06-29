@@ -19,6 +19,9 @@ Examples:
 
 ## 2026-06-30
 
+- [hipEngine] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / mtp-bench full suite: best MTP 1.0534x AR (B5) -> 1.1134x AR (B5, +5.7%; confirm 1.114x) due to a new Q6_K T16 small-B **rowtile** lm-head GEMV for the verify (reads the 417MB head once across 2-6 block rows instead of per row; 1.85-3.48x faster lm-head, bit-exact vs per-row decode). All budgets up (B2 1.062, B3 1.080, B4 1.089). acc/out unchanged. `benchmarks/results/2026-06-30-ar-mtp-suite-full-rowtile-lmhead.json`.
+
+
 - [hipEngine] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / mtp-bench full suite: best MTP 1.0399× AR (B2) -> 1.0534× AR (B5, +1.3%; confirm 1.055×) due to `--draft-p-min 0.5` draft-confidence gate (data-driven from ja-draft analysis: hit conf ~0.69 vs miss ~0.36); unlocks deeper budgets B4/B5 (were regressing). `benchmarks/results/2026-06-30-ar-mtp-suite-full-minrows2-pmin05.json`.
 - [hipEngine] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / mtp-bench full suite: best MTP 1.0356× AR (B3) -> 1.0399× AR (B2, +0.4%; confirm 1.0385×) due to `--target-block-min-rows 2` enabling B2 (3-row) block verify (B2 itself 0.9845× serial -> 1.0399× block, +5.6%); `verify_target_block` bit-exact vs serial-exact at rows 2-3; `benchmarks/results/2026-06-30-ar-mtp-suite-full-b1-probe-cap32k-minrows2.json`.
 

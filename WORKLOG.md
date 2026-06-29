@@ -128823,3 +128823,35 @@ direct template) makes the verify lm-head cost ~constant instead of rows x 1.85 
 B3 7.4 -> ~2.5 ms (~5 ms/block, ~11% block cut); B5 11 -> ~3 ms (~8 ms, ~14%).
 Projected aggregate ~1.14-1.16x AR (revised down from 1.2-1.3x since MoE grouping is
 refuted). Dense (no grouping), bit-exact vs the per-row path. Building it next.
+
+## 2026-06-30 — KERNEL WIN: Q6_K T16 rowtile verify lm-head -> MTP 1.0534x -> 1.1134x AR
+
+Built and shipped the small-B rowtile verify lm-head GEMV (the lever the de-risk
+identified). New kernel gguf_q6_k_t16_gemv_rowtile_{bf16_f32,bf16_bf16}_out
+(gguf_q6_k_t16_gemv.hip): one block per 16-col output tile, acc[ROW_TILE][16],
+each weight tile dequant'd ONCE and reused across ROW_TILE rows (ROW_TILE 2-6).
+Bit-identical dequant order to the per-row decode kernel.
+
+Correctness (CLAUDE.md gate): tests/test_gguf_q6_k_t16_rowtile_gemv.py — rowtile ==
+per-row decode max_abs=0 (bit-exact) for rows 2-6 on the real lm-head tiles.
+Kernel-ran/duration evidence (scratchpad/rowtile_speed.py): rows4 7.39->2.87ms
+(2.57x), rows6 11.07->3.18ms (3.48x), no register-spill regression.
+
+Wired into the verify: _verify_lm_head_rowtile() (guards rows 2-6 + q6_k_t16 tiles
+via resolve_gguf_linear_dispatch, falls back to launch_gguf_linear otherwise) used
+by _sample_target_block_rows_from_hidden; the verify now defaults rows 2-6 to the
+batched path so the rowtile reads the 417MB head once instead of per row.
+
+Full suite (scripts/gguf_ar_mtp_suite.py --scope full, default route):
+AR 54.59; best B5 60.8 tok/s = 1.1134x AR (confirm 1.114x); all budgets up
+(B2 1.062, B3 1.080, B4 1.089, B5 1.113), acc/out unchanged (bit-exact).
+apple_to_apple_ok=true, mtp_beats_ar=true. Artifacts
+benchmarks/results/2026-06-30-ar-mtp-suite-full-rowtile-lmhead.json (+ -confirm).
+
+Cumulative 2026-06-30: 1.0356x -> 1.0399x (B2 block) -> 1.0534x (p_min gate) ->
+1.1134x (rowtile lm-head) AR. llama.cpp B2 1.342x / 67.3 tok/s; hipEngine now
+60.8 tok/s (90.3% of llama's absolute MTP, while hipEngine AR 54.6 > llama AR 50.1).
+
+De-risk that saved a wasted build: MoE grouping REFUTED (per-slot all-distinct only
+1.40-1.54x all-same => L2 already serves duplicate-expert reads; compact grouped
+path 1.30-1.45x slower). The lm-head (417MB >> L2) was the real over-read.

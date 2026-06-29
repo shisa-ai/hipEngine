@@ -4220,7 +4220,11 @@ class Qwen35GGUFResidentSession:
                 token_host = np.ascontiguousarray(tokens, dtype=np.int64)
                 runtime.device_synchronize()
             else:
-                row_lm_head = _gguf_verify_row_lm_head_enabled()
+                # rows 2-6: default to the batched lm-head path so the Q6_K t16
+                # rowtile GEMV reads the 417MB head once across all block rows
+                # (vs the per-row loop re-reading it per row). Bit-exact; the env
+                # flag can still force it for other row counts.
+                row_lm_head = _gguf_verify_row_lm_head_enabled() or (2 <= rows <= 6)
                 if row_lm_head:
                     token_host = self._sample_target_block_rows_from_hidden(
                         final_scratch.norm.ptr,
@@ -5270,6 +5274,54 @@ class Qwen35GGUFResidentSession:
         self._verify_lm_out_values = malloc(rows * DType.FP32.itemsize, runtime=runtime)
         self._verify_lm_rows_capacity = rows
 
+    def _verify_lm_head_rowtile(
+        self, hidden_ptr: int, out_ptr: int, rows: int, *, stream: int = 0, runtime=None
+    ) -> bool:
+        """Weight-amortized small-B (rows 2-6) verify lm-head GEMV.
+
+        Reads the Q6_K t16 lm-head tiles ONCE across all block rows instead of
+        re-reading the 417MB head per row (the per-row decode kernel's small-B
+        over-read). Bit-exact vs the per-row decode kernel
+        (tests/test_gguf_q6_k_t16_rowtile_gemv.py). Returns True if it handled the
+        GEMV; False means the caller should fall back to launch_gguf_linear.
+        """
+
+        if rows < 2 or rows > 6 or self.runner is None or self.runner.weights is None:
+            return False
+        from hipengine.runtime.gguf_linear import (
+            GGUF_ACTIVATION_BF16,
+            resolve_gguf_linear_dispatch,
+        )
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+            gguf_q6_k_t16_gemv_rowtile_bf16_f32_out,
+        )
+
+        weight = self.runner.weights.root("lm_head")
+        try:
+            dispatch = resolve_gguf_linear_dispatch(
+                weight,
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                output_dtype=GGUF_OUTPUT_F32,
+                backend="hip_gfx1100",
+                rows=rows,
+            )
+            if dispatch.key.quant != "gguf_q6_k_t16_v1" or dispatch.abi != "t16":
+                return False
+            tiles_ptr = weight.allocation("tiles").tensor.ptr
+        except Exception:
+            return False
+        gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
+            hidden_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            self.runner.hidden_size,
+            self.runner.vocab_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
     def _sample_target_block_rows_from_hidden(self, hidden_ptr: int, rows: int, *, stream: int = 0) -> np.ndarray:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -5284,17 +5336,20 @@ class Qwen35GGUFResidentSession:
             or self._verify_lm_out_values is None
         ):
             raise RuntimeError("GGUF verifier lm-head buffers are closed")
-        launch_gguf_linear(
-            self.runner.weights.root("lm_head"),
-            hidden_ptr,
-            self._verify_logits_buf.ptr,
-            rows=rows,
-            in_features=self.runner.hidden_size,
-            out_features=self.runner.vocab_size,
-            output_dtype=GGUF_OUTPUT_F32,
-            stream=stream,
-            runtime=runtime,
-        )
+        if not self._verify_lm_head_rowtile(
+            hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
+        ):
+            launch_gguf_linear(
+                self.runner.weights.root("lm_head"),
+                hidden_ptr,
+                self._verify_logits_buf.ptr,
+                rows=rows,
+                in_features=self.runner.hidden_size,
+                out_features=self.runner.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=stream,
+                runtime=runtime,
+            )
         argmax_f32_rows_i32(
             self._verify_logits_buf.ptr,
             self._verify_lm_block_values.ptr,
