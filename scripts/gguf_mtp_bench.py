@@ -1167,6 +1167,7 @@ def main(argv: list[str] | None = None):
                 bool(args.target_block_verify)
                 and cycle_block_verify_allowed
                 and len(draft_tokens) > 0
+                and args.root_topk_accept == 1
                 and args.sibling_topk_accept == 1
                 and not args.topk_branch_redraft
                 and len(draft_tokens) + 1 >= int(session.runner.weights.config.ssm_conv_kernel)

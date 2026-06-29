@@ -127024,3 +127024,28 @@ goal-closing lever because B1 is unchanged and remains the best budget. B1 timin
 tokens; saving all draft time would only reach ~55.4 tok/s, while a ~10% target-verify reduction
 would clear the same-run AR denominator. Next goal branch should therefore target structural target
 verification cost (or an equally large draft-cost removal), not more sibling acceptance.
+
+## 2026-06-29 — GGUF MTP B1 block verifier probe: rejected; root-topk block guarded
+
+Tested whether the existing row-bulk target block verifier could close the B1 gap by allowing B1's
+two target rows (`[prev] + [draft]`) through `--target-block-verify`. This is the only structural
+lever that might reduce B1's two serial target steps without changing draft quality.
+
+Findings:
+- Temporarily relaxing the row-count guard and running root-K40 B1, 10 prompts, cycles=5
+  (`/tmp/hipengine-b1-block-c5`) produced `51.66 tok/s` vs serial root-K40 `50.06`, but the result
+  is invalid: for non-argmax root top-k branch accepts, the block verifier's second row is computed
+  from the draft argmax token, while the correct corrective row must be computed from the accepted
+  branch token. The serial verifier does this correctly by continuing with `verify_input_token =
+  target_token`.
+- Strict root-K1 block B1 (`/tmp/hipengine-b1-block-root1-c5`) is valid but much worse:
+  `38.47 tok/s`, accepted/output `11/61 = 0.180`. Miss cycles pay a two-row block plus rollback/replay
+  before adaptive AR fallback.
+- Restored the `rows >= ssm_conv_kernel` block guard and added `root_topk_accept == 1` to the
+  block-verify eligibility condition, so explicit `--target-block-verify` cannot take the invalid
+  root-topk branch shortcut. Guard smoke with B3/root-K40 recorded cycle `target_block_verify=false`.
+
+Decision: do not pursue the existing block verifier for B1. A correct root-topk block verifier would
+need branch-specific corrective replay, which collapses back toward the serial path. The goal-closing
+path remains a dedicated small-B verifier/fused target path or another change that reduces the target
+side by roughly 10%+ on the full suite.
