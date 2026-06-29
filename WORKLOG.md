@@ -127088,3 +127088,49 @@ draft acceptance 0.0247), but the ratio is slightly below the retained 0.9206x b
 Decision: rejected and reverted. Intermediate hidden-seed D2H copies are not a goal-closing lever on
 the current full suite. Per user direction, next work pivots to reading llama.cpp's MTP implementation
 and identifying structural patterns to adopt instead of continuing hipEngine-local micro-cleanups.
+
+## 2026-06-29 — GGUF MTP llama.cpp review: goal pivots to strict lifecycle
+
+Reviewed the read-only llama.cpp HIP checkout at
+`/home/lhl/llama.cpp/llama.cpp-hip`, commit
+`6e9007ae61f4e994c27484759caac6ef2aa32b30`. The relevant implementation is
+`common/speculative.cpp::common_speculative_impl_draft_mtp`, not a wider
+candidate-rank path. It maintains `pending_h`, `verify_h`, `verify_h_rows`, and
+`last_n_drafted`; `process()` mirrors target verifier rows into the MTP/draft
+context, `draft()` seeds from `pending_h` and chains `h_nextn`, and `accept()`
+selects the verifier hidden row for the next seed. The Qwen35MoE MTP graph in
+`src/models/qwen35moe.cpp` is the expected one-layer NextN decoder graph with its
+own attention K/V context.
+
+Decision: the next goal is full-suite strict top-1 lifecycle evidence, then a
+production resident `GGUFMTPDraftContext` if the existing hooks do not generalize.
+Added `resident-strict-context` to `scripts/gguf_ar_mtp_suite.py` and
+`scripts/gguf_mtp_parity_workbench.py` so the current diagnostic lifecycle can be
+measured apple-to-apple:
+`--resident-mtp-draft --root-topk-accept 1 --sibling-topk-accept 1
+--mtp-context-replay --mtp-device-kv-cache --no-target-block-verify`. This route
+is intentionally strict: root-topK remains diagnostic, not the production
+speculative target.
+
+Validation and initial measurements:
+- `python3 -m py_compile scripts/gguf_ar_mtp_suite.py scripts/gguf_mtp_parity_workbench.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_parity_workbench.py`
+- Dry-run confirmed `gguf_ar_mtp_suite.py --mtp-route resident-strict-context`
+  threads the strict route flags into the MTP category child.
+- Smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-strict-context --output benchmarks/results/2026-06-29-ar-mtp-suite-smoke-strict-context.json`
+  => `apple_to_apple_ok=True`; AR `54.88 tok/s`; B3 `42.81 tok/s`, `0.780x AR`,
+  accepted/output `0.625`, draft acceptance `0.556`; `mtp_beats_ar=false`.
+- Partial:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope partial --mtp-route resident-strict-context --output benchmarks/results/2026-06-29-ar-mtp-suite-partial-strict-context.json`
+  => `apple_to_apple_ok=True`; AR `54.77 tok/s`; best B1 `48.69 tok/s`,
+  `0.8891x AR`; B3 `45.16 tok/s`, `0.8246x AR`, accepted/output `0.697`;
+  B5 `41.94 tok/s`, `0.7658x AR`, accepted/output `0.747`; `mtp_beats_ar=false`.
+
+Decision update: the current context-replay/device-KV diagnostic route does not
+generalize into a competitive production route. The goal should be a real
+resident llama.cpp-style MTP lifecycle object plus parity instrumentation:
+`process_verifier_rows()` for target-hidden mirroring, `draft()` for
+device-resident strict top-1 chain generation, and `accept()` for verifier-row
+selection and rollback/commit. Full-suite success remains
+`gguf_ar_mtp_suite.py --scope full` with `mtp_beats_ar=true`.

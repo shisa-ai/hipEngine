@@ -84,6 +84,14 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--adaptive-ar-fallback",
         "--no-target-block-verify",
     ],
+    "resident-strict-context": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--mtp-context-replay",
+        "--mtp-device-kv-cache",
+        "--no-target-block-verify",
+    ],
     "resident-draft": ["--resident-mtp-draft"],
     "resident-block": ["--resident-mtp-draft", "--target-block-verify"],
 }

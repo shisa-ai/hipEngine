@@ -36,6 +36,7 @@ def test_workbench_candidate_aliases_and_envs() -> None:
     assert "resident-draft" in names
     assert "resident-b5-adaptive" in names
     assert "resident-serial-fallback" in names
+    assert "resident-strict-context" in names
     assert "resident-production" in names
     assert "q4-x8" in names
     assert "selected-down-raw-dp4a" in names
@@ -49,6 +50,16 @@ def test_workbench_candidate_aliases_and_envs() -> None:
     assert mod.CANDIDATES["resident-serial-fallback"].extra_args == (
         "--resident-mtp-draft",
         "--adaptive-ar-fallback",
+        "--no-target-block-verify",
+    )
+    assert mod.CANDIDATES["resident-strict-context"].extra_args == (
+        "--resident-mtp-draft",
+        "--root-topk-accept",
+        "1",
+        "--sibling-topk-accept",
+        "1",
+        "--mtp-context-replay",
+        "--mtp-device-kv-cache",
         "--no-target-block-verify",
     )
     assert mod.CANDIDATES["resident-production"].extra_args == (
