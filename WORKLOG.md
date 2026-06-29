@@ -128617,3 +128617,24 @@ multi-row MoE verify is the alternative) — genuine kernel R&D at the hardware 
 
 Session result: GGUF MTP default 1.0356x -> 1.0534x AR (4 committed wins);
 remaining gap exhaustively root-caused to the per-row block-verify MoE over-read.
+
+## 2026-06-30 — config space PROVABLY exhausted: context loses both ways; pmin05 default is optimal
+
+Tested context WITHOUT p_min (device-chain fast draft): route
+resident-context-block-minrows2-cap32k, --scope full: best B1 0.9577x AR, draft_acc
+fell to 0.67 (vs 0.78 with p_min). So p_min helps even WITH context, and context
+loses both ways: with p_min 1.0032x, without p_min 0.9577x — both below the
+no-context default pmin05 1.0534x. The context-draft's KV-attention cost is not
+offset by its higher acceptance because the per-row block-VERIFY cost caps the
+benefit (verify-bound, per the synthesis).
+
+Config/policy space is now provably exhausted across all axes tested this session:
+precision (f32 vs bf16: equal), draft context (none / p_min / no-p_min: none wins),
+budgets B1-B5, vocab caps (32k/98k/full), fallback (permanent/cooldown/none),
+block min-rows, WMMA vs gemv. The no-context pmin05 default (1.0534x) is the
+config optimum. Removed the no-pmin context route (clear loss).
+
+Final: the ONLY remaining lever is a cheaper per-row multi-row MoE verify GEMV
+(near peak BW) — kernel R&D at the gfx1151 hardware limit, the sole structural
+difference from llama's fused verify graph. Session net: 1.0356x -> 1.0534x AR
+(4 wins) + exhaustive single-constraint root-cause.
