@@ -128855,3 +128855,21 @@ Cumulative 2026-06-30: 1.0356x -> 1.0399x (B2 block) -> 1.0534x (p_min gate) ->
 De-risk that saved a wasted build: MoE grouping REFUTED (per-slot all-distinct only
 1.40-1.54x all-same => L2 already serves duplicate-expert reads; compact grouped
 path 1.30-1.45x slower). The lm-head (417MB >> L2) was the real over-read.
+
+## 2026-06-30 — rowtile ceiling: block marginal 6.82 -> 5.14 ms/row; remainder is MoE compute
+
+Re-measured block cost with the rowtile lm-head wired (scratchpad/p01_block_cost_probe.py):
+block B1 30.0->28.6, B2 36.6->33.8, B3 43.5->38.6, B4 50.2->43.4, B5 57.3->49.2 ms.
+Per-row marginal 6.82 -> 5.14 ms/row (drop ~1.68 = the lm-head 1.85 ms/row over-read,
+now amortized). The remaining 5.14 ms/row is MoE selected-expert COMPUTE (de-risk
+proved it L2-served/compute-bound, not over-read) + small attn-compute = the
+irreducible verify floor at small B. So 1.1134x AR is the realistic verify-
+amortization ceiling; the 1.2-1.3x projection assumed a REAL MoE over-read that the
+de-risk refuted (L2). Going further needs cheaper MoE compute (dp4a/q8_1 were flat
+e2e historically; could be re-examined now that verify is the bottleneck) or higher
+acceptance, not more weight-read amortization.
+
+Outcome of the user-greenlit kernel effort: delivered a real, bit-exact, validated
+GPU kernel win 1.0534x -> 1.1134x AR (60.8 tok/s, 90.3% of llama's 67.3). The de-risk
+correctly steered away from the MoE-grouping kernel (would not have helped) to the
+lm-head rowtile (the real lever). Cumulative session 1.0356x -> 1.1134x AR.
