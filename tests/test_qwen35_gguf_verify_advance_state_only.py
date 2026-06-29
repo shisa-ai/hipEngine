@@ -256,3 +256,45 @@ def test_bulk_direct_commit_matches_wrong_branch(monkeypatch) -> None:
     np.testing.assert_array_equal(ref0_state, direct0_state)
     assert int(direct1.token_id) == int(ref1.token_id)
     np.testing.assert_array_equal(ref1_state, direct1_state)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
+def test_native_bulk_direct_commit_row1_matches_serial(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
+
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=256) as session:
+        first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        prefix_position = int(session.position)
+        snapshot = session._linear_state_snapshot()
+
+        ref0 = session.step(int(first.token_id), return_logits=False, capture_hidden_seed_fp32=True)
+        ref0_hidden = _read_hidden_seed(session)
+        ref1 = session.step(int(ref0.token_id), return_logits=False, capture_hidden_seed_fp32=True)
+        ref1_hidden = _read_hidden_seed(session)
+        ref1_state = _read_linear_state(session)
+        ref2 = session.step(int(ref1.token_id), return_logits=False, capture_hidden_seed_fp32=True)
+        ref2_state = _read_linear_state(session)
+
+        block_inputs = [int(first.token_id), int(ref0.token_id)]
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        block = session.verify_target_block(
+            block_inputs,
+            bulk_attention_mode="native",
+            capture_linear_state_rows=True,
+        )
+        assert block.linear_state_rows_captured
+        session._commit_verify_linear_state_row(1, position=prefix_position + 2)
+        direct1_state = _read_linear_state(session)
+        direct2 = session.step(int(ref1.token_id), return_logits=False, capture_hidden_seed_fp32=True)
+        direct2_state = _read_linear_state(session)
+
+        session._free_linear_state_snapshot(snapshot)
+
+    assert [int(token) for token in block.token_ids] == [int(ref0.token_id), int(ref1.token_id)]
+    np.testing.assert_array_equal(block.hidden_seeds[0], ref0_hidden)
+    np.testing.assert_array_equal(block.hidden_seeds[1], ref1_hidden)
+    np.testing.assert_array_equal(ref1_state, direct1_state)
+    assert int(direct2.token_id) == int(ref2.token_id)
+    np.testing.assert_array_equal(ref2_state, direct2_state)

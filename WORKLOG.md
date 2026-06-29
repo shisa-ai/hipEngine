@@ -127809,3 +127809,48 @@ completed with `apple_to_apple_ok=true`, AR `54.97 tok/s`, B1 MTP
 `0.017`, `mtp_beats_ar=false`. Decision: do not run full suite for this route.
 The row-0 exactness fix is useful correctness scaffolding, but branch-safe
 direct B1 remains a rejected diagnostic and is not the goal path.
+
+## 2026-06-29 — native verifier row-1 direct commit exact; route still below AR
+
+Localized the remaining strict two-row direct-commit drift. A no-edit probe
+showed `verify_target_block(..., capture_linear_state_rows=True)` in default
+bulk mode has exact row-0 hidden/state, but row 1 first drifts after full
+attention layer 19 (`max_abs=0.0009765625`, 374 BF16 hidden differences) and
+then appears as captured conv-state drift at linear layer 20. The GDN captured
+state kernels were not the first failing boundary. `bulk_attention_mode=native`
+was also wrong for continuation blocks because the row-serial full-attention
+fallback used row-local positions (`0, 1, ...`) instead of absolute continuation
+positions (`start + row`).
+
+Fix: `_run_native_attention_bulk_ffn_layer_rows()` now accepts
+`start_position`, uses absolute full-attention positions, and optionally stages
+per-row linear-attention Conv/GDN state when called by
+`verify_target_block(..., bulk_attention_mode="native",
+capture_linear_state_rows=True)`. The MTP harness now trusts direct captured-row
+commits beyond row 0 only for exact verifier modes (`native` and
+`serial-exact`); default `bulk` remains row-0-only because the fully bulk suffix
+full-attention path still has row-1 ULP drift.
+
+Focused exactness gate added:
+`tests/test_qwen35_gguf_verify_advance_state_only.py::test_native_bulk_direct_commit_row1_matches_serial`.
+It verifies a strict two-row native verifier block can commit row 1 directly,
+matches serial hidden seed + full Conv/GDN state bit-for-bit, and the next
+serial step remains exact.
+
+Validation:
+`python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+passed; `python3 -m pytest tests/test_gguf_mtp_bench_metrics.py -q` passed
+(`52 passed`); `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+passed (`6 passed`); `git diff --check` passed.
+
+Smoke route added:
+`resident-hybrid-strict-block-direct-native-cap32k` =
+`resident-hybrid-strict-block-direct-cap32k` plus
+`--target-block-verify-mode native`. Smoke command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-hybrid-strict-block-direct-native-cap32k --output /tmp/hipengine-hybrid-strict-block-direct-native-smoke.json`.
+Result: `apple_to_apple_ok=true`, AR `55.04 tok/s`, B3 MTP `48.17 tok/s =
+0.8752x AR`, accepted/output `0.571`, draft acceptance `0.087`,
+`mtp_beats_ar=false`. Decision: keep native row-1 exactness as rollback-slot
+scaffolding, but do not run a full suite for this route. The next goal path is a
+faster exact suffix full-attention/block verifier or another target-pass
+amortization path that beats true AR.

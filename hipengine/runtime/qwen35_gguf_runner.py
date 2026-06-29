@@ -1687,6 +1687,8 @@ class Qwen35GGUFFullStackRunner:
         *,
         rows: int,
         decode_scratch,
+        start_position: int = 0,
+        linear_state_rows: tuple[object, object] | None = None,
         stream: int = 0,
     ) -> None:
         """Run row-serial attention followed by the row-bulk GGUF FFN/MoE path.
@@ -1699,20 +1701,45 @@ class Qwen35GGUFFullStackRunner:
 
         if rows <= 0:
             raise ValueError("rows must be positive")
+        start_position = int(start_position)
+        if start_position < 0:
+            raise ValueError("start_position must be non-negative")
         row_nbytes = self.hidden_size * DType.BF16.itemsize
+        runtime = self.runtime or get_hip_runtime()
         for row in range(rows):
+            position = start_position + row
             hidden_row = hidden_ptr + row * row_nbytes
             attn_row = scratch.attn_out.ptr + row * row_nbytes
             if layer_type == LINEAR_ATTENTION:
                 self._run_linear_attention_attn_only(layer_id, hidden_row, attn_row, decode_scratch, stream=stream)
+                if linear_state_rows is not None:
+                    conv_state = decode_scratch.layer_conv_states[layer_id]
+                    recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
+                    if conv_state is None or recurrent_state is None:
+                        raise ValueError(f"layer {layer_id} has no linear-attention state")
+                    conv_state_rows, recurrent_state_rows = linear_state_rows
+                    runtime.memcpy_async(
+                        conv_state_rows.ptr + row * int(conv_state.nbytes),
+                        conv_state.ptr,
+                        int(conv_state.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
+                        recurrent_state.ptr,
+                        int(recurrent_state.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
             elif layer_type == FULL_ATTENTION:
-                decode_scratch.set_full_attention_position(row, self.runtime or get_hip_runtime())
+                decode_scratch.set_full_attention_position(position, runtime)
                 self._run_full_attention_attn_only(
                     layer_id,
                     hidden_row,
                     attn_row,
                     decode_scratch,
-                    position=row,
+                    position=position,
                     stream=stream,
                 )
             else:
@@ -3708,6 +3735,7 @@ class Qwen35GGUFResidentSession:
                             dst_chunk_ptr,
                             bulk_scratch,
                             rows=chunk_rows,
+                            start_position=start,
                             stream=stream,
                             decode_scratch=self.scratch,
                         )
@@ -3882,8 +3910,14 @@ class Qwen35GGUFResidentSession:
                                 dst_chunk_ptr,
                                 bulk_scratch,
                                 rows=rows,
+                                start_position=start,
                                 stream=stream,
                                 decode_scratch=self.scratch,
+                                linear_state_rows=(
+                                    self._verify_linear_state_row_pair(layer_id)
+                                    if capture_linear_state_rows
+                                    else None
+                                ),
                             )
                         elif layer_type == LINEAR_ATTENTION:
                             self.runner._run_linear_attention_prefill_layer_rows(

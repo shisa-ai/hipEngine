@@ -1377,6 +1377,7 @@ def main(argv: list[str] | None = None):
             if can_b1_branch_safe_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
+                direct_state_commit_exact_mode = args.target_block_verify_mode in {"native", "serial-exact"}
                 snapshot = session._linear_state_snapshot()
                 block_inputs = [int(verify_input_token), int(draft_tokens[0])]
                 try:
@@ -1398,17 +1399,28 @@ def main(argv: list[str] | None = None):
                     target0 = int(block_target_tokens[0])
                     if target0 == int(draft_tokens[0]):
                         if direct_state_commit:
-                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                            replay_result = session.verify_target_block_serial_exact(block_inputs)
-                            replay_tokens = [int(token) for token in replay_result.token_ids]
-                            if replay_tokens != block_target_tokens:
-                                raise RuntimeError("B1 branch-safe serial-exact replay diverged from block rows")
-                            target_tokens.extend(replay_tokens)
-                            if serial_hidden_host_required:
-                                target_hidden_seeds.extend(
-                                    np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                    for row in range(2)
-                                )
+                            if not block_result.linear_state_rows_captured:
+                                raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
+                            if direct_state_commit_exact_mode:
+                                session._commit_verify_linear_state_row(1, position=seq_position + 2)
+                                target_tokens.extend(block_target_tokens)
+                                if serial_hidden_host_required:
+                                    target_hidden_seeds.extend(
+                                        np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                        for row in range(2)
+                                    )
+                            else:
+                                session._restore_linear_state_snapshot(snapshot, position=seq_position)
+                                replay_result = session.verify_target_block_serial_exact(block_inputs)
+                                replay_tokens = [int(token) for token in replay_result.token_ids]
+                                if replay_tokens != block_target_tokens:
+                                    raise RuntimeError("B1 branch-safe serial-exact replay diverged from block rows")
+                                target_tokens.extend(replay_tokens)
+                                if serial_hidden_host_required:
+                                    target_hidden_seeds.extend(
+                                        np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                        for row in range(2)
+                                    )
                         else:
                             target_tokens.extend(block_target_tokens)
                             if serial_hidden_host_required:
@@ -1482,6 +1494,7 @@ def main(argv: list[str] | None = None):
             if can_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
+                direct_state_commit_exact_mode = args.target_block_verify_mode in {"native", "serial-exact"}
                 snapshot = session._linear_state_snapshot()
                 try:
                     block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
@@ -1516,7 +1529,7 @@ def main(argv: list[str] | None = None):
                     if consumed_rows < len(block_inputs):
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
-                        if direct_state_commit and consumed_rows == 1:
+                        if direct_state_commit and (consumed_rows == 1 or direct_state_commit_exact_mode):
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
                             session._commit_verify_linear_state_row(
@@ -1557,7 +1570,19 @@ def main(argv: list[str] | None = None):
                         target_tokens.extend(replay_tokens)
                         target_hidden_seeds.extend(replay_hidden)
                     else:
-                        if direct_state_commit:
+                        if direct_state_commit and direct_state_commit_exact_mode:
+                            if not block_result.linear_state_rows_captured:
+                                raise RuntimeError("direct block commit requested without captured linear-state rows")
+                            session._commit_verify_linear_state_row(
+                                len(block_inputs) - 1,
+                                position=seq_position + len(block_inputs),
+                            )
+                            target_tokens.extend(block_target_tokens)
+                            target_hidden_seeds.extend(
+                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                for row in range(len(block_target_tokens))
+                            )
+                        elif direct_state_commit:
                             session._restore_linear_state_snapshot(snapshot, position=seq_position)
                             replay_result = session.verify_target_block_serial_exact(block_inputs)
                             replay_tokens = [int(token) for token in replay_result.token_ids]
