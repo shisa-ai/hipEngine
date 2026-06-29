@@ -84,9 +84,9 @@ def parse_budgets(text: str) -> list[int]:
         budgets = [int(part) for part in parts]
     except ValueError as exc:
         raise BenchError("--budgets entries must be integers") from exc
-    bad = [b for b in budgets if b < 1 or b > 5]
+    bad = [b for b in budgets if b < 1 or b > 8]
     if bad:
-        raise BenchError(f"budgets must be in 1..5 for gguf_mtp_bench.py: {bad}")
+        raise BenchError(f"budgets must be in 1..8 for gguf_mtp_bench.py: {bad}")
     duplicates = sorted({budget for budget in budgets if budgets.count(budget) > 1})
     if duplicates:
         raise BenchError(f"--budgets must not contain duplicates: {duplicates}")

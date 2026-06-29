@@ -129153,3 +129153,38 @@ budget B6+ (architectural cap), generation length (uplift stable), and CONTEXT
 (no-op on draft quality). 1.1134x (60.8 tok/s, 90.3% of llama's 67.3, beats llama AR
 54.6 vs 50.1 and the ja gate) is the measured optimum for hipEngine's exact-precision
 GGUF MTP on gfx1151. No correctness-preserving hipEngine-side lever remains.
+
+## 2026-06-30 — budget B6-B8 plateau; p_min artifact corrected; gap is genuine draft-forward quality
+
+Raised the soft caps (validate_draft_n_max and parse_budgets 5->8; verify-block
+buffers already grow dynamically, rowtile falls back to per-row lm-head for rows>6)
+and tested the "rising curve" hypothesis. Full suite default route:
+  B5 59.34 / B6 59.28 / B7 59.06 / B8 59.45 (all ~1.09x). PLATEAUS at B5 - stable
+  draft_acc keeps accepting but verify cost grows with budget, cancelling out. Depth
+  is not the lever beyond B5.
+
+Tested p_min=0 at LOW budget (B2/B3) where chain truncation waste is small:
+  B2 pmin0: tok/s 56.42 (< default 57.9), acc/out 0.482 (> default 0.465), draft_acc
+  0.628. Still net-negative; default p_min=0.5 optimal at every budget.
+
+CORRECTION of a prior misread: hipEngine's apparent "higher draft_acc" (0.763 at B2)
+was a p_min ARTIFACT - p_min=0.5 only proposes high-confidence drafts, inflating the
+per-draft average. At FULL budget (p_min=0) hipEngine B2 draft_acc is 0.628, BELOW
+llama B2 0.734. So llama's NextN draft genuinely produces BETTER predictions at equal
+budget. The gap is real draft-forward quality, NOT policy and NOT (refuted) context.
+
+Cross-budget apples-to-apples (same metric defs, audited): at matched budget hipEngine
+already BEATS llama at B5 (60.8 vs 55.9) because llama's draft_acc collapses with depth
+(0.83->0.49) while hipEngine's is stable; but llama's per-cycle tok/s PEAKS at B2
+(~66) where its full-budget draft quality (0.734) exceeds hipEngine's (0.628). hipEngine
+cannot reach ~66 at any budget: low budgets are draft-quality-limited, high budgets
+plateau at ~60.
+
+REMAINING LEVER (only one left, not in the parity doc's next-steps): the NextN draft
+FORWARD itself - hipEngine's draft logits are lower quality than llama's at equal input.
+The seed (post_output_norm) was verified vs llama; the draft's own attn/norm/rope/FFN
+forward is NOT gated vs a llama draft-logit reference. A subtle numerical difference
+there would lower acceptance without failing any existing test. Diagnosing needs a
+token-level draft-logit comparison vs llama (cross-tool reverse-engineering), a major
+effort with no guaranteed fixable cause. Everything testable in-tree is exhausted;
+1.1134x stands as the optimum for the current draft+verify implementation.

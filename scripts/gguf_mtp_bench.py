@@ -145,8 +145,8 @@ def validate_draft_n_max(draft_n_max: int) -> int:
     are not confused with the future persistent GGUF MTP context implementation.
     """
     draft_n_max = int(draft_n_max)
-    if not 1 <= draft_n_max <= 5:
-        raise ValueError("draft_n_max must be in 1..5 for GGUF MTP diagnostics")
+    if not 1 <= draft_n_max <= 8:
+        raise ValueError("draft_n_max must be in 1..8 for GGUF MTP diagnostics")
     return draft_n_max
 
 
