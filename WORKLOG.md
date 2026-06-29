@@ -127328,3 +127328,54 @@ worse than the retained cap32k recovery diagnostic (B1 `51.7077 tok/s =
 the goal path. The optimization-list sweep is closed; next work should reduce
 target-verifier work per visible token or implement the llama.cpp-style resident
 MTP lifecycle, not add another route selector.
+
+## 2026-06-29 — GGUF MTP resident device hidden-seed diagnostic retained
+
+Added a default-off device hidden-seed route that adopts the llama.cpp
+`pending_h` lifecycle direction for the current resident draft: `--resident-mtp-device-seed`
+copies the target session's fp32 hidden seed device pointer into the resident
+MTP draft seed buffer with D2D memcpy, avoiding the pending hidden-seed D2H/H2D
+round trip. The named suite route is `resident-cap32k-device-seed`
+(`--resident-mtp-draft --resident-mtp-device-seed --adaptive-ar-fallback
+--no-target-block-verify --mtp-draft-vocab-cap 32768
+--adaptive-full-vocab-after-cap-miss`). The helper context is constructed only
+when this diagnostic flag is active, so default routes keep the existing host
+hidden-seed behavior.
+
+Directional smoke:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-cap32k-device-seed --output /tmp/hipengine-device-seed-smoke.json`
+-> `apple_to_apple_ok=true`; AR `54.90 tok/s`; B3 `41.03 tok/s = 0.7473x AR`;
+accepted/output `4/7 = 0.571`. Same-session cap32k recovery smoke control was
+B3 `40.50 tok/s = 0.7368x AR` with identical acceptance.
+
+Partial suite:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope partial --mtp-route resident-cap32k-device-seed --output /tmp/hipengine-device-seed-partial.json`
+-> AR `54.75 tok/s`; B1 `50.53 = 0.923x AR`; B3 `48.76 = 0.891x`; B5
+`45.73 = 0.835x`; accepted/output B1 `0.487`, B3 `0.636`, B5 `0.667`. Partial
+control cap32k recovery was flat/slightly mixed (B1 `50.77`, B3 `48.67`, B5
+`45.61`) with identical acceptance.
+
+Full gate:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-cap32k-device-seed --output benchmarks/results/2026-06-29-ar-mtp-suite-full-cap32k-device-seed.json`
+-> `apple_to_apple_ok=true`; AR `54.5926 tok/s`; B1 `52.0830 tok/s =
+0.9540x AR`; B2 `49.4599 = 0.9060x`; B3 `47.6791 = 0.8734x`; B4 `44.7672 =
+0.8200x`; B5 `43.1424 = 0.7903x`; accepted/output unchanged from cap32k
+recovery: B1 `78/178 = 0.4382`, B2 `122/222 = 0.5495`, B3 `151/251 = 0.6016`,
+B4 `158/258 = 0.6124`, B5 `180/280 = 0.6429`; `mtp_beats_ar=false`.
+
+Compared with the retained cap32k recovery full suite
+(`benchmarks/results/2026-06-29-ar-mtp-suite-full-cap32k-recover.json`), this
+moves B1 `51.7077 -> 52.0830 tok/s` (+0.7%) and `0.9478x -> 0.9540x AR` with
+unchanged acceptance. Decision: retain as default-off structural diagnostic
+evidence and update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+`docs/MTP-LLAMACPP-PARITY.md`, and `docs/REFACTOR.md`; do not call the goal
+done. The goal remains a full-suite `mtp_beats_ar=true` result, likely via
+target-verifier amortization / real `GGUFMTPDraftContext` lifecycle that reduces
+target weight-stream work per visible token.
+
+Validation after scoping the context to device-seed routes:
+`python3 -m pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_context.py -q`
+-> `90 passed`.
+`python3 -m py_compile hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+-> passed.
+`git diff --check` -> passed.

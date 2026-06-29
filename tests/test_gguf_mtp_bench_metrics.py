@@ -390,6 +390,13 @@ def test_arg_parser_exposes_adaptive_full_vocab_recovery() -> None:
     assert args.adaptive_full_vocab_after_cap_miss is True
 
 
+def test_arg_parser_exposes_resident_mtp_device_seed() -> None:
+    args = build_arg_parser().parse_args(["--resident-mtp-draft", "--resident-mtp-device-seed"])
+
+    assert args.resident_mtp_draft is True
+    assert args.resident_mtp_device_seed is True
+
+
 def test_arg_parser_exposes_adaptive_strict_block_probe() -> None:
     args = build_arg_parser().parse_args(
         [

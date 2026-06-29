@@ -1,0 +1,133 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-06-29T17:01:41",
+  "scope": "full",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "9fdd345ecc4607903b533de440e067ccb955b185",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 10,
+    "budgets": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "prompt_limit": null,
+    "ar_decode_tokens": 60,
+    "mtp_route": "resident-cap32k-device-seed",
+    "mtp_route_extra_args": [
+      "--resident-mtp-draft",
+      "--resident-mtp-device-seed",
+      "--adaptive-ar-fallback",
+      "--no-target-block-verify",
+      "--mtp-draft-vocab-cap",
+      "32768",
+      "--adaptive-full-vocab-after-cap-miss"
+    ]
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.592628683407,
+    "total_output_tokens": 600,
+    "decode_ms": 10990.494769532233,
+    "prompts": 10,
+    "per_category": {
+      "code": 54.61397300517741,
+      "general_en": 54.712567269649504,
+      "general_ja": 54.656598286931626,
+      "mixed_ja_en": 54.36732004984871
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 55.479712502883075,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 178,
+      "vs_ar_ratio": 1.0162
+    },
+    "b1": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 52.08302854032924,
+      "accepted_per_output": 0.43820224719101125,
+      "draft_acceptance": 0.01989795918367347,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 78,
+      "total_output_tokens": 178,
+      "vs_ar_ratio": 0.954
+    },
+    "b2": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 49.45995080740028,
+      "accepted_per_output": 0.5495495495495496,
+      "draft_acceptance": 0.030676389238119186,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 122,
+      "total_output_tokens": 222,
+      "vs_ar_ratio": 0.906
+    },
+    "b3": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 47.67911009125516,
+      "accepted_per_output": 0.601593625498008,
+      "draft_acceptance": 0.03706431026018655,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 151,
+      "total_output_tokens": 251,
+      "vs_ar_ratio": 0.8734
+    },
+    "b4": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 44.76718461258166,
+      "accepted_per_output": 0.6124031007751938,
+      "draft_acceptance": 0.037880604171661475,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 158,
+      "total_output_tokens": 258,
+      "vs_ar_ratio": 0.82
+    },
+    "b5": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 43.142366728606774,
+      "accepted_per_output": 0.6428571428571429,
+      "draft_acceptance": 0.04217432052483599,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 180,
+      "total_output_tokens": 280,
+      "vs_ar_ratio": 0.7903
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.592628683407,
+    "best_mtp_budget": "b1",
+    "best_mtp_vs_ar_ratio": 0.954,
+    "mtp_beats_ar": false
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-full-1782720101/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-full-1782720101/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-cap32k-device-seed --output benchmarks/results/2026-06-29-ar-mtp-suite-full-cap32k-device-seed.json"
+}

@@ -631,6 +631,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-device-seed",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Use the target session's device-resident fp32 hidden seed pointer for resident MTP draft "
+            "instead of round-tripping the pending seed through host memory. Diagnostic lifecycle path."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -750,6 +759,14 @@ def main(argv: list[str] | None = None):
         parser.error("--mtp-draft-vocab-cap must be non-negative")
     if args.adaptive_full_vocab_after_cap_miss and not args.resident_mtp_draft:
         parser.error("--adaptive-full-vocab-after-cap-miss requires --resident-mtp-draft")
+    if args.resident_mtp_device_seed and not args.resident_mtp_draft:
+        parser.error("--resident-mtp-device-seed requires --resident-mtp-draft")
+    if args.resident_mtp_device_seed and args.mtp_context_replay:
+        parser.error("--resident-mtp-device-seed is not yet compatible with --mtp-context-replay")
+    if args.resident_mtp_device_seed and args.mtp_device_kv_cache:
+        parser.error("--resident-mtp-device-seed is not yet compatible with --mtp-device-kv-cache")
+    if args.resident_mtp_device_seed and args.topk_branch_redraft:
+        parser.error("--resident-mtp-device-seed is not yet compatible with --topk-branch-redraft")
     if args.adaptive_full_vocab_after_cap_miss and args.mtp_draft_vocab_cap <= 0:
         parser.error("--adaptive-full-vocab-after-cap-miss requires --mtp-draft-vocab-cap > 0")
     if args.adaptive_ar_fallback_max_accepted < 0:
@@ -779,6 +796,10 @@ def main(argv: list[str] | None = None):
         args.sibling_topk_accept,
         args.adaptive_strict_fallback_root_topk if args.adaptive_strict_block_probe else 1,
     )
+    if args.resident_mtp_device_seed and proposal_topk_candidate_count > 64:
+        parser.error("--resident-mtp-device-seed requires resident draft top-k <= 64")
+    if args.resident_mtp_device_seed and args.draft_p_min > 0.0:
+        parser.error("--resident-mtp-device-seed requires --draft-p-min 0")
     diagnostic_topk_candidate_count = max(10, proposal_topk_candidate_count)
     topk_candidate_count = proposal_topk_candidate_count
     if args.decode_repack:
@@ -795,6 +816,7 @@ def main(argv: list[str] | None = None):
     from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
         qwen35_gguf_mtp_nextn_layer_logits_f32 as gpu_kernel,
     )
+    from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPContext
     from hipengine.speculative.mtp_resident_draft import Qwen35GGUFResidentMTPDraftRunner
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.core.hip import get_hip_runtime, HipMemcpyKind
@@ -1008,6 +1030,14 @@ def main(argv: list[str] | None = None):
             mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
             target_prefill_mode = "resident_default"
             mtp_context_mode = "single_seed_row"
+        resident_context = None
+        if args.resident_mtp_device_seed:
+            resident_context = Qwen35GGUFMTPContext.from_target_seed(
+                session,
+                token_id=prev_token,
+                position=int(session.position) - 1,
+                mtp_block=resident_draft,
+            )
 
         # Track the current sequence position for draft model RoPE.
         # After prefill, session.position = len(prompt). The first sampled
@@ -1174,19 +1204,38 @@ def main(argv: list[str] | None = None):
             if cycle_resident_draft is not None and cycle_draft_n_max > 0:
                 if args.mtp_device_kv_cache and mtp_device_kv_len + cycle_draft_n_max > mtp_device_kv_capacity:
                     raise RuntimeError("MTP device KV cache capacity exhausted")
-                draft_tokens, draft_top10_tokens, mtp_device_kv_len = cycle_resident_draft.propose_chain(
-                    current_hidden_seed,
-                    start_token=current_token,
-                    start_position=current_pos,
-                    draft_n_max=cycle_draft_n_max,
-                    top_k=min(cycle_diagnostic_topk_candidate_count, 64),
-                    rope_cos=_rope_cos,
-                    rope_sin=_rope_sin,
-                    dense_key_cache=mtp_device_key_cache if args.mtp_device_kv_cache else None,
-                    dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
-                    dense_cache_len=mtp_device_kv_len,
-                    draft_p_min=float(args.draft_p_min),
-                )
+                if args.resident_mtp_device_seed:
+                    if resident_context is None or resident_context.pending_seed is None:
+                        raise RuntimeError("resident MTP context has no pending seed")
+                    draft_tokens, draft_top10_tokens, mtp_device_kv_len = (
+                        cycle_resident_draft.propose_chain_from_device_seed(
+                            int(resident_context.pending_seed.hidden_ptr),
+                            start_token=current_token,
+                            start_position=current_pos,
+                            draft_n_max=cycle_draft_n_max,
+                            top_k=min(cycle_diagnostic_topk_candidate_count, 64),
+                            rope_cos=_rope_cos,
+                            rope_sin=_rope_sin,
+                            dense_key_cache=mtp_device_key_cache if args.mtp_device_kv_cache else None,
+                            dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
+                            dense_cache_len=mtp_device_kv_len,
+                            draft_p_min=float(args.draft_p_min),
+                        )
+                    )
+                else:
+                    draft_tokens, draft_top10_tokens, mtp_device_kv_len = cycle_resident_draft.propose_chain(
+                        current_hidden_seed,
+                        start_token=current_token,
+                        start_position=current_pos,
+                        draft_n_max=cycle_draft_n_max,
+                        top_k=min(cycle_diagnostic_topk_candidate_count, 64),
+                        rope_cos=_rope_cos,
+                        rope_sin=_rope_sin,
+                        dense_key_cache=mtp_device_key_cache if args.mtp_device_kv_cache else None,
+                        dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
+                        dense_cache_len=mtp_device_kv_len,
+                        draft_p_min=float(args.draft_p_min),
+                    )
             elif cycle_draft_n_max > 0:
                 for draft_depth in range(cycle_draft_n_max):
                     token_embed = token_embd_f32[current_token:current_token + 1].copy()
@@ -1279,6 +1328,7 @@ def main(argv: list[str] | None = None):
             redraft_ms = 0.0
             batched_verify_used = False
             block_verify_used = False
+            serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
             can_block_verify = (
                 bool(args.target_block_verify)
                 and cycle_block_verify_allowed
@@ -1408,8 +1458,10 @@ def main(argv: list[str] | None = None):
                     target_token = int(target_result.token_id)
                     current_device_token = target_token
                     target_tokens.append(target_token)
-                    target_hidden_seed = copy_pending_hidden_seed()
-                    target_hidden_seeds.append(target_hidden_seed)
+                    target_hidden_seed = None
+                    if serial_hidden_host_required:
+                        target_hidden_seed = copy_pending_hidden_seed()
+                        target_hidden_seeds.append(target_hidden_seed)
 
                     depth = len(target_tokens) - 1
                     if (
@@ -1646,10 +1698,20 @@ def main(argv: list[str] | None = None):
                 )
             output_tokens = list(acceptance["output_tokens"])
             comparison_target_tokens = list(acceptance["comparison_target_tokens"])
-            pending_hidden_seed = np.ascontiguousarray(
-                target_hidden_seeds[int(acceptance["pending_hidden_row_index"])],
-                dtype=np.float32,
-            )
+            if target_hidden_seeds:
+                pending_hidden_seed = np.ascontiguousarray(
+                    target_hidden_seeds[int(acceptance["pending_hidden_row_index"])],
+                    dtype=np.float32,
+                )
+            elif not args.resident_mtp_device_seed:
+                raise RuntimeError("target verifier did not provide a host hidden seed")
+            if args.resident_mtp_device_seed:
+                if resident_context is None:
+                    raise RuntimeError("resident MTP context missing for device-seed route")
+                resident_context.capture_pending_seed_from_target(
+                    token_id=int(output_tokens[-1]),
+                    position=seq_position + int(acceptance["visible_output_tokens"]) - 1,
+                )
 
             mtp_device_kv_commit_ms = 0.0
             if args.mtp_device_kv_cache:
@@ -1884,7 +1946,8 @@ def main(argv: list[str] | None = None):
     )
     print(
         f"Resident MTP draft: requested={bool(args.resident_mtp_draft)} "
-        f"effective={bool(resident_mtp_draft_effective)}"
+        f"effective={bool(resident_mtp_draft_effective)} "
+        f"device_seed={bool(args.resident_mtp_device_seed)}"
     )
     if resident_mtp_draft_fallback_reason:
         print(f"Resident MTP draft fallback: {resident_mtp_draft_fallback_reason}")
@@ -1950,6 +2013,7 @@ def main(argv: list[str] | None = None):
             "mtp_draft_warmup": bool(args.mtp_draft_warmup),
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
             "resident_mtp_draft": bool(args.resident_mtp_draft),
+            "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_draft_full_vocab_recovery_effective": bool(
                 resident_mtp_draft_full_vocab_recovery_effective

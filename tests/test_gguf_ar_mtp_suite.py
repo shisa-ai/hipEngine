@@ -27,6 +27,18 @@ def test_suite_exposes_cap32k_recovery_route() -> None:
     ]
 
 
+def test_suite_exposes_cap32k_device_seed_route() -> None:
+    assert suite.MTP_ROUTES["resident-cap32k-device-seed"] == [
+        "--resident-mtp-draft",
+        "--resident-mtp-device-seed",
+        "--adaptive-ar-fallback",
+        "--no-target-block-verify",
+        "--mtp-draft-vocab-cap",
+        "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+    ]
+
+
 def test_suite_exposes_hybrid_strict_block_cap32k_route() -> None:
     assert suite.MTP_ROUTES["resident-hybrid-strict-block-cap32k"] == [
         "--resident-mtp-draft",

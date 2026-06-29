@@ -368,6 +368,72 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if hidden.shape != (1, self.hidden_size):
             raise ValueError("hidden_seed must have shape [1, hidden_size]")
         copy_host_to_device(self.seed_a, host_array_ptr(hidden), hidden.nbytes, runtime=self.runtime)
+        return self._propose_chain_from_seed_buffer(
+            start_token=start_token,
+            start_position=start_position,
+            draft_n_max=draft_n_max,
+            top_k=top_k,
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            dense_key_cache=dense_key_cache,
+            dense_value_cache=dense_value_cache,
+            dense_cache_len=dense_cache_len,
+            draft_p_min=draft_p_min,
+        )
+
+    def propose_chain_from_device_seed(
+        self,
+        hidden_seed_ptr: int,
+        *,
+        start_token: int,
+        start_position: int,
+        draft_n_max: int,
+        top_k: int,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        dense_key_cache: DeviceBuffer | None = None,
+        dense_value_cache: DeviceBuffer | None = None,
+        dense_cache_len: int = 0,
+        draft_p_min: float = 0.0,
+    ) -> tuple[list[int], list[list[int]], int]:
+        """Run the draft chain from an already-resident target hidden seed."""
+
+        ptr = int(hidden_seed_ptr)
+        if ptr <= 0:
+            raise ValueError("hidden_seed_ptr must be a non-zero device pointer")
+        runtime = self.runtime or get_hip_runtime()
+        runtime.memcpy(self.seed_a.ptr, ptr, self.hidden_size * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+        return self._propose_chain_from_seed_buffer(
+            start_token=start_token,
+            start_position=start_position,
+            draft_n_max=draft_n_max,
+            top_k=top_k,
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            dense_key_cache=dense_key_cache,
+            dense_value_cache=dense_value_cache,
+            dense_cache_len=dense_cache_len,
+            draft_p_min=draft_p_min,
+        )
+
+    def _propose_chain_from_seed_buffer(
+        self,
+        *,
+        start_token: int,
+        start_position: int,
+        draft_n_max: int,
+        top_k: int,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        dense_key_cache: DeviceBuffer | None,
+        dense_value_cache: DeviceBuffer | None,
+        dense_cache_len: int,
+        draft_p_min: float,
+    ) -> tuple[list[int], list[list[int]], int]:
+        if draft_n_max <= 0:
+            raise ValueError("draft_n_max must be positive")
+        if top_k <= 0 or top_k > 64:
+            raise ValueError("resident GGUF MTP top_k must be in 1..64")
         if (
             self._device_chain_enabled
             and draft_p_min <= 0.0
