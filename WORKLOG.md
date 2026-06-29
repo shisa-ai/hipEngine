@@ -128312,3 +128312,34 @@ Net session outcome: GGUF MTP default 1.0356x -> 1.0399x AR (committed, gated,
 confirmed); full pipeline characterized and policy/flag/cap space exhausted;
 remaining gap to llama precisely localized to serial per-cycle host/launch +
 verify overlap, which is graph-capture kernel work.
+
+## 2026-06-30 — ja draft-quality lever: NextN kernels correct; needs ja-prompt oracle audit (scoped)
+
+Pursued the highest-leverage remaining lever (general_ja NextN draft quality).
+Sharpened signal: per-ATTEMPT draft acceptance hipEngine ja draft_acc 0.5 vs
+llama 0.80 (en is close: 0.7 vs 0.77) — a disproportionate CJK deficit, not
+inherent difficulty (llama's ja ~ its en). Confirmed it is NOT a vocab-cap
+artifact: no-cap routes pass full vocab (248320) to the draft runner
+(gguf_mtp_bench.py:1064).
+
+Ruled out a draft-kernel-math bug: `pytest tests/test_mtp_nextn_real_gguf.py
+tests/test_mtp_nextn_layer_hip.py tests/test_gguf_mtp_cpu_reference.py` = 27
+passed. So the NextN draft kernels are correct per their oracles (on the existing
+code fixture). The ja gap is a NextN-draft-vs-deep-target AGREEMENT deficit
+specific to Japanese context.
+
+Root-cause requires extending the layer-by-layer llama-oracle audit (the
+tests/scripts `llamacpp_mtp_audit_layer*`, currently on the code merge-sort
+prompt) to a general_ja prompt: capture llama target + NextN per-layer activations
+on a ja context, diff vs hipEngine, find the CJK divergence (candidate areas:
+hidden-seed/pending_h for high-ID tokens, rope at ja positions, MoE routing on ja
+tokens). NOTE the original target-AR + strict-acceptance parity was validated
+CODE-PROMPT-ONLY; ja was never audited. This is a multi-session correctness
+investigation comparable to the original GDN K-head fix, gated by the
+KL<=0.05 / top1>=90% correctness gate, not a config/kernel-flag change.
+
+Session net: GGUF MTP default 1.0356x -> 1.0399x AR (committed/confirmed/gated);
+policy+verify+draft pipeline exhaustively tested; remaining gap to llama 1.34x
+localized to (1) ja NextN draft-vs-target agreement (needs ja-prompt oracle
+audit, top lever, ~1.16x) and (2) near-hardware-limit MoE verify over-read
+(~1.16->1.34x). Both are scoped R&D sub-projects (task #7).
