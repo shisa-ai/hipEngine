@@ -126797,3 +126797,33 @@ sessions' "launch/fusion levers measured flat" and "bandwidth-efficiency gap" fi
 per-GEMV BW actually quantified (decent, not starved). The remaining structural lever is GEMV/op FUSION
 to amortize per-launch overhead (which #13's commit f351fb54 also concluded), not a faster single GEMV.
 Corrected artifact: benchmarks/results/2026-06-29-gguf-q8-0-dense-bw.json. Microbench fixed in-tree.
+
+## 2026-06-29 — MALL/cache-hint investigation: non-temporal loads +14% isolated, FLAT e2e (not promoted)
+
+Followed up the user's question: "can we take advantage of the MALL (32MB Infinity Cache) in any way
+we're not?" Inventory (Explore agent): we use ZERO cache-control hints anywhere — no glc/slc/dlc, no
+__builtin_nontemporal_load. Arch handling = offload-arch + cache key + decode/prefill profiles
+(-mcumode, unroll600) + per-kernel launch_bounds; no MALL-specific tuning.
+
+EXPERIMENT — non-temporal (cache-streaming) weight loads on the dense Q8_0 T16 GEMV. Hypothesis: the
+single-use weight quants pollute the 32MB MALL with read-once data; streaming them via
+__builtin_nontemporal_load (no L2/MALL line alloc) should read cold DRAM faster AND avoid evicting
+reused data. Result (scripts/gguf_q8_0_dense_bw_microbench-style, cold DRAM via >2x-MALL 71MB pool):
+  rows=1: NT = +14% BW, BIT-IDENTICAL (68->77% peak @2048^2; 70->79% @2048x6144; 80->93% @2048x16384).
+  BUT rows=2 break-even (0.99x), rows=4 = 0.68x (NT kills cross-row weight reuse via cache).
+So NT is strictly a rows==1 (decode/draft) lever; the verifier block (rows>1) must stay cached.
+
+Wired NT into the rows==1 launcher dispatch for the two biggest dense Q8_0 decode kernels (single 13%
++ dual_split 24% of decode). E2E decode (32 steps): 18.17 (baseline) -> 18.29 warm / 19.0 cold = FLAT
+to slightly worse. The clean isolated +14% did NOT carry. Most likely: in the real interleaved decode
+some dense weights are already MALL-resident (cross-kernel/cross-token), so cache-bypass defeats reuse
+the HW already provides -> NT neutral-to-negative e2e. REVERTED (fails the non-regressive promotion
+gate; bit-exact but no e2e win, possible small regression).
+
+VALUE: (1) reconfirms the c=1 decode wall is NOT a single-kernel cold-streaming-BW problem — same story
+as every micro-lever this session (real in isolation, flat e2e). (2) The honest MALL answer: the active
+weight set (~1.6GB/tok) >> 32MB, so MALL can't cache weights; the ONLY reliable cache win is reading each
+weight once and reusing across many rows in-registers = block verification (B+1 rows/pass) + MTP draft
+chaining = the speculative AMORTIZATION story (#3/#4/#5), not a kernel cache-hint. Recorded as
+docs/ROOFLINE-gfx1151.md section 6.6 (incl. the MALL-defeating microbench methodology so the earlier
+"20% peak" measurement bug can't recur). NEXT: #5 (settle same-protocol AR vs MTP) is the real lever.

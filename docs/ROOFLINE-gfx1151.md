@@ -404,6 +404,42 @@ Recommended Strix Halo AI setup from the ROCm doc and local notes:
 - Disable mmap for large ROCm llama.cpp model loads when documented by that
   stack; mmap can be catastrophically slow on large unified-memory ROCm loads.
 
+### 6.6 The 32 MB MALL / Infinity Cache and non-temporal loads (2026-06-29)
+
+Strix Halo has a 32 MB MALL (Infinity Cache) below GL2. It is far too small to
+hold the active weight set (a 35B-A3B Q4_K_M token streams ~1.6 GB of weights),
+so it cannot cache weights for c=1 decode — the bulk weight read is cold DRAM.
+Two practical consequences and one measured dead-end:
+
+1. **Microbenches over a small reused weight buffer measure MALL, not DRAM.** A
+   4–13 MB weight matrix looped in-place reports 400–820 GB/s (above the ~256
+   GB/s DRAM peak) because it lives in MALL. To measure true cold-DRAM kernel
+   bandwidth, cycle a weight **pool sized > 2× MALL (≥ 64 MB)** per launch (see
+   `scripts/gguf_q8_0_dense_bw_microbench.py`). This burned a wrong "dense Q8_0
+   at 20% peak" conclusion once; corrected, the dense Q8_0 c=1 GEMV is ~51–70%
+   of peak, comparable to the selected-MoE GEMV.
+
+2. **Non-temporal weight loads help in isolation but not e2e.** We use no cache
+   hints anywhere (no `glc`/`slc`/`__builtin_nontemporal_load`). Streaming the
+   single-use weight quants with `__builtin_nontemporal_load` (no L2/MALL line
+   allocation) measured a clean, **bit-identical +14% cold-DRAM bandwidth at
+   rows==1** (up to +16% at 16k-wide). But it is strictly a **rows==1**
+   optimization: at rows>1 (verifier block) the rows reuse the same weight via
+   cache, and non-temporal regressed it to 0.68×. Wired into the rows==1 decode
+   dispatch (single + dual_split), **e2e decode was flat-to-slightly-worse
+   (18.17 → 18.3 ms/tok)** — most likely because in the real interleaved decode
+   some dense weights are already MALL-resident, so cache-bypass defeats reuse
+   the hardware was already providing. Not promoted; reverted. Lesson: the c=1
+   decode wall is not a single-kernel cold-streaming-bandwidth problem, and
+   cache-bypass is not a free win on a workload where MALL already does some
+   cross-kernel/cross-row work.
+
+3. **The way to actually use the cache is row amortization, not residency.** The
+   one reliable MALL/cache win is reading each weight once and applying it to
+   many rows in registers — i.e. block verification (B+1 rows/pass) and MTP
+   draft chaining — which is the speculative-amortization story, not a kernel
+   cache-hint.
+
 ---
 
 ## 7. Central gfx1151 tuning notes
