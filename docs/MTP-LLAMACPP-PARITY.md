@@ -1,6 +1,6 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite retained diagnostics, not speed rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
@@ -95,6 +95,7 @@ on current code; (M) are current-session measurements.
 | partial-accept LM-head skip (#4) | cut discardable replay work | **+3.5% B5, bit-exact** | **kept, default-on** |
 | serial verifier no-logits cleanup | remove unused full-logits D2H | **+0.7% B1 full-suite, acceptance unchanged** | **kept, default-on** |
 | resident top-k40 draft route | avoid full legacy draft fallback for root top-k40 | **+2.9% B1 full-suite, acceptance unchanged** | **kept, default-on** |
+| one-block device top-k40 | avoid resident root-K40 host logits readback + NumPy top-k | correctness passed, but smoke B3 **45.58 → 24.74 tok/s** at identical acceptance | rejected/reverted; serial K40 merge dominates |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
@@ -222,10 +223,10 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 
 ### Don't re-chase (closed lines of work)
 
-GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, and cache
-hints are all measured flat e2e and are not the lever. The per-kernel GEMV
-bandwidth is already near-peak. Kernel micro-optimization is exhausted; the gap
-is amortization.
+GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, cache
+hints, and the one-block device top-k40 extension are all measured flat or
+negative e2e and are not the lever. The per-kernel GEMV bandwidth is already
+near-peak. Kernel micro-optimization is exhausted; the gap is amortization.
 
 ## Production verifier status (2026-06-28)
 

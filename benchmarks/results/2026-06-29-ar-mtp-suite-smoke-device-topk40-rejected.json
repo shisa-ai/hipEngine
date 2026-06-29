@@ -1,0 +1,35 @@
+{
+  "schema": "hipengine.rejected_benchmark.v1",
+  "date": "2026-06-29",
+  "status": "rejected",
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "3d73ae9fb15347504e996d6bef257fc53391d624",
+  "prototype": {
+    "description": "Extend lm_head topk_f32_rows_i32 from K8 to K40 with a separate K40 instantiation and route resident GGUF MTP root top-k40 through a 128-thread device top-k kernel instead of host full-logits readback plus NumPy top-k.",
+    "retained": false
+  },
+  "validation": [
+    "python3 -m py_compile hipengine/kernels/hip_gfx1100/linear/lm_head.py hipengine/speculative/mtp_resident_draft.py",
+    "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_input_fusion_kernel.py::test_topk_f32_rows_i32_supports_resident_root_k40 tests/test_mtp_input_fusion_kernel.py::test_mtp_router_topk_softmax_matches_generic_topk_path tests/test_dflash_accept_kernels.py::test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hip",
+    "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_resident_draft_device_chain.py::test_resident_topk40_preserves_top8_prefix"
+  ],
+  "smoke_command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --output /tmp/hipengine-device-topk40-smoke.json",
+  "smoke_result": {
+    "apple_to_apple_ok": true,
+    "ar_tok_s": 54.9189136811667,
+    "b3_tok_s": 24.741340530814213,
+    "b3_vs_ar_ratio": 0.4505,
+    "b3_accepted_per_output": 0.7272727272727273,
+    "b3_draft_acceptance": 0.06349206349206349
+  },
+  "revert_sanity_command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --output /tmp/hipengine-host-topk40-smoke-after-revert.json",
+  "revert_sanity_result": {
+    "apple_to_apple_ok": true,
+    "ar_tok_s": 54.678843533441245,
+    "b3_tok_s": 45.57507457739476,
+    "b3_vs_ar_ratio": 0.8335,
+    "b3_accepted_per_output": 0.7272727272727273,
+    "b3_draft_acceptance": 0.06349206349206349
+  },
+  "decision": "Rejected and reverted. The one-block wide top-k kernel's local K40 insertion and thread-0 merge dominate the avoided host logits readback. Any future device top-k replacement needs a different multi-stage reduction design and must beat the committed host fallback in the suite smoke before a full gate."
+}

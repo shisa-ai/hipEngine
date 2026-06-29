@@ -127049,3 +127049,26 @@ Decision: do not pursue the existing block verifier for B1. A correct root-topk 
 need branch-specific corrective replay, which collapses back toward the serial path. The goal-closing
 path remains a dedicated small-B verifier/fused target path or another change that reduces the target
 side by roughly 10%+ on the full suite.
+
+## 2026-06-29 — GGUF MTP one-block device top-k40 rejected
+
+Prototyped widening `hipengine_topk_f32_rows_i32` from K8 to K40 with separate K8/K40 kernel
+instantiations, and routed resident GGUF MTP root top-k40 through a 128-thread device top-k instead of
+the current host full-logits readback + NumPy top-k. Correctness/local gates passed:
+`python3 -m py_compile hipengine/kernels/hip_gfx1100/linear/lm_head.py hipengine/speculative/mtp_resident_draft.py`;
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_input_fusion_kernel.py::test_topk_f32_rows_i32_supports_resident_root_k40 tests/test_mtp_input_fusion_kernel.py::test_mtp_router_topk_softmax_matches_generic_topk_path tests/test_dflash_accept_kernels.py::test_row_argmax_and_dflash_accept_wrappers_validate_shapes_before_loading_hip`;
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_resident_draft_device_chain.py::test_resident_topk40_preserves_top8_prefix`.
+
+Directional suite smoke was decisively negative:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --output /tmp/hipengine-device-topk40-smoke.json`
+=> `apple_to_apple_ok=True`, AR 54.92 tok/s, B3 24.74 tok/s = 0.4505x AR,
+accepted/output 8/11 = 0.727, draft acceptance 0.0635. After reverting to the committed host-topk40
+fallback, same smoke shape:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --output /tmp/hipengine-host-topk40-smoke-after-revert.json`
+=> AR 54.68 tok/s, B3 45.58 tok/s = 0.8335x AR, same acceptance metrics. Artifact:
+`benchmarks/results/2026-06-29-ar-mtp-suite-smoke-device-topk40-rejected.json`.
+
+Decision: rejected and reverted. The one-block wide top-k kernel's local K40 insertion plus thread-0
+merge costs far more than the avoided 128 KiB logits D2H/NumPy selection. Do not re-chase this shape;
+any future device top-k replacement needs a different multi-stage/parallel merge design and must beat
+the committed host fallback in `gguf_ar_mtp_suite.py --scope smoke` before a full gate.
