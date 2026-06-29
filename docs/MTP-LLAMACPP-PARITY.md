@@ -36,11 +36,14 @@ tooling or a since-corrected methodology — flagged inline below).
   llama.cpp's retained full-suite reference is **67.29 tok/s at B2 = 1.342× its
   AR**. The gap we chase is **speculative amortization**, not AR kernel
   throughput.
-- **Current goal:** build a real resident `GGUFMTPDraftContext` or equivalent
-  verifier-amortization path that adopts llama.cpp's
-  `process_verifier_rows()`/`draft()`/`accept()` lifecycle, then validate it with
-  the full suite. The existing `resident-strict-context` diagnostic already ran
-  strict top-1 (`root/sibling K=1`) with prompt catch-up replay plus
+- **Current goal:** build a llama.cpp-style target verifier with bounded
+  recurrent-state rollback slots for GGUF linear attention, then validate it with
+  the full suite. `Qwen35GGUFMTPContext` already covers the
+  `process_verifier_rows()`/`draft()`/`accept()` seed lifecycle shape; the missing
+  llama.cpp pattern is the target-side memory behavior that lets a batched
+  verifier keep the accepted prefix and discard speculative tail rows without
+  serial restore/replay. The existing `resident-strict-context` diagnostic
+  already ran strict top-1 (`root/sibling K=1`) with prompt catch-up replay plus
   device-resident MTP KV and stayed below AR (partial best B1 **48.69 tok/s =
   0.889× AR**). The follow-up capped-vocab recovery diagnostic improved
   full-suite B1 to **51.71 tok/s = 0.9478× AR**, still below the true AR
@@ -262,16 +265,17 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    **0.825× AR**. A full run is useful after lifecycle changes, but the existing
    diagnostic hooks do **not** generalize into a competitive route by
    themselves.
-3. **Port the llama.cpp lifecycle pattern, not another micro-lever.** Add a
-   resident `GGUFMTPDraftContext` abstraction that owns
-   device MTP K/V, `pending_h`, verifier hidden rows, position, and
-   rollback/commit. It should expose llama.cpp-shaped methods:
-   `process_verifier_rows()`, `draft()`, and `accept()`. The missing adoption
-   target is a branch-safe transactional target verifier: run `[prev]+drafts`
-   through a scratch target state, materialize exact per-row `h_nextn` plus
-   linear-attention recurrent state, and commit only the accepted row without
-   serial restore/replay. Success is lower target passes per visible token on
-   the full category suite, not a wider candidate-rank or confidence diagnostic.
+3. **Port the llama.cpp target-memory pattern, not another micro-lever.**
+   `Qwen35GGUFMTPContext` already owns the seed lifecycle (`pending_h` /
+   verifier hidden rows / `accept()` reseed). The missing adoption target is a
+   branch-safe transactional target verifier with llama.cpp-like recurrent
+   rollback slots: run `[prev]+drafts` through scratch target state, materialize
+   exact per-row `h_nextn` plus GGUF Conv/GDN state, and advance the resident
+   target to the accepted row without serial restore/replay. In llama.cpp terms,
+   this is the `llama_memory_recurrent::seq_rm()` / bounded `n_rs_seq` behavior,
+   not merely a renamed draft context. Success is lower target passes per
+   visible token on the full category suite, not a wider candidate-rank or
+   confidence diagnostic.
    Source anchor: llama.cpp commit `6e9007ae61f4e994c27484759caac6ef2aa32b30`
    defines this lifecycle in `common/speculative.h` (`common_speculative_process`,
    `common_speculative_draft`, `common_speculative_accept`), implements the MTP

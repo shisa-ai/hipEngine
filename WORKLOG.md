@@ -127698,3 +127698,23 @@ transactional batch: run `[prev]+drafts` in scratch target state, materialize
 exact per-row `h_nextn` plus GGUF linear-attention recurrent state, and commit
 only the accepted row without serial restore/replay. This is the structural
 piece needed to reduce target passes per visible token on the full suite.
+
+## 2026-06-29 — GGUF MTP goal sharpened: target recurrent rollback slots
+
+Follow-up review of the same llama.cpp checkout
+(`/home/lhl/llama.cpp/llama.cpp-hip`, `6e9007ae61f4e994c27484759caac6ef2aa32b30`)
+showed the missing hipEngine pattern more precisely. `Qwen35GGUFMTPContext`
+already covers the llama.cpp MTP seed lifecycle shape (`pending_h`,
+`verify_h`, `accept()` reseed). The target-side difference is llama.cpp's
+context memory: `tools/server/server-context.cpp` removes speculative tail rows
+with `common_context_seq_rm(...)`, and `src/llama-memory-recurrent.cpp` supports
+bounded partial rollback through per-sequence recurrent-state slots
+(`n_rs_seq`, `rs_idx`) when the speculative tail is within the rollback window.
+
+Decision: the current optimization goal should be stated as target verifier
+amortization with GGUF linear-attention rollback-slot semantics, not a new draft
+context wrapper. A successful implementation should run `[prev]+drafts` once,
+keep exact per-row `h_nextn` plus Conv/GDN state, advance/rollback the resident
+target to the accepted row without serial restore/replay, and prove
+`apple_to_apple_ok=true` plus `verdict.mtp_beats_ar=true` on
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full`.
