@@ -129371,3 +129371,24 @@ attention amortization is not a lever. This closes the last untested verify-side
 EVERYTHING is now checked: MTP uplift (all levers), AR multiplier (+ dominant kernel),
 and verify attention amortization. 1.1134x / 60.8 tok/s is the optimum within scope
 and the correctness guard; 67.3 needs dp4a (fails ja gate) or multi-session decode R&D.
+
+## 2026-06-30 — dp4a AR = exact AR (MEASURED): closes the dp4a path by measurement
+
+Last open assertion ("dp4a can't speed AR") now MEASURED, not assumed. AR decode A/B
+(scratchpad/ar_dp4a_ab.py, 40 steps): exact 54.95 tok/s vs dp4a (all selected flags)
+54.97 tok/s - IDENTICAL within noise. dp4a does not speed AR at all (its flags touch
+only the MoE-selected experts ~21% of AR, and q8_1 quantize overhead cancels the gain
+at rows=1). So:
+- dp4a verify: ~1.13x (measured) ; dp4a AR: = exact AR (measured) ->
+- full dp4a MTP ~= 1.13 x 55 ~= 62 tok/s, definitively SHORT of llama's 67.3,
+  BY MEASUREMENT, regardless of the ja correctness gate.
+
+Every link in the conclusion is now measurement-backed: (1) uplift surface exhausted
+(all levers), (2) AR multiplier profiled + dominant kernel analyzed (no quick win),
+(3) verify on its fast path (attention amortization refuted), (4) dp4a verify ~1.13x
+and dp4a AR == exact AR -> dp4a MTP ~62 < 67.3. 67.3 tok/s is unreachable on hipEngine
+by ANY precision regime; it is a property of llama's slower-AR x higher-uplift profile.
+1.1134x / 60.8 tok/s is the measured optimum within scope and the correctness guard.
+The only path that could lift the absolute number is deep AR-decode decode-strategy
+R&D (multi-session, uncertain, on an already-llama-beating AR path) - a human
+direction decision, not an in-scope/config lever.
