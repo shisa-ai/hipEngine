@@ -109,6 +109,7 @@ on current code; (M) are current-session measurements.
 | one-block device top-k40 | avoid resident root-K40 host logits readback + NumPy top-k | correctness passed, but smoke B3 **45.58 → 24.74 tok/s** at identical acceptance | rejected/reverted; serial K40 merge dominates |
 | strict-context route | existing llama.cpp-style prompt replay + device MTP KV with root/sibling top-1 | smoke B3 **42.81 tok/s = 0.780x AR**; partial best B1 **48.69 tok/s = 0.889x AR**, B3 **45.16 = 0.825x AR** | route is a valid diagnostic but not production-competitive; build resident lifecycle abstraction |
 | adaptive full-vocab recovery after capped miss | keep cheap capped-vocab draft normally, switch to full vocab after a generic capped zero-accept miss instead of permanent AR fallback | partial route `resident-cap32k-recover`: AR **54.76 tok/s**, best B1 **52.45 tok/s = 0.958x AR**, accepted/output **19/39 = 0.487**; cap sweep B1 diagnostics peaked around cap18k/24k at **~52.6 tok/s** but still below AR | diagnostic only; serial verifier route is bounded by target wall + draft overhead |
+| short B1 target block verify with confidence gate | use 2-row target block verify for high-confidence exact B1 drafts, rollback to serial/root-topK on mismatch | direct rows=2 block probe was exact and faster than two serial steps (**32.8 ms vs 39.7 ms**), but partial B1 p=0.8 had 15 attempts/14 hits/1 rollback and regressed to **50.07 tok/s**; p=0.9 had 11/11 hits but still **51.84 tok/s**, below capped recovery **52.45 tok/s** | rejected; savings per hit too small and rollback/noise erases it |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
@@ -252,8 +253,9 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 ### Don't re-chase (closed lines of work)
 
 GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, cache
-hints, deferred hidden-seed D2H copies, and the one-block device top-k40
-extension are all measured flat or negative e2e and are not the lever. The
+hints, deferred hidden-seed D2H copies, the one-block device top-k40 extension,
+and short B1 confidence-gated target block verify are all measured flat or
+negative e2e and are not the lever. The
 per-kernel GEMV bandwidth is already near-peak. Kernel micro-optimization is
 exhausted; the gap is amortization.
 

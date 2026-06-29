@@ -127180,3 +127180,37 @@ route can approach but not beat true AR. Next goal remains a structural
 llama.cpp-style resident lifecycle / verifier-amortization path; full-suite
 success remains `gguf_ar_mtp_suite.py --scope full` with
 `mtp_beats_ar=true`.
+
+## 2026-06-29 — GGUF MTP short B1 block-verify confidence probe rejected
+
+Audited whether the existing target block verifier can amortize B1. Direct
+runtime probe under canonical decode-repack showed short rows are numerically
+usable even below the GDN convolution width:
+rows=2 `verify_target_block(..., bulk_attention_mode="bulk",
+use_wmma_prefill=False)` matched two eager steps and measured `32.81 ms` versus
+`39.67 ms` for two serial `session.step()` calls on the same prefix. Rows=1/3
+also matched; WMMA/native variants were slower.
+
+Prototype (not retained) added resident draft confidence stats and a rollback-safe
+2-row short-block attempt: if draft top-1 probability exceeded a threshold, run
+`[prev, draft0]` through target block verify; if target row 0 matched `draft0`,
+commit both rows; otherwise restore and fall back to the existing serial/rootTopK
+verifier. This preserves exact root-topK acceptance because mismatched branch
+cycles do not consume the block's invalid second row.
+
+Measurements, B1 partial category on the same 4 code prompts as the cap-recovery
+probe, with `--mtp-draft-vocab-cap 32768 --adaptive-full-vocab-after-cap-miss`:
+- Confidence scan with impossible threshold `1.1` recorded probabilities and made
+  no block attempts: `52.29 tok/s`, accepted/output `19/39`.
+- Threshold `0.8`: `15` attempts, `14` hits, `1` rollback; regressed to
+  `50.07 tok/s`.
+- Threshold `0.9`: `11` attempts, `11` hits, no rollback; still only
+  `51.84 tok/s`, below the committed cap-recovery partial result
+  `52.45 tok/s = 0.9578x true AR`.
+
+Decision: rejected and prototype code removed before commit. The per-hit saving
+is only about 2 ms on selected cycles, confidence calculation adds overhead, and
+one rollback or prompt-local block slowdown erases the benefit. Do not re-chase
+short B1 block verify without a materially faster rollback-free target verifier.
+The next useful direction remains a structural resident lifecycle / verifier
+amortization path closer to llama.cpp's `process()`/`draft()`/`accept()` model.
