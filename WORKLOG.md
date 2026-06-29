@@ -126827,3 +126827,38 @@ weight once and reusing across many rows in-registers = block verification (B+1 
 chaining = the speculative AMORTIZATION story (#3/#4/#5), not a kernel cache-hint. Recorded as
 docs/ROOFLINE-gfx1151.md section 6.6 (incl. the MALL-defeating microbench methodology so the earlier
 "20% peak" measurement bug can't recur). NEXT: #5 (settle same-protocol AR vs MTP) is the real lever.
+
+## 2026-06-29 — #5: reliable apple-to-apple AR/MTP suite + parity handoff doc
+
+Built scripts/gguf_ar_mtp_suite.py: ONE entry point that measures the true no-MTP AR baseline and the
+MTP path under a single ENFORCED decode config and emits ONE consolidated artifact (shared_config +
+git/hw provenance + AR row + per-budget MTP rows with vs_ar_ratio + verdict). Pins repack=1 / gemv /
+wmma / eager / greedy / prompt-reasoning=off on BOTH sides; enforces apple-to-apple (same timing_protocol
++ same prompt-set sha256, fails loudly with apple_to_apple_ok=false). Scope presets smoke/partial/full.
+It REUSES the validated gguf_true_ar_category_bench + gguf_mtp_category_bench (no new timing code) but
+computes the MTP/AR ratio itself; verifier-derived off/b0 rows are flagged diagnostic_only and excluded
+from the verdict (anti-gaming).
+
+BUG FOUND (and worked around, not yet fixed): the bench's own --true-ar-baseline-json attach is BROKEN.
+gguf_mtp_category_bench TRUE_AR_PRODUCTION_TIMING_REQUIRED (+ a parallel speed-claim contract + the
+test_speed_claim_contract... test) still demand decode_path='graph_replay' / graph_replay_decode=True /
+effective_* keys, but #8 retired the decode graph so the production AR baseline emits decode_path=
+'eager_step'. So the attach has rejected every current AR baseline since #8 ("requires
+timing_protocol.decode_path='graph_replay'; got 'eager_step'"). The suite sidesteps it by computing the
+ratio itself; proper contract+test fix tracked in docs/REFACTOR.md.
+
+SMOKE (validation, 1 code prompt, 3 cycles, gfx1151, resident-production route; diagnostic, not a
+retained claim): apple_to_apple_ok=True. AR=54.81 tok/s; MTP B3=44.01 tok/s = 0.80x AR (acc/out 0.727,
+draft_acc 0.063). Confirms on CURRENT code: (a) AR ~55 tok/s (already > llama.cpp AR ~47), (b) MTP does
+NOT beat AR on this prompt -- consistent with the ~0.86x full-suite figure. Artifact
+benchmarks/results/2026-06-29-ar-mtp-suite-smoke.json.
+
+HANDOFF DOC: rewrote the top of docs/MTP-LLAMACPP-PARITY.md as the authoritative current snapshot:
+TL;DR (correctness solved; AR already beats llama.cpp AR; MTP amortization is the whole 1.9x gap; no
+starved GEMV), a measurement-reset list (retracted "20% peak" BW; stale 875-launch verifier diagnostic
+predates #9; broken AR-baseline contract), a per-stage AR+MTP gap table (current vs llama.cpp, marked
+measured vs stale), the full tried-levers expected-vs-actual table (dp4a/split-K/non-temporal/MoE-graph/
+device-chain/LM-head-skip/etc.), the decode-wall composition, the suite usage, and an ordered "how to
+continue" (settle verify host-vs-GPU on current code -> collapse launches OR raise acceptance -> make
+MTP beat AR before any retained claim). NEXT: run --scope partial/full to get the real same-protocol
+ratio, then settle the verify host-vs-GPU question on current code.

@@ -6,6 +6,157 @@
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
 - llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
 
+## 2026-06-29 — HANDOFF: current state, per-stage gap, tried levers, how to continue
+
+This section is the current, authoritative snapshot. The dated sections below it
+are the historical record of how we got here; where they conflict with this
+section, **this section wins** (several older numbers were measured with stale
+tooling or a since-corrected methodology — flagged inline below).
+
+### TL;DR
+
+- **Correctness is solved.** Target AR first-token + 12-token greedy trace and
+  strict B3 draft acceptance match llama.cpp on the merge-sort prompt.
+- **AR decode (no MTP) is already FASTER than llama.cpp's AR.** Current eager
+  resident path measures **~55 tok/s** (54.65 tok/s, code prompt, gfx1151, this
+  session, `scripts/gguf_ar_mtp_suite.py --scope smoke`). llama.cpp's AR is
+  ~47 tok/s (its 89.55 tok/s MTP ÷ its own 1.9× MTP-over-AR ratio).
+- **MTP is the entire gap.** Best robust full-suite MTP route (resident
+  serial-fallback) is ~47.6 tok/s = **~0.86× our AR (MTP currently does NOT
+  win)**, whereas llama.cpp's MTP is **1.9× its AR**. The 1.9× we chase is
+  **speculative amortization**, not kernel throughput.
+- **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
+  (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
+  ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
+  hints) is real in isolation and **flat e2e** (table below).
+- **New standard measurement:** `scripts/gguf_ar_mtp_suite.py` produces ONE
+  apple-to-apple AR-vs-MTP artifact under an enforced config (see "How to
+  continue").
+
+### Measurement reset — what to distrust in the history below
+
+1. **"1.9× = selected-GEMV bandwidth" is RETRACTED.** It rested on a microbench
+   that reported dense Q8_0 at ~20% of peak. That was an 8× byte-count bug
+   (Q8_0 T16 block spans 32 k-values, not the 256 K-quant super-block) compounded
+   by the 32 MB MALL caching the looped weight buffer. Corrected
+   (`scripts/gguf_q8_0_dense_bw_microbench.py`, >2×-MALL weight pool): dense Q8_0
+   is ~51–70% of peak. See `docs/ROOFLINE-gfx1151.md` §6.6.
+2. **The "verifier is ~50/50 host-dispatch-bound (875 launches / ~54 ms host
+   floor)" diagnostic predates #9** (dispatch-resolve cache). Whether the verify
+   block is still host-launch-bound is **UNRESOLVED on current code** — re-measure
+   before acting on it.
+3. **The `--true-ar-baseline-json` apple-to-apple path is BROKEN.** Since #8
+   retired the HIP decode graph, the production AR path emits `decode_path:
+   eager_step`, but `gguf_mtp_category_bench.py`'s `TRUE_AR_PRODUCTION_TIMING_REQUIRED`
+   (and a parallel speed-claim contract + tests) still demand the retired
+   `graph_replay`. So that attach rejects every current AR baseline. The new
+   suite sidesteps it (computes the ratio itself); the contracts need a proper
+   eager-path fix — tracked in `docs/REFACTOR.md`.
+
+### Per-stage gap vs llama.cpp (AR + MTP pipeline)
+
+Numbers marked (S) are stale single-prompt diagnostics that need re-measurement
+on current code; (M) are current-session measurements.
+
+| Pipeline stage | hipEngine | llama.cpp | Gap | Status |
+| --- | --- | --- | --- | --- |
+| Target AR decode (c=1) | (M) ~18.2 ms/tok (~55 tok/s) | ~21 ms/tok (~47 tok/s) | **hipEngine faster** | kernels near-peak; not the problem |
+| — dense Q8_0 GEMV (47% of decode) | (M) 51–70% of peak BW | — | small | not starved (was mis-measured as 20%) |
+| — selected-MoE GEMV (26% of decode) | (M) 70–80% of peak BW | — | small | already amortized at rows>1 |
+| — lm-head Q6_K (10% of decode) | (M) ~1.8 ms/tok | — | ? | once/token; not yet attacked |
+| MTP draft (resident NextN, c=1×B) | (M) ~3.3 ms/depth (B3) | folded in graph | ~2× | device-resident + device-chained (#3) |
+| MTP verify (block, B+1 rows) | (S) ~60–100 ms/cycle (B3) | ~9 ms (one fused GGML graph) | **~7×** | the core MTP cost; re-measure host-vs-GPU |
+| Partial-accept rollback (B5) | (M) replay-forward dominates; LM-head skip landed (#4) | n/a | — | replay forward is the same GPU wall |
+| **Net MTP throughput (full suite)** | **~47.6 tok/s (~0.86× AR)** | **~89.6 tok/s (1.9× AR)** | **1.9×** | **amortization gap = the whole story** |
+
+### Everything we tried — expected vs actual
+
+| Lever | Hypothesis / expected | Actual measured | Verdict |
+| --- | --- | --- | --- |
+| dp4a q8_1+sudot4, selected MoE | 2.6× isolated kernel | flat e2e (BW already saturated) | diagnostic only |
+| dp4a dense Q8_0 attention | faster verify | 1.2× isolated, flat e2e | not promoted |
+| split-K dense Q8_0 (c=1) | more MLP → more BW | **0.74× (negative)** | rejected |
+| non-temporal weight loads (c=1) | +14% via cache-bypass | +14% isolated, **flat/worse e2e** | not promoted, reverted |
+| MoE-FFN HIP graph (launch cut) | fewer launches | −0.84% e2e (slight regress) | not promoted |
+| dense small-B rowtile (verify) | 3× microbench at B=4 | flat e2e | kept (kernel-level win) |
+| device-chain resident draft (#3) | cut per-depth host sync | bit-exact, flat e2e | kept default-off (clean arch) |
+| partial-accept LM-head skip (#4) | cut discardable replay work | **+3.5% B5, bit-exact** | **kept, default-on** |
+| dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
+| X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
+| T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
+| 32k draft vocab cap | ~5 ms/cycle draft | prompt-sensitive | diagnostic |
+| adaptive AR fallback after zero-accept | avoid catastrophic block replay | robust full-suite route | **kept (production selector)** |
+| HIP graph capture of verify | collapse the ~875 launches | blocked: 3rd-relaunch GDN state corruption | blocked (see WORKLOG 2026-06-28) |
+
+Pattern: **every GPU/kernel/launch micro-lever is real in isolation and flat at
+e2e.** The only retained e2e wins are amortization-shaped (#4 LM-head skip,
+adaptive fallback). That is the signal to stop optimizing kernels and work the
+amortization.
+
+### Decode-wall composition (rocprof, current code, c=1, this session)
+
+`scripts/gguf_decode_rocprof.py`: dense_q8_0_gemv **47%**, selected-MoE GEMV
+**26%**, lm-head Q6_K **10%**, GDN linear-attn **6%**, router **4%**, rmsnorm/rope
+**3%**, rest <2%. Both dominant GEMV families are near-peak BW, so this wall is
+mostly irreducible weight streaming — consistent with AR already beating
+llama.cpp's AR.
+
+### The new validation suite (`scripts/gguf_ar_mtp_suite.py`)
+
+One entry point, one artifact, apple-to-apple enforced:
+
+- Pins ONE canonical decode config on both AR and MTP: `HIPENGINE_GGUF_DECODE_REPACK=1`,
+  `--decode-repack --use-gemv-decode --use-wmma-prefill`, eager decode, greedy,
+  `--prompt-reasoning off` forced on both sides.
+- Runs the true no-MTP AR baseline (`gguf_true_ar_category_bench.py`) and the MTP
+  category suite (`gguf_mtp_category_bench.py`) — reusing the validated
+  measurement code — then **computes the MTP/AR ratio itself** (does not rely on
+  the stale `--true-ar-baseline-json` attach).
+- **Enforces** the apple-to-apple invariants and records every problem: same
+  decode protocol (`timing_protocol`), same prompt-set hashes; fails loudly with
+  `apple_to_apple_ok=false` otherwise.
+- Emits one artifact: `shared_config`, full provenance (git commit, hardware,
+  host), the AR row, per-budget MTP rows with `vs_ar_ratio`, and a `verdict`
+  (`best_mtp_budget`, `best_mtp_vs_ar_ratio`, `mtp_beats_ar`).
+- Scope presets: `smoke` (1 prompt / 3 cycles / B3), `partial`
+  (4 prompts / 5 cycles / B1,B3,B5), `full` (all 10 prompts / 10 cycles / B1–B5).
+  Each MTP prompt reloads the model in its own process (faithful + isolated), so
+  `full` is slow; use `--reuse-existing` to resume.
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope partial --mtp-route resident-production \
+    --output benchmarks/results/<date>-ar-mtp-suite-partial.json
+```
+
+### How to continue (ordered, all gated by the suite)
+
+1. **Settle the verifier host-vs-GPU split on current code.** Re-run the verify
+   rocprof (`scripts/mtp_verifier_rocprof.py` / a current verify trace) post-#9 to
+   learn whether the ~875-launch host floor still dominates the ~7× verify gap, or
+   whether #9 moved it to GPU-bound. This decides everything downstream.
+2. **If still host-bound:** collapse the per-layer launches — unblock HIP graph
+   capture (fix the 3rd-relaunch GDN state corruption) or a C-level multi-layer
+   dispatch loop. This is llama.cpp's structural advantage (one fused graph ≈ 9 ms
+   for the 4-token verify).
+3. **If GPU-bound:** the verify is then the same near-peak streaming wall as AR,
+   and the only lever left is **acceptance** — raise accepted-tokens-per-verify so
+   each weight-read pass yields more output tokens. Work draft quality on the full
+   category suite (not the single merge-sort prompt — anti-gaming).
+4. **Make MTP actually beat AR before any retained speedup claim.** Use
+   `--scope full`; a retained claim needs `mtp_beats_ar=true` on the full suite
+   with the true-AR denominator from the same run.
+5. **Fix the stale AR-baseline contracts** (`TRUE_AR_PRODUCTION_TIMING_REQUIRED`
+   + speed-claim contract + tests) to the eager path so the category bench's own
+   `--true-ar-baseline-json` comparison works again (REFACTOR.md).
+
+### Don't re-chase (closed lines of work)
+
+GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, and cache
+hints are all measured flat e2e and are not the lever. The per-kernel GEMV
+bandwidth is already near-peak. Kernel micro-optimization is exhausted; the gap
+is amortization.
+
 ## Production verifier status (2026-06-28)
 
 ### Update 2026-06-28 (later) — graph replay retired; AR denominator corrected; bandwidth-bound
