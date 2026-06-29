@@ -229,6 +229,17 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--target-block-direct-state-commit",
         "--adaptive-ar-fallback",
     ],
+    # P0.1 diagnostic: strict top-1 + amortized block verify, but KEEP drafting on
+    # non-code (no AR fallback) so we can read true per-category strict-top-1
+    # acceptance. Expected to tank on categories whose strict acceptance is low;
+    # not a production route.
+    "resident-strict-block-direct-nofallback": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+    ],
     "resident-draft": ["--resident-mtp-draft"],
     "resident-block": ["--resident-mtp-draft", "--target-block-verify"],
 }

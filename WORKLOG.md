@@ -128105,3 +128105,41 @@ verify wall drops. Updated the shootout table, scoreboard (added `cap32k-recover
 verify-wall-input row), and the "How to continue" ordering.
 
 Docs-only change; no GPU run. `git diff --check` clean.
+
+## 2026-06-30 — P0.1 done: block amortization works; non-code zeros were the AR fallback
+
+Measured the block-verify cost structure and the true per-category strict-top-1
+acceptance. Two decisive results.
+
+P0.1 cost model (`scratchpad/p01_block_cost_probe.py`, gfx1151, repack on, bulk):
+`verify_target_block(rows)` ≈ 16.7 + 6.82·rows ms (c1 step = 18.9 ms). The block
+verifier already does true single-weight-stream amortization (dense weights read
+once); ~60% amortizes. The 6.82 ms/row marginal = 5.60 ms MoE over-read + attn
+compute + 1.23 ms lm-head (isolated via advance_state_only). Matches decode
+rocprof: dense GEMV 47% amortizes; MoE 26% + lm-head 10% paid per row. The per-row
+cost is paid on every ATTEMPTED row incl. rejected drafts — that waste is the
+bottleneck, not pass count. => P0.2 "graph capture / new fused verifier" framing
+is retired; amortization already works.
+
+P0 acceptance (`scratchpad/p01-strict-block-nofallback-full.json`, new diagnostic
+route `resident-strict-block-direct-nofallback` = strict top-1 + block + direct
+commit, NO adaptive-ar-fallback so it keeps drafting). Best-budget acc/out vs
+llama.cpp B2: code 0.64 vs 0.627; general_en 0.60 vs 0.576; mixed_ja_en 0.592 vs
+0.599; general_ja 0.394 vs 0.563. So strict-top-1 acceptance MATCHES llama on 3/4
+categories; the retained default's "0 non-code accepted" was 100% the
+adaptive-ar-fallback quitting after 2 drafts, NOT draft quality. Confirmed
+llama.cpp uses strict argmax acceptance (speculative.cpp accept() only reseeds
+pending_h), so hipEngine `--root-topk-accept 40` relaxation is not apple-to-apple
+greedy; strict top-1 is the parity path.
+
+This route is still 0.77x AR at B3 (target 0.418 passes/out × 43.5 ms ≈ 18.2
+ms/out ≈ full AR step, + draft). Reframed levers, all measured: (1) block verify
+is gated to B>=3 (ssm_conv_kernel=4), forcing 4 attempted rows for ~2.4 accepted
+→ enable block at B1/B2; (2) draft cost ~4.4 ms/depth (backed out) vs llama ~1.5
+ms → cut it; (3) reduce per-row MoE+lm-head over-read; (4) general_ja draft
+quality 0.39 vs 0.56. Next: measure draft cost directly, then enable B2 block
+verify and re-run --scope full.
+
+Validation: `python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q` 10 passed;
+`python3 -m py_compile scripts/gguf_ar_mtp_suite.py` ok. Suite ran
+`apple_to_apple_ok=true`, AR 54.52 tok/s.

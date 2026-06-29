@@ -149,6 +149,74 @@ after that lands do the S1-S3 acceptance/policy probes below become worth
 running — until then they will reproduce `cap32k-recover` (acceptance up, tok/s
 pinned at ~0.95x AR).
 
+#### P0 RESULTS (2026-06-30, gfx1151) — measured, and they reframe the lever
+
+**P0.1 block-verify cost model (measured).** `scratchpad/p01_block_cost_probe.py`
+times `verify_target_block` at fixed sequence position (snapshot/restore), bulk
+mode + repack, realistic tokens:
+
+| call | rows | ms | x c1 |
+| --- | --- | ---: | ---: |
+| c1 step (AR) | 1 | 18.9 | 1.00 |
+| block B1 | 2 | 30.0 | 1.58 |
+| block B2 | 3 | 36.6 | 1.93 |
+| block B3 | 4 | 43.5 | 2.30 |
+| block B5 | 6 | 57.3 | 3.03 |
+
+Fit: `block(rows) ≈ 16.7 + 6.82·rows ms`. The block verifier **already does true
+single-weight-stream amortization** (one Python layer loop; dense weights read
+once) — it does **not** need graph capture. But only ~60% of per-step cost
+amortizes: the marginal **6.82 ms/row** decomposes (via `advance_state_only`,
+which skips lm-head) into **5.60 ms MoE expert over-read + attn compute** and
+**1.23 ms lm-head**. This matches the decode rocprof split (dense GEMV 47%
+amortizes; MoE 26% + lm-head 10% are paid per row). **The per-row cost is paid on
+every *attempted* row, including rejected drafts** — that waste, not the pass
+count, is the bottleneck.
+
+**P0 acceptance (measured, decisive).** Route
+`resident-strict-block-direct-nofallback` (strict top-1 + block verify + direct
+commit, **no AR fallback so it keeps drafting**), `--scope full`
+(`scratchpad/p01-strict-block-nofallback-full.json`), per-category best-budget
+acc/out vs llama.cpp B2:
+
+| Category | hipEngine strict-top-1 | llama.cpp B2 | Verdict |
+| --- | ---: | ---: | --- |
+| code | 0.64 (B3) | 0.627 | match |
+| general_en | 0.60 (B3) / 0.556 (B2) | 0.576 | match |
+| mixed_ja_en | 0.592 (B2) | 0.599 | match |
+| general_ja | 0.394 (B3) | 0.563 | lags (Japanese only) |
+
+**The "0 accepted on non-code" in the retained default was entirely
+`--adaptive-ar-fallback` quitting after 2 drafts — not draft quality.** Under
+identical strict-top-1 greedy (which is exactly what llama.cpp uses; its
+`accept()` only reseeds `pending_h`), hipEngine matches llama.cpp acceptance on 3
+of 4 categories. Confirmed: llama.cpp's root acceptance is strict argmax, so
+hipEngine's `--root-topk-accept 40` relaxation is **not** apple-to-apple greedy
+and is not the parity path; strict top-1 is.
+
+**Why the strict-keep-drafting route is still 0.77× AR at B3** (and the reframed
+levers): target time/output = `passes/out 0.418 × 43.5 ms ≈ 18.2 ms` ≈ a full AR
+step, plus draft. Two structural costs, both fixable:
+
+1. **Block verify is gated to B≥3** (`can_block_verify` needs
+   `len(draft_tokens)+1 ≥ ssm_conv_kernel = 4`), so B1/B2 fall to serial
+   (passes/out = 1.0, no amortization), and B3 must attempt **4 rows** even when
+   ~2.4 are accepted — paying the 6.82 ms/row over-read on ~1.6 wasted rows/cycle.
+   Lever: enable block verify at B1/B2 (2–3 rows).
+2. **Draft cost ≈ 4.4 ms/depth** (backed out: total 23.7 ms/out − 18.2 ms target
+   = 5.5 ms/out ÷ ... ≈ 4.4 ms/draft step), vs llama.cpp's NextN head ~1.5 ms.
+   At B3 that is ~13 ms/cycle of draft. Lever: cut draft cost.
+3. **general_ja draft quality** (0.39 vs 0.56) — the one true acceptance gap.
+
+**Reframed P0.2:** the lever is **not** a new fused verifier or graph capture
+(amortization already works). It is: (a) allow block verify at B1/B2, (b) reduce
+the per-row block over-read (MoE+lm-head) and/or the draft cost, (c) replace
+`--adaptive-ar-fallback` with a keep-drafting policy now that acceptance is known
+good, (d) close general_ja draft quality. The cost model says: at the measured
+block structure with cheap drafts and the measured acceptance, B2 block verify
+reaches ≈ AR–1.1× today and clears llama parity once the per-row over-read or
+draft cost drops.
+
 ### Next shootout matrix
 
 > **Order note (2026-06-29):** the S5 precondition ("a route with good
