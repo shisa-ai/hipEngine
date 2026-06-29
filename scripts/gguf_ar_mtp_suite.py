@@ -259,6 +259,24 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--draft-p-min", "0.5",
         "--mtp-draft-vocab-cap", "32768",
     ],
+    # Default + recover the full draft vocab after a cap miss. Hypothesis: the
+    # 32K draft vocab cap starves acceptance on tokens whose ids exceed 32768
+    # (suspected CJK/ja), permanently dragging ja acc/out. Recovering full vocab
+    # on a miss should lift ja acceptance at some draft cost; validated on the
+    # full multi-category suite (NOT a single prompt).
+    "resident-b1-probe-block-direct-cap32k-minrows2-pmin05-recover": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--draft-p-min", "0.5",
+        "--mtp-draft-vocab-cap", "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+    ],
     # exact current default + only --target-block-min-rows 2: lets the code-path
     # block promotion use cheaper 3-row B2 blocks instead of 4-row B3 (less wasted
     # over-read). Minimal change to the proven 1.036x winner.

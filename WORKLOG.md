@@ -129023,3 +129023,26 @@ exact-precision GPU-compute floor. No correctness-preserving lever remains on
 gfx1151. Parity needs dp4a (fails ja gate) - a correctness-bar question, not an
 effort-gated one. Artifact:
 benchmarks/results/2026-06-30-hipengine-mtp-dp4a-and-verify-gpu-breakdown-diagnostic.json
+
+## 2026-06-30 — ja acceptance gap root-caused to vocab-cap layout; full-vocab recover REJECTED
+
+Investigated the acceptance multiplier (hipEngine acc/out 0.535 vs llama ~0.71).
+Root cause of the ja shortfall FOUND: the draft `--mtp-draft-vocab-cap 32768` cannot
+propose tokens whose ids exceed 32768, and the Qwen3.6 tokenizer places CJK at the
+TOP of the 248320 vocab. Measured over the suite's ja+mixed prompts (llama-tokenize
+--ids --no-bos): **58% of ja tokens are > 32768** (4 in 32-64k, 45 in 64-131k, 53 in
+>131k; max id 247864). So the capped draft is structurally blind to most ja tokens.
+
+Tested the fix: new route `...-pmin05-recover` = default + `--adaptive-full-vocab-after-cap-miss`
+(re-draft full 248k vocab on a cap miss). Full suite: acc/out 0.535 -> 0.550 (+2.8%,
+confirming the starvation is real and fixable) BUT B5 tok/s 60.76 -> 59.97 (-1.3x%):
+the full-vocab re-draft on each ja miss costs more than the acceptance gain. The
+high-id ja tokens are frequent in text but only modestly predictable (draft_acc
+ceiling ~0.72), so coverage adds limited acceptance. cap32k (no recover) stays
+optimal. Artifact: results/2026-06-30-ar-mtp-suite-full-cap32k-recover-rejected.json.
+Route kept as a documented rejected diagnostic.
+
+=> Both MTP multipliers are now root-caused AND at their practical exact-precision
+ceilings: (1) verify COST is GPU-compute-floored (attention/GDN dominate, dp4a-gated),
+(2) acceptance ECONOMICS — the one identifiable gap (ja vocab-cap) doesn't pay to
+fix. 1.1134x is the genuine optimum for the exact-precision design point on gfx1151.
