@@ -56,7 +56,11 @@ tooling or a since-corrected methodology — flagged inline below).
   A follow-up context-replay + device-seed route adopts the llama.cpp
   prompt/context catch-up lifecycle and is better than no-context dense KV, but
   still loses: B1 smoke **50.84 tok/s = 0.9257x AR**, B3 smoke **46.97 tok/s =
-  0.856x AR**. That confirms lifecycle parity alone is not enough while target
+  0.856x AR**. A follow-up full-prompt B1 confidence diagnostic showed
+  high-confidence strict top-1 drafts are real but too sparse to close the gap
+  by selector policy alone (`p>=0.999` was `13/13` strict hits but only
+  **21.7%** recall of strict hits; `p>=0.98` was **28/29** strict hits). That
+  confirms lifecycle parity and confidence gating are not enough while target
   verification remains serial; the next lever is target-pass amortization, not
   another local micro-lever.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
@@ -262,9 +266,12 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    resident `GGUFMTPDraftContext` abstraction that owns
    device MTP K/V, `pending_h`, verifier hidden rows, position, and
    rollback/commit. It should expose llama.cpp-shaped methods:
-   `process_verifier_rows()`, `draft()`, and `accept()`. Success is higher
-   strict top-1 committed tokens per verifier call on the full category suite,
-   not a wider candidate-rank diagnostic.
+   `process_verifier_rows()`, `draft()`, and `accept()`. The missing adoption
+   target is a branch-safe transactional target verifier: run `[prev]+drafts`
+   through a scratch target state, materialize exact per-row `h_nextn` plus
+   linear-attention recurrent state, and commit only the accepted row without
+   serial restore/replay. Success is lower target passes per visible token on
+   the full category suite, not a wider candidate-rank or confidence diagnostic.
    Source anchor: llama.cpp commit `6e9007ae61f4e994c27484759caac6ef2aa32b30`
    defines this lifecycle in `common/speculative.h` (`common_speculative_process`,
    `common_speculative_draft`, `common_speculative_accept`), implements the MTP
@@ -272,15 +279,20 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    (`pending_h`, `verify_h`, `last_n_drafted`), and invokes it from
    `tools/server/server-context.cpp` (`draft()` before target batch construction,
    `process()` after target decode, `accept()` after accepted-row sampling).
+   The same checkout builds Qwen3.5/Qwen3.6 MTP as a first-class
+   `qwen35moe::graph_mtp` and exports target/draft `t_h_nextn`; the retained
+   llama.cpp speed row is plain `--spec-type draft-mtp --spec-draft-n-max N`, not
+   an ngram-stack or prompt-history trick.
    The capped-vocab recovery, hybrid strict-block, direct row-state commit, and
    device hidden-seed probes confirm this direction but also bound its current
    payoff: recovery prevents one prompt-sensitive AR-fallback collapse,
    device-seed improves full-suite B1 to **52.08 tok/s = 0.9540× AR**, the
    hybrid strict-block probe falls back to **50.91 tok/s = 0.9328× AR**, and
    direct row-state commit is smoke-flat/slower after capture overhead, and
-   context replay + device seed reaches only **0.9257x AR** on B1 smoke. All
-   remain under AR because every visible token still pays the serial target
-   verifier wall plus draft overhead.
+   context replay + device seed reaches only **0.9257x AR** on B1 smoke, and the
+   full-prompt confidence diagnostic is too low-recall to recover the gap by
+   itself. All remain under AR because every visible token still pays the serial
+   target verifier wall plus draft overhead.
 4. **Cut target verifier work per visible token.** Hidden seeds now have a
    device-resident diagnostic path, and it only buys +0.7% over cap32k recovery.
    The remaining lever is a verifier-amortization path that commits accepted

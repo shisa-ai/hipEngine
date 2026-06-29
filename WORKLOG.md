@@ -127668,3 +127668,33 @@ useful diagnostic, but by itself it is too low-recall to close the full-suite
 MTP-vs-true-AR gap. Do not spend the next iteration on another selector-only
 gate; the goal remains real target-pass amortization/block verification or an
 equivalent llama.cpp-style structural path.
+
+## 2026-06-29 — llama.cpp MTP re-review after confidence diagnostic
+
+Re-read `/home/lhl/llama.cpp/llama.cpp-hip` at
+`6e9007ae61f4e994c27484759caac6ef2aa32b30` per the fallback instruction to
+adopt llama.cpp patterns if we cannot reach its MTP performance. The retained
+llama.cpp reference command in
+`benchmarks/results/2026-06-22-llamacpp-35b-mtp-category-off-b1-b5-gfx1151.json`
+uses plain `--spec-type draft-mtp --spec-draft-n-max N` (no ngram/cache stack).
+The relevant source pattern is:
+
+- `common/speculative.cpp::common_speculative_impl_draft_mtp`: owns
+  `pending_h`, `verify_h`, `verify_h_rows`, and `last_n_drafted`; `process()`
+  shifts target `h_nextn` rows into the MTP context; `draft()` seeds from
+  `pending_h`; `accept()` reseeds `pending_h` from
+  `verify_h[min(n_accepted, n_rows - 1)]`.
+- `src/models/qwen35moe.cpp::graph_mtp`: builds the MTP block as a first-class
+  graph with token input plus `mtp_h_input`, producing both logits and
+  `res->t_h_nextn`.
+- `src/llama-graph.cpp` / `src/llama-context.cpp`: `t_h_nextn` is a first-class
+  graph output and is copied back according to `embeddings_nextn_masked`.
+
+Decision: hipEngine already has partial lifecycle-compatible pieces
+(`pending_h` device seed, staged verifier rows, device MTP K/V/context replay),
+and selector/confidence gates are bounded. The concrete next goal is not another
+rootK/p_min/cap sweep; it is llama.cpp-style target verification as a
+transactional batch: run `[prev]+drafts` in scratch target state, materialize
+exact per-row `h_nextn` plus GGUF linear-attention recurrent state, and commit
+only the accepted row without serial restore/replay. This is the structural
+piece needed to reduce target passes per visible token on the full suite.
