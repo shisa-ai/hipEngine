@@ -30,13 +30,11 @@ def test_q6_k_t16_rowtile_matches_per_row_decode() -> None:
     from hipengine.core.memory import malloc, free, host_array_ptr
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
-        build_gguf_q6_k_t16_gemv,
         gguf_q6_k_t16_gemv_decode_bf16_f32_out as decode,
         gguf_q6_k_t16_gemv_rowtile_bf16_f32_out as rowtile,
     )
 
     rt = get_hip_runtime()
-    lib = build_gguf_q6_k_t16_gemv(load=True)
     failures = []
     with Qwen35GGUFResidentSession(MODEL, use_wmma_prefill=True, use_gemv_decode=True) as s:
         w = s.runner.weights.root("lm_head").allocation("tiles").tensor
@@ -50,8 +48,8 @@ def test_q6_k_t16_rowtile_matches_per_row_decode() -> None:
             ref = malloc(rows * V * 4, runtime=rt)
             got = malloc(rows * V * 4, runtime=rt)
             for r in range(rows):
-                decode(x.ptr + r * H * 2, w.ptr, ref.ptr + r * V * 4, 1, H, V, library=lib, runtime=rt)
-            rowtile(x.ptr, w.ptr, got.ptr, rows, H, V, library=lib, runtime=rt)
+                decode(x.ptr + r * H * 2, w.ptr, ref.ptr + r * V * 4, 1, H, V, runtime=rt)
+            rowtile(x.ptr, w.ptr, got.ptr, rows, H, V, runtime=rt)
             rt.device_synchronize()
             a = np.empty((rows * V,), dtype=np.float32)
             b = np.empty((rows * V,), dtype=np.float32)

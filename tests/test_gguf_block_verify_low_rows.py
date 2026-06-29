@@ -28,6 +28,11 @@ def test_block_verify_matches_serial_exact_below_conv_kernel() -> None:
         pytest.skip("HIP runtime is not available")
 
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    # Re-assert kernel registrations (idempotent) so this full-verify test is robust
+    # to running after other GPU tests in the same process that may have perturbed
+    # the module-global kernel registry.
+    from hipengine.kernels.hip_gfx1100.moe.router import register_qwen35_router_kernels
+    register_qwen35_router_kernels()
 
     with Qwen35GGUFResidentSession(MODEL, use_wmma_prefill=True, use_gemv_decode=True) as session:
         session.prefill(SEED, return_logits=False, capture_hidden_seed_fp32=True)
