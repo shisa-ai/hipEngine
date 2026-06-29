@@ -128638,3 +128638,32 @@ Final: the ONLY remaining lever is a cheaper per-row multi-row MoE verify GEMV
 (near peak BW) — kernel R&D at the gfx1151 hardware limit, the sole structural
 difference from llama's fused verify graph. Session net: 1.0356x -> 1.0534x AR
 (4 wins) + exhaustive single-constraint root-cause.
+
+## 2026-06-30 — GO/NO-GO MEASURED: verify MoE over-read is 46% reducible (expert grouping justified)
+
+Measured actual expert overlap across verify-block rows (monkeypatched
+qwen35_router_select over a real B3 verify_target_block, 40 MoE layers,
+scratchpad/expert_overlap_probe.py): per-layer distinct/total selected experts =
+mean 0.544 (min 0.312, max 0.750). This OVERTURNS the earlier random-routing
+estimate (~0.95 distinct => "irreducible"): real adjacent draft tokens route to
+HIGHLY OVERLAPPING experts (coherent text), so a grouped/deduplicated MoE verify
+GEMV would read only 0.54x of rows*top_k experts.
+
+Impact estimate (rows=4 / B3):
+- current bulk path reads rows*top_k=32 expert-slots per layer (no dedup -> 4x a
+  single token's 8 experts); grouped reads ~17 distinct (2.17x) => MoE weight
+  traffic cut 46%.
+- MoE ~= 4.9 ms/row of the 6.82 ms/row block marginal (P0.1). Grouping saves
+  ~0.46*4.9 = 2.25 ms/row => block(4) 43.5 ms -> ~34.5 ms (~21% verify cut).
+- Projected aggregate: verify is the dominant cost, so ~21% block reduction could
+  lift MTP from 1.0534x toward ~1.2x AR (not all the way to llama 1.342x, but a
+  real, measured-headroom win).
+
+=> The fused/grouped selected-expert MoE verify GEMV is JUSTIFIED (was uncertain).
+This is a token-permute-by-expert grouped GEMV: dedupe the rows*top_k (row,expert)
+pairs, GEMV each distinct expert over its assigned rows (small GEMM), scatter back.
+Genuine kernel work, but now with measured 46%-over-read headroom and a clear
+correctness path (KL<=0.05/top1>=90% vs the current per-slot path which is the
+exact reference). This is the single highest-leverage remaining lever and the one
+worth building. Confirm the current pack8 selected GEMV does NOT already dedup
+(structure says it reads per selected-row) before implementing.
