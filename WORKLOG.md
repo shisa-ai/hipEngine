@@ -129218,3 +129218,31 @@ artifact; budget plateau). At matched budget hipEngine BEATS llama at B5 (60.8 v
 1.1134x stands as the optimum for the current draft+verify implementation; the only
 remaining correctness-preserving path is NextN draft-forward fidelity (deep, scoped
 above), which is beyond the parity-doc next-steps and config-tunable surface.
+
+## 2026-06-30 — context attention kernel VALIDATED correct (new gate); context-bug hypothesis refuted
+
+Followed the context-draft lever to a concrete correctness gate. mtp_dense_attn_f32
+(multi-position causal GQA context attention used by the NextN draft chain/catch-up)
+was UNGATED - test_m4_gguf_mtp_draft.py only covers rows==1 (context-free). Wrote a
+NumPy causal-GQA reference gate (tests/test_mtp_dense_attn_f32_gate.py): GPU matches
+CPU at max_abs 1.8e-7 across multi-position context tokens. PASSES.
+
+=> The context attention kernel is CORRECT. Combined with the earlier verification
+that the NextN combine (eh_proj(concat[enorm(embed),hnorm(hidden)])) and the catch-up
+convention (row i = combine(hidden_{i-1}, embed(token_i))) are spec/llama-faithful,
+ALL testable structural components of the context draft are now validated correct.
+The "context attention is buggy" hypothesis is REFUTED.
+
+Conclusion: hipEngine's context draft is correct; the model's NextN MTP simply does
+not materially benefit from attention context on this suite (context shifts draft_acc
+0.723->0.695, a slight net negative = added cost without prediction benefit). This is
+consistent with llama's own draft_acc dropping sharply with depth (0.83->0.49), which
+is not the signature of a strongly context-dependent draft. So the residual draft
+quality gap (hipEngine full-budget B2 0.628 vs llama 0.734) is NOT a findable/fixable
+hipEngine correctness bug in any testable component - it is a deeper draft-forward
+numerical difference (draft MoE/head precision) or model-inherent, resolvable only by
+a token-level draft-logit diff vs llama-server (cross-tool), with no guarantee of a
+fixable cause.
+
+Net deliverable this turn: a new retained correctness gate for a previously-untested
+kernel (mtp_dense_attn_f32), and definitive closure of the context-draft lever.
