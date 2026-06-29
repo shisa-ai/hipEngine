@@ -128004,3 +128004,11 @@ draft acceptance **0.5238**, identical acceptance and slightly slower than the
 non-device-seed strict B1 diagnostic (**52.74 tok/s**). Decision: do not add a
 new suite route. The next useful work remains a structural target verifier that
 reduces target layer-streaming passes per visible token on the full suite.
+
+Follow-up `draft_p_min=0.5` check on the current strict-block/direct route:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_MTP_BENCH_CACHE_SESSION=1 python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 5 --budgets 3 --limit 6 --raw-root /tmp/hipengine-strict-block-direct-pmin05-limit6/mtp --output /tmp/hipengine-strict-block-direct-pmin05-limit6/mtp-category.json --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--resident-mtp-draft --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--sibling-topk-accept --extra-arg=1 --extra-arg=--target-block-verify --extra-arg=--target-block-direct-state-commit --extra-arg=--adaptive-ar-fallback --extra-arg=--draft-p-min --extra-arg=0.5 --extra-arg=--record-draft-confidence`.
+Same first-six/five-cycle slice comparison against the no-`p_min` full artifact:
+**51.40 → 52.09 tok/s**, output **66 → 67**, accepted **36 → 37**, drafts
+**57 → 50**. This is directionally positive but still below the true AR
+denominator and regresses several code prompt cycles; do not promote or add a
+suite route from this selector-level result.
