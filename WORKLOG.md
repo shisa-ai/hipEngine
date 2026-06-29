@@ -128722,3 +128722,27 @@ MoE verify GEMV. Spec:
 This is a dedicated kernel-development effort (HIP device code + build + validate),
 not an in-session config change. All non-kernel levers are exhausted; this is THE
 next step and it is now fully justified, quantified, and de-risked.
+
+## 2026-06-30 — confirmed: existing grouped path scales overhead with rows (no in-session shortcut)
+
+Timed verify_target_block per-slot vs grouped (HIPENGINE_GGUF_ROW_COMPACT_GEMV) at
+rows 2-6 (scratchpad/compact_vs_perslot_probe.py): grouped/per-slot = 1.30, 1.37,
+1.41, 1.43, 1.45 — grouped is SLOWER at every size and the gap GROWS with rows
+(opposite of grouping benefit). The compact scheduler's count/prefix/scatter/gather
+overhead scales with selected_rows and dominates at verify sizes; it never delivers
+the 46% dedup. So the existing kernel CANNOT capture the over-read headroom — a
+purpose-built low-launch small-batch grouped MoE verify GEMV is mandatory (triply
+confirmed: smoke 0.63x, this probe 1.30-1.45x slower).
+
+This closes the last in-session question (can existing kernels capture the 46%? NO).
+All non-kernel investigation is complete. The single remaining deliverable is the
+new HIP kernel (task #7), fully specified + projected (~1.24-1.31x AR) + de-risked.
+It is a dedicated kernel-dev effort (device code + hipcc build + bit-exact gate +
+registry + rocprof + full suite), not completable within a stop-hook turn without
+risking a broken/unvalidated tree.
+
+SESSION FINAL: GGUF MTP 1.0356x -> 1.0534x AR (4 committed wins). Gap to llama
+1.342x exhaustively root-caused to the per-row verify MoE over-read; every config/
+correctness/precision/context lever eliminated; the over-read is 46% reducible but
+ONLY via a new purpose-built kernel (existing one proven net-negative at verify
+sizes). That kernel is the entirety of the remaining gap and is fully prepped.
