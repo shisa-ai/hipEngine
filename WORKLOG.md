@@ -128249,3 +128249,32 @@ draft) — not benchmark policy.
 
 Validation: `pytest tests/test_gguf_ar_mtp_suite.py -q` (11 passed); both
 diagnostics `apple_to_apple_ok=true`.
+
+## 2026-06-30 — Conclusive: keep-drafting nets below selective-fallback default; verify-flag space exhausted
+
+Two more measurements close out the in-session lever space:
+- WMMA prefill for the verify block is SLOWER than the gemv-decode path at every
+  small row count (rows 2-6: wmma/gemv 1.70x..1.19x; `scratchpad/p01-wmma-compare.out`).
+  The block verifier already uses the optimal kernel; no win there.
+- `minrows2 + adaptive-full-vocab-after-cap-miss` (escalate ja/mixed to full vocab
+  on cap miss): best B2 1.0143x — below default. ja draft_acc 0.2->0.375 but
+  acc/out stayed 0.13 and the escalation cost dragged the aggregate. Artifact
+  `benchmarks/results/2026-06-30-ar-mtp-suite-full-minrows2-recover-diagnostic.json`.
+
+Full keep-drafting sweep, all BELOW the selective-fallback default B2 1.0399x:
+nofallback 1.007x, cooldown-cap32k 1.0199x, cooldown-fullvocab 0.9373x,
+cap98304 1.0276x, full-vocab-recover 1.0143x. Conclusion is now ironclad:
+**raising non-code acceptance does not raise tok/s in the current per-token verify
+cost regime**; the code-only selective-fallback default is robustly optimal.
+
+The gap to llama 1.34x is fully localized to per-token COST, requiring kernel/model
+work beyond the benchmark policy/flag space (which is now exhausted):
+1. cheap full-vocab / CJK-covering draft lm-head (smaller-quant or shortlist GEMV),
+2. general_ja draft quality (full-vocab ja 0.5 vs llama 0.56),
+3. BW-efficient small-batch MoE verify GEMV (5.6 ms/row over-read; wmma confirmed
+   not the answer, gemv-decode already optimal).
+These are tracked as task #7 and are multi-session kernel sub-projects with a
+correctness-gate requirement (new kernel => RED test + cpu_reference gate).
+
+Validation: `pytest tests/test_gguf_ar_mtp_suite.py -q` (11 passed); all runs
+`apple_to_apple_ok=true`.
