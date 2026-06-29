@@ -73,7 +73,7 @@ CANONICAL_DECODE = {
 # Named MTP routes (mirrors gguf_mtp_parity_workbench candidates). The default is
 # the current retained production selector. Every route's exact extra-args are
 # recorded.
-DEFAULT_MTP_ROUTE = "resident-b1-probe-block-direct-cap32k"
+DEFAULT_MTP_ROUTE = "resident-b1-probe-block-direct-cap32k-minrows2"
 
 MTP_ROUTES: dict[str, list[str]] = {
     "resident-production": [
@@ -242,6 +242,52 @@ MTP_ROUTES: dict[str, list[str]] = {
     ],
     # P0.2a: enable block verify at B1/B2 (min-rows 2) so the optimal small budgets
     # amortize instead of falling to serial. Strict top-1 (apple-to-apple greedy).
+    # exact current default + only --target-block-min-rows 2: lets the code-path
+    # block promotion use cheaper 3-row B2 blocks instead of 4-row B3 (less wasted
+    # over-read). Minimal change to the proven 1.036x winner.
+    "resident-b1-probe-block-direct-cap32k-minrows2": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--adaptive-ar-fallback",
+        "--mtp-draft-vocab-cap", "32768",
+    ],
+    # P0.2: current default + two targeted fixes — B2 block (min-rows 2, less
+    # wasted-row over-read) and a recoverable AR fallback (cooldown) so en/mixed/
+    # code keep drafting after a single hard-token miss instead of latching to AR.
+    "resident-b1-probe-block-minrows2-cooldown-cap32k": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--adaptive-ar-fallback",
+        "--adaptive-ar-fallback-cooldown", "4",
+        "--mtp-draft-vocab-cap", "32768",
+    ],
+    # full vocab variant (no cap) preserves ja/mixed acceptance; draft is costlier
+    # but the route mostly does cheap 1-draft B1 probes, promoting to block only
+    # after a full accept. Tests whether preserving acceptance beats the cap loss.
+    "resident-b1-probe-block-minrows2-cooldown": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--adaptive-ar-fallback",
+        "--adaptive-ar-fallback-cooldown", "4",
+    ],
     "resident-strict-block-direct-minrows2": [
         "--resident-mtp-draft",
         "--root-topk-accept", "1",

@@ -259,8 +259,9 @@ attempt:
 
 | Candidate | Best budget | Total tok/s | vs AR | Code acc/out | General EN acc/out | General JA acc/out | Mixed acc/out | Target passes/output | Direct commits | Decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Current default | B3 | 56.54 | 1.0356 | 0.500 | 0.000 | 0.000 | 0.000 | 0.779 | 15 | baseline (code-only win) |
-| `cap32k-recover` (P0.3 verify-wall input) | B1 | ~51.7 | ~0.948 | 0.640 | 0.608 | 0.459 | 0.615 | ~1.0 | 0 | acceptance solved, wall-bound; the route to amortize |
+| Default + min-rows 2 (2026-06-30) | B2 | 56.8 | 1.0399 | — | — | — | — | 0.794 | — | **RETAINED default** (B2 0.9845→1.0399 via 3-row block) |
+| Prior default (cap32k) | B3 | 56.54 | 1.0356 | 0.500 | 0.000 | 0.000 | 0.000 | 0.779 | 15 | superseded (code-only win) |
+| `cap32k-recover` (P0.3 verify-wall input) | B1 | ~51.7 | ~0.948 | 0.640 | 0.608 | 0.459 | 0.615 | ~1.0 | 0 | acceptance solved, serial (no block) |
 | llama.cpp reference | B2 | 67.29 | 1.3423 | 0.627 | 0.576 | 0.563 | 0.599 | inferred 0.402 | n/a | target |
 
 ### Measurement reset — what to distrust in the history below

@@ -128174,3 +128174,39 @@ acceptance are no longer the blockers.
 
 Validation: `pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_block_verify_low_rows.py -q`
 (11 passed); `py_compile` ok; suite `apple_to_apple_ok=true`.
+
+## 2026-06-30 — RETAINED WIN: B2 block verify promoted to default (1.0356x -> 1.0399x AR)
+
+Promoted `resident-b1-probe-block-direct-cap32k-minrows2` (= prior default +
+`--target-block-min-rows 2`) as the suite default. Full suite
+(`benchmarks/results/2026-06-30-ar-mtp-suite-full-b1-probe-cap32k-minrows2.json`,
+confirm `-confirm.json`):
+- AR 54.59; best MTP B2 56.8 tok/s = 1.0399x AR (confirm B2 56.6 = 1.0385x).
+- B2 specifically: 0.9845x (serial, prior default) -> 1.0399x (+5.6%) because B2's
+  3-row block verify now amortizes instead of falling to serial. B3 unchanged
+  (1.0356x). `apple_to_apple_ok=true`, `mtp_beats_ar=true`, strict top-1 greedy.
+- Exact: `verify_target_block` bit-exact vs serial-exact at rows 2-3
+  (tests/test_gguf_block_verify_low_rows.py 1 passed); no acceptance regression.
+
+Rejected route experiments this session (all full-suite, apple_to_apple_ok=true):
+- `resident-b1-probe-block-minrows2-cooldown-cap32k` (recoverable AR fallback,
+  cooldown 4): best B2 1.0199x — below default; cooldown's re-probe cycles waste
+  time on ja/mixed. Artifact
+  `benchmarks/results/2026-06-30-ar-mtp-suite-full-b1-probe-minrows2-cooldown-cap32k.json`.
+- `resident-b1-probe-block-minrows2-cooldown` (full vocab, no cap): best B2
+  0.9373x — full-vocab draft (~4ms/depth) too expensive. Artifact
+  `...-cooldown-fullvocab.json`.
+- `resident-strict-block-direct-minrows2` (+fallback): best B2 0.9528x (fallback
+  still latches/quits). Artifact `...-strict-block-direct-minrows2.json`.
+
+Characterized the binding constraint (P0.2b): draft lm-head cost scales with vocab
+(cap32k ~0.7ms vs full ~3ms memory traffic). cap32k -> cheap draft but kills
+ja/mixed acceptance (Japanese token IDs > 32768); full vocab -> good acceptance
+but draft too expensive to win at B2. Recoverable cooldown fallback added
+(`--adaptive-ar-fallback-cooldown`, default 0 = old permanent latch) but does not
+help here. Next lever: cheaper full-vocab draft argmax OR a vocab shortlist that
+preserves CJK, so full-vocab-quality drafts cost ~cap32k. That is the path from
+1.04x toward llama.cpp 1.34x.
+
+Validation: `pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_block_verify_low_rows.py -q`
+(12 passed); both full-suite runs `apple_to_apple_ok=true`.

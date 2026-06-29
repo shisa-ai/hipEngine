@@ -611,6 +611,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Trigger --adaptive-ar-fallback when accepted draft tokens are <= this value.",
     )
     parser.add_argument(
+        "--adaptive-ar-fallback-cooldown",
+        type=int,
+        default=0,
+        help=(
+            "Make --adaptive-ar-fallback recoverable. 0 (default) = permanent latch "
+            "(historical behavior): one low-accept cycle disables drafting for the rest "
+            "of the prompt. N>0 = after N AR-only cycles, re-probe one drafting cycle; "
+            "re-arm for N more if it misses again. Keeps drafting on categories with good "
+            "acceptance that a single hard-token miss would otherwise kill."
+        ),
+    )
+    parser.add_argument(
         "--adaptive-block-after-full-accept",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1204,6 +1216,7 @@ def main(argv: list[str] | None = None):
             else int(args.draft_n_max)
         )
         adaptive_ar_fallback_active = False
+        adaptive_ar_fallback_cooldown_left = 0
         adaptive_full_vocab_recovery_active = False
         adaptive_block_verify_active = not bool(args.adaptive_block_after_full_accept)
         adaptive_strict_probe_history: list[int] = []
@@ -1248,7 +1261,21 @@ def main(argv: list[str] | None = None):
                 mtp_device_kv_len = len(mtp_context_tokens)
 
         for cycle in range(args.cycles):
-            cycle_ar_fallback = bool(adaptive_ar_fallback_active)
+            # AR fallback is a permanent latch by default (cooldown 0). With
+            # --adaptive-ar-fallback-cooldown N>0 it is recoverable: after N
+            # fallback cycles, re-probe one drafting cycle; if it misses again the
+            # trigger below re-arms. This keeps drafting on categories with good
+            # acceptance (en/mixed/code) that the permanent latch killed after a
+            # single hard-token miss, matching llama.cpp's per-cycle p_min policy.
+            if adaptive_ar_fallback_active and int(args.adaptive_ar_fallback_cooldown) > 0:
+                if adaptive_ar_fallback_cooldown_left > 0:
+                    adaptive_ar_fallback_cooldown_left -= 1
+                    cycle_ar_fallback = True
+                else:
+                    adaptive_ar_fallback_active = False
+                    cycle_ar_fallback = False
+            else:
+                cycle_ar_fallback = bool(adaptive_ar_fallback_active)
             if args.adaptive_strict_block_probe:
                 if adaptive_strict_probe_decision == "fallback":
                     cycle_policy = "strict_probe_fallback"
@@ -2078,6 +2105,7 @@ def main(argv: list[str] | None = None):
                 and not suppress_ar_fallback_for_full_vocab_recovery
             ):
                 adaptive_ar_fallback_active = True
+                adaptive_ar_fallback_cooldown_left = int(args.adaptive_ar_fallback_cooldown)
             if (
                 args.adaptive_strict_block_probe
                 and adaptive_strict_probe_decision is None

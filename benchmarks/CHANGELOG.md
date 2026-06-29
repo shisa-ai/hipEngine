@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-06-30
+
+- [hipEngine] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / mtp-bench full suite: best MTP 1.0356× AR (B3) -> 1.0399× AR (B2, +0.4%; confirm 1.0385×) due to `--target-block-min-rows 2` enabling B2 (3-row) block verify (B2 itself 0.9845× serial -> 1.0399× block, +5.6%); `verify_target_block` bit-exact vs serial-exact at rows 2-3; `benchmarks/results/2026-06-30-ar-mtp-suite-full-b1-probe-cap32k-minrows2.json`.
+
 ## 2026-06-29
 
 - [perf retained, default-on] Qwen3.6-35B-A3B / hipEngine GGUF UD-Q4_K_M / gfx1151 full 10-prompt AR/MTP suite: best MTP `52.08 B1 -> 56.54 B3 tok/s` (+8.6%) and `0.9540x -> 1.0356x` AR by combining a cap32k B1 strict probe with direct-commit B3 block verification; `apple_to_apple_ok=true`, `mtp_beats_ar=true`, target layer passes `0.779/output`, replay rows `0`; promoted to `gguf_ar_mtp_suite.py` default route; `benchmarks/results/2026-06-29-ar-mtp-suite-full-b1-probe-block-direct-cap32k.json`.
