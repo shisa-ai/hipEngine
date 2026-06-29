@@ -377,6 +377,19 @@ def test_arg_parser_exposes_draft_vocab_cap_diagnostic() -> None:
     assert args.mtp_draft_vocab_cap == 65536
 
 
+def test_arg_parser_exposes_adaptive_full_vocab_recovery() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--resident-mtp-draft",
+            "--mtp-draft-vocab-cap",
+            "32768",
+            "--adaptive-full-vocab-after-cap-miss",
+        ]
+    )
+
+    assert args.adaptive_full_vocab_after_cap_miss is True
+
+
 def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
     for budget in range(1, 6):
         assert validate_draft_n_max(budget) == budget

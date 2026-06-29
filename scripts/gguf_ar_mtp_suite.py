@@ -84,6 +84,13 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--adaptive-ar-fallback",
         "--no-target-block-verify",
     ],
+    "resident-cap32k-recover": [
+        "--resident-mtp-draft",
+        "--adaptive-ar-fallback",
+        "--no-target-block-verify",
+        "--mtp-draft-vocab-cap", "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+    ],
     "resident-strict-context": [
         "--resident-mtp-draft",
         "--root-topk-accept", "1",

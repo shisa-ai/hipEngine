@@ -14,3 +14,14 @@ def test_suite_exposes_resident_strict_context_route() -> None:
         "--mtp-device-kv-cache",
         "--no-target-block-verify",
     ]
+
+
+def test_suite_exposes_cap32k_recovery_route() -> None:
+    assert suite.MTP_ROUTES["resident-cap32k-recover"] == [
+        "--resident-mtp-draft",
+        "--adaptive-ar-fallback",
+        "--no-target-block-verify",
+        "--mtp-draft-vocab-cap",
+        "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+    ]

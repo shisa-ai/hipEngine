@@ -31,9 +31,11 @@ tooling or a since-corrected methodology — flagged inline below).
   `resident-strict-context` route runs strict top-1 (`root/sibling K=1`) with
   prompt catch-up replay plus device-resident MTP KV. Initial smoke/partial
   results are still below AR (partial best B1 **48.69 tok/s = 0.889× AR**), so
-  the next implementation goal is a real resident `GGUFMTPDraftContext` that
-  adopts llama.cpp's `process()`/`draft()`/`accept()` lifecycle instead of
-  continuing local micro-levers.
+  the next implementation goal is a real resident `GGUFMTPDraftContext` or
+  verifier-amortization path that adopts llama.cpp's
+  `process()`/`draft()`/`accept()` lifecycle instead of continuing local
+  micro-levers. A follow-up capped-vocab recovery diagnostic improved partial B1
+  to **52.45 tok/s = 0.958× AR**, still below the true AR denominator.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
   ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
@@ -106,6 +108,7 @@ on current code; (M) are current-session measurements.
 | resident top-k40 draft route | avoid full legacy draft fallback for root top-k40 | **+2.9% B1 full-suite, acceptance unchanged** | **kept, default-on** |
 | one-block device top-k40 | avoid resident root-K40 host logits readback + NumPy top-k | correctness passed, but smoke B3 **45.58 → 24.74 tok/s** at identical acceptance | rejected/reverted; serial K40 merge dominates |
 | strict-context route | existing llama.cpp-style prompt replay + device MTP KV with root/sibling top-1 | smoke B3 **42.81 tok/s = 0.780x AR**; partial best B1 **48.69 tok/s = 0.889x AR**, B3 **45.16 = 0.825x AR** | route is a valid diagnostic but not production-competitive; build resident lifecycle abstraction |
+| adaptive full-vocab recovery after capped miss | keep cheap capped-vocab draft normally, switch to full vocab after a generic capped zero-accept miss instead of permanent AR fallback | partial route `resident-cap32k-recover`: AR **54.76 tok/s**, best B1 **52.45 tok/s = 0.958x AR**, accepted/output **19/39 = 0.487**; cap sweep B1 diagnostics peaked around cap18k/24k at **~52.6 tok/s** but still below AR | diagnostic only; serial verifier route is bounded by target wall + draft overhead |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
@@ -226,6 +229,9 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    `process_verifier_rows()`, `draft()`, and `accept()`. Success is higher
    strict top-1 committed tokens per verifier call on the full category suite,
    not a wider candidate-rank diagnostic.
+   The capped-vocab recovery probe confirms this direction: it prevents one
+   prompt-sensitive AR-fallback collapse, but B1 remains under AR because every
+   visible token still pays the serial target-verifier wall plus draft overhead.
 4. **If strict-context acceptance is good but speed is still below AR, remove
    lifecycle overhead.** Keep hidden seeds/intermediates resident, pre-allocate
    scratch, and batch the MTP block work so the good strict chain is not

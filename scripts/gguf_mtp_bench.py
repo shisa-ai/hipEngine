@@ -546,6 +546,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "(0 = full vocabulary). Must be full-suite validated before becoming a retained default."
         ),
     )
+    parser.add_argument(
+        "--adaptive-full-vocab-after-cap-miss",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic only: when --mtp-draft-vocab-cap produces a low-accept miss, try the next "
+            "cycle with a full-vocabulary resident draft runner instead of immediately staying in "
+            "plain AR fallback."
+        ),
+    )
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
     parser.add_argument(
         "--prompt-reasoning",
@@ -701,6 +711,10 @@ def main(argv: list[str] | None = None):
         parser.error("--topk-branch-redraft-max-branches must be positive")
     if args.mtp_draft_vocab_cap < 0:
         parser.error("--mtp-draft-vocab-cap must be non-negative")
+    if args.adaptive_full_vocab_after_cap_miss and not args.resident_mtp_draft:
+        parser.error("--adaptive-full-vocab-after-cap-miss requires --resident-mtp-draft")
+    if args.adaptive_full_vocab_after_cap_miss and args.mtp_draft_vocab_cap <= 0:
+        parser.error("--adaptive-full-vocab-after-cap-miss requires --mtp-draft-vocab-cap > 0")
     if args.adaptive_ar_fallback_max_accepted < 0:
         parser.error("--adaptive-ar-fallback-max-accepted must be non-negative")
     if args.adaptive_probe_draft_n_max < 1:
@@ -829,7 +843,9 @@ def main(argv: list[str] | None = None):
     # Run benchmark
     mtp_device_kv_buffers = []
     resident_draft = None
+    resident_draft_full_vocab = None
     resident_mtp_draft_effective = False
+    resident_mtp_draft_full_vocab_recovery_effective = False
     resident_mtp_draft_fallback_reason = None
     _cache_session = os.environ.get("HIPENGINE_MTP_BENCH_CACHE_SESSION") == "1"
     _session_key = (
@@ -866,6 +882,18 @@ def main(argv: list[str] | None = None):
                     runtime=runtime,
                     vocab_cap=int(args.mtp_draft_vocab_cap or sh_raw.shape[0]),
                 )
+                if (
+                    args.adaptive_full_vocab_after_cap_miss
+                    and int(args.mtp_draft_vocab_cap) > 0
+                    and int(args.mtp_draft_vocab_cap) < int(sh_raw.shape[0])
+                ):
+                    resident_draft_full_vocab = Qwen35GGUFResidentMTPDraftRunner(
+                        weights,
+                        token_embd_f32,
+                        runtime=runtime,
+                        vocab_cap=int(sh_raw.shape[0]),
+                    )
+                    resident_mtp_draft_full_vocab_recovery_effective = True
                 resident_mtp_draft_effective = True
 
         def copy_pending_hidden_seed() -> np.ndarray:
@@ -996,6 +1024,7 @@ def main(argv: list[str] | None = None):
             else int(args.draft_n_max)
         )
         adaptive_ar_fallback_active = False
+        adaptive_full_vocab_recovery_active = False
         adaptive_block_verify_active = not bool(args.adaptive_block_after_full_accept)
 
         mtp_device_key_cache = None
@@ -1040,6 +1069,15 @@ def main(argv: list[str] | None = None):
             cycle_ar_fallback = bool(adaptive_ar_fallback_active)
             cycle_draft_n_max = 0 if cycle_ar_fallback else int(adaptive_draft_n_max)
             cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
+            cycle_full_vocab_recovery = (
+                bool(adaptive_full_vocab_recovery_active)
+                and resident_draft_full_vocab is not None
+                and not cycle_ar_fallback
+            )
+            cycle_resident_draft = resident_draft_full_vocab if cycle_full_vocab_recovery else resident_draft
+            cycle_draft_vocab_cap = int(cycle_resident_draft.vocab) if cycle_resident_draft is not None else (
+                int(args.mtp_draft_vocab_cap or sh_raw.shape[0]) if cycle_draft_n_max > 0 else 0
+            )
             cycle_prev_token = int(prev_token)
             cycle_pending_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
 
@@ -1055,10 +1093,10 @@ def main(argv: list[str] | None = None):
             current_token = cycle_prev_token
             current_pos = seq_position
             cycle_mtp_kv_base_len = int(mtp_device_kv_len)
-            if resident_draft is not None and cycle_draft_n_max > 0:
+            if cycle_resident_draft is not None and cycle_draft_n_max > 0:
                 if args.mtp_device_kv_cache and mtp_device_kv_len + cycle_draft_n_max > mtp_device_kv_capacity:
                     raise RuntimeError("MTP device KV cache capacity exhausted")
-                draft_tokens, draft_top10_tokens, mtp_device_kv_len = resident_draft.propose_chain(
+                draft_tokens, draft_top10_tokens, mtp_device_kv_len = cycle_resident_draft.propose_chain(
                     current_hidden_seed,
                     start_token=current_token,
                     start_position=current_pos,
@@ -1475,11 +1513,28 @@ def main(argv: list[str] | None = None):
                         int(adaptive_draft_n_max),
                         int(args.adaptive_probe_draft_n_max),
                     )
-            if (
-                args.adaptive_ar_fallback
-                and draft_tokens
+            low_accept_miss = (
+                bool(draft_tokens)
                 and accepted_draft_tokens <= int(args.adaptive_ar_fallback_max_accepted)
                 and accepted_draft_tokens < len(draft_tokens)
+            )
+            suppress_ar_fallback_for_full_vocab_recovery = False
+            if args.adaptive_full_vocab_after_cap_miss and bool(draft_tokens):
+                capped_cycle_miss = (
+                    low_accept_miss
+                    and not cycle_full_vocab_recovery
+                    and resident_draft_full_vocab is not None
+                    and cycle_draft_vocab_cap < int(sh_raw.shape[0])
+                )
+                if capped_cycle_miss:
+                    adaptive_full_vocab_recovery_active = True
+                    suppress_ar_fallback_for_full_vocab_recovery = True
+                elif cycle_full_vocab_recovery and accepted_draft_tokens == len(draft_tokens):
+                    adaptive_full_vocab_recovery_active = False
+            if (
+                args.adaptive_ar_fallback
+                and low_accept_miss
+                and not suppress_ar_fallback_for_full_vocab_recovery
             ):
                 adaptive_ar_fallback_active = True
             if args.adaptive_draft_window and accepted_draft_tokens < len(draft_tokens):
@@ -1517,7 +1572,9 @@ def main(argv: list[str] | None = None):
                     dtype=np.int64,
                 )
                 if resident_draft is not None:
-                    mtp_device_kv_len = resident_draft.write_kv_rows(
+                    if cycle_resident_draft is None:
+                        raise RuntimeError("resident MTP draft runner missing for KV commit")
+                    mtp_device_kv_len = cycle_resident_draft.write_kv_rows(
                         commit_hidden_seed,
                         commit_tokens,
                         positions=commit_pos,
@@ -1609,6 +1666,10 @@ def main(argv: list[str] | None = None):
                 "adaptive_draft_window": bool(args.adaptive_draft_window),
                 "adaptive_ar_fallback": bool(args.adaptive_ar_fallback),
                 "cycle_ar_fallback": bool(cycle_ar_fallback),
+                "adaptive_full_vocab_after_cap_miss": bool(args.adaptive_full_vocab_after_cap_miss),
+                "cycle_full_vocab_recovery": bool(cycle_full_vocab_recovery),
+                "cycle_draft_vocab_cap": int(cycle_draft_vocab_cap),
+                "next_cycle_full_vocab_recovery": bool(adaptive_full_vocab_recovery_active),
                 "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
                 "cycle_block_verify_allowed": bool(cycle_block_verify_allowed),
                 "next_adaptive_block_verify_active": bool(adaptive_block_verify_active),
@@ -1652,6 +1713,8 @@ def main(argv: list[str] | None = None):
             target_graph.close()
         if resident_draft is not None:
             resident_draft.close()
+        if resident_draft_full_vocab is not None:
+            resident_draft_full_vocab.close()
         if runtime is not None:
             for _buf in mtp_device_kv_buffers:
                 free(_buf, runtime=runtime)
@@ -1753,6 +1816,7 @@ def main(argv: list[str] | None = None):
             "adaptive_draft_window": bool(args.adaptive_draft_window),
             "adaptive_ar_fallback": bool(args.adaptive_ar_fallback),
             "adaptive_ar_fallback_max_accepted": int(args.adaptive_ar_fallback_max_accepted),
+            "adaptive_full_vocab_after_cap_miss": bool(args.adaptive_full_vocab_after_cap_miss),
             "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
             "adaptive_probe_draft_n_max": int(args.adaptive_probe_draft_n_max),
             "mtp_draft_vocab_cap": int(args.mtp_draft_vocab_cap),
@@ -1766,6 +1830,9 @@ def main(argv: list[str] | None = None):
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
             "resident_mtp_draft": bool(args.resident_mtp_draft),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
+            "resident_mtp_draft_full_vocab_recovery_effective": bool(
+                resident_mtp_draft_full_vocab_recovery_effective
+            ),
             "resident_mtp_draft_fallback_reason": resident_mtp_draft_fallback_reason,
             "target_graph_verify": bool(args.target_graph_verify),
             "target_graph_verify_effective": bool(target_graph_verify_enabled),

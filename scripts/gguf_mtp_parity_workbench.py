@@ -84,6 +84,19 @@ CANDIDATES: dict[str, Candidate] = {
         extra_args=("--resident-mtp-draft", "--adaptive-ar-fallback", "--no-target-block-verify"),
         description="Production-safe resident GGUF MTP draft with serial graph probe and AR fallback after zero-accept cycles.",
     ),
+    "resident-cap32k-recover": Candidate(
+        name="resident-cap32k-recover",
+        env={},
+        extra_args=(
+            "--resident-mtp-draft",
+            "--adaptive-ar-fallback",
+            "--no-target-block-verify",
+            "--mtp-draft-vocab-cap",
+            "32768",
+            "--adaptive-full-vocab-after-cap-miss",
+        ),
+        description="Diagnostic capped-vocab resident draft that switches to full vocab after a capped zero-accept miss.",
+    ),
     "resident-strict-context": Candidate(
         name="resident-strict-context",
         env={},
@@ -178,6 +191,7 @@ ALL_CANDIDATE_NAMES = (
     "resident-draft",
     "resident-b5-adaptive",
     "resident-serial-fallback",
+    "resident-cap32k-recover",
     "resident-strict-context",
     "resident-production",
     "x8-both",

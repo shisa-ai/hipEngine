@@ -127134,3 +127134,49 @@ resident llama.cpp-style MTP lifecycle object plus parity instrumentation:
 device-resident strict top-1 chain generation, and `accept()` for verifier-row
 selection and rollback/commit. Full-suite success remains
 `gguf_ar_mtp_suite.py --scope full` with `mtp_beats_ar=true`.
+
+## 2026-06-29 — GGUF MTP capped-vocab recovery diagnostic below AR
+
+Added a default-off diagnostic recovery path for capped draft vocab runs:
+`scripts/gguf_mtp_bench.py --adaptive-full-vocab-after-cap-miss`. When
+`--mtp-draft-vocab-cap` produces a generic low-accept miss, the next cycle uses
+a second full-vocab resident draft runner instead of immediately entering
+permanent AR fallback. The suite/workbench route is `resident-cap32k-recover`:
+`--resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify
+--mtp-draft-vocab-cap 32768 --adaptive-full-vocab-after-cap-miss`.
+
+Validation:
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py scripts/gguf_mtp_parity_workbench.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_parity_workbench.py`
+- Dry-run confirmed `gguf_ar_mtp_suite.py --mtp-route resident-cap32k-recover`
+  threads the capped route flags into the MTP category child.
+
+Measurements:
+- Smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-cap32k-recover --output /tmp/hipengine-cap32k-recover-smoke.json`
+  => `apple_to_apple_ok=True`; AR `54.88 tok/s`; B3 `46.91 tok/s =
+  0.8547x AR`; accepted/output `4/7 = 0.571`; `mtp_beats_ar=false`.
+- Partial:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope partial --mtp-route resident-cap32k-recover --output /tmp/hipengine-cap32k-recover-partial.json`
+  => `apple_to_apple_ok=True`; AR `54.76 tok/s`; best B1 `52.45 tok/s =
+  0.9578x AR`; B3 `48.73 tok/s = 0.8898x AR`; B5 `45.66 tok/s =
+  0.8338x AR`; `mtp_beats_ar=false`. The known cap32k B1 collapse on
+  `code_merge_intervals` recovered from permanent AR fallback: cycle 2 capped
+  miss sets `next_cycle_full_vocab_recovery=true`, cycle 3 full-vocab recovery
+  accepts target `1494`, and the prompt finishes with no AR fallback cycles.
+  Durable summary artifact:
+  `benchmarks/results/2026-06-29-ar-mtp-suite-partial-cap32k-recover.json`.
+- Cap sweep diagnostic, B1 partial category only:
+  cap8k `51.06 tok/s`, accepted/output `12/32`, too many recovery cycles;
+  cap16k `52.45 tok/s`, `18/38`; cap24k `52.53 tok/s`, `19/39`;
+  cap18432 `52.57 tok/s`, `19/39`; cap17920 `52.58 tok/s`, `19/39`.
+  The smaller prompt-derived caps are not promotable under the anti-gaming rule
+  and still do not close the true-AR gap.
+
+Decision: keep the generic flag/route as a documented diagnostic only, not a
+default path. The capped recovery probe confirms the current serial verifier
+ceiling: even B1 still pays target-verifier wall plus draft overhead, so this
+route can approach but not beat true AR. Next goal remains a structural
+llama.cpp-style resident lifecycle / verifier-amortization path; full-suite
+success remains `gguf_ar_mtp_suite.py --scope full` with
+`mtp_beats_ar=true`.

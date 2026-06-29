@@ -36,6 +36,7 @@ def test_workbench_candidate_aliases_and_envs() -> None:
     assert "resident-draft" in names
     assert "resident-b5-adaptive" in names
     assert "resident-serial-fallback" in names
+    assert "resident-cap32k-recover" in names
     assert "resident-strict-context" in names
     assert "resident-production" in names
     assert "q4-x8" in names
@@ -51,6 +52,14 @@ def test_workbench_candidate_aliases_and_envs() -> None:
         "--resident-mtp-draft",
         "--adaptive-ar-fallback",
         "--no-target-block-verify",
+    )
+    assert mod.CANDIDATES["resident-cap32k-recover"].extra_args == (
+        "--resident-mtp-draft",
+        "--adaptive-ar-fallback",
+        "--no-target-block-verify",
+        "--mtp-draft-vocab-cap",
+        "32768",
+        "--adaptive-full-vocab-after-cap-miss",
     )
     assert mod.CANDIDATES["resident-strict-context"].extra_args == (
         "--resident-mtp-draft",
