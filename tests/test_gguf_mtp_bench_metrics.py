@@ -76,6 +76,9 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
             "visible_output_tokens": 1,
             "ar_decode_ms": 50.0,
             "mtp_draft_ms": 7.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 1,
+            "target_verify_serial_rows": 1,
         },
         {
             "generated_draft_tokens": 1,
@@ -83,6 +86,11 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
             "visible_output_tokens": 2,
             "ar_decode_ms": 50.0,
             "mtp_draft_ms": 7.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 2,
+            "target_verify_block_passes": 1,
+            "target_verify_block_rows": 2,
+            "target_verify_direct_commit_rows": 1,
         },
         {
             "generated_draft_tokens": 1,
@@ -90,6 +98,10 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
             "visible_output_tokens": 1,
             "ar_decode_ms": 50.0,
             "mtp_draft_ms": 7.0,
+            "target_verify_layer_passes": 2,
+            "target_verify_rows_evaluated": 3,
+            "target_verify_replay_rows": 1,
+            "target_verify_discarded_rows": 1,
         },
         {
             "generated_draft_tokens": 1,
@@ -97,6 +109,9 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
             "visible_output_tokens": 1,
             "ar_decode_ms": 50.0,
             "mtp_draft_ms": 7.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 1,
+            "target_verify_graph_rows": 1,
         },
         {
             "generated_draft_tokens": 1,
@@ -104,6 +119,9 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
             "visible_output_tokens": 1,
             "ar_decode_ms": 50.0,
             "mtp_draft_ms": 7.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 1,
+            "target_verify_serial_rows": 1,
         },
     ]
 
@@ -121,11 +139,26 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
     assert metrics["tokens_per_sec"] == 1000.0 / 47.5
     assert metrics["ar_baseline_tokens_per_sec"] == 1000.0 * 6 / 250.0
     assert metrics["speedup_vs_ar_visible"] == (1000.0 / 47.5) / (1000.0 * 6 / 250.0)
+    assert metrics["target_verify_layer_passes"] == 6
+    assert metrics["target_verify_rows_evaluated"] == 8
+    assert metrics["target_verify_serial_rows"] == 2
+    assert metrics["target_verify_graph_rows"] == 1
+    assert metrics["target_verify_block_passes"] == 1
+    assert metrics["target_verify_block_rows"] == 2
+    assert metrics["target_verify_replay_rows"] == 1
+    assert metrics["target_verify_direct_commit_rows"] == 1
+    assert metrics["target_verify_discarded_rows"] == 1
+    assert metrics["target_verify_layer_passes_per_output"] == 1.0
+    assert metrics["target_verify_rows_per_output"] == 8 / 6
+    assert metrics["target_verify_replay_rows_per_output"] == 1 / 6
     assert metrics["denominators"] == {
         "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
         "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
         "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
         "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time",
+        "target_verify_layer_passes_per_output": "target layer-streaming passes / visible_output_token_count",
+        "target_verify_rows_per_output": "target verifier rows evaluated / visible_output_token_count",
+        "target_verify_replay_rows_per_output": "accepted-prefix replay rows / visible_output_token_count",
     }
 
 
@@ -139,6 +172,8 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
         ({"ar_decode_ms": False}, r"cycles\[0\]\.ar_decode_ms must be numeric"),
         ({"mtp_draft_ms": float("nan")}, r"cycles\[0\]\.mtp_draft_ms must be finite"),
         ({"mtp_draft_ms": -1.0}, r"cycles\[0\]\.mtp_draft_ms must be non-negative"),
+        ({"target_verify_layer_passes": 1.0}, r"cycles\[0\]\.target_verify_layer_passes must be an integer"),
+        ({"target_verify_rows_evaluated": -1}, r"cycles\[0\]\.target_verify_rows_evaluated must be non-negative"),
     ],
 )
 def test_compute_speculative_metrics_rejects_malformed_explicit_cycle_fields(

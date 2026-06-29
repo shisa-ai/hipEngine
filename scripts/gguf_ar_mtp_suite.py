@@ -321,6 +321,18 @@ def _mtp_rows(mtp: dict[str, Any]) -> dict[str, Any]:
             "true_ar_decode_tok_s_weighted": row.get("true_ar_decode_tok_s_weighted"),
             "total_accepted": row.get("total_accepted"),
             "total_output_tokens": row.get("total_output_tokens"),
+            "target_verify_layer_passes": row.get("target_verify_layer_passes"),
+            "target_verify_rows_evaluated": row.get("target_verify_rows_evaluated"),
+            "target_verify_serial_rows": row.get("target_verify_serial_rows"),
+            "target_verify_graph_rows": row.get("target_verify_graph_rows"),
+            "target_verify_block_passes": row.get("target_verify_block_passes"),
+            "target_verify_block_rows": row.get("target_verify_block_rows"),
+            "target_verify_replay_rows": row.get("target_verify_replay_rows"),
+            "target_verify_direct_commit_rows": row.get("target_verify_direct_commit_rows"),
+            "target_verify_discarded_rows": row.get("target_verify_discarded_rows"),
+            "target_verify_layer_passes_per_output": row.get("target_verify_layer_passes_per_output"),
+            "target_verify_rows_per_output": row.get("target_verify_rows_per_output"),
+            "target_verify_replay_rows_per_output": row.get("target_verify_replay_rows_per_output"),
         }
     return rows
 

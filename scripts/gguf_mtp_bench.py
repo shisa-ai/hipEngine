@@ -186,12 +186,31 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
             raise ValueError(f"cycles[{index}].{field} must be non-negative")
         return result
 
+    def optional_int(cycle: dict, index: int, field: str) -> int:
+        if field not in cycle:
+            return 0
+        value = cycle[field]
+        if type(value) is not int:
+            raise ValueError(f"cycles[{index}].{field} must be an integer")
+        if value < 0:
+            raise ValueError(f"cycles[{index}].{field} must be non-negative")
+        return value
+
     verify_cycle_count = len(cycles)
     total_drafts = 0
     total_accepted = 0
     visible_output_tokens = 0
     total_ar_ms = 0.0
     total_draft_ms = 0.0
+    target_verify_layer_passes = 0
+    target_verify_rows_evaluated = 0
+    target_verify_serial_rows = 0
+    target_verify_graph_rows = 0
+    target_verify_block_passes = 0
+    target_verify_block_rows = 0
+    target_verify_replay_rows = 0
+    target_verify_direct_commit_rows = 0
+    target_verify_discarded_rows = 0
     for index, cycle in enumerate(cycles):
         if not isinstance(cycle, dict):
             raise ValueError(f"cycles[{index}] must be an object")
@@ -207,6 +226,15 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
         visible_output_tokens += visible_output
         total_ar_ms += require_timing(cycle, index, "ar_decode_ms")
         total_draft_ms += require_timing(cycle, index, "mtp_draft_ms")
+        target_verify_layer_passes += optional_int(cycle, index, "target_verify_layer_passes")
+        target_verify_rows_evaluated += optional_int(cycle, index, "target_verify_rows_evaluated")
+        target_verify_serial_rows += optional_int(cycle, index, "target_verify_serial_rows")
+        target_verify_graph_rows += optional_int(cycle, index, "target_verify_graph_rows")
+        target_verify_block_passes += optional_int(cycle, index, "target_verify_block_passes")
+        target_verify_block_rows += optional_int(cycle, index, "target_verify_block_rows")
+        target_verify_replay_rows += optional_int(cycle, index, "target_verify_replay_rows")
+        target_verify_direct_commit_rows += optional_int(cycle, index, "target_verify_direct_commit_rows")
+        target_verify_discarded_rows += optional_int(cycle, index, "target_verify_discarded_rows")
     total_cycle_ms = total_ar_ms + total_draft_ms
 
     accept_per_draft = total_accepted / total_drafts if total_drafts > 0 else 0.0
@@ -222,6 +250,15 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
     )
     speedup_vs_ar_visible = (
         tokens_per_sec / ar_baseline_tokens_per_sec if ar_baseline_tokens_per_sec > 0 else 0.0
+    )
+    target_verify_layer_passes_per_output = (
+        target_verify_layer_passes / visible_output_tokens if visible_output_tokens > 0 else 0.0
+    )
+    target_verify_rows_per_output = (
+        target_verify_rows_evaluated / visible_output_tokens if visible_output_tokens > 0 else 0.0
+    )
+    target_verify_replay_rows_per_output = (
+        target_verify_replay_rows / visible_output_tokens if visible_output_tokens > 0 else 0.0
     )
 
     return {
@@ -241,11 +278,26 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
         "total_output_tokens": visible_output_tokens,
         "verify_cycle_count": verify_cycle_count,
         "total_cycle_ms": total_cycle_ms,
+        "target_verify_layer_passes": target_verify_layer_passes,
+        "target_verify_rows_evaluated": target_verify_rows_evaluated,
+        "target_verify_serial_rows": target_verify_serial_rows,
+        "target_verify_graph_rows": target_verify_graph_rows,
+        "target_verify_block_passes": target_verify_block_passes,
+        "target_verify_block_rows": target_verify_block_rows,
+        "target_verify_replay_rows": target_verify_replay_rows,
+        "target_verify_direct_commit_rows": target_verify_direct_commit_rows,
+        "target_verify_discarded_rows": target_verify_discarded_rows,
+        "target_verify_layer_passes_per_output": target_verify_layer_passes_per_output,
+        "target_verify_rows_per_output": target_verify_rows_per_output,
+        "target_verify_replay_rows_per_output": target_verify_replay_rows_per_output,
         "denominators": {
             "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
             "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",
             "visible_tokens_per_cycle": "visible_output_token_count / verify_cycle_count",
             "tokens_per_sec": "visible_output_token_count / total_cycle_wall_time",
+            "target_verify_layer_passes_per_output": "target layer-streaming passes / visible_output_token_count",
+            "target_verify_rows_per_output": "target verifier rows evaluated / visible_output_token_count",
+            "target_verify_replay_rows_per_output": "accepted-prefix replay rows / visible_output_token_count",
         },
     }
 
@@ -1371,6 +1423,53 @@ def main(argv: list[str] | None = None):
             serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
             device_verify_rows_required = bool(args.resident_mtp_device_seed and args.mtp_device_kv_cache)
             b1_branch_safe_block_verify_used = False
+            target_verify_layer_passes = 0
+            target_verify_rows_evaluated = 0
+            target_verify_serial_rows = 0
+            target_verify_graph_rows = 0
+            target_verify_block_passes = 0
+            target_verify_block_rows = 0
+            target_verify_replay_rows = 0
+            target_verify_direct_commit_rows = 0
+            target_verify_discarded_rows = 0
+
+            def record_target_verify(
+                rows: int,
+                *,
+                layer_passes: int | None = None,
+                serial_rows: int = 0,
+                graph_rows: int = 0,
+                block_passes: int = 0,
+                block_rows: int = 0,
+                replay_rows: int = 0,
+                discarded_rows: int = 0,
+            ) -> None:
+                nonlocal target_verify_layer_passes
+                nonlocal target_verify_rows_evaluated
+                nonlocal target_verify_serial_rows
+                nonlocal target_verify_graph_rows
+                nonlocal target_verify_block_passes
+                nonlocal target_verify_block_rows
+                nonlocal target_verify_replay_rows
+                nonlocal target_verify_discarded_rows
+                rows = int(rows)
+                if rows < 0:
+                    raise ValueError("target verifier rows must be non-negative")
+                if layer_passes is None:
+                    layer_passes = rows
+                target_verify_layer_passes += int(layer_passes)
+                target_verify_rows_evaluated += rows
+                target_verify_serial_rows += int(serial_rows)
+                target_verify_graph_rows += int(graph_rows)
+                target_verify_block_passes += int(block_passes)
+                target_verify_block_rows += int(block_rows)
+                target_verify_replay_rows += int(replay_rows)
+                target_verify_discarded_rows += int(discarded_rows)
+
+            def record_direct_commit(rows: int = 1) -> None:
+                nonlocal target_verify_direct_commit_rows
+                target_verify_direct_commit_rows += int(rows)
+
             can_b1_branch_safe_block_verify = (
                 bool(args.target_b1_branch_safe_block_verify)
                 and bool(args.target_block_verify)
@@ -1398,12 +1497,22 @@ def main(argv: list[str] | None = None):
                             block_inputs,
                             capture_linear_state_rows=direct_state_commit,
                         )
+                        record_target_verify(
+                            len(block_inputs),
+                            serial_rows=len(block_inputs),
+                        )
                     else:
                         block_result = session.verify_target_block(
                             block_inputs,
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
+                        )
+                        record_target_verify(
+                            len(block_inputs),
+                            layer_passes=1,
+                            block_passes=1,
+                            block_rows=len(block_inputs),
                         )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     if len(block_target_tokens) != 2:
@@ -1415,6 +1524,7 @@ def main(argv: list[str] | None = None):
                                 raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
                             if direct_state_commit_exact_mode:
                                 session._commit_verify_linear_state_row(1, position=seq_position + 2)
+                                record_direct_commit()
                                 target_tokens.extend(block_target_tokens)
                                 if serial_hidden_host_required:
                                     target_hidden_seeds.extend(
@@ -1424,6 +1534,11 @@ def main(argv: list[str] | None = None):
                             else:
                                 session._restore_linear_state_snapshot(snapshot, position=seq_position)
                                 replay_result = session.verify_target_block_serial_exact(block_inputs)
+                                record_target_verify(
+                                    len(block_inputs),
+                                    serial_rows=len(block_inputs),
+                                    replay_rows=len(block_inputs),
+                                )
                                 replay_tokens = [int(token) for token in replay_result.token_ids]
                                 if replay_tokens != block_target_tokens:
                                     raise RuntimeError("B1 branch-safe serial-exact replay diverged from block rows")
@@ -1442,10 +1557,12 @@ def main(argv: list[str] | None = None):
                                 )
                         current_device_token = int(block_target_tokens[1])
                     else:
+                        record_target_verify(0, discarded_rows=1)
                         if direct_state_commit:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
                             session._commit_verify_linear_state_row(0, position=seq_position + 1)
+                            record_direct_commit()
                         else:
                             if snapshot is None:
                                 raise RuntimeError("B1 branch-safe row-0 replay requires a linear-state snapshot")
@@ -1455,6 +1572,7 @@ def main(argv: list[str] | None = None):
                                 return_logits=False,
                                 capture_hidden_seed_fp32=True,
                             )
+                            record_target_verify(1, serial_rows=1, replay_rows=1)
                             if int(replay0.token_id) != target0:
                                 raise RuntimeError("B1 branch-safe row-0 replay diverged from block row 0")
                         target_tokens.append(target0)
@@ -1481,6 +1599,7 @@ def main(argv: list[str] | None = None):
                                 return_logits=False,
                                 capture_hidden_seed_fp32=True,
                             )
+                            record_target_verify(1, serial_rows=1)
                             corrective = int(target_result.token_id)
                             current_device_token = corrective
                             target_tokens.append(corrective)
@@ -1519,12 +1638,22 @@ def main(argv: list[str] | None = None):
                             block_inputs,
                             capture_linear_state_rows=direct_state_commit,
                         )
+                        record_target_verify(
+                            len(block_inputs),
+                            serial_rows=len(block_inputs),
+                        )
                     else:
                         block_result = session.verify_target_block(
                             block_inputs,
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
+                        )
+                        record_target_verify(
+                            len(block_inputs),
+                            layer_passes=1,
+                            block_passes=1,
+                            block_rows=len(block_inputs),
                         )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
@@ -1543,6 +1672,8 @@ def main(argv: list[str] | None = None):
                             topk_branch_accept_count = 1
                     consumed_rows = int(block_acceptance["accepted_draft_tokens"]) + 1
                     if consumed_rows < len(block_inputs):
+                        record_target_verify(0, discarded_rows=len(block_inputs) - consumed_rows)
+                    if consumed_rows < len(block_inputs):
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
                         if direct_state_commit and (consumed_rows == 1 or direct_state_commit_exact_mode):
@@ -1552,6 +1683,7 @@ def main(argv: list[str] | None = None):
                                 consumed_rows - 1,
                                 position=seq_position + consumed_rows,
                             )
+                            record_direct_commit()
                             replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
                             replay_hidden = [
                                 np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
@@ -1563,6 +1695,11 @@ def main(argv: list[str] | None = None):
                                 replay_result = session.verify_target_block_serial_exact(
                                     block_inputs[:consumed_rows],
                                 )
+                                record_target_verify(
+                                    consumed_rows,
+                                    serial_rows=consumed_rows,
+                                    replay_rows=consumed_rows,
+                                )
                             else:
                                 # Accepted-prefix replay only needs to advance linear/KV
                                 # state; the target tokens are already known from the
@@ -1573,6 +1710,13 @@ def main(argv: list[str] | None = None):
                                     bulk_attention_mode=args.target_block_verify_mode,
                                     use_wmma_prefill=bool(args.target_block_wmma_prefill),
                                     advance_state_only=True,
+                                )
+                                record_target_verify(
+                                    consumed_rows,
+                                    layer_passes=1,
+                                    block_passes=1,
+                                    block_rows=consumed_rows,
+                                    replay_rows=consumed_rows,
                                 )
                             replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
                             if (direct_state_commit or args.target_block_verify_mode == "serial-exact") and [
@@ -1593,6 +1737,7 @@ def main(argv: list[str] | None = None):
                                 len(block_inputs) - 1,
                                 position=seq_position + len(block_inputs),
                             )
+                            record_direct_commit()
                             target_tokens.extend(block_target_tokens)
                             target_hidden_seeds.extend(
                                 np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
@@ -1601,6 +1746,11 @@ def main(argv: list[str] | None = None):
                         elif direct_state_commit:
                             session._restore_linear_state_snapshot(snapshot, position=seq_position)
                             replay_result = session.verify_target_block_serial_exact(block_inputs)
+                            record_target_verify(
+                                len(block_inputs),
+                                serial_rows=len(block_inputs),
+                                replay_rows=len(block_inputs),
+                            )
                             replay_tokens = [int(token) for token in replay_result.token_ids]
                             if replay_tokens != block_target_tokens:
                                 raise RuntimeError("direct block serial-exact replay diverged from block rows")
@@ -1637,6 +1787,11 @@ def main(argv: list[str] | None = None):
                 record_start = int(target_graph.replayed_steps)
                 replay_steps = len(draft_tokens) + 1
                 target_graph.replay(replay_steps)
+                record_target_verify(
+                    replay_steps,
+                    layer_passes=replay_steps,
+                    graph_rows=replay_steps,
+                )
                 recorded_tokens = target_graph.read_generated_token_ids(record_start + replay_steps)[record_start:record_start + replay_steps]
                 recorded_hidden = target_graph.read_generated_hidden_seeds(start=record_start, count=replay_steps)
                 t1 = time.perf_counter()
@@ -1663,6 +1818,7 @@ def main(argv: list[str] | None = None):
                     t0 = time.perf_counter()
                     if target_graph_verify_enabled and target_graph is not None and int(verify_input_token) == current_device_token:
                         target_graph.replay(1)
+                        record_target_verify(1, layer_passes=1, graph_rows=1)
                         target_result = target_graph.read_sample(return_logits=False)
                     else:
                         if target_graph is not None:
@@ -1676,6 +1832,7 @@ def main(argv: list[str] | None = None):
                             return_logits=False,
                             capture_hidden_seed_fp32=True,
                         )
+                        record_target_verify(1, serial_rows=1)
                     t1 = time.perf_counter()
                     ar_decode_ms += (t1 - t0) * 1000
                     target_token = int(target_result.token_id)
@@ -2136,6 +2293,15 @@ def main(argv: list[str] | None = None):
                 "target_block_direct_state_commit": bool(args.target_block_direct_state_commit and block_verify_used),
                 "target_b1_branch_safe_block_verify": bool(b1_branch_safe_block_verify_used),
                 "target_graph_batched_verify": bool(batched_verify_used),
+                "target_verify_layer_passes": int(target_verify_layer_passes),
+                "target_verify_rows_evaluated": int(target_verify_rows_evaluated),
+                "target_verify_serial_rows": int(target_verify_serial_rows),
+                "target_verify_graph_rows": int(target_verify_graph_rows),
+                "target_verify_block_passes": int(target_verify_block_passes),
+                "target_verify_block_rows": int(target_verify_block_rows),
+                "target_verify_replay_rows": int(target_verify_replay_rows),
+                "target_verify_direct_commit_rows": int(target_verify_direct_commit_rows),
+                "target_verify_discarded_rows": int(target_verify_discarded_rows),
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
             })
@@ -2223,6 +2389,12 @@ def main(argv: list[str] | None = None):
     print(f"avg_ms_per_visible_token: {avg_ms_per_visible_token:.2f}")
     print(f"tokens_per_sec: {tokens_per_sec:.2f}")
     print(f"speedup_vs_ar_visible: {speedup_vs_ar_visible:.3f}x")
+    print(
+        "target_verify: "
+        f"layer_passes/output={metrics['target_verify_layer_passes_per_output']:.3f} "
+        f"rows/output={metrics['target_verify_rows_per_output']:.3f} "
+        f"replay_rows/output={metrics['target_verify_replay_rows_per_output']:.3f}"
+    )
     if warm_metrics is not None:
         print(
             "warm_excluding_cycle0: "
@@ -2329,6 +2501,22 @@ def main(argv: list[str] | None = None):
             "total_drafts": metrics["total_drafts"],
             "total_output_tokens": metrics["total_output_tokens"],
             "verify_cycle_count": metrics["verify_cycle_count"],
+            "target_verify_layer_passes": metrics["target_verify_layer_passes"],
+            "target_verify_rows_evaluated": metrics["target_verify_rows_evaluated"],
+            "target_verify_serial_rows": metrics["target_verify_serial_rows"],
+            "target_verify_graph_rows": metrics["target_verify_graph_rows"],
+            "target_verify_block_passes": metrics["target_verify_block_passes"],
+            "target_verify_block_rows": metrics["target_verify_block_rows"],
+            "target_verify_replay_rows": metrics["target_verify_replay_rows"],
+            "target_verify_direct_commit_rows": metrics["target_verify_direct_commit_rows"],
+            "target_verify_discarded_rows": metrics["target_verify_discarded_rows"],
+            "target_verify_layer_passes_per_output": round(
+                float(metrics["target_verify_layer_passes_per_output"]), 4
+            ),
+            "target_verify_rows_per_output": round(float(metrics["target_verify_rows_per_output"]), 4),
+            "target_verify_replay_rows_per_output": round(
+                float(metrics["target_verify_replay_rows_per_output"]), 4
+            ),
             "denominators": metrics["denominators"],
             "warm_excluding_cycle0": (
                 {
@@ -2345,6 +2533,22 @@ def main(argv: list[str] | None = None):
                     "total_drafts": warm_metrics["total_drafts"],
                     "total_output_tokens": warm_metrics["total_output_tokens"],
                     "verify_cycle_count": warm_metrics["verify_cycle_count"],
+                    "target_verify_layer_passes": warm_metrics["target_verify_layer_passes"],
+                    "target_verify_rows_evaluated": warm_metrics["target_verify_rows_evaluated"],
+                    "target_verify_serial_rows": warm_metrics["target_verify_serial_rows"],
+                    "target_verify_graph_rows": warm_metrics["target_verify_graph_rows"],
+                    "target_verify_block_passes": warm_metrics["target_verify_block_passes"],
+                    "target_verify_block_rows": warm_metrics["target_verify_block_rows"],
+                    "target_verify_replay_rows": warm_metrics["target_verify_replay_rows"],
+                    "target_verify_direct_commit_rows": warm_metrics["target_verify_direct_commit_rows"],
+                    "target_verify_discarded_rows": warm_metrics["target_verify_discarded_rows"],
+                    "target_verify_layer_passes_per_output": round(
+                        float(warm_metrics["target_verify_layer_passes_per_output"]), 4
+                    ),
+                    "target_verify_rows_per_output": round(float(warm_metrics["target_verify_rows_per_output"]), 4),
+                    "target_verify_replay_rows_per_output": round(
+                        float(warm_metrics["target_verify_replay_rows_per_output"]), 4
+                    ),
                 }
                 if warm_metrics is not None else None
             ),

@@ -1055,6 +1055,20 @@ def cycle_sum(row: dict[str, Any], key: str) -> float:
     return float(sum(float(c.get(key, 0.0) or 0.0) for c in row.get("cycles", [])))
 
 
+def cycle_int_sum(row: dict[str, Any], key: str) -> int:
+    total = 0
+    for index, cycle in enumerate(row.get("cycles", [])):
+        value = cycle.get(key, 0)
+        if type(value) is not int:
+            prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
+            raise BenchError(f"cycle {index} for {prompt_id} {key} must be a non-negative integer")
+        if value < 0:
+            prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
+            raise BenchError(f"cycle {index} for {prompt_id} {key} must be a non-negative integer")
+        total += int(value)
+    return total
+
+
 def finite_float(value: Any, *, prompt_id: str, field: str) -> float:
     if type(value) not in (int, float):
         raise BenchError(f"non-numeric timing field {field} for {prompt_id}: {value!r}")
@@ -1201,6 +1215,15 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, 
     total_drafts = sum(int(row["metrics"]["total_drafts"]) for row in rows)
     total_cycle_ms = sum(float(row["metrics"].get("total_cycle_ms") or cycle_sum(row, "ar_decode_ms") + cycle_sum(row, "mtp_draft_ms")) for row in rows)
     total_ar_ms = sum(cycle_sum(row, "ar_decode_ms") for row in rows)
+    target_verify_layer_passes = sum(cycle_int_sum(row, "target_verify_layer_passes") for row in rows)
+    target_verify_rows_evaluated = sum(cycle_int_sum(row, "target_verify_rows_evaluated") for row in rows)
+    target_verify_serial_rows = sum(cycle_int_sum(row, "target_verify_serial_rows") for row in rows)
+    target_verify_graph_rows = sum(cycle_int_sum(row, "target_verify_graph_rows") for row in rows)
+    target_verify_block_passes = sum(cycle_int_sum(row, "target_verify_block_passes") for row in rows)
+    target_verify_block_rows = sum(cycle_int_sum(row, "target_verify_block_rows") for row in rows)
+    target_verify_replay_rows = sum(cycle_int_sum(row, "target_verify_replay_rows") for row in rows)
+    target_verify_direct_commit_rows = sum(cycle_int_sum(row, "target_verify_direct_commit_rows") for row in rows)
+    target_verify_discarded_rows = sum(cycle_int_sum(row, "target_verify_discarded_rows") for row in rows)
     decode_tps = 1000.0 * total_output / total_cycle_ms if total_cycle_ms > 0 else 0.0
     ar_tps = 1000.0 * total_output / total_ar_ms if total_ar_ms > 0 else 0.0
     return {
@@ -1215,6 +1238,24 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, 
         "draft_acceptance": total_accepted / total_drafts if total_drafts else 0.0,
         "accepted_per_output": total_accepted / total_output if total_output else None,
         "avg_output_tokens_per_prompt": total_output / len(rows) if rows else 0.0,
+        "target_verify_layer_passes": target_verify_layer_passes,
+        "target_verify_rows_evaluated": target_verify_rows_evaluated,
+        "target_verify_serial_rows": target_verify_serial_rows,
+        "target_verify_graph_rows": target_verify_graph_rows,
+        "target_verify_block_passes": target_verify_block_passes,
+        "target_verify_block_rows": target_verify_block_rows,
+        "target_verify_replay_rows": target_verify_replay_rows,
+        "target_verify_direct_commit_rows": target_verify_direct_commit_rows,
+        "target_verify_discarded_rows": target_verify_discarded_rows,
+        "target_verify_layer_passes_per_output": (
+            target_verify_layer_passes / total_output if total_output else None
+        ),
+        "target_verify_rows_per_output": (
+            target_verify_rows_evaluated / total_output if total_output else None
+        ),
+        "target_verify_replay_rows_per_output": (
+            target_verify_replay_rows / total_output if total_output else None
+        ),
     }
 
 
@@ -1223,11 +1264,38 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]], *, expected_cycles: int | 
         validate_metric_row(row, expected_cycles=expected_cycles)
     total_output = sum(int(row["metrics"]["total_output_tokens"]) for row in rows)
     total_ar_ms = sum(cycle_sum(row, "ar_decode_ms") for row in rows)
+    target_verify_layer_passes = sum(cycle_int_sum(row, "target_verify_layer_passes") for row in rows)
+    target_verify_rows_evaluated = sum(cycle_int_sum(row, "target_verify_rows_evaluated") for row in rows)
+    target_verify_serial_rows = sum(cycle_int_sum(row, "target_verify_serial_rows") for row in rows)
+    target_verify_graph_rows = sum(cycle_int_sum(row, "target_verify_graph_rows") for row in rows)
+    target_verify_block_passes = sum(cycle_int_sum(row, "target_verify_block_passes") for row in rows)
+    target_verify_block_rows = sum(cycle_int_sum(row, "target_verify_block_rows") for row in rows)
+    target_verify_replay_rows = sum(cycle_int_sum(row, "target_verify_replay_rows") for row in rows)
+    target_verify_direct_commit_rows = sum(cycle_int_sum(row, "target_verify_direct_commit_rows") for row in rows)
+    target_verify_discarded_rows = sum(cycle_int_sum(row, "target_verify_discarded_rows") for row in rows)
     return {
         "prompts": len(rows),
         "total_output_tokens": total_output,
         "decode_ms": total_ar_ms,
         "decode_tok_s_weighted": 1000.0 * total_output / total_ar_ms if total_ar_ms > 0 else 0.0,
+        "target_verify_layer_passes": target_verify_layer_passes,
+        "target_verify_rows_evaluated": target_verify_rows_evaluated,
+        "target_verify_serial_rows": target_verify_serial_rows,
+        "target_verify_graph_rows": target_verify_graph_rows,
+        "target_verify_block_passes": target_verify_block_passes,
+        "target_verify_block_rows": target_verify_block_rows,
+        "target_verify_replay_rows": target_verify_replay_rows,
+        "target_verify_direct_commit_rows": target_verify_direct_commit_rows,
+        "target_verify_discarded_rows": target_verify_discarded_rows,
+        "target_verify_layer_passes_per_output": (
+            target_verify_layer_passes / total_output if total_output else None
+        ),
+        "target_verify_rows_per_output": (
+            target_verify_rows_evaluated / total_output if total_output else None
+        ),
+        "target_verify_replay_rows_per_output": (
+            target_verify_replay_rows / total_output if total_output else None
+        ),
         "source": "B1 native target-AR verifier time over the same prompt rows",
         "baseline_kind": "verifier_derived_from_b1_target_ar",
         "true_autoregressive_path": False,

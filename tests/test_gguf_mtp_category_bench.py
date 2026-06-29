@@ -104,6 +104,15 @@ def _row(prompt_id: str, category: str, *, output: int, accepted: int, drafts: i
                 "accepted_draft_tokens": accepted,
                 "ar_decode_ms": ar_ms,
                 "mtp_draft_ms": draft_ms,
+                "target_verify_layer_passes": output,
+                "target_verify_rows_evaluated": output,
+                "target_verify_serial_rows": output,
+                "target_verify_graph_rows": 0,
+                "target_verify_block_passes": 0,
+                "target_verify_block_rows": 0,
+                "target_verify_replay_rows": 0,
+                "target_verify_direct_commit_rows": 0,
+                "target_verify_discarded_rows": 0,
             }
         ],
     }
@@ -177,6 +186,12 @@ def test_category_summary_marks_b1_verifier_off_as_non_promotable() -> None:
     assert summary["prompts"][0]["prompt_sha256"] == prompt_sha256("write code")
     assert summary["totals"]["off"]["baseline_kind"] == "verifier_derived_from_b1_target_ar"
     assert summary["totals"]["off"]["true_autoregressive_path"] is False
+    assert summary["totals"]["b1"]["target_verify_layer_passes"] == 3
+    assert summary["totals"]["b1"]["target_verify_rows_evaluated"] == 3
+    assert summary["totals"]["b1"]["target_verify_serial_rows"] == 3
+    assert summary["totals"]["b1"]["target_verify_layer_passes_per_output"] == 1.0
+    assert summary["totals"]["b1"]["target_verify_rows_per_output"] == 1.0
+    assert summary["totals"]["b1"]["target_verify_replay_rows_per_output"] == 0.0
     assert summary["categories"]["code"]["off"]["true_autoregressive_path"] is False
 
 

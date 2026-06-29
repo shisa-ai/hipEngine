@@ -127934,3 +127934,40 @@ passed; `python3 -m pytest tests/test_qwen35_gguf_linear_state_commit.py -q`
 passed (`2 passed`); `git diff --check` passed;
 `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
 passed (`7 passed`).
+
+## 2026-06-29 — GGUF MTP verifier amortization counters
+
+Added target-verifier amortization counters to the GGUF MTP bench artifacts:
+per-cycle and aggregate `target_verify_layer_passes`,
+`target_verify_rows_evaluated`, `target_verify_serial_rows`,
+`target_verify_graph_rows`, `target_verify_block_passes`,
+`target_verify_block_rows`, `target_verify_replay_rows`,
+`target_verify_direct_commit_rows`, `target_verify_discarded_rows`, plus
+normalized `*_per_output` ratios. The counters distinguish row-serial
+`verify_target_block_serial_exact()` from true row-bulk block verification, so
+serial-exact rows count as one layer-streaming pass per row while `bulk`/`native`
+block verification counts as one layer-streaming pass for the block.
+
+Validation:
+`python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py`
+passed; `python3 -m pytest tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py -q`
+passed; `git diff --check` passed.
+
+End-to-end smoke, default route:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --output /tmp/hipengine-ar-mtp-amortization-smoke-v2.json`
+reported `apple_to_apple_ok=true`, AR **54.86 tok/s**, B3 MTP **41.42 tok/s =
+0.7549x AR**, accepted/output **0.727**. Counters show the retained default B3
+route is fully serial: `target_verify_layer_passes_per_output=1.0`,
+`target_verify_serial_rows=11`, `target_verify_block_passes=0`,
+`target_verify_replay_rows=0`.
+
+End-to-end smoke, forced strict block direct-commit diagnostic:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-strict-block-direct-commit --output /tmp/hipengine-strict-block-direct-amortization-smoke.json`
+reported `apple_to_apple_ok=true`, AR **54.89 tok/s**, B3 MTP **50.89 tok/s =
+0.9271x AR**, accepted/output **0.727**. Counters show true block amortization
+is working but still not enough: `target_verify_layer_passes_per_output=0.273`,
+`target_verify_block_passes=3`, `target_verify_block_rows=12`,
+`target_verify_direct_commit_rows=3`, `target_verify_replay_rows=0`, and
+`target_verify_discarded_rows=1`. The warm cycles are block-economics positive,
+but the route remains below true AR once draft cost and the first partial block
+are included.
