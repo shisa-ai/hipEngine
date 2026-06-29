@@ -126720,3 +126720,46 @@ needs per-row GDN linear-state checkpointing inside the bulk prefill (kernel sur
 memory) — deferred until #10 makes the forward cheaper. Artifact
 `benchmarks/results/2026-06-29-partial-accept-replay-lm-head-skip.json`. NEXT: #10 (verifier
 bandwidth) is now the gating lever for both verify and rollback.
+
+## 2026-06-29 — #10 REDIRECTED: dense Q8_0 GEMV (47%, ~20% peak) is the wall, NOT the MoE GEMV
+
+Took on #10 (close the ~1.9x to llama.cpp, "raise the selected-expert GEMV achieved bandwidth").
+First measured the premise instead of assuming it — and the premise is WRONG.
+
+MEASUREMENT 1 (selected-MoE GEMV achieved BW, scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench +
+gguf_q5_k_t16_selected_down_dp4a_microbench, gfx1151): the production T16 selected gate/up Q4_K and
+down Q5_K kernels are ALREADY at 68-106% of ~256 GB/s peak across rows=4..64. They are NOT
+bandwidth-inefficient. This is why every dp4a/q8_1 variant measured ~1.05x and flat e2e — you cannot
+beat already-saturated memory bandwidth by shrinking activation bytes when the (efficiently-read)
+weights dominate. The original #10 thesis is empirically refuted.
+
+MEASUREMENT 2 (full decode wall breakdown, NEW scripts/gguf_decode_rocprof.py, rocprofv3
+--kernel-trace, prefill+4 warmup+24 decode steps, require_cached so no in-trace hipcc). Per-family
+share of the ~18ms/token decode wall:
+  dense_q8_0_gemv      46.8%   (attn q/k/v/o proj + GDN in/out proj + shared-expert FFN, all Q8_0)
+  moe_selected_gemv    25.8%   (already near peak per Measurement 1 -> irreducible)
+  lm_head (q6_k)       10.1%   (1845us/call x1/tok)
+  gdn_linear_attn       6.3%
+  moe_router            4.4%   rmsnorm_rope 3.0%  rest <2% each
+Top kernel: q8_0_t16_dual_split_gemv 147us/call, 23.9% alone.
+
+MEASUREMENT 3 (dense Q8_0 achieved BW, NEW scripts/gguf_q8_0_dense_bw_microbench.py): at rows=1 (the
+decode case) the dense Q8_0 single GEMV reads weights at only:
+  2048x2048 rows=1 -> 52 GB/s (20% peak);  2048x6144 -> 71 GB/s (28%);  768x2048 -> 25 GB/s (10%).
+vs the selected-MoE GEMV's 70-80%. THE BANDWIDTH-EFFICIENCY GAP LIVES IN THE DENSE Q8_0 ROWS=1 GEMV,
+not the MoE GEMV. Arithmetic check: ~1.6GB active weights/tok at peak BW = ~8.3ms floor; measured
+18ms; llama.cpp's 1.9x (~9.5ms) sits right at that floor -> llama.cpp is BW-bound with ~0 overhead,
+hipEngine carries ~10ms of which the dense Q8_0 under-read is the largest reducible chunk.
+
+WHY the dp4a-for-dense-Q8_0 work (#13) was flat: dp4a cuts COMPUTE; the dense rows=1 GEMV is
+WEIGHT-READ-bound (each weight used once, no reuse). The fix is the LOAD PATTERN (vector width +
+memory-level parallelism / split-K), not the dot instruction.
+
+HARNESS INTEGRATED (per request): promoted the scratchpad rocprof driver into committed tooling:
+scripts/gguf_decode_rocprof.py (child decode driver + parent rocprof-wrap + kernel-family bucketing
+-> artifact; follows the prebuild/require-cached/pinned-compiler-version rocprof discipline) and
+scripts/gguf_q8_0_dense_bw_microbench.py (dense Q8_0 achieved-BW probe). Artifacts:
+benchmarks/results/2026-06-29-gguf-decode-rocprof-families.json,
+benchmarks/results/2026-06-29-gguf-q8-0-dense-bw.json. NEXT: write a bandwidth-saturating dense Q8_0
+rows=1 decode GEMV (wide dwordx4 weight loads + split-K for memory-level parallelism), correctness
+gate vs cpu_reference, then measure dense_q8_0_gemv BW and e2e decode tok/s.

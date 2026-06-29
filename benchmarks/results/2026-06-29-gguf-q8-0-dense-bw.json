@@ -1,0 +1,92 @@
+{
+  "schema": "hipengine.gguf_q8_0_dense_bw_microbench.v1",
+  "host": "gfx1151",
+  "hip_arch": "gfx1151",
+  "peak_gbs": 256.0,
+  "iters": 200,
+  "warmup": 40,
+  "results": [
+    {
+      "rows": 1,
+      "in_features": 2048,
+      "out_features": 2048,
+      "us": 10.74,
+      "matrix_MB": 0.557,
+      "achieved_read_bw_gbs": 51.9,
+      "pct_peak": 20.3
+    },
+    {
+      "rows": 2,
+      "in_features": 2048,
+      "out_features": 2048,
+      "us": 13.77,
+      "matrix_MB": 0.557,
+      "achieved_read_bw_gbs": 80.9,
+      "pct_peak": 31.6
+    },
+    {
+      "rows": 4,
+      "in_features": 2048,
+      "out_features": 2048,
+      "us": 26.64,
+      "matrix_MB": 0.557,
+      "achieved_read_bw_gbs": 83.7,
+      "pct_peak": 32.7
+    },
+    {
+      "rows": 1,
+      "in_features": 2048,
+      "out_features": 6144,
+      "us": 23.51,
+      "matrix_MB": 1.671,
+      "achieved_read_bw_gbs": 71.1,
+      "pct_peak": 27.8
+    },
+    {
+      "rows": 2,
+      "in_features": 2048,
+      "out_features": 6144,
+      "us": 39.14,
+      "matrix_MB": 1.671,
+      "achieved_read_bw_gbs": 85.4,
+      "pct_peak": 33.4
+    },
+    {
+      "rows": 4,
+      "in_features": 2048,
+      "out_features": 6144,
+      "us": 73.64,
+      "matrix_MB": 1.671,
+      "achieved_read_bw_gbs": 90.8,
+      "pct_peak": 35.5
+    },
+    {
+      "rows": 1,
+      "in_features": 768,
+      "out_features": 2048,
+      "us": 8.5,
+      "matrix_MB": 0.209,
+      "achieved_read_bw_gbs": 24.6,
+      "pct_peak": 9.6
+    },
+    {
+      "rows": 2,
+      "in_features": 768,
+      "out_features": 2048,
+      "us": 10.08,
+      "matrix_MB": 0.209,
+      "achieved_read_bw_gbs": 41.4,
+      "pct_peak": 16.2
+    },
+    {
+      "rows": 4,
+      "in_features": 768,
+      "out_features": 2048,
+      "us": 16.49,
+      "matrix_MB": 0.209,
+      "achieved_read_bw_gbs": 50.7,
+      "pct_peak": 19.8
+    }
+  ],
+  "command": "python3 scripts/gguf_q8_0_dense_bw_microbench.py --json benchmarks/results/2026-06-29-gguf-q8-0-dense-bw.json"
+}
