@@ -128873,3 +128873,29 @@ Outcome of the user-greenlit kernel effort: delivered a real, bit-exact, validat
 GPU kernel win 1.0534x -> 1.1134x AR (60.8 tok/s, 90.3% of llama's 67.3). The de-risk
 correctly steered away from the MoE-grouping kernel (would not have helped) to the
 lm-head rowtile (the real lever). Cumulative session 1.0356x -> 1.1134x AR.
+
+## 2026-06-30 — dp4a verify MoE: faster (1.1322x) but APPROXIMATE -> not retained under exact-AR protocol
+
+Re-examined the dp4a/q8_1 MoE compute lever now that verify is the bottleneck
+(hook suggestion). HIPENGINE_GGUF_T16_SELECTED_DP4A=1 full suite: best B5 1.1322x
+AR (vs bit-exact rowtile 1.1134x, +1.7%). BUT acc/out CHANGED (B2 0.465->0.474,
+B3 0.50->0.51) => the q8_1 activation quantization flips some target argmaxes =>
+the MTP output no longer matches the EXACT AR greedy output. dp4a is approximate
+by construction (q8_1 activations), so under hipEngine's exact-AR apples-to-apple
+protocol it is a correctness regression, not a clean speedup. Per CLAUDE.md ("never
+land a perf win that regresses correctness") it is NOT retained as default.
+Artifact benchmarks/results/2026-06-30-ar-mtp-suite-full-dp4a-verify-diagnostic.json
+(diagnostic).
+
+Important design note: llama.cpp's GGUF path uses q8_1 dp4a mul_mat_vec for BOTH
+its AR and MTP (standard), so llama's 1.342x is dp4a-AR vs dp4a-MTP (internally
+consistent, slightly lossy). hipEngine is exact-AR vs exact-MTP (1.1134x,
+internally consistent, MORE precise). Matching llama's precision/ratio would mean
+adopting dp4a on BOTH the hipEngine AR baseline AND MTP (then the ratio is
+dp4a/dp4a) — a deliberate precision design decision, not a unilateral kernel swap.
+hipEngine's exact AR (54.6) already beats llama's dp4a AR (50.1); adopting dp4a
+AR would likely raise hipEngine AR further too. Flagging for a design call rather
+than silently lowering precision to chase the ratio.
+
+Retained: bit-exact rowtile lm-head default, 1.1134x AR. dp4a verify recorded as a
+diagnostic + design option.
