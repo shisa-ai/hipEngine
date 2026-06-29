@@ -129280,3 +129280,31 @@ hipEngine-side draft bug to fix; the systems are in different, deliberately-chos
 precision regimes. 1.1134x is the exact-precision optimum; closing to llama requires
 changing the precision regime (a correctness-guard decision), confirmed bottom-up
 from kernels through draft logits.
+
+## 2026-06-30 — AR decode is the untouched multiplier; attention-proj q8_0 GEMVs are the headroom
+
+Reframed the parity problem: MTP tok/s = AR x uplift. The entire investigation so far
+optimized UPLIFT (verify/draft/policy). AR decode itself was never profiled - and it
+is the multiplier on the absolute MTP number. Matching llama's 67.3 needs AR ~60.4 (a
+~10.6% AR speedup) at constant uplift (faster AR kernels also speed the verify), which
+is a CORRECTNESS-PRESERVING path (exact kernels, no precision change).
+
+AR decode profile (scratchpad/ar_decode_bw_probe.py, rocprof kernel-trace, gfx1151):
+per-token 18.2 ms (54.85 tok/s); est ~2.1 GB active/token -> ~115 GB/s ~= 52% of the
+8060S ~220 GB/s achievable peak. Kernel split: q8_0 attention projections ~42%
+(dual_split 21% + gemv 12% + triple 6% + dual 3%); MoE selected ~21%; q6_k lm-head
+9.6%; GDN ~8%.
+
+Key: the q6_k lm-head GEMV is ALREADY near peak (~217 GB/s, 413 MB / 1.9 ms) -
+efficient. The q8_0 attention-projection GEMVs aggregate ~42% of AR at only ~53 GB/s
+(~25% of peak): small-output (256-2048), latency-bound, under-parallelized single-token
+GEMVs. THIS is the real correctness-preserving AR headroom and the highest-value lever
+found after exhausting the MTP-specific surface.
+
+CAVEAT (honest): small-batch GEMV is latency-floored, and hipEngine AR already BEATS
+llama AR (54.6 vs 50.1) - so closing toward peak is hard CENTRAL kernel R&D (split-K /
+occupancy / q-k-v fusion on the t16 q8_0 projections), not a config sweep. Realistic
+gain uncertain (10-20% on those kernels -> ~5-8% AR -> ~63-65 tok/s MTP), may not fully
+reach 67.3. But it is the only correctness-preserving lever with a plausible parity
+path, and it is a NEW direction (the parity doc's next-steps were all MTP-machinery).
+Artifact: results/2026-06-30-hipengine-ar-decode-bw-profile-diagnostic.json.
