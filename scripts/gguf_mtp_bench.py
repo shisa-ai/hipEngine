@@ -1281,7 +1281,11 @@ def main(argv: list[str] | None = None):
                         if target_graph_verify_enabled and int(verify_input_token) != current_device_token:
                             target_graph_verify_fallback_reason = "verify input diverged from device sample token"
                         target_graph_verify_enabled = False
-                        target_result = session.step(verify_input_token, capture_hidden_seed_fp32=True)
+                        target_result = session.step(
+                            verify_input_token,
+                            return_logits=False,
+                            capture_hidden_seed_fp32=True,
+                        )
                     t1 = time.perf_counter()
                     ar_decode_ms += (t1 - t0) * 1000
                     target_token = int(target_result.token_id)

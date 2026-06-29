@@ -23,13 +23,20 @@ tooling or a since-corrected methodology — flagged inline below).
   ~47 tok/s (its 89.55 tok/s MTP ÷ its own 1.9× MTP-over-AR ratio).
 - **MTP is the entire gap.** Fresh full-suite measurement on current code
   (`gguf_ar_mtp_suite.py --scope full`, resident-serial-fallback, 10 prompts):
-  **AR 54.55 tok/s; MTP best is B1 at 48.43 tok/s = 0.89× AR — MTP does NOT beat
-  AR at any budget** (B1 0.89× → B5 0.71×). llama.cpp's MTP is **1.9× its AR**.
+  **AR 54.54 tok/s; MTP best is B1 at 48.78 tok/s = 0.894× AR — MTP does NOT beat
+  AR at any budget** (B1 0.894× → B5 0.712×). llama.cpp's MTP is **1.9× its AR**.
   The 1.9× we chase is **speculative amortization**, not kernel throughput.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
   ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
   hints) is real in isolation and **flat e2e** (table below).
+- **Verifier host-vs-GPU split is resolved for the current suite route.** Fresh
+  GGUF serial-target rocprof (`scripts/gguf_mtp_verifier_rocprof.py`, 12
+  measured target steps, post no-logits cleanup) shows **18.63 ms host wall /
+  16.56 ms kernel time per target step = 89% kernel time**, ~709 launches/step.
+  The retained
+  `resident-serial-fallback` route is GPU/weight-streaming bound, not
+  host-launch-bound.
 - **New standard measurement:** `scripts/gguf_ar_mtp_suite.py` produces ONE
   apple-to-apple AR-vs-MTP artifact under an enforced config (see "How to
   continue").
@@ -43,9 +50,13 @@ tooling or a since-corrected methodology — flagged inline below).
    (`scripts/gguf_q8_0_dense_bw_microbench.py`, >2×-MALL weight pool): dense Q8_0
    is ~51–70% of peak. See `docs/ROOFLINE-gfx1151.md` §6.6.
 2. **The "verifier is ~50/50 host-dispatch-bound (875 launches / ~54 ms host
-   floor)" diagnostic predates #9** (dispatch-resolve cache). Whether the verify
-   block is still host-launch-bound is **UNRESOLVED on current code** — re-measure
-   before acting on it.
+   floor)" diagnostic is superseded.** It predates #9 and the current suite
+   route. Re-measurement on current code with
+   `scripts/gguf_mtp_verifier_rocprof.py` shows the retained
+   `resident-serial-fallback` target verifier is GPU-bound after the no-logits
+   cleanup: 18.63 ms host wall / 16.56 ms kernel time per target step (89%
+   kernel share), ~709 launches/step. The pre-cleanup call-site profile was
+   18.99 ms host / 16.68 ms kernel with unused full-logits D2H.
 3. **The `--true-ar-baseline-json` apple-to-apple path is BROKEN.** Since #8
    retired the HIP decode graph, the production AR path emits `decode_path:
    eager_step`, but `gguf_mtp_category_bench.py`'s `TRUE_AR_PRODUCTION_TIMING_REQUIRED`
@@ -66,9 +77,9 @@ on current code; (M) are current-session measurements.
 | — selected-MoE GEMV (26% of decode) | (M) 70–80% of peak BW | — | small | already amortized at rows>1 |
 | — lm-head Q6_K (10% of decode) | (M) ~1.8 ms/tok | — | ? | once/token; not yet attacked |
 | MTP draft (resident NextN, c=1×B) | (M) ~3.3 ms/depth (B3) | folded in graph | ~2× | device-resident + device-chained (#3) |
-| MTP verify (block, B+1 rows) | (S) ~60–100 ms/cycle (B3) | ~9 ms (one fused GGML graph) | **~7×** | the core MTP cost; re-measure host-vs-GPU |
+| MTP target verify (current resident-serial route) | (M) 18.63 ms host / 16.56 ms kernel per target step; ~709 launches/step | folded into ~9 ms 4-token fused graph | structural | GPU-bound; launch collapse alone is not the first lever on current route |
 | Partial-accept rollback (B5) | (M) replay-forward dominates; LM-head skip landed (#4) | n/a | — | replay forward is the same GPU wall |
-| **Net MTP throughput (full suite)** | **B1 48.4 / B3 43.0 / B5 38.4 tok/s (0.89× → 0.71× AR)** | **~89.6 tok/s (1.9× AR)** | **2–2.5×** | **amortization gap = the whole story** |
+| **Net MTP throughput (full suite)** | **B1 48.8 / B3 43.3 / B5 38.8 tok/s (0.894× → 0.712× AR)** | **~89.6 tok/s (1.9× AR)** | **2–2.5×** | **amortization gap = the whole story** |
 
 ### Everything we tried — expected vs actual
 
@@ -82,6 +93,7 @@ on current code; (M) are current-session measurements.
 | dense small-B rowtile (verify) | 3× microbench at B=4 | flat e2e | kept (kernel-level win) |
 | device-chain resident draft (#3) | cut per-depth host sync | bit-exact, flat e2e | kept default-off (clean arch) |
 | partial-accept LM-head skip (#4) | cut discardable replay work | **+3.5% B5, bit-exact** | **kept, default-on** |
+| serial verifier no-logits cleanup | remove unused full-logits D2H | **+0.7% B1 full-suite, acceptance unchanged** | **kept, default-on** |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
@@ -153,8 +165,8 @@ not a result. So:
    `--scope full` before promoting/committing anything as a win or making it
    default. Never retain a speed claim off a microbench, a single prompt, or a
    `partial` run alone.
-3. **Compare to the committed baseline:** `benchmarks/results/2026-06-29-ar-mtp-suite-full.json`
-   (AR 54.55 tok/s; MTP B1 0.89× → B5 0.71× AR; `mtp_beats_ar=false`). Diff the
+3. **Compare to the committed baseline:** `benchmarks/results/2026-06-29-ar-mtp-suite-full-no-logits.json`
+   (AR 54.54 tok/s; MTP B1 0.894× → B5 0.712× AR; `mtp_beats_ar=false`). Diff the
    `verdict` + per-budget `vs_ar_ratio`/`accepted_per_output`. The suite asserts
    `apple_to_apple_ok=true` (same decode protocol + prompt-set hashes) — if it is
    false, the comparison is invalid, full stop.
@@ -179,22 +191,25 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 
 ### How to continue (ordered, all gated by the suite)
 
-1. **Settle the verifier host-vs-GPU split on current code.** Re-run the verify
-   rocprof (`scripts/mtp_verifier_rocprof.py` / a current verify trace) post-#9 to
-   learn whether the ~875-launch host floor still dominates the ~7× verify gap, or
-   whether #9 moved it to GPU-bound. This decides everything downstream.
-2. **If still host-bound:** collapse the per-layer launches — unblock HIP graph
-   capture (fix the 3rd-relaunch GDN state corruption) or a C-level multi-layer
-   dispatch loop. This is llama.cpp's structural advantage (one fused graph ≈ 9 ms
-   for the 4-token verify).
-3. **If GPU-bound:** the verify is then the same near-peak streaming wall as AR,
-   and the only lever left is **acceptance** — raise accepted-tokens-per-verify so
-   each weight-read pass yields more output tokens. The full-suite sweep makes the
-   problem concrete: acceptance *rises* with budget (acc/out 0.48 → 0.64 from
-   B1→B5) but tok/s *falls* (48.4 → 38.4) — drafting more currently costs more
-   than the extra acceptance saves. The win is higher acceptance **without** more
-   draft/verify work per output token. Work draft quality on the full category
-   suite (not the single merge-sort prompt — anti-gaming).
+1. **Done: verifier host-vs-GPU split is settled for current code.**
+   `scripts/gguf_mtp_verifier_rocprof.py` shows the retained
+   `resident-serial-fallback` target verifier is GPU-bound (18.63 ms host /
+   16.56 ms kernel per target step, 89% kernel share). Do not start with a
+   launch-collapse project unless a new route/profile proves host residual is
+   back on the critical path.
+2. **Work the GPU-bound branch: acceptance/amortization.** Raise
+   accepted-tokens-per-verify so each weight-read pass yields more output tokens.
+   The full-suite sweep makes the problem concrete: acceptance *rises* with
+   budget (acc/out 0.48 → 0.64 from B1→B5) but tok/s *falls* (48.8 → 38.8) —
+   drafting more currently costs more than the extra acceptance saves. The win is
+   higher acceptance **without** more draft/verify work per output token. Work
+   draft quality on the full category suite (not the single merge-sort prompt —
+   anti-gaming).
+3. **Only if a future profile becomes host-bound:** collapse the per-layer
+   launches — unblock HIP graph capture (fix the 3rd-relaunch GDN state
+   corruption) or a C-level multi-layer dispatch loop. This is llama.cpp's
+   structural advantage (one fused graph ≈ 9 ms for the 4-token verify), but it is
+   not where current `resident-serial-fallback` wall time goes.
 4. **Make MTP actually beat AR before any retained speedup claim.** Use
    `--scope full`; a retained claim needs `mtp_beats_ar=true` on the full suite
    with the true-AR denominator from the same run.

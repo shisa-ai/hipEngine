@@ -126914,3 +126914,51 @@ BUGS FIXED to make the full sweep run (both pre-existing, surfaced by first-ever
    robust full-suite route). resident-production (probes at 3) kept available; suite now auto-drops
    budgets < probe for any such route. Updated docs/MTP-LLAMACPP-PARITY.md with the measured numbers.
 NEXT: settle the verify host-vs-GPU split on current code, then work acceptance-per-verify-pass.
+
+## 2026-06-29 — GGUF MTP verifier split settled: current serial target verify is GPU-bound
+
+Added `scripts/gguf_mtp_verifier_rocprof.py`, a diagnostic-only GGUF verifier profiler that warm-builds
+outside rocprof, pins `HIPENGINE_COMPILER_VERSION_FILE`, reruns child mode under
+`rocprofv3 --kernel-trace --marker-trace`, and filters kernels to per-step ROCTX windows. It profiles
+the retained full-suite route's target verifier shape: `Qwen35GGUFResidentSession.step(...,
+capture_hidden_seed_fp32=True)` from `resident-serial-fallback`.
+
+Command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_verifier_rocprof.py --steps 12 --warmup 3 --out benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-return-logits.json --return-logits`
+
+Result on gfx1151 / Radeon 8060S, matching the pre-cleanup `gguf_mtp_bench.py` call-site default
+`return_logits=True`: avg host wall **18.991 ms/target step**, summed kernel time
+**16.679 ms/target step**, kernel share **0.878**, host residual **2.312 ms/step**, about
+**710.0 launches/step**. Kernel buckets: dense Q8_0 GEMV 8.174 ms/step (49.0% kernel),
+selected-MoE GEMV 3.986 ms/step (23.9%), LM-head 1.856 ms/step (11.1%), router 0.839 ms,
+GDN/linear-attn 0.712 ms, rmsnorm/rope 0.559 ms.
+
+Decision: the post-#9 current suite route is **GPU/weight-streaming-bound**, not host-launch-bound.
+Do NOT start with HIP graph/C-dispatch launch collapse for the retained `resident-serial-fallback`
+route unless a future profile shows host residual back on the critical path. Next optimization branch is
+acceptance/amortization: raise accepted tokens per verifier pass without adding draft/verify work per
+output token, then validate with `scripts/gguf_ar_mtp_suite.py --scope full`.
+
+## 2026-06-29 — GGUF MTP serial verifier no-logits cleanup: exact +0.7% B1 full-suite
+
+The profiler exposed one exact host/copy cleanup: the eager serial target verifier in
+`scripts/gguf_mtp_bench.py` called `session.step(..., capture_hidden_seed_fp32=True)` without
+`return_logits=False`, so `_read_sample()` copied the full vocab logits back to host even though MTP
+acceptance only uses `token_id` plus the captured hidden seed. Changed that call to
+`return_logits=False` (graph path already did this).
+
+Verifier profile before/after, same command shape:
+- before (`benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-return-logits.json`):
+  18.991 ms host / 16.679 ms kernel per target step, kernel share 0.878, residual 2.312 ms.
+- after (`benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-no-logits.json`):
+  18.627 ms host / 16.559 ms kernel per target step, kernel share 0.889, residual 2.069 ms.
+
+Full gate:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --output benchmarks/results/2026-06-29-ar-mtp-suite-full-no-logits.json`
+
+Result: `apple_to_apple_ok=True`; AR 54.54 tok/s; B1 48.78 tok/s = 0.8944x AR
+(old 48.43 / 0.8878x, +0.7%); B2 45.78 (0.839x); B3 43.27 (0.793x); B4 40.46
+(0.742x); B5 38.84 (0.712x). Acceptance unchanged vs old full suite (B1 acc/out
+0.476, draft acceptance 0.0247; total_accepted 91 / output 191). MTP still does
+NOT beat AR, so this is retained as a small exact cleanup, not a speedup claim.
+README/changelog/parity doc updated. Next branch remains acceptance/amortization.
