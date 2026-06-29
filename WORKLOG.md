@@ -128746,3 +128746,28 @@ SESSION FINAL: GGUF MTP 1.0356x -> 1.0534x AR (4 committed wins). Gap to llama
 correctness/precision/context lever eliminated; the over-read is 46% reducible but
 ONLY via a new purpose-built kernel (existing one proven net-negative at verify
 sizes). That kernel is the entirety of the remaining gap and is fully prepped.
+
+## 2026-06-30 — ALL in-session levers exhausted: defaults are the small-batch optimum
+
+Tested the last gated path: batched verify lm-head (HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD=1,
+_sample_target_block_rows_from_hidden) on the default route smoke: B3 0.699x AR
+(SLOWER than default ~0.93x), acc/out 0.571 unchanged (correct). The default per-row
+lm-head uses a fused argmax (no full-logits materialization) that beats the batched
+path at verify sizes. So like the compact MoE path, the batched lm-head is net-negative
+at 2-6 rows.
+
+Definitive closure of the in-session lever space — every enable-able path tested:
+- precision f32 draft: = bf16 (no help)
+- draft context (replay/device-KV): raises draft_acc to 0.93 but verify-bound, net <default
+- compact/grouped MoE verify (HIPENGINE_GGUF_ROW_COMPACT_GEMV): 1.30-1.45x SLOWER at rows 2-6
+- batched verify lm-head (HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD): SLOWER (0.699x)
+- all budgets/caps/fallback/min-rows/wmma/p_min: optimum is the pmin05 default
+=> The default (per-slot MoE + per-row fused-argmax lm-head + block verify + minrows2
++ pmin05) is the small-batch verify OPTIMUM. The measured 46% MoE over-read and the
+per-row lm-head weight re-read are BOTH real, but every EXISTING grouping/batching
+kernel is too heavy at 2-6 rows to capture them (built for prefill scale).
+
+FINAL: matching llama 1.342x requires NEW purpose-built low-launch small-batch kernels
+(grouped MoE verify GEMV +/- batched-fused lm-head) — confirmed not achievable by
+enabling any existing path. Session delivered 1.0356x->1.0534x (4 wins) + complete,
+exhaustive root-cause + fully-specified, projected (~1.24-1.31x), de-risked kernel work.
