@@ -128048,3 +128048,9 @@ After promoting `resident-b1-probe-block-direct-cap32k` to the suite default:
 `python3 -m py_compile scripts/gguf_ar_mtp_suite.py tests/test_gguf_ar_mtp_suite.py`
 passed; `python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q` passed (`10
 passed`); `git diff --check` passed.
+
+Post-commit default-route confirmation:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --output /tmp/hipengine-ar-mtp-suite-full-default-after-promotion.json`
+selected `route=resident-b1-probe-block-direct-cap32k` without `--mtp-route` and
+reported `apple_to_apple_ok=true`; AR **54.60 tok/s**; best MTP B3 **56.45
+tok/s = 1.0338x AR**; verdict `MTP WINS AR`.
