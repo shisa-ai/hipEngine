@@ -305,6 +305,21 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--draft-p-min", "0.3",
         "--mtp-draft-vocab-cap", "32768",
     ],
+    # No-probe block post-rowtile: default minus the adaptive B1 probe / block-sizing
+    # (which adds a separate serial pass), so each cycle does ONE block pass over the
+    # budget. Tests whether the cheaper (rowtile) block makes the probe's
+    # wasted-block avoidance no longer worth its extra pass. Full-suite validated.
+    "resident-strict-block-direct-cap32k-minrows2-pmin05": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-ar-fallback",
+        "--draft-p-min", "0.5",
+        "--mtp-draft-vocab-cap", "32768",
+    ],
     # exact current default + only --target-block-min-rows 2: lets the code-path
     # block promotion use cheaper 3-row B2 blocks instead of 4-row B3 (less wasted
     # over-read). Minimal change to the proven 1.036x winner.

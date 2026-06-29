@@ -129092,3 +129092,31 @@ llama pipeline lever tested, AND the baseline comparison itself validated as fai
 1.1134x (60.8 tok/s, 90.3% of llama) is the genuine exact-precision optimum on
 gfx1151; the residual gap is the dp4a precision tradeoff (which buys only ~4% here
 AND fails the ja gate), i.e. correctness-bounded, not effort-bounded.
+
+## 2026-06-30 — no-probe block route rejected; gap precisely characterized as DRAFT QUALITY
+
+Tested whether the B1-probe (which adds a separate serial pass) is still worth it
+post-rowtile. New route resident-strict-block-direct-cap32k-minrows2-pmin05 (default
+minus adaptive probe/block-sizing): full suite B5 58.26 tok/s 1.069x acc/out 0.379
+(vs default 60.76/1.114x/0.535). Worse: committing to full blocks without the probe
+wastes rows on rejection -> acc/out collapses 0.535->0.379. The B1 probe is optimal.
+
+PRECISE GAP CHARACTERIZATION (from the llama 2026-06-22 artifact vs hipEngine):
+- llama B2 (draft_max 2): acc/out 0.598, passes/out 0.402 => ~1.44 accepted/cycle at
+  ~1.0 pass/cycle => per-draft acceptance ~0.80.
+- hipEngine B5 (draft 5): acc/out 0.535, passes/out 0.567 => ~1.15 accepted/cycle at
+  ~1.22 passes/cycle => per-draft acceptance ~0.72 (p_min-truncated).
+=> llama's edge is NOT kernel speed (dp4a only -4% here), NOT raw precision, NOT
+acceptance count by budget. It is DRAFT QUALITY: ~0.80 vs 0.72 per-draft acceptance
+on the SAME NextN head, which comes from cheap high-acceptance draft CONTEXT. llama
+maintains an incremental draft KV cheaply; hipEngine's context draft raises draft_acc
+to ~0.93 but its cost exceeds the benefit (every context route - replay, device-KV,
+hybrid, and context+block+rowtile 1.0453x - lands below the no-context default 1.114x,
+confirmed pre- and post-rowtile).
+
+FINAL: the residual ~6.5 tok/s gap is the cheap-high-acceptance-context-draft problem
+(an OPEN, hard draft-architecture problem the prior session also could not convert),
+NOT a correctness-gate or kernel-speed problem. dp4a is a non-lever (only ~4% here +
+fails ja gate). Every verify-cost, acceptance, policy, and baseline-fairness dimension
+is now tested and documented. 1.1134x is the optimum for the current draft+verify
+architecture; closing further requires a new cheap-context-draft design, not tuning.
