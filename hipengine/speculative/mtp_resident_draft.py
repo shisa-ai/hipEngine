@@ -484,19 +484,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
             )
-            if dense_key_cache is not None:
-                current_cache_len += 1
-            top_ids = self._read_topk(top_k)
+            if draft_p_min > 0.0:
+                top_ids, top1_prob = self._read_topk_with_prob(top_k)
+                if top1_prob < float(draft_p_min):
+                    break
+            else:
+                top_ids = self._read_topk(top_k)
             draft_token = int(top_ids[0])
             tokens.append(draft_token)
             topk_rows.append([int(token) for token in top_ids])
+            if dense_key_cache is not None:
+                current_cache_len += 1
             current_token = draft_token
             current_pos += 1
             current_seed, next_seed = next_seed, current_seed
-            if draft_p_min > 0.0 and depth + 1 < int(draft_n_max):
-                # The resident production path is greedy/top-k only.  Preserve
-                # the old path for probability-threshold diagnostics.
-                raise NotImplementedError("resident GGUF MTP draft does not support draft_p_min")
         return tokens, topk_rows, current_cache_len
 
     def _ensure_embed_table(self) -> None:
@@ -955,6 +956,26 @@ class Qwen35GGUFResidentMTPDraftRunner:
         out = np.empty((int(top_k),), dtype=np.int32)
         copy_device_to_host(host_array_ptr(out), DeviceBuffer(self.topk_indices.ptr, out.nbytes), out.nbytes, runtime=runtime)
         return [int(token) for token in out.tolist()]
+
+    def _read_topk_with_prob(self, top_k: int) -> tuple[list[int], float]:
+        """Read full logits, return top-k ids and the top-1 softmax probability."""
+
+        runtime = self.runtime or get_hip_runtime()
+        runtime.device_synchronize()
+        logits = np.empty((self.vocab,), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(logits),
+            DeviceBuffer(self.logits.ptr, logits.nbytes),
+            logits.nbytes,
+            runtime=runtime,
+        )
+        top_count = min(int(top_k), int(logits.shape[0]))
+        top_idx = np.argpartition(logits, -top_count)[-top_count:]
+        top_sorted = top_idx[np.argsort(logits[top_idx])[::-1]]
+        shifted = logits - float(logits[top_sorted[0]])
+        exp = np.exp(shifted)
+        top1_prob = float(exp[int(top_sorted[0])] / exp.sum())
+        return [int(token) for token in top_sorted.tolist()], top1_prob
 
 
 __all__ = ["Qwen35GGUFResidentMTPDraftRunner"]

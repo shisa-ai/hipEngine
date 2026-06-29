@@ -966,9 +966,7 @@ def main(argv: list[str] | None = None):
         runtime = session.runtime or get_hip_runtime()
         hidden_size = 2048
         if args.resident_mtp_draft:
-            if args.draft_p_min > 0.0:
-                resident_mtp_draft_fallback_reason = "draft_p_min requires probability output from legacy logits path"
-            elif topk_candidate_count > 64:
+            if topk_candidate_count > 64:
                 resident_mtp_draft_fallback_reason = "resident draft top-k kernel supports production top-k up to 64"
             else:
                 resident_draft = Qwen35GGUFResidentMTPDraftRunner(

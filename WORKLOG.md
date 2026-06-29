@@ -127482,3 +127482,70 @@ Re-read llama.cpp MTP lifecycle at
 selecting `verify_h[min(n_accepted, n_rows - 1)]`. The next lever should be a
 real resident `GGUFMTPDraftContext` / verifier-row lifecycle that avoids
 wrong-branch row replay, not another B1 block route.
+
+## 2026-06-29 — GGUF MTP rootK8/device-topK and strict-context block probes rejected
+
+Rechecked the current best B1 route economics from
+`benchmarks/results/2026-06-29-ar-mtp-suite-full-cap32k-device-seed.json` and
+raw child artifacts under `/tmp/hipengine-ar-mtp-suite-full-1782720101/mtp/b1`.
+B1 target verification consumed **3208.38 ms** for **178** visible tokens
+(~18.0 ms/target row) and draft overhead was **209.24 ms** total
+(~2.09 ms/cycle). Because serial B1 still runs one target row per visible
+output token, it cannot materially beat true AR unless draft overhead is nearly
+eliminated or target rows are batched/amortized.
+
+Tried a temporary rootK8/device-topK diagnostic (not retained in code): explicit
+resident device-chain, `--draft-diagnostic-topk 0`, `--root-topk-accept 8`, cap32k
+device seed, B1 smoke:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --budgets 1 --mtp-route resident-rootk8-device-topk-cap32k-device-seed --output /tmp/hipengine-rootk8-device-topk-b1-smoke.json`
+-> `apple_to_apple_ok=true`; AR **54.85 tok/s**; B1 **49.05 tok/s =
+0.8944x AR**; accepted/output **0.400**. Cycle breakdown showed draft still
+~**2.4 ms/cycle** and acceptance dropped versus rootK40.
+
+Also probed strict root top-1 resident context plus target block verify on the
+merge-intervals prompt:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --prompt "Write a Python function to merge overlapping intervals." --prompt-reasoning off --cycles 3 --draft-n-max 3 --decode-repack --use-gemv-decode --use-wmma-prefill --resident-mtp-draft --root-topk-accept 1 --sibling-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --adaptive-ar-fallback --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-strict-context-block-smoke-direct.json`
+-> **38.00 tok/s**, `speedup_vs_ar_visible=0.915x`; first full-accept block was
+good (`4` visible tokens in `~60 ms` including draft), but a zero-accept block
+cost **~73 ms** target wall before fallback. Re-running with diagnostic topK0
+and device-chain was worse (**34.98 tok/s**) due first-cycle embedding-table
+upload; topK0 without device-chain was effectively unchanged (**38.50 tok/s**).
+
+Decision: reverted the temporary route/flag edits. RootK8/device-topK and
+strict-context/block selector tweaks are not goal paths. The next useful work
+must make verifier-row batching branch/rollback-safe at the lifecycle level or
+otherwise reduce target rows per visible token; local top-k/draft-readback knobs
+remain below the required ~4.8% full-suite gap.
+
+## 2026-06-29 — GGUF resident draft p_min strict-block route rejected
+
+Enabled the existing `--draft-p-min` probability threshold for the resident GGUF
+MTP draft host-logits path instead of forcing a fallback to the legacy draft
+runner. The resident path now reads full logits only when `draft_p_min > 0`,
+computes the top-1 softmax probability, and stops before appending a weak draft
+token without advancing the returned dense draft-cache length for that rejected
+candidate. The device-chain path remains unchanged/default-off for this
+threshold case because it does not produce full logits/probabilities.
+
+Validation:
+`python3 -m py_compile hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+-> passed.
+`python3 -m pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -q`
+-> `56 passed`.
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_mtp_resident_draft_device_chain.py -q`
+-> `3 passed`.
+`git diff --check` -> passed.
+
+Directional smoke for suite route
+`resident-strict-context-block-pmin08`:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-strict-context-block-pmin08 --output /tmp/hipengine-strict-context-block-pmin08-smoke.json`
+-> `apple_to_apple_ok=true`; AR **55.00 tok/s**; B3 **38.44 tok/s =
+0.6991x AR**; accepted/output **0.571**; `mtp_beats_ar=false`.
+
+Decision: keep the covered resident `draft_p_min` plumbing as a diagnostic, but
+do not run partial/full or promote this route. The full-logits probability gate
+can suppress weak drafts, but strict-context/block economics still lose badly
+because low-accept cycles pay expensive target block work. This confirms the
+goal from `docs/MTP-LLAMACPP-PARITY.md`: stop cycling selector thresholds and
+build structural verifier amortization / resident lifecycle plumbing that
+reduces target weight-stream passes per visible token.

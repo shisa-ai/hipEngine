@@ -159,3 +159,61 @@ def test_resident_topk40_preserves_top8_prefix(monkeypatch) -> None:
     assert len(top40_rows[0]) == 40
     assert top40_tokens == top8_tokens
     assert top40_rows[0][:8] == top8_rows[0]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
+def test_resident_draft_p_min_can_return_empty_draft_without_advancing_cache(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+    from hipengine.speculative.mtp_resident_draft import Qwen35GGUFResidentMTPDraftRunner
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import free, malloc
+
+    reader = GGUFReader(MODEL)
+    meta = reader.info.metadata
+    weights = {}
+    for tensor in reader.info.tensors:
+        if "blk.40" in tensor.name or tensor.name in ("output.weight", "token_embd.weight"):
+            weights[tensor.name] = (reader.tensor_data(tensor.name), tensor.ggml_type, tensor.shape)
+
+    def dq(name):
+        return dequantize_gguf_data(weights[name][0], GGMLQuantizationType(weights[name][1])).astype(np.float32)
+
+    token_embd_f32 = dq("token_embd.weight")
+    rope_dim = int(meta.get("qwen35moe.rope.dimension_count", 64))
+    rope_base = float(meta.get("qwen35moe.rope.freq_base", 1e7))
+    rope_cos, rope_sin = _rope_tables(max_positions=4096, rotary_dim=rope_dim, base=rope_base)
+
+    runtime = get_hip_runtime()
+    runner = Qwen35GGUFResidentMTPDraftRunner(weights, token_embd_f32, runtime=runtime)
+    kv_heads, d = runner.num_kv_heads, runner.qk_head_dim
+    rng = np.random.default_rng(20260701)
+    hidden_seed = (rng.standard_normal((1, runner.hidden_size)).astype(np.float32) * 0.1)
+    initial_klen = 2
+    nbytes = (initial_klen + 3) * kv_heads * d * 4
+    kc, vc = malloc(nbytes, runtime=runtime), malloc(nbytes, runtime=runtime)
+
+    try:
+        tokens, topk_rows, klen = runner.propose_chain(
+            hidden_seed,
+            start_token=4087,
+            start_position=37,
+            draft_n_max=3,
+            top_k=10,
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            dense_key_cache=kc,
+            dense_value_cache=vc,
+            dense_cache_len=initial_klen,
+            draft_p_min=1.1,
+        )
+    finally:
+        free(kc, runtime=runtime)
+        free(vc, runtime=runtime)
+        runner.close()
+
+    assert tokens == []
+    assert topk_rows == []
+    assert klen == initial_klen

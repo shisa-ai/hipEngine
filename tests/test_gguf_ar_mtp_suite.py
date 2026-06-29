@@ -16,6 +16,24 @@ def test_suite_exposes_resident_strict_context_route() -> None:
     ]
 
 
+def test_suite_exposes_resident_strict_context_block_pmin_route() -> None:
+    assert suite.MTP_ROUTES["resident-strict-context-block-pmin08"] == [
+        "--resident-mtp-draft",
+        "--draft-p-min",
+        "0.8",
+        "--root-topk-accept",
+        "1",
+        "--sibling-topk-accept",
+        "1",
+        "--mtp-context-replay",
+        "--mtp-device-kv-cache",
+        "--target-block-verify",
+        "--adaptive-ar-fallback",
+        "--mtp-draft-vocab-cap",
+        "32768",
+    ]
+
+
 def test_suite_exposes_cap32k_recovery_route() -> None:
     assert suite.MTP_ROUTES["resident-cap32k-recover"] == [
         "--resident-mtp-draft",
