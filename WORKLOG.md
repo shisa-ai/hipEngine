@@ -129308,3 +129308,24 @@ gain uncertain (10-20% on those kernels -> ~5-8% AR -> ~63-65 tok/s MTP), may no
 reach 67.3. But it is the only correctness-preserving lever with a plausible parity
 path, and it is a NEW direction (the parity doc's next-steps were all MTP-machinery).
 Artifact: results/2026-06-30-hipengine-ar-decode-bw-profile-diagnostic.json.
+
+## 2026-06-30 — AR-decode headroom correction: NOT occupancy-limited (split-K hypothesis refuted)
+
+Checked grid sizes of the dominant AR q8_0/q4_k GEMVs from the rocprof trace: they
+launch with HUGE grids (q8_0_t16_dual_split 98304 blocks, qk_t16_selected_direct
+131072, q6_k lm-head ~1.99M) on a ~40-CU GPU. So the AR BW gap (~52% of peak) is NOT
+occupancy-limited and split-K/more-blocks is NOT the fix (refuted). The cause is
+subtler - memory access patterns, cross-block reduction overhead from the very fine
+tile decomposition, or genuine memory-latency-boundedness despite large grids.
+Diagnosing requires rocprofv3 --pmc memory counters (L2 hit rate, fetch BW, stall
+reasons) per kernel, not kernel-trace. That is deep central kernel R&D, and hipEngine
+AR already beats llama AR (54.6 vs 50.1), so it is optimizing an already-leading path.
+
+NET (whole investigation, final): the MTP uplift surface is fully exhausted (every
+lever refuted/floored, correctness validated bottom-up); the AR multiplier has
+aggregate BW headroom (~52% peak) but no quick/known fix (occupancy refuted) - it is
+deep memory-counter-driven kernel R&D on an already-llama-beating AR path. So
+1.1134x / 60.8 tok/s stands as the optimum reachable within this session's scope and
+the correctness guard. Reaching llama's absolute 67.3 needs EITHER dp4a (fails ja
+gate, +4% only) OR a deep AR-decode kernel-R&D win (uncertain, hard, already ahead of
+llama) - neither a config/quick lever. Documented as the precise forward direction.
