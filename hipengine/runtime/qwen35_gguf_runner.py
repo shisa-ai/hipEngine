@@ -302,6 +302,25 @@ def qwen35_gguf_fp32_hidden_seed_contract(
     )
 
 
+def qwen35_gguf_fp32_verify_hidden_seed_contract(
+    hidden_size: int,
+    *,
+    rows: int = 1,
+    populated_by_decode: bool = False,
+) -> Qwen35GGUFHiddenSeedContract:
+    """Describe the fp32 verifier-row hidden-seed staging buffer."""
+
+    return Qwen35GGUFHiddenSeedContract(
+        provenance="post_output_norm",
+        dtype=DType.FP32,
+        rows=int(rows),
+        hidden_size=int(hidden_size),
+        source_buffer="Qwen35GGUFResidentSession._verify_hidden_seed_buf",
+        populated_by_decode=bool(populated_by_decode),
+        llama_cpp_compatible=bool(populated_by_decode),
+    )
+
+
 def qwen35_gguf_current_hidden_seed_contract(
     hidden_size: int,
     *,
@@ -3181,6 +3200,7 @@ class Qwen35GGUFResidentSession:
     _verify_token_ids_i64: object | None = field(default=None, init=False)
     _verify_token_counter_i64: object | None = field(default=None, init=False)
     _verify_block_rows_capacity: int = field(default=0, init=False)
+    _verify_hidden_seed_rows_populated: int = field(default=0, init=False)
     _verify_logits_buf: object | None = field(default=None, init=False)
     _verify_lm_block_values: object | None = field(default=None, init=False)
     _verify_lm_block_indices_i32: object | None = field(default=None, init=False)
@@ -3365,6 +3385,82 @@ class Qwen35GGUFResidentSession:
             hidden_contract=self.fp32_hidden_seed_contract(rows=1),
         )
 
+    def fp32_verify_hidden_seed_contract(self, *, rows: int = 1) -> Qwen35GGUFHiddenSeedContract:
+        """Return the fp32 hidden-row staging contract for target verifier rows."""
+
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        return qwen35_gguf_fp32_verify_hidden_seed_contract(
+            self.runner.hidden_size,
+            rows=int(rows),
+            populated_by_decode=int(self._verify_hidden_seed_rows_populated) >= int(rows),
+        )
+
+    def fp32_verify_hidden_seed_ptr(self, row_index: int = 0) -> int:
+        """Return a staged fp32 verifier hidden-row pointer."""
+
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._verify_hidden_seed_buf is None:
+            raise RuntimeError("GGUF verifier hidden seed rows are not allocated")
+        row = int(row_index)
+        if row < 0 or row >= int(self._verify_hidden_seed_rows_populated):
+            raise RuntimeError("GGUF verifier hidden seed row is not populated")
+        row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+        return int(self._verify_hidden_seed_buf.ptr + row * row_nbytes)
+
+    def stage_current_hidden_seed_as_verify_row(
+        self,
+        *,
+        row_index: int,
+        token_id: int,
+        position: int,
+        rows_capacity: int | None = None,
+        stream: int = 0,
+    ) -> Qwen35GGUFMTPDraftSeed:
+        """Copy the current fp32 target hidden seed into verifier-row staging.
+
+        This is the device-resident counterpart to the llama.cpp ``verify_h``
+        rows: serial target verification can preserve each row with a D2D copy
+        instead of reading hidden rows back to the host before MTP draft-KV
+        commit.
+        """
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if not self.fp32_hidden_seed_contract().ready_for_mtp:
+            raise RuntimeError(
+                "GGUF fp32 hidden seed is not populated; "
+                "call prefill(..., capture_hidden_seed_fp32=True) or "
+                "step(..., capture_hidden_seed_fp32=True) first"
+            )
+        row = int(row_index)
+        if row < 0:
+            raise ValueError("row_index must be non-negative")
+        capacity = max(row + 1, int(rows_capacity or 0))
+        runtime = self.runtime or get_hip_runtime()
+        self._ensure_verify_block_buffers(capacity, runtime=runtime)
+        if self._verify_hidden_seed_buf is None:
+            raise RuntimeError("GGUF verifier hidden seed rows are not allocated")
+        row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+        runtime.memcpy_async(
+            self._verify_hidden_seed_buf.ptr + row * row_nbytes,
+            self.scratch.hidden_seed_fp32.ptr,
+            row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        self._verify_hidden_seed_rows_populated = max(
+            int(self._verify_hidden_seed_rows_populated),
+            row + 1,
+        )
+        return Qwen35GGUFMTPDraftSeed(
+            token_id=int(token_id),
+            position=int(position),
+            hidden_ptr=self.fp32_verify_hidden_seed_ptr(row),
+            hidden_contract=self.fp32_verify_hidden_seed_contract(rows=1),
+        )
+
     def reset(self) -> None:
         """Reset sequence state without freeing resident weights or scratch."""
 
@@ -3374,6 +3470,7 @@ class Qwen35GGUFResidentSession:
         self.scratch.zero_states(runtime)
         self._position = 0
         self._hidden_seed_fp32_populated = False
+        self._verify_hidden_seed_rows_populated = 0
 
     def _linear_state_snapshot(self) -> list[tuple[DeviceBuffer, DeviceBuffer]]:
         """D2D-copy linear-attention state for rollback-safe block verification.
@@ -3901,6 +3998,7 @@ class Qwen35GGUFResidentSession:
             copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
         finally:
             pass
+        self._verify_hidden_seed_rows_populated = rows
         self._position = end
         self.scratch.position_host[0] = end
         self.scratch.context_host[0] = end + 1
@@ -4519,6 +4617,7 @@ class Qwen35GGUFResidentSession:
         self._verify_token_ids_i64 = malloc(rows * DType.INT64.itemsize, runtime=runtime)
         self._verify_token_counter_i64 = malloc(DType.INT64.itemsize, runtime=runtime)
         self._verify_block_rows_capacity = rows
+        self._verify_hidden_seed_rows_populated = 0
 
     def _free_verify_linear_state_row_buffers(self, *, runtime: HipRuntime) -> None:
         for buffer in (
@@ -4766,6 +4865,7 @@ class Qwen35GGUFResidentSession:
         self._verify_token_ids_i64 = None
         self._verify_token_counter_i64 = None
         self._verify_block_rows_capacity = 0
+        self._verify_hidden_seed_rows_populated = 0
         self._verify_lm_out_values = None
         self._verify_lm_out_indices_i32 = None
         self._verify_lm_block_indices_i32 = None
@@ -7293,5 +7393,6 @@ __all__ = [
     "Qwen35GGUFResidentSession",
     "qwen35_gguf_current_hidden_seed_contract",
     "qwen35_gguf_fp32_hidden_seed_contract",
+    "qwen35_gguf_fp32_verify_hidden_seed_contract",
     "resolve_qwen35moe_fastpath_safety",
 ]

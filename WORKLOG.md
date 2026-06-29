@@ -127549,3 +127549,43 @@ because low-accept cycles pay expensive target block work. This confirms the
 goal from `docs/MTP-LLAMACPP-PARITY.md`: stop cycling selector thresholds and
 build structural verifier amortization / resident lifecycle plumbing that
 reduces target weight-stream passes per visible token.
+
+## 2026-06-29 — GGUF device-seed + draft-KV verifier-row staging route rejected
+
+Added the missing device-resident verifier-row primitive needed for a real
+llama.cpp-style lifecycle: `Qwen35GGUFResidentSession` can now stage the current
+fp32 target hidden seed into `_verify_hidden_seed_buf` with a D2D copy and
+expose it as a ready `Qwen35GGUFMTPDraftSeed`; `Qwen35GGUFResidentMTPDraftRunner`
+can write accepted MTP K/V rows from a contiguous device hidden-seed base pointer
+instead of requiring host hidden arrays. Wired a default-off suite route
+`resident-cap32k-device-seed-kv` that combines resident pending device seed with
+MTP draft dense KV and uses the staged verifier rows for accepted-row KV commit.
+
+Validation:
+`python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+-> passed.
+`python3 -m pytest tests/test_qwen35_gguf_hidden_seed_contract.py tests/test_mtp_resident_draft_device_commit.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -q`
+-> passed (`76 passed`).
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_mtp_resident_draft_device_chain.py -q`
+-> `3 passed`.
+`git diff --check` -> passed.
+
+Directional smoke, B3:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-cap32k-device-seed-kv --output /tmp/hipengine-cap32k-device-seed-kv-smoke.json`
+-> `apple_to_apple_ok=true`; AR **54.66 tok/s**; B3 **38.94 tok/s =
+0.7124x AR**; accepted/output **0.571**; draft_acceptance **0.032**;
+`mtp_beats_ar=false`.
+
+Directional smoke, B1:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --budgets 1 --mtp-route resident-cap32k-device-seed-kv --output /tmp/hipengine-cap32k-device-seed-kv-b1-smoke.json`
+-> `apple_to_apple_ok=true`; AR **54.92 tok/s**; B1 **39.73 tok/s =
+0.7235x AR**; accepted/output **0.400**; draft_acceptance **0.017**;
+`mtp_beats_ar=false`.
+
+Decision: keep the device verifier-row staging and device-base KV commit
+primitive, but reject the no-context-replay `resident-cap32k-device-seed-kv`
+route. Draft dense-KV without llama.cpp prompt/context catch-up changes the
+draft distribution and collapses draft acceptance, so it is not the goal path.
+The next structural step remains a real resident lifecycle that combines
+`pending_h`, `verify_h`, and MTP KV with prompt/context catch-up, not simply
+turning dense draft KV on for the current cap32k recovery route.

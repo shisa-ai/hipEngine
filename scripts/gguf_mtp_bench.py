@@ -782,8 +782,6 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-seed requires --resident-mtp-draft")
     if args.resident_mtp_device_seed and args.mtp_context_replay:
         parser.error("--resident-mtp-device-seed is not yet compatible with --mtp-context-replay")
-    if args.resident_mtp_device_seed and args.mtp_device_kv_cache:
-        parser.error("--resident-mtp-device-seed is not yet compatible with --mtp-device-kv-cache")
     if args.resident_mtp_device_seed and args.topk_branch_redraft:
         parser.error("--resident-mtp-device-seed is not yet compatible with --topk-branch-redraft")
     if args.adaptive_full_vocab_after_cap_miss and args.mtp_draft_vocab_cap <= 0:
@@ -1332,6 +1330,7 @@ def main(argv: list[str] | None = None):
             ar_decode_ms = 0.0
             target_tokens = []
             target_hidden_seeds = []
+            target_verify_seed_rows = []
             verify_input_token = cycle_prev_token
             topk_branch_accepted = False
             topk_branch_depth: int | None = None
@@ -1348,6 +1347,7 @@ def main(argv: list[str] | None = None):
             batched_verify_used = False
             block_verify_used = False
             serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
+            device_verify_rows_required = bool(args.resident_mtp_device_seed and args.mtp_device_kv_cache)
             b1_branch_safe_block_verify_used = False
             can_b1_branch_safe_block_verify = (
                 bool(args.target_b1_branch_safe_block_verify)
@@ -1573,6 +1573,15 @@ def main(argv: list[str] | None = None):
                     if serial_hidden_host_required:
                         target_hidden_seed = copy_pending_hidden_seed()
                         target_hidden_seeds.append(target_hidden_seed)
+                    if device_verify_rows_required:
+                        target_verify_seed_rows.append(
+                            session.stage_current_hidden_seed_as_verify_row(
+                                row_index=len(target_tokens) - 1,
+                                token_id=target_token,
+                                position=seq_position + len(target_tokens) - 1,
+                                rows_capacity=cycle_draft_n_max + 1,
+                            )
+                        )
 
                     depth = len(target_tokens) - 1
                     if (
@@ -1819,10 +1828,14 @@ def main(argv: list[str] | None = None):
             if args.resident_mtp_device_seed:
                 if resident_context is None:
                     raise RuntimeError("resident MTP context missing for device-seed route")
-                resident_context.capture_pending_seed_from_target(
-                    token_id=int(output_tokens[-1]),
-                    position=seq_position + int(acceptance["visible_output_tokens"]) - 1,
-                )
+                if target_verify_seed_rows:
+                    resident_context.record_verify_seeds(target_verify_seed_rows)
+                    resident_context.accept(accepted_draft_tokens)
+                else:
+                    resident_context.capture_pending_seed_from_target(
+                        token_id=int(output_tokens[-1]),
+                        position=seq_position + int(acceptance["visible_output_tokens"]) - 1,
+                    )
 
             mtp_device_kv_commit_ms = 0.0
             if args.mtp_device_kv_cache:
@@ -1836,10 +1849,6 @@ def main(argv: list[str] | None = None):
                     raise RuntimeError("MTP device KV cache capacity exhausted while committing accepted rows")
                 t_commit0 = time.perf_counter()
                 commit_tokens = np.asarray(output_tokens[:accepted_draft_tokens], dtype=np.int64)
-                commit_hidden_seed = np.ascontiguousarray(
-                    np.concatenate(target_hidden_seeds[:accepted_draft_tokens], axis=0),
-                    dtype=np.float32,
-                )
                 commit_pos = np.arange(
                     seq_position + 1,
                     seq_position + 1 + accepted_draft_tokens,
@@ -1848,17 +1857,43 @@ def main(argv: list[str] | None = None):
                 if resident_draft is not None:
                     if cycle_resident_draft is None:
                         raise RuntimeError("resident MTP draft runner missing for KV commit")
-                    mtp_device_kv_len = cycle_resident_draft.write_kv_rows(
-                        commit_hidden_seed,
-                        commit_tokens,
-                        positions=commit_pos,
-                        rope_cos=_rope_cos,
-                        rope_sin=_rope_sin,
-                        dense_key_cache=mtp_device_key_cache,
-                        dense_value_cache=mtp_device_value_cache,
-                        dense_cache_len=mtp_device_kv_len,
-                    )
+                    if target_hidden_seeds:
+                        commit_hidden_seed = np.ascontiguousarray(
+                            np.concatenate(target_hidden_seeds[:accepted_draft_tokens], axis=0),
+                            dtype=np.float32,
+                        )
+                        mtp_device_kv_len = cycle_resident_draft.write_kv_rows(
+                            commit_hidden_seed,
+                            commit_tokens,
+                            positions=commit_pos,
+                            rope_cos=_rope_cos,
+                            rope_sin=_rope_sin,
+                            dense_key_cache=mtp_device_key_cache,
+                            dense_value_cache=mtp_device_value_cache,
+                            dense_cache_len=mtp_device_kv_len,
+                        )
+                    elif target_verify_seed_rows:
+                        if len(target_verify_seed_rows) < accepted_draft_tokens:
+                            raise RuntimeError("staged verifier seed rows do not cover accepted draft rows")
+                        mtp_device_kv_len = cycle_resident_draft.write_kv_rows_from_device_seed_base(
+                            int(target_verify_seed_rows[0].hidden_ptr),
+                            commit_tokens,
+                            positions=commit_pos,
+                            rope_cos=_rope_cos,
+                            rope_sin=_rope_sin,
+                            dense_key_cache=mtp_device_key_cache,
+                            dense_value_cache=mtp_device_value_cache,
+                            dense_cache_len=mtp_device_kv_len,
+                        )
+                    else:
+                        raise RuntimeError("MTP device KV commit requires verifier hidden rows")
                 else:
+                    if not target_hidden_seeds:
+                        raise RuntimeError("legacy MTP device KV commit requires host verifier hidden rows")
+                    commit_hidden_seed = np.ascontiguousarray(
+                        np.concatenate(target_hidden_seeds[:accepted_draft_tokens], axis=0),
+                        dtype=np.float32,
+                    )
                     _ = run_draft(
                         commit_hidden_seed,
                         token_embd_f32[commit_tokens].copy(),

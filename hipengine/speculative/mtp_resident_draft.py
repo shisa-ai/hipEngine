@@ -652,6 +652,57 @@ class Qwen35GGUFResidentMTPDraftRunner:
             current_len += 1
         return current_len
 
+    def write_kv_rows_from_device_seed_base(
+        self,
+        hidden_seed_base_ptr: int,
+        token_ids: np.ndarray,
+        *,
+        positions: np.ndarray,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        dense_key_cache: DeviceBuffer,
+        dense_value_cache: DeviceBuffer,
+        dense_cache_len: int,
+        hidden_stride_bytes: int | None = None,
+    ) -> int:
+        """Write accepted MTP K/V rows from contiguous device hidden seeds."""
+
+        base_ptr = int(hidden_seed_base_ptr)
+        if base_ptr <= 0:
+            raise ValueError("hidden_seed_base_ptr must be a non-zero device pointer")
+        tokens = np.ascontiguousarray(token_ids, dtype=np.int64).reshape(-1)
+        pos = np.ascontiguousarray(positions, dtype=np.int64).reshape(-1)
+        if tokens.shape[0] != pos.shape[0]:
+            raise ValueError("token ids and positions must have the same length")
+        stride = int(hidden_stride_bytes or (self.hidden_size * 4))
+        if stride < self.hidden_size * 4:
+            raise ValueError("hidden_stride_bytes is smaller than one fp32 hidden row")
+        runtime = self.runtime or get_hip_runtime()
+        current_len = int(dense_cache_len)
+        for row in range(int(tokens.shape[0])):
+            token = int(tokens[row])
+            if token < 0 or token >= int(self.token_embd_f32.shape[0]):
+                raise ValueError("commit token id outside embedding table")
+            embed = np.ascontiguousarray(self.token_embd_f32[token:token + 1], dtype=np.float32)
+            cos = np.ascontiguousarray(rope_cos[pos[row:row + 1]], dtype=np.float32)
+            sin = np.ascontiguousarray(rope_sin[pos[row:row + 1]], dtype=np.float32)
+            runtime.memcpy(
+                self.seed_a.ptr,
+                base_ptr + row * stride,
+                self.hidden_size * 4,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+            copy_host_to_device(self.token_embed, host_array_ptr(embed), embed.nbytes, runtime=self.runtime)
+            self._write_one_kv(
+                dense_key_cache=dense_key_cache,
+                dense_value_cache=dense_value_cache,
+                dense_cache_len=current_len,
+                cos=cos,
+                sin=sin,
+            )
+            current_len += 1
+        return current_len
+
     def _project_current_to_attn_normed(self, hidden_seed: DeviceBuffer) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size

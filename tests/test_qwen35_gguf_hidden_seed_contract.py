@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.dtype import DType
+from hipengine.core.hip import HipMemcpyKind
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFHiddenSeedContract,
@@ -13,6 +14,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFResidentSession,
     qwen35_gguf_current_hidden_seed_contract,
     qwen35_gguf_fp32_hidden_seed_contract,
+    qwen35_gguf_fp32_verify_hidden_seed_contract,
 )
 
 
@@ -350,8 +352,8 @@ def test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers(
             2000: np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
             2100: np.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=np.float32),
             2200: np.asarray([0.7, 0.8, 0.9, 1.0], dtype=np.float32),
-            5000: np.asarray([0.25, 0.5], dtype=np.float32),
-            5004: np.asarray([-0.25, -0.5], dtype=np.float32),
+            3000: np.asarray([0.25, 0.5], dtype=np.float32),
+            4000: np.asarray([-0.25, -0.5], dtype=np.float32),
             2400: np.asarray([1.5, 1.6, 1.7, 1.8], dtype=np.float32),
             1000: np.asarray([5.0, 6.0, 7.0, 8.0], dtype=np.float32),
         }
@@ -432,8 +434,8 @@ def test_linear_attention_boundary_capture_runs_decode_tap_and_copies_buffers(
         ("copy_bf16", 2000, 4, runtime),
         ("copy_bf16", 2100, 6, runtime),
         ("copy_bf16", 2200, 4, runtime),
-        ("copy_bf16", 5000, 2, runtime),
-        ("copy_bf16", 5004, 2, runtime),
+        ("copy_bf16", 3000, 2, runtime),
+        ("copy_bf16", 4000, 2, runtime),
         ("copy_f32", 2300, 6, runtime),
         ("copy_f32", 2350, 4, runtime),
         ("copy_bf16", 2400, 4, runtime),
@@ -808,6 +810,67 @@ def test_fp32_hidden_seed_contract_is_llama_compatible() -> None:
     assert not contract.requires_fp32_tap
     assert contract.ready_for_mtp
     assert contract.as_dict()["dtype"] == "FP32"
+
+
+def test_fp32_verify_hidden_seed_contract_uses_verifier_row_buffer() -> None:
+    contract = qwen35_gguf_fp32_verify_hidden_seed_contract(
+        hidden_size=4096,
+        rows=2,
+        populated_by_decode=True,
+    )
+
+    assert contract.provenance == "post_output_norm"
+    assert contract.dtype is DType.FP32
+    assert contract.rows == 2
+    assert contract.hidden_size == 4096
+    assert contract.source_buffer == "Qwen35GGUFResidentSession._verify_hidden_seed_buf"
+    assert contract.ready_for_mtp
+
+
+def test_resident_session_stages_current_hidden_seed_as_verify_row_without_gpu_init() -> None:
+    class Runtime:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            self.calls.append((int(dst), int(src), int(nbytes), int(kind), int(stream)))
+
+    runtime = Runtime()
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=8)
+    session.scratch = SimpleNamespace(hidden_seed_fp32=SimpleNamespace(ptr=0x1000))
+    session.runtime = runtime
+    session._hidden_seed_fp32_populated = True
+    session._verify_hidden_seed_buf = None
+    session._verify_hidden_seed_rows_populated = 0
+    session._verify_block_rows_capacity = 0
+
+    def ensure(rows, *, runtime) -> None:
+        session._verify_hidden_seed_buf = SimpleNamespace(ptr=0x2000)
+        session._verify_block_rows_capacity = int(rows)
+
+    session._ensure_verify_block_buffers = ensure
+
+    seed = session.stage_current_hidden_seed_as_verify_row(
+        row_index=2,
+        token_id=123,
+        position=45,
+        rows_capacity=4,
+        stream=7,
+    )
+
+    assert runtime.calls == [
+        (0x2000 + 2 * 8 * 4, 0x1000, 8 * 4, int(HipMemcpyKind.DEVICE_TO_DEVICE), 7)
+    ]
+    assert session._verify_hidden_seed_rows_populated == 3
+    assert seed.token_id == 123
+    assert seed.position == 45
+    assert seed.hidden_ptr == 0x2000 + 2 * 8 * 4
+    assert seed.hidden_contract.ready_for_mtp
+    assert seed.hidden_contract.source_buffer == "Qwen35GGUFResidentSession._verify_hidden_seed_buf"
+    assert session.fp32_verify_hidden_seed_ptr(2) == seed.hidden_ptr
+    with pytest.raises(RuntimeError, match="not populated"):
+        session.fp32_verify_hidden_seed_ptr(3)
 
 
 def test_hidden_seed_contract_rejects_pre_norm_or_wrong_compatibility() -> None:

@@ -1,6 +1,6 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite retained diagnostics, not speed rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
@@ -50,8 +50,11 @@ tooling or a since-corrected methodology — flagged inline below).
   hybrid strict-block/cap32k probe then confirmed that switching policies after a
   generic strict-probe miss is not goal-closing either. A final
   strict-context/block `draft_p_min=0.8` selector smoke was worse (**38.44 tok/s
-  = 0.6991x AR**). That closes the current optimization-list sweep; the next
-  lever is structural amortization, not another local micro-lever.
+  = 0.6991x AR**). A device-seed + dense draft-KV route added the missing
+  device verifier-row staging primitive but is also rejected without prompt
+  catch-up: B1 smoke **39.73 tok/s = 0.7235x AR**, draft acceptance **0.017**.
+  That closes the current optimization-list sweep; the next lever is structural
+  amortization, not another local micro-lever.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
   ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
@@ -136,6 +139,7 @@ on current code; (M) are current-session measurements.
 | strict-context/block `draft_p_min=0.8` selector | suppress weak resident drafts before expensive strict block verification | smoke route `resident-strict-context-block-pmin08`: AR **55.00 tok/s**, B3 **38.44 tok/s = 0.6991x AR**, accepted/output **0.571** | rejected/default-off diagnostic; probability gating cannot fix strict block economics when low-accept cycles still pay target block work |
 | direct verifier row-state commit | adopt llama.cpp-style verifier-row materialization for strict block verification: capture per-row GGUF linear-attention Conv/GDN state and commit the accepted row without rollback replay | exact focused gate passed vs replay (`tests/test_qwen35_gguf_verify_advance_state_only.py`); smoke route `resident-strict-block-direct-commit` B3 **37.20 tok/s = 0.678x AR**; comparable hybrid route `resident-hybrid-strict-block-direct-cap32k` B3 **48.80 tok/s = 0.894x AR** vs prior hybrid smoke **48.94 tok/s = 0.890x AR** | default-off diagnostic only; capture overhead cancels replay savings on strict-block smoke, so this is infrastructure/evidence, not the goal path |
 | resident device hidden seed | adopt llama.cpp-style resident `pending_h` and avoid target hidden-seed D2H/H2D before resident draft | full suite route `resident-cap32k-device-seed`: AR **54.59 tok/s**, best B1 **52.08 tok/s = 0.9540x AR**, accepted/output **78/178 = 0.438**; cap32k recovery control was B1 **51.71 tok/s = 0.9478x AR** with the same acceptance | retained default-off structural diagnostic; +0.7% over cap32k recovery, not enough to beat AR; confirms lifecycle direction but remaining lever must cut target verifier work per visible token |
+| resident device seed + dense draft KV | combine resident `pending_h` with device-resident draft KV and commit accepted verifier rows from staged device hidden rows instead of host hidden arrays | route `resident-cap32k-device-seed-kv`: B3 smoke AR **54.66 tok/s**, MTP **38.94 tok/s = 0.7124x AR**, draft_acceptance **0.032**; B1 smoke AR **54.92 tok/s**, MTP **39.73 tok/s = 0.7235x AR**, draft_acceptance **0.017** | rejected/default-off route; keep verifier-row staging + device-base KV commit primitives, but dense draft KV without llama.cpp prompt/context catch-up changes drafts and collapses acceptance |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
@@ -295,13 +299,14 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, cache
 hints, deferred hidden-seed D2H copies, the one-block device top-k40 extension,
 cap-only/rootK sweeps, resident device hidden-seed copy avoidance by itself,
-strict block `draft_p_min` gating, short B1 confidence-gated target block verify,
-and branch-safe B1 root-topK block verify are all measured too small,
-acceptance-regressive, or negative e2e and are not the lever. Direct row-state
-commit is exact for strict block replay scaffolding, but row-0 direct commit
-after a wrong-branch block is not serial-state exact and the strict-block smoke
-route is not a speed win. The per-kernel GEMV bandwidth is already near-peak.
-Kernel micro-optimization is exhausted; the gap is amortization.
+device-seed + dense draft-KV without context catch-up, strict block `draft_p_min`
+gating, short B1 confidence-gated target block verify, and branch-safe B1
+root-topK block verify are all measured too small, acceptance-regressive, or
+negative e2e and are not the lever. Direct row-state commit is exact for strict
+block replay scaffolding, but row-0 direct commit after a wrong-branch block is
+not serial-state exact and the strict-block smoke route is not a speed win. The
+per-kernel GEMV bandwidth is already near-peak. Kernel micro-optimization is
+exhausted; the gap is amortization.
 
 ## Production verifier status (2026-06-28)
 
