@@ -71,7 +71,10 @@ CANONICAL_DECODE = {
 }
 
 # Named MTP routes (mirrors gguf_mtp_parity_workbench candidates). The default is
-# the production selector. Every route's exact extra-args are recorded.
+# the current retained production selector. Every route's exact extra-args are
+# recorded.
+DEFAULT_MTP_ROUTE = "resident-b1-probe-block-direct-cap32k"
+
 MTP_ROUTES: dict[str, list[str]] = {
     "resident-production": [
         "--resident-mtp-draft",
@@ -188,6 +191,17 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--adaptive-ar-fallback",
         "--mtp-draft-vocab-cap", "32768",
         "--adaptive-full-vocab-after-cap-miss",
+    ],
+    "resident-b1-probe-block-direct-cap32k": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--adaptive-ar-fallback",
+        "--mtp-draft-vocab-cap", "32768",
     ],
     "resident-hybrid-strict-block-direct-native-cap32k": [
         "--resident-mtp-draft",
@@ -344,7 +358,7 @@ def main() -> int:
     ap.add_argument("--scope", choices=tuple(SCOPES), default="smoke")
     ap.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     ap.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
-    ap.add_argument("--mtp-route", choices=tuple(MTP_ROUTES), default="resident-serial-fallback")
+    ap.add_argument("--mtp-route", choices=tuple(MTP_ROUTES), default=DEFAULT_MTP_ROUTE)
     ap.add_argument("--budgets", default=None, help="override scope budgets, e.g. 1,3,5")
     ap.add_argument("--cycles", type=int, default=None, help="override scope cycles")
     ap.add_argument("--limit", type=int, default=None, help="override scope prompt limit")

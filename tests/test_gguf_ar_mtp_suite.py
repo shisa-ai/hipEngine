@@ -3,6 +3,11 @@ from __future__ import annotations
 from scripts import gguf_ar_mtp_suite as suite
 
 
+def test_suite_default_mtp_route_is_current_speed_row() -> None:
+    assert suite.DEFAULT_MTP_ROUTE == "resident-b1-probe-block-direct-cap32k"
+    assert suite.DEFAULT_MTP_ROUTE in suite.MTP_ROUTES
+
+
 def test_suite_exposes_resident_strict_context_route() -> None:
     assert suite.MTP_ROUTES["resident-strict-context"] == [
         "--resident-mtp-draft",
@@ -121,4 +126,22 @@ def test_suite_exposes_hybrid_strict_block_cap32k_route() -> None:
         "--mtp-draft-vocab-cap",
         "32768",
         "--adaptive-full-vocab-after-cap-miss",
+    ]
+
+
+def test_suite_exposes_b1_probe_block_direct_cap32k_route() -> None:
+    assert suite.MTP_ROUTES["resident-b1-probe-block-direct-cap32k"] == [
+        "--resident-mtp-draft",
+        "--root-topk-accept",
+        "1",
+        "--sibling-topk-accept",
+        "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max",
+        "1",
+        "--adaptive-ar-fallback",
+        "--mtp-draft-vocab-cap",
+        "32768",
     ]

@@ -1,9 +1,9 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (bulk row-1 direct-commit exactness diagnostic; native row-1 direct-commit diagnostic; context replay + device-seed route rejection; device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (B1-probe/block-direct/cap32k AR-beating route retained; bulk row-1 direct-commit exactness diagnostic; native row-1 direct-commit diagnostic; context replay + device-seed route rejection; device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
-- Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite retained diagnostics, not speed rows.
-- hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
+- Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite AR/MTP suite rows.
+- hipEngine source baseline for the current performance review: `fad4431039e60c0a19f6583046bb58f351e03c3e`
 - llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
 
 ## 2026-06-29 — HANDOFF: current state, per-stage gap, tried levers, how to continue
@@ -21,51 +21,31 @@ tooling or a since-corrected methodology — flagged inline below).
   resident path measures **~55 tok/s** (54.65 tok/s, code prompt, gfx1151, this
   session, `scripts/gguf_ar_mtp_suite.py --scope smoke`). llama.cpp's retained
   full-suite HIP AR reference is **50.13 tok/s**.
-- **MTP is the entire gap.** The current default full-suite route
-  (`gguf_ar_mtp_suite.py --scope full`, resident top-k40 serial fallback, 10
-  prompts) measures **AR 54.51 tok/s; MTP best B1 50.18 tok/s = 0.921× AR**.
-  A follow-up capped-vocab recovery diagnostic improves B1 throughput to
-  **51.71 tok/s = 0.9478× AR** on the same full suite, but acceptance regresses
-  (`91/191 = 0.476` → `78/178 = 0.438`) and **MTP still does NOT beat AR**.
-  A resident device hidden-seed diagnostic, adopting llama.cpp's resident
-  `pending_h` direction by avoiding the target hidden-seed host round trip,
-  moves the current best to **52.08 tok/s = 0.9540× AR** with unchanged
-  acceptance (`78/178 = 0.438`), still below AR. A later strict-block/cap32k
-  hybrid probe is also rejected: full-suite AR **54.58 tok/s**, best MTP B3
-  **50.91 tok/s = 0.9328× AR**.
-  llama.cpp's retained full-suite reference is **67.29 tok/s at B2 = 1.342× its
-  AR**. The gap we chase is **speculative amortization**, not AR kernel
-  throughput.
-- **Current goal:** build a llama.cpp-style target verifier with bounded
-  recurrent-state rollback slots for GGUF linear attention, then validate it with
-  the full suite. `Qwen35GGUFMTPContext` already covers the
-  `process_verifier_rows()`/`draft()`/`accept()` seed lifecycle shape; the missing
-  llama.cpp pattern is the target-side memory behavior that lets a batched
-  verifier keep the accepted prefix and discard speculative tail rows without
-  serial restore/replay. The existing `resident-strict-context` diagnostic
-  already ran strict top-1 (`root/sibling K=1`) with prompt catch-up replay plus
-  device-resident MTP KV and stayed below AR (partial best B1 **48.69 tok/s =
-  0.889× AR**). The follow-up capped-vocab recovery diagnostic improved
-  full-suite B1 to **51.71 tok/s = 0.9478× AR**, still below the true AR
-  denominator and with worse accepted/output. The device-seed diagnostic improves
-  that B1 row to **52.08 tok/s = 0.9540× AR** without changing acceptance,
-  confirming the llama.cpp lifecycle direction but not closing the gap. The
-  hybrid strict-block/cap32k probe then confirmed that switching policies after a
-  generic strict-probe miss is not goal-closing either. A final
-  strict-context/block `draft_p_min=0.8` selector smoke was worse (**38.44 tok/s
-  = 0.6991x AR**). A device-seed + dense draft-KV route added the missing
-  device verifier-row staging primitive but is also rejected without prompt
-  catch-up: B1 smoke **39.73 tok/s = 0.7235x AR**, draft acceptance **0.017**.
-  A follow-up context-replay + device-seed route adopts the llama.cpp
-  prompt/context catch-up lifecycle and is better than no-context dense KV, but
-  still loses: B1 smoke **50.84 tok/s = 0.9257x AR**, B3 smoke **46.97 tok/s =
-  0.856x AR**. A follow-up full-prompt B1 confidence diagnostic showed
-  high-confidence strict top-1 drafts are real but too sparse to close the gap
-  by selector policy alone (`p>=0.999` was `13/13` strict hits but only
-  **21.7%** recall of strict hits; `p>=0.98` was **28/29** strict hits). That
-  confirms lifecycle parity and confidence gating are not enough while target
-  verification remains serial; the next lever is target-pass amortization, not
-  another local micro-lever.
+- **MTP is still the parity gap, but the same-protocol AR-beat gate is now
+  closed.** The retained default full-suite route
+  `resident-b1-probe-block-direct-cap32k` measures **AR 54.59 tok/s; best MTP B3
+  56.54 tok/s = 1.0356× AR**, `apple_to_apple_ok=true`, `mtp_beats_ar=true`.
+  It combines a cheap strict B1 cap32k probe with direct-commit B3 block
+  verification after a full B1 accept. B3 acceptance is **40/140 = 0.286
+  accepted/output**, draft acceptance is **0.645**, target layer passes drop to
+  **0.779/output**, direct commit rows are **15**, and replay rows are **0**.
+  The previous best retained diagnostic was B1 **52.08 tok/s = 0.9540× AR** via
+  resident device hidden seed. llama.cpp's retained full-suite reference is
+  still **67.29 tok/s at B2 = 1.342× its AR**. hipEngine now beats its own AR,
+  but needs about **+19% relative tok/s** from 56.54 tok/s to match that
+  llama.cpp row.
+- **Current next goal:** close the llama.cpp MTP parity gap by improving the
+  retained `resident-b1-probe-block-direct-cap32k` family, not by reworking AR
+  kernels. `Qwen35GGUFMTPContext` already covers the
+  `process_verifier_rows()`/`draft()`/`accept()` seed lifecycle shape, and direct
+  row-state commit has proven exact enough to retain a B3 speed route. The
+  remaining llama.cpp patterns to adopt are the target/draft memory economics:
+  keep `pending_h`/`verify_h`-style rows resident across the target batch,
+  promote B2/B3 block verification without serial fallback waste, and lift
+  accepted/output while keeping target layer passes below the current
+  **0.779/output**. Success for the next goal is a full-suite artifact that
+  approaches or beats llama.cpp's **67.29 tok/s B2** row under the same
+  no-gaming category protocol.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
   ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
@@ -138,7 +118,7 @@ on current code; (M) are current-session measurements.
 | MTP draft (resident NextN, c=1×B) | (M) ~3.3 ms/depth (B3) | folded in graph | ~2× | device-resident + device-chained (#3) |
 | MTP target verify (current resident-serial route) | (M) 18.63 ms host / 16.56 ms kernel per target step; ~709 launches/step | folded into ~9 ms 4-token fused graph | structural | GPU-bound; launch collapse alone is not the first lever on current route |
 | Partial-accept rollback (B5) | (M) replay-forward dominates; LM-head skip landed (#4) | n/a | — | replay forward is the same GPU wall |
-| **Net MTP throughput (full suite)** | **default B1 50.2 / B3 45.4 / B5 41.4 tok/s (0.921× → 0.759× AR); best diagnostic B1 52.1 tok/s = 0.954× AR** | **67.3 tok/s B2 (1.342× AR)** | **~29% absolute tok/s plus AR-normalized speedup** | **amortization gap = the whole story** |
+| **Net MTP throughput (full suite)** | **default `resident-b1-probe-block-direct-cap32k` B3 56.54 tok/s = 1.0356× AR; prior serial fallback remains below AR** | **67.3 tok/s B2 (1.342× AR)** | **~+19% relative tok/s to match llama.cpp** | **AR-beat closed; parity gap is still amortization + acceptance economics** |
 
 ### Everything we tried — expected vs actual
 
@@ -163,8 +143,9 @@ on current code; (M) are current-session measurements.
 | serial-exact verifier row baseline | use the normal token-serial decode scheduler to stage per-row `h_nextn` plus Conv/GDN state and prove direct row commits are exact before optimizing the batched path | focused wrong-branch gate passes: direct row-0 commit after `[prev, wrong_child]` matches serial hidden/state bit-for-bit and the corrective next step remains exact | correctness oracle/scaffold only; it does not amortize target weight loads and is not a speed route |
 | hybrid strict-block/cap32k route | begin with strict top-1 block-promotion probe, then fall back generically to root-topK B1 + cap32k recovery if probe acceptance is weak | smoke B3 **48.94 tok/s = 0.890x AR**; partial best B3 **54.63 tok/s = 0.9973x AR** looked close, but full suite dropped to AR **54.58 tok/s**, best B3 **50.91 tok/s = 0.9328x AR**, B4 **48.94 = 0.8967x**, B5 **48.52 = 0.8890x**, accepted/output **94/194 = 0.485** | rejected/default-off diagnostic; partial was not predictive, and the route is worse than cap32k recovery B1 full-suite **51.71 tok/s = 0.9478x AR** |
 | strict-context/block `draft_p_min=0.8` selector | suppress weak resident drafts before expensive strict block verification | smoke route `resident-strict-context-block-pmin08`: AR **55.00 tok/s**, B3 **38.44 tok/s = 0.6991x AR**, accepted/output **0.571** | rejected/default-off diagnostic; probability gating cannot fix strict block economics when low-accept cycles still pay target block work |
-| direct verifier row-state commit | adopt llama.cpp-style verifier-row materialization for strict block verification: capture per-row GGUF linear-attention Conv/GDN state and commit the accepted row without rollback replay | row-0 wrong-branch commit is serial-exact after aligning captured `ssm_out` to the serial FP32 activation path; row 1 is serial-exact in `target-block-verify-mode=native` after fixing the native row-serial full-attention verifier to use absolute continuation positions and capture row states. Default `bulk` row 1 is now exact for short verifier blocks (`end < 1024`) after replacing the drifting suffix full-attention prefill reduction with a c1-exact row-batch decode context path and fixing the batch context kernel to honor shared physical block IDs. Smoke remains negative: bulk hybrid direct B3 **49.01 tok/s = 0.893x AR**; native hybrid direct B3 **48.17 tok/s = 0.875x AR**; old pure strict B3 **37.20 tok/s = 0.678x AR**; B1 branch-safe direct **26.66 tok/s = 0.4849x AR**. | default-off diagnostic only; exact row-state commit removes a rollback-slot correctness blocker, but the route still does not amortize target work enough to beat AR. The next lever remains a verifier-amortization path that cuts target passes per visible token, not more direct-commit scaffolding |
+| direct verifier row-state commit | adopt llama.cpp-style verifier-row materialization for strict block verification: capture per-row GGUF linear-attention Conv/GDN state and commit the accepted row without rollback replay | row-0 wrong-branch commit is serial-exact after aligning captured `ssm_out` to the serial FP32 activation path; row 1 is serial-exact in `target-block-verify-mode=native` after fixing the native row-serial full-attention verifier to use absolute continuation positions and capture row states. Default `bulk` row 1 is now exact for short verifier blocks (`end < 1024`) after replacing the drifting suffix full-attention prefill reduction with a c1-exact row-batch decode context path and fixing the batch context kernel to honor shared physical block IDs. Standalone smoke remained negative: bulk hybrid direct B3 **49.01 tok/s = 0.893x AR**; native hybrid direct B3 **48.17 tok/s = 0.875x AR**; old pure strict B3 **37.20 tok/s = 0.678x AR**; B1 branch-safe direct **26.66 tok/s = 0.4849x AR**. | exactness scaffold retained; direct commit by itself was not a speed route, but it is required by the later B1-probe/block-direct/cap32k route that beats AR |
 | resident device hidden seed | adopt llama.cpp-style resident `pending_h` and avoid target hidden-seed D2H/H2D before resident draft | full suite route `resident-cap32k-device-seed`: AR **54.59 tok/s**, best B1 **52.08 tok/s = 0.9540x AR**, accepted/output **78/178 = 0.438**; cap32k recovery control was B1 **51.71 tok/s = 0.9478x AR** with the same acceptance | retained default-off structural diagnostic; +0.7% over cap32k recovery, not enough to beat AR; confirms lifecycle direction but remaining lever must cut target verifier work per visible token |
+| B1-probe/block-direct/cap32k route | use a cheap strict B1 cap32k probe to avoid non-code B3 block waste, then promote to direct-commit B3 block verification after a full B1 accept | full suite route `resident-b1-probe-block-direct-cap32k`: AR **54.59 tok/s**, best B3 **56.54 tok/s = 1.0356x AR**, accepted/output **40/140 = 0.286**, draft acceptance **0.645**, target layer passes **0.779/output**, direct commit rows **15**, replay rows **0** | retained default route; closes the same-protocol AR-beat gate, but still trails llama.cpp B2 **67.29 tok/s** by ~19% relative tok/s |
 | resident device seed + dense draft KV | combine resident `pending_h` with device-resident draft KV and commit accepted verifier rows from staged device hidden rows instead of host hidden arrays | route `resident-cap32k-device-seed-kv`: B3 smoke AR **54.66 tok/s**, MTP **38.94 tok/s = 0.7124x AR**, draft_acceptance **0.032**; B1 smoke AR **54.92 tok/s**, MTP **39.73 tok/s = 0.7235x AR**, draft_acceptance **0.017** | rejected/default-off route; keep verifier-row staging + device-base KV commit primitives, but dense draft KV without llama.cpp prompt/context catch-up changes drafts and collapses acceptance |
 | context replay + resident device seed | combine llama.cpp shifted prompt catch-up, device MTP KV, resident `pending_h`, staged verifier rows, and cap32k recovery | route `resident-context-cap32k-device-seed`: B1 smoke AR **54.93 tok/s**, MTP **50.84 tok/s = 0.9257x AR**, accepted/output **0.400**; B3 smoke AR **54.87 tok/s**, MTP **46.97 tok/s = 0.856x AR**, accepted/output **0.571** | rejected/default-off structural diagnostic; prompt/context lifecycle is now wired, but serial target verification still runs one target pass per visible token and draft overhead keeps it below true AR |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
@@ -304,30 +285,27 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    llama.cpp speed row is plain `--spec-type draft-mtp --spec-draft-n-max N`, not
    an ngram-stack or prompt-history trick.
    The capped-vocab recovery, hybrid strict-block, direct row-state commit, and
-   device hidden-seed probes confirm this direction but also bound its current
-   payoff: recovery prevents one prompt-sensitive AR-fallback collapse,
-   device-seed improves full-suite B1 to **52.08 tok/s = 0.9540× AR**, the
-   hybrid strict-block probe falls back to **50.91 tok/s = 0.9328× AR**, and
-   direct row-state commit is smoke-flat/slower after capture overhead, and
-   context replay + device seed reaches only **0.9257x AR** on B1 smoke, and the
-   full-prompt confidence diagnostic is too low-recall to recover the gap by
-   itself. All remain under AR because every visible token still pays the serial
-   target verifier wall plus draft overhead.
-4. **Cut target verifier work per visible token.** Hidden seeds now have a
-   device-resident diagnostic path, and it only buys +0.7% over cap32k recovery.
-   The remaining lever is a verifier-amortization path that commits accepted
-   prefixes with fewer target weight-stream passes, or a real block verifier
-   whose rollback/commit economics beat the serial path on the full suite.
+   device hidden-seed probes confirm this direction. The payoff became positive
+   only after combining them as `resident-b1-probe-block-direct-cap32k`: full
+   suite B3 **56.54 tok/s = 1.0356× AR**, target layer passes
+   **0.779/output**, replay rows **0**. The route is now the baseline to improve,
+   not a reason to restart from micro-kernel work.
+4. **Close the llama.cpp parity gap from the retained route.** The remaining
+   lever is better verifier amortization and acceptance economics: make B2/B3
+   block promotion pay on more prompts, keep direct commits exact without serial
+   fallback waste, and preserve the cheap cap32k draft cost. The concrete target
+   is moving from B3 **56.54 tok/s** toward llama.cpp's B2 **67.29 tok/s** on
+   the same full category suite.
 5. **Only if a future profile becomes host-bound:** collapse the per-layer
    launches — unblock HIP graph capture (fix the 3rd-relaunch GDN state
    corruption) or a C-level multi-layer dispatch loop. This is llama.cpp's
    structural advantage (one fused graph ≈ 9 ms for the 4-token verify), but it is
    not where current `resident-serial-fallback` wall time goes.
-6. **Make MTP actually beat AR before any retained speedup claim.** Current best
-   B1 needs roughly **+4.8% relative throughput** to beat the same-run AR
-   denominator, and it must not buy that speed by regressing acceptance. Use
-   `--scope full`; a retained claim needs `mtp_beats_ar=true` on the full suite
-   with the true-AR denominator from the same run.
+6. **Use llama.cpp parity, not AR-beat, as the next retained speed gate.** The
+   current route already satisfies `mtp_beats_ar=true` on `--scope full`. The
+   next retained claim should either move materially toward llama.cpp's
+   **67.29 tok/s B2** row with the same no-gaming full-suite protocol, or record
+   why a directly adopted llama.cpp pattern fails in hipEngine.
 7. **Fix the stale AR-baseline contracts** (`TRUE_AR_PRODUCTION_TIMING_REQUIRED`
    + speed-claim contract + tests) to the eager path so the category bench's own
    `--true-ar-baseline-json` comparison works again (REFACTOR.md).
@@ -341,10 +319,10 @@ device-seed + dense draft-KV without context catch-up, context replay + device
 seed under serial target verification, strict block `draft_p_min` gating, short
 B1 confidence-gated target block verify, and branch-safe B1 root-topK block
 verify are all measured too small, acceptance-regressive, or negative e2e and
-are not the lever. Direct row-state commit is exact for row 0 in bulk mode, for
-row 1 in native mode, and for short-context default-bulk row 1 after the
-c1-exact batch decode fix, but the route is still not a speed win; do not treat
-exactness scaffolding as a retained performance route.
+are not the lever. Direct row-state commit by itself was not a speed win, but it
+is now part of the retained `resident-b1-probe-block-direct-cap32k` route; do not
+re-test it as isolated exactness scaffolding unless a correctness regression
+appears.
 The per-kernel GEMV bandwidth is already near-peak. Kernel micro-optimization is
 exhausted; the gap is amortization.
 

@@ -128012,3 +128012,39 @@ Same first-six/five-cycle slice comparison against the no-`p_min` full artifact:
 **57 → 50**. This is directionally positive but still below the true AR
 denominator and regresses several code prompt cycles; do not promote or add a
 suite route from this selector-level result.
+
+## 2026-06-29 — GGUF B1-probe/block-direct/cap32k route beats same-run AR
+
+Added and promoted the suite default route `resident-b1-probe-block-direct-cap32k`:
+`--resident-mtp-draft --root-topk-accept 1 --sibling-topk-accept 1
+--target-block-verify --target-block-direct-state-commit
+--adaptive-block-after-full-accept --adaptive-probe-draft-n-max 1
+--adaptive-ar-fallback --mtp-draft-vocab-cap 32768`.
+
+Authoritative full-suite command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-b1-probe-block-direct-cap32k --output benchmarks/results/2026-06-29-ar-mtp-suite-full-b1-probe-block-direct-cap32k.json`.
+
+Result: `apple_to_apple_ok=true`; true AR **54.59 tok/s**; MTP B1 **53.81
+tok/s = 0.9856x AR**, B2 **53.75 tok/s = 0.9845x AR**, B3 **56.54 tok/s =
+1.0356x AR**, B4 **53.99 tok/s = 0.9889x AR**, B5 **52.64 tok/s = 0.9643x
+AR**. Verdict: best B3, `mtp_beats_ar=true`.
+
+B3 details: accepted/output **40/140 = 0.2857**, draft acceptance **0.6452**,
+`target_verify_layer_passes=109`, `target_verify_layer_passes_per_output=0.779`,
+`target_verify_block_passes=15`, `target_verify_direct_commit_rows=15`,
+`target_verify_replay_rows=0`. This closes the same-protocol AR-beat goal, but
+does not claim llama.cpp parity: the retained llama.cpp full-suite row remains
+**67.29 tok/s at B2 = 1.342x its AR**, so the next goal should improve this
+route's amortization/acceptance economics toward llama.cpp, not revisit AR
+kernels.
+
+Initial validation after adding the suite route, rollup, parity trace, and
+worklog:
+`python3 -m py_compile scripts/gguf_ar_mtp_suite.py tests/test_gguf_ar_mtp_suite.py`
+passed; `python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q` passed (`9
+passed`); `git diff --check` passed.
+
+After promoting `resident-b1-probe-block-direct-cap32k` to the suite default:
+`python3 -m py_compile scripts/gguf_ar_mtp_suite.py tests/test_gguf_ar_mtp_suite.py`
+passed; `python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q` passed (`10
+passed`); `git diff --check` passed.
