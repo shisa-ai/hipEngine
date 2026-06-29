@@ -128991,3 +128991,35 @@ NOT llama's relative 1.342x (which would be ~73 tok/s, beating llama). Either ba
 (~1.15x): closing it needs draft_acc > model's NextN head gives (impossible) or
 dp4a (fails ja gate 0.700). hipEngine already reaches 90.3% of llama's MTP tok/s
 at EXACT precision while beating llama on AR and on the ja correctness gate.
+
+## 2026-06-30 — dp4a re-measured on GPU-bound block path (~4%) + bottom-up verify GPU breakdown
+
+The prior dp4a rejection cited perf on the OLD serial route ("host floor dominates")
++ ja gate. Since I proved the block verify is GPU-bound, I RE-MEASURED dp4a on the
+current block path and gave a bottom-up rocprof breakdown.
+
+dp4a block-verify wall (verify_target_block rows=4, per-block avg N=24,
+scratchpad/dp4a_blockverify_wall.py): exact 42.90 ms; T16 41.22; Q4K_dual 41.31;
+RAW 42.64; all-three 41.22 (-3.9%). The 2026-06-28 "-35%/MoE 3.14x" was an
+ISOLATED-kernel number that does NOT translate to E2E: q8_1 quantize launches
+offset the per-GEMV win and the targeted MoE is only ~26% of verify GPU. dp4a is
+doubly refuted on the current path: ~4% perf AND ja top-1 0.700 < 0.90.
+
+rocprof verify GPU kernel-family breakdown: attention q8_0 projections 32.7%; GDN
+recurrent state 16.1%; MoE selected gate/up 13.7% + down 12.2% (=26% dp4a-target);
+lm-head rowtile 5.9%; router/norms/misc ~13%. Accelerability:
+- attention q8_0 (33%): q8_0_t16_gemv_kernel is blockIdx.y=row (per-row) BUT the
+  ~4 MB projection weights fit the 32 MB MALL/L2 (L2-served, unlike the 417 MB
+  lm-head) and q8_0 dequant is one multiply (vs Q6_K 6-bit unpack the rowtile
+  saved) -> a q8_0 rowtile saves ~nothing. The 33% is genuine per-row compute over
+  4 DISTINCT tokens -> no cross-row amortization. WMMA underutilized at 4<16 rows.
+- GDN recurrent (16%): f32 SSM state, un-quantizable.
+- MoE (26%): dp4a-gated.
+- lm-head (6%): already rowtile'd (the only shared-weight amortization).
+
+CONCLUSION (bottom-up, measured, not inferred): every component of the 38 ms verify
+is already-optimized, un-quantizable, or dp4a-gated. The block verify is at its
+exact-precision GPU-compute floor. No correctness-preserving lever remains on
+gfx1151. Parity needs dp4a (fails ja gate) - a correctness-bar question, not an
+effort-gated one. Artifact:
+benchmarks/results/2026-06-30-hipengine-mtp-dp4a-and-verify-gpu-breakdown-diagnostic.json

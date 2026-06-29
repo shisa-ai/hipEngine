@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "phase": "MTP-parity dp4a + verify GPU-breakdown closure",
+  "date": "2026-06-30",
+  "hardware": "AMD Radeon 8060S / gfx1151",
+  "backend": "hip_gfx1100",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "purpose": "Re-measure dp4a on the CURRENT GPU-bound block verify (prior dp4a perf was on the old serial route), and give a bottom-up rocprof kernel-family breakdown of the 38 ms verify GPU time to prove there is no remaining exact-precision lever.",
+  "dp4a_block_verify_wall_ms": {
+    "method": "verify_target_block(rows=4,bulk), per-block wall avg over N=24, scratchpad/dp4a_blockverify_wall.py",
+    "exact": 42.90,
+    "T16_selected": 41.22,
+    "Q4K_dual_selected": 41.31,
+    "RAW_selected": 42.64,
+    "all_three": 41.22,
+    "all_three_delta_pct": -3.9,
+    "finding": "dp4a cuts the block-verify wall by only ~4% (all flags), NOT the -35% the 2026-06-28 isolated-kernel measurement implied. q8_1 quantize launches offset the per-GEMV savings and the MoE it targets is only ~26% of verify GPU. dp4a is doubly refuted on the current path: ~4% perf AND ja top-1 0.700 < 0.90 gate."
+  },
+  "verify_gpu_kernel_breakdown_pct": {
+    "method": "rocprofv3 --kernel-trace DurationNs sum by kernel family, block verify run",
+    "q8_0_t16_attention_projections": 32.7,
+    "qwen35_gdn_recurrent_state": 16.1,
+    "q4_k_t16_moe_selected_gate_up": 13.7,
+    "qk_t16_moe_selected_down": 12.2,
+    "q6_k_t16_lm_head_rowtile": 5.9,
+    "router_norms_misc": 13.0,
+    "other": 6.4
+  },
+  "accelerability": {
+    "attention_q8_0_projections": "NOT accelerable: blockIdx.y=row (per-row), but weights ~4 MB fit the 32 MB MALL/L2 (L2-served, unlike the 417 MB lm-head) and q8_0 dequant is one multiply (vs Q6_K 6-bit unpack the rowtile saved). The 33% is genuine per-row compute over 4 DISTINCT tokens' activations - no cross-row amortization. WMMA underutilized at 4<16 rows (de-risked neutral at verify sizes).",
+    "gdn_recurrent_state": "NOT accelerable: f32 recurrent SSM state, precision-critical, un-quantizable.",
+    "moe_selected_experts": "dp4a-targetable but nets only ~4% wall and fails ja gate.",
+    "lm_head": "ALREADY rowtile-amortized (the only shared-weight opportunity: all rows read the same head).",
+    "conclusion": "Bottom-up: every component of the 38 ms verify is already-optimized, un-quantizable, or dp4a-gated. The block verify is at its exact-precision GPU-compute floor."
+  },
+  "standing": {
+    "hipengine_mtp_over_ar": 1.1134,
+    "hipengine_mtp_tok_s": 60.8,
+    "llama_mtp_tok_s": 67.3,
+    "pct_of_llama_mtp": 90.3,
+    "exact_precision_asymptote_estimate": "~1.15x (~63 tok/s)",
+    "note": "Beats llama on AR (54.6 vs 50.1) and on the ja correctness gate. Parity needs dp4a (fails gate) - not an effort-gated lever."
+  }
+}
