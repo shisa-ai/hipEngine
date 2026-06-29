@@ -128278,3 +128278,37 @@ correctness-gate requirement (new kernel => RED test + cpu_reference gate).
 
 Validation: `pytest tests/test_gguf_ar_mtp_suite.py -q` (11 passed); all runs
 `apple_to_apple_ok=true`.
+
+## 2026-06-30 — Corrected head-size numbers; 1.0399x is the realistic ceiling on this hardware
+
+Inspected the actual GGUF MTP structure. Qwen3.6-35B-A3B is hidden=2048,
+vocab=248320 (NOT 5120/151936 I assumed earlier). The NextN draft (blk.40) is a
+full transformer block (attn + 8/256 MoE + norms) feeding nextn.shared_head_norm
+then the SHARED output.weight (248320x2048, Q6_K type 14, ~417 MB). There is no
+separate small NextN output head.
+
+Consequences (corrects the earlier "638 MB / 3 ms" estimate):
+- Full-vocab draft lm-head BW floor is ~1.6 ms (417 MB @ 256 GB/s), matching
+  llama's ~1.5 ms draft — llama does read the full head; it is just not 3 ms.
+- hipEngine full-vocab draft measured ~4 ms; the full-vs-cap lm-head delta is
+  ~2.2 ms for 362 MB = 165 GB/s = ~64% peak. Real but MODEST headroom (~1.4x on
+  the lm-head portion), not transformative. A draft-GEMV BW fix would take a
+  full-vocab keep-drafting route from ~1.007x to ~1.03x — still around the
+  default, because the verify wall (block 6.82 ms/row) dominates.
+
+Final assessment for this session: the committed B2 block-verify default
+**1.0399x AR** is the realistic ceiling reachable without a fundamental
+verify-cost reduction. hipEngine's GEMVs (dense + selected-MoE) are already
+near-peak BW, so the per-row MoE verify over-read (5.6 ms/row, top-8/256 = ~no
+expert overlap) is at/near the hardware limit on gfx1151. llama's additional
+1.16x->1.34x headroom most plausibly comes from its fused draft+verify graph
+overlapping host/launch/setup costs that hipEngine pays serially per cycle, not
+from cheaper kernels. Closing that would require graph-capture of the
+draft+verify path (the retired decode-graph hit 3rd-relaunch GDN corruption) or a
+C-level multi-step dispatch loop — a substantial kernel project with a
+correctness gate, tracked as the remaining frontier.
+
+Net session outcome: GGUF MTP default 1.0356x -> 1.0399x AR (committed, gated,
+confirmed); full pipeline characterized and policy/flag/cap space exhausted;
+remaining gap to llama precisely localized to serial per-cycle host/launch +
+verify overlap, which is graph-capture kernel work.
