@@ -127746,3 +127746,29 @@ tokens but non-identical hidden/state vs serial (`hidden_max 0.109558`,
 `state_max 0.28125`). Treat the BF16 change only as row-capture alignment for
 future exactness work; the structural goal remains a serial-exact transactional
 target verifier / rollback-slot implementation.
+
+## 2026-06-29 — serial-exact verifier row baseline
+
+Added `Qwen35GGUFResidentSession.verify_target_block_serial_exact()`, a
+default-off diagnostic target-block path that consumes continuation rows with
+the normal token-serial decode kernels, stages every FP32 verifier hidden row,
+and optionally records per-row GGUF Conv/GDN state for
+`_commit_verify_linear_state_row()`. Exposed it through
+`scripts/gguf_mtp_bench.py --target-block-verify-mode serial-exact` as a slow
+correctness baseline, not a speed route.
+
+Focused wrong-branch gate added:
+`tests/test_qwen35_gguf_verify_advance_state_only.py::test_serial_exact_direct_commit_matches_wrong_branch`.
+It verifies the case that the current row-bulk path cannot support safely:
+after a two-row `[prev, wrong_child]` verifier block, directly committing row 0
+matches the normal serial hidden seed and full linear state bit-for-bit, and the
+subsequent corrective serial step remains bit-exact. Validation:
+`python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py`
+passed; `python3 -m pytest tests/test_gguf_mtp_bench_metrics.py -q` passed
+(`52 passed`); `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+passed (`4 passed`).
+
+Decision: this proves the commit/rollback-slot API can be exact when backed by
+the serial decode scheduler. It does not reduce target passes per visible token,
+so the active optimization goal is unchanged: make the row-bulk/transactional
+verifier exact and amortized enough to beat true AR on the full suite.

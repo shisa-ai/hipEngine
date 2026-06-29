@@ -480,9 +480,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--target-block-verify-mode",
-        choices=("bulk", "native"),
+        choices=("bulk", "native", "serial-exact"),
         default="bulk",
-        help="Attention scheduler for --target-block-verify (default: bulk).",
+        help="Attention scheduler for --target-block-verify (default: bulk; serial-exact is a slow correctness baseline).",
     )
     parser.add_argument(
         "--target-block-direct-state-commit",
@@ -1379,11 +1379,14 @@ def main(argv: list[str] | None = None):
                 snapshot = session._linear_state_snapshot()
                 block_inputs = [int(verify_input_token), int(draft_tokens[0])]
                 try:
-                    block_result = session.verify_target_block(
-                        block_inputs,
-                        bulk_attention_mode=args.target_block_verify_mode,
-                        use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                    )
+                    if args.target_block_verify_mode == "serial-exact":
+                        block_result = session.verify_target_block_serial_exact(block_inputs)
+                    else:
+                        block_result = session.verify_target_block(
+                            block_inputs,
+                            bulk_attention_mode=args.target_block_verify_mode,
+                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                        )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     if len(block_target_tokens) != 2:
                         raise RuntimeError("B1 branch-safe block verifier expected exactly two target rows")
@@ -1452,12 +1455,18 @@ def main(argv: list[str] | None = None):
                 snapshot = None if direct_state_commit else session._linear_state_snapshot()
                 try:
                     block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
-                    block_result = session.verify_target_block(
-                        block_inputs,
-                        bulk_attention_mode=args.target_block_verify_mode,
-                        use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                        capture_linear_state_rows=direct_state_commit,
-                    )
+                    if args.target_block_verify_mode == "serial-exact":
+                        block_result = session.verify_target_block_serial_exact(
+                            block_inputs,
+                            capture_linear_state_rows=direct_state_commit,
+                        )
+                    else:
+                        block_result = session.verify_target_block(
+                            block_inputs,
+                            bulk_attention_mode=args.target_block_verify_mode,
+                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                            capture_linear_state_rows=direct_state_commit,
+                        )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
                     if int(block_acceptance["accepted_draft_tokens"]) == 0 and cycle_root_topk_accept > 1:
@@ -1497,12 +1506,17 @@ def main(argv: list[str] | None = None):
                             # state; the target tokens are already known from the
                             # full-block pass (deterministic), so skip the replay's
                             # LM-head sampling and reuse block_target_tokens.
-                            replay_result = session.verify_target_block(
-                                block_inputs[:consumed_rows],
-                                bulk_attention_mode=args.target_block_verify_mode,
-                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                                advance_state_only=True,
-                            )
+                            if args.target_block_verify_mode == "serial-exact":
+                                replay_result = session.verify_target_block_serial_exact(
+                                    block_inputs[:consumed_rows],
+                                )
+                            else:
+                                replay_result = session.verify_target_block(
+                                    block_inputs[:consumed_rows],
+                                    bulk_attention_mode=args.target_block_verify_mode,
+                                    use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                    advance_state_only=True,
+                                )
                             replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
                             replay_hidden = [
                                 np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)

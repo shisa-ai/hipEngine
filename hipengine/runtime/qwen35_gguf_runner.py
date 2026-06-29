@@ -4018,6 +4018,76 @@ class Qwen35GGUFResidentSession:
             linear_state_rows_captured=bool(capture_linear_state_rows),
         )
 
+    def verify_target_block_serial_exact(
+        self,
+        input_token_ids: list[int] | tuple[int, ...],
+        *,
+        capture_linear_state_rows: bool = False,
+        stream: int = 0,
+    ) -> Qwen35GGUFBlockVerifyResult:
+        """Consume a continuation block with the token-serial decode path.
+
+        This is a correctness baseline for rollback-slot work.  It uses the
+        same per-token kernels as :meth:`step`, then stages each hidden row and,
+        optionally, each Conv/GDN state row for direct commit.  It deliberately
+        does not amortize target weight loads.
+        """
+
+        if stream != 0:
+            raise ValueError("serial-exact target block currently supports only the default stream")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        rows = int(len(input_token_ids))
+        if rows <= 0:
+            raise ValueError("input_token_ids must be non-empty")
+        start = int(self._position)
+        end = start + rows
+        if end > int(self.scratch.max_positions):
+            raise ValueError(f"target block end position {end} exceeds cache capacity {self.scratch.max_positions}")
+        tokens = np.asarray([int(token) for token in input_token_ids], dtype=np.int64)
+        for token in tokens.tolist():
+            if token < 0 or token >= self.runner.vocab_size:
+                raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+
+        runtime = self.runtime or get_hip_runtime()
+        self._ensure_verify_block_buffers(rows, runtime=runtime)
+        if capture_linear_state_rows:
+            self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
+        if self._verify_hidden_seed_buf is None:
+            raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
+
+        token_host = np.empty((rows,), dtype=np.int64)
+        hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+        for row, token in enumerate(tokens.tolist()):
+            result = self.step(
+                int(token),
+                return_logits=False,
+                capture_hidden_seed_fp32=True,
+            )
+            token_host[row] = int(result.token_id)
+            runtime.memcpy_async(
+                self._verify_hidden_seed_buf.ptr + row * hidden_row_nbytes,
+                self.scratch.hidden_seed_fp32.ptr,
+                hidden_row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            if capture_linear_state_rows:
+                self._record_current_linear_state_row(row, stream=stream)
+
+        runtime.device_synchronize()
+        hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(hidden_host), self._verify_hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
+        self._verify_hidden_seed_rows_populated = rows
+        self._hidden_seed_fp32_populated = True
+        return Qwen35GGUFBlockVerifyResult(
+            input_token_ids=[int(token) for token in tokens.tolist()],
+            token_ids=[int(token) for token in token_host.tolist()],
+            hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
+            start_position=start,
+            linear_state_rows_captured=bool(capture_linear_state_rows),
+        )
+
     def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
         if self._expert_sidecar_reader is None or self._expert_sidecar_model_map is None:
             raise RuntimeError("GGUF expert sidecar loading was not enabled for this session")
@@ -4667,6 +4737,44 @@ class Qwen35GGUFResidentSession:
         if conv_rows is None or recurrent_rows is None:
             return None
         return conv_rows, recurrent_rows
+
+    def _record_current_linear_state_row(
+        self,
+        row_index: int,
+        *,
+        stream: int = 0,
+    ) -> None:
+        """Stage the current resident Conv/GDN states into verifier row storage."""
+
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        row_index = int(row_index)
+        if row_index < 0 or row_index >= int(self._verify_linear_state_rows_capacity):
+            raise ValueError("row_index is outside captured linear-state rows")
+        runtime = self.runtime or get_hip_runtime()
+        for layer_id, (conv_state, recurrent_state) in enumerate(
+            zip(self.scratch.layer_conv_states, self.scratch.layer_recurrent_states, strict=True)
+        ):
+            if conv_state is None or recurrent_state is None:
+                continue
+            pair = self._verify_linear_state_row_pair(layer_id)
+            if pair is None:
+                raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+            conv_rows, recurrent_rows = pair
+            runtime.memcpy_async(
+                conv_rows.ptr + row_index * int(conv_state.nbytes),
+                conv_state.ptr,
+                int(conv_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                recurrent_rows.ptr + row_index * int(recurrent_state.nbytes),
+                recurrent_state.ptr,
+                int(recurrent_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
 
     def _commit_verify_linear_state_row(
         self,
