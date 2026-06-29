@@ -128054,3 +128054,20 @@ Post-commit default-route confirmation:
 selected `route=resident-b1-probe-block-direct-cap32k` without `--mtp-route` and
 reported `apple_to_apple_ok=true`; AR **54.60 tok/s**; best MTP B3 **56.45
 tok/s = 1.0338x AR**; verdict `MTP WINS AR`.
+
+## 2026-06-29 — GGUF MTP llama.cpp parity shootout reframed
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` to make the post-AR-beat gap explicit.
+Current hipEngine default is B3 **56.54 tok/s = 1.0356x AR** with
+accepted/output **0.286** and target layer passes/output **0.779**. The retained
+llama.cpp target remains B2 **67.29 tok/s = 1.3423x AR** with accepted/output
+**0.598**. The clearest shortfall is category coverage: hipEngine's current
+route wins on code but records **0 accepted drafts** on `general_en`,
+`general_ja`, and `mixed_ja_en`, while llama.cpp B2 accepts **0.56-0.60/output**
+on those categories.
+
+Decision: the next shootout should start with non-code rescue after zero strict
+probe acceptance, then B2 direct-block promotion, then B3 promotion-threshold
+sweeps. Future retained/rejected rows need per-category accepted/output in the
+artifact or a copied `child_artifacts.mtp_category` summary, not just aggregate
+`mtp_by_budget`.

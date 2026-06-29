@@ -1,9 +1,9 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (B1-probe/block-direct/cap32k AR-beating route retained; bulk row-1 direct-commit exactness diagnostic; native row-1 direct-commit diagnostic; context replay + device-seed route rejection; device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (llama.cpp parity shootout matrix update; B1-probe/block-direct/cap32k AR-beating route retained; bulk row-1 direct-commit exactness diagnostic; native row-1 direct-commit diagnostic; context replay + device-seed route rejection; device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite AR/MTP suite rows.
-- hipEngine source baseline for the current performance review: `fad4431039e60c0a19f6583046bb58f351e03c3e`
+- hipEngine source baseline for the current performance review: `cfb584615b801ce0be7f622ea695327950018f74`
 - llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
 
 ## 2026-06-29 — HANDOFF: current state, per-stage gap, tried levers, how to continue
@@ -71,6 +71,65 @@ tooling or a since-corrected methodology — flagged inline below).
 - **New standard measurement:** `scripts/gguf_ar_mtp_suite.py` produces ONE
   apple-to-apple AR-vs-MTP artifact under an enforced config (see "How to
   continue").
+
+### Where hipEngine still falls short vs llama.cpp
+
+The milestone is real: hipEngine GGUF MTP now beats the same-run hipEngine AR
+baseline. The remaining parity target is llama.cpp's MTP uplift and category
+coverage, not hipEngine AR speed.
+
+| Dimension | hipEngine current default | llama.cpp retained reference | Gap / interpretation |
+| --- | --- | --- | --- |
+| Best total MTP throughput | B3 **56.54 tok/s** | B2 **67.29 tok/s** | llama.cpp is **+10.75 tok/s / +19.0%** faster in absolute decode throughput. |
+| AR-normalized uplift | **1.0356x AR** | **1.3423x AR** | llama.cpp gets **+29.6%** more uplift relative to its own AR. |
+| Accepted/output at speed winner | B3 **0.286** (`40/140`) | B2 **0.598** (`3064/5120`) | hipEngine accepts about **2.1x fewer** draft tokens per visible output. |
+| Draft acceptance at comparable B3 | B3 **0.645** | B3 **0.660** | Per-attempt B3 quality is close; the bigger miss is how often useful B2/B3 drafting is attempted and retained. |
+| Target pass amortization | B3 measured **0.779 target layer passes/output** | B2 inferred **0.402 target batches/output** from `1 - accepted/output` | hipEngine still streams target layers about **1.9x** more often per output token. llama.cpp does not expose layer-pass counters in the retained artifact, so this is an inference from accepted/output. |
+| Category coverage | Code B3 wins (**57.55 tok/s**, **0.500 accepted/output**); `general_en`, `general_ja`, and `mixed_ja_en` have **0 accepted drafts** under the retained route | Code winner B3 **72.59 tok/s**, non-code winners are B2: `general_en` **63.83**, `general_ja` **62.25**, `mixed_ja_en` **67.27 tok/s** with **0.56-0.60 accepted/output** | hipEngine's current route is effectively a code-category win plus near-AR fallback elsewhere. llama.cpp's B2 works across all categories. |
+| Budget shape | B1/B2 remain below AR; B3 is the only winning budget; B4/B5 regress | B1/B2/B3 all beat AR strongly; B2 is fastest, B5 maximizes acceptance | The next target is a robust B2/B3 policy, not deeper B4/B5 drafting. |
+
+Bottom line: **the next gap is non-code acceptance plus target-pass
+amortization.** The current route proves direct block commit can win, but it
+promotes too rarely outside code and still pays too many target passes per
+visible token.
+
+### Next shootout matrix
+
+Every row below is a full-suite shootout candidate, not a single-prompt probe.
+Run `scripts/gguf_ar_mtp_suite.py --scope full` (with a named route for variants)
+and compare against both the current hipEngine default artifact and the retained
+llama.cpp matrix.
+
+For this shootout, the retained evidence must include category rows. If the
+compact suite artifact still records only aggregate `mtp_by_budget`, either copy
+the `child_artifacts.mtp_category` summary into `benchmarks/results/` or extend
+the suite artifact before promoting a result.
+
+Current hipEngine baseline:
+`benchmarks/results/2026-06-29-ar-mtp-suite-full-b1-probe-block-direct-cap32k.json`
+(B3 **56.54 tok/s**, **1.0356x AR**, **0.286 accepted/output**,
+**0.779 target layer passes/output**).
+
+llama.cpp target:
+`benchmarks/results/2026-06-22-llamacpp-35b-mtp-category-off-b1-b5-gfx1151.json`
+(B2 **67.29 tok/s**, **1.3423x AR**, **0.598 accepted/output**).
+
+| ID | Candidate | Hypothesis | Required evidence | Promote / reject rule |
+| --- | --- | --- | --- | --- |
+| S0 | Current default rerun | Establish noise band for `resident-b1-probe-block-direct-cap32k` before changing policy. | Full-suite total and category rows for B1-B5; confirm B3 stays around **56.5 tok/s** and **1.03x AR**. | Baseline only. Do not retune from a single rerun unless it reproduces the retained shape. |
+| S1 | Non-code rescue after zero strict probe | Keep the code-path B1 probe + B3 direct block, but when a category/prompt gets zero strict accepts, fall back to a cheap root-topK/cap32k B1/B2 route instead of pure AR. | `general_en`, `general_ja`, and `mixed_ja_en` accepted/output must move from **0.000** toward llama.cpp B2's **0.56-0.60** without lowering code B3 below current. | Promote only if full-suite best beats **56.54 tok/s** and no non-code category remains at zero accepted drafts. |
+| S2 | B2 direct-block promotion | llama.cpp is fastest at B2, so test a direct-commit B2 verifier after the cheap B1 probe rather than jumping to B3. | B2 total tok/s, accepted/output, discarded rows, direct commit rows, target layer passes/output. | Promote if B2 beats the current B3 row or materially raises accepted/output with no total tok/s regression. |
+| S3 | B3 promotion threshold sweep | The current route's B3 win is code-heavy; try stricter/looser promotion criteria that preserve cheap cap32k drafting but increase safe block use on non-code prompts. | Per-category accepted/output and target passes/output, not just aggregate tok/s. | Keep only if non-code accepted/output rises and aggregate B3 remains above AR and above the current baseline. |
+| S4 | llama.cpp lifecycle parity route | Re-test context replay + device MTP KV + resident `pending_h`/`verify_h` only with exact row-state commit and prompt catch-up aligned; earlier dense-KV routes collapsed acceptance. | One artifact with per-category acceptance plus a narrow trace showing draft context parity on at least one non-code prompt. | Promote only after full-suite acceptance improves; otherwise record as rejected lifecycle evidence. |
+| S5 | Target verifier wall reduction for promoted blocks | If S1-S3 increase accepted/output but wall time stalls, then reduce the promoted-block verifier wall with a C-level multi-layer loop or graph-capture fix. | rocprof for the promoted route, showing whether target wall is launch-bound or kernel/weight-bound after block promotion. | Do not start here unless a promoted route has good accepted/output but still poor tok/s. |
+
+Fill the shootout scoreboard with these columns for every retained or rejected
+attempt:
+
+| Candidate | Best budget | Total tok/s | vs AR | Code acc/out | General EN acc/out | General JA acc/out | Mixed acc/out | Target passes/output | Direct commits | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Current default | B3 | 56.54 | 1.0356 | 0.500 | 0.000 | 0.000 | 0.000 | 0.779 | 15 | baseline |
+| llama.cpp reference | B2 | 67.29 | 1.3423 | 0.627 | 0.576 | 0.563 | 0.599 | inferred 0.402 | n/a | target |
 
 ### Measurement reset — what to distrust in the history below
 
@@ -220,11 +279,17 @@ not a result. So:
    `--scope full` before promoting/committing anything as a win or making it
    default. Never retain a speed claim off a microbench, a single prompt, or a
    `partial` run alone.
-3. **Compare to the committed baseline:** `benchmarks/results/2026-06-29-ar-mtp-suite-full-resident-topk40.json`
-   (AR 54.51 tok/s; MTP B1 0.921× → B5 0.759× AR; `mtp_beats_ar=false`). Diff the
-   `verdict` + per-budget `vs_ar_ratio`/`accepted_per_output`. The suite asserts
-   `apple_to_apple_ok=true` (same decode protocol + prompt-set hashes) — if it is
-   false, the comparison is invalid, full stop.
+3. **Compare to the committed hipEngine baseline and the llama.cpp target:**
+   hipEngine current default is
+   `benchmarks/results/2026-06-29-ar-mtp-suite-full-b1-probe-block-direct-cap32k.json`
+   (AR 54.59 tok/s; MTP B3 56.54 tok/s = 1.0356× AR;
+   `mtp_beats_ar=true`). The external target is
+   `benchmarks/results/2026-06-22-llamacpp-35b-mtp-category-off-b1-b5-gfx1151.json`
+   (llama.cpp B2 67.29 tok/s = 1.3423× AR). Diff the `verdict`,
+   per-budget `vs_ar_ratio`/`accepted_per_output`, and the per-category
+   accepted/output shootout columns. The suite asserts `apple_to_apple_ok=true`
+   (same decode protocol + prompt-set hashes) — if it is false, the comparison is
+   invalid, full stop.
 4. **Record it** per the evidence policy: drop the artifact under
    `benchmarks/results/`, update `benchmarks/README.md` + `benchmarks/CHANGELOG.md`,
    and note the before→after `vs_ar_ratio` in `WORKLOG.md`. A flat/negative e2e
@@ -295,7 +360,9 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    block promotion pay on more prompts, keep direct commits exact without serial
    fallback waste, and preserve the cheap cap32k draft cost. The concrete target
    is moving from B3 **56.54 tok/s** toward llama.cpp's B2 **67.29 tok/s** on
-   the same full category suite.
+   the same full category suite. Run the next candidates in the shootout order
+   above: non-code rescue first, then B2 direct-block promotion, then B3
+   threshold sweeps.
 5. **Only if a future profile becomes host-bound:** collapse the per-layer
    launches — unblock HIP graph capture (fix the 3rd-relaunch GDN state
    corruption) or a C-level multi-layer dispatch loop. This is llama.cpp's
