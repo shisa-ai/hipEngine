@@ -70,6 +70,20 @@ def test_suite_exposes_cap32k_device_seed_kv_route() -> None:
     ]
 
 
+def test_suite_exposes_context_cap32k_device_seed_route() -> None:
+    assert suite.MTP_ROUTES["resident-context-cap32k-device-seed"] == [
+        "--resident-mtp-draft",
+        "--resident-mtp-device-seed",
+        "--mtp-context-replay",
+        "--mtp-device-kv-cache",
+        "--adaptive-ar-fallback",
+        "--no-target-block-verify",
+        "--mtp-draft-vocab-cap",
+        "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+    ]
+
+
 def test_suite_exposes_b1_branch_safe_block_device_seed_route() -> None:
     assert suite.MTP_ROUTES["resident-b1-branch-safe-block-cap32k-device-seed"] == [
         "--resident-mtp-draft",

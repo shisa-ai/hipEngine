@@ -780,8 +780,6 @@ def main(argv: list[str] | None = None):
         parser.error("--adaptive-full-vocab-after-cap-miss requires --resident-mtp-draft")
     if args.resident_mtp_device_seed and not args.resident_mtp_draft:
         parser.error("--resident-mtp-device-seed requires --resident-mtp-draft")
-    if args.resident_mtp_device_seed and args.mtp_context_replay:
-        parser.error("--resident-mtp-device-seed is not yet compatible with --mtp-context-replay")
     if args.resident_mtp_device_seed and args.topk_branch_redraft:
         parser.error("--resident-mtp-device-seed is not yet compatible with --topk-branch-redraft")
     if args.adaptive_full_vocab_after_cap_miss and args.mtp_draft_vocab_cap <= 0:
@@ -1034,11 +1032,14 @@ def main(argv: list[str] | None = None):
                 prompt, prompt_hidden_rows
             )
             target_prefill_mode = "serial_prefill_hidden_rows"
-            mtp_context_mode = (
-                "llamacpp_shifted_prompt_replay"
-                if args.mtp_device_kv_cache
-                else "llamacpp_shifted_prompt_rows_host_only"
-            )
+            if args.mtp_device_kv_cache:
+                mtp_context_mode = (
+                    "llamacpp_shifted_prompt_replay_device_seed"
+                    if args.resident_mtp_device_seed
+                    else "llamacpp_shifted_prompt_replay"
+                )
+            else:
+                mtp_context_mode = "llamacpp_shifted_prompt_rows_host_only"
         else:
             prefill_result = session.prefill(prompt, return_logits=False, capture_hidden_seed_fp32=True)
             prev_token = int(prefill_result.token_id)
@@ -1916,15 +1917,18 @@ def main(argv: list[str] | None = None):
                 # drafts.  The final corrective target token becomes
                 # ``prev_token`` and is appended as a seed row by the next
                 # draft() call.
-                context_append_tokens = [cycle_prev_token] + [int(token) for token in output_tokens[:-1]]
-                context_append_hidden_rows = [cycle_pending_hidden_seed] + target_hidden_seeds[:accepted_draft_tokens]
-                mtp_context_tokens.extend(context_append_tokens)
-                context_append_positions = [seq_position + i for i in range(len(context_append_tokens))]
-                mtp_context_positions.extend(context_append_positions)
-                mtp_context_hidden_rows = np.concatenate(
-                    [mtp_context_hidden_rows, np.concatenate(context_append_hidden_rows, axis=0)],
-                    axis=0,
-                )
+                if target_hidden_seeds:
+                    context_append_tokens = [cycle_prev_token] + [int(token) for token in output_tokens[:-1]]
+                    context_append_hidden_rows = [cycle_pending_hidden_seed] + target_hidden_seeds[:accepted_draft_tokens]
+                    mtp_context_tokens.extend(context_append_tokens)
+                    context_append_positions = [seq_position + i for i in range(len(context_append_tokens))]
+                    mtp_context_positions.extend(context_append_positions)
+                    mtp_context_hidden_rows = np.concatenate(
+                        [mtp_context_hidden_rows, np.concatenate(context_append_hidden_rows, axis=0)],
+                        axis=0,
+                    )
+                elif not args.resident_mtp_device_seed:
+                    raise RuntimeError("context replay requires host verifier hidden rows")
             prev_token = int(output_tokens[-1])
             previous_cycle_accepted_for_record = previous_cycle_accepted
             previous_cycle_accepted = accepted_draft_tokens

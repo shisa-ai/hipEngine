@@ -6,6 +6,7 @@ import inspect
 import numpy as np
 import pytest
 
+from scripts import gguf_mtp_bench as bench
 from scripts.gguf_mtp_bench import (
     _draft_top1_prob,
     _rope_tables,
@@ -403,6 +404,25 @@ def test_arg_parser_exposes_resident_mtp_device_seed() -> None:
 
     assert args.resident_mtp_draft is True
     assert args.resident_mtp_device_seed is True
+
+
+def test_main_allows_resident_device_seed_with_context_replay(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: False)
+
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(
+            [
+                "--resident-mtp-draft",
+                "--resident-mtp-device-seed",
+                "--mtp-context-replay",
+                "--mtp-device-kv-cache",
+            ]
+        )
+
+    assert excinfo.value.code == 1
+    stderr = capsys.readouterr().err
+    assert "ROCm/HIP not available" in stderr
+    assert "not yet compatible" not in stderr
 
 
 def test_arg_parser_exposes_adaptive_strict_block_probe() -> None:

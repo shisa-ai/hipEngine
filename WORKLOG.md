@@ -127589,3 +127589,45 @@ draft distribution and collapses draft acceptance, so it is not the goal path.
 The next structural step remains a real resident lifecycle that combines
 `pending_h`, `verify_h`, and MTP KV with prompt/context catch-up, not simply
 turning dense draft KV on for the current cap32k recovery route.
+
+## 2026-06-29 — GGUF context-replay + device-seed route rejected
+
+Reviewed llama.cpp `common/speculative.cpp` at
+`6e9007ae61f4e994c27484759caac6ef2aa32b30`: draft-MTP owns
+`pending_h`, `verify_h`, and `last_n_drafted`; `process()` catches the draft
+context up with shifted target embeddings and records verifier hidden rows;
+`draft()` seeds from `pending_h`; `accept()` reseeds from
+`verify_h[min(n_accepted, n_rows - 1)]`. Wired the matching hipEngine
+compatibility route by allowing `--resident-mtp-device-seed` with
+`--mtp-context-replay`, adding suite route `resident-context-cap32k-device-seed`,
+and making replay bookkeeping tolerate device-resident verifier rows without
+host hidden-row materialization.
+
+Validation:
+`python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+-> passed.
+`python3 -m pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -q`
+-> passed (`59 passed`).
+`git diff --check` -> passed.
+
+Directional smoke, B3:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-context-cap32k-device-seed --output /tmp/hipengine-context-cap32k-device-seed-smoke.json`
+-> `apple_to_apple_ok=true`; AR **54.87 tok/s**; B3 **46.97 tok/s =
+0.856x AR**; accepted/output **0.571**; draft_acceptance **0.032**;
+`mtp_beats_ar=false`.
+
+Directional smoke, B1:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --budgets 1 --mtp-route resident-context-cap32k-device-seed --output /tmp/hipengine-context-cap32k-device-seed-b1-smoke.json`
+-> `apple_to_apple_ok=true`; AR **54.93 tok/s**; B1 **50.84 tok/s =
+0.9257x AR**; accepted/output **0.400**; draft_acceptance **0.017**;
+`mtp_beats_ar=false`.
+
+The raw B1 artifact shows the structural blocker: avg target verifier wall is
+**30.37 ms/cycle** for **5 visible tokens / 3 cycles** (one target pass per
+visible token), plus **2.41 ms/cycle** draft/KV overhead. With serial target
+verification, MTP cannot beat true AR unless the target verifier itself is
+faster than AR, which it is not. Decision: keep the route default-off as a
+llama.cpp lifecycle compatibility scaffold, but reject it as an optimization
+path. The remaining goal path must reduce target weight-stream passes per
+visible token via a real block/graph verifier or equivalent target-pass
+amortization.
