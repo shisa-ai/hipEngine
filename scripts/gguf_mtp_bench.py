@@ -668,6 +668,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--record-draft-confidence",
+        action="store_true",
+        help=(
+            "Diagnostic only: record per-depth resident draft top-1 softmax probabilities "
+            "in raw cycle artifacts without changing the acceptance policy."
+        ),
+    )
+    parser.add_argument(
         "--root-topk-accept",
         type=int,
         default=DEFAULT_ROOT_TOPK_ACCEPT,
@@ -1211,6 +1219,7 @@ def main(argv: list[str] | None = None):
             draft_tokens = []
             draft_top10_tokens = []
             draft_diagnostic_logits: list[tuple[int, int, np.ndarray]] = []
+            cycle_draft_top1_probs: list[float] = []
             replay_tokens = [cycle_prev_token]
             # Sequential single-seed draft path.  Context replay and the normal
             # path both use this shape; llama.cpp parity comes from the optional
@@ -1238,6 +1247,7 @@ def main(argv: list[str] | None = None):
                             dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
                             dense_cache_len=mtp_device_kv_len,
                             draft_p_min=float(args.draft_p_min),
+                            record_top1_probs=bool(args.record_draft_confidence),
                         )
                     )
                 else:
@@ -1253,7 +1263,10 @@ def main(argv: list[str] | None = None):
                         dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
                         dense_cache_len=mtp_device_kv_len,
                         draft_p_min=float(args.draft_p_min),
+                        record_top1_probs=bool(args.record_draft_confidence),
                     )
+                if args.record_draft_confidence:
+                    cycle_draft_top1_probs = [float(value) for value in cycle_resident_draft.last_top1_probs]
             elif cycle_draft_n_max > 0:
                 for draft_depth in range(cycle_draft_n_max):
                     token_embed = token_embd_f32[current_token:current_token + 1].copy()
@@ -1970,6 +1983,7 @@ def main(argv: list[str] | None = None):
                 "initial_draft_tokens": draft_tokens,
                 "redraft_tokens": redraft_tokens,
                 "redraft_start_depth": redraft_start_depth,
+                "draft_top1_probs": cycle_draft_top1_probs,
                 "target_in_draft_top10": target_in_draft_top10,
                 "target_rank_in_draft_top10": target_rank_in_draft_top10,
                 "accepted": accepted,
@@ -2167,6 +2181,7 @@ def main(argv: list[str] | None = None):
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
             "resident_mtp_draft": bool(args.resident_mtp_draft),
             "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
+            "record_draft_confidence": bool(args.record_draft_confidence),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_draft_full_vocab_recovery_effective": bool(
                 resident_mtp_draft_full_vocab_recovery_effective

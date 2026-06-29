@@ -127631,3 +127631,40 @@ llama.cpp lifecycle compatibility scaffold, but reject it as an optimization
 path. The remaining goal path must reduce target weight-stream passes per
 visible token via a real block/graph verifier or equivalent target-pass
 amortization.
+
+## 2026-06-29 — GGUF resident draft confidence diagnostic added
+
+Added a default-off/artifact-only diagnostic flag,
+`scripts/gguf_mtp_bench.py --record-draft-confidence`, for the resident GGUF
+MTP draft path. When enabled, the runner records per-depth draft top-1 softmax
+probabilities in each raw cycle as `draft_top1_probs`; acceptance and drafting
+policy are unchanged. The device-chain shortcut remains disabled only for this
+diagnostic because the chain path does not materialize probabilities.
+
+Validation:
+`python3 -m py_compile hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py`
+-> passed.
+`python3 -m pytest tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_resident_draft_device_commit.py -q`
+-> passed (`54 passed`).
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_mtp_resident_draft_device_chain.py -q`
+-> passed (`3 passed`).
+`git diff --check` -> passed.
+
+Diagnostic command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_category_bench.py --budgets 1 --cycles 10 --raw-root /tmp/hipengine-draft-confidence-b1 --output /tmp/hipengine-draft-confidence-b1.json --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--decode-repack --extra-arg=--use-gemv-decode --extra-arg=--use-wmma-prefill --extra-arg=--resident-mtp-draft --extra-arg=--resident-mtp-device-seed --extra-arg=--adaptive-ar-fallback --extra-arg=--no-target-block-verify --extra-arg=--mtp-draft-vocab-cap --extra-arg=32768 --extra-arg=--adaptive-full-vocab-after-cap-miss --extra-arg=--record-draft-confidence`
+-> `/tmp/hipengine-draft-confidence-b1.json`, `status=diagnostic_retained`
+(not a speed claim; no true AR attach), 10 prompts, B1, 10 cycles. Aggregate
+with confidence readback: `decode_tok_s_weighted=47.62`, verifier-derived
+ratio `0.9408x`, accepted/output `78/178 = 0.438`.
+
+Confidence split across 98 cycles with probabilities:
+accepted root-topK cycles: `n=78`, mean p `0.8068`; rejected cycles: `n=20`,
+mean p `0.4683`. Strict top-1 equality is the branch-safe block-commit
+criterion: `60/98` cycles were strict top-1; strict mean p `0.8769`,
+non-strict mean p `0.5180`. Threshold sweep: `p>=0.999` produced `13/13`
+strict hits but only `21.7%` recall of strict hits; `p>=0.98` produced `28/29`
+strict hits (`96.6%` precision, `46.7%` recall). Decision: confidence is a
+useful diagnostic, but by itself it is too low-recall to close the full-suite
+MTP-vs-true-AR gap. Do not spend the next iteration on another selector-only
+gate; the goal remains real target-pass amortization/block verification or an
+equivalent llama.cpp-style structural path.

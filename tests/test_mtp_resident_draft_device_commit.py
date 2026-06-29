@@ -4,6 +4,7 @@ import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
+from hipengine.speculative import mtp_resident_draft as resident_draft_mod
 from hipengine.speculative.mtp_resident_draft import Qwen35GGUFResidentMTPDraftRunner
 
 
@@ -61,3 +62,52 @@ def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -
     np.testing.assert_array_equal(writes[1][1], np.asarray([[8, 9, 10, 11]], dtype=np.float32))
     np.testing.assert_array_equal(writes[0][2], np.asarray([[16, 17, 18, 19]], dtype=np.float32))
     np.testing.assert_array_equal(writes[1][2], np.asarray([[20, 21, 22, 23]], dtype=np.float32))
+
+
+def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypatch) -> None:
+    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.runtime = None
+    runner.hidden_size = 4
+    runner.experts_used = 8
+    runner._device_chain_enabled = False
+    runner._draft_chain_cap = 16
+    runner.token_embd_f32 = np.arange(40, dtype=np.float32).reshape(10, 4)
+    runner.seed_a = DeviceBuffer(0x1000, 16)
+    runner.seed_b = DeviceBuffer(0x1100, 16)
+    runner.token_embed = DeviceBuffer(0x2000, 16)
+    runner.cos = DeviceBuffer(0x3000, 16)
+    runner.sin = DeviceBuffer(0x4000, 16)
+    runner.position_i64 = DeviceBuffer(0x5000, 8)
+    runner.context_i64 = DeviceBuffer(0x6000, 8)
+    runner.last_top1_probs = [9.9]
+
+    run_calls = []
+    prob_rows = iter([([2, 1], 0.75), ([3, 2], 0.25)])
+
+    def run_one(*args, **kwargs) -> None:
+        run_calls.append((args, kwargs))
+
+    runner._run_one = run_one
+    runner._read_topk_with_prob = lambda top_k: next(prob_rows)
+
+    tokens, topk_rows, cache_len = runner._propose_chain_from_seed_buffer(
+        start_token=1,
+        start_position=2,
+        draft_n_max=2,
+        top_k=2,
+        rope_cos=np.ones((8, 4), dtype=np.float32),
+        rope_sin=np.zeros((8, 4), dtype=np.float32),
+        dense_key_cache=None,
+        dense_value_cache=None,
+        dense_cache_len=7,
+        draft_p_min=0.0,
+        record_top1_probs=True,
+    )
+
+    assert tokens == [2, 3]
+    assert topk_rows == [[2, 1], [3, 2]]
+    assert cache_len == 7
+    assert len(run_calls) == 2
+    assert runner.last_top1_probs == [0.75, 0.25]

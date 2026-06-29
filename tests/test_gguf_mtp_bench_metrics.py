@@ -406,6 +406,12 @@ def test_arg_parser_exposes_resident_mtp_device_seed() -> None:
     assert args.resident_mtp_device_seed is True
 
 
+def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--record-draft-confidence"])
+
+    assert args.record_draft_confidence is True
+
+
 def test_main_allows_resident_device_seed_with_context_replay(monkeypatch, capsys) -> None:
     monkeypatch.setattr(bench, "_hip_available", lambda: False)
 

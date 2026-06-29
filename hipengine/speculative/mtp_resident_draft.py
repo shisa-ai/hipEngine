@@ -173,6 +173,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
     experts_used: int = 8
     eps: float = 1e-6
     _buffers: list[DeviceBuffer] = field(default_factory=list, init=False)
+    last_top1_probs: list[float] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -359,6 +360,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_value_cache: DeviceBuffer | None = None,
         dense_cache_len: int = 0,
         draft_p_min: float = 0.0,
+        record_top1_probs: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         if draft_n_max <= 0:
             raise ValueError("draft_n_max must be positive")
@@ -379,6 +381,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             dense_value_cache=dense_value_cache,
             dense_cache_len=dense_cache_len,
             draft_p_min=draft_p_min,
+            record_top1_probs=record_top1_probs,
         )
 
     def propose_chain_from_device_seed(
@@ -395,6 +398,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_value_cache: DeviceBuffer | None = None,
         dense_cache_len: int = 0,
         draft_p_min: float = 0.0,
+        record_top1_probs: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
 
@@ -414,6 +418,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             dense_value_cache=dense_value_cache,
             dense_cache_len=dense_cache_len,
             draft_p_min=draft_p_min,
+            record_top1_probs=record_top1_probs,
         )
 
     def _propose_chain_from_seed_buffer(
@@ -429,7 +434,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
         draft_p_min: float,
+        record_top1_probs: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
+        self.last_top1_probs = []
         if draft_n_max <= 0:
             raise ValueError("draft_n_max must be positive")
         if top_k <= 0 or top_k > 64:
@@ -437,6 +444,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if (
             self._device_chain_enabled
             and draft_p_min <= 0.0
+            and not bool(record_top1_probs)
             and int(draft_n_max) <= self._draft_chain_cap
             and int(top_k) <= self.experts_used
         ):
@@ -484,8 +492,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
             )
-            if draft_p_min > 0.0:
+            if draft_p_min > 0.0 or record_top1_probs:
                 top_ids, top1_prob = self._read_topk_with_prob(top_k)
+                if record_top1_probs:
+                    self.last_top1_probs.append(float(top1_prob))
                 if top1_prob < float(draft_p_min):
                     break
             else:
