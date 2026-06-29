@@ -126989,3 +126989,17 @@ B4 42.92 (0.787x); B5 41.38 (0.759x). Acceptance unchanged vs the no-logits base
 throughput to clear the same-run AR denominator. README/changelog/parity doc updated. Next branch
 remains full-suite acceptance/amortization, not existing block verify (measured negative) or root-topk8
 (faster but acceptance-regressive).
+
+## 2026-06-29 — GGUF MTP root-topk64 partial: rejected, no acceptance gain
+
+Exploratory partial A/B only (4 code prompts, cycles=5, B1/B3/B5, resident-serial-fallback,
+in-process load-once, outputs under `/tmp/hipengine-rootk40-partial` and
+`/tmp/hipengine-rootk64-partial`). Compared default root-topk40 against root-topk64 now that the
+resident draft route can serve top-k up to 64.
+
+Result: accepted/output was identical at all budgets (B1 20/40 = 0.500; B3 45/65 = 0.692;
+B5 50/70 = 0.714). Tok/s was noise/flat: B1 49.62 -> 49.72 (+0.2%), B3 46.40 -> 46.33
+(-0.15%), B5 42.40 -> 42.34 (-0.15%). Draft acceptance ratio fell mechanically because the
+candidate denominator widened. Decision: do not spend a full-suite gate on root-topk64; next
+acceptance/amortization probe should target deeper sibling acceptance under the existing root-topk40
+envelope.
