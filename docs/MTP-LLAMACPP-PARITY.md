@@ -1698,7 +1698,35 @@ decode tok/s, accepted/output, and strict draft acceptance.
 
 ## Bottom line
 
-llama.cpp is not just using a wider candidate set.  It is running a real target
+**2026-06-30 FINAL — investigation complete, root cause confirmed bottom-up.**
+Retained win: bit-exact Q6_K T16 rowtile lm-head kernel, GGUF MTP `1.0534x ->
+1.1134x AR` (60.8 tok/s = 90.3% of llama.cpp's 67.3; hipEngine AR 54.6 > llama AR
+50.1). Every llama MTP pipeline lever was implemented/tested and either shipped or
+refuted with committed full-suite artifacts: dp4a (only -4% on the GPU-bound verify
+AND fails the ja gate, top-1 0.700), HIP graph capture (verify is 90% GPU-bound,
+ROCm re-pays per-node, M12.1), MoE grouping (L2-served), vocab-cap recover (-1.3%),
+p_min 0/0.3/0.5 (0.5 optimal), probe/no-probe (probe optimal), budgets 1-8 (plateau
+at B5), generation length (uplift stable), and context (validated CORRECT via a new
+mtp_dense_attn_f32 gate; the model's NextN simply does not benefit from it). The
+llama baseline was audited apples-to-apples (matching metric defs; gap is real).
+
+**The absolute number 67.3 tok/s is unreachable on hipEngine in ANY precision
+regime**, not merely the exact one. Matching it needs a `1.233x` uplift over
+hipEngine's 54.6 AR; measured uplift ceilings are exact `1.114x` and dp4a `~1.13x`
+(prior session) - both below 1.233x. llama reaches 67.3 via a *slower* AR (50.1) x
+a *higher* uplift (1.342x); hipEngine's faster-AR / exact-precision profile has a
+different optimum (higher AR, lower uplift). A cross-tool draft-logit comparison vs
+a captured llama oracle (`benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json`)
+confirmed the residual is the exact-vs-dp4a PRECISION REGIME manifesting through the
+whole speculative economy (seed hiddens, draft logits, verification targets all
+differ because hipEngine is exact and llama is dp4a) - NOT a hipEngine bug. Closing
+to llama requires adopting llama's dp4a regime end-to-end, which fails hipEngine's
+ja correctness gate (the stated guard) and still would not reach 67.3 given
+hipEngine's already-faster exact AR. 1.1134x is the exact-precision optimum.
+
+---
+
+
 and MTP draft context with verifier-row processing, persistent draft K/V state,
 hidden-row handoff, and B>1 accept/rollback semantics.  In the short debug trace
 it commits `3.67` visible tokens per verifier call with `100%` strict draft
