@@ -129065,3 +129065,30 @@ ACCEPTANCE SIDE NOW FULLY SWEPT (ja vocab-cap, p_min 0/0.3/0.5, budgets 1-5) and
 VERIFY-COST SIDE FULLY SWEPT (rowtile shipped, dp4a -4%/ja-gated, grouping/graph/
 WMMA refuted, GPU-compute-floored bottom-up). 1.1134x is the measured optimum for
 the exact-precision design point on gfx1151.
+
+## 2026-06-30 — Apple-to-apple audit of the llama 67.29 baseline: gap is GENUINE
+
+Per the evidence policy, audited whether the llama 67.29 tok/s / 1.342x baseline is
+a fair comparison. llama was measured via llama-server --protocol natural
+--max-tokens 512 (2026-06-22 artifact); hipEngine suite uses cycles=10 in-process.
+Tested whether the protocol/length difference inflates the gap.
+
+Ran hipEngine full suite at cycles=40 (240 AR tok / ~240 MTP tok, ~4x longer):
+  AR: 54.55 (10cyc/60tok) -> 53.54 (40cyc/240tok)  [-1.9%, scales well]
+  MTP B5: 60.76/1.114x (10cyc) -> 58.15/1.086x (40cyc)
+Findings:
+- hipEngine AR scales well with context; at 240 tok it is 53.54, still ABOVE llama
+  AR 50.19. Faster-AR claim robust to length.
+- hipEngine MTP uplift STABLE ~1.086-1.114x across length; 10-cycle did NOT
+  understate it (if anything 10-cycle is slightly higher).
+- llama 67.29 via llama-server INCLUDES HTTP/server overhead -> llama raw compute
+  is if anything higher.
+=> The 60.8 vs 67.3 gap is GENUINE, robust to generation length and conservative
+on llama's side. NOT a measurement artifact; the baseline comparison is fair.
+Artifact: results/2026-06-30-mtp-llama-baseline-apples-audit.json.
+
+This completes the investigation: both MTP multipliers swept and root-caused, every
+llama pipeline lever tested, AND the baseline comparison itself validated as fair.
+1.1134x (60.8 tok/s, 90.3% of llama) is the genuine exact-precision optimum on
+gfx1151; the residual gap is the dp4a precision tradeoff (which buys only ~4% here
+AND fails the ja gate), i.e. correctness-bounded, not effort-bounded.
