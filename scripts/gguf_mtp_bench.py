@@ -668,6 +668,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+_SESSION_CACHE: dict = {}
+"""Opt-in resident-session cache for in-process load-once batch runs.
+
+Default behavior is unchanged: when ``HIPENGINE_MTP_BENCH_CACHE_SESSION`` is not
+"1", ``main()`` constructs a fresh session and closes it in its finally block,
+exactly as before (every existing subprocess/test caller). When the flag is set,
+``main()`` reuses one resident session across calls (reset between runs) and does
+NOT close it, so a batch driver (e.g. gguf_mtp_category_bench in-process loop)
+pays the ~50s model load once instead of per (prompt, budget). Correctness is
+gated by session.reset(); validate token-stream/acceptance parity vs the fresh
+subprocess path before trusting timing.
+"""
+
+
 def main(argv: list[str] | None = None):
     parser = build_arg_parser()
     args = parser.parse_args(argv)
@@ -815,11 +829,24 @@ def main(argv: list[str] | None = None):
     resident_draft = None
     resident_mtp_draft_effective = False
     resident_mtp_draft_fallback_reason = None
-    session = Qwen35GGUFResidentSession(
-        model_path=args.model,
-        use_wmma_prefill=bool(args.use_wmma_prefill),
-        use_gemv_decode=bool(args.use_gemv_decode),
+    _cache_session = os.environ.get("HIPENGINE_MTP_BENCH_CACHE_SESSION") == "1"
+    _session_key = (
+        str(args.model),
+        bool(args.use_wmma_prefill),
+        bool(args.use_gemv_decode),
+        os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
     )
+    if _cache_session and _session_key in _SESSION_CACHE:
+        session = _SESSION_CACHE[_session_key]
+        session.reset()  # clean state for the new prompt (KV + recurrent + position)
+    else:
+        session = Qwen35GGUFResidentSession(
+            model_path=args.model,
+            use_wmma_prefill=bool(args.use_wmma_prefill),
+            use_gemv_decode=bool(args.use_gemv_decode),
+        )
+        if _cache_session:
+            _SESSION_CACHE[_session_key] = session
     target_graph = None
     runtime = None
     try:
@@ -1621,7 +1648,8 @@ def main(argv: list[str] | None = None):
         if runtime is not None:
             for _buf in mtp_device_kv_buffers:
                 free(_buf, runtime=runtime)
-        session.close()
+        if not _cache_session:
+            session.close()
 
     # Compute metrics
     metrics = compute_speculative_metrics(cycle_details)

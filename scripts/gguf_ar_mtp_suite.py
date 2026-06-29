@@ -228,6 +228,11 @@ def main() -> int:
     env = os.environ.copy()
     env["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
     env.setdefault("HIPENGINE_HIP_ARCH", "gfx1151")
+    # Load-once: the MTP category bench loops prompts in-process and reuses one
+    # resident session (gguf_mtp_bench's opt-in cache) instead of reloading the
+    # ~20GB model per (prompt, budget). The AR baseline already loads once.
+    mtp_env = dict(env)
+    mtp_env["HIPENGINE_MTP_BENCH_CACHE_SESSION"] = "1"
 
     # AR decode-tokens: a representative steady-state count (tok/s is a rate, so a
     # single AR baseline serves every budget's ratio). Match the largest budget's
@@ -299,8 +304,8 @@ def main() -> int:
           f"cycles={cycles} budgets={budgets} limit={limit}", flush=True)
     print("[ar-mtp-suite] running true-AR baseline...", flush=True)
     _run(ar_cmd, env, raw_root / "true-ar.log")
-    print("[ar-mtp-suite] running MTP category suite...", flush=True)
-    _run(mtp_cmd, env, raw_root / "mtp.log")
+    print("[ar-mtp-suite] running MTP category suite (in-process load-once)...", flush=True)
+    _run(mtp_cmd, mtp_env, raw_root / "mtp.log")
 
     ar = _load(ar_json)
     mtp = _load(mtp_json)

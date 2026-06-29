@@ -126862,3 +126862,28 @@ device-chain/LM-head-skip/etc.), the decode-wall composition, the suite usage, a
 continue" (settle verify host-vs-GPU on current code -> collapse launches OR raise acceptance -> make
 MTP beat AR before any retained claim). NEXT: run --scope partial/full to get the real same-protocol
 ratio, then settle the verify host-vs-GPU question on current code.
+
+## 2026-06-29 — AR/MTP suite: load model ONCE (in-process loop), ~17x faster full suite
+
+The suite was spending ~99% of wall on model RELOADS, not measurement: the MTP category bench shelled
+out to gguf_mtp_bench.py as a fresh subprocess per (prompt, budget), each reloading the ~20GB GGUF
+(~51s). Measured: a single MTP child's subprocess_wall was 52.3s of which the actual 3 cycles were
+0.25s. (AR side already loads once and loops prompts in one process.)
+
+FIX (opt-in, default behavior unchanged): gguf_mtp_bench.py gained an env-gated resident-session cache
+(HIPENGINE_MTP_BENCH_CACHE_SESSION=1) -- reuse one Qwen35GGUFResidentSession across calls with
+session.reset() between, and skip session.close() while cached. gguf_mtp_category_bench.run_one gained
+an in-process branch under the same flag: it calls gguf_mtp_bench.main(argv) directly (stdout->log)
+instead of subprocess.run, so the cache persists across all prompts in the one category-bench process.
+gguf_ar_mtp_suite.py sets the flag for the MTP run. When the flag is unset (every existing
+subprocess/test caller), the path is byte-identical to before (fresh construct + close).
+
+VALIDATED bit-exact (the gate the user required): A/B of in-process vs per-subprocess, 2 prompts B3/C3,
+resident-production route -> DETERMINISTIC METRICS IDENTICAL (total_accepted/total_drafts/
+accept_per_draft/accepted_per_output/visible_per_cycle match for both prompts) => session.reset() fully
+isolates state, no cross-prompt contamination. Speed: 104s -> 55s = 1.89x on 2 prompts (subprocess pays
+2 loads, in-process pays 1 load + ~2s/run residual). Scales: full (10 prompts x 5 budgets = 50 runs)
+~43min -> ~2.5min (1 load + 50x~2s). Residual ~2s/run is the per-call GGUF blk.40 read + draft-runner
+construct (token_embd upload); cacheable later if needed, but the 51s session load was the whole cost.
+Updated docs/MTP-LLAMACPP-PARITY.md suite section. NEXT: run --scope partial/full (now fast) for the
+real same-protocol ratio.

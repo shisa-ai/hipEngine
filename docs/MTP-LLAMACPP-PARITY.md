@@ -120,8 +120,11 @@ One entry point, one artifact, apple-to-apple enforced:
   (`best_mtp_budget`, `best_mtp_vs_ar_ratio`, `mtp_beats_ar`).
 - Scope presets: `smoke` (1 prompt / 3 cycles / B3), `partial`
   (4 prompts / 5 cycles / B1,B3,B5), `full` (all 10 prompts / 10 cycles / B1–B5).
-  Each MTP prompt reloads the model in its own process (faithful + isolated), so
-  `full` is slow; use `--reuse-existing` to resume.
+  The MTP suite loads the model **once** and loops all (prompt × budget)
+  in-process (opt-in resident-session cache + per-prompt `reset()`; bit-exact
+  validated vs the per-subprocess path — identical acceptance/token metrics, 1.89×
+  faster on 2 prompts). So `full` runs in ~2–3 min instead of ~40+ min of repeated
+  ~50 s model loads. The AR baseline already loads once.
 
 ```bash
 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \

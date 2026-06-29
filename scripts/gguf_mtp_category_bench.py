@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import subprocess
 import sys
 import time
@@ -971,6 +972,35 @@ def run_one(
     if dry_run:
         return {"command": quote_command(cmd), "output": str(output), "log": str(log_path)}
     started = time.perf_counter()
+    if os.environ.get("HIPENGINE_MTP_BENCH_CACHE_SESSION") == "1":
+        # Load-once path: call gguf_mtp_bench.main() IN-PROCESS so its opt-in
+        # resident-session cache is reused across every (prompt, budget) instead
+        # of reloading the ~20GB model per subprocess. Bench stdout -> log file.
+        import contextlib
+        import importlib
+
+        scripts_dir = str(Path(__file__).resolve().parent)
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        bench = importlib.import_module("gguf_mtp_bench")
+        argv = cmd[2:]  # strip [python, "scripts/gguf_mtp_bench.py"]
+        with log_path.open("w", encoding="utf-8") as log_file:
+            with contextlib.redirect_stdout(log_file), contextlib.redirect_stderr(log_file):
+                try:
+                    bench.main(argv)
+                except SystemExit as exc:
+                    if int(exc.code or 0) != 0:
+                        tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-80:]
+                        raise BenchError(
+                            f"in-process gguf_mtp_bench exited {exc.code}: {quote_command(cmd)}\n"
+                            + "\n".join(tail)
+                        )
+        wall = time.perf_counter() - started
+        data = json.loads(output.read_text(encoding="utf-8"))
+        data.setdefault("wrapper", {})["subprocess_wall_seconds"] = wall
+        data["wrapper"]["command"] = quote_command(cmd) + "  [in-process load-once]"
+        data["wrapper"]["log"] = str(log_path)
+        return data
     with log_path.open("w", encoding="utf-8") as log_file:
         completed = subprocess.run(cmd, cwd=REPO_ROOT, text=True, stdout=log_file, stderr=subprocess.STDOUT)
     wall = time.perf_counter() - started
