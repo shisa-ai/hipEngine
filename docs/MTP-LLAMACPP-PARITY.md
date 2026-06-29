@@ -1,6 +1,6 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite retained diagnostics, not speed rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
@@ -27,6 +27,8 @@ tooling or a since-corrected methodology — flagged inline below).
   A follow-up capped-vocab recovery diagnostic improves B1 throughput to
   **51.71 tok/s = 0.9478× AR** on the same full suite, but acceptance regresses
   (`91/191 = 0.476` → `78/178 = 0.438`) and **MTP still does NOT beat AR**.
+  A later strict-block/cap32k hybrid probe is also rejected: full-suite AR
+  **54.58 tok/s**, best MTP B3 **50.91 tok/s = 0.9328× AR**.
   llama.cpp's retained full-suite reference is **67.29 tok/s at B2 = 1.342× its
   AR**. The gap we chase is **speculative amortization**, not AR kernel
   throughput.
@@ -38,9 +40,11 @@ tooling or a since-corrected methodology — flagged inline below).
   device-resident MTP KV and stayed below AR (partial best B1 **48.69 tok/s =
   0.889× AR**). The follow-up capped-vocab recovery diagnostic improved
   full-suite B1 to **51.71 tok/s = 0.9478× AR**, still below the true AR
-  denominator and with worse accepted/output. That closes the current
-  optimization-list sweep; the next lever is structural amortization, not
-  another local micro-lever.
+  denominator and with worse accepted/output. The hybrid strict-block/cap32k
+  probe then confirmed that switching policies after a generic strict-probe
+  miss is not goal-closing either. That closes the current optimization-list
+  sweep; the next lever is structural amortization, not another local
+  micro-lever.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
   ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
@@ -120,6 +124,7 @@ on current code; (M) are current-session measurements.
 | strict-context route | existing llama.cpp-style prompt replay + device MTP KV with root/sibling top-1 | smoke B3 **42.81 tok/s = 0.780x AR**; partial best B1 **48.69 tok/s = 0.889x AR**, B3 **45.16 = 0.825x AR** | route is a valid diagnostic but not production-competitive; build resident lifecycle abstraction |
 | adaptive full-vocab recovery after capped miss | keep cheap capped-vocab draft normally, switch to full vocab after a generic capped zero-accept miss instead of permanent AR fallback | partial route `resident-cap32k-recover`: AR **54.76 tok/s**, best B1 **52.45 tok/s = 0.958x AR**, accepted/output **19/39 = 0.487**; full suite: AR **54.55 tok/s**, best B1 **51.71 tok/s = 0.9478x AR**, accepted/output **78/178 = 0.438**; cap sweep B1 diagnostics peaked around cap18k/24k at **~52.6 tok/s** but still below AR | diagnostic only; B1 throughput improves, but acceptance regresses vs resident top-k40 and the serial verifier route remains bounded by target wall + draft overhead |
 | short B1 target block verify with confidence gate | use 2-row target block verify for high-confidence exact B1 drafts, rollback to serial/root-topK on mismatch | direct rows=2 block probe was exact and faster than two serial steps (**32.8 ms vs 39.7 ms**), but partial B1 p=0.8 had 15 attempts/14 hits/1 rollback and regressed to **50.07 tok/s**; p=0.9 had 11/11 hits but still **51.84 tok/s**, below capped recovery **52.45 tok/s** | rejected; savings per hit too small and rollback/noise erases it |
+| hybrid strict-block/cap32k route | begin with strict top-1 block-promotion probe, then fall back generically to root-topK B1 + cap32k recovery if probe acceptance is weak | smoke B3 **48.94 tok/s = 0.890x AR**; partial best B3 **54.63 tok/s = 0.9973x AR** looked close, but full suite dropped to AR **54.58 tok/s**, best B3 **50.91 tok/s = 0.9328x AR**, B4 **48.94 = 0.8967x**, B5 **48.52 = 0.8890x**, accepted/output **94/194 = 0.485** | rejected/default-off diagnostic; partial was not predictive, and the route is worse than cap32k recovery B1 full-suite **51.71 tok/s = 0.9478x AR** |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
@@ -247,11 +252,12 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    (`pending_h`, `verify_h`, `last_n_drafted`), and invokes it from
    `tools/server/server-context.cpp` (`draft()` before target batch construction,
    `process()` after target decode, `accept()` after accepted-row sampling).
-   The capped-vocab recovery probe confirms this direction: it prevents one
-   prompt-sensitive AR-fallback collapse and improves full-suite B1 to **51.71
-   tok/s = 0.9478× AR**, but B1 remains under AR and accepted/output regresses
-   because every visible token still pays the serial target-verifier wall plus
-   draft overhead.
+   The capped-vocab recovery and hybrid strict-block probes confirm this
+   direction: recovery prevents one prompt-sensitive AR-fallback collapse and
+   improves full-suite B1 to **51.71 tok/s = 0.9478× AR**, while the hybrid
+   strict-block probe falls back to **50.91 tok/s = 0.9328× AR**. Both remain
+   under AR because every visible token still pays the serial target-verifier
+   wall plus draft overhead.
 4. **If strict-context acceptance is good but speed is still below AR, remove
    lifecycle overhead.** Keep hidden seeds/intermediates resident, pre-allocate
    scratch, and batch the MTP block work so the good strict chain is not

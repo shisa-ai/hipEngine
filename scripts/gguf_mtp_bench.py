@@ -556,6 +556,43 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "plain AR fallback."
         ),
     )
+    parser.add_argument(
+        "--adaptive-strict-block-probe",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic hybrid policy: begin with strict top-1 block-promotion probing; if the "
+            "first probe cycles do not meet the accepted-token threshold, switch to the generic "
+            "root-top-k B1 serial fallback for the rest of the prompt."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-strict-probe-cycles",
+        type=int,
+        default=2,
+        help="Number of initial cycles used by --adaptive-strict-block-probe (default: 2).",
+    )
+    parser.add_argument(
+        "--adaptive-strict-probe-min-accepted",
+        type=int,
+        default=2,
+        help=(
+            "Minimum accepted draft tokens required in every strict probe cycle to keep the "
+            "strict block policy (default: 2)."
+        ),
+    )
+    parser.add_argument(
+        "--adaptive-strict-fallback-draft-n-max",
+        type=int,
+        default=1,
+        help="Draft window after a failed strict probe (default: 1 = B1 fallback).",
+    )
+    parser.add_argument(
+        "--adaptive-strict-fallback-root-topk",
+        type=int,
+        default=40,
+        help="Root top-k acceptance after a failed strict probe (default: 40).",
+    )
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
     parser.add_argument(
         "--prompt-reasoning",
@@ -723,10 +760,25 @@ def main(argv: list[str] | None = None):
     # set; otherwise its default (3) is unused and must not block B1/B2 runs.
     if args.adaptive_block_after_full_accept and args.adaptive_probe_draft_n_max > args.draft_n_max:
         parser.error("--adaptive-probe-draft-n-max must be <= --draft-n-max")
+    if args.adaptive_strict_probe_cycles < 1:
+        parser.error("--adaptive-strict-probe-cycles must be positive")
+    if args.adaptive_strict_probe_min_accepted < 0:
+        parser.error("--adaptive-strict-probe-min-accepted must be non-negative")
+    if args.adaptive_strict_fallback_draft_n_max < 0:
+        parser.error("--adaptive-strict-fallback-draft-n-max must be non-negative")
+    if args.adaptive_strict_fallback_draft_n_max > args.draft_n_max:
+        parser.error("--adaptive-strict-fallback-draft-n-max must be <= --draft-n-max")
+    if args.adaptive_strict_fallback_root_topk < 1 or args.adaptive_strict_fallback_root_topk > 4096:
+        parser.error("--adaptive-strict-fallback-root-topk must be in 1..4096")
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
-    proposal_topk_candidate_count = max(1, args.root_topk_accept, args.sibling_topk_accept)
+    proposal_topk_candidate_count = max(
+        1,
+        args.root_topk_accept,
+        args.sibling_topk_accept,
+        args.adaptive_strict_fallback_root_topk if args.adaptive_strict_block_probe else 1,
+    )
     diagnostic_topk_candidate_count = max(10, proposal_topk_candidate_count)
     topk_candidate_count = proposal_topk_candidate_count
     if args.decode_repack:
@@ -1026,6 +1078,8 @@ def main(argv: list[str] | None = None):
         adaptive_ar_fallback_active = False
         adaptive_full_vocab_recovery_active = False
         adaptive_block_verify_active = not bool(args.adaptive_block_after_full_accept)
+        adaptive_strict_probe_history: list[int] = []
+        adaptive_strict_probe_decision: str | None = None
 
         mtp_device_key_cache = None
         mtp_device_value_cache = None
@@ -1067,8 +1121,32 @@ def main(argv: list[str] | None = None):
 
         for cycle in range(args.cycles):
             cycle_ar_fallback = bool(adaptive_ar_fallback_active)
-            cycle_draft_n_max = 0 if cycle_ar_fallback else int(adaptive_draft_n_max)
-            cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
+            if args.adaptive_strict_block_probe:
+                if adaptive_strict_probe_decision == "fallback":
+                    cycle_policy = "strict_probe_fallback"
+                    cycle_root_topk_accept = int(args.adaptive_strict_fallback_root_topk)
+                    cycle_sibling_topk_accept = 1
+                    cycle_draft_window = int(args.adaptive_strict_fallback_draft_n_max)
+                    cycle_block_verify_allowed = False
+                else:
+                    cycle_policy = (
+                        "strict_probe_keep"
+                        if adaptive_strict_probe_decision == "strict"
+                        else "strict_probe"
+                    )
+                    cycle_root_topk_accept = 1
+                    cycle_sibling_topk_accept = 1
+                    cycle_draft_window = int(adaptive_draft_n_max)
+                    cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
+            else:
+                cycle_policy = "default"
+                cycle_root_topk_accept = int(args.root_topk_accept)
+                cycle_sibling_topk_accept = int(args.sibling_topk_accept)
+                cycle_draft_window = int(adaptive_draft_n_max)
+                cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
+            cycle_draft_n_max = 0 if cycle_ar_fallback else int(cycle_draft_window)
+            cycle_topk_candidate_count = max(1, cycle_root_topk_accept, cycle_sibling_topk_accept)
+            cycle_diagnostic_topk_candidate_count = max(10, cycle_topk_candidate_count)
             cycle_full_vocab_recovery = (
                 bool(adaptive_full_vocab_recovery_active)
                 and resident_draft_full_vocab is not None
@@ -1101,7 +1179,7 @@ def main(argv: list[str] | None = None):
                     start_token=current_token,
                     start_position=current_pos,
                     draft_n_max=cycle_draft_n_max,
-                    top_k=min(diagnostic_topk_candidate_count, 64),
+                    top_k=min(cycle_diagnostic_topk_candidate_count, 64),
                     rope_cos=_rope_cos,
                     rope_sin=_rope_sin,
                     dense_key_cache=mtp_device_key_cache if args.mtp_device_kv_cache else None,
@@ -1150,11 +1228,11 @@ def main(argv: list[str] | None = None):
                         mtp_device_kv_len += 1
                     draft_logits_row = draft_logits[0]
                     draft_token, top10_tokens = select_topk_tokens(
-                        draft_logits_row, k=topk_candidate_count, draft_depth=draft_depth
+                        draft_logits_row, k=cycle_topk_candidate_count, draft_depth=draft_depth
                     )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
-                    if diagnostic_topk_candidate_count > topk_candidate_count:
+                    if cycle_diagnostic_topk_candidate_count > cycle_topk_candidate_count:
                         draft_diagnostic_logits.append(
                             (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
                         )
@@ -1165,7 +1243,7 @@ def main(argv: list[str] | None = None):
                             break
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
-            if diagnostic_topk_candidate_count > topk_candidate_count:
+            if cycle_diagnostic_topk_candidate_count > cycle_topk_candidate_count:
                 for (
                     topk_row_index,
                     diagnostic_depth,
@@ -1173,7 +1251,7 @@ def main(argv: list[str] | None = None):
                 ) in draft_diagnostic_logits:
                     _, diagnostic_top10_tokens = select_topk_tokens(
                         diagnostic_logits_row,
-                        k=diagnostic_topk_candidate_count,
+                        k=cycle_diagnostic_topk_candidate_count,
                         draft_depth=diagnostic_depth,
                     )
                     draft_top10_tokens[topk_row_index] = diagnostic_top10_tokens
@@ -1205,8 +1283,8 @@ def main(argv: list[str] | None = None):
                 bool(args.target_block_verify)
                 and cycle_block_verify_allowed
                 and len(draft_tokens) > 0
-                and args.root_topk_accept == 1
-                and args.sibling_topk_accept == 1
+                and cycle_root_topk_accept == 1
+                and cycle_sibling_topk_accept == 1
                 and not args.topk_branch_redraft
                 and len(draft_tokens) + 1 >= int(session.runner.weights.config.ssm_conv_kernel)
                 and int(verify_input_token) == current_device_token
@@ -1223,12 +1301,12 @@ def main(argv: list[str] | None = None):
                     )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
-                    if int(block_acceptance["accepted_draft_tokens"]) == 0 and args.root_topk_accept > 1:
+                    if int(block_acceptance["accepted_draft_tokens"]) == 0 and cycle_root_topk_accept > 1:
                         root_branch_acceptance = root_topk_acceptance_from_target_samples(
                             draft_tokens,
                             draft_top10_tokens,
                             block_target_tokens,
-                            root_topk_accept=args.root_topk_accept,
+                            root_topk_accept=cycle_root_topk_accept,
                         )
                         if root_branch_acceptance is not None:
                             block_acceptance = root_branch_acceptance
@@ -1275,10 +1353,10 @@ def main(argv: list[str] | None = None):
                 and target_graph_verify_enabled
                 and target_graph is not None
                 and int(verify_input_token) == current_device_token
-                and args.root_topk_accept == 1
-                and args.sibling_topk_accept == 1
+                and cycle_root_topk_accept == 1
+                and cycle_sibling_topk_accept == 1
                 and not args.topk_branch_redraft
-                and len(draft_tokens) == int(args.draft_n_max)
+                and len(draft_tokens) == int(cycle_draft_n_max)
                 and int(target_graph.steps_per_replay) == len(draft_tokens) + 1
             )
             if (not block_verify_used) and can_batched_verify:
@@ -1373,7 +1451,9 @@ def main(argv: list[str] | None = None):
                                     rotary_dim=rope_dim,
                                 )
                             redraft_token, redraft_top10 = select_topk_tokens(
-                                draft_logits[0], k=topk_candidate_count, draft_depth=depth + redraft_depth
+                                draft_logits[0],
+                                k=cycle_topk_candidate_count,
+                                draft_depth=depth + redraft_depth,
                             )
                             branch_redraft_tokens.append(redraft_token)
                             branch_redraft_top10.append(redraft_top10)
@@ -1411,8 +1491,8 @@ def main(argv: list[str] | None = None):
                         verify_input_token = target_token
                         continue
                     topk_limit = (
-                        args.root_topk_accept if depth == 0
-                        else args.sibling_topk_accept if depth <= args.sibling_topk_max_depth
+                        cycle_root_topk_accept if depth == 0
+                        else cycle_sibling_topk_accept if depth <= args.sibling_topk_max_depth
                         else 1
                     )
                     if (
@@ -1484,8 +1564,8 @@ def main(argv: list[str] | None = None):
                     draft_tokens,
                     draft_top10_tokens,
                     target_tokens,
-                    root_topk_accept=args.root_topk_accept,
-                    sibling_topk_accept=args.sibling_topk_accept,
+                    root_topk_accept=cycle_root_topk_accept,
+                    sibling_topk_accept=cycle_sibling_topk_accept,
                 )
                 if acceptance is None or topk_branch_depth is None:
                     raise RuntimeError("top-k sibling acceptance accounting failed")
@@ -1503,7 +1583,11 @@ def main(argv: list[str] | None = None):
                         "pending_hidden_row_index": 0,
                     }
             accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
-            if args.adaptive_block_after_full_accept and draft_tokens:
+            if (
+                args.adaptive_block_after_full_accept
+                and draft_tokens
+                and cycle_policy != "strict_probe_fallback"
+            ):
                 if accepted_draft_tokens == len(draft_tokens):
                     adaptive_block_verify_active = True
                     adaptive_draft_n_max = int(args.draft_n_max)
@@ -1537,6 +1621,23 @@ def main(argv: list[str] | None = None):
                 and not suppress_ar_fallback_for_full_vocab_recovery
             ):
                 adaptive_ar_fallback_active = True
+            if (
+                args.adaptive_strict_block_probe
+                and adaptive_strict_probe_decision is None
+                and cycle_policy == "strict_probe"
+            ):
+                adaptive_strict_probe_history.append(accepted_draft_tokens)
+                if len(adaptive_strict_probe_history) >= int(args.adaptive_strict_probe_cycles):
+                    keep_strict = all(
+                        accepted >= int(args.adaptive_strict_probe_min_accepted)
+                        for accepted in adaptive_strict_probe_history
+                    )
+                    adaptive_strict_probe_decision = "strict" if keep_strict else "fallback"
+                    if not keep_strict:
+                        adaptive_ar_fallback_active = False
+                        adaptive_full_vocab_recovery_active = False
+                        adaptive_block_verify_active = False
+                        adaptive_draft_n_max = int(args.adaptive_strict_fallback_draft_n_max)
             if args.adaptive_draft_window and accepted_draft_tokens < len(draft_tokens):
                 adaptive_floor = 1
                 adaptive_draft_n_max = min(
@@ -1622,8 +1723,8 @@ def main(argv: list[str] | None = None):
 
             draft_candidate_count = count_topk_draft_candidates(
                 len(draft_tokens),
-                root_topk_accept=args.root_topk_accept,
-                sibling_topk_accept=args.sibling_topk_accept,
+                root_topk_accept=cycle_root_topk_accept,
+                sibling_topk_accept=cycle_sibling_topk_accept,
                 sibling_topk_max_depth=args.sibling_topk_max_depth,
             ) + len(redraft_tokens)
             total_drafts += draft_candidate_count
@@ -1663,6 +1764,7 @@ def main(argv: list[str] | None = None):
                 "generated_draft_tokens": draft_candidate_count,
                 "linear_draft_tokens": len(draft_tokens),
                 "cycle_draft_n_max": int(cycle_draft_n_max),
+                "cycle_policy": cycle_policy,
                 "adaptive_draft_window": bool(args.adaptive_draft_window),
                 "adaptive_ar_fallback": bool(args.adaptive_ar_fallback),
                 "cycle_ar_fallback": bool(cycle_ar_fallback),
@@ -1675,8 +1777,13 @@ def main(argv: list[str] | None = None):
                 "next_adaptive_block_verify_active": bool(adaptive_block_verify_active),
                 "next_cycle_ar_fallback": bool(adaptive_ar_fallback_active),
                 "next_adaptive_draft_n_max": int(adaptive_draft_n_max),
-                "root_topk_accept": args.root_topk_accept,
-                "sibling_topk_accept": args.sibling_topk_accept,
+                "root_topk_accept": cycle_root_topk_accept,
+                "sibling_topk_accept": cycle_sibling_topk_accept,
+                "configured_root_topk_accept": args.root_topk_accept,
+                "configured_sibling_topk_accept": args.sibling_topk_accept,
+                "adaptive_strict_block_probe": bool(args.adaptive_strict_block_probe),
+                "adaptive_strict_probe_history": list(adaptive_strict_probe_history),
+                "adaptive_strict_probe_decision": adaptive_strict_probe_decision,
                 "sibling_tail_min_prev_accepted": args.sibling_tail_min_prev_accepted,
                 "sibling_topk_max_depth": args.sibling_topk_max_depth,
                 "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
@@ -1764,6 +1871,13 @@ def main(argv: list[str] | None = None):
         f"probe_n_max={args.adaptive_probe_draft_n_max}"
     )
     print(
+        "Adaptive strict block probe: "
+        f"{args.adaptive_strict_block_probe} "
+        f"cycles={args.adaptive_strict_probe_cycles} "
+        f"min_accepted={args.adaptive_strict_probe_min_accepted} "
+        f"decision={adaptive_strict_probe_decision}"
+    )
+    print(
         f"MTP device KV cache: {args.mtp_device_kv_cache} "
         f"rows={int(mtp_device_kv_len) if args.mtp_device_kv_cache else 0} "
         f"capacity={int(mtp_device_kv_capacity) if args.mtp_device_kv_cache else 0}"
@@ -1819,6 +1933,13 @@ def main(argv: list[str] | None = None):
             "adaptive_full_vocab_after_cap_miss": bool(args.adaptive_full_vocab_after_cap_miss),
             "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
             "adaptive_probe_draft_n_max": int(args.adaptive_probe_draft_n_max),
+            "adaptive_strict_block_probe": bool(args.adaptive_strict_block_probe),
+            "adaptive_strict_probe_cycles": int(args.adaptive_strict_probe_cycles),
+            "adaptive_strict_probe_min_accepted": int(args.adaptive_strict_probe_min_accepted),
+            "adaptive_strict_fallback_draft_n_max": int(args.adaptive_strict_fallback_draft_n_max),
+            "adaptive_strict_fallback_root_topk": int(args.adaptive_strict_fallback_root_topk),
+            "adaptive_strict_probe_decision": adaptive_strict_probe_decision,
+            "adaptive_strict_probe_history": list(adaptive_strict_probe_history),
             "mtp_draft_vocab_cap": int(args.mtp_draft_vocab_cap),
             "decode_repack": bool(args.decode_repack),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),

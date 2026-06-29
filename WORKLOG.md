@@ -127296,3 +127296,35 @@ route or full-suite gate for these combinations. The active goal remains a real
 verifier-amortization change (`process_verifier_rows()`/`draft()`/`accept()` with
 fewer target weight-stream passes per visible token), not simply enabling the
 existing MTP device KV knobs.
+
+## 2026-06-29 — GGUF MTP hybrid strict-block/cap32k full-suite rejection retained
+
+Implemented a default-off diagnostic hybrid route, `resident-hybrid-strict-block-cap32k`,
+that starts with strict top-1 block-promotion probing
+(`--adaptive-strict-block-probe`) and falls back generically to root-topK B1 plus
+cap32k recovery when the strict probe under-accepts. This was intended to test
+whether the close strict/block partial result could keep strict acceptance when
+available and recover to the best serial fallback otherwise.
+
+Focused tests passed:
+`python3 -m pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -q`
+-> `51 passed`.
+
+Directional run:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope partial --mtp-route resident-hybrid-strict-block-cap32k --output /tmp/hipengine-hybrid-strict-block-cap32k-partial-suite.json`
+-> AR `54.77 tok/s`; B3 `54.63 tok/s = 0.9973x AR`; B5 `50.31 tok/s =
+0.919x AR`; `mtp_beats_ar=false`. The route drops B1/B2 because the strict
+probe requires budget >=3.
+
+Full gate:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-hybrid-strict-block-cap32k --output benchmarks/results/2026-06-29-ar-mtp-suite-full-hybrid-strict-block-cap32k.json`
+-> `apple_to_apple_ok=true`; AR `54.5763 tok/s`; B3 `50.9066 tok/s =
+0.9328x AR`; B4 `48.9373 = 0.8967x`; B5 `48.5189 = 0.8890x`;
+accepted/output `94/194 = 0.4845`; `mtp_beats_ar=false`.
+
+Decision: retain this only as a rejected diagnostic. The full-suite result is
+worse than the retained cap32k recovery diagnostic (B1 `51.7077 tok/s =
+0.9478x AR`) despite a close partial, so adaptive strict-block fallback is not
+the goal path. The optimization-list sweep is closed; next work should reduce
+target-verifier work per visible token or implement the llama.cpp-style resident
+MTP lifecycle, not add another route selector.

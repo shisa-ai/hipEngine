@@ -390,6 +390,28 @@ def test_arg_parser_exposes_adaptive_full_vocab_recovery() -> None:
     assert args.adaptive_full_vocab_after_cap_miss is True
 
 
+def test_arg_parser_exposes_adaptive_strict_block_probe() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--adaptive-strict-block-probe",
+            "--adaptive-strict-probe-cycles",
+            "2",
+            "--adaptive-strict-probe-min-accepted",
+            "2",
+            "--adaptive-strict-fallback-draft-n-max",
+            "1",
+            "--adaptive-strict-fallback-root-topk",
+            "40",
+        ]
+    )
+
+    assert args.adaptive_strict_block_probe is True
+    assert args.adaptive_strict_probe_cycles == 2
+    assert args.adaptive_strict_probe_min_accepted == 2
+    assert args.adaptive_strict_fallback_draft_n_max == 1
+    assert args.adaptive_strict_fallback_root_topk == 40
+
+
 def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
     for budget in range(1, 6):
         assert validate_draft_n_max(budget) == budget
