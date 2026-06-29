@@ -128,10 +128,47 @@ One entry point, one artifact, apple-to-apple enforced:
   ~50 s model loads. The AR baseline already loads once.
 
 ```bash
+# Quick directional check during development (1 prompt, ~1 min after first load):
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke
+
+# Authoritative real-world number before retaining any change (~3-4 min, load-once):
 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
-    --scope partial --mtp-route resident-production \
-    --output benchmarks/results/<date>-ar-mtp-suite-partial.json
+    --scope full --output benchmarks/results/<date>-ar-mtp-suite-full.json
 ```
+
+### Validation protocol — run the suite for EVERY change (mandatory)
+
+**The only number that counts is the full-suite apple-to-apple result. Microbenches
+and partials routinely do NOT translate to real-world e2e.** This session is the
+proof: dp4a (2.6× isolated), split-K, dense rowtile (3× at B=4), and non-temporal
+loads (+14% cold-DRAM) were all real wins in isolation and **flat or negative at
+e2e** (see the tried-levers table). A kernel/host/launch microbench is a hypothesis,
+not a result. So:
+
+1. **Every GGUF AR/MTP optimization is gated by `scripts/gguf_ar_mtp_suite.py`,
+   not by a microbench.** A change is a "win" only if `--scope full` improves AR
+   tok/s and/or the MTP `vs_ar_ratio` **without regressing acceptance**
+   (`accepted_per_output`), measured against the committed baseline.
+2. **Cadence:** `--scope smoke` for a fast directional read while iterating →
+   `--scope full` before promoting/committing anything as a win or making it
+   default. Never retain a speed claim off a microbench, a single prompt, or a
+   `partial` run alone.
+3. **Compare to the committed baseline:** `benchmarks/results/2026-06-29-ar-mtp-suite-full.json`
+   (AR 54.55 tok/s; MTP B1 0.89× → B5 0.71× AR; `mtp_beats_ar=false`). Diff the
+   `verdict` + per-budget `vs_ar_ratio`/`accepted_per_output`. The suite asserts
+   `apple_to_apple_ok=true` (same decode protocol + prompt-set hashes) — if it is
+   false, the comparison is invalid, full stop.
+4. **Record it** per the evidence policy: drop the artifact under
+   `benchmarks/results/`, update `benchmarks/README.md` + `benchmarks/CHANGELOG.md`,
+   and note the before→after `vs_ar_ratio` in `WORKLOG.md`. A flat/negative e2e
+   result is a *retained finding* too (it tells the next person not to re-chase it).
+5. **Anti-gaming:** the suite runs the full multi-prompt category suite (code /
+   general_en / general_ja / mixed_ja_en), never the single merge-sort prompt, and
+   the true-AR denominator comes from the **same run** under the same config. Do
+   not tune to one prompt.
+
+This is the gate that stops the recurring trap of shipping an isolated win that
+disappears at e2e.
 
 ### How to continue (ordered, all gated by the suite)
 

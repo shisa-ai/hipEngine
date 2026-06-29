@@ -76,6 +76,19 @@ acceptance rows are INVALID.
 
 ### Honest native GGUF-MTP category diagnostics
 
+> **Canonical gate (2026-06-29): use `scripts/gguf_ar_mtp_suite.py`.** It runs the
+> true no-MTP AR baseline and the MTP category suite under ONE enforced decode
+> config, computes the MTP/AR ratio itself, asserts `apple_to_apple_ok`, and emits
+> a single artifact with a `verdict` — and it loads the model once (full suite
+> ~3-4 min, not ~40+). **Every GGUF AR/MTP optimization must pass `--scope full`
+> before it is retained or made default; microbenches and partials routinely do
+> not translate to e2e (dp4a, split-K, rowtile, non-temporal were all isolated
+> wins that went flat at e2e).** See `docs/MTP-LLAMACPP-PARITY.md` →
+> "Validation protocol — run the suite for EVERY change". The manual two-step
+> below is the underlying mechanism; note its `--true-ar-baseline-json` *attach*
+> is currently broken (it still demands the #8-retired `graph_replay` AR contract,
+> see `docs/REFACTOR.md`), which is why the suite computes the ratio itself.
+
 Use this protocol before resuming native GGUF-MTP acceptance/speed optimization.
 It is the guarded replacement for the old fixed-prompt `gguf_mtp_bench.py`
 acceptance loops.
