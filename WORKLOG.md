@@ -128472,3 +128472,31 @@ Bottom line for the goal: this session moved GGUF MTP 1.0356x -> 1.0534x AR (two
 committed, confirmed wins) and exhausted the policy/flag space + root-caused the
 residual gap to a precision/speed tradeoff. Closing to llama 1.342x is a
 mixed-precision draft-kernel project, not reachable by further benchmark tuning.
+
+## 2026-06-30 — ja precision lever LOCALIZED: draft is already mostly f32; residual bf16 is the selected-expert MoE GEMV
+
+Inspected the resident draft runner kernel set (hipengine/speculative/mtp_resident_draft.py
+imports). The NextN draft already computes in f32 for: rmsnorm, eh_proj, split-q-gate,
+dense attention, rope, scale, sigmoid-gate-mul, silu-mul, add (mtp_*_f32). The ONLY
+bf16 in the draft path is:
+- selected-expert MoE GEMV: gguf_q4_k_selected_dual_gemv_bf16_bf16_out /
+  gguf_q5_k_selected_gemv_bf16_bf16_out / silu_mul_separate_out_bf16 (bf16 in/out),
+- lm-head input: gguf_q6_k_pack8_gemv_decode_bf16_f32_out (bf16 activations -> f32 logits).
+
+So "make the draft f32" is mostly already done; the precision lever is NARROW and
+specific: the bf16 selected-expert MoE GEMV (and lm-head bf16 activation downcast).
+That is the concrete next experiment/implementation: add/select an f32-activation
+selected-expert GEMV for the draft MoE (dense f32 GEMV variants
+gguf_q5_k_gemv_f32_f32_out / gguf_q8_0_gemv_f32_f32_out already exist; the SELECTED/
+MoE f32 variant does not) and measure ja draft_acc + full-suite tok/s.
+
+Caveat this also weakens the pure-precision hypothesis: if the draft is already
+~f32 except the MoE GEMV and still gets ja draft_acc 0.52 vs llama 0.80, the
+residual could be the bf16 MoE GEMV precision OR a seed-contract subtlety (which
+exact target hidden is fed: pre- vs post-output_norm; NextN applies hnorm) that is
+tolerated on code/en but not high-magnitude ja. Both need the cpu_reference-f32
+draft vs GPU draft agreement test (25-weight + KV harness) to disambiguate before
+committing kernel work.
+
+Net: next step is now a SPECIFIC kernel experiment (f32 selected-expert MoE GEMV in
+the draft) gated by the cpu_reference disambiguation, not a broad "f32 draft" rewrite.
