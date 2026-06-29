@@ -128343,3 +128343,35 @@ policy+verify+draft pipeline exhaustively tested; remaining gap to llama 1.34x
 localized to (1) ja NextN draft-vs-target agreement (needs ja-prompt oracle
 audit, top lever, ~1.16x) and (2) near-hardware-limit MoE verify over-read
 (~1.16->1.34x). Both are scoped R&D sub-projects (task #7).
+
+## 2026-06-30 — RETAINED WIN #2: draft-confidence gate (p_min 0.5) -> B5 1.0534x AR
+
+Data-driven win, and it partially overturns the earlier "policy space exhausted"
+claim: confidence-GATED drafting (llama.cpp's own p_min lifecycle) was the missing
+policy lever.
+
+ja-draft root-cause diagnostic (`scratchpad/ja-diag`, ja-only 2 prompts x 40
+cycles, full vocab 248320, --record-draft-confidence,
+`benchmarks/results/2026-06-30-ja-draft-confidence-diagnostic.json`): depth-0 ja
+draft acc 0.525 (n=80); on MISSES the target is in the draft top-10 82% of the
+time (mostly rank 2-5) and the draft top-1 confidence cleanly separates HIT
+(mean 0.693) from MISS (mean 0.360). So ja drafts are "close but uncertain", not
+fundamentally diverged, and the draft KNOWS when it is unsure.
+
+Acted on it: added `--draft-p-min 0.5` to the minrows2 default (low-confidence
+cycles propose 0 drafts => cheap AR, not wasted block-verify). Promoted
+`resident-b1-probe-block-direct-cap32k-minrows2-pmin05` as suite default.
+Full suite: AR 54.57; best **B5 57.5 tok/s = 1.0534x AR** (confirm B5 57.6 =
+1.055x), `apple_to_apple_ok=true`, `mtp_beats_ar=true`, strict top-1 greedy. The
+gate unlocked the DEEPER budgets: B4 1.0341x, B5 1.055x now WIN (were regressing
+in the default) because p_min trims the low-confidence chain tail. p_min 0.6 was
+worse (B5 1.0378x); rejected.
+
+Cumulative 2026-06-30 GGUF MTP default: 1.0356x -> 1.0399x (block@B2) -> 1.0534x
+(p_min gate) AR. Still trails llama.cpp B2 1.342x; the remaining gap is per-token
+verify cost + ja draft quality (target in draft top-5 on misses but greedy can
+only propose top-1, so the ranking-closeness needs a draft-quality fix, not a
+policy change, to convert to acceptance).
+
+Validation: `pytest tests/test_gguf_ar_mtp_suite.py -q` (12 passed); both
+full-suite runs `apple_to_apple_ok=true`.

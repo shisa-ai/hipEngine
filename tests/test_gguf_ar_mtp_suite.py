@@ -4,16 +4,25 @@ from scripts import gguf_ar_mtp_suite as suite
 
 
 def test_suite_default_mtp_route_is_current_speed_row() -> None:
-    assert suite.DEFAULT_MTP_ROUTE == "resident-b1-probe-block-direct-cap32k-minrows2"
+    assert suite.DEFAULT_MTP_ROUTE == "resident-b1-probe-block-direct-cap32k-minrows2-pmin05"
     assert suite.DEFAULT_MTP_ROUTE in suite.MTP_ROUTES
 
 
 def test_suite_default_route_enables_b2_block_verify() -> None:
     # the default must carry --target-block-min-rows 2 so B2 (3-row) block verify
-    # amortizes instead of falling to serial; that is the retained speed win.
+    # amortizes instead of falling to serial; that is part of the retained win.
     flags = suite.MTP_ROUTES[suite.DEFAULT_MTP_ROUTE]
     assert "--target-block-min-rows" in flags
     assert flags[flags.index("--target-block-min-rows") + 1] == "2"
+
+
+def test_suite_default_route_uses_draft_confidence_gate() -> None:
+    # the default must carry --draft-p-min 0.5: gating low-confidence draft cycles
+    # (hit conf ~0.69 vs miss ~0.36) trims wasted block-verify and unlocks deeper
+    # budgets (B5 best), the 2026-06-30 retained speed win (1.0399 -> 1.055x AR).
+    flags = suite.MTP_ROUTES[suite.DEFAULT_MTP_ROUTE]
+    assert "--draft-p-min" in flags
+    assert flags[flags.index("--draft-p-min") + 1] == "0.5"
 
 
 def test_suite_exposes_resident_strict_context_route() -> None:
