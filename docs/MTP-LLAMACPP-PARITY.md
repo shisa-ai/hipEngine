@@ -1,6 +1,6 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (llama.cpp parity shootout matrix update; B1-probe/block-direct/cap32k AR-beating route retained; bulk row-1 direct-commit exactness diagnostic; native row-1 direct-commit diagnostic; context replay + device-seed route rejection; device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (Goal — Part 1 set: target-verify amortization is the sole remaining gap; acceptance shown already at llama.cpp parity via cap32k-recover; shootout order inverted, verify-wall promoted to P0; llama.cpp parity shootout matrix update; B1-probe/block-direct/cap32k AR-beating route retained; bulk row-1 direct-commit exactness diagnostic; native row-1 direct-commit diagnostic; context replay + device-seed route rejection; device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite AR/MTP suite rows.
 - hipEngine source baseline for the current performance review: `cfb584615b801ce0be7f622ea695327950018f74`
@@ -88,12 +88,75 @@ coverage, not hipEngine AR speed.
 | Category coverage | Code B3 wins (**57.55 tok/s**, **0.500 accepted/output**); `general_en`, `general_ja`, and `mixed_ja_en` have **0 accepted drafts** under the retained route | Code winner B3 **72.59 tok/s**, non-code winners are B2: `general_en` **63.83**, `general_ja` **62.25**, `mixed_ja_en` **67.27 tok/s** with **0.56-0.60 accepted/output** | hipEngine's current route is effectively a code-category win plus near-AR fallback elsewhere. llama.cpp's B2 works across all categories. |
 | Budget shape | B1/B2 remain below AR; B3 is the only winning budget; B4/B5 regress | B1/B2/B3 all beat AR strongly; B2 is fastest, B5 maximizes acceptance | The next target is a robust B2/B3 policy, not deeper B4/B5 drafting. |
 
-Bottom line: **the next gap is non-code acceptance plus target-pass
-amortization.** The current route proves direct block commit can win, but it
-promotes too rarely outside code and still pays too many target passes per
-visible token.
+Bottom line (corrected by the artifact evidence in "Goal — Part 1" below):
+**acceptance is already at llama.cpp parity on every category; the only
+remaining gap is target-verify amortization.** The retained default route's
+non-code zeros are a *policy artifact* (`--adaptive-ar-fallback` stops drafting
+after one miss), not a draft-quality deficit — `cap32k-recover` already matches
+llama.cpp's per-category acceptance. The current route pays too many target
+layer passes per visible token, and so does every high-acceptance route we have.
+
+### Goal — Part 1 (HIGHEST PRIORITY): close the target-verify amortization gap
+
+This is the first part of the llama.cpp-parity goal. Resolve these P0
+determinations **before** running any S1-S3 policy probe. The evidence below
+re-frames the gap and is the reason the shootout order in the next section is
+inverted from how it was first written.
+
+**Evidence that re-frames the gap (from the 2026-06-29 full-suite artifacts):**
+
+1. The retained default route's non-code "0 accepted" is drafting being switched
+   off, not bad drafts. Per-category for
+   `2026-06-29-ar-mtp-suite-full-b1-probe-block-direct-cap32k.json`: code B3
+   `drafts=56, accepted=40`; `general_en`/`general_ja`/`mixed_ja_en` each
+   `drafts=2, accepted=0` — i.e. two attempts, then `--adaptive-ar-fallback`
+   runs pure AR for the rest. The headline **1.0356x AR is a code-only win
+   averaged up**, not a cross-category win.
+2. **Acceptance is already solved.** A route that keeps drafting
+   (`cap32k-recover`, child of
+   `2026-06-29-ar-mtp-suite-full-cap32k-recover.json`) matches llama.cpp B2
+   per category:
+
+   | Category | hipEngine `cap32k-recover` acc/out | llama.cpp B2 acc/out |
+   | --- | ---: | ---: |
+   | general_en | 0.608 | 0.576 |
+   | general_ja | 0.459 | 0.563 |
+   | mixed_ja_en | 0.615 | 0.599 |
+
+   Yet `cap32k-recover` measures **~0.95x AR (below AR)**. So hipEngine already
+   drafts as well as llama.cpp on every category and **still cannot turn that
+   acceptance into a speedup**. The bottleneck is cost per visible token, not
+   acceptance.
+3. The cost is target-verify amortization. hipEngine's best is **0.779 target
+   layer passes/output** (one near-full target weight stream per ~1.3 visible
+   tokens); llama.cpp's fused 4-token verify graph (~9 ms) implies **~0.25-0.40
+   passes/output**. AR is already faster than llama.cpp's AR, GEMV is near-peak
+   BW, draft acceptance is matched — **target-verify amortization is the only
+   structural advantage llama.cpp has left.**
+
+**P0 determinations (the highest-priority list):**
+
+| ID | Determination | What to measure / decide | Done when |
+| --- | --- | --- | --- |
+| P0.1 | Amortization ceiling | Compute the tok/s a single fused B-token target verify would yield at `cap32k-recover` acceptance: hold acc/out fixed, drop `target_verify_layer_passes_per_output` from 0.779 to ~0.25-0.40, and project total tok/s. Confirms the lever is sufficient to reach ~67 tok/s before building it. | A back-of-envelope + 1 measured block-verify route row showing projected tok/s ≥ llama.cpp B2 at matched acceptance. |
+| P0.2 | Unblock the fused multi-token block verifier | Root-cause the HIP graph-capture **3rd-relaunch GDN state corruption** (WORKLOG 2026-06-28). Decide graph-capture-fix vs a C-level multi-layer dispatch loop that streams target weights once per draft block. This is the actual engineering lever. | A verifier that processes `[prev]+drafts` in one target weight stream with bit-exact GDN/Conv state across ≥3 relaunches, gated by the correctness oracle. |
+| P0.3 | Re-baseline the verify work on a keep-drafting route | Stop using the code-only `b1-probe-block-direct-cap32k` as the input for verify-wall work; use `cap32k-recover` (already high acc/out, all categories, ~0.95x AR). It already satisfies the old S5 precondition ("good acc/out, poor tok/s"). | The shootout scoreboard records `cap32k-recover` as the verify-wall starting baseline with per-category acc/out. |
+
+Success for Goal — Part 1: a full-suite artifact whose **best budget keeps
+`cap32k-recover`-class per-category acceptance AND drives target layer
+passes/output toward ~0.4 or below**, lifting non-code budgets above AR. Only
+after that lands do the S1-S3 acceptance/policy probes below become worth
+running — until then they will reproduce `cap32k-recover` (acceptance up, tok/s
+pinned at ~0.95x AR).
 
 ### Next shootout matrix
+
+> **Order note (2026-06-29):** the S5 precondition ("a route with good
+> accepted/output but poor tok/s") is **already met** by `cap32k-recover`, so
+> the target-verify-wall work in S5 is promoted into "Goal — Part 1" above and
+> runs **first**. S1-S3 are demoted: they are acceptance/policy reshuffles
+> inside a Pareto frontier already known to sit at ≤ AR on non-code, and should
+> only run after the verify wall drops.
 
 Every row below is a full-suite shootout candidate, not a single-prompt probe.
 Run `scripts/gguf_ar_mtp_suite.py --scope full` (with a named route for variants)
@@ -114,21 +177,22 @@ llama.cpp target:
 `benchmarks/results/2026-06-22-llamacpp-35b-mtp-category-off-b1-b5-gfx1151.json`
 (B2 **67.29 tok/s**, **1.3423x AR**, **0.598 accepted/output**).
 
-| ID | Candidate | Hypothesis | Required evidence | Promote / reject rule |
-| --- | --- | --- | --- | --- |
-| S0 | Current default rerun | Establish noise band for `resident-b1-probe-block-direct-cap32k` before changing policy. | Full-suite total and category rows for B1-B5; confirm B3 stays around **56.5 tok/s** and **1.03x AR**. | Baseline only. Do not retune from a single rerun unless it reproduces the retained shape. |
-| S1 | Non-code rescue after zero strict probe | Keep the code-path B1 probe + B3 direct block, but when a category/prompt gets zero strict accepts, fall back to a cheap root-topK/cap32k B1/B2 route instead of pure AR. | `general_en`, `general_ja`, and `mixed_ja_en` accepted/output must move from **0.000** toward llama.cpp B2's **0.56-0.60** without lowering code B3 below current. | Promote only if full-suite best beats **56.54 tok/s** and no non-code category remains at zero accepted drafts. |
-| S2 | B2 direct-block promotion | llama.cpp is fastest at B2, so test a direct-commit B2 verifier after the cheap B1 probe rather than jumping to B3. | B2 total tok/s, accepted/output, discarded rows, direct commit rows, target layer passes/output. | Promote if B2 beats the current B3 row or materially raises accepted/output with no total tok/s regression. |
-| S3 | B3 promotion threshold sweep | The current route's B3 win is code-heavy; try stricter/looser promotion criteria that preserve cheap cap32k drafting but increase safe block use on non-code prompts. | Per-category accepted/output and target passes/output, not just aggregate tok/s. | Keep only if non-code accepted/output rises and aggregate B3 remains above AR and above the current baseline. |
-| S4 | llama.cpp lifecycle parity route | Re-test context replay + device MTP KV + resident `pending_h`/`verify_h` only with exact row-state commit and prompt catch-up aligned; earlier dense-KV routes collapsed acceptance. | One artifact with per-category acceptance plus a narrow trace showing draft context parity on at least one non-code prompt. | Promote only after full-suite acceptance improves; otherwise record as rejected lifecycle evidence. |
-| S5 | Target verifier wall reduction for promoted blocks | If S1-S3 increase accepted/output but wall time stalls, then reduce the promoted-block verifier wall with a C-level multi-layer loop or graph-capture fix. | rocprof for the promoted route, showing whether target wall is launch-bound or kernel/weight-bound after block promotion. | Do not start here unless a promoted route has good accepted/output but still poor tok/s. |
+| ID | Candidate | Priority | Hypothesis | Required evidence | Promote / reject rule |
+| --- | --- | --- | --- | --- | --- |
+| S5 | Target verifier wall reduction (fused B-token verify) | **P0 — do first (see Goal — Part 1)** | One target weight stream verifies the whole `[prev]+drafts` block, cutting target layer passes/output from 0.779 toward llama.cpp's ~0.25-0.40 at unchanged acceptance. | rocprof + full-suite row for a `cap32k-recover`-based block-verify route, reporting per-category acc/out and target passes/output. | Promote if full-suite best beats AR on non-code budgets while keeping `cap32k-recover`-class acceptance; this is the parity lever. |
+| S0 | Current default rerun | After P0 | Establish noise band for `resident-b1-probe-block-direct-cap32k` before changing policy. | Full-suite total and category rows for B1-B5; confirm B3 stays around **56.5 tok/s** and **1.03x AR**. | Baseline only. Do not retune from a single rerun unless it reproduces the retained shape. |
+| S1 | Non-code rescue after zero strict probe | After P0 (will reproduce `cap32k-recover` until the wall drops) | Keep the code-path B1 probe + B3 direct block, but when a category/prompt gets zero strict accepts, fall back to a cheap root-topK/cap32k B1/B2 route instead of pure AR. | `general_en`, `general_ja`, and `mixed_ja_en` accepted/output must move from **0.000** toward llama.cpp B2's **0.56-0.60** without lowering code B3 below current. | Promote only if full-suite best beats **56.54 tok/s** and no non-code category remains at zero accepted drafts. |
+| S2 | B2 direct-block promotion | After P0 | llama.cpp is fastest at B2, so test a direct-commit B2 verifier after the cheap B1 probe rather than jumping to B3. | B2 total tok/s, accepted/output, discarded rows, direct commit rows, target layer passes/output. | Promote if B2 beats the current B3 row or materially raises accepted/output with no total tok/s regression. |
+| S3 | B3 promotion threshold sweep | After P0 | The current route's B3 win is code-heavy; try stricter/looser promotion criteria that preserve cheap cap32k drafting but increase safe block use on non-code prompts. | Per-category accepted/output and target passes/output, not just aggregate tok/s. | Keep only if non-code accepted/output rises and aggregate B3 remains above AR and above the current baseline. |
+| S4 | llama.cpp lifecycle parity route | After P0 | Re-test context replay + device MTP KV + resident `pending_h`/`verify_h` only with exact row-state commit and prompt catch-up aligned; earlier dense-KV routes collapsed acceptance. | One artifact with per-category acceptance plus a narrow trace showing draft context parity on at least one non-code prompt. | Promote only after full-suite acceptance improves; otherwise record as rejected lifecycle evidence. |
 
 Fill the shootout scoreboard with these columns for every retained or rejected
 attempt:
 
 | Candidate | Best budget | Total tok/s | vs AR | Code acc/out | General EN acc/out | General JA acc/out | Mixed acc/out | Target passes/output | Direct commits | Decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Current default | B3 | 56.54 | 1.0356 | 0.500 | 0.000 | 0.000 | 0.000 | 0.779 | 15 | baseline |
+| Current default | B3 | 56.54 | 1.0356 | 0.500 | 0.000 | 0.000 | 0.000 | 0.779 | 15 | baseline (code-only win) |
+| `cap32k-recover` (P0.3 verify-wall input) | B1 | ~51.7 | ~0.948 | 0.640 | 0.608 | 0.459 | 0.615 | ~1.0 | 0 | acceptance solved, wall-bound; the route to amortize |
 | llama.cpp reference | B2 | 67.29 | 1.3423 | 0.627 | 0.576 | 0.563 | 0.599 | inferred 0.402 | n/a | target |
 
 ### Measurement reset — what to distrust in the history below
@@ -360,14 +424,17 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    block promotion pay on more prompts, keep direct commits exact without serial
    fallback waste, and preserve the cheap cap32k draft cost. The concrete target
    is moving from B3 **56.54 tok/s** toward llama.cpp's B2 **67.29 tok/s** on
-   the same full category suite. Run the next candidates in the shootout order
-   above: non-code rescue first, then B2 direct-block promotion, then B3
-   threshold sweeps.
-5. **Only if a future profile becomes host-bound:** collapse the per-layer
-   launches — unblock HIP graph capture (fix the 3rd-relaunch GDN state
-   corruption) or a C-level multi-layer dispatch loop. This is llama.cpp's
-   structural advantage (one fused graph ≈ 9 ms for the 4-token verify), but it is
-   not where current `resident-serial-fallback` wall time goes.
+   the same full category suite. **Order superseded by "Goal — Part 1" above:**
+   the verify-wall reduction (old S5) runs first because `cap32k-recover`
+   already meets its precondition; non-code rescue / B2 / B3 policy sweeps
+   (S1-S3) run only after the wall drops.
+5. **The fused multi-token target verifier is now P0, not a host-bound
+   contingency.** Collapse the per-block target work into one weight stream —
+   unblock HIP graph capture (fix the 3rd-relaunch GDN state corruption) or a
+   C-level multi-layer dispatch loop. This is llama.cpp's last structural
+   advantage (one fused graph ≈ 9 ms for the 4-token verify) and the direct
+   path from `cap32k-recover`'s ~1.0 passes/output to llama.cpp's ~0.4. See
+   Goal — Part 1, P0.2.
 6. **Use llama.cpp parity, not AR-beat, as the next retained speed gate.** The
    current route already satisfies `mtp_beats_ar=true` on `--scope full`. The
    next retained claim should either move materially toward llama.cpp's

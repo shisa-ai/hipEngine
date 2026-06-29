@@ -128071,3 +128071,37 @@ probe acceptance, then B2 direct-block promotion, then B3 promotion-threshold
 sweeps. Future retained/rejected rows need per-category accepted/output in the
 artifact or a copied `child_artifacts.mtp_category` summary, not just aggregate
 `mtp_by_budget`.
+
+## 2026-06-29 — Goal Part 1 set: target-verify amortization is the sole parity gap
+
+Reviewed the retained `resident-b1-probe-block-direct-cap32k` default against the
+per-category child artifacts and re-framed the llama.cpp parity goal in
+`docs/MTP-LLAMACPP-PARITY.md`.
+
+Decisive artifact evidence:
+- Retained default route non-code is `drafts=2, accepted=0` for every budget
+  (`general_en`/`general_ja`/`mixed_ja_en`) while code B3 is `drafts=56,
+  accepted=40` — the 1.0356x AR headline is a code-only win averaged up;
+  `--adaptive-ar-fallback` switches off drafting after one non-code miss
+  (`/tmp/hipengine-ar-mtp-suite-full-1782740390/mtp-category.json`).
+- A keep-drafting route already matches llama.cpp acceptance per category:
+  `cap32k-recover` general_en 0.608 / general_ja 0.459 / mixed_ja_en 0.615 vs
+  llama.cpp B2 0.576 / 0.563 / 0.599, yet measures ~0.948x AR
+  (`benchmarks/results/2026-06-29-ar-mtp-suite-full-cap32k-recover.json`,
+  child `/tmp/hipengine-ar-mtp-suite-full-1782716193/mtp-category.json`).
+
+Conclusion: acceptance is solved; the only remaining gap is target-verify
+amortization (hipEngine best 0.779 target layer passes/output vs llama.cpp
+inferred ~0.40). Set this as "Goal — Part 1" with three P0 determinations:
+P0.1 amortization ceiling projection, P0.2 unblock the fused multi-token block
+verifier (root-cause the HIP graph-capture 3rd-relaunch GDN state corruption or
+build a C-level multi-layer dispatch loop), P0.3 re-baseline verify-wall work on
+`cap32k-recover` (already meets the old S5 precondition).
+
+Inverted the shootout order: old S5 (verify-wall reduction) promoted to P0 and
+runs first; S0-S4 acceptance/policy probes demoted to "after P0" because they
+will reproduce `cap32k-recover` (acceptance up, tok/s pinned ~0.95x AR) until the
+verify wall drops. Updated the shootout table, scoreboard (added `cap32k-recover`
+verify-wall-input row), and the "How to continue" ordering.
+
+Docs-only change; no GPU run. `git diff --check` clean.
