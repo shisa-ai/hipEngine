@@ -305,6 +305,24 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--adaptive-ar-fallback",
         "--adaptive-ar-fallback-cooldown", "4",
     ],
+    # BREAKTHROUGH candidate: give the draft llama-like KV CONTEXT (context-replay +
+    # device-KV) to lift acceptance, while keeping the FAST verify stack (block
+    # verify + min-rows 2 + direct commit + p_min). Draft context is the real ja
+    # lever (precision was refuted). Strict top-1 greedy.
+    "resident-context-block-minrows2-pmin05-cap32k": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--mtp-context-replay",
+        "--mtp-device-kv-cache",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--draft-p-min", "0.5",
+        "--mtp-draft-vocab-cap", "32768",
+    ],
     "resident-strict-block-direct-minrows2": [
         "--resident-mtp-draft",
         "--root-topk-accept", "1",

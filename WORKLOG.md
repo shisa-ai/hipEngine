@@ -128556,3 +128556,31 @@ direct commit). Testing now.
 
 This supersedes the precision/seed/MoE lines: the lever is matching llama's draft
 KV-context lifecycle while keeping hipEngine's fast block verify.
+
+## 2026-06-30 — context CONFIRMED as the lever (draft_acc -> llama parity); new blocker = context-replay cost + ja residual
+
+Tested the breakthrough candidate (draft context + fast verify stack):
+route resident-context-block-minrows2-pmin05-cap32k, --scope full
+(benchmarks/results/2026-06-30-ar-mtp-suite-full-context-block-minrows2-pmin05-diagnostic.json):
+- Per-category draft_acc with context replay JUMPED to llama-like: general_en
+  0.933, code 0.842, mixed_ja_en 0.842 (vs ~0.65 without context). CONFIRMS draft
+  attention context is the acceptance lever (matching llama's draft-KV lifecycle).
+- BUT best B2 1.0032x AR — BELOW the pmin05 default (1.0534x). hipEngine's
+  --mtp-context-replay machinery is too expensive per cycle (re-decodes context;
+  llama folds an incremental catch-up into its graph cheaply). The per-cycle
+  context cost eats the acceptance gain. Same root issue the earlier serial
+  context routes hit; block verify alone doesn't offset it.
+- general_ja draft_acc stayed 0.333 even WITH context (en/code/mixed jumped to
+  0.84-0.93). So ja has a RESIDUAL draft-quality issue beyond context.
+
+Net redirect (supersedes precision/MoE/seed lines): the two remaining levers are
+now precisely identified and both are real engineering, not config:
+1. CHEAP incremental draft KV: maintain the draft KV by appending accepted tokens
+   (one cheap draft decode/token) instead of re-replaying context each cycle, so
+   context's llama-like draft_acc (0.84-0.93) converts to a tok/s win. This is the
+   llama process()/catch-up-folded-in-graph mechanism. Biggest lever.
+2. general_ja residual draft quality (0.333 with context vs en 0.93) — separate,
+   ja-specific, smaller-population issue.
+
+Retained default unchanged (pmin05, 1.0534x is still best). context-block kept as
+a diagnostic route.
