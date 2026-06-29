@@ -128771,3 +128771,34 @@ FINAL: matching llama 1.342x requires NEW purpose-built low-launch small-batch k
 (grouped MoE verify GEMV +/- batched-fused lm-head) — confirmed not achievable by
 enabling any existing path. Session delivered 1.0356x->1.0534x (4 wins) + complete,
 exhaustive root-cause + fully-specified, projected (~1.24-1.31x), de-risked kernel work.
+
+## 2026-06-30 — ROOT CAUSE maximally specified: T16-tiles path lacks small-batch rowtile variants
+
+Tested batched verify lm-head + rowtile (HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD=1
+HIPENGINE_GGUF_Q4K_ROWTILE=1): still 0.710x (slower). Found rowtile is default-ON
+(_resolve_use_q4k_rowtile returns True) BUT _rowtile_dispatch requires
+dispatch.abi=="raw" — and the decode-repack path the suite uses stores weights as
+T16 TILES (abi != raw). So:
+- rows=1 (per-row loop): uses the tuned decode GEMV (fast) but never rowtile (needs
+  rows>=2), so N rows = N weight reads.
+- rows=N (batched): tiles layout has NO rowtile variant -> falls to the prefill GEMV
+  (slow at small B) -> batched lm-head is slower than the per-row loop.
+
+UNIFYING ROOT CAUSE of the whole verify-cost wall: the T16-tiles decode-repack path
+has rows=1 DECODE kernels and rows=many PREFILL kernels but NO small-batch (2-8 row)
+ROWTILE variants. The verify block lives exactly in the 2-8 row regime, so every
+verify GEMV (lm-head Q6_K, dense Q8_0, selected-MoE Q4_K/Q5_K) falls into prefill
+kernels = the per-row over-read / 6.82ms/row marginal. Raw-layout rowtile kernels
+EXIST (gguf_k_prefill_out_rowtile_kernel, weight-amortized, bit-identical, rows 2-8)
+but only for raw layout; the raw eager path is broken (ssm_out f32 fusion) so the
+suite must use tiles.
+
+PRECISE KERNEL DELIVERABLE (supersedes "grouped MoE verify"): add T16-tiles
+small-batch ROWTILE GEMV variants for the verify regime (lm-head + dense + selected-
+MoE), porting the existing raw-layout rowtile approach to the tiles layout. This
+amortizes weight streaming across the 2-8 verify rows for ALL the verify GEMVs
+(not just MoE), projecting toward ~1.2-1.3x. Bit-exact vs the per-row tuned path
+(exact reference). Genuine HIP kernel work; raw rowtile is the template.
+
+Every existing path is now tested and confirmed: defaults are the tiles small-batch
+optimum; the win requires the tiles-rowtile kernels. Session: 1.0356x->1.0534x AR.
