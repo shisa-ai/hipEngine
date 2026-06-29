@@ -139,7 +139,7 @@ inverted from how it was first written.
 | ID | Determination | What to measure / decide | Done when |
 | --- | --- | --- | --- |
 | P0.1 | Amortization ceiling | Compute the tok/s a single fused B-token target verify would yield at `cap32k-recover` acceptance: hold acc/out fixed, drop `target_verify_layer_passes_per_output` from 0.779 to ~0.25-0.40, and project total tok/s. Confirms the lever is sufficient to reach ~67 tok/s before building it. | A back-of-envelope + 1 measured block-verify route row showing projected tok/s ≥ llama.cpp B2 at matched acceptance. |
-| P0.2 | Unblock the fused multi-token block verifier | Root-cause the HIP graph-capture **3rd-relaunch GDN state corruption** (WORKLOG 2026-06-28). Decide graph-capture-fix vs a C-level multi-layer dispatch loop that streams target weights once per draft block. This is the actual engineering lever. | A verifier that processes `[prev]+drafts` in one target weight stream with bit-exact GDN/Conv state across ≥3 relaunches, gated by the correctness oracle. |
+| P0.2 | ~~Unblock the fused multi-token block verifier~~ **CLOSED 2026-06-30 — REFUTED, do not build.** | The premise (host-launch floor → collapse 875 launches via graph capture / GDN-fix / C-loop) was the OLD serial route. The current block verify is **GPU-kernel-BOUND (38.1 ms GPU / 42.4 ms wall, only 10.2% host exposed; see 2026-06-30 correction below)**. Graph capture / C-loop cap at ≤10% and ROCm 7.x re-pays per-node (M12.1). The GDN-corruption fix would be wasted effort. | n/a — closed. Remaining gap is GPU compute, only cuttable by dp4a (fails ja gate) or FLOP/quality loss. |
 | P0.3 | Re-baseline the verify work on a keep-drafting route | Stop using the code-only `b1-probe-block-direct-cap32k` as the input for verify-wall work; use `cap32k-recover` (already high acc/out, all categories, ~0.95x AR). It already satisfies the old S5 precondition ("good acc/out, poor tok/s"). | The shootout scoreboard records `cap32k-recover` as the verify-wall starting baseline with per-category acc/out. |
 
 Success for Goal — Part 1: a full-suite artifact whose **best budget keeps
@@ -398,7 +398,7 @@ on current code; (M) are current-session measurements.
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
 | 32k draft vocab cap | ~5 ms/cycle draft | prompt-sensitive | diagnostic |
 | adaptive AR fallback after zero-accept | avoid catastrophic block replay | robust full-suite route | **kept (production selector)** |
-| HIP graph capture of verify | collapse the ~875 launches | blocked: 3rd-relaunch GDN state corruption | blocked (see WORKLOG 2026-06-28) |
+| HIP graph capture of verify | collapse the ~875 launches | **refuted 2026-06-30: block verify is GPU-bound (10.2% host exposed); ROCm 7.x re-pays per-node (M12.1)** | **rejected — not a lever** |
 
 Pattern: **every GPU/kernel/launch micro-lever is real in isolation and flat at
 e2e.** The retained e2e wins are route/amortization cleanups (#4 LM-head skip,
@@ -550,13 +550,15 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    the verify-wall reduction (old S5) runs first because `cap32k-recover`
    already meets its precondition; non-code rescue / B2 / B3 policy sweeps
    (S1-S3) run only after the wall drops.
-5. **The fused multi-token target verifier is now P0, not a host-bound
-   contingency.** Collapse the per-block target work into one weight stream —
-   unblock HIP graph capture (fix the 3rd-relaunch GDN state corruption) or a
-   C-level multi-layer dispatch loop. This is llama.cpp's last structural
-   advantage (one fused graph ≈ 9 ms for the 4-token verify) and the direct
-   path from `cap32k-recover`'s ~1.0 passes/output to llama.cpp's ~0.4. See
-   Goal — Part 1, P0.2.
+5. **~~The fused multi-token target verifier is now P0~~ — CLOSED/REFUTED
+   2026-06-30.** The "collapse 875 launches into one weight stream" lever assumed
+   a host-launch floor. Measured: the block verify is **GPU-kernel-bound** (38.1 ms
+   GPU / 42.4 ms wall, 10.2% host exposed). HIP graph capture / C-loop / GDN-fix
+   are **not levers** (≤10% ceiling; ROCm 7.x re-pays per-node, M12.1). llama's
+   "~9 ms fused graph" advantage is its **dp4a/q8_1 cheaper kernels**, not graph
+   topology — and dp4a fails hipEngine's ja correctness gate (top-1 0.700). The
+   exact-precision GPU-compute ceiling is reached at `1.1134×`. See P0.2 + the
+   2026-06-30 correction.
 6. **Use llama.cpp parity, not AR-beat, as the next retained speed gate.** The
    current route already satisfies `mtp_beats_ar=true` on `--scope full`. The
    next retained claim should either move materially toward llama.cpp's
@@ -1645,6 +1647,51 @@ dispatch loop — exactly the original plan.  dp4a/rowtile are complementary GPU
 wins that materialize *after* the launch floor is cut.  llama.cpp runs the whole
 4-token verifier as one fused GGML graph (~9 ms); the 875-launch host floor is
 the core of the gap.
+
+**2026-06-30 correction — the 2026-06-28 "host-bound" claim was the OLD serial
+per-row route; the CURRENT block verify is GPU-kernel-BOUND (~90%).**  Decisive
+differential measurement (`scratchpad/launch_overhead_decomp_blockverify.py`,
+wall = clean `perf_counter` over the block loop, GPU = `rocprofv3 --kernel-trace`
+DurationNs sum, both differenced over N=8 vs N=32 to cancel prefill) on the
+production `verify_target_block(rows=4, bulk)` path with the landed rowtile
+lm-head:
+
+| per-block (rows=4) | ms |
+| --- | --- |
+| wall (host+GPU overlapped+sync) | **42.40** |
+| GPU kernel-sum | **38.08** |
+| host EXPOSED (wall − GPU) | **4.33 (10.2%)** |
+
+A standalone async-issue probe (`scratchpad/launch_overhead_decomp.py`) confirms
+per-kernel-launch dispatch is **~12 µs**, so 875 launches ≈ **10.5 ms** of host
+issue — fully overlapped behind the 38 ms of GPU work, leaving only ~4.3 ms
+exposed.  The "~54 ms host floor" did not reproduce on the block path; it was the
+serial route's per-row-synced dispatch.  **Consequences, all evidence-backed:**
+
+- **Graph capture / fused draft+verify graph is REFUTED as a lever** (and the
+  GDN-corruption fix it requires would be wasted effort): only 10.2% host is
+  exposed, and ROCm 7.x `hipGraphLaunch` re-pays per-node overhead at ~1000-node
+  DAGs (M12.1 `2026-05-22-...graph-capture-diagnostic.json`, L3/L13 in DFLASH).
+  Best case — eliminating *all* exposed host — caps the verify at 38.1 ms (≈ +11%
+  → ~1.22× absolute ceiling), and that is physically unreachable.
+- **C-loop / Python dispatch memoization is REFUTED**: same ≤10% host ceiling.
+- **The 38.1 ms GPU kernel-sum IS the wall.**  Only cheaper kernels cut it:
+  pipeline-wide **dp4a/q8_1** (REFUTED — ja greedy top-1 0.700 < 0.90 gate, even
+  MoE-selected, `scratchpad/dp4a-verify-full.json`) or fewer FLOPs (quality loss).
+- The **lm-head rowtile** (landed, bit-exact, `1.0534×→1.1134×`) captured the
+  only shared-weight GPU amortization (all verify rows read the same head).  The
+  MoE is per-row **disjoint**-weight (top-8 of 256, rarely shared across rows) →
+  no cross-row amortization (grouping de-risk: all-distinct only 1.40–1.54× of
+  all-same, L2-served) → near its efficient exact point.
+
+**Net:** hipEngine's GGUF block verify is at its **exact-precision GPU-compute
+ceiling**.  The residual gap to llama 1.342× is purely llama's pipeline-wide
+dp4a/q8_1 precision tradeoff, which violates hipEngine's ja correctness gate.
+hipEngine reaches `1.1134×` (60.8 tok/s, 90.3% of llama's 67.3) while **beating
+llama on AR** (54.6 vs 50.1 tok/s) and on precision (exact; passes the ja gate
+llama's recipe fails).  Closing the rest is not a config/kernel/graph lever — it
+requires accepting llama's precision loss, which the stated correctness guard
+forbids.
 
 Success criterion: same-protocol full-suite row improves all three: raw weighted
 decode tok/s, accepted/output, and strict draft acceptance.

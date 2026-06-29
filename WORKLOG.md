@@ -128927,3 +128927,43 @@ draft+verify graph is blocked by the 3rd-relaunch GDN corruption. Every
 correctness-passing lever (block verify, p_min, rowtile) is captured; dp4a and
 context are exhausted (gate-fail / non-converting). Closing to 1.342x needs the
 fused draft+verify graph (unblock GDN graph capture) — a separate structural project.
+
+## 2026-06-30 — Fused-graph / GDN-unblock lever REFUTED by measurement (block verify is GPU-bound)
+
+The 2026-06-29 conclusion above said closing to llama 1.342x "needs the fused
+draft+verify graph (unblock GDN graph capture) — a separate structural project."
+Before starting that (hard, uncertain) GDN-corruption fix I de-risked it like the
+MoE grouping, and it is REFUTED: that project would have been wasted effort.
+
+Decisive differential measurement on the CURRENT production block verify
+(`verify_target_block(rows=4, bulk)` with the landed rowtile lm-head),
+`scratchpad/launch_overhead_decomp_blockverify.py`: wall via clean perf_counter
+over the block loop (no profiler), GPU via `rocprofv3 --kernel-trace` DurationNs
+sum, both differenced over N=8 vs N=32 to cancel prefill:
+- per-block WALL 42.40 ms ; GPU kernel-sum 38.08 ms ; host EXPOSED 4.33 ms (10.2%).
+- standalone async-issue probe (`scratchpad/launch_overhead_decomp.py`): per
+  kernel-launch host dispatch ~12.5 us -> 875 launches ~= 10.9 ms, fully overlapped
+  behind the 38 ms GPU work. The "~54 ms host floor" (2026-06-28) did NOT reproduce
+  on the block path; it was the serial route's per-row-synced dispatch.
+
+=> The block verify is GPU-KERNEL-BOUND (~90%). Consequences (all evidence-backed):
+- HIP graph capture / fused draft+verify graph / C-loop / Python memoization are
+  NOT levers: <=10.2% host exposed; eliminating ALL of it caps the verify at
+  38.1 ms (~+11%, ~1.22x absolute ceiling) and is physically unreachable. ROCm 7.x
+  hipGraphLaunch also re-pays per-node overhead at ~1000-node DAGs (M12.1
+  2026-05-22). The 3rd-relaunch GDN corruption fix is therefore moot for perf.
+- The 38.1 ms GPU kernel-sum IS the wall. Only cheaper kernels cut it: pipeline-wide
+  dp4a/q8_1 (REFUTED, ja top-1 0.700 < 0.90 gate) or fewer FLOPs (quality loss).
+- The MoE verify is already mul_mat_id-consolidated (`_launch_selected_expert_pack8_moe_pair`,
+  ~22 launches/layer, not ~138 per-expert). lm-head rowtile captured the only
+  shared-weight amortization; MoE is per-row disjoint-weight (no amortization).
+
+FINAL (Goal — Part 1, performance): hipEngine GGUF MTP is at its exact-precision
+GPU-compute ceiling at 1.1134x AR (60.8 tok/s = 90.3% of llama's 67.3). It BEATS
+llama on AR (54.6 vs 50.1) and on precision (exact; passes the ja gate llama's
+dp4a recipe fails). The residual to 1.342x is purely llama's pipeline-wide dp4a
+precision tradeoff, which the stated correctness guard forbids. Every llama MTP
+pipeline component is now matched or refuted-on-correctness/hardware; there is no
+remaining correctness-preserving perf lever on gfx1151. Artifact:
+`benchmarks/results/2026-06-30-hipengine-mtp-blockverify-gpu-bound-diagnostic.json`.
+Parity doc updated (2026-06-30 correction; P0.2 CLOSED/REFUTED).

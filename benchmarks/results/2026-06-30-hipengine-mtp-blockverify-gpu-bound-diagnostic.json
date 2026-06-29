@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "phase": "MTP-parity P0.2 closure",
+  "date": "2026-06-30",
+  "hardware": "AMD Radeon 8060S / gfx1151",
+  "backend": "hip_gfx1100",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M (MoE Q4_K experts, lm_head Q6_K t16)",
+  "purpose": "Settle GPU-bound vs host-bound for the CURRENT production block verify (verify_target_block rows=4, bulk) with the landed rowtile lm-head. Supersedes the 2026-06-28 '~52% host-dispatch-bound' claim, which was the OLD serial per-row route.",
+  "method": "Differential per-block cost: wall via clean perf_counter over the block-verify loop (no profiler), GPU via rocprofv3 --kernel-trace DurationNs sum; both differenced over N=8 vs N=32 block-verifies to cancel prefill/context fixed cost. Standalone async-issue probe confirms per-kernel-launch host dispatch ~12 us.",
+  "driver": "scratchpad/launch_overhead_decomp_blockverify.py + scratchpad/launch_overhead_decomp.py",
+  "measurements": {
+    "per_block_wall_ms": 42.40,
+    "per_block_gpu_kernel_sum_ms": 38.08,
+    "per_block_host_exposed_ms": 4.33,
+    "host_exposed_pct": 10.2,
+    "per_launch_host_issue_us": 12.47,
+    "launches_per_block_rows4": 875,
+    "implied_total_dispatch_ms": 10.9,
+    "verdict": "GPU-KERNEL-BOUND"
+  },
+  "interpretation": {
+    "graph_capture_lever": "REFUTED. Only 10.2% host is exposed; best case (eliminate all exposed host) caps verify at 38.1 ms = ~+11% (~1.22x absolute ceiling) and is unreachable. ROCm 7.x hipGraphLaunch re-pays per-node overhead at ~1000-node DAGs (M12.1 2026-05-22). The GDN-corruption fix that graph capture required would be wasted effort.",
+    "c_loop_or_memoize_lever": "REFUTED. Same <=10% host ceiling; per-launch dispatch is only ~12 us.",
+    "dp4a_lever": "REFUTED on correctness. Cuts GPU kernel time but ja greedy top-1 0.700 < 0.90 gate even MoE-selected (scratchpad/dp4a-verify-full.json).",
+    "moe_grouping_lever": "REFUTED. Per-row disjoint-weight (top-8 of 256), L2-served; all-distinct only 1.40-1.54x of all-same.",
+    "lm_head_rowtile": "LANDED, the only shared-weight GPU amortization (all rows read the same head). Raised GGUF MTP 1.0534x -> 1.1134x bit-exact.",
+    "conclusion": "hipEngine GGUF block verify is at its exact-precision GPU-compute ceiling. Residual gap to llama 1.342x is purely llama's pipeline-wide dp4a/q8_1 precision tradeoff, which fails hipEngine's ja correctness gate."
+  },
+  "context_vs_llama": {
+    "hipengine_mtp_over_ar": 1.1134,
+    "hipengine_mtp_tok_s": 60.8,
+    "llama_mtp_tok_s": 67.3,
+    "pct_of_llama_mtp": 90.3,
+    "hipengine_ar_tok_s": 54.6,
+    "llama_ar_tok_s": 50.1,
+    "note": "hipEngine beats llama on AR and on precision (exact, passes ja gate llama's dp4a recipe fails); reaches 90.3% of llama's MTP tok/s at exact precision."
+  }
+}
