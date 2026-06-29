@@ -127971,3 +127971,36 @@ is working but still not enough: `target_verify_layer_passes_per_output=0.273`,
 `target_verify_discarded_rows=1`. The warm cycles are block-economics positive,
 but the route remains below true AR once draft cost and the first partial block
 are included.
+
+## 2026-06-29 — GGUF route-policy diagnostics after llama.cpp parity review
+
+Reviewed `docs/MTP-LLAMACPP-PARITY.md` and the local llama.cpp source anchor
+`/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`
+(`common_speculative_impl_draft_mtp`). The relevant llama.cpp pattern is still
+the `pending_h` / `verify_h` / `accept()` target-memory lifecycle; hipEngine's
+remaining gap is not another prompt policy. The latest full strict-block
+diagnostic shows B1 at **52.74 tok/s = 0.9662x AR** with all target rows serial,
+while B3/B5 amortize target passes but lose on non-code acceptance.
+
+Rejected two route-policy probes:
+
+1. B1 strict probe before B3 block promotion:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_MTP_BENCH_CACHE_SESSION=1 python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 5 --budgets 3 --limit 4 --raw-root /tmp/hipengine-b1-probe-block-direct-partial/mtp --output /tmp/hipengine-b1-probe-block-direct-partial/mtp-category.json --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--resident-mtp-draft --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--sibling-topk-accept --extra-arg=1 --extra-arg=--target-block-verify --extra-arg=--target-block-direct-state-commit --extra-arg=--adaptive-block-after-full-accept --extra-arg=--adaptive-probe-draft-n-max --extra-arg=1 --extra-arg=--adaptive-ar-fallback`.
+Code-partial B3 result: **50.78 tok/s**, accepted/output **0.565**,
+`target_verify_layer_passes_per_output=0.543`. Worse than the prior forced
+strict-block partial B3 **54.44 tok/s = 0.9946x AR**.
+
+2. Hybrid strict block direct without the vocab cap:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_MTP_BENCH_CACHE_SESSION=1 python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 5 --budgets 3 --limit 4 --raw-root /tmp/hipengine-hybrid-strict-block-direct-nocap-partial/mtp --output /tmp/hipengine-hybrid-strict-block-direct-nocap-partial/mtp-category.json --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--resident-mtp-draft --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--sibling-topk-accept --extra-arg=1 --extra-arg=--target-block-verify --extra-arg=--target-block-direct-state-commit --extra-arg=--adaptive-block-after-full-accept --extra-arg=--adaptive-probe-draft-n-max --extra-arg=3 --extra-arg=--adaptive-strict-block-probe --extra-arg=--adaptive-strict-probe-cycles --extra-arg=2 --extra-arg=--adaptive-strict-probe-min-accepted --extra-arg=2 --extra-arg=--adaptive-strict-fallback-draft-n-max --extra-arg=1 --extra-arg=--adaptive-strict-fallback-root-topk --extra-arg=40 --extra-arg=--adaptive-ar-fallback`.
+Code-partial B3 result: **47.98 tok/s**, accepted/output **0.661**,
+draft acceptance **0.228**, `target_verify_layer_passes_per_output=0.712`.
+The no-cap fallback generated many root-topK candidates and was worse than the
+cap32k hybrid and forced strict-block diagnostics.
+
+Also checked strict B1 with llama.cpp-style device-resident hidden seed:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_MTP_BENCH_CACHE_SESSION=1 python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 10 --budgets 1 --raw-root /tmp/hipengine-strict-b1-device-seed-full/mtp --output /tmp/hipengine-strict-b1-device-seed-full/mtp-category.json --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--resident-mtp-draft --extra-arg=--resident-mtp-device-seed --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--sibling-topk-accept --extra-arg=1 --extra-arg=--adaptive-ar-fallback --extra-arg=--no-target-block-verify`.
+Full-category B1 result: **52.66 tok/s**, accepted/output **0.0991**,
+draft acceptance **0.5238**, identical acceptance and slightly slower than the
+non-device-seed strict B1 diagnostic (**52.74 tok/s**). Decision: do not add a
+new suite route. The next useful work remains a structural target verifier that
+reduces target layer-streaming passes per visible token on the full suite.
