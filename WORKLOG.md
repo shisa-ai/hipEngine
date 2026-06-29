@@ -128667,3 +128667,30 @@ correctness path (KL<=0.05/top1>=90% vs the current per-slot path which is the
 exact reference). This is the single highest-leverage remaining lever and the one
 worth building. Confirm the current pack8 selected GEMV does NOT already dedup
 (structure says it reads per selected-row) before implementing.
+
+## 2026-06-30 — existing grouped MoE path too heavy at verify sizes; need a purpose-built small-batch kernel
+
+Tested enabling the EXISTING grouped/compact MoE GEMV (HIPENGINE_GGUF_ROW_COMPACT_GEMV=1)
+for the verify block (the group_scatter compact scheduler): smoke B3 dropped to
+0.631x AR (vs ~0.93x with the per-slot path) — MUCH slower. The compact scheduler
+(qwen35_moe_group_count + group_prefix + group_scatter_gather) is built for PREFILL
+(hundreds of rows) where grouping dominates; at 3-4 verify rows its scheduling
+overhead exceeds the 46% expert-read savings. This is why it is gated off by default.
+
+So the 46%-over-read headroom (measured, real) requires a PURPOSE-BUILT lightweight
+small-batch grouped MoE verify GEMV (dedupe rows*top_k -> distinct experts with
+near-zero scheduling overhead at 2-6 rows), NOT the existing prefill compact path.
+That is the precise remaining kernel deliverable.
+
+COMPLETE PICTURE of the llama MTP gap after this session:
+- 4 committed perf wins: 1.0356x -> 1.0534x AR (B2 block verify + draft-confidence gate).
+- Gap is verify-cost-bound (per-row block verify; full-accept cycles already hit 83
+  tok/s > llama). Eliminated: precision (f32=bf16), seed (post-norm matches llama),
+  draft kernels (cpu_ref pass), draft context (raises draft_acc to 0.93 but nets
+  <default; verify-bound), all config axes.
+- The ONE remaining lever is a lightweight small-batch grouped MoE verify GEMV:
+  measured 46% expert over-read at verify-block sizes => ~21% block cut => projected
+  ~1.2x (not full llama 1.342x, but a real measured-headroom win). Existing grouped
+  kernel proven too heavy at these sizes; needs a purpose-built kernel + correctness
+  gate (per-slot path is the exact reference) + registry + rocprof. Genuine kernel
+  project, now fully justified and de-risked with measured headroom.
