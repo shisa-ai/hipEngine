@@ -129046,3 +129046,22 @@ Route kept as a documented rejected diagnostic.
 ceilings: (1) verify COST is GPU-compute-floored (attention/GDN dominate, dp4a-gated),
 (2) acceptance ECONOMICS — the one identifiable gap (ja vocab-cap) doesn't pay to
 fix. 1.1134x is the genuine optimum for the exact-precision design point on gfx1151.
+
+## 2026-06-30 — post-rowtile draft_p_min re-tune: p_min=0.5 confirmed optimal (0.3/0.0 rejected)
+
+draft_p_min=0.5 was tuned PRE-rowtile. Since the rowtile made the verify ~13%
+cheaper, re-tested whether a lower p_min (more drafts proposed) now pays. Full
+suite, new routes ...-minrows2-pmin00 and ...-minrows2-pmin03:
+  default p_min=0.5: B5 60.76 tok/s 1.114x acc/out 0.535 draft_acc 0.723
+  p_min=0.3:         B5 58.14 tok/s 1.066x acc/out 0.556 draft_acc 0.607
+  p_min=0.0 (device-chain draft): B5 54.56 tok/s 1.001x acc/out 0.545 draft_acc 0.484
+Lower p_min raises acc/out marginally but proposes low-confidence drafts ->
+draft_acc collapses (0.72->0.48) -> wasted verify rows dominate -> net slower. The
+rowtile did NOT shift the optimum; p_min=0.5 is robustly best. Routes kept as
+documented rejected diagnostics. Artifact:
+results/2026-06-30-ar-mtp-pmin-retune-rejected.json.
+
+ACCEPTANCE SIDE NOW FULLY SWEPT (ja vocab-cap, p_min 0/0.3/0.5, budgets 1-5) and
+VERIFY-COST SIDE FULLY SWEPT (rowtile shipped, dp4a -4%/ja-gated, grouping/graph/
+WMMA refuted, GPU-compute-floored bottom-up). 1.1134x is the measured optimum for
+the exact-precision design point on gfx1151.

@@ -1,0 +1,30 @@
+{
+ "schema": 1,
+ "status": "rejected",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "hardware": "AMD Radeon 8060S / gfx1151",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "purpose": "Post-rowtile draft_p_min re-tune (p_min was set pre-rowtile). Tests whether the ~13% cheaper verify shifts the optimal p_min lower (more drafts).",
+ "full_suite_b5": {
+  "default_pmin05": {
+   "tok_s": 60.76,
+   "vs_ar": 1.114,
+   "acc_out": 0.535,
+   "draft_acc": 0.723
+  },
+  "pmin03": {
+   "tok_s": 58.14,
+   "vs_ar": 1.066,
+   "acc_out": 0.556,
+   "draft_acc": 0.607
+  },
+  "pmin00_device_chain": {
+   "tok_s": 54.56,
+   "vs_ar": 1.001,
+   "acc_out": 0.545,
+   "draft_acc": 0.484
+  }
+ },
+ "finding": "p_min=0.5 remains optimal post-rowtile. Lower p_min raises acc/out marginally but proposes low-confidence drafts -> draft_acc collapses (0.72->0.48) -> wasted verify rows dominate -> net slower. Rowtile did not shift the optimum. Acceptance side fully swept (ja-cap, p_min 0/0.3/0.5, budgets 1-5); all confirm the default 1.1134x."
+}

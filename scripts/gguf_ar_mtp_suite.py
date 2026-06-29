@@ -277,6 +277,34 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--mtp-draft-vocab-cap", "32768",
         "--adaptive-full-vocab-after-cap-miss",
     ],
+    # Post-rowtile p_min re-tune. p_min=0.5 was tuned PRE-rowtile; the rowtile made
+    # the verify ~13% cheaper, so proposing more drafts (lower/no p_min) may now pay.
+    # p_min=0 ALSO unlocks the device-chained draft (one drain, no per-depth sync).
+    # Validated on the full multi-category suite, not a single prompt.
+    "resident-b1-probe-block-direct-cap32k-minrows2-pmin00": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--draft-p-min", "0.0",
+        "--mtp-draft-vocab-cap", "32768",
+    ],
+    "resident-b1-probe-block-direct-cap32k-minrows2-pmin03": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--draft-p-min", "0.3",
+        "--mtp-draft-vocab-cap", "32768",
+    ],
     # exact current default + only --target-block-min-rows 2: lets the code-path
     # block promotion use cheaper 3-row B2 blocks instead of 4-row B3 (less wasted
     # over-read). Minimal change to the proven 1.036x winner.
