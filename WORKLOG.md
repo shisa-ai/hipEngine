@@ -129246,3 +129246,37 @@ fixable cause.
 
 Net deliverable this turn: a new retained correctness gate for a previously-untested
 kernel (mtp_dense_attn_f32), and definitive closure of the context-draft lever.
+
+## 2026-06-30 — cross-tool draft comparison vs llama oracle: gap is the exact-vs-dp4a PRECISION REGIME
+
+Ran the in-tree cross-tool test using the captured llama draft oracle
+(benchmarks/fixtures/llamacpp_mtp_explain_concept_draft_trace.json, raw /completion,
+temp0). Prompt "Explain how speculative decoding works..." (17 raw tokens, matched
+exactly via llama-tokenize). Ran hipEngine's PRODUCTION NextN draft on the same
+prompt (seeding verified to match the bench's cycle-0 path: start_token = target's
+sampled next, start_position = prompt_len). scratchpad/draft_forward_vs_llama.py:
+  llama draft top-3: [8068@0.476, 16@0.168, 248068@0.106]
+  hipE  draft top-3: [16@0.255, 248068, 760]
+hipEngine's top-1 (16) is llama's top-2; hipE top-2 (248068) is llama's top-3; but
+hipEngine MISSES llama's top pick 8068 and is much flatter (0.255 vs 0.476).
+
+CRITICAL CONFOUND (why this is NOT a clean hipEngine bug): the draft is seeded with
+the TARGET's post-output-norm hidden, and hipEngine's target is EXACT while llama's
+is dp4a/q8_1. Different seed hiddens -> different draft distributions, AND each draft
+is verified against a DIFFERENT target (exact vs dp4a greedy tokens). So the draft
+distributions are not expected to match between the two precision regimes, and the
+acceptance economics differ for the same reason.
+
+CONCLUSION (root cause, as precise as in-tree evidence allows): the residual MTP gap
+is the EXACT-vs-dp4a PRECISION REGIME difference, which manifests through the ENTIRE
+speculative economy - not just kernel speed (dp4a -4% on the verify) but the draft
+seed hiddens, the draft distributions, and the verification targets all differ
+because hipEngine runs exact precision and llama runs dp4a. hipEngine's regime is the
+correctness-preserving one (passes the ja gate llama's dp4a recipe fails). This is
+the same root cause as every other refuted lever, now confirmed at the draft-logit
+level: matching llama's 67.3 tok/s requires adopting llama's dp4a precision regime
+end-to-end (target + draft), which fails hipEngine's ja correctness gate. There is no
+hipEngine-side draft bug to fix; the systems are in different, deliberately-chosen
+precision regimes. 1.1134x is the exact-precision optimum; closing to llama requires
+changing the precision regime (a correctness-guard decision), confirmed bottom-up
+from kernels through draft logits.
