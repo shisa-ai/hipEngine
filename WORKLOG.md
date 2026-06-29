@@ -128967,3 +128967,27 @@ pipeline component is now matched or refuted-on-correctness/hardware; there is n
 remaining correctness-preserving perf lever on gfx1151. Artifact:
 `benchmarks/results/2026-06-30-hipengine-mtp-blockverify-gpu-bound-diagnostic.json`.
 Parity doc updated (2026-06-30 correction; P0.2 CLOSED/REFUTED).
+
+## 2026-06-30 — Budget ceiling (B5) + corrected absolute-parity target
+
+Extended the full-suite budget sweep beyond B5 to test whether more candidate
+depth converts toward parity. BLOCKED by an architectural cap: `validate_draft_n_max`
+rejects >5, tied to the 6-row verify block (the rowtile lm-head supports ROW_TILE
+2..6 = B1..B5). So **B5 = 1.114× is the current verify block's ceiling.** Going to
+B6+ needs block-capacity work (scratch resize + ROW_TILE=7, which spills with
+acc[7][16] under __launch_bounds__(128,2) + cap raises) for diminishing returns:
+B4->B5 was only +2.2% tok/s with acc/out plateauing 0.517->0.535 (draft_acc ~0.72
+=> depth-6 acceptance ~0.72^6 ~14%). Exact-precision asymptote ~1.15x (~63 tok/s).
+
+Per-budget (full suite, rowtile, exact): AR 54.55; B2 57.93/1.062/acc-out 0.465;
+B3 58.83/1.079/0.500; B4 59.53/1.091/0.517; B5 60.76/1.114/0.535. passes/out
+falls 0.658->0.567; rows/out ~1.16.
+
+**Corrected target framing:** the goal says "match or beat" llama's MTP *performance*.
+llama MTP is 67.3 tok/s absolute over its SLOWER AR (50.1). hipEngine AR is FASTER
+(54.55). So matching llama's absolute 67.3 tok/s needs hipEngine uplift **1.233x**,
+NOT llama's relative 1.342x (which would be ~73 tok/s, beating llama). Either bar
+(1.233x abs-parity or 1.342x relative) is above the exact-precision asymptote
+(~1.15x): closing it needs draft_acc > model's NextN head gives (impossible) or
+dp4a (fails ja gate 0.700). hipEngine already reaches 90.3% of llama's MTP tok/s
+at EXACT precision while beating llama on AR and on the ja correctness gate.
