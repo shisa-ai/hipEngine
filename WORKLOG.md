@@ -128442,3 +128442,33 @@ Artifacts: scratchpad/ja_audit_hip.json (hip greedy), scratchpad/llama_simple.ou
 Session perf (committed, unchanged): 1.0356x -> 1.0399x -> 1.0534x AR. The
 remaining gap to llama 1.342x is dominated by ja acceptance, now root-caused to
 numerical precision in the target/draft hiddens.
+
+## 2026-06-30 — STRATEGIC: the llama MTP gap is a precision/speed Pareto tradeoff, not a bug
+
+Synthesizing the full investigation, the remaining gap to llama is best understood
+as a design-point tradeoff, not a discrete defect:
+
+- hipEngine AR 54.6 tok/s > llama AR 50.1 tok/s (hipEngine's bf16 decode is FASTER).
+- hipEngine MTP uplift 1.0534x < llama 1.342x; absolute MTP 57.5 vs 67.3 tok/s.
+- Root cause (this session): hipEngine ja target matches llama 92% then drifts
+  (small accumulated numerical precision diff); the precision-sensitive NextN
+  draft is degraded more (ja draft_acc 0.52 vs 0.80), lowering acceptance and thus
+  amortization. Code/en draft ~matches llama (precision tolerated there).
+
+Interpretation: hipEngine sits at a FAST-bf16 / lower-spec-acceptance point;
+llama at a SLOWER-f32 / higher-spec-acceptance point. hipEngine wins AR; llama
+wins MTP uplift because higher acceptance amortizes the target more.
+
+To match llama's ABSOLUTE 67.3 tok/s, hipEngine needs higher draft acceptance
+(more f32 precision on the draft/target hidden path) WITHOUT giving back its AR
+speed -> i.e. FAST f32 (or mixed-precision) draft kernels. That is genuine kernel
+R&D, not a config/policy change, and it navigates a real tradeoff (naive f32 draft
+raises acceptance but costs draft time; net tok/s depends on the kernel being fast
+enough). Decisive confirmation experiment (cpu_reference f32 draft vs GPU bf16
+draft agreement-with-target on ja seeds) needs a ~25-weight + KV harness; tracked
+in task #7 as the entry point.
+
+Bottom line for the goal: this session moved GGUF MTP 1.0356x -> 1.0534x AR (two
+committed, confirmed wins) and exhausted the policy/flag space + root-caused the
+residual gap to a precision/speed tradeoff. Closing to llama 1.342x is a
+mixed-precision draft-kernel project, not reachable by further benchmark tuning.
