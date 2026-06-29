@@ -129329,3 +129329,27 @@ deep memory-counter-driven kernel R&D on an already-llama-beating AR path. So
 the correctness guard. Reaching llama's absolute 67.3 needs EITHER dp4a (fails ja
 gate, +4% only) OR a deep AR-decode kernel-R&D win (uncertain, hard, already ahead of
 llama) - neither a config/quick lever. Documented as the precise forward direction.
+
+## 2026-06-30 — AR dominant kernel analyzed: no high-value correctness-preserving optimization
+
+Read the dominant AR kernel q8_0_t16_dual_split_gemv (21% of AR). It is a standard
+tiled GEMV: grid.x = (out_a+out_b)/16 tiles, 128 threads/block stride over in_features
+(~16 iters for a 2048-input projection), shared-mem reduction across 4 sub-groups.
+Assessment of correctness-preserving optimizations:
+- Occupancy: refuted earlier (grids already large).
+- Split-K: counterproductive (shortens per-block reduction -> worse latency hiding,
+  more blocks not needed since occupancy is fine).
+- Scale (d) caching: the one redundancy is 128 threads re-loading 16 fp16 scales per
+  q8_0 block, but scales are ~6% of the kernel's memory traffic -> ~1% of AR, with
+  full bit-exact/gate overhead. Poor cost/benefit; ~1% AR (60.8->61.4) is far from 67.3.
+The kernel is a reasonably-written latency-bound small GEMV (consistent with hipEngine
+AR already beating llama AR). No obvious win; closing the AR gap needs a fundamentally
+different decode strategy = deep R&D, uncertain payoff.
+
+AR-decode lever investigation COMPLETE: headroom exists (~52% peak BW) but it is not
+occupancy-limited and the dominant kernel has no high-value correctness-preserving
+optimization. Combined with the fully-exhausted MTP-uplift surface, BOTH multipliers
+of MTP tok/s are now investigated to the limit. 1.1134x / 60.8 tok/s is the optimum
+reachable within scope and the correctness guard. Reaching llama's 67.3 requires
+either dp4a (fails ja gate; +4% only) or a multi-session decode-strategy R&D effort -
+neither a config or single-kernel lever, both requiring a human direction decision.
