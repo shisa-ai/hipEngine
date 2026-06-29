@@ -128529,3 +128529,30 @@ the draft's pre-lm-head f32 hidden and recomputing the lm-head argmax in f32
 (numpy, dequant lm-head) vs the bf16 path, and likewise the MoE GEMV; if f32
 argmax agrees with target markedly more, build/select f32-activation draft
 MoE+lm-head GEMVs. (No new HIP kernel needed for the disambiguation.)
+
+## 2026-06-30 — BREAKTHROUGH redirect: ja gap is DRAFT CONTEXT, not precision
+
+Decisive experiment (scratchpad/ja_f32_vs_bf16_draft.py): ran the EXISTING f32 GPU
+NextN kernel (qwen35_gguf_mtp_nextn_layer_logits_f32) on 30 captured ja depth-0
+seeds and measured top-1 vs target. Result: f32 draft 16/30 = 0.533, essentially
+IDENTICAL to bf16 resident draft ~0.52. => PRECISION IS NOT THE ja LEVER. The
+bf16-MoE-GEMV hypothesis is REFUTED (no need to build an f32 selected-expert GEMV).
+
+Re-diagnosis: both hipEngine drafts (f32 and bf16) draft with NO attention context
+— the default route (no --mtp-device-kv-cache, no context replay) feeds the NextN
+draft only the hidden seed + current token; its self-attention sees a single token,
+no prompt/generated KV. llama's draft-mtp maintains a draft KV cache (the process()
+catch-up decode in common/speculative.cpp), so its NextN draft attends to the full
+context. THAT is the ~0.28 acceptance gap (hipEngine ~0.52 vs llama ~0.80 ja
+depth-0), not precision.
+
+Consistency check: hipEngine context-replay routes DID raise acceptance
+(resident-strict-context B3 accepted/output 0.697; resident-context-cap32k-device-seed
+B3 0.571) but were rejected ONLY because they paired context with SERIAL target
+verify (--no-target-block-verify) => slow (~0.86x AR). The untested winning
+combination: context-replay/device-KV (llama-like draft context, high acceptance) +
+the FAST stack (block verify + --target-block-min-rows 2 + --draft-p-min 0.5 +
+direct commit). Testing now.
+
+This supersedes the precision/seed/MoE lines: the lever is matching llama's draft
+KV-context lifecycle while keeping hipEngine's fast block verify.
