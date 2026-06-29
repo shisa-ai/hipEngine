@@ -127911,3 +127911,26 @@ confirms the latest exactness fix did not change the retained serial verifier
 economics: the route is still GPU/weight-streaming bound, and the next goal path
 must reduce target passes per visible token rather than chase host launch
 overhead.
+
+## 2026-06-29 — GGUF direct row commit uses fused linear-state copy
+
+Ported the existing DFlash `linear_state_pair_commit_*` pattern into the GGUF
+direct verifier-row commit path. `Qwen35GGUFResidentSession` now lazily builds
+device pointer tables for captured verifier Conv/GDN state rows and commits an
+accepted row with one fused linear-state copy launch when all live linear layers
+have captured rows. The legacy per-layer D2D copy loop remains as fallback for
+non-uniform state sizes and preserves the old all-or-error behavior for missing
+captured rows. The commit library is lazy-loaded on first direct commit so normal
+AR/MTP startup does not pay an extra JIT/load cost.
+
+This is not a retained speed claim; it is rollback-slot scaffolding for the
+llama.cpp-style verifier lifecycle described in `docs/MTP-LLAMACPP-PARITY.md`.
+Tracked the new `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out in
+`docs/REFACTOR.md`.
+
+Validation:
+`python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_linear_state_commit.py`
+passed; `python3 -m pytest tests/test_qwen35_gguf_linear_state_commit.py -q`
+passed (`2 passed`); `git diff --check` passed;
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+passed (`7 passed`).

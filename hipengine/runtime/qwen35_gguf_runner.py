@@ -74,6 +74,11 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_decode_position_i64,
     set_i64_scalar,
 )
+from hipengine.kernels.hip_gfx1100.speculative import (
+    build_dflash_commit,
+    linear_state_pair_commit_chunked_i32,
+    linear_state_pair_commit_i32,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_chain_conv_decode_bf16_tloop,
@@ -3425,6 +3430,20 @@ class Qwen35GGUFResidentSession:
     _verify_linear_conv_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_recurrent_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_state_rows_capacity: int = field(default=0, init=False)
+    _verify_linear_state_src_conv_table_buf: object | None = field(default=None, init=False)
+    _verify_linear_state_src_recurrent_table_buf: object | None = field(default=None, init=False)
+    _verify_linear_state_dst_conv_table_buf: object | None = field(default=None, init=False)
+    _verify_linear_state_dst_recurrent_table_buf: object | None = field(default=None, init=False)
+    _verify_linear_state_commit_row_i32_buf: object | None = field(default=None, init=False)
+    _verify_linear_state_src_conv_host: np.ndarray | None = field(default=None, init=False)
+    _verify_linear_state_src_recurrent_host: np.ndarray | None = field(default=None, init=False)
+    _verify_linear_state_src_conv_cached: np.ndarray | None = field(default=None, init=False)
+    _verify_linear_state_src_recurrent_cached: np.ndarray | None = field(default=None, init=False)
+    _verify_linear_state_dst_conv_host: np.ndarray | None = field(default=None, init=False)
+    _verify_linear_state_dst_recurrent_host: np.ndarray | None = field(default=None, init=False)
+    _verify_linear_state_conv_row_nbytes: int = field(default=0, init=False)
+    _verify_linear_state_recurrent_row_nbytes: int = field(default=0, init=False)
+    _verify_linear_state_layer_count: int = field(default=0, init=False)
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
@@ -3432,6 +3451,7 @@ class Qwen35GGUFResidentSession:
     _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
+    _dflash_commit_library: object | None = field(default=None, init=False)
     _expert_pack8_library: object | None = field(default=None, init=False)
     _expert_sidecar_reader: GGUFReader | None = field(default=None, init=False)
     _expert_sidecar_model_map: object | None = field(default=None, init=False)
@@ -5008,6 +5028,125 @@ class Qwen35GGUFResidentSession:
                 stream,
             )
 
+    def _fused_linear_state_commit_enabled(self) -> bool:
+        value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
+        if value is None:
+            return True
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _chunked_linear_state_commit_enabled(self) -> bool:
+        value = os.environ.get("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED")
+        if value is None:
+            return True
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _ensure_verify_linear_state_commit_tables(self, *, runtime: HipRuntime) -> bool:
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        conv_sources: list[int] = []
+        recurrent_sources: list[int] = []
+        conv_dests: list[int] = []
+        recurrent_dests: list[int] = []
+        conv_row_nbytes = 0
+        recurrent_row_nbytes = 0
+        for layer_id, (conv_state, recurrent_state) in enumerate(
+            zip(self.scratch.layer_conv_states, self.scratch.layer_recurrent_states, strict=True)
+        ):
+            if conv_state is None or recurrent_state is None:
+                continue
+            pair = self._verify_linear_state_row_pair(layer_id)
+            if pair is None:
+                return False
+            conv_rows, recurrent_rows = pair
+            conv_nbytes = int(conv_state.nbytes)
+            recurrent_nbytes = int(recurrent_state.nbytes)
+            if conv_row_nbytes not in {0, conv_nbytes}:
+                return False
+            if recurrent_row_nbytes not in {0, recurrent_nbytes}:
+                return False
+            conv_row_nbytes = conv_nbytes
+            recurrent_row_nbytes = recurrent_nbytes
+            conv_sources.append(int(conv_rows.ptr))
+            recurrent_sources.append(int(recurrent_rows.ptr))
+            conv_dests.append(int(conv_state.ptr))
+            recurrent_dests.append(int(recurrent_state.ptr))
+        n_layers = len(conv_sources)
+        if n_layers <= 0:
+            return False
+        tables_ready = (
+            self._verify_linear_state_src_conv_table_buf is not None
+            and self._verify_linear_state_src_recurrent_table_buf is not None
+            and self._verify_linear_state_dst_conv_table_buf is not None
+            and self._verify_linear_state_dst_recurrent_table_buf is not None
+            and self._verify_linear_state_commit_row_i32_buf is not None
+            and int(self._verify_linear_state_layer_count) == n_layers
+            and int(self._verify_linear_state_conv_row_nbytes) == conv_row_nbytes
+            and int(self._verify_linear_state_recurrent_row_nbytes) == recurrent_row_nbytes
+        )
+        if not tables_ready:
+            table_nbytes = n_layers * np.dtype(np.uint64).itemsize
+            new_buffers = (
+                malloc(table_nbytes, runtime=runtime),
+                malloc(table_nbytes, runtime=runtime),
+                malloc(table_nbytes, runtime=runtime),
+                malloc(table_nbytes, runtime=runtime),
+                malloc(DType.INT32.itemsize, runtime=runtime),
+            )
+            self._verify_linear_state_src_conv_table_buf = new_buffers[0]
+            self._verify_linear_state_src_recurrent_table_buf = new_buffers[1]
+            self._verify_linear_state_dst_conv_table_buf = new_buffers[2]
+            self._verify_linear_state_dst_recurrent_table_buf = new_buffers[3]
+            self._verify_linear_state_commit_row_i32_buf = new_buffers[4]
+            self._verify_linear_state_src_conv_host = np.zeros((n_layers,), dtype=np.uint64)
+            self._verify_linear_state_src_recurrent_host = np.zeros((n_layers,), dtype=np.uint64)
+            self._verify_linear_state_src_conv_cached = np.zeros((n_layers,), dtype=np.uint64)
+            self._verify_linear_state_src_recurrent_cached = np.zeros((n_layers,), dtype=np.uint64)
+            self._verify_linear_state_dst_conv_host = np.asarray(conv_dests, dtype=np.uint64)
+            self._verify_linear_state_dst_recurrent_host = np.asarray(recurrent_dests, dtype=np.uint64)
+            self._verify_linear_state_conv_row_nbytes = conv_row_nbytes
+            self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
+            self._verify_linear_state_layer_count = n_layers
+            self._buffers = (*self._buffers, *new_buffers)
+            copy_host_to_device(
+                self._verify_linear_state_dst_conv_table_buf,
+                host_array_ptr(self._verify_linear_state_dst_conv_host),
+                self._verify_linear_state_dst_conv_host.nbytes,
+                runtime=runtime,
+            )
+            copy_host_to_device(
+                self._verify_linear_state_dst_recurrent_table_buf,
+                host_array_ptr(self._verify_linear_state_dst_recurrent_host),
+                self._verify_linear_state_dst_recurrent_host.nbytes,
+                runtime=runtime,
+            )
+
+        assert self._verify_linear_state_src_conv_host is not None
+        assert self._verify_linear_state_src_recurrent_host is not None
+        assert self._verify_linear_state_src_conv_cached is not None
+        assert self._verify_linear_state_src_recurrent_cached is not None
+        self._verify_linear_state_src_conv_host[:] = np.asarray(conv_sources, dtype=np.uint64)
+        self._verify_linear_state_src_recurrent_host[:] = np.asarray(recurrent_sources, dtype=np.uint64)
+        if not np.array_equal(self._verify_linear_state_src_conv_host, self._verify_linear_state_src_conv_cached):
+            copy_host_to_device(
+                self._verify_linear_state_src_conv_table_buf,
+                host_array_ptr(self._verify_linear_state_src_conv_host),
+                self._verify_linear_state_src_conv_host.nbytes,
+                runtime=runtime,
+            )
+            np.copyto(self._verify_linear_state_src_conv_cached, self._verify_linear_state_src_conv_host)
+        if not np.array_equal(
+            self._verify_linear_state_src_recurrent_host,
+            self._verify_linear_state_src_recurrent_cached,
+        ):
+            copy_host_to_device(
+                self._verify_linear_state_src_recurrent_table_buf,
+                host_array_ptr(self._verify_linear_state_src_recurrent_host),
+                self._verify_linear_state_src_recurrent_host.nbytes,
+                runtime=runtime,
+            )
+            np.copyto(self._verify_linear_state_src_recurrent_cached, self._verify_linear_state_src_recurrent_host)
+        return True
+
     def _commit_verify_linear_state_row(
         self,
         row_index: int,
@@ -5025,29 +5164,65 @@ class Qwen35GGUFResidentSession:
         if row_index < 0 or row_index >= int(self._verify_linear_state_rows_capacity):
             raise ValueError("row_index is outside captured linear-state rows")
         runtime = self.runtime or get_hip_runtime()
-        for layer_id, (conv_state, recurrent_state) in enumerate(
-            zip(self.scratch.layer_conv_states, self.scratch.layer_recurrent_states, strict=True)
-        ):
-            if conv_state is None or recurrent_state is None:
-                continue
-            pair = self._verify_linear_state_row_pair(layer_id)
-            if pair is None:
-                raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
-            conv_rows, recurrent_rows = pair
-            runtime.memcpy_async(
-                conv_state.ptr,
-                conv_rows.ptr + row_index * int(conv_state.nbytes),
-                int(conv_state.nbytes),
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
+        used_fused_commit = False
+        if self._fused_linear_state_commit_enabled() and self._ensure_verify_linear_state_commit_tables(runtime=runtime):
+            assert self._verify_linear_state_commit_row_i32_buf is not None
+            commit_row = np.asarray([row_index], dtype=np.int32)
+            copy_host_to_device(
+                self._verify_linear_state_commit_row_i32_buf,
+                host_array_ptr(commit_row),
+                commit_row.nbytes,
+                runtime=runtime,
             )
-            runtime.memcpy_async(
-                recurrent_state.ptr,
-                recurrent_rows.ptr + row_index * int(recurrent_state.nbytes),
-                int(recurrent_state.nbytes),
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
+            linear_commit = (
+                linear_state_pair_commit_chunked_i32
+                if self._chunked_linear_state_commit_enabled()
+                else linear_state_pair_commit_i32
             )
+            if self._dflash_commit_library is None:
+                self._dflash_commit_library = build_dflash_commit(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
+            linear_commit(
+                self._verify_linear_state_src_conv_table_buf.ptr,
+                self._verify_linear_state_dst_conv_table_buf.ptr,
+                int(self._verify_linear_state_conv_row_nbytes),
+                self._verify_linear_state_src_recurrent_table_buf.ptr,
+                self._verify_linear_state_dst_recurrent_table_buf.ptr,
+                int(self._verify_linear_state_recurrent_row_nbytes),
+                self._verify_linear_state_commit_row_i32_buf.ptr,
+                int(self._verify_linear_state_layer_count),
+                stream=stream,
+                library=self._dflash_commit_library,
+                runtime=runtime,
+            )
+            used_fused_commit = True
+        if not used_fused_commit:
+            for layer_id, (conv_state, recurrent_state) in enumerate(
+                zip(self.scratch.layer_conv_states, self.scratch.layer_recurrent_states, strict=True)
+            ):
+                if conv_state is None or recurrent_state is None:
+                    continue
+                pair = self._verify_linear_state_row_pair(layer_id)
+                if pair is None:
+                    raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+                conv_rows, recurrent_rows = pair
+                runtime.memcpy_async(
+                    conv_state.ptr,
+                    conv_rows.ptr + row_index * int(conv_state.nbytes),
+                    int(conv_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    recurrent_state.ptr,
+                    recurrent_rows.ptr + row_index * int(recurrent_state.nbytes),
+                    int(recurrent_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
         hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
         runtime.memcpy_async(
             self.scratch.hidden_seed_fp32.ptr,
