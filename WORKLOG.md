@@ -128584,3 +128584,36 @@ now precisely identified and both are real engineering, not config:
 
 Retained default unchanged (pmin05, 1.0534x is still best). context-block kept as
 a diagnostic route.
+
+## 2026-06-30 — COMPLETE SYNTHESIS: gap is verify-cost-bound; acceptance (precision OR context) does not convert
+
+Corrected the context-cost diagnosis with the per-cycle timing breakdown
+(general_en_explain, context-block route): mtp_device_kv_commit_ms = 0-1.1ms and
+ctx_rows grows incrementally (40,42,45,47,49,52) -> the draft KV is maintained
+CHEAPLY (not re-replayed). Draft = 2-6ms. The dominant per-cycle cost is
+ar_decode_ms = ~36ms = the BLOCK VERIFY itself (3 rows, matches P0.1 block(3)).
+
+Decisive: on FULL-accept cycles, 36ms block verify -> 3 output tokens = 12ms/tok
+= 83 tok/s (ABOVE llama). The aggregate (1.0032x) is dragged by low-acceptance /
+AR-only / ja cycles. So acceptance is good when it fires; the WALL is the per-row
+block-verify cost (the P0.1 MoE expert over-read, ~6.82ms/row, near-peak BW).
+
+Closing the loop on the whole investigation — the gap to llama is conclusively
+verify-cost-bound, and acceptance is NOT the convertible lever:
+- precision: refuted (f32 draft = bf16 = 0.53 ja).
+- draft context: raises draft_acc to llama parity (en 0.93) but nets 1.0032x <
+  default 1.0534x because the verify cost caps the benefit and context-draft costs
+  a bit more.
+- The retained default pmin05 (1.0534x) is the best speed/acceptance BALANCE found;
+  beating it materially needs a CHEAPER per-row block verify (MoE over-read), which
+  is near peak BW on gfx1151 = hipEngine's only remaining structural gap vs llama's
+  fused multi-token verify graph.
+
+This is the honest terminal diagnosis: hipEngine sits at faster-AR (54.6 vs 50.1)
+/ verify-cost-bound-MTP; llama at slower-AR / cheaper-fused-verify-MTP. Matching
+llama's 1.342x requires a fused/cheaper multi-row MoE verify GEMV at near-peak BW
+(graph-capture of the verify was blocked by 3rd-relaunch GDN corruption; a C-level
+multi-row MoE verify is the alternative) — genuine kernel R&D at the hardware limit.
+
+Session result: GGUF MTP default 1.0356x -> 1.0534x AR (4 committed wins);
+remaining gap exhaustively root-caused to the per-row block-verify MoE over-read.
