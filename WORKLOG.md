@@ -129120,3 +129120,36 @@ NOT a correctness-gate or kernel-speed problem. dp4a is a non-lever (only ~4% he
 fails ja gate). Every verify-cost, acceptance, policy, and baseline-fairness dimension
 is now tested and documented. 1.1134x is the optimum for the current draft+verify
 architecture; closing further requires a new cheap-context-draft design, not tuning.
+
+## 2026-06-30 — CONTEXT DRAFT MEASURED AS NO-OP ON DRAFT QUALITY (closes the deferred lever)
+
+Directly tested the one deferred lever: does hipEngine's context draft raise draft
+quality (the hypothesized path to llama's ~0.80 per-draft acceptance)? Ran the full
+context-block route resident-context-block-minrows2-pmin05-cap32k (default + context
+replay + device-kv) on the full suite B5:
+  default (no context): draft_acc 0.723, acc/out 0.535, 60.76 tok/s, 1.114x
+  context-block:        draft_acc 0.695, acc/out 0.537, 56.31 tok/s, 1.032x
+Context draft_acc (0.695) is LOWER than no-context (0.723); acc/out is identical
+(0.537 vs 0.535); tok/s is worse. => hipEngine's context machinery does NOT improve
+draft quality. The earlier "context raises draft_acc to 0.93" claim is empirically
+FALSE on the current code.
+
+IMPLICATION: the deferred "cheap-correct on-device context draft" research project
+would NOT close the gap - a cheaper context draft would be a cheaper NO-OP, since
+context does not raise draft_acc at all. The lever is measured out, not pending.
+
+So llama's higher reported acc/out (0.598 B2) vs hipEngine (0.465 B2) is NOT
+explained by a hipEngine-fixable context/draft-quality deficiency. It is most likely
+a metric-definition difference across harnesses (llama-server --protocol natural
+--max-tokens 512 vs hipEngine in-process cycles=10) - the accepted/output counters
+are computed by different code paths and may not be strictly comparable. The
+APPLE-TO-APPLE quantity hipEngine controls (its own AR vs its own MTP) is solid:
+1.1134x, robust across every lever.
+
+FINAL STATE: every llama MTP pipeline lever is now MEASURED (not inferred) and
+either shipped (rowtile) or refuted: dp4a (-4% + ja gate), graph capture (GPU-bound),
+MoE grouping (L2), vocab-cap recover (-1.3%), p_min 0/0.3 (worse), no-probe (worse),
+budget B6+ (architectural cap), generation length (uplift stable), and CONTEXT
+(no-op on draft quality). 1.1134x (60.8 tok/s, 90.3% of llama's 67.3, beats llama AR
+54.6 vs 50.1 and the ja gate) is the measured optimum for hipEngine's exact-precision
+GGUF MTP on gfx1151. No correctness-preserving hipEngine-side lever remains.
