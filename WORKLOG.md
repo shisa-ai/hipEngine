@@ -127269,3 +127269,30 @@ checkout `/home/lhl/llama.cpp/llama.cpp-hip` at
 - `tools/server/server-context.cpp:2629-2647`, `3395-3400`, and `3583` show the
   production loop shape: set draft params and run `draft()`, run target decode
   and `process()`, then call `accept()` after accepted-row sampling.
+
+## 2026-06-29 — GGUF MTP llama.cpp-context route combinations rejected on partial probe
+
+Followed up the llama.cpp lifecycle audit with two directional partial-suite
+route probes (4 code prompts, cycles=5, budgets B1/B3/B5, gfx1151) before
+adding any named route. Both used the retained cap32k recovery shape
+(`--resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify
+--mtp-draft-vocab-cap 32768 --adaptive-full-vocab-after-cap-miss`) and toggled
+MTP device context:
+
+- Generated-token device KV only:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_MTP_BENCH_CACHE_SESSION=1 python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 5 --budgets 1,3,5 --limit 4 --raw-root /tmp/hipengine-generated-kv-cap32k-partial/mtp --output /tmp/hipengine-generated-kv-cap32k-partial.json --python python3 --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--resident-mtp-draft --extra-arg=--adaptive-ar-fallback --extra-arg=--no-target-block-verify --extra-arg=--mtp-draft-vocab-cap --extra-arg=32768 --extra-arg=--adaptive-full-vocab-after-cap-miss --extra-arg=--mtp-device-kv-cache`
+  -> B1 `52.02 tok/s`, accepted/output `19/39 = 0.487`; B3 `48.93`,
+  `39/59 = 0.661`; B5 `46.13`, `45/65 = 0.692`.
+- Prompt catch-up replay + generated-token device KV:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_MTP_BENCH_CACHE_SESSION=1 python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 5 --budgets 1,3,5 --limit 4 --raw-root /tmp/hipengine-prompt-kv-cap32k-root40-partial/mtp --output /tmp/hipengine-prompt-kv-cap32k-root40-partial.json --python python3 --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--resident-mtp-draft --extra-arg=--adaptive-ar-fallback --extra-arg=--no-target-block-verify --extra-arg=--mtp-draft-vocab-cap --extra-arg=32768 --extra-arg=--adaptive-full-vocab-after-cap-miss --extra-arg=--mtp-device-kv-cache --extra-arg=--mtp-context-replay`
+  -> B1 `51.62 tok/s`, accepted/output `19/39 = 0.487`; B3 `47.26`,
+  `37/57 = 0.649`; B5 `43.51`, `41/61 = 0.672`.
+
+Comparison point: the retained cap32k recovery partial probe without device KV
+was B1 `52.45 tok/s`, accepted/output `19/39 = 0.487`. Device KV did not improve
+B1 acceptance and added draft/commit/context overhead; prompt replay also
+reduced deeper-budget acceptance on this partial. Decision: do not add a named
+route or full-suite gate for these combinations. The active goal remains a real
+verifier-amortization change (`process_verifier_rows()`/`draft()`/`accept()` with
+fewer target weight-stream passes per visible token), not simply enabling the
+existing MTP device KV knobs.
