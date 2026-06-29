@@ -1,8 +1,8 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-28 (production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
-- Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers are single-prompt diagnostics, not retained benchmark rows.
+- Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite retained diagnostics, not speed rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
 - llama.cpp checkout used for source/runtime evidence: `6e9007ae61f4e994c27484759caac6ef2aa32b30`
 
@@ -23,8 +23,8 @@ tooling or a since-corrected methodology — flagged inline below).
   ~47 tok/s (its 89.55 tok/s MTP ÷ its own 1.9× MTP-over-AR ratio).
 - **MTP is the entire gap.** Fresh full-suite measurement on current code
   (`gguf_ar_mtp_suite.py --scope full`, resident-serial-fallback, 10 prompts):
-  **AR 54.54 tok/s; MTP best is B1 at 48.78 tok/s = 0.894× AR — MTP does NOT beat
-  AR at any budget** (B1 0.894× → B5 0.712×). llama.cpp's MTP is **1.9× its AR**.
+  **AR 54.51 tok/s; MTP best is B1 at 50.18 tok/s = 0.921× AR — MTP does NOT beat
+  AR at any budget** (B1 0.921× → B5 0.759×). llama.cpp's MTP is **1.9× its AR**.
   The 1.9× we chase is **speculative amortization**, not kernel throughput.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
@@ -79,7 +79,7 @@ on current code; (M) are current-session measurements.
 | MTP draft (resident NextN, c=1×B) | (M) ~3.3 ms/depth (B3) | folded in graph | ~2× | device-resident + device-chained (#3) |
 | MTP target verify (current resident-serial route) | (M) 18.63 ms host / 16.56 ms kernel per target step; ~709 launches/step | folded into ~9 ms 4-token fused graph | structural | GPU-bound; launch collapse alone is not the first lever on current route |
 | Partial-accept rollback (B5) | (M) replay-forward dominates; LM-head skip landed (#4) | n/a | — | replay forward is the same GPU wall |
-| **Net MTP throughput (full suite)** | **B1 48.8 / B3 43.3 / B5 38.8 tok/s (0.894× → 0.712× AR)** | **~89.6 tok/s (1.9× AR)** | **2–2.5×** | **amortization gap = the whole story** |
+| **Net MTP throughput (full suite)** | **B1 50.2 / B3 45.4 / B5 41.4 tok/s (0.921× → 0.759× AR)** | **~89.6 tok/s (1.9× AR)** | **2–2.5×** | **amortization gap = the whole story** |
 
 ### Everything we tried — expected vs actual
 
@@ -94,6 +94,7 @@ on current code; (M) are current-session measurements.
 | device-chain resident draft (#3) | cut per-depth host sync | bit-exact, flat e2e | kept default-off (clean arch) |
 | partial-accept LM-head skip (#4) | cut discardable replay work | **+3.5% B5, bit-exact** | **kept, default-on** |
 | serial verifier no-logits cleanup | remove unused full-logits D2H | **+0.7% B1 full-suite, acceptance unchanged** | **kept, default-on** |
+| resident top-k40 draft route | avoid full legacy draft fallback for root top-k40 | **+2.9% B1 full-suite, acceptance unchanged** | **kept, default-on** |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
 | T16 Q4/Q5 selected dp4a variants | faster MoE GEMV | 1.04–1.10× iso, flat/regress B3 | diagnostic gates |
@@ -102,8 +103,9 @@ on current code; (M) are current-session measurements.
 | HIP graph capture of verify | collapse the ~875 launches | blocked: 3rd-relaunch GDN state corruption | blocked (see WORKLOG 2026-06-28) |
 
 Pattern: **every GPU/kernel/launch micro-lever is real in isolation and flat at
-e2e.** The only retained e2e wins are amortization-shaped (#4 LM-head skip,
-adaptive fallback). That is the signal to stop optimizing kernels and work the
+e2e.** The retained e2e wins are route/amortization cleanups (#4 LM-head skip,
+serial no-logits, resident top-k40, adaptive fallback), not raw kernel
+micro-optimization. That is the signal to stop optimizing kernels and work the
 amortization.
 
 ### Decode-wall composition (rocprof, current code, c=1, this session)
@@ -165,8 +167,8 @@ not a result. So:
    `--scope full` before promoting/committing anything as a win or making it
    default. Never retain a speed claim off a microbench, a single prompt, or a
    `partial` run alone.
-3. **Compare to the committed baseline:** `benchmarks/results/2026-06-29-ar-mtp-suite-full-no-logits.json`
-   (AR 54.54 tok/s; MTP B1 0.894× → B5 0.712× AR; `mtp_beats_ar=false`). Diff the
+3. **Compare to the committed baseline:** `benchmarks/results/2026-06-29-ar-mtp-suite-full-resident-topk40.json`
+   (AR 54.51 tok/s; MTP B1 0.921× → B5 0.759× AR; `mtp_beats_ar=false`). Diff the
    `verdict` + per-budget `vs_ar_ratio`/`accepted_per_output`. The suite asserts
    `apple_to_apple_ok=true` (same decode protocol + prompt-set hashes) — if it is
    false, the comparison is invalid, full stop.
@@ -200,7 +202,7 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 2. **Work the GPU-bound branch: acceptance/amortization.** Raise
    accepted-tokens-per-verify so each weight-read pass yields more output tokens.
    The full-suite sweep makes the problem concrete: acceptance *rises* with
-   budget (acc/out 0.48 → 0.64 from B1→B5) but tok/s *falls* (48.8 → 38.8) —
+   budget (acc/out 0.48 → 0.64 from B1→B5) but tok/s *falls* (50.2 → 41.4) —
    drafting more currently costs more than the extra acceptance saves. The win is
    higher acceptance **without** more draft/verify work per output token. Work
    draft quality on the full category suite (not the single merge-sort prompt —
@@ -210,9 +212,10 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    corruption) or a C-level multi-layer dispatch loop. This is llama.cpp's
    structural advantage (one fused graph ≈ 9 ms for the 4-token verify), but it is
    not where current `resident-serial-fallback` wall time goes.
-4. **Make MTP actually beat AR before any retained speedup claim.** Use
-   `--scope full`; a retained claim needs `mtp_beats_ar=true` on the full suite
-   with the true-AR denominator from the same run.
+4. **Make MTP actually beat AR before any retained speedup claim.** Current best
+   B1 needs roughly **+8.6% relative throughput** to beat the same-run AR
+   denominator. Use `--scope full`; a retained claim needs `mtp_beats_ar=true`
+   on the full suite with the true-AR denominator from the same run.
 5. **Fix the stale AR-baseline contracts** (`TRUE_AR_PRODUCTION_TIMING_REQUIRED`
    + speed-claim contract + tests) to the eager path so the category bench's own
    `--true-ar-baseline-json` comparison works again (REFACTOR.md).

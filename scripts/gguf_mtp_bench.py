@@ -857,8 +857,8 @@ def main(argv: list[str] | None = None):
         if args.resident_mtp_draft:
             if args.draft_p_min > 0.0:
                 resident_mtp_draft_fallback_reason = "draft_p_min requires probability output from legacy logits path"
-            elif topk_candidate_count > 8:
-                resident_mtp_draft_fallback_reason = "resident draft top-k kernel supports production top-k up to 8"
+            elif topk_candidate_count > 64:
+                resident_mtp_draft_fallback_reason = "resident draft top-k kernel supports production top-k up to 64"
             else:
                 resident_draft = Qwen35GGUFResidentMTPDraftRunner(
                     weights,
@@ -1063,7 +1063,7 @@ def main(argv: list[str] | None = None):
                     start_token=current_token,
                     start_position=current_pos,
                     draft_n_max=cycle_draft_n_max,
-                    top_k=min(diagnostic_topk_candidate_count, 8),
+                    top_k=min(diagnostic_topk_candidate_count, 64),
                     rope_cos=_rope_cos,
                     rope_sin=_rope_sin,
                     dense_key_cache=mtp_device_key_cache if args.mtp_device_kv_cache else None,

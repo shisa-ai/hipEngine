@@ -362,8 +362,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
     ) -> tuple[list[int], list[list[int]], int]:
         if draft_n_max <= 0:
             raise ValueError("draft_n_max must be positive")
-        if top_k <= 0 or top_k > 8:
-            raise ValueError("resident GGUF MTP top_k must be in 1..8")
+        if top_k <= 0 or top_k > 64:
+            raise ValueError("resident GGUF MTP top_k must be in 1..64")
         hidden = np.ascontiguousarray(hidden_seed, dtype=np.float32)
         if hidden.shape != (1, self.hidden_size):
             raise ValueError("hidden_seed must have shape [1, hidden_size]")
@@ -372,6 +372,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self._device_chain_enabled
             and draft_p_min <= 0.0
             and int(draft_n_max) <= self._draft_chain_cap
+            and int(top_k) <= self.experts_used
         ):
             return self._propose_chain_device(
                 current_seed=self.seed_a,
@@ -853,20 +854,36 @@ class Qwen35GGUFResidentMTPDraftRunner:
     def _topk_indices_into(self, out_indices_ptr: int, top_k: int) -> None:
         """Write the top-``top_k`` logit indices to a device buffer (no sync)."""
         runtime = self.runtime or get_hip_runtime()
-        topk_f32_rows_i32(
-            self.logits.ptr,
-            self.topk_values.ptr,
-            out_indices_ptr,
-            1,
-            self.vocab,
-            int(top_k),
-            threads=256,
-            library=self._lm_head_lib,
-            runtime=runtime,
-        )
+        if int(top_k) <= 8:
+            topk_f32_rows_i32(
+                self.logits.ptr,
+                self.topk_values.ptr,
+                out_indices_ptr,
+                1,
+                self.vocab,
+                int(top_k),
+                threads=256,
+                library=self._lm_head_lib,
+                runtime=runtime,
+            )
+            return
+        raise ValueError("device top-k is only supported for top_k <= 8")
 
     def _read_topk(self, top_k: int) -> list[int]:
         runtime = self.runtime or get_hip_runtime()
+        if int(top_k) > 8:
+            runtime.device_synchronize()
+            logits = np.empty((self.vocab,), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(logits),
+                DeviceBuffer(self.logits.ptr, logits.nbytes),
+                logits.nbytes,
+                runtime=runtime,
+            )
+            top_count = min(int(top_k), int(logits.shape[0]))
+            top_idx = np.argpartition(logits, -top_count)[-top_count:]
+            top_sorted = top_idx[np.argsort(logits[top_idx])[::-1]]
+            return [int(token) for token in top_sorted.tolist()]
         self._topk_indices_into(self.topk_indices.ptr, top_k)
         runtime.device_synchronize()
         out = np.empty((int(top_k),), dtype=np.int32)

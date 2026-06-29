@@ -126962,3 +126962,30 @@ Result: `apple_to_apple_ok=True`; AR 54.54 tok/s; B1 48.78 tok/s = 0.8944x AR
 0.476, draft acceptance 0.0247; total_accepted 91 / output 191). MTP still does
 NOT beat AR, so this is retained as a small exact cleanup, not a speedup claim.
 README/changelog/parity doc updated. Next branch remains acceptance/amortization.
+
+## 2026-06-29 — GGUF MTP resident top-k40 route: +2.9% B1 full-suite, still below AR
+
+The retained root-top40 MTP policy was still forcing the resident draft runner back through the full
+legacy draft path because `Qwen35GGUFResidentMTPDraftRunner.propose_chain()` only allowed `top_k <= 8`.
+Changed the resident draft route to allow top-k up to 64: `top_k <= 8` still uses the existing device
+`topk_f32_rows_i32` path, while wider top-k reads the already-resident draft logits to host and does a
+NumPy top-k selection. The device-chain path remains guarded to `top_k <= experts_used`, so it never
+overruns the current top-k accumulator.
+
+Partial A/B, 4 prompts, cycles=5, B1/B3/B5, same acceptance:
+- legacy top40 fallback: B1 48.14 tok/s, B3 44.22, B5 39.85.
+- resident top40 route: B1 49.69 tok/s (+3.2%), B3 46.24 (+4.5%), B5 42.39 (+6.4%).
+
+Validation:
+- `python3 -m py_compile hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py`
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_resident_draft_device_chain.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py`
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --output benchmarks/results/2026-06-29-ar-mtp-suite-full-resident-topk40.json`
+
+Full gate result: `apple_to_apple_ok=True`; AR 54.51 tok/s; B1 50.18 tok/s = 0.9206x AR
+(old no-logits B1 48.78 / 0.8944x, +2.9%); B2 47.66 (0.874x); B3 45.42 (0.833x);
+B4 42.92 (0.787x); B5 41.38 (0.759x). Acceptance unchanged vs the no-logits baseline
+(B1 accepted/output 91/191 = 0.476, draft acceptance 0.0247; B5 accepted/output
+181/281 = 0.644). MTP still does NOT beat AR; current best B1 needs roughly +8.6% relative
+throughput to clear the same-run AR denominator. README/changelog/parity doc updated. Next branch
+remains full-suite acceptance/amortization, not existing block verify (measured negative) or root-topk8
+(faster but acceptance-regressive).
