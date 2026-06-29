@@ -128899,3 +128899,31 @@ than silently lowering precision to chase the ratio.
 
 Retained: bit-exact rowtile lm-head default, 1.1134x AR. dp4a verify recorded as a
 diagnostic + design option.
+
+## 2026-06-30 — dp4a REJECTED on the correctness gate (ja top-1 0.70 < 0.90); context still doesn't convert
+
+Followed up the dp4a lever and the acceptance lever now that the rowtile made
+verify ~12% cheaper.
+
+dp4a correctness gate (scratchpad/dp4a_correctness.py, dp4a vs exact greedy top-1):
+code 1.000, JA 0.700 (diverges at token 20). FAILS the CLAUDE.md gate
+(top-1 >= 0.90): q8_1 activation quantization hurts CJK specifically (same ja
+precision-sensitivity seen throughout). dp4a REJECTED on correctness, not just the
+earlier acc/out heuristic. Bit-exact rowtile (1.1134x) remains the retained win.
+
+Context route re-test WITH the rowtile (verify now cheaper):
+resident-context-block-minrows2-pmin05-cap32k --scope full best B5 1.0453x — STILL
+below the no-context default 1.1134x. Context's llama-like draft_acc (0.69-0.77
+here) still does not convert: its KV-attention draft cost drags even with the
+cheaper verify. So context is definitively not the lever (confirmed pre- and
+post-rowtile).
+
+COMPLETE picture after the kernel effort: retained bit-exact default 1.1134x AR
+(60.8 tok/s = 90.3% of llama's 67.3; hipEngine AR 54.6 > llama AR 50.1). The
+residual gap to llama 1.342x is STRUCTURAL: llama accepts more per output (0.71 vs
+hipEngine 0.53) at LOW cost via a FUSED draft+verify graph; hipEngine's
+high-acceptance draft (context) is too expensive as a separate pass, and the fused
+draft+verify graph is blocked by the 3rd-relaunch GDN corruption. Every
+correctness-passing lever (block verify, p_min, rowtile) is captured; dp4a and
+context are exhausted (gate-fail / non-converting). Closing to 1.342x needs the
+fused draft+verify graph (unblock GDN graph capture) — a separate structural project.
