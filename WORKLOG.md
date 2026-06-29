@@ -127379,3 +127379,29 @@ Validation after scoping the context to device-seed routes:
 `python3 -m py_compile hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
 -> passed.
 `git diff --check` -> passed.
+
+## 2026-06-29 — GGUF MTP goal review: optimization-list sweep closed
+
+Reviewed `docs/MTP-LLAMACPP-PARITY.md` and the llama.cpp MTP lifecycle anchors
+at `/home/lhl/llama.cpp/llama.cpp-hip` commit
+`6e9007ae61f4e994c27484759caac6ef2aa32b30`
+(`common/speculative.cpp:816-1193`, `common/speculative.cpp:1932-2065`,
+`tools/server/server-context.cpp:2629-2647`, `3395`, `3583`). The active goal
+should stay speedup-oriented, not become another route sweep:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full`
+must produce `apple_to_apple_ok=true` and `verdict.mtp_beats_ar=true`.
+
+Current best retained diagnostic remains `resident-cap32k-device-seed`: full
+suite AR `54.59 tok/s`, best MTP B1 `52.08 tok/s = 0.9540x AR`,
+`mtp_beats_ar=false`. That is close enough that microseconds matter, but the
+mechanical blocker is still structural: the competitive root-topK B1 route runs
+one target step per visible output token, while root-topK branch acceptance makes
+the existing block verifier invalid past row 1 whenever the accepted target
+token differs from draft top-1. The diagnostic top-k path is not adding extra
+work on this route because root acceptance already asks for top-k 40. Llama.cpp's
+useful pattern is its resident `pending_h` / `verify_h` / `process()` /
+`draft()` / `accept()` lifecycle with verifier-row batching and hidden-row
+reseed, not another cap/rootK/seed-copy knob. Next work should either implement
+a real resident `GGUFMTPDraftContext` around that lifecycle or add a branch-safe
+target verifier that reduces target weight-stream passes per visible token.
