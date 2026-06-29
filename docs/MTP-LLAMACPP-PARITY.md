@@ -81,6 +81,10 @@ tooling or a since-corrected methodology — flagged inline below).
   88.0% kernel time**, **708.5 launches/step**, with dense Q8_0 GEMV **48.9%**
   and selected-MoE GEMV **24.0%** of kernel time
   (`benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-current.json`).
+  A post bulk-row1-exactness rerun remains the same shape: **18.65 ms host /
+  16.75 ms kernel = 89.8% kernel time**, **708.6 launches/step**, dense Q8_0
+  GEMV **49.0%** and selected-MoE GEMV **24.6%**
+  (`benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-post-bulk-row1.json`).
   The retained
   `resident-serial-fallback` route is GPU/weight-streaming bound, not
   host-launch-bound.
@@ -106,7 +110,10 @@ tooling or a since-corrected methodology — flagged inline below).
    16.95 ms kernel (87.5% kernel share), 708.9 calls/step, with dense Q8_0 GEMV
    48.8% and selected MoE GEMV 24.7% of kernel time. A current artifact measured
    19.03 ms host / 16.76 ms kernel (88.0% kernel share), 708.5 calls/step, with
-   dense Q8_0 GEMV 48.9% and selected MoE GEMV 24.0% of kernel time. The
+   dense Q8_0 GEMV 48.9% and selected MoE GEMV 24.0% of kernel time. A post
+   bulk-row1-exactness artifact measured 18.65 ms host / 16.75 ms kernel (89.8%
+   kernel share), 708.6 calls/step, with dense Q8_0 GEMV 49.0% and selected MoE
+   GEMV 24.6% of kernel time. The
    pre-cleanup call-site profile was 18.99 ms host / 16.68 ms kernel with unused
    full-logits D2H.
 3. **The `--true-ar-baseline-json` apple-to-apple path is BROKEN.** Since #8

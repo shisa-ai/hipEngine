@@ -127892,3 +127892,22 @@ Result: `apple_to_apple_ok=true`, AR `54.88 tok/s`, B3 MTP `49.01 tok/s =
 rollback-slot scaffolding, but do not run a full suite for this route. It still
 does not cut target verifier work enough to beat true AR; the next lever remains
 verifier amortization / fewer target passes per visible token.
+
+## 2026-06-29 — refreshed GGUF verifier host/GPU split after bulk row-1 fix
+
+Re-ran the retained GGUF serial-target verifier profile after the short-bulk
+row-1 exactness fix to keep the active goal's host-vs-GPU split current.
+
+Command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_verifier_rocprof.py --steps 8 --warmup 3 --raw-root /tmp/hipengine-gguf-mtp-verifier-rocprof-post-bulk-row1 --out benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-post-bulk-row1.json`
+
+Result: diagnostic artifact
+`benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-post-bulk-row1.json`.
+Average host wall **18.647 ms/step**, kernel time **16.752 ms/step**,
+kernel share **89.8%**, **708.6 launches/step**. Kernel buckets remain dominated
+by dense Q8_0 GEMV (**8.213 ms/step, 49.0%**) and selected-MoE GEMV
+(**4.113 ms/step, 24.6%**), then lm-head (**1.850 ms/step, 11.0%**). This
+confirms the latest exactness fix did not change the retained serial verifier
+economics: the route is still GPU/weight-streaming bound, and the next goal path
+must reduce target passes per visible token rather than chase host launch
+overhead.
