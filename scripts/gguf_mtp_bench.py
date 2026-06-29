@@ -545,6 +545,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Attention scheduler for --target-block-verify (default: bulk; serial-exact is a slow correctness baseline).",
     )
     parser.add_argument(
+        "--target-block-min-rows",
+        type=int,
+        default=0,
+        help=(
+            "Minimum block rows (prev + drafts) required to use --target-block-verify. "
+            "0 (default) means use the GGUF ssm_conv_kernel (=4), the historical gate. "
+            "Set 2 to allow B1/B2 block verify: verify_target_block is bit-exact vs "
+            "serial-exact at rows 2-3 (probe p02a) and direct commit is exact for "
+            "start_position+rows<1024, so smaller blocks attempt fewer rows per cycle."
+        ),
+    )
+    parser.add_argument(
         "--target-block-direct-state-commit",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1619,7 +1631,11 @@ def main(argv: list[str] | None = None):
                 and cycle_root_topk_accept == 1
                 and cycle_sibling_topk_accept == 1
                 and not args.topk_branch_redraft
-                and len(draft_tokens) + 1 >= int(session.runner.weights.config.ssm_conv_kernel)
+                and len(draft_tokens) + 1 >= (
+                    int(args.target_block_min_rows)
+                    if int(args.target_block_min_rows) > 0
+                    else int(session.runner.weights.config.ssm_conv_kernel)
+                )
                 and int(verify_input_token) == current_device_token
             )
             if can_block_verify:

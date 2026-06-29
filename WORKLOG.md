@@ -128143,3 +128143,34 @@ verify and re-run --scope full.
 Validation: `python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q` 10 passed;
 `python3 -m py_compile scripts/gguf_ar_mtp_suite.py` ok. Suite ran
 `apple_to_apple_ok=true`, AR 54.52 tok/s.
+
+## 2026-06-30 — P0.2a: enable B1/B2 block verify (min-rows gate); draft cost is the next lever
+
+Added `--target-block-min-rows` (default 0 = historical ssm_conv_kernel=4 gate).
+Setting 2 lets B1/B2 use the amortized block verifier instead of falling to
+serial. Correctness gated: `verify_target_block` is bit-exact vs serial-exact at
+rows 2/3/4 in bulk and native (probe `scratchpad/p02a_block_lowrows_correctness.py`
+and new `tests/test_gguf_block_verify_low_rows.py`, 1 passed). Direct commit is
+exact for start_position+rows<1024 (always true here). bulk-4 is the existing
+production path, so this only newly enables rows 2-3.
+
+Routes added: `resident-strict-block-direct-minrows2` (+adaptive-ar-fallback) and
+`...-nofallback`.
+
+Measured `resident-strict-block-direct-minrows2` --scope full
+(`benchmarks/results/2026-06-30-ar-mtp-suite-full-strict-block-direct-minrows2.json`):
+AR 54.57; best B2 52.0 tok/s = 0.9528x AR, `mtp_beats_ar=false`. B2 now amortizes
+(passes/out 0.73, block_passes 30) but per-category acc/out collapsed again
+(general_en 0.0) because `--adaptive-ar-fallback` still quits after a low cycle.
+So B2-block-with-fallback is below the retained default (1.03x) — REJECTED as
+default.
+
+Cost-model conclusion (from P0.1 + this): with B2 block enabled and good
+acceptance, target/out ≈ block(3 rows)=37ms / (a+1≈2.4) ≈ 15ms + draft. The gap
+to llama's 14.9ms/out (1.34x) is DRAFT COST: hipEngine ~4.4ms/depth (backed out)
+≈ 3.5ms/out vs llama NextN ~1.5ms ≈ 1.2ms/out. Next: measure draft cost directly
+and reduce it; that is the lever from ~AR to llama parity. Block amortization and
+acceptance are no longer the blockers.
+
+Validation: `pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_block_verify_low_rows.py -q`
+(11 passed); `py_compile` ok; suite `apple_to_apple_ok=true`.

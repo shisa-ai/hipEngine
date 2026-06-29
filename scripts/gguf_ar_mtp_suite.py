@@ -240,6 +240,25 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--target-block-verify",
         "--target-block-direct-state-commit",
     ],
+    # P0.2a: enable block verify at B1/B2 (min-rows 2) so the optimal small budgets
+    # amortize instead of falling to serial. Strict top-1 (apple-to-apple greedy).
+    "resident-strict-block-direct-minrows2": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-ar-fallback",
+    ],
+    "resident-strict-block-direct-minrows2-nofallback": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+    ],
     "resident-draft": ["--resident-mtp-draft"],
     "resident-block": ["--resident-mtp-draft", "--target-block-verify"],
 }
