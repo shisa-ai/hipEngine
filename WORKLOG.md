@@ -129353,3 +129353,21 @@ of MTP tok/s are now investigated to the limit. 1.1134x / 60.8 tok/s is the opti
 reachable within scope and the correctness guard. Reaching llama's 67.3 requires
 either dp4a (fails ja gate; +4% only) or a multi-session decode-strategy R&D effort -
 neither a config or single-kernel lever, both requiring a human direction decision.
+
+## 2026-06-30 — verify attention amortization refuted; production verify already on fast path
+
+Checked the last idea: amortize the verify's q8_0 attention projections across rows
+(the lm-head rowtile pattern applied to attention, 33% of verify). A/B on the block
+verify (rows=4): use_wmma_prefill=False 42.3 ms vs True 56.9 ms - the weight-amortized
+WMMA path is SLOWER at verify sizes (confirms "WMMA underutilized at 4<16 rows"). And
+--target-block-wmma-prefill DEFAULTS to False, so the production verify ALREADY uses
+the faster per-row decode path; my rocprof breakdown (wmma=False) is the production
+path. The rowtile pattern helped the lm-head (Q6_K: expensive dequant + 417MB VRAM
+read, both amortizable) but does NOT transfer to q8_0 attention (cheap dequant, small
+MALL-served weight) - amortization is slower. Refuted.
+
+So the verify is on its optimal fast path (per-row decode of already-fast kernels) and
+attention amortization is not a lever. This closes the last untested verify-side idea.
+EVERYTHING is now checked: MTP uplift (all levers), AR multiplier (+ dominant kernel),
+and verify attention amortization. 1.1134x / 60.8 tok/s is the optimum within scope
+and the correctness guard; 67.3 needs dp4a (fails ja gate) or multi-session decode R&D.
