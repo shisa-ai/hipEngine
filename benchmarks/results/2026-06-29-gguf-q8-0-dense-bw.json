@@ -10,82 +10,100 @@
       "rows": 1,
       "in_features": 2048,
       "out_features": 2048,
-      "us": 10.74,
-      "matrix_MB": 0.557,
-      "achieved_read_bw_gbs": 51.9,
-      "pct_peak": 20.3
+      "us": 25.71,
+      "matrix_MB": 4.456,
+      "pool_copies": 16,
+      "pool_MB": 71.3,
+      "achieved_read_bw_gbs": 173.3,
+      "pct_peak": 67.7
     },
     {
       "rows": 2,
       "in_features": 2048,
       "out_features": 2048,
-      "us": 13.77,
-      "matrix_MB": 0.557,
-      "achieved_read_bw_gbs": 80.9,
-      "pct_peak": 31.6
+      "us": 27.44,
+      "matrix_MB": 4.456,
+      "pool_copies": 16,
+      "pool_MB": 71.3,
+      "achieved_read_bw_gbs": 324.8,
+      "pct_peak": 126.9
     },
     {
       "rows": 4,
       "in_features": 2048,
       "out_features": 2048,
-      "us": 26.64,
-      "matrix_MB": 0.557,
-      "achieved_read_bw_gbs": 83.7,
-      "pct_peak": 32.7
+      "us": 38.21,
+      "matrix_MB": 4.456,
+      "pool_copies": 16,
+      "pool_MB": 71.3,
+      "achieved_read_bw_gbs": 466.6,
+      "pct_peak": 182.3
     },
     {
       "rows": 1,
       "in_features": 2048,
       "out_features": 6144,
-      "us": 23.51,
-      "matrix_MB": 1.671,
-      "achieved_read_bw_gbs": 71.1,
-      "pct_peak": 27.8
+      "us": 74.38,
+      "matrix_MB": 13.369,
+      "pool_copies": 6,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 179.7,
+      "pct_peak": 70.2
     },
     {
       "rows": 2,
       "in_features": 2048,
       "out_features": 6144,
-      "us": 39.14,
-      "matrix_MB": 1.671,
-      "achieved_read_bw_gbs": 85.4,
-      "pct_peak": 33.4
+      "us": 85.2,
+      "matrix_MB": 13.369,
+      "pool_copies": 6,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 313.8,
+      "pct_peak": 122.6
     },
     {
       "rows": 4,
       "in_features": 2048,
       "out_features": 6144,
-      "us": 73.64,
-      "matrix_MB": 1.671,
-      "achieved_read_bw_gbs": 90.8,
-      "pct_peak": 35.5
+      "us": 116.5,
+      "matrix_MB": 13.369,
+      "pool_copies": 6,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 459.0,
+      "pct_peak": 179.3
     },
     {
       "rows": 1,
       "in_features": 768,
       "out_features": 2048,
-      "us": 8.5,
-      "matrix_MB": 0.209,
-      "achieved_read_bw_gbs": 24.6,
-      "pct_peak": 9.6
+      "us": 12.7,
+      "matrix_MB": 1.671,
+      "pool_copies": 41,
+      "pool_MB": 68.5,
+      "achieved_read_bw_gbs": 131.6,
+      "pct_peak": 51.4
     },
     {
       "rows": 2,
       "in_features": 768,
       "out_features": 2048,
-      "us": 10.08,
-      "matrix_MB": 0.209,
-      "achieved_read_bw_gbs": 41.4,
-      "pct_peak": 16.2
+      "us": 13.6,
+      "matrix_MB": 1.671,
+      "pool_copies": 41,
+      "pool_MB": 68.5,
+      "achieved_read_bw_gbs": 245.7,
+      "pct_peak": 96.0
     },
     {
       "rows": 4,
       "in_features": 768,
       "out_features": 2048,
-      "us": 16.49,
-      "matrix_MB": 0.209,
-      "achieved_read_bw_gbs": 50.7,
-      "pct_peak": 19.8
+      "us": 20.59,
+      "matrix_MB": 1.671,
+      "pool_copies": 41,
+      "pool_MB": 68.5,
+      "achieved_read_bw_gbs": 324.6,
+      "pct_peak": 126.8
     }
   ],
   "command": "python3 scripts/gguf_q8_0_dense_bw_microbench.py --json benchmarks/results/2026-06-29-gguf-q8-0-dense-bw.json"

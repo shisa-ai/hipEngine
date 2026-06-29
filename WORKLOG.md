@@ -126763,3 +126763,37 @@ benchmarks/results/2026-06-29-gguf-decode-rocprof-families.json,
 benchmarks/results/2026-06-29-gguf-q8-0-dense-bw.json. NEXT: write a bandwidth-saturating dense Q8_0
 rows=1 decode GEMV (wide dwordx4 weight loads + split-K for memory-level parallelism), correctness
 gate vs cpu_reference, then measure dense_q8_0_gemv BW and e2e decode tok/s.
+
+## 2026-06-29 — #10 CORRECTION: prior "dense Q8_0 @ 20% peak" was a MEASUREMENT BUG; it's ~60-70%
+
+The previous entry + commit f7078525 claimed dense Q8_0 rows=1 GEMV runs at 20-28% of peak and is
+the bandwidth lever. THAT IS WRONG — two compounding errors in scripts/gguf_q8_0_dense_bw_microbench.py:
+  (1) 8x byte-count error: Q8_0's T16 block spans 32 k-values (Q8_0_BLOCK=32), so
+      blocks_per_row = in/32, but the script used in/256 (the K-quant super-block) -> reported BW 8x low.
+  (2) Strix Halo has a 32 MB MALL / Infinity Cache. The 4-13 MB weight buffers stayed fully cached
+      across the 200-iter loop, so the loop measured CACHE bandwidth, not cold DRAM. (Caught it when
+      the raw-layout dp4a probe reported 593-826 GB/s, i.e. >256 peak -> physically impossible.)
+
+CORRECTED microbench (bytes = in/32; weight pool sized >2x MALL = ~71 MB, cycled per launch so every
+launch reads cold DRAM): dense Q8_0 single GEMV rows=1 = 173 GB/s (68% peak) @2048x2048,
+180 GB/s (70%) @2048x6144, 132 GB/s (51%) @768x2048. (rows>=2 inflate past 100% because the 2-4 rows
+re-read the same in-launch weight from MALL; rows=1 is the trustworthy decode case.)
+
+CONSEQUENCE: dense Q8_0 GEMV is ALREADY at ~51-70% of peak — comparable to the selected-MoE GEMV's
+70-80%. It is NOT a bandwidth-starved kernel. The "dense Q8_0 is the 20%-peak lever" redirect is
+RETRACTED. The rocprof family breakdown (dense_q8_0_gemv = 47% of decode GPU TIME) STANDS — it is the
+biggest time consumer — but that time is mostly irreducible cold weight-streaming at ~68% BW, not waste.
+
+SPLIT-K PROTOTYPE: tested a split-K dense Q8_0 variant (grid.z K-slices + f32 atomicAdd) to raise
+memory-level parallelism. NEGATIVE and monotonic: 0.74x at k_split=2, worse with more splits. Consistent
+with the corrected picture — a kernel already at ~68% peak has no MLP headroom; split-K only adds atomic
++ fixed overhead. Prototype reverted out of the production .hip/.py (proven-negative, not retained).
+
+NET HONEST STATE OF #10: both dominant GEMV families (dense Q8_0 ~60-70%, selected-MoE ~70-80%) are
+already near-peak per-kernel. There is NO single starved GEMV to fix. The ~1.9x gap to llama.cpp is
+distributed across: per-launch fixed cost x ~350 launches/token, GDN recurrence (30 layers), the q6_k
+lm-head (1.8ms/tok), router/norms, and the rows=1 small-shape efficiency floor — matching the earlier
+sessions' "launch/fusion levers measured flat" and "bandwidth-efficiency gap" findings, but now with the
+per-GEMV BW actually quantified (decent, not starved). The remaining structural lever is GEMV/op FUSION
+to amortize per-launch overhead (which #13's commit f351fb54 also concluded), not a faster single GEMV.
+Corrected artifact: benchmarks/results/2026-06-29-gguf-q8-0-dense-bw.json. Microbench fixed in-tree.

@@ -30,6 +30,9 @@ from pathlib import Path
 import numpy as np
 
 # Q8_0 T16 tile-block = 16 fp16 col scales (32 B) + 16 cols * 32 int8 weights (512 B).
+# One T16 block spans Q8_0_BLOCK = 32 contraction (k) values, so
+# blocks_per_row = in_features / 32 (NOT /256 -- that is the K-quant super-block).
+Q8_0_BLOCK = 32
 Q8_0_T16_BLOCK_BYTES = 16 * 2 + 32 * 16
 
 
@@ -53,6 +56,13 @@ def main() -> None:
     ap.add_argument("--iters", type=int, default=200)
     ap.add_argument("--warmup", type=int, default=40)
     ap.add_argument("--peak-gbs", type=float, default=256.0)
+    ap.add_argument(
+        "--mall-bytes",
+        type=int,
+        default=32 * 1024 * 1024,
+        help="Strix Halo MALL/Infinity Cache size; the weight pool is sized >2x this "
+        "and cycled per-iter so each launch reads cold DRAM, not cache.",
+    )
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
 
@@ -75,29 +85,35 @@ def main() -> None:
     def bench(rows: int, in_f: int, out_f: int) -> dict:
         x = _f32_to_bf16(rng.standard_normal((rows, in_f)) * 0.1)
         tiles = repack_gguf_q8_0_tile16(make_q8_0_weight(out_f, in_f)).tiles
+        matrix_bytes = (out_f // 16) * (in_f // Q8_0_BLOCK) * Q8_0_T16_BLOCK_BYTES
+        # Defeat the 32 MB MALL/Infinity Cache: a pool of distinct weight copies
+        # sized >2x MALL, cycled per launch so every launch reads cold DRAM.
+        pool = max(2, (2 * args.mall_bytes) // max(matrix_bytes, 1) + 1)
         xb = malloc(x.nbytes, runtime=rt)
         copy_host_to_device(xb, host_array_ptr(x), runtime=rt)
-        tb = malloc(tiles.nbytes, runtime=rt)
-        copy_host_to_device(tb, host_array_ptr(tiles), runtime=rt)
+        tbs = []
+        for _ in range(pool):
+            tb = malloc(tiles.nbytes, runtime=rt)
+            copy_host_to_device(tb, host_array_ptr(tiles), runtime=rt)
+            tbs.append(tb)
         ob = malloc(rows * out_f * 2, runtime=rt)
         try:
-            def go() -> None:
+            def go(i: int) -> None:
                 gguf_q8_0_t16_gemv_decode_bf16_bf16_out(
-                    xb.ptr, tb.ptr, ob.ptr, rows, in_f, out_f, library=lib, runtime=rt
+                    xb.ptr, tbs[i % pool].ptr, ob.ptr, rows, in_f, out_f, library=lib, runtime=rt
                 )
 
-            for _ in range(args.warmup):
-                go()
+            for i in range(args.warmup):
+                go(i)
             rt.device_synchronize()
             t0 = time.perf_counter()
-            for _ in range(args.iters):
-                go()
+            for i in range(args.iters):
+                go(i)
             rt.device_synchronize()
             ms = (time.perf_counter() - t0) / args.iters * 1000.0
         finally:
-            for b in (xb, tb, ob):
+            for b in (xb, ob, *tbs):
                 free(b, runtime=rt)
-        matrix_bytes = (out_f // 16) * (in_f // 256) * Q8_0_T16_BLOCK_BYTES
         # Decode rereads the full weight matrix for every row (no reuse in this kernel).
         read_bytes = matrix_bytes * rows
         bw = read_bytes / (ms / 1000.0) / 1e9
@@ -107,6 +123,8 @@ def main() -> None:
             "out_features": out_f,
             "us": round(ms * 1000.0, 2),
             "matrix_MB": round(matrix_bytes / 1e6, 3),
+            "pool_copies": pool,
+            "pool_MB": round(pool * matrix_bytes / 1e6, 1),
             "achieved_read_bw_gbs": round(bw, 1),
             "pct_peak": round(bw / args.peak_gbs * 100.0, 1),
         }
@@ -119,7 +137,7 @@ def main() -> None:
             results.append(r)
             print(
                 f"in={in_f:5d} out={out_f:5d} rows={rows} "
-                f"{r['us']:8.2f}us matMB={r['matrix_MB']:6.3f} "
+                f"{r['us']:8.2f}us matMB={r['matrix_MB']:6.3f} pool={r['pool_MB']:6.0f}MB "
                 f"BW={r['achieved_read_bw_gbs']:6.1f}GB/s ({r['pct_peak']:4.1f}% peak)"
             )
 
