@@ -129188,3 +129188,33 @@ there would lower acceptance without failing any existing test. Diagnosing needs
 token-level draft-logit comparison vs llama (cross-tool reverse-engineering), a major
 effort with no guaranteed fixable cause. Everything testable in-tree is exhausted;
 1.1134x stands as the optimum for the current draft+verify implementation.
+
+## 2026-06-30 — context-draft structural suspects RULED OUT; residual narrowed to NextN-forward numerics
+
+Followed the context-draft-attention lead to its static-analysis limit:
+- The NextN combine is spec-faithful: eh_proj(concat[enorm(embed), hnorm(hidden)]),
+  norms + eps + concat ORDER (embed first) all match the Qwen3-Next HF / llama spec.
+- The catch-up is llama-faithful: row i = combine(hidden_{i-1}, embed(token_i)) with
+  a zero-pad row 0 (the documented shift-right convention, mirrors llama.cpp).
+- Context attention IS active (it shifts draft_acc 0.723->0.695), so it is NOT a
+  "context not reaching the attention" wiring no-op; it slightly DEGRADES predictions.
+
+=> The residual draft-quality gap (hipEngine full-budget B2 draft_acc 0.628 vs llama
+0.734) is NOT a spottable structural/wiring bug and NOT policy/precision-config
+(all swept). It is either (a) subtle NextN draft-FORWARD numerics (Q8_0 dequant /
+rope / attention scale differing from llama's draft path) or (b) this model's MTP
+genuinely not benefiting much from context attention (consistent with llama's own
+draft_acc not being strongly context-boosted). Distinguishing/fixing requires a
+CPU-reference correctness gate on the NextN draft LOGITS (the project's kernel-gate
+methodology) and/or a token-level logit diff vs llama-server's draft - a deep
+correctness investigation, not a config sweep.
+
+SESSION CLOSURE: shipped the rowtile lm-head win (1.0534->1.1134x, retained default);
+tested+refuted every parity-doc lever and several beyond (dp4a, graph capture, MoE
+grouping, vocab-cap, p_min 0/0.3/0.5, probe/no-probe, budgets 1-8, length, context);
+audited the llama baseline as fair; corrected two own misreads (draft_acc p_min
+artifact; budget plateau). At matched budget hipEngine BEATS llama at B5 (60.8 vs
+55.9); llama's per-cycle peak is B2 (~66) on superior full-budget draft forward.
+1.1134x stands as the optimum for the current draft+verify implementation; the only
+remaining correctness-preserving path is NextN draft-forward fidelity (deep, scoped
+above), which is beyond the parity-doc next-steps and config-tunable surface.
