@@ -128802,3 +128802,24 @@ amortizes weight streaming across the 2-8 verify rows for ALL the verify GEMVs
 
 Every existing path is now tested and confirmed: defaults are the tiles small-batch
 optimum; the win requires the tiles-rowtile kernels. Session: 1.0356x->1.0534x AR.
+
+## 2026-06-30 — DE-RISK (user greenlit kernel): MoE grouping REFUTED; lm-head rowtile is the real lever (~1.14-1.16x)
+
+User approved building+profiling the grouped-MoE verify kernel (~1.2-1.3x target,
+adjustable). De-risked FIRST (scratchpad/moe_l2_derisk.py): timed the per-slot T16
+selected dual GEMV with all-same vs all-distinct experts. Ratio (distinct/same):
+rows2 0.95, rows4 1.40, rows6 1.54 — NOT ~32x. So the MoE GEMV is mostly
+compute/launch-bound at verify sizes and L2 already serves duplicate-expert reads;
+in a real ~17-distinct-of-32 block the per-slot path already reads ~17 experts from
+HBM via L2. A grouped kernel reads the same ~17 => NO HBM win, + scatter overhead
+(matches the compact path being 1.30-1.45x slower). MoE-grouping lever REFUTED.
+
+REDIRECT confirmed by direct timing (scratchpad/lmhead_rows_timing.py): the lm-head
+Q6_K t16 GEMV is 1.85 ms/row CONSTANT (1.897 rows=1 -> 1.842 rows=6) => it re-reads
+the 417 MB weight PER ROW, and at 417 MB >> L2/MALL the duplicate reads CANNOT be
+cached. So the lm-head genuinely over-reads. A dense T16 Q6_K ROWTILE GEMV (read
+each tile once, ROW_TILE accumulators; raw gguf_k_prefill_out_rowtile_kernel is the
+direct template) makes the verify lm-head cost ~constant instead of rows x 1.85 ms:
+B3 7.4 -> ~2.5 ms (~5 ms/block, ~11% block cut); B5 11 -> ~3 ms (~8 ms, ~14%).
+Projected aggregate ~1.14-1.16x AR (revised down from 1.2-1.3x since MoE grouping is
+refuted). Dense (no grouping), bit-exact vs the per-row path. Building it next.
