@@ -93,3 +93,39 @@ def test_advance_state_only_matches_full_replay(monkeypatch) -> None:
     np.testing.assert_array_equal(ref.hidden_seeds, fast.hidden_seeds)
     # Reusing the first-pass tokens for the accepted prefix is exact.
     assert [int(t) for t in full.token_ids[:consumed]] == [int(t) for t in ref.token_ids]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
+def test_direct_block_state_commit_matches_replay(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
+    block_rows, consumed = 5, 2
+
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=256) as session:
+        first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        prefix_position = int(session.position)
+        snapshot = session._linear_state_snapshot()
+
+        block_inputs = [int(first.token_id)]
+        current = int(first.token_id)
+        for _ in range(block_rows - 1):
+            step = session.step(current, return_logits=False)
+            block_inputs.append(int(step.token_id))
+            current = int(step.token_id)
+
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        ref = session.verify_target_block(block_inputs[:consumed])
+        ref_state = _read_linear_state(session)
+
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        block = session.verify_target_block(block_inputs, capture_linear_state_rows=True)
+        assert block.linear_state_rows_captured
+        session._commit_verify_linear_state_row(consumed - 1, position=prefix_position + consumed)
+        direct_state = _read_linear_state(session)
+
+        session._free_linear_state_snapshot(snapshot)
+
+    assert [int(t) for t in block.token_ids[:consumed]] == [int(t) for t in ref.token_ids]
+    np.testing.assert_array_equal(block.hidden_seeds[:consumed], ref.hidden_seeds)
+    np.testing.assert_array_equal(ref_state, direct_state)

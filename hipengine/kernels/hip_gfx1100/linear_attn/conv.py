@@ -17,6 +17,7 @@ _SYMBOL_FP16 = "hipengine_qwen35_linear_attn_conv_decode_fp16"
 _SYMBOL_TREE_BF16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_bf16_tloop"
 _SYMBOL_TREE_FP16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_fp16_tloop"
 _SYMBOL_CHAIN_BF16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_tloop"
+_SYMBOL_CHAIN_F32_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop"
 _SYMBOL_CHAIN_FP16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
@@ -245,6 +246,38 @@ def qwen35_linear_attn_chain_conv_decode_bf16_tloop(
     )
 
 
+def qwen35_linear_attn_chain_conv_decode_f32_tloop(
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    chain_conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    max_nodes: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP32-input single-chain convolution t-loop with row-state output."""
+
+    _launch_chain_conv_tloop(
+        _SYMBOL_CHAIN_F32_TLOOP,
+        hidden_states_ptr,
+        base_conv_state_ptr,
+        chain_conv_state_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        max_nodes,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_linear_attn_chain_conv_decode_fp16_tloop(
     hidden_states_ptr: int,
     base_conv_state_ptr: int,
@@ -419,6 +452,11 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey(backend, "linear_attn_tree_conv_decode", "w4_paro", "fp16_tloop"),
             qwen35_linear_attn_tree_conv_decode_fp16_tloop,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "linear_attn_chain_conv_decode", "gguf_qwen35", "f32_tloop"),
+            qwen35_linear_attn_chain_conv_decode_f32_tloop,
             replace=replace,
         )
 

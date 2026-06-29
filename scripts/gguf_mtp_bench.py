@@ -485,6 +485,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Attention scheduler for --target-block-verify (default: bulk).",
     )
     parser.add_argument(
+        "--target-block-direct-state-commit",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic: with strict --target-block-verify, capture verifier row states and commit the "
+            "accepted row directly instead of restoring and replaying the accepted prefix."
+        ),
+    )
+    parser.add_argument(
         "--target-block-wmma-prefill",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1341,13 +1350,15 @@ def main(argv: list[str] | None = None):
             )
             if can_block_verify:
                 t0 = time.perf_counter()
-                snapshot = session._linear_state_snapshot()
+                direct_state_commit = bool(args.target_block_direct_state_commit)
+                snapshot = None if direct_state_commit else session._linear_state_snapshot()
                 try:
                     block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
                     block_result = session.verify_target_block(
                         block_inputs,
                         bulk_attention_mode=args.target_block_verify_mode,
                         use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                        capture_linear_state_rows=direct_state_commit,
                     )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
@@ -1366,24 +1377,39 @@ def main(argv: list[str] | None = None):
                             topk_branch_accept_count = 1
                     consumed_rows = int(block_acceptance["accepted_draft_tokens"]) + 1
                     if consumed_rows < len(block_inputs):
-                        session._restore_linear_state_snapshot(snapshot, position=seq_position)
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
-                        # Accepted-prefix replay only needs to advance linear/KV
-                        # state; the target tokens are already known from the
-                        # full-block pass (deterministic), so skip the replay's
-                        # LM-head sampling and reuse block_target_tokens.
-                        replay_result = session.verify_target_block(
-                            block_inputs[:consumed_rows],
-                            bulk_attention_mode=args.target_block_verify_mode,
-                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                            advance_state_only=True,
-                        )
-                        replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
-                        replay_hidden = [
-                            np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                            for row in range(len(replay_tokens))
-                        ]
+                        if direct_state_commit:
+                            if not block_result.linear_state_rows_captured:
+                                raise RuntimeError("direct block commit requested without captured linear-state rows")
+                            session._commit_verify_linear_state_row(
+                                consumed_rows - 1,
+                                position=seq_position + consumed_rows,
+                            )
+                            replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
+                            replay_hidden = [
+                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                for row in range(len(replay_tokens))
+                            ]
+                        else:
+                            if snapshot is None:
+                                raise RuntimeError("block replay requires a linear-state snapshot")
+                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
+                            # Accepted-prefix replay only needs to advance linear/KV
+                            # state; the target tokens are already known from the
+                            # full-block pass (deterministic), so skip the replay's
+                            # LM-head sampling and reuse block_target_tokens.
+                            replay_result = session.verify_target_block(
+                                block_inputs[:consumed_rows],
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                advance_state_only=True,
+                            )
+                            replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
+                            replay_hidden = [
+                                np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                for row in range(len(replay_tokens))
+                            ]
                         target_tokens.extend(replay_tokens)
                         target_hidden_seeds.extend(replay_hidden)
                     else:
@@ -1395,7 +1421,8 @@ def main(argv: list[str] | None = None):
                     current_device_token = int(target_tokens[-1])
                     block_verify_used = True
                 finally:
-                    session._free_linear_state_snapshot(snapshot)
+                    if snapshot is not None:
+                        session._free_linear_state_snapshot(snapshot)
                 t1 = time.perf_counter()
                 ar_decode_ms += (t1 - t0) * 1000
             can_batched_verify = (
@@ -1871,6 +1898,7 @@ def main(argv: list[str] | None = None):
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
                 "target_block_verify": bool(block_verify_used),
+                "target_block_direct_state_commit": bool(args.target_block_direct_state_commit and block_verify_used),
                 "target_graph_batched_verify": bool(batched_verify_used),
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
@@ -2026,6 +2054,7 @@ def main(argv: list[str] | None = None):
             "target_block_verify": bool(args.target_block_verify),
             "target_block_verify_mode": str(args.target_block_verify_mode),
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
+            "target_block_direct_state_commit": bool(args.target_block_direct_state_commit),
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
             "target_graph_context_cap": int(target_graph_context_cap),
             "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,

@@ -75,10 +75,12 @@ from hipengine.kernels.hip_gfx1100.runtime import (
 )
 from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+    qwen35_linear_attn_chain_conv_decode_f32_tloop,
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_prefill_f32,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
@@ -346,6 +348,7 @@ class Qwen35GGUFBlockVerifyResult:
     token_ids: list[int]
     hidden_seeds: np.ndarray
     start_position: int
+    linear_state_rows_captured: bool = False
 
     def __post_init__(self) -> None:
         if self.start_position < 0:
@@ -1708,6 +1711,7 @@ class Qwen35GGUFFullStackRunner:
         decode_scratch,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        linear_state_rows: tuple[object, object] | None = None,
     ) -> None:
         assert self.weights is not None
         if rows <= 0:
@@ -1817,6 +1821,84 @@ class Qwen35GGUFFullStackRunner:
             library=cast_library,
             runtime=runtime,
         )
+        if linear_state_rows is not None:
+            conv_state_rows, recurrent_state_rows = linear_state_rows
+            qwen35_linear_attn_chain_conv_decode_f32_tloop(
+                scratch.linear_qkv_f32.ptr,
+                conv_state.ptr,
+                conv_state_rows.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                rows,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
+            qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
+                scratch.conv_out.ptr,
+                scratch.linear_z.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                recurrent_state_rows.ptr,
+                scratch.recurrent_out.ptr,
+                scratch.recurrent_out.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            runtime.memcpy_async(
+                conv_state.ptr,
+                conv_state_rows.ptr + (rows - 1) * int(conv_state.nbytes),
+                int(conv_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                recurrent_state.ptr,
+                recurrent_state_rows.ptr + (rows - 1) * int(recurrent_state.nbytes),
+                int(recurrent_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            f32_to_bf16(
+                scratch.recurrent_out.ptr,
+                scratch.recurrent_bf16.ptr,
+                rows * cfg.ssm_inner_size,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ssm_out"),
+                scratch.recurrent_bf16.ptr,
+                scratch.attn_out.ptr,
+                rows=rows,
+                in_features=cfg.ssm_inner_size,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            self._run_post_attention_ffn_rows(
+                layer_id,
+                hidden_ptr,
+                scratch.attn_out.ptr,
+                out_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                expert_sidecar=expert_sidecar,
+            )
+            return
         qwen35_linear_attn_conv_prefill_f32(
             scratch.linear_qkv_f32.ptr,
             conv_state.ptr,
@@ -3105,6 +3187,9 @@ class Qwen35GGUFResidentSession:
     _verify_lm_out_indices_i32: object | None = field(default=None, init=False)
     _verify_lm_out_values: object | None = field(default=None, init=False)
     _verify_lm_rows_capacity: int = field(default=0, init=False)
+    _verify_linear_conv_state_rows: tuple[object | None, ...] = field(default=(), init=False)
+    _verify_linear_recurrent_state_rows: tuple[object | None, ...] = field(default=(), init=False)
+    _verify_linear_state_rows_capacity: int = field(default=0, init=False)
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
@@ -3596,6 +3681,7 @@ class Qwen35GGUFResidentSession:
         use_wmma_prefill: bool | None = None,
         stream: int = 0,
         advance_state_only: bool = False,
+        capture_linear_state_rows: bool = False,
     ) -> Qwen35GGUFBlockVerifyResult:
         """Consume a continuation block and return greedy target rows.
 
@@ -3617,6 +3703,11 @@ class Qwen35GGUFResidentSession:
         are discarded here: only the linear/KV state advance and the FP32 hidden
         rows (returned and used for decode continuity) are needed.  ``token_ids``
         in the result echoes the input in this mode and must not be consumed.
+
+        ``capture_linear_state_rows`` materializes per-row linear-attention
+        Conv/GDN states for a later :meth:`_commit_verify_linear_state_row`
+        call.  This is the llama.cpp-style accept-row lifecycle used by strict
+        block verifier diagnostics to avoid accepted-prefix replay.
         """
 
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -3645,6 +3736,8 @@ class Qwen35GGUFResidentSession:
         runtime = self.runtime or get_hip_runtime()
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
         self._ensure_verify_block_buffers(rows, runtime=runtime)
+        if capture_linear_state_rows:
+            self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
         if self._verify_hidden_seed_buf is None:
             raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
         hidden_seed_buf = self._verify_hidden_seed_buf
@@ -3712,6 +3805,11 @@ class Qwen35GGUFResidentSession:
                                 stream=stream,
                                 decode_scratch=self.scratch,
                                 expert_sidecar=expert_sidecar,
+                                linear_state_rows=(
+                                    self._verify_linear_state_row_pair(layer_id)
+                                    if capture_linear_state_rows
+                                    else None
+                                ),
                             )
                         elif layer_type == FULL_ATTENTION:
                             key_cache, value_cache = self.scratch.full_cache(layer_id)
@@ -3819,6 +3917,7 @@ class Qwen35GGUFResidentSession:
             token_ids=[int(token) for token in token_host.tolist()],
             hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
             start_position=start,
+            linear_state_rows_captured=bool(capture_linear_state_rows),
         )
 
     def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
@@ -4421,6 +4520,116 @@ class Qwen35GGUFResidentSession:
         self._verify_token_counter_i64 = malloc(DType.INT64.itemsize, runtime=runtime)
         self._verify_block_rows_capacity = rows
 
+    def _free_verify_linear_state_row_buffers(self, *, runtime: HipRuntime) -> None:
+        for buffer in (
+            *self._verify_linear_recurrent_state_rows,
+            *self._verify_linear_conv_state_rows,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._verify_linear_conv_state_rows = ()
+        self._verify_linear_recurrent_state_rows = ()
+        self._verify_linear_state_rows_capacity = 0
+
+    def _ensure_verify_linear_state_row_buffers(self, rows: int, *, runtime: HipRuntime) -> None:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("verify linear-state rows must be positive")
+        if rows <= int(self._verify_linear_state_rows_capacity):
+            return
+        self._free_verify_linear_state_row_buffers(runtime=runtime)
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        conv_rows: list[object | None] = []
+        recurrent_rows: list[object | None] = []
+        for conv_state, recurrent_state in zip(
+            self.scratch.layer_conv_states,
+            self.scratch.layer_recurrent_states,
+            strict=True,
+        ):
+            if conv_state is None or recurrent_state is None:
+                conv_rows.append(None)
+                recurrent_rows.append(None)
+                continue
+            conv_rows.append(malloc(rows * int(conv_state.nbytes), runtime=runtime))
+            recurrent_rows.append(malloc(rows * int(recurrent_state.nbytes), runtime=runtime))
+        self._verify_linear_conv_state_rows = tuple(conv_rows)
+        self._verify_linear_recurrent_state_rows = tuple(recurrent_rows)
+        self._verify_linear_state_rows_capacity = rows
+
+    def _verify_linear_state_row_pair(self, layer_id: int) -> tuple[object, object] | None:
+        if (
+            not self._verify_linear_conv_state_rows
+            or not self._verify_linear_recurrent_state_rows
+        ):
+            return None
+        conv_rows = self._verify_linear_conv_state_rows[layer_id]
+        recurrent_rows = self._verify_linear_recurrent_state_rows[layer_id]
+        if conv_rows is None or recurrent_rows is None:
+            return None
+        return conv_rows, recurrent_rows
+
+    def _commit_verify_linear_state_row(
+        self,
+        row_index: int,
+        *,
+        position: int,
+        stream: int = 0,
+    ) -> None:
+        """Commit a previously captured verifier row as the resident state."""
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._verify_hidden_seed_buf is None:
+            raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
+        row_index = int(row_index)
+        if row_index < 0 or row_index >= int(self._verify_linear_state_rows_capacity):
+            raise ValueError("row_index is outside captured linear-state rows")
+        runtime = self.runtime or get_hip_runtime()
+        for layer_id, (conv_state, recurrent_state) in enumerate(
+            zip(self.scratch.layer_conv_states, self.scratch.layer_recurrent_states, strict=True)
+        ):
+            if conv_state is None or recurrent_state is None:
+                continue
+            pair = self._verify_linear_state_row_pair(layer_id)
+            if pair is None:
+                raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+            conv_rows, recurrent_rows = pair
+            runtime.memcpy_async(
+                conv_state.ptr,
+                conv_rows.ptr + row_index * int(conv_state.nbytes),
+                int(conv_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                recurrent_state.ptr,
+                recurrent_rows.ptr + row_index * int(recurrent_state.nbytes),
+                int(recurrent_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+        runtime.memcpy_async(
+            self.scratch.hidden_seed_fp32.ptr,
+            self._verify_hidden_seed_buf.ptr + row_index * hidden_row_nbytes,
+            hidden_row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        end = int(position)
+        self._position = end
+        self.scratch.position_host[0] = end
+        self.scratch.context_host[0] = end + 1
+        set_decode_position_i64(
+            self.scratch.position_buf.ptr,
+            self.scratch.context_buf.ptr,
+            end,
+            library=self._runtime_state_library,
+            runtime=runtime,
+        )
+        self._hidden_seed_fp32_populated = True
+
     def _ensure_verify_lm_head_buffers(self, rows: int, *, runtime: HipRuntime) -> None:
         rows = int(rows)
         if rows <= 0:
@@ -4563,6 +4772,7 @@ class Qwen35GGUFResidentSession:
         self._verify_lm_block_values = None
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
+        self._free_verify_linear_state_row_buffers(runtime=runtime)
         for buffer in reversed(self._buffers):
             if buffer is not None:
                 free(buffer, runtime=runtime)

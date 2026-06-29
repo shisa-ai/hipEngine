@@ -16,6 +16,7 @@ _SYMBOL_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16"
 _SYMBOL_TREE_TLOOP_BF16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_bf16"
 _SYMBOL_TREE_TLOOP_FP16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_CHAIN_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16"
+_SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16"
 _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
@@ -369,6 +370,56 @@ def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16(
 
     _launch_gdn_chain_tloop(
         _SYMBOL_CHAIN_TLOOP_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16-gated chain GDN t-loop recurrence+FP32 finalize."""
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16,
         conv_out_ptr,
         gate_ptr,
         a_ptr,
@@ -1146,6 +1197,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16,
             replace=replace,
         )
+        register(
+            KernelKey(backend, "gdn_chain_recurrent_rmsnorm_gate", "gguf_qwen35", "bf16_c1_exact_tloop"),
+            qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
+            replace=replace,
+        )
 
 
 def _launch_gdn_tree_tloop(
@@ -1471,4 +1527,3 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
 
 
 register_qwen35_linear_attn_gdn_kernels()
-

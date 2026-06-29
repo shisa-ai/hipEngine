@@ -127405,3 +127405,42 @@ useful pattern is its resident `pending_h` / `verify_h` / `process()` /
 reseed, not another cap/rootK/seed-copy knob. Next work should either implement
 a real resident `GGUFMTPDraftContext` around that lifecycle or add a branch-safe
 target verifier that reduces target weight-stream passes per visible token.
+
+## 2026-06-29 — GGUF strict block direct row-state commit diagnostic
+
+Implemented a default-off strict block verifier diagnostic that adopts the
+llama.cpp verifier-row materialization pattern for GGUF linear-attention state:
+`--target-block-direct-state-commit` captures per-row Conv/GDN state during
+`verify_target_block(..., capture_linear_state_rows=True)` and commits the
+accepted row directly with D2D copies instead of restoring and replaying the
+accepted prefix. Added explicit GGUF-facing FP32 chain-conv and exact BF16-gated
+chain-GDN t-loop wrappers so this path does not depend on the PARO lowp wrapper
+or the `HIPENGINE_GDN_TLOOP_C1_EXACT` environment switch. Added suite routes
+`resident-strict-block-direct-commit` and
+`resident-hybrid-strict-block-direct-cap32k`.
+
+Correctness gate:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+-> `2 passed`. The new direct-commit test compares target tokens, FP32 hidden
+rows, and concatenated linear state against the replay path.
+
+Directional smoke, pure strict route:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-strict-block-direct-commit --output /tmp/hipengine-strict-direct-smoke.json`
+-> `apple_to_apple_ok=true`; AR `54.83 tok/s`; B3 `37.20 tok/s = 0.6785x AR`;
+accepted/output `0.625`; `mtp_beats_ar=false`.
+
+Directional smoke, comparable hybrid route:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-hybrid-strict-block-direct-cap32k --output /tmp/hipengine-hybrid-direct-smoke.json`
+-> `apple_to_apple_ok=true`; AR `54.60 tok/s`; B3 `48.80 tok/s = 0.8939x AR`;
+accepted/output `0.571`; `mtp_beats_ar=false`. This is effectively flat/slower
+than the prior hybrid strict-block smoke (`48.94 tok/s = 0.890x AR`) and does
+not justify a full-suite promotion run.
+
+Decision: keep as default-off infrastructure/evidence only and track cleanup in
+`docs/REFACTOR.md`. The strict direct-commit path proves row-state commit is
+exact, but capture overhead cancels replay savings. The goal remains unchanged:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full`
+must produce `apple_to_apple_ok=true` and `verdict.mtp_beats_ar=true`. Next
+useful lever is branch-safe verifier amortization that reduces target
+weight-stream passes per visible token; do not re-run direct-commit smoke as a
+goal path by itself.

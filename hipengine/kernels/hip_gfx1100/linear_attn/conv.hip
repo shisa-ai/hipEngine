@@ -620,6 +620,38 @@ extern "C" int hipengine_qwen35_linear_attn_chain_conv_decode_bf16_tloop(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop(
+    const float* hidden_states,
+    const float* base_conv_state,
+    float* leaf_conv_state,
+    const float* conv_weight,
+    float* out,
+    int64_t max_nodes,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (max_nodes <= 0 || !valid_conv_shape(channels, kernel_size) || kernel_size < 2 || kernel_size > 8) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((channels + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<float>),
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      base_conv_state,
+      leaf_conv_state,
+      conv_weight,
+      out,
+      max_nodes,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop(
     const half_t* hidden_states,
     const float* base_conv_state,
