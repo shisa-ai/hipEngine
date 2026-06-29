@@ -1,6 +1,6 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-- Date: 2026-06-29 (strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
+- Date: 2026-06-29 (cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite retained diagnostics, not speed rows.
 - hipEngine source baseline for the current performance review: `579112c860d8191cfcdd639b0debad86252531b7`
@@ -19,23 +19,28 @@ tooling or a since-corrected methodology — flagged inline below).
   strict B3 draft acceptance match llama.cpp on the merge-sort prompt.
 - **AR decode (no MTP) is already FASTER than llama.cpp's AR.** Current eager
   resident path measures **~55 tok/s** (54.65 tok/s, code prompt, gfx1151, this
-  session, `scripts/gguf_ar_mtp_suite.py --scope smoke`). llama.cpp's AR is
-  ~47 tok/s (its 89.55 tok/s MTP ÷ its own 1.9× MTP-over-AR ratio).
-- **MTP is the entire gap.** Fresh full-suite measurement on current code
-  (`gguf_ar_mtp_suite.py --scope full`, resident-serial-fallback, 10 prompts):
-  **AR 54.51 tok/s; MTP best is B1 at 50.18 tok/s = 0.921× AR — MTP does NOT beat
-  AR at any budget** (B1 0.921× → B5 0.759×). llama.cpp's MTP is **1.9× its AR**.
-  The 1.9× we chase is **speculative amortization**, not kernel throughput.
-- **Current goal:** stop treating root-topK as the production path and measure the
-  llama.cpp-style strict lifecycle on the same suite. The new
-  `resident-strict-context` route runs strict top-1 (`root/sibling K=1`) with
-  prompt catch-up replay plus device-resident MTP KV. Initial smoke/partial
-  results are still below AR (partial best B1 **48.69 tok/s = 0.889× AR**), so
-  the next implementation goal is a real resident `GGUFMTPDraftContext` or
+  session, `scripts/gguf_ar_mtp_suite.py --scope smoke`). llama.cpp's retained
+  full-suite HIP AR reference is **50.13 tok/s**.
+- **MTP is the entire gap.** The current default full-suite route
+  (`gguf_ar_mtp_suite.py --scope full`, resident top-k40 serial fallback, 10
+  prompts) measures **AR 54.51 tok/s; MTP best B1 50.18 tok/s = 0.921× AR**.
+  A follow-up capped-vocab recovery diagnostic improves B1 throughput to
+  **51.71 tok/s = 0.9478× AR** on the same full suite, but acceptance regresses
+  (`91/191 = 0.476` → `78/178 = 0.438`) and **MTP still does NOT beat AR**.
+  llama.cpp's retained full-suite reference is **67.29 tok/s at B2 = 1.342× its
+  AR**. The gap we chase is **speculative amortization**, not AR kernel
+  throughput.
+- **Current goal:** build a real resident `GGUFMTPDraftContext` or equivalent
   verifier-amortization path that adopts llama.cpp's
-  `process()`/`draft()`/`accept()` lifecycle instead of continuing local
-  micro-levers. A follow-up capped-vocab recovery diagnostic improved partial B1
-  to **52.45 tok/s = 0.958× AR**, still below the true AR denominator.
+  `process_verifier_rows()`/`draft()`/`accept()` lifecycle, then validate it with
+  the full suite. The existing `resident-strict-context` diagnostic already ran
+  strict top-1 (`root/sibling K=1`) with prompt catch-up replay plus
+  device-resident MTP KV and stayed below AR (partial best B1 **48.69 tok/s =
+  0.889× AR**). The follow-up capped-vocab recovery diagnostic improved
+  full-suite B1 to **51.71 tok/s = 0.9478× AR**, still below the true AR
+  denominator and with worse accepted/output. That closes the current
+  optimization-list sweep; the next lever is structural amortization, not
+  another local micro-lever.
 - **There is no single bandwidth-starved GEMV to fix.** Measured cold-DRAM
   (MALL-defeated): dense Q8_0 c=1 GEMV ~51–70% of peak, selected-MoE GEMV
   ~70–80%. Every kernel micro-lever (dp4a, split-K, fusion, MoE-graph, cache
@@ -94,7 +99,7 @@ on current code; (M) are current-session measurements.
 | MTP draft (resident NextN, c=1×B) | (M) ~3.3 ms/depth (B3) | folded in graph | ~2× | device-resident + device-chained (#3) |
 | MTP target verify (current resident-serial route) | (M) 18.63 ms host / 16.56 ms kernel per target step; ~709 launches/step | folded into ~9 ms 4-token fused graph | structural | GPU-bound; launch collapse alone is not the first lever on current route |
 | Partial-accept rollback (B5) | (M) replay-forward dominates; LM-head skip landed (#4) | n/a | — | replay forward is the same GPU wall |
-| **Net MTP throughput (full suite)** | **B1 50.2 / B3 45.4 / B5 41.4 tok/s (0.921× → 0.759× AR)** | **~89.6 tok/s (1.9× AR)** | **2–2.5×** | **amortization gap = the whole story** |
+| **Net MTP throughput (full suite)** | **default B1 50.2 / B3 45.4 / B5 41.4 tok/s (0.921× → 0.759× AR); best diagnostic B1 51.7 tok/s = 0.948× AR** | **67.3 tok/s B2 (1.342× AR)** | **~30% absolute tok/s plus AR-normalized speedup** | **amortization gap = the whole story** |
 
 ### Everything we tried — expected vs actual
 
@@ -113,7 +118,7 @@ on current code; (M) are current-session measurements.
 | resident top-k40 draft route | avoid full legacy draft fallback for root top-k40 | **+2.9% B1 full-suite, acceptance unchanged** | **kept, default-on** |
 | one-block device top-k40 | avoid resident root-K40 host logits readback + NumPy top-k | correctness passed, but smoke B3 **45.58 → 24.74 tok/s** at identical acceptance | rejected/reverted; serial K40 merge dominates |
 | strict-context route | existing llama.cpp-style prompt replay + device MTP KV with root/sibling top-1 | smoke B3 **42.81 tok/s = 0.780x AR**; partial best B1 **48.69 tok/s = 0.889x AR**, B3 **45.16 = 0.825x AR** | route is a valid diagnostic but not production-competitive; build resident lifecycle abstraction |
-| adaptive full-vocab recovery after capped miss | keep cheap capped-vocab draft normally, switch to full vocab after a generic capped zero-accept miss instead of permanent AR fallback | partial route `resident-cap32k-recover`: AR **54.76 tok/s**, best B1 **52.45 tok/s = 0.958x AR**, accepted/output **19/39 = 0.487**; cap sweep B1 diagnostics peaked around cap18k/24k at **~52.6 tok/s** but still below AR | diagnostic only; serial verifier route is bounded by target wall + draft overhead |
+| adaptive full-vocab recovery after capped miss | keep cheap capped-vocab draft normally, switch to full vocab after a generic capped zero-accept miss instead of permanent AR fallback | partial route `resident-cap32k-recover`: AR **54.76 tok/s**, best B1 **52.45 tok/s = 0.958x AR**, accepted/output **19/39 = 0.487**; full suite: AR **54.55 tok/s**, best B1 **51.71 tok/s = 0.9478x AR**, accepted/output **78/178 = 0.438**; cap sweep B1 diagnostics peaked around cap18k/24k at **~52.6 tok/s** but still below AR | diagnostic only; B1 throughput improves, but acceptance regresses vs resident top-k40 and the serial verifier route remains bounded by target wall + draft overhead |
 | short B1 target block verify with confidence gate | use 2-row target block verify for high-confidence exact B1 drafts, rollback to serial/root-topK on mismatch | direct rows=2 block probe was exact and faster than two serial steps (**32.8 ms vs 39.7 ms**), but partial B1 p=0.8 had 15 attempts/14 hits/1 rollback and regressed to **50.07 tok/s**; p=0.9 had 11/11 hits but still **51.84 tok/s**, below capped recovery **52.45 tok/s** | rejected; savings per hit too small and rollback/noise erases it |
 | dispatch-resolve cache (#9) | ~15 µs/launch host | landed | kept |
 | X8 selected-down repack (Q5/Q6) | sidecar-free dp4a layout | mixed; ≤ default B3 | diagnostic |
@@ -219,25 +224,34 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    16.56 ms kernel per target step, 89% kernel share). Do not start with a
    launch-collapse project unless a new route/profile proves host residual is
    back on the critical path.
-2. **Measure the llama.cpp-style strict lifecycle before more optimization.**
-   Use:
-   `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-strict-context --output benchmarks/results/<date>-ar-mtp-suite-full-strict-context.json`.
-   This route records `--resident-mtp-draft --root-topk-accept 1
-   --sibling-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache
-   --no-target-block-verify`. Initial evidence: smoke B3 is **42.81 tok/s =
-   0.780× AR**; partial best is B1 **48.69 tok/s = 0.889× AR** with B3
-   accepted/output **0.697** but only **0.825× AR**. This means the existing
-   diagnostic hooks do **not** generalize into a competitive route.
-3. **If strict-context acceptance is weak, port the pattern, not another
-   micro-lever.** Add a resident `GGUFMTPDraftContext` abstraction that owns
+2. **Treat strict-context as a diagnostic baseline, not the next optimization
+   target.** The existing `resident-strict-context` route records
+   `--resident-mtp-draft --root-topk-accept 1 --sibling-topk-accept 1
+   --mtp-context-replay --mtp-device-kv-cache --no-target-block-verify`.
+   Initial evidence: smoke B3 is **42.81 tok/s = 0.780× AR**; partial best is B1
+   **48.69 tok/s = 0.889× AR** with B3 accepted/output **0.697** but only
+   **0.825× AR**. A full run is useful after lifecycle changes, but the existing
+   diagnostic hooks do **not** generalize into a competitive route by
+   themselves.
+3. **Port the llama.cpp lifecycle pattern, not another micro-lever.** Add a
+   resident `GGUFMTPDraftContext` abstraction that owns
    device MTP K/V, `pending_h`, verifier hidden rows, position, and
    rollback/commit. It should expose llama.cpp-shaped methods:
    `process_verifier_rows()`, `draft()`, and `accept()`. Success is higher
    strict top-1 committed tokens per verifier call on the full category suite,
    not a wider candidate-rank diagnostic.
+   Source anchor: llama.cpp commit `6e9007ae61f4e994c27484759caac6ef2aa32b30`
+   defines this lifecycle in `common/speculative.h` (`common_speculative_process`,
+   `common_speculative_draft`, `common_speculative_accept`), implements the MTP
+   state in `common/speculative.cpp::common_speculative_impl_draft_mtp`
+   (`pending_h`, `verify_h`, `last_n_drafted`), and invokes it from
+   `tools/server/server-context.cpp` (`draft()` before target batch construction,
+   `process()` after target decode, `accept()` after accepted-row sampling).
    The capped-vocab recovery probe confirms this direction: it prevents one
-   prompt-sensitive AR-fallback collapse, but B1 remains under AR because every
-   visible token still pays the serial target-verifier wall plus draft overhead.
+   prompt-sensitive AR-fallback collapse and improves full-suite B1 to **51.71
+   tok/s = 0.9478× AR**, but B1 remains under AR and accepted/output regresses
+   because every visible token still pays the serial target-verifier wall plus
+   draft overhead.
 4. **If strict-context acceptance is good but speed is still below AR, remove
    lifecycle overhead.** Keep hidden seeds/intermediates resident, pre-allocate
    scratch, and batch the MTP block work so the good strict chain is not
@@ -248,9 +262,10 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
    structural advantage (one fused graph ≈ 9 ms for the 4-token verify), but it is
    not where current `resident-serial-fallback` wall time goes.
 6. **Make MTP actually beat AR before any retained speedup claim.** Current best
-   B1 needs roughly **+8.6% relative throughput** to beat the same-run AR
-   denominator. Use `--scope full`; a retained claim needs `mtp_beats_ar=true`
-   on the full suite with the true-AR denominator from the same run.
+   B1 needs roughly **+5.5% relative throughput** to beat the same-run AR
+   denominator, and it must not buy that speed by regressing acceptance. Use
+   `--scope full`; a retained claim needs `mtp_beats_ar=true` on the full suite
+   with the true-AR denominator from the same run.
 7. **Fix the stale AR-baseline contracts** (`TRUE_AR_PRODUCTION_TIMING_REQUIRED`
    + speed-claim contract + tests) to the eager path so the category bench's own
    `--true-ar-baseline-json` comparison works again (REFACTOR.md).
@@ -259,8 +274,8 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 
 GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, cache
 hints, deferred hidden-seed D2H copies, the one-block device top-k40 extension,
-and short B1 confidence-gated target block verify are all measured flat or
-negative e2e and are not the lever. The
+cap-only/rootK sweeps, and short B1 confidence-gated target block verify are all
+measured flat, acceptance-regressive, or negative e2e and are not the lever. The
 per-kernel GEMV bandwidth is already near-peak. Kernel micro-optimization is
 exhausted; the gap is amortization.
 

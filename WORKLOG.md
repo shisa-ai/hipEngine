@@ -127231,3 +127231,41 @@ Decision: this confirms the earlier host/GPU split; the retained serial verifier
 is still GPU/weight-streaming bound. Do not restart with Python launch cleanup.
 The next implementation lever must reduce verifier work per visible token or
 adopt a structurally different resident verifier/MTP lifecycle.
+
+## 2026-06-29 — GGUF MTP full-suite cap32k recovery diagnostic retained
+
+Closed the full-suite follow-up for the generic capped-vocab recovery route:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-cap32k-recover --output benchmarks/results/2026-06-29-ar-mtp-suite-full-cap32k-recover.json`
+
+Result: `apple_to_apple_ok=true`; true AR `54.5544 tok/s`; best MTP is B1
+`51.7077 tok/s = 0.9478x AR`; B2 `49.4548 = 0.9065x`; B3 `47.7266 =
+0.8748x`; B4 `44.7841 = 0.8209x`; B5 `43.2320 = 0.7925x`;
+`mtp_beats_ar=false`. B1 accepted/output is `78/178 = 0.4382`, down from the
+resident top-k40 full-suite row's `91/191 = 0.4764`; draft acceptance also
+dropped `0.0247 -> 0.0199`.
+
+Decision: retain as diagnostic evidence only. Cap recovery improves B1
+throughput versus resident top-k40 (`50.18 -> 51.71 tok/s`, ratio `0.9206x ->
+0.9478x`) by avoiding one prompt-sensitive AR-fallback collapse, but it still
+does not beat same-run true AR and it regresses acceptance. Do not promote this
+as the goal path or continue cap/rootK sweeps. The active goal remains: make
+GGUF MTP beat same-protocol true AR on the full category suite with
+`mtp_beats_ar=true`, likely via a llama.cpp-style resident
+`GGUFMTPDraftContext` / verifier-amortization path (`process_verifier_rows()`,
+`draft()`, `accept()`), not more serial-verifier micro-levers.
+
+llama.cpp source audit for the next implementation target used read-only
+checkout `/home/lhl/llama.cpp/llama.cpp-hip` at
+`6e9007ae61f4e994c27484759caac6ef2aa32b30`:
+- `common/speculative.h:56-69` exposes the lifecycle:
+  `common_speculative_process()`, `common_speculative_draft()`,
+  `common_speculative_accept()`.
+- `common/speculative.cpp:816-1193` implements MTP-specific state:
+  `pending_h`, `verify_h`, `verify_h_rows`, `last_n_drafted`; `process()` copies
+  target nextn rows and advances draft KV, `draft()` seeds from `pending_h` and
+  chains draft tokens, `accept()` chooses the accepted verifier row for the next
+  pending hidden.
+- `tools/server/server-context.cpp:2629-2647`, `3395-3400`, and `3583` show the
+  production loop shape: set draft params and run `draft()`, run target decode
+  and `process()`, then call `accept()` after accepted-row sampling.
