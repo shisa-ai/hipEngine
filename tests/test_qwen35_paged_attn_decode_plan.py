@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import ctypes
+
+import numpy as np
 import pytest
 
 from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.hip import get_hip_runtime
+from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_attn_decode_build,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
     qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
@@ -33,10 +40,19 @@ from hipengine.kernels.hip_gfx1100.attention import (
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
+from hipengine.loading.materialize import float_array_to_bf16_bits
 
 
 def setup_function() -> None:
     clear_registry_for_tests()
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
@@ -463,3 +479,201 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
             0, 0, 0, int8_spans.scale_metadata.k_scale.ptr, int8_spans.scale_metadata.v_scale.ptr,
             0, 0, 0, 0, 0, int8_spans, 256, 1, 256, 16, 2, 256, 0, 1, 1.0
         )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks() -> None:
+    """Batch row block tables contain physical block IDs, not row-local IDs."""
+
+    runtime = get_hip_runtime()
+    rows = 2
+    block_size = 256
+    blocks = 2
+    num_q_heads = 2
+    num_kv_heads = 1
+    head_dim = 8
+    max_context_len = 5
+    scale = head_dim ** -0.5
+    rng = np.random.default_rng(20260629)
+
+    query = rng.normal(0.0, 0.25, size=(rows, num_q_heads, head_dim)).astype(np.float32)
+    key_f32 = rng.normal(0.0, 0.25, size=(blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
+    value_f32 = rng.normal(0.0, 0.25, size=(blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
+    key_f32[1] += 2.0
+    value_f32[1] -= 2.0
+    key_cache = float_array_to_bf16_bits(key_f32)
+    value_cache = float_array_to_bf16_bits(value_f32)
+    block_table = np.zeros((rows, 1), dtype=np.int32)
+    live_counts = np.asarray([3, 5], dtype=np.int64)
+    batch_out = np.empty((rows, num_q_heads, head_dim), dtype=np.float32)
+    c1_out = np.empty_like(batch_out)
+
+    buffers = []
+    try:
+        query_b = malloc(query.nbytes, runtime=runtime)
+        key_b = malloc(key_cache.nbytes, runtime=runtime)
+        value_b = malloc(value_cache.nbytes, runtime=runtime)
+        table_b = malloc(block_table.nbytes, runtime=runtime)
+        live_b = malloc(live_counts.nbytes, runtime=runtime)
+        batch_out_b = malloc(batch_out.nbytes, runtime=runtime)
+        c1_out_b = malloc(c1_out.nbytes, runtime=runtime)
+        buffers.extend((query_b, key_b, value_b, table_b, live_b, batch_out_b, c1_out_b))
+        copy_host_to_device(query_b, host_array_ptr(query), query.nbytes, runtime=runtime)
+        copy_host_to_device(key_b, host_array_ptr(key_cache), key_cache.nbytes, runtime=runtime)
+        copy_host_to_device(value_b, host_array_ptr(value_cache), value_cache.nbytes, runtime=runtime)
+        copy_host_to_device(table_b, host_array_ptr(block_table), block_table.nbytes, runtime=runtime)
+        copy_host_to_device(live_b, host_array_ptr(live_counts), live_counts.nbytes, runtime=runtime)
+
+        batch_spans = KVLiveSpans.paged_uniform(
+            block_table=_tensor(table_b.ptr, block_table.shape, "int32"),
+            live_counts=_tensor(live_b.ptr, live_counts.shape, "int64"),
+            max_live_count=max_context_len,
+            storage_dtype=DType.BF16,
+        )
+        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+            query_b.ptr,
+            key_b.ptr,
+            value_b.ptr,
+            batch_out_b.ptr,
+            batch_spans,
+            rows,
+            max_context_len,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            scale,
+            runtime=runtime,
+        )
+
+        row_query_nbytes = num_q_heads * head_dim * DType.FP32.itemsize
+        row_out_nbytes = row_query_nbytes
+        row_table_nbytes = DType.INT32.itemsize
+        row_live_nbytes = DType.INT64.itemsize
+        for row in range(rows):
+            row_spans = KVLiveSpans.paged_uniform(
+                block_table=_tensor(table_b.ptr + row * row_table_nbytes, (1,), "int32"),
+                live_counts=_tensor(live_b.ptr + row * row_live_nbytes, (1,), "int64"),
+                max_live_count=int(live_counts[row]),
+                storage_dtype=DType.BF16,
+            )
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                query_b.ptr + row * row_query_nbytes,
+                key_b.ptr,
+                value_b.ptr,
+                c1_out_b.ptr + row * row_out_nbytes,
+                row_spans,
+                int(live_counts[row]),
+                block_size,
+                num_q_heads,
+                num_kv_heads,
+                head_dim,
+                scale,
+                runtime=runtime,
+            )
+
+        copy_device_to_host(host_array_ptr(batch_out), batch_out_b, batch_out.nbytes, runtime=runtime)
+        copy_device_to_host(host_array_ptr(c1_out), c1_out_b, c1_out.nbytes, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(batch_out, c1_out)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape() -> None:
+    runtime = get_hip_runtime()
+    rows = 2
+    block_size = 256
+    blocks = 2
+    num_q_heads = 16
+    num_kv_heads = 2
+    head_dim = 256
+    max_context_len = 10
+    scale = head_dim ** -0.5
+    rng = np.random.default_rng(20260630)
+
+    query = rng.normal(0.0, 0.25, size=(rows, num_q_heads, head_dim)).astype(np.float32)
+    key_f32 = rng.normal(0.0, 0.25, size=(blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
+    value_f32 = rng.normal(0.0, 0.25, size=(blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
+    key_f32[1] += 2.0
+    value_f32[1] -= 2.0
+    key_cache = float_array_to_bf16_bits(key_f32)
+    value_cache = float_array_to_bf16_bits(value_f32)
+    block_table = np.zeros((rows, 1), dtype=np.int32)
+    live_counts = np.asarray([9, 10], dtype=np.int64)
+    batch_out = np.empty((rows, num_q_heads, head_dim), dtype=np.float32)
+    c1_out = np.empty_like(batch_out)
+
+    buffers = []
+    try:
+        query_b = malloc(query.nbytes, runtime=runtime)
+        key_b = malloc(key_cache.nbytes, runtime=runtime)
+        value_b = malloc(value_cache.nbytes, runtime=runtime)
+        table_b = malloc(block_table.nbytes, runtime=runtime)
+        live_b = malloc(live_counts.nbytes, runtime=runtime)
+        batch_out_b = malloc(batch_out.nbytes, runtime=runtime)
+        c1_out_b = malloc(c1_out.nbytes, runtime=runtime)
+        buffers.extend((query_b, key_b, value_b, table_b, live_b, batch_out_b, c1_out_b))
+        copy_host_to_device(query_b, host_array_ptr(query), query.nbytes, runtime=runtime)
+        copy_host_to_device(key_b, host_array_ptr(key_cache), key_cache.nbytes, runtime=runtime)
+        copy_host_to_device(value_b, host_array_ptr(value_cache), value_cache.nbytes, runtime=runtime)
+        copy_host_to_device(table_b, host_array_ptr(block_table), block_table.nbytes, runtime=runtime)
+        copy_host_to_device(live_b, host_array_ptr(live_counts), live_counts.nbytes, runtime=runtime)
+
+        batch_spans = KVLiveSpans.paged_uniform(
+            block_table=_tensor(table_b.ptr, block_table.shape, "int32"),
+            live_counts=_tensor(live_b.ptr, live_counts.shape, "int64"),
+            max_live_count=max_context_len,
+            storage_dtype=DType.BF16,
+        )
+        qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
+            query_b.ptr,
+            key_b.ptr,
+            value_b.ptr,
+            batch_out_b.ptr,
+            batch_spans,
+            rows,
+            max_context_len,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            scale,
+            runtime=runtime,
+        )
+
+        row_query_nbytes = num_q_heads * head_dim * DType.FP32.itemsize
+        row_out_nbytes = row_query_nbytes
+        row_table_nbytes = DType.INT32.itemsize
+        row_live_nbytes = DType.INT64.itemsize
+        for row in range(rows):
+            row_spans = KVLiveSpans.paged_uniform(
+                block_table=_tensor(table_b.ptr + row * row_table_nbytes, (1,), "int32"),
+                live_counts=_tensor(live_b.ptr + row * row_live_nbytes, (1,), "int64"),
+                max_live_count=int(live_counts[row]),
+                storage_dtype=DType.BF16,
+            )
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                query_b.ptr + row * row_query_nbytes,
+                key_b.ptr,
+                value_b.ptr,
+                c1_out_b.ptr + row * row_out_nbytes,
+                row_spans,
+                int(live_counts[row]),
+                block_size,
+                num_q_heads,
+                num_kv_heads,
+                head_dim,
+                scale,
+                runtime=runtime,
+            )
+
+        copy_device_to_host(host_array_ptr(batch_out), batch_out_b, batch_out.nbytes, runtime=runtime)
+        copy_device_to_host(host_array_ptr(c1_out), c1_out_b, c1_out.nbytes, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(batch_out, c1_out)

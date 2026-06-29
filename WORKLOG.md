@@ -127854,3 +127854,41 @@ Result: `apple_to_apple_ok=true`, AR `55.04 tok/s`, B3 MTP `48.17 tok/s =
 scaffolding, but do not run a full suite for this route. The next goal path is a
 faster exact suffix full-attention/block verifier or another target-pass
 amortization path that beats true AR.
+
+## 2026-06-29 — bulk verifier row-1 direct commit exact; route still below AR
+
+Fixed the short-context default-bulk verifier row-1 direct-commit drift. The
+root cause was in the suffix full-attention verifier path, not Conv/GDN state
+capture: the resident row-batch context decode kernel treated per-row block
+tables as row-local cache IDs by adding `row * block_table_len` to the physical
+block index. That violates `KVLiveSpans` semantics for shared resident KV
+caches, where the block table already contains physical block IDs. The kernel
+now honors the physical block directly, and a new c1-exact batch wrapper launches
+the same batch context kernel with the c1 256-thread reduction shape so model
+shape verifier rows match serial decode bit-for-bit.
+
+GGUF verifier change: short (`end < 1024`) default-bulk full-attention verifier
+blocks now use row-bulk QKV/KV write plus c1-exact row-batch decode context and
+BF16 gate multiply, instead of the drifting suffix prefill attention reduction.
+Normal prompt bulk prefill remains on the previous prefill attention path. The
+MTP harness now trusts direct captured-row commits for default `bulk` only when
+the verified block ends before 1024; native and serial-exact remain exact for
+all contexts.
+
+Focused validation:
+`python3 -m py_compile hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py hipengine/kernels/hip_gfx1100/attention/__init__.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_verify_advance_state_only.py tests/test_gguf_mtp_bench_metrics.py`
+passed; `python3 -m pytest tests/test_gguf_mtp_bench_metrics.py -q` passed
+(`53 passed`); `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py::test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks tests/test_qwen35_paged_attn_decode_plan.py::test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape -q`
+passed (`2 passed`); `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+passed (`7 passed`); targeted rerun
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py::test_bulk_direct_commit_row1_matches_serial -q`
+passed.
+
+Smoke command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-hybrid-strict-block-direct-cap32k --output /tmp/hipengine-hybrid-strict-block-direct-bulk-exact-smoke.json`.
+Result: `apple_to_apple_ok=true`, AR `54.88 tok/s`, B3 MTP `49.01 tok/s =
+0.893x AR`, accepted/output `0.571`, draft acceptance `0.087`,
+`mtp_beats_ar=false`. Decision: keep the exact short-bulk row commit as
+rollback-slot scaffolding, but do not run a full suite for this route. It still
+does not cut target verifier work enough to beat true AR; the next lever remains
+verifier amortization / fewer target passes per visible token.

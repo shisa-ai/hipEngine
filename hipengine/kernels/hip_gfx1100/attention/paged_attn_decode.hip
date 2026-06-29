@@ -385,7 +385,7 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     const int64_t logical_block = token / block_size;
     const int64_t block_offset = token - logical_block * block_size;
     const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-    const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+    const int64_t token_offset = (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
     const int64_t k_offset = token_offset + kv_head * head_dim;
     float acc = 0.0f;
     for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
@@ -465,7 +465,7 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
         const int64_t logical_block = token / block_size;
         const int64_t block_offset = token - logical_block * block_size;
         const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-        const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+        const int64_t token_offset = (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
         const int64_t v_offset = token_offset + kv_head * head_dim + dim;
         acc += (scores[token] * inv_denom) * bf16_bits_to_float(value_cache[v_offset]);
       }
@@ -486,7 +486,7 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
         const int64_t logical_block = token / block_size;
         const int64_t block_offset = token - logical_block * block_size;
         const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-        const int64_t token_offset = ((row * block_table_len + physical_block) * block_size + block_offset) * num_kv_heads * head_dim;
+        const int64_t token_offset = (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
         const int64_t v_offset = token_offset + kv_head * head_dim + dim;
         acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
       }
@@ -3459,6 +3459,52 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
   const int max_warps = threads / 32;
   const int raw_value_groups = (head_dim >= 128 && max_context_len >= 128) ? static_cast<int>(threads / head_dim) : 0;
   const int value_groups = (threads >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      out,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int max_warps = threads / 32;
+  const int value_groups = 1;
   const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) * sizeof(float);
   hipLaunchKernelGGL(
       qwen35_paged_full_attn_decode_context_tensor_batch_kernel,

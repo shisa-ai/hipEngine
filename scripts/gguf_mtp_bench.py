@@ -80,6 +80,14 @@ def _hip_available() -> bool:
     return True
 
 
+def target_block_direct_commit_is_exact(verify_mode: str, *, start_position: int, rows: int) -> bool:
+    if verify_mode in {"native", "serial-exact"}:
+        return True
+    if verify_mode == "bulk":
+        return int(start_position) + int(rows) < 1024
+    return False
+
+
 def _get_hw_info() -> dict:
     """Get GPU hardware info."""
     import subprocess
@@ -1377,9 +1385,13 @@ def main(argv: list[str] | None = None):
             if can_b1_branch_safe_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
-                direct_state_commit_exact_mode = args.target_block_verify_mode in {"native", "serial-exact"}
                 snapshot = session._linear_state_snapshot()
                 block_inputs = [int(verify_input_token), int(draft_tokens[0])]
+                direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
+                    args.target_block_verify_mode,
+                    start_position=seq_position,
+                    rows=len(block_inputs),
+                )
                 try:
                     if args.target_block_verify_mode == "serial-exact":
                         block_result = session.verify_target_block_serial_exact(
@@ -1494,10 +1506,14 @@ def main(argv: list[str] | None = None):
             if can_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
-                direct_state_commit_exact_mode = args.target_block_verify_mode in {"native", "serial-exact"}
                 snapshot = session._linear_state_snapshot()
                 try:
                     block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
+                    direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
+                        args.target_block_verify_mode,
+                        start_position=seq_position,
+                        rows=len(block_inputs),
+                    )
                     if args.target_block_verify_mode == "serial-exact":
                         block_result = session.verify_target_block_serial_exact(
                             block_inputs,

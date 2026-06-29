@@ -18,6 +18,7 @@ from scripts.gguf_mtp_bench import (
     root_topk_acceptance_from_target_samples,
     select_topk_tokens,
     sibling_topk_acceptance_from_target_samples,
+    target_block_direct_commit_is_exact,
     target_membership_in_draft_topk,
     validate_draft_n_max,
 )
@@ -372,6 +373,14 @@ def test_arg_parser_exposes_target_block_verify_diagnostic() -> None:
     assert args.target_block_verify is True
     assert args.target_block_verify_mode == "native"
     assert args.target_block_wmma_prefill is True
+
+
+def test_target_block_direct_commit_exactness_policy() -> None:
+    assert target_block_direct_commit_is_exact("native", start_position=4096, rows=5) is True
+    assert target_block_direct_commit_is_exact("serial-exact", start_position=4096, rows=5) is True
+    assert target_block_direct_commit_is_exact("bulk", start_position=8, rows=4) is True
+    assert target_block_direct_commit_is_exact("bulk", start_position=1020, rows=4) is False
+    assert target_block_direct_commit_is_exact("unknown", start_position=8, rows=2) is False
 
 
 def test_arg_parser_defaults_target_block_wmma_prefill_off() -> None:

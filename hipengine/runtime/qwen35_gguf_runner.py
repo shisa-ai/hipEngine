@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     build_qwen35_paged_attn_decode,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_bf16_to_bf16,
+    qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
@@ -1517,6 +1518,200 @@ class Qwen35GGUFFullStackRunner:
             expert_sidecar=expert_sidecar,
         )
         return used_aotriton
+
+    def _run_full_attention_decode_batch_layer_rows(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        stream: int = 0,
+        expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+    ) -> None:
+        """Run row-bulk QKV/KV write with the c1-equivalent batch decode attention."""
+
+        assert self.weights is not None
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        rows = int(scratch.rows)
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if scratch.key_cache is None or scratch.value_cache is None:
+            raise RuntimeError("GGUF full-attention decode batch requires cache-backed key/value buffers")
+        end = int(scratch.start) + rows
+        if end >= 1024:
+            raise ValueError("GGUF full-attention decode batch verifier path currently requires context < 1024")
+        cast_library = self._cast_library()
+        kv_write_library = self._paged_kv_write_library()
+        paged_attn_library = self._paged_attn_decode_library()
+        gguf_rmsnorm_bf16_f32_weight(
+            hidden_ptr,
+            layer.weight("attn_norm").allocation().tensor.ptr,
+            scratch.norm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not launch_gguf_linear_triple(
+            layer.weight("attn_q"),
+            layer.weight("attn_k"),
+            layer.weight("attn_v"),
+            scratch.norm.ptr,
+            scratch.full_q.ptr,
+            scratch.full_k.ptr,
+            scratch.full_v.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=2 * self.q_width,
+            out_features_b=self.kv_width,
+            out_features_c=self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_q"),
+                scratch.norm.ptr,
+                scratch.full_q.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=2 * self.q_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            if not launch_gguf_linear_pair(
+                layer.weight("attn_k"),
+                layer.weight("attn_v"),
+                scratch.norm.ptr,
+                scratch.full_k.ptr,
+                scratch.full_v.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.kv_width,
+                stream=stream,
+                runtime=runtime,
+            ):
+                launch_gguf_linear(
+                    layer.weight("attn_k"),
+                    scratch.norm.ptr,
+                    scratch.full_k.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("attn_v"),
+                    scratch.norm.ptr,
+                    scratch.full_v.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
+        qwen35_split_qgate_bf16(
+            scratch.full_q.ptr,
+            scratch.full_query_raw.ptr,
+            scratch.full_gate.ptr,
+            rows,
+            cfg.head_count,
+            cfg.key_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        bf16_to_f32(
+            scratch.full_k.ptr,
+            scratch.full_key_raw.ptr,
+            rows * self.kv_width,
+            stream=stream,
+            library=cast_library,
+            runtime=runtime,
+        )
+        gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+            scratch.full_query_raw.ptr,
+            scratch.full_key_raw.ptr,
+            layer.weight("attn_q_norm").allocation().tensor.ptr,
+            layer.weight("attn_k_norm").allocation().tensor.ptr,
+            scratch.cos_table.ptr,
+            scratch.sin_table.ptr,
+            scratch.positions_tensor.ptr,
+            scratch.full_query.ptr,
+            scratch.full_key.ptr,
+            cfg.rms_norm_eps,
+            rows,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.rope_dimension_count,
+            scratch.max_positions,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
+            scratch.full_key.ptr,
+            scratch.full_v.ptr,
+            scratch.key_cache.ptr,
+            scratch.value_cache.ptr,
+            scratch.append_spans,
+            rows,
+            scratch.block_size,
+            cfg.head_count_kv,
+            cfg.key_length,
+            stream=stream,
+            library=kv_write_library,
+            runtime=runtime,
+        )
+        qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
+            scratch.full_query.ptr,
+            scratch.key_cache.ptr,
+            scratch.value_cache.ptr,
+            scratch.full_query_raw.ptr,
+            scratch.prefill_spans,
+            rows,
+            end,
+            scratch.block_size,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.key_length ** -0.5,
+            stream=stream,
+            library=paged_attn_library,
+            runtime=runtime,
+        )
+        qwen35_full_attn_gate_mul_bf16(
+            scratch.full_query_raw.ptr,
+            scratch.full_gate.ptr,
+            scratch.full_gated.ptr,
+            rows * self.q_width,
+            stream=stream,
+            library=paged_attn_library,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_output"),
+            scratch.full_gated.ptr,
+            scratch.attn_out.ptr,
+            rows=rows,
+            in_features=self.q_width,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+        )
 
     def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
         self._run_linear_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, stream=stream)
@@ -3938,14 +4133,24 @@ class Qwen35GGUFResidentSession:
                         elif layer_type == FULL_ATTENTION:
                             key_cache, value_cache = self.scratch.full_cache(layer_id)
                             layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
-                            self.runner._run_full_attention_prefill_layer_aotriton(
-                                layer_id,
-                                src_chunk_ptr,
-                                dst_chunk_ptr,
-                                layer_scratch,
-                                stream=stream,
-                                expert_sidecar=expert_sidecar,
-                            )
+                            if end < 1024:
+                                self.runner._run_full_attention_decode_batch_layer_rows(
+                                    layer_id,
+                                    src_chunk_ptr,
+                                    dst_chunk_ptr,
+                                    layer_scratch,
+                                    stream=stream,
+                                    expert_sidecar=expert_sidecar,
+                                )
+                            else:
+                                self.runner._run_full_attention_prefill_layer_aotriton(
+                                    layer_id,
+                                    src_chunk_ptr,
+                                    dst_chunk_ptr,
+                                    layer_scratch,
+                                    stream=stream,
+                                    expert_sidecar=expert_sidecar,
+                                )
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                     finally:
