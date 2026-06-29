@@ -1889,21 +1889,14 @@ class Qwen35GGUFFullStackRunner:
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 stream,
             )
-            f32_to_bf16(
-                scratch.recurrent_out.ptr,
-                scratch.recurrent_bf16.ptr,
-                rows * cfg.ssm_inner_size,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
             launch_gguf_linear(
                 layer.weight("ssm_out"),
-                scratch.recurrent_bf16.ptr,
+                scratch.recurrent_out.ptr,
                 scratch.attn_out.ptr,
                 rows=rows,
                 in_features=cfg.ssm_inner_size,
                 out_features=self.hidden_size,
+                activation_dtype=GGUF_ACTIVATION_F32,
                 stream=stream,
                 runtime=runtime,
             )

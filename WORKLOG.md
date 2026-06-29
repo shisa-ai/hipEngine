@@ -127772,3 +127772,40 @@ Decision: this proves the commit/rollback-slot API can be exact when backed by
 the serial decode scheduler. It does not reduce target passes per visible token,
 so the active optimization goal is unchanged: make the row-bulk/transactional
 verifier exact and amortized enough to beat true AR on the full suite.
+
+## 2026-06-29 — bulk verifier row-0 direct commit fixed; route still rejected
+
+Found and fixed one row-capture precision mismatch: the captured row-bulk
+linear-attention path cast `scratch.recurrent_out` to BF16 before `ssm_out`,
+while serial decode feeds `ssm_out` from FP32 recurrent output
+(`activation_dtype=GGUF_ACTIVATION_F32`). The capture path now uses the serial
+FP32 activation contract.
+
+Focused exactness coverage:
+`tests/test_qwen35_gguf_verify_advance_state_only.py::test_bulk_direct_commit_matches_wrong_branch`
+now proves that a two-row `[prev, wrong_child]` bulk verifier with captured
+state can directly commit row 0 and match serial hidden seed + full linear state
+bit-for-bit; the subsequent corrective serial step is also exact. The older
+row-bulk-vs-row-bulk replay assertion was replaced with a serial row-0 oracle
+because rollback slots need serial exactness, not agreement with the old bulk
+replay path.
+
+Important limit: a strict two-row direct commit of row 1 still drifts at the
+linear-state level (`max_abs` around `0.265625` in the probe), so the harness
+uses direct captured-state commit only for `consumed_rows == 1`. Deeper accepted
+prefixes under `--target-block-direct-state-commit` restore and replay with the
+serial-exact verifier until row 1+ is fixed.
+
+Validation:
+`python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+passed; `python3 -m pytest tests/test_gguf_mtp_bench_metrics.py -q` passed
+(`52 passed`); `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+passed (`5 passed`); `git diff --check` passed.
+
+Smoke command:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --budgets 1 --mtp-route resident-b1-branch-safe-direct-cap32k-device-seed --output /tmp/hipengine-b1-branch-safe-direct-smoke.json`
+completed with `apple_to_apple_ok=true`, AR `54.97 tok/s`, B1 MTP
+`26.66 tok/s = 0.4849x AR`, accepted/output `0.400`, draft acceptance
+`0.017`, `mtp_beats_ar=false`. Decision: do not run full suite for this route.
+The row-0 exactness fix is useful correctness scaffolding, but branch-safe
+direct B1 remains a rejected diagnostic and is not the goal path.

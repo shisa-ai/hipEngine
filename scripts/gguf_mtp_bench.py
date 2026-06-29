@@ -1376,42 +1376,72 @@ def main(argv: list[str] | None = None):
             )
             if can_b1_branch_safe_block_verify:
                 t0 = time.perf_counter()
+                direct_state_commit = bool(args.target_block_direct_state_commit)
                 snapshot = session._linear_state_snapshot()
                 block_inputs = [int(verify_input_token), int(draft_tokens[0])]
                 try:
                     if args.target_block_verify_mode == "serial-exact":
-                        block_result = session.verify_target_block_serial_exact(block_inputs)
+                        block_result = session.verify_target_block_serial_exact(
+                            block_inputs,
+                            capture_linear_state_rows=direct_state_commit,
+                        )
                     else:
                         block_result = session.verify_target_block(
                             block_inputs,
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                            capture_linear_state_rows=direct_state_commit,
                         )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     if len(block_target_tokens) != 2:
                         raise RuntimeError("B1 branch-safe block verifier expected exactly two target rows")
                     target0 = int(block_target_tokens[0])
                     if target0 == int(draft_tokens[0]):
-                        target_tokens.extend(block_target_tokens)
-                        if serial_hidden_host_required:
-                            target_hidden_seeds.extend(
-                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                for row in range(2)
-                            )
+                        if direct_state_commit:
+                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
+                            replay_result = session.verify_target_block_serial_exact(block_inputs)
+                            replay_tokens = [int(token) for token in replay_result.token_ids]
+                            if replay_tokens != block_target_tokens:
+                                raise RuntimeError("B1 branch-safe serial-exact replay diverged from block rows")
+                            target_tokens.extend(replay_tokens)
+                            if serial_hidden_host_required:
+                                target_hidden_seeds.extend(
+                                    np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                    for row in range(2)
+                                )
+                        else:
+                            target_tokens.extend(block_target_tokens)
+                            if serial_hidden_host_required:
+                                target_hidden_seeds.extend(
+                                    np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                    for row in range(2)
+                                )
                         current_device_token = int(block_target_tokens[1])
                     else:
-                        session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                        replay0 = session.step(
-                            int(verify_input_token),
-                            return_logits=False,
-                            capture_hidden_seed_fp32=True,
-                        )
-                        if int(replay0.token_id) != target0:
-                            raise RuntimeError("B1 branch-safe row-0 replay diverged from block row 0")
+                        if direct_state_commit:
+                            if not block_result.linear_state_rows_captured:
+                                raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
+                            session._commit_verify_linear_state_row(0, position=seq_position + 1)
+                        else:
+                            if snapshot is None:
+                                raise RuntimeError("B1 branch-safe row-0 replay requires a linear-state snapshot")
+                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
+                            replay0 = session.step(
+                                int(verify_input_token),
+                                return_logits=False,
+                                capture_hidden_seed_fp32=True,
+                            )
+                            if int(replay0.token_id) != target0:
+                                raise RuntimeError("B1 branch-safe row-0 replay diverged from block row 0")
                         target_tokens.append(target0)
                         current_device_token = target0
                         if serial_hidden_host_required:
-                            target_hidden_seeds.append(copy_pending_hidden_seed())
+                            if direct_state_commit:
+                                target_hidden_seeds.append(
+                                    np.ascontiguousarray(block_result.hidden_seeds[0:1], dtype=np.float32)
+                                )
+                            else:
+                                target_hidden_seeds.append(copy_pending_hidden_seed())
                         root_topk_tokens = (
                             [int(token) for token in draft_top10_tokens[0][:cycle_root_topk_accept]]
                             if draft_top10_tokens
@@ -1452,7 +1482,7 @@ def main(argv: list[str] | None = None):
             if can_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
-                snapshot = None if direct_state_commit else session._linear_state_snapshot()
+                snapshot = session._linear_state_snapshot()
                 try:
                     block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
                     if args.target_block_verify_mode == "serial-exact":
@@ -1486,7 +1516,7 @@ def main(argv: list[str] | None = None):
                     if consumed_rows < len(block_inputs):
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
-                        if direct_state_commit:
+                        if direct_state_commit and consumed_rows == 1:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
                             session._commit_verify_linear_state_row(
@@ -1499,18 +1529,16 @@ def main(argv: list[str] | None = None):
                                 for row in range(len(replay_tokens))
                             ]
                         else:
-                            if snapshot is None:
-                                raise RuntimeError("block replay requires a linear-state snapshot")
                             session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                            # Accepted-prefix replay only needs to advance linear/KV
-                            # state; the target tokens are already known from the
-                            # full-block pass (deterministic), so skip the replay's
-                            # LM-head sampling and reuse block_target_tokens.
-                            if args.target_block_verify_mode == "serial-exact":
+                            if direct_state_commit or args.target_block_verify_mode == "serial-exact":
                                 replay_result = session.verify_target_block_serial_exact(
                                     block_inputs[:consumed_rows],
                                 )
                             else:
+                                # Accepted-prefix replay only needs to advance linear/KV
+                                # state; the target tokens are already known from the
+                                # full-block pass (deterministic), so skip the replay's
+                                # LM-head sampling and reuse block_target_tokens.
                                 replay_result = session.verify_target_block(
                                     block_inputs[:consumed_rows],
                                     bulk_attention_mode=args.target_block_verify_mode,
@@ -1518,6 +1546,10 @@ def main(argv: list[str] | None = None):
                                     advance_state_only=True,
                                 )
                             replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
+                            if (direct_state_commit or args.target_block_verify_mode == "serial-exact") and [
+                                int(token) for token in replay_result.token_ids
+                            ] != replay_tokens:
+                                raise RuntimeError("serial-exact accepted-prefix replay diverged from block rows")
                             replay_hidden = [
                                 np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
                                 for row in range(len(replay_tokens))
@@ -1525,16 +1557,27 @@ def main(argv: list[str] | None = None):
                         target_tokens.extend(replay_tokens)
                         target_hidden_seeds.extend(replay_hidden)
                     else:
-                        target_tokens.extend(block_target_tokens)
-                        target_hidden_seeds.extend(
-                            np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                            for row in range(len(block_target_tokens))
-                        )
+                        if direct_state_commit:
+                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
+                            replay_result = session.verify_target_block_serial_exact(block_inputs)
+                            replay_tokens = [int(token) for token in replay_result.token_ids]
+                            if replay_tokens != block_target_tokens:
+                                raise RuntimeError("direct block serial-exact replay diverged from block rows")
+                            target_tokens.extend(replay_tokens)
+                            target_hidden_seeds.extend(
+                                np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                for row in range(len(replay_tokens))
+                            )
+                        else:
+                            target_tokens.extend(block_target_tokens)
+                            target_hidden_seeds.extend(
+                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                for row in range(len(block_target_tokens))
+                            )
                     current_device_token = int(target_tokens[-1])
                     block_verify_used = True
                 finally:
-                    if snapshot is not None:
-                        session._free_linear_state_snapshot(snapshot)
+                    session._free_linear_state_snapshot(snapshot)
                 t1 = time.perf_counter()
                 ar_decode_ms += (t1 - t0) * 1000
             can_batched_verify = (
