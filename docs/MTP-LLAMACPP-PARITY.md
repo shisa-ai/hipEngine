@@ -217,6 +217,42 @@ block structure with cheap drafts and the measured acceptance, B2 block verify
 reaches ≈ AR–1.1× today and clears llama parity once the per-row over-read or
 draft cost drops.
 
+#### P0 RETAINED WIN + settled conclusion (2026-06-30)
+
+**Retained:** `--target-block-min-rows 2` promoted to the default route
+(`resident-b1-probe-block-direct-cap32k-minrows2`). Full suite: best **B2 56.8
+tok/s = 1.0399× AR** (confirm 1.0385×), beating the prior B3 1.0356× default. B2
+moved from serial **0.9845×** to block-amortized **1.0399×** (+5.6%); B3
+unchanged. Exact (bit-exact vs serial-exact rows 2–3), `apple_to_apple_ok=true`.
+
+**Policy space is now exhausted — acceptance is not the lever.** Two further
+full-suite diagnostics settle it:
+- Keep-drafting (no fallback, cheap B1 probe) **restored** non-code acceptance
+  (en/mixed 0.41, B2 acc/out 0.482 vs default 0.265) yet tok/s **fell to 1.007×**.
+- A larger draft cap (98304) was **worse** (1.0276×): costlier drafts, fallback
+  still latches.
+
+This confirms P0.1 at the route level: **raising acceptance does not raise tok/s
+while per-token verify cost (block over-read 6.82 ms/row + probe) eats the gain.**
+The selective-fallback default is faster because it skips verify work on low-yield
+prompts. The aggregate is dragged below the amortization threshold by
+**general_ja** (draft acc 0.167 capped / ~0.5 full vs llama **0.563**).
+
+**The remaining gap to llama 1.34× is now kernel/model work, not benchmark policy:**
+1. **general_ja draft quality + coverage** (highest leverage) — cap32k halves ja
+   draft acc (Japanese token IDs > 32768); full vocab ~0.5 (vs llama 0.56) but
+   ~4 ms/depth. Needs a cheap full-vocab or CJK-covering draft.
+2. **Draft lm-head cost** — full vocab ~3 ms (reads 638 MB Q6_K lm-head);
+   cap32k ~0.7 ms but drops CJK. A smaller-quant/shortlist draft lm-head that
+   preserves CJK lets ja/mixed use full coverage cheaply.
+3. **Per-row block over-read** 5.6 ms/row (MoE distinct-expert, top-8/256) — the
+   same constraint llama faces; only a more BW-efficient small-batch MoE verify
+   GEMV reduces it.
+
+The S1–S3 acceptance/policy probes in the shootout below are therefore
+**confirmed dead-ends** for tok/s (acceptance restored, speed flat/down); skip
+them and go straight to the three kernel/model levers above.
+
 ### Next shootout matrix
 
 > **Order note (2026-06-29):** the S5 precondition ("a route with good

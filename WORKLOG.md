@@ -128210,3 +128210,42 @@ preserves CJK, so full-vocab-quality drafts cost ~cap32k. That is the path from
 
 Validation: `pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_block_verify_low_rows.py -q`
 (12 passed); both full-suite runs `apple_to_apple_ok=true`.
+
+## 2026-06-30 — Policy space exhausted: acceptance is not the lever, general_ja draft quality + per-token verify cost are
+
+Two more full-suite diagnostics confirm the committed 1.0399x B2 default is the
+best policy/cap-reachable result; further gains need kernel/model work.
+
+- `minrows2 + cap98304` (larger draft vocab cap): best B4 1.0276x — WORSE. Bigger
+  cap makes drafts costlier without recovering non-code, because the permanent AR
+  fallback still latches (per-category non-code best acc/out 0.0). Artifact
+  `benchmarks/results/2026-06-30-ar-mtp-suite-full-minrows2-cap98304-diagnostic.json`.
+- `minrows2 + cap32k + NO fallback` (cheap B1 probe keeps running on non-code):
+  RESTORED non-code acceptance (en 0.412, mixed 0.412, code 0.452, ja 0.167; B2
+  acc/out 0.482 vs default 0.265) but tok/s DROPPED to 1.007x. Artifact
+  `benchmarks/results/2026-06-30-ar-mtp-suite-full-minrows2-nofallback-diagnostic.json`.
+
+This empirically confirms P0.1 at the route level: raising acceptance does NOT
+raise tok/s when per-token verify cost (block over-read 6.82ms/row + probe) eats
+the gain. The selective-fallback default is faster precisely because it skips
+verify work on low-yield prompts. The aggregate is dragged below the amortization
+threshold by general_ja (draft acc 0.167 cap / ~0.5 full vs llama 0.563): ja
+lowers accepted-per-cycle so block verify can't pay off.
+
+Precise remaining levers to reach llama 1.34x (all deep, multi-session):
+1. general_ja draft quality+coverage — HIGHEST leverage. cap32k halves ja draft
+   acc (0.5->0.2, Japanese token IDs > 32768); full vocab gives ~0.5 (vs llama
+   0.56) but costs ~4ms/depth. Need a cheap full-vocab (or CJK-covering) draft.
+2. Draft lm-head cost — full vocab ~3ms memory-bound (reads 638MB Q6_K lm-head);
+   cap32k ~0.7ms but drops CJK. A smaller-quant or shortlist draft lm-head that
+   preserves CJK would let ja/mixed use full coverage cheaply.
+3. Per-row block over-read 5.6ms/row (MoE distinct-expert, top-8/256, ~no row
+   overlap) — same constraint llama has; only ~fundamental reduction is a more
+   BW-efficient small-batch MoE verify GEMV.
+
+Acceptance, block amortization, AR speed, and the policy/cap/fallback space are
+all settled. The work is now kernel (draft lm-head, MoE verify) and model (ja
+draft) — not benchmark policy.
+
+Validation: `pytest tests/test_gguf_ar_mtp_suite.py -q` (11 passed); both
+diagnostics `apple_to_apple_ok=true`.
