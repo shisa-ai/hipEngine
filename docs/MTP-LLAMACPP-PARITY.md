@@ -44,6 +44,9 @@ tooling or a since-corrected methodology — flagged inline below).
   GGUF serial-target rocprof (`scripts/gguf_mtp_verifier_rocprof.py`, 12
   measured target steps, post no-logits cleanup) shows **18.63 ms host wall /
   16.56 ms kernel time per target step = 89% kernel time**, ~709 launches/step.
+  A same-day rerun after the capped/short-block probes remains the same shape:
+  **19.37 ms host / 16.95 ms kernel = 87.5% kernel time**, **708.9
+  launches/step** (`benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-rerun.json`).
   The retained
   `resident-serial-fallback` route is GPU/weight-streaming bound, not
   host-launch-bound.
@@ -65,8 +68,10 @@ tooling or a since-corrected methodology — flagged inline below).
    `scripts/gguf_mtp_verifier_rocprof.py` shows the retained
    `resident-serial-fallback` target verifier is GPU-bound after the no-logits
    cleanup: 18.63 ms host wall / 16.56 ms kernel time per target step (89%
-   kernel share), ~709 launches/step. The pre-cleanup call-site profile was
-   18.99 ms host / 16.68 ms kernel with unused full-logits D2H.
+   kernel share), ~709 launches/step. A 2026-06-29 rerun measured 19.37 ms host /
+   16.95 ms kernel (87.5% kernel share), 708.9 calls/step, with dense Q8_0 GEMV
+   48.8% and selected MoE GEMV 24.7% of kernel time. The pre-cleanup call-site
+   profile was 18.99 ms host / 16.68 ms kernel with unused full-logits D2H.
 3. **The `--true-ar-baseline-json` apple-to-apple path is BROKEN.** Since #8
    retired the HIP decode graph, the production AR path emits `decode_path:
    eager_step`, but `gguf_mtp_category_bench.py`'s `TRUE_AR_PRODUCTION_TIMING_REQUIRED`

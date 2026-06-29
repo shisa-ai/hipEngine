@@ -127214,3 +127214,20 @@ one rollback or prompt-local block slowdown erases the benefit. Do not re-chase
 short B1 block verify without a materially faster rollback-free target verifier.
 The next useful direction remains a structural resident lifecycle / verifier
 amortization path closer to llama.cpp's `process()`/`draft()`/`accept()` model.
+
+## 2026-06-29 — GGUF MTP verifier host/GPU split rerun still GPU-bound
+
+Re-ran the current serial target verifier rocprof diagnostic after the capped
+recovery and short-block probes:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_verifier_rocprof.py --steps 8 --warmup 2 --raw-root /tmp/hipengine-gguf-mtp-verifier-rocprof-rerun --out benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-rerun.json`.
+
+Result: `avg_host_ms=19.366`, `avg_kernel_ms=16.948`,
+`kernel_time_share_of_host_wall=0.875`, `kernel_calls_per_step=708.9`.
+Top kernel buckets per target step: dense Q8_0 GEMV `8.278 ms` (48.8% of kernel
+time), selected-MoE GEMV `4.180 ms` (24.7%), lm-head `1.866 ms` (11.0%),
+router `0.766 ms` (4.5%), GDN linear attention `0.732 ms` (4.3%).
+
+Decision: this confirms the earlier host/GPU split; the retained serial verifier
+is still GPU/weight-streaming bound. Do not restart with Python launch cleanup.
+The next implementation lever must reduce verifier work per visible token or
+adopt a structurally different resident verifier/MTP lifecycle.
