@@ -128375,3 +128375,12 @@ policy change, to convert to acceptance).
 
 Validation: `pytest tests/test_gguf_ar_mtp_suite.py -q` (12 passed); both
 full-suite runs `apple_to_apple_ok=true`.
+
+## 2026-06-30 — p_min sweep: 0.5 is optimal
+
+Swept draft-p-min on the minrows2 default: 0.4 -> best B3 1.0326x; 0.5 -> best B5
+1.0534x (retained default); 0.6 -> best B5 1.0378x. Clean peak at 0.5, matching
+the ja-draft hit/miss confidence separation (hit ~0.69, miss ~0.36 => threshold
+~0.5). 0.4 under-gates (deeper budgets fall back to ~1.00 from wasted verify on
+low-confidence misses); 0.6 over-gates (skips some hits). Default stays p_min 0.5.
+Rejected probe routes not retained.
