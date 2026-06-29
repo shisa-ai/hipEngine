@@ -88,6 +88,19 @@ acceptance rows are INVALID.
 > below is the underlying mechanism; note its `--true-ar-baseline-json` *attach*
 > is currently broken (it still demands the #8-retired `graph_replay` AR contract,
 > see `docs/REFACTOR.md`), which is why the suite computes the ratio itself.
+>
+> **Scope: GGUF path only.** `gguf_ar_mtp_suite.py` covers the GGUF Q4_K_M path
+> (`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `Qwen35GGUFResidentSession`). The
+> **PARO path** (BF16 / W4-PARO safetensors, e.g.
+> `/models/hipengine/Qwen3.6-35B-A3B-PARO-...-MTP-BF16` and the `z-lab` HF
+> snapshots) is a **separate MTP/AR codepath** and is **NOT** covered by this
+> suite — it has no unified one-command AR-vs-MTP gate yet. PARO-path
+> optimizations must be validated e2e with the PARO harnesses
+> (`scripts/qwen35_paro_bench.py` for AR, `scripts/mtp_chain_e2e_bench.py` /
+> `scripts/mtp_verifier_economics.py` for MTP, `scripts/mtp_verifier_rocprof.py`
+> for the verifier trace). A change to kernels shared by both paths must be
+> validated on whichever path(s) it touches (ideally both). A unified PARO
+> equivalent of `gguf_ar_mtp_suite.py` is a TODO.
 
 Use this protocol before resuming native GGUF-MTP acceptance/speed optimization.
 It is the guarded replacement for the old fixed-prompt `gguf_mtp_bench.py`

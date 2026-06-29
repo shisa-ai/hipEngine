@@ -170,6 +170,13 @@ not a result. So:
 This is the gate that stops the recurring trap of shipping an isolated win that
 disappears at e2e.
 
+**Scope:** `gguf_ar_mtp_suite.py` covers the **GGUF Q4_K_M path only**
+(`Qwen35GGUFResidentSession`). The **PARO path** (BF16 / W4-PARO safetensors) is a
+separate MTP/AR codepath with its own harnesses (`qwen35_paro_bench.py` AR;
+`mtp_chain_e2e_bench.py` / `mtp_verifier_economics.py` MTP) and is **not** covered
+by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.md`
+"Honest native GGUF-MTP category diagnostics" for the cross-path scope note.
+
 ### How to continue (ordered, all gated by the suite)
 
 1. **Settle the verifier host-vs-GPU split on current code.** Re-run the verify
