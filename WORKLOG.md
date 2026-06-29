@@ -128694,3 +128694,31 @@ COMPLETE PICTURE of the llama MTP gap after this session:
   kernel proven too heavy at these sizes; needs a purpose-built kernel + correctness
   gate (per-slot path is the exact reference) + registry + rocprof. Genuine kernel
   project, now fully justified and de-risked with measured headroom.
+
+## 2026-06-30 — FINAL ROADMAP: grouped MoE verify projects to ~1.24-1.31x AR (near llama 1.342x)
+
+Refined the grouped-MoE-verify payoff projection from measured data (P0.1 block
+cost model + 46% over-read measurement):
+- grouped block(rows) = 16.7 + 4.58*rows (vs per-slot 16.7 + 6.82*rows).
+- block cut: B2 18%, B3 20%, B5 23%.
+- aggregate projection from default pmin05 1.0534x, verify=65-85% of per-output time:
+  projected best 1.242x - 1.314x AR. So the kernel could NEARLY close to llama 1.342x
+  (not just ~1.2x as earlier estimated).
+
+This is the single, fully-specified, measured-and-projected remaining deliverable:
+a purpose-built lightweight small-batch (2-6 row) grouped/deduplicated selected-expert
+MoE verify GEMV. Spec:
+- on-device dedupe of the rows*top_k (row,expert) pairs to distinct experts (the
+  routing already produces moe_selected_experts); for each distinct expert, GEMV/
+  small-GEMM over its assigned rows reading the expert weight ONCE; scatter+routing-
+  weight combine back. MUST be low-launch (the existing prefill compact scheduler is
+  too heavy at 2-6 rows: measured 0.63x).
+- correctness gate: bit-exact vs the current per-slot selected-expert path (the exact
+  reference) + KL<=0.05/top1>=90% + full ar_mtp_suite; register under the four-axis
+  registry; rocprof --kernel-trace.
+- expected: ~1.24-1.31x AR, closing most/all of the llama gap at ~no acceptance cost
+  (it is the SAME verify math, just dedup'd weight reads).
+
+This is a dedicated kernel-development effort (HIP device code + build + validate),
+not an in-session config change. All non-kernel levers are exhausted; this is THE
+next step and it is now fully justified, quantified, and de-risked.
