@@ -127003,3 +127003,24 @@ B5 50/70 = 0.714). Tok/s was noise/flat: B1 49.62 -> 49.72 (+0.2%), B3 46.40 -> 
 candidate denominator widened. Decision: do not spend a full-suite gate on root-topk64; next
 acceptance/amortization probe should target deeper sibling acceptance under the existing root-topk40
 envelope.
+
+## 2026-06-29 — GGUF MTP sibling-topk sweep: deeper-budget cleanup, not goal-closing
+
+Exploratory 10-prompt category probe (cycles=5, B1/B3/B5, resident-serial-fallback, in-process
+load-once, outputs under `/tmp/hipengine-sibling{1,8,40}-c5`). Compared default sibling-K1 to
+sibling-K8 and sibling-K40 while preserving root-K40, branch redraft off, adaptive AR fallback on.
+Because sibling-K <= root-K, this does not add draft top-k readback beyond the existing root-K40
+proposal rows.
+
+Totals:
+- sibling-K1: B1 50.06 tok/s, acc/out 46/96 = 0.479; B3 44.98, 81/131 = 0.618; B5 40.41, 87/137 = 0.635.
+- sibling-K8: B1 flat 50.05; B3 45.62 (+1.4%), 91/141 = 0.645; B5 41.33 (+2.3%), 99/149 = 0.664.
+- sibling-K40: B1 flat 50.06; B3 45.91 (+2.1%), 96/146 = 0.658; B5 41.86 (+3.6%), 106/156 = 0.679.
+
+Decision: sibling-K40 is a plausible deeper-budget cleanup and would need the full
+`gguf_ar_mtp_suite.py --scope full` gate before any default change, but it is not the next
+goal-closing lever because B1 is unchanged and remains the best budget. B1 timing on the same
+10-prompt probe: accepted cycles average ~3.9 ms MTP draft + ~36.1 ms target verify for two visible
+tokens; saving all draft time would only reach ~55.4 tok/s, while a ~10% target-verify reduction
+would clear the same-run AR denominator. Next goal branch should therefore target structural target
+verification cost (or an equally large draft-cost removal), not more sibling acceptance.
