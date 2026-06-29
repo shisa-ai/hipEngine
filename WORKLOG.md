@@ -128384,3 +128384,28 @@ the ja-draft hit/miss confidence separation (hit ~0.69, miss ~0.36 => threshold
 ~0.5). 0.4 under-gates (deeper budgets fall back to ~1.00 from wasted verify on
 low-confidence misses); 0.6 over-gates (skips some hits). Default stays p_min 0.5.
 Rejected probe routes not retained.
+
+## 2026-06-30 — ja audit progress: target healthy, draft "close but uncertain"; llama compare blocked on tokenization
+
+Started the general_ja draft-quality audit (task #7). Findings:
+- hipEngine ja TARGET is healthy: greedy on the ja_explain prompt
+  (43-token reasoning-off chat) produces coherent Japanese
+  ("...実践的な計画書を作成しました。小規模ツールであっても", scratchpad/ja_audit_hip.json).
+  So the gap is the DRAFT, not the target.
+- ja draft failure mode (scratchpad/ja-diag, n=80 depth-0, full vocab 248320):
+  draft top-1 acc 0.525; on misses the target is in the draft top-10 82% of the
+  time (rank 2-5); draft top-1 confidence separates hits (0.69) from misses
+  (0.36). "Close but uncertain", not fundamental divergence. This drove the
+  retained --draft-p-min 0.5 win.
+- llama vs hipEngine ja greedy compare is BLOCKED on tokenization alignment:
+  feeding hipEngine's decoded formatted prompt to llama-completion tokenizes to
+  50 tokens vs hipEngine's 43 (llama parsed <|im_start|>/<think> as literal text,
+  even emitting a thinking process despite the empty think block). Need to drive
+  llama via apply_chat_template (ja message + reasoning off) or feed the exact 43
+  IDs (llama-simple/llama-batched) to get an apples-to-apples greedy trace, then
+  localize the CJK draft top-1 divergence. Multi-step; tracked in task #7.
+
+Session perf summary (committed): GGUF MTP default 1.0356x -> 1.0399x (B2 block)
+-> 1.0534x (draft-confidence gate) AR. llama.cpp B2 remains 1.342x; the remaining
+gap is the ja draft top-1 ranking quality (0.52 vs llama 0.80), a correctness-gated
+model investigation with a now-precise, data-motivated entry point.
