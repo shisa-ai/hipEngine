@@ -99,6 +99,15 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--mtp-draft-vocab-cap", "32768",
         "--adaptive-full-vocab-after-cap-miss",
     ],
+    "resident-b1-branch-safe-block-cap32k-device-seed": [
+        "--resident-mtp-draft",
+        "--resident-mtp-device-seed",
+        "--target-block-verify",
+        "--target-b1-branch-safe-block-verify",
+        "--adaptive-ar-fallback",
+        "--mtp-draft-vocab-cap", "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+    ],
     "resident-strict-context": [
         "--resident-mtp-draft",
         "--root-topk-accept", "1",

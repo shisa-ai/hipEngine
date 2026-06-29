@@ -494,6 +494,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--target-b1-branch-safe-block-verify",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic: for B1/root-top-k routes, verify [prev, draft0] in one target block. "
+            "Use row 1 only when row 0 strictly accepts draft0; otherwise restore/replay row 0 "
+            "and fall back to a serial corrective step for accepted root branches."
+        ),
+    )
+    parser.add_argument(
         "--target-block-wmma-prefill",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -809,6 +819,8 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-seed requires resident draft top-k <= 64")
     if args.resident_mtp_device_seed and args.draft_p_min > 0.0:
         parser.error("--resident-mtp-device-seed requires --draft-p-min 0")
+    if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
+        parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
     diagnostic_topk_candidate_count = max(10, proposal_topk_candidate_count)
     topk_candidate_count = proposal_topk_candidate_count
     if args.decode_repack:
@@ -1338,6 +1350,80 @@ def main(argv: list[str] | None = None):
             batched_verify_used = False
             block_verify_used = False
             serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
+            b1_branch_safe_block_verify_used = False
+            can_b1_branch_safe_block_verify = (
+                bool(args.target_b1_branch_safe_block_verify)
+                and bool(args.target_block_verify)
+                and cycle_block_verify_allowed
+                and len(draft_tokens) == 1
+                and int(cycle_draft_n_max) == 1
+                and cycle_root_topk_accept > 1
+                and cycle_sibling_topk_accept == 1
+                and not args.topk_branch_redraft
+                and int(verify_input_token) == current_device_token
+            )
+            if can_b1_branch_safe_block_verify:
+                t0 = time.perf_counter()
+                snapshot = session._linear_state_snapshot()
+                block_inputs = [int(verify_input_token), int(draft_tokens[0])]
+                try:
+                    block_result = session.verify_target_block(
+                        block_inputs,
+                        bulk_attention_mode=args.target_block_verify_mode,
+                        use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                    )
+                    block_target_tokens = [int(token) for token in block_result.token_ids]
+                    if len(block_target_tokens) != 2:
+                        raise RuntimeError("B1 branch-safe block verifier expected exactly two target rows")
+                    target0 = int(block_target_tokens[0])
+                    if target0 == int(draft_tokens[0]):
+                        target_tokens.extend(block_target_tokens)
+                        if serial_hidden_host_required:
+                            target_hidden_seeds.extend(
+                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                for row in range(2)
+                            )
+                        current_device_token = int(block_target_tokens[1])
+                    else:
+                        session._restore_linear_state_snapshot(snapshot, position=seq_position)
+                        replay0 = session.step(
+                            int(verify_input_token),
+                            return_logits=False,
+                            capture_hidden_seed_fp32=True,
+                        )
+                        if int(replay0.token_id) != target0:
+                            raise RuntimeError("B1 branch-safe row-0 replay diverged from block row 0")
+                        target_tokens.append(target0)
+                        current_device_token = target0
+                        if serial_hidden_host_required:
+                            target_hidden_seeds.append(copy_pending_hidden_seed())
+                        root_topk_tokens = (
+                            [int(token) for token in draft_top10_tokens[0][:cycle_root_topk_accept]]
+                            if draft_top10_tokens
+                            else []
+                        )
+                        if target0 in root_topk_tokens:
+                            topk_branch_accepted = True
+                            topk_branch_depth = 0
+                            topk_branch_depths.append(0)
+                            topk_branch_accept_count = 1
+                            target_result = session.step(
+                                target0,
+                                return_logits=False,
+                                capture_hidden_seed_fp32=True,
+                            )
+                            corrective = int(target_result.token_id)
+                            current_device_token = corrective
+                            target_tokens.append(corrective)
+                            if serial_hidden_host_required:
+                                target_hidden_seeds.append(copy_pending_hidden_seed())
+                        # Else row 0 is the visible corrective token after a reject;
+                        # row 1 was computed from an unaccepted draft and is ignored.
+                finally:
+                    session._free_linear_state_snapshot(snapshot)
+                block_verify_used = True
+                b1_branch_safe_block_verify_used = True
+                ar_decode_ms += (time.perf_counter() - t0) * 1000
             can_block_verify = (
                 bool(args.target_block_verify)
                 and cycle_block_verify_allowed
@@ -1899,6 +1985,7 @@ def main(argv: list[str] | None = None):
                 "target_prefill_mode": target_prefill_mode,
                 "target_block_verify": bool(block_verify_used),
                 "target_block_direct_state_commit": bool(args.target_block_direct_state_commit and block_verify_used),
+                "target_b1_branch_safe_block_verify": bool(b1_branch_safe_block_verify_used),
                 "target_graph_batched_verify": bool(batched_verify_used),
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
@@ -1948,6 +2035,7 @@ def main(argv: list[str] | None = None):
     )
     if target_graph_verify_fallback_reason:
         print(f"Target graph verify fallback: {target_graph_verify_fallback_reason}")
+    print(f"Target B1 branch-safe block verify: {args.target_b1_branch_safe_block_verify}")
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
     print(f"Sibling tail min previous accepted: {args.sibling_tail_min_prev_accepted}")
@@ -2055,6 +2143,7 @@ def main(argv: list[str] | None = None):
             "target_block_verify_mode": str(args.target_block_verify_mode),
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
             "target_block_direct_state_commit": bool(args.target_block_direct_state_commit),
+            "target_b1_branch_safe_block_verify": bool(args.target_b1_branch_safe_block_verify),
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
             "target_graph_context_cap": int(target_graph_context_cap),
             "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,

@@ -127444,3 +127444,41 @@ must produce `apple_to_apple_ok=true` and `verdict.mtp_beats_ar=true`. Next
 useful lever is branch-safe verifier amortization that reduces target
 weight-stream passes per visible token; do not re-run direct-commit smoke as a
 goal path by itself.
+
+## 2026-06-29 — GGUF B1 branch-safe block verifier rejected
+
+Added a default-off B1/root-topK verifier diagnostic:
+`--target-b1-branch-safe-block-verify` plus suite route
+`resident-b1-branch-safe-block-cap32k-device-seed`. It batches
+`[prev, draft0]` through `verify_target_block()` and uses row 1 only when row 0
+strictly matches draft top-1. For a root-topK branch accept or reject, direct
+row-0 commit after the two-row block is not serial-state exact: the focused
+state probe showed the same next token but divergent concatenated Conv/GDN
+linear state vs serial. Therefore the diagnostic restores the cycle snapshot and
+replays row 0 before taking any branch corrective step.
+
+Validation:
+`python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+-> passed.
+`python3 -m pytest tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -q`
+-> `55 passed`.
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_qwen35_gguf_verify_advance_state_only.py -q`
+-> `3 passed`.
+`git diff --check` -> passed.
+
+B1 smoke:
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --budgets 1 --mtp-route resident-b1-branch-safe-block-cap32k-device-seed --output /tmp/hipengine-b1-branch-safe-block-smoke.json`
+-> `apple_to_apple_ok=true`; AR **54.93 tok/s**; B1 **31.11 tok/s =
+0.5664x AR**; accepted/output **0.400**; `mtp_beats_ar=false`.
+
+Decision: rejected/default-off diagnostic only. Correctness forces
+restore/replay on non-strict root branches, so the two-row block probe adds
+target work instead of reducing target weight-stream passes per visible token.
+Re-read llama.cpp MTP lifecycle at
+`/home/lhl/llama.cpp/llama.cpp-hip` commit
+`6e9007ae61f4e994c27484759caac6ef2aa32b30`: the useful pattern remains
+`common_speculative_impl_draft_mtp::process()` storing verifier rows
+(`verify_h`), `draft()` seeding from resident `pending_h`, and `accept()`
+selecting `verify_h[min(n_accepted, n_rows - 1)]`. The next lever should be a
+real resident `GGUFMTPDraftContext` / verifier-row lifecycle that avoids
+wrong-branch row replay, not another B1 block route.

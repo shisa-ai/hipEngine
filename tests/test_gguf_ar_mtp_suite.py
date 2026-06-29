@@ -39,6 +39,19 @@ def test_suite_exposes_cap32k_device_seed_route() -> None:
     ]
 
 
+def test_suite_exposes_b1_branch_safe_block_device_seed_route() -> None:
+    assert suite.MTP_ROUTES["resident-b1-branch-safe-block-cap32k-device-seed"] == [
+        "--resident-mtp-draft",
+        "--resident-mtp-device-seed",
+        "--target-block-verify",
+        "--target-b1-branch-safe-block-verify",
+        "--adaptive-ar-fallback",
+        "--mtp-draft-vocab-cap",
+        "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+    ]
+
+
 def test_suite_exposes_hybrid_strict_block_cap32k_route() -> None:
     assert suite.MTP_ROUTES["resident-hybrid-strict-block-cap32k"] == [
         "--resident-mtp-draft",

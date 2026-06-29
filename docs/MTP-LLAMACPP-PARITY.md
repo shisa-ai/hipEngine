@@ -130,6 +130,7 @@ on current code; (M) are current-session measurements.
 | strict-context route | existing llama.cpp-style prompt replay + device MTP KV with root/sibling top-1 | smoke B3 **42.81 tok/s = 0.780x AR**; partial best B1 **48.69 tok/s = 0.889x AR**, B3 **45.16 = 0.825x AR** | route is a valid diagnostic but not production-competitive; build resident lifecycle abstraction |
 | adaptive full-vocab recovery after capped miss | keep cheap capped-vocab draft normally, switch to full vocab after a generic capped zero-accept miss instead of permanent AR fallback | partial route `resident-cap32k-recover`: AR **54.76 tok/s**, best B1 **52.45 tok/s = 0.958x AR**, accepted/output **19/39 = 0.487**; full suite: AR **54.55 tok/s**, best B1 **51.71 tok/s = 0.9478x AR**, accepted/output **78/178 = 0.438**; cap sweep B1 diagnostics peaked around cap18k/24k at **~52.6 tok/s** but still below AR | diagnostic only; B1 throughput improves, but acceptance regresses vs resident top-k40 and the serial verifier route remains bounded by target wall + draft overhead |
 | short B1 target block verify with confidence gate | use 2-row target block verify for high-confidence exact B1 drafts, rollback to serial/root-topK on mismatch | direct rows=2 block probe was exact and faster than two serial steps (**32.8 ms vs 39.7 ms**), but partial B1 p=0.8 had 15 attempts/14 hits/1 rollback and regressed to **50.07 tok/s**; p=0.9 had 11/11 hits but still **51.84 tok/s**, below capped recovery **52.45 tok/s** | rejected; savings per hit too small and rollback/noise erases it |
+| branch-safe B1 root-topK block verifier | batch `[prev, draft0]`; use row 1 only on strict draft top-1 accept; for root-topK branch/reject restore and replay row 0 because direct row-0 commit is not serial-state exact | focused state gate showed row-0 direct commit after a 2-row block produces the same next token but not bit-identical linear state vs serial; exact restore/replay route smoke `resident-b1-branch-safe-block-cap32k-device-seed` B1 measured AR **54.93 tok/s**, MTP **31.11 tok/s = 0.566x AR**, accepted/output **0.400** | rejected/default-off diagnostic; correctness forces restore/replay on non-strict branches, making the block probe extra target work instead of amortization |
 | hybrid strict-block/cap32k route | begin with strict top-1 block-promotion probe, then fall back generically to root-topK B1 + cap32k recovery if probe acceptance is weak | smoke B3 **48.94 tok/s = 0.890x AR**; partial best B3 **54.63 tok/s = 0.9973x AR** looked close, but full suite dropped to AR **54.58 tok/s**, best B3 **50.91 tok/s = 0.9328x AR**, B4 **48.94 = 0.8967x**, B5 **48.52 = 0.8890x**, accepted/output **94/194 = 0.485** | rejected/default-off diagnostic; partial was not predictive, and the route is worse than cap32k recovery B1 full-suite **51.71 tok/s = 0.9478x AR** |
 | direct verifier row-state commit | adopt llama.cpp-style verifier-row materialization for strict block verification: capture per-row GGUF linear-attention Conv/GDN state and commit the accepted row without rollback replay | exact focused gate passed vs replay (`tests/test_qwen35_gguf_verify_advance_state_only.py`); smoke route `resident-strict-block-direct-commit` B3 **37.20 tok/s = 0.678x AR**; comparable hybrid route `resident-hybrid-strict-block-direct-cap32k` B3 **48.80 tok/s = 0.894x AR** vs prior hybrid smoke **48.94 tok/s = 0.890x AR** | default-off diagnostic only; capture overhead cancels replay savings on strict-block smoke, so this is infrastructure/evidence, not the goal path |
 | resident device hidden seed | adopt llama.cpp-style resident `pending_h` and avoid target hidden-seed D2H/H2D before resident draft | full suite route `resident-cap32k-device-seed`: AR **54.59 tok/s**, best B1 **52.08 tok/s = 0.9540x AR**, accepted/output **78/178 = 0.438**; cap32k recovery control was B1 **51.71 tok/s = 0.9478x AR** with the same acceptance | retained default-off structural diagnostic; +0.7% over cap32k recovery, not enough to beat AR; confirms lifecycle direction but remaining lever must cut target verifier work per visible token |
@@ -291,12 +292,14 @@ by this suite — a PARO change needs e2e validation there. See `docs/BENCHMARK.
 
 GEMV instruction efficiency (dp4a/rowtile), split-K, MoE-FFN graph, cache
 hints, deferred hidden-seed D2H copies, the one-block device top-k40 extension,
-cap-only/rootK sweeps, resident device hidden-seed copy avoidance by itself, and
-short B1 confidence-gated target block verify are all measured too small,
-acceptance-regressive, or negative e2e and are not the lever. Direct row-state
-commit is exact and useful as scaffolding, but the strict-block smoke route is
-not a speed win. The per-kernel GEMV bandwidth is already near-peak. Kernel
-micro-optimization is exhausted; the gap is amortization.
+cap-only/rootK sweeps, resident device hidden-seed copy avoidance by itself,
+short B1 confidence-gated target block verify, and branch-safe B1 root-topK
+block verify are all measured too small, acceptance-regressive, or negative e2e
+and are not the lever. Direct row-state commit is exact for strict block replay
+scaffolding, but row-0 direct commit after a wrong-branch block is not
+serial-state exact and the strict-block smoke route is not a speed win. The
+per-kernel GEMV bandwidth is already near-peak. Kernel micro-optimization is
+exhausted; the gap is amortization.
 
 ## Production verifier status (2026-06-28)
 

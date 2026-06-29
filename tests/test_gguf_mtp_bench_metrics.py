@@ -57,6 +57,14 @@ def test_mtp_policy_accepts_adaptive_production_selector_flags() -> None:
     assert args.adaptive_ar_fallback is True
 
 
+def test_b1_branch_safe_block_verify_flag_parses_with_target_block_verify() -> None:
+    args = build_arg_parser().parse_args(
+        ["--target-block-verify", "--target-b1-branch-safe-block-verify"]
+    )
+    assert args.target_block_verify is True
+    assert args.target_b1_branch_safe_block_verify is True
+
+
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
     """Accepted draft tokens are visible outputs, not just diagnostic accepts."""
     cycles = [
