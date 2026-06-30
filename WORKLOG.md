@@ -129392,3 +129392,22 @@ by ANY precision regime; it is a property of llama's slower-AR x higher-uplift p
 The only path that could lift the absolute number is deep AR-decode decode-strategy
 R&D (multi-session, uncertain, on an already-llama-beating AR path) - a human
 direction decision, not an in-scope/config lever.
+
+## 2026-06-30 — DECISION: bank the 1.1134x exact-precision win; parity goal CLOSED (structurally bounded)
+
+Owner decision (after the full measurement-backed investigation): BANK the exact
+win. hipEngine GGUF MTP 1.1134x / 60.8 tok/s (90.3% of llama's 67.3), beating llama
+on AR (54.95 vs 50.1) and on the ja correctness gate, is accepted as the
+correctness-preserving optimum. llama's absolute 67.3 was proven unreachable on
+hipEngine in any precision regime within the correctness guard (a property of llama's
+slower-AR x higher-uplift profile). Owner declined both alternatives: relaxing the ja
+gate for dp4a (reaches only ~62 tok/s, still short, and weakens the guard) and a
+speculative multi-session AR-decode kernel-R&D project (no high-confidence
+optimization identified; hipEngine AR already beats llama's).
+
+Parity goal Part 1 is CLOSED as structurally bounded at the exact-precision design
+point, NOT as an open engineering gap. Retained deliverables this effort: bit-exact
+Q6_K T16 rowtile lm-head kernel (1.0534x->1.1134x, default), new mtp_dense_attn_f32
+correctness gate, audited llama baseline, and a complete evidence-backed lever map
+(every uplift lever + AR multiplier + verify amortization, all measured). docs/
+MTP-LLAMACPP-PARITY.md Goal-Part-1 marked CLOSED. No further perf work on this target.

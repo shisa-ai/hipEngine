@@ -98,6 +98,26 @@ layer passes per visible token, and so does every high-acceptance route we have.
 
 ### Goal — Part 1 (HIGHEST PRIORITY): close the target-verify amortization gap
 
+**STATUS 2026-06-30 — CLOSED (banked) by owner decision.** After an exhaustive,
+measurement-backed investigation (every uplift lever tried/refuted, AR multiplier
+profiled, dp4a verify ~1.13x AND dp4a AR == exact AR measured, verify on its fast
+path, correctness validated bottom-up incl. a new mtp_dense_attn_f32 gate, baseline
+audited), llama's absolute **67.3 tok/s was shown unreachable on hipEngine in ANY
+precision regime** within the correctness guard: it is a property of llama's
+slower-AR (50.1) x higher-uplift (1.342x) profile, which hipEngine's faster-AR
+(54.95) x exact-precision (1.114x) profile cannot reproduce. The retained, shipped
+result is the bit-exact Q6_K T16 rowtile lm-head kernel: GGUF MTP **1.0534x ->
+1.1134x AR (60.8 tok/s = 90.3% of llama's 67.3)**, beating llama on AR and on the ja
+correctness gate. **Owner chose to bank this exact-precision win** rather than relax
+the ja gate for dp4a (which reaches only ~62 tok/s anyway) or fund a speculative,
+multi-session AR-decode kernel-R&D project (the only correctness-preserving path that
+could raise the absolute number, with no high-confidence optimization identified, on
+a path where hipEngine already beats llama). The parity goal is therefore closed as
+**structurally bounded at the exact-precision design point**, not as an open
+engineering gap. See the 2026-06-30 entries in the "Bottom line" section and WORKLOG.
+
+The original P0 framing below is retained for history.
+
 This is the first part of the llama.cpp-parity goal. Resolve these P0
 determinations **before** running any S1-S3 policy probe. The evidence below
 re-frames the gap and is the reason the shootout order in the next section is
