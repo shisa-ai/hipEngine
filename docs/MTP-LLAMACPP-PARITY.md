@@ -160,65 +160,121 @@ default-off and labelled accuracy-degrading; it buys ~+1.3% over the exact defau
 the cost of failing the ja gate, and does **not** reach llama HIP. The mode exists for
 users who explicitly accept that trade; the shipped default stays exact (1.114×).
 
-### NEXT INVESTIGATION — the remaining 1.37 ms/output gap needs cycle-stage attribution
+### MEASURED CYCLE-STAGE BUCKETS — same buckets on hipEngine and llama.cpp HIP
 
-The latest dp4a transplant changed the problem statement. Copying llama.cpp's dp4a
-verify kernel is not the missing speedup:
+The deeper instrumentation is now in place on both sides:
 
-| comparison | tok/s | ms/output | gap vs llama HIP 67.3 | note |
+- hipEngine: `--record-cycle-stage-timings` on `scripts/gguf_ar_mtp_suite.py`.
+- llama.cpp HIP: local diagnostic patch in
+  `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`; set
+  `LLAMA_MTP_STAGE_TIMINGS=/path/file.jsonl` to emit one JSONL record per MTP verify
+  cycle. The hipEngine harness summarizes it via `--stage-timings-jsonl`.
+
+Measured setup: Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, `gfx1151` / Radeon 8060S, prompt
+suite `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy sampling,
+reasoning off. These are **diagnostic timing runs**, not replacement headline rows:
+hipEngine timing adds bookkeeping overhead, and the llama natural-24 server trace
+measures a slightly faster protocol than the retained 67.3 tok/s HIP row. Use the
+stage buckets for attribution; keep the retained non-instrumented rows for the
+official tok/s ladder.
+
+Artifacts:
+
+- `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5.json`
+- `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a.json`
+- `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.json`
+- `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.jsonl`
+
+#### Instrumented economics
+
+| config | AR tok/s | MTP tok/s | uplift | cycle wall / output | accepted / output | draft acceptance | target passes / output | target rows / output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hipEngine exact B5 | 54.56 | 59.52 | 1.091× | 16.828 ms | 0.535 | 0.723 | 0.567 | 1.163 |
+| hipEngine dp4a+B1 B5 | 54.46 | 59.84 | 1.099× | 16.736 ms | 0.533 | 0.735 | 0.570 | 1.154 |
+| llama.cpp HIP B2 | 52.11 | 72.48 | 1.391× | 14.156 ms traced / 13.797 ms server | 0.567 server / 0.610 traced | 0.805 | 0.390 | 1.148 |
+
+Denominator note: llama's server summary reports accepted/output over 240 predicted
+tokens (`0.567`); the per-cycle trace excludes the first warmup task and reports 223
+visible traced tokens (`0.610`). Stage ms/output uses the traced denominator.
+
+#### Stage ms / output token
+
+| bucket | hipEngine exact B5 | hipEngine dp4a+B1 B5 | llama.cpp HIP B2 | interpretation |
 | --- | ---: | ---: | ---: | --- |
-| llama.cpp HIP MTP | **67.30** | **14.86** | 0.00 | reference row |
-| hipEngine exact B5 | 60.78 | 16.45 | +1.59 | shipped path |
-| hipEngine dp4a+B1-probe B5 | 61.61 | 16.23 | **+1.37** | dp4a saves only **0.22 ms/output** |
-| hipEngine dp4a+no-probe B5 | 56.42 | 17.72 | +2.86 | llama recipe regresses here |
+| `cycle_wall_ms_per_output` | 16.828 | 16.736 | 14.156 | Instrumented wall. dp4a closes only 0.092 ms/output in this run. |
+| `draft_initial` | 1.944 | 1.934 | 2.128 | Draft is not the gap; hipEngine is slightly faster here. |
+| `target_serial_verify_step` | **6.717** | **6.660** | 0.000 | This is the hipEngine B1 probe / serial verifier cost. llama has no equivalent bucket. |
+| `target_block_verify_total` | 8.141 | 8.116 | 12.021 | Compare verifier total, not `target_block_forward` alone. |
+| `target_block_forward` | 8.051 | 8.028 | 0.517 | llama's raw `llama_decode(ctx_tgt)` is tiny because most speculative state work is below. |
+| `mtp_context_replay_append` | 0.000 | 0.000 | **11.324** | llama's `common_speculative_process()` cost; this is part of verifier total. |
+| `target_block_snapshot` | 0.057 | 0.054 | 0.001 | Not the gap. |
+| `target_block_acceptance_accounting` | 0.001 | 0.001 | 0.175 | Visible in llama, still too small to explain the delta. |
+| `target_block_replay_or_commit` | 0.030 | 0.032 | 0.003 | Not the gap. |
+| `accept_policy_and_seed` | 0.002 | 0.002 | 0.002 | Not the gap. |
+| `cycle_wall_over_legacy_ms_per_output` | 0.026 | 0.026 | n/a | hipEngine has no hidden wall outside the legacy timing denominator. |
 
-So the residual question is no longer "which llama.cpp kernel do we copy?" It is:
-where, inside hipEngine's speculative cycle, does the remaining **~1.4 ms/output**
-actually sit?
+**Answer:** after adopting dp4a, the measured gap is not draft, snapshot, commit,
+policy bookkeeping, or hidden host wall. The gap is the extra hipEngine verification
+economy:
 
-Known before deeper logging:
+- hipEngine dp4a verifier work = `target_serial_verify_step + target_block_verify_total`
+  = **14.777 ms/output**.
+- llama verifier work = `target_block_verify_total` = **12.021 ms/output**.
+- Difference = **+2.756 ms/output** for hipEngine, mostly the B1 serial probe.
+- hipEngine draft is **0.195 ms/output faster**, so the net instrumented wall gap is
+  ~**2.58 ms/output** (16.736 - 14.156), which is fully explained by verifier
+  economics.
 
-| area | current evidence | implication |
-| --- | --- | --- |
-| AR decode | hipEngine 54.95 tok/s vs llama HIP 51.38 | base decode is not behind. |
-| dp4a verify | 60.78 -> 61.61 tok/s, ~0.22 ms/output saved | dp4a is a small local win, not the missing 67.3 row. |
-| no-probe economy | dp4a no-probe falls to 56.42 tok/s, acc/out 0.324 | llama's one-pass/cycle recipe does not transfer. |
-| verify pass count | hipEngine 0.567 passes/output vs llama 0.402 | we still spend 41% more target-pass work/output. |
-| exact kernel work | block verify is GPU-bound; qkv/MoE fusion and verify row amortization already audited | another blind HIP kernel port is unlikely to explain 1.4 ms/output. |
+This is the fine-grained version of the earlier retained-row conclusion. The retained
+non-instrumented gap is smaller (**~1.37 ms/output**, 61.61 vs 67.3 tok/s) because the
+diagnostic protocols and instrumentation overhead differ, but the attribution is the
+same: llama gets its speedup by avoiding the hipEngine B1 serial probe and spending
+fewer target passes/output (`0.390` traced here, `~0.402` retained) while maintaining
+higher draft acceptance. Directly copying `target_block_forward` is the wrong target;
+in llama most verifier time is under `mtp_context_replay_append`.
 
-What was missing is a cycle-level timing ledger that separates:
+The next optimization question is therefore specific: either make the B1 probe much
+cheaper/fused, or find a no-probe policy that does not collapse acceptance. The tested
+llama-style no-probe route on hipEngine does collapse (`56.42 tok/s`, acc/output
+`0.324`), so the current blocker is speculative-policy/acceptance economics, not an
+unattributed llama.cpp kernel bucket.
 
-| diagnostic bucket | what it should answer |
-| --- | --- |
-| `draft_initial` / `draft_branch_redraft` | are we paying too much to propose or re-propose tokens? |
-| `target_block_forward` | is the target verifier forward still the dominant gap after dp4a? |
-| `target_block_snapshot` / `target_block_replay_or_commit` | is state snapshot, replay, or direct commit eating the gap? |
-| `target_block_acceptance_accounting` / `accept_policy_and_seed` | is host policy/bookkeeping visible at this scale? |
-| `mtp_device_kv_commit` / `mtp_context_replay_append` | are MTP KV/context-maintenance costs larger than expected? |
-| `cycle_wall_over_legacy_ms_per_output` | is there hidden cycle wall time outside the legacy `ar_decode_ms + mtp_draft_ms` denominator? |
-
-Instrumentation added for that next pass:
+Commands used:
 
 ```bash
-PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
-python3 scripts/gguf_ar_mtp_suite.py \
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --scope full \
   --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 \
   --budgets 5 \
   --record-cycle-stage-timings \
   --require-cached-build \
   --output benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05-dp4a \
+  --budgets 5 \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a.json
+
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b \
+  --port 8013 \
+  --ctx-size 8192 \
+  --gpu-layers 99 \
+  --draft-max 2 \
+  --mode both \
+  --protocol natural \
+  --max-tokens 24 \
+  --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --stage-timings-jsonl benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.jsonl \
+  --output benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.json \
+  --log-dir /tmp/llamacpp-mtp-stage-timing-b2-natural24-both-logs
 ```
-
-The flag is diagnostic-only and opt-in. It forwards
-`--record-cycle-stage-timings` to every MTP child and records:
-
-- raw per-cycle `cycle_wall_ms`
-- raw per-cycle `stage_timings_ms`
-- aggregate `cycle_wall_ms_per_output`
-- aggregate `cycle_wall_over_legacy_ms_per_output`
-- aggregate `stage_timing_per_output_ms`
-- aggregate `stage_timing_per_cycle_ms`
 
 Important: these stage windows are **diagnostic**, not a new retained benchmark
 denominator. Some fields are nested by design (`target_block_verify_total` includes
@@ -226,20 +282,6 @@ snapshot/forward/accounting/replay sub-windows), so totals should be used for
 attribution and ranking, not summed as disjoint wall time. The retained tok/s still
 uses the existing suite protocol; `cycle_wall_*` is there to expose hidden overhead
 that the legacy counters may miss.
-
-How to read the result:
-
-| if the largest ms/output bucket is... | next fix direction |
-| --- | --- |
-| `target_block_forward` plus high passes/output | reduce verified rows/passes or improve exact verifier economics. |
-| `target_block_replay_or_commit` | remove replay/state-copy work; prefer device-side commit paths. |
-| `draft_initial` or `draft_branch_redraft` | optimize draft generation, cap/recovery behavior, or seed/KV maintenance. |
-| `cycle_wall_over_legacy_ms_per_output` | hunt Python/ctypes/driver synchronization or uncounted policy overhead. |
-| small stage buckets but worse acceptance | focus on draft quality/policy, not kernels. |
-
-This is the evidence gate before the next optimization. The target is to account for
-the remaining **~1.37 ms/output** after dp4a, then choose a fix based on the measured
-largest bucket rather than cloning llama.cpp structure blindly.
 
 Profiling harness (both engines, reproducible): llama HIP via `rocprofv3
 --kernel-trace` on `llama-bench`/`llama-cli` (MTP path deadlocks rocprof at finalize

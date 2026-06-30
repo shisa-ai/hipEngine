@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import argparse
+import json
+
 from scripts import llamacpp_mtp_bench as bench
 
 
@@ -104,3 +107,100 @@ def test_llamacpp_mtp_row_helpers_handle_missing_denominators() -> None:
     assert bench._accepted_per_output({"predicted_n": 0, "draft_n_accepted": 1}) is None
     assert bench._summarize_rows([{"timings": {}}])["accepted_per_output"] is None
     assert bench._summarize_token_repeat([{}])["accepted_per_output"] is None
+
+
+def test_llamacpp_mtp_stage_timing_summary_excludes_first_task(tmp_path) -> None:
+    path = tmp_path / "llama-stage.jsonl"
+    rows = [
+        {
+            "task_id": 0,
+            "visible_output_tokens": 1,
+            "accepted_draft_tokens": 0,
+            "generated_draft_tokens": 1,
+            "cycle_wall_ms": 10.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 2,
+            "target_verify_discarded_rows": 1,
+            "stage_timings_ms": {"draft_initial": 1.0, "target_block_verify_total": 9.0},
+        },
+        {
+            "task_id": 1,
+            "visible_output_tokens": 2,
+            "accepted_draft_tokens": 1,
+            "generated_draft_tokens": 2,
+            "cycle_wall_ms": 30.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 3,
+            "target_verify_discarded_rows": 1,
+            "stage_timings_ms": {
+                "draft_initial": 4.0,
+                "mtp_context_replay_append": 20.0,
+                "target_block_forward": 2.0,
+                "target_block_verify_total": 22.0,
+            },
+        },
+        {
+            "task_id": 1,
+            "visible_output_tokens": 1,
+            "accepted_draft_tokens": 0,
+            "generated_draft_tokens": 1,
+            "cycle_wall_ms": 15.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 2,
+            "target_verify_discarded_rows": 1,
+            "stage_timings_ms": {
+                "draft_initial": 2.0,
+                "target_block_forward": 10.0,
+                "target_block_verify_total": 10.0,
+            },
+        },
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    summary = bench._summarize_stage_timings(path)
+    measured = summary["measured_excluding_first_task"]
+
+    assert summary["rows_total"] == 3
+    assert summary["rows_measured"] == 2
+    assert summary["warmup_task_id_excluded"] == 0
+    assert measured["total_output_tokens"] == 3
+    assert measured["accepted_per_output"] == 1 / 3
+    assert measured["draft_acceptance"] == 1 / 3
+    assert measured["cycle_wall_ms_per_output"] == 15.0
+    assert measured["target_verify_layer_passes_per_output"] == 2 / 3
+    assert measured["target_verify_rows_per_output"] == 5 / 3
+    assert measured["stage_timing_totals_ms"] == {
+        "draft_initial": 6.0,
+        "mtp_context_replay_append": 20.0,
+        "target_block_forward": 12.0,
+        "target_block_verify_total": 32.0,
+    }
+    assert measured["stage_timing_per_output_ms"]["target_block_verify_total"] == 32 / 3
+
+
+def test_llamacpp_mtp_server_command_passes_extra_args_after_mtp_flags() -> None:
+    args = argparse.Namespace(
+        server_bin="/tmp/llama-server",
+        model="/tmp/model.gguf",
+        gpu_layers=99,
+        flash_attn="on",
+        cache_type_k="f16",
+        cache_type_v="f16",
+        ctx_size=8192,
+        host="127.0.0.1",
+        port=8013,
+        alias="qwen",
+        draft_max=2,
+        server_extra_arg=["--reasoning", "off"],
+    )
+
+    cmd = bench._server_command(args, "mtp")
+
+    assert cmd[-6:] == [
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "2",
+        "--reasoning",
+        "off",
+    ]

@@ -129576,3 +129576,40 @@ before choosing the next optimization.
 Validation:
 - `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_ar_mtp_suite.py`
 - `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_ar_mtp_suite.py`
+
+## 2026-06-30 — Implemented llama.cpp MTP stage buckets and ran both engines
+
+Added llama.cpp-side diagnostic stage timing via a local patch in
+`/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp` (env
+`LLAMA_MTP_STAGE_TIMINGS=/path/file.jsonl`) and updated
+`scripts/llamacpp_mtp_bench.py` to pass server extra args, set the env var for MTP
+runs, and summarize the emitted JSONL. Built llama.cpp HIP target
+`llama-server`/`llama-cli` successfully. The external llama.cpp checkout remains
+dirty with this diagnostic patch.
+
+Ran the matched natural-24 prompt suite on Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151,
+greedy, reasoning off:
+- hipEngine exact B5 timing artifact:
+  `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5.json`. AR 54.56 tok/s,
+  MTP 59.52 tok/s, cycle wall 16.828 ms/output, acc/out 0.535, passes/output
+  0.567. Stage ms/output: draft 1.944, serial B1 verify 6.717, block verify
+  total 8.141, block forward 8.051.
+- hipEngine dp4a+B1 timing artifact:
+  `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a.json`. AR 54.46
+  tok/s, MTP 59.84 tok/s, cycle wall 16.736 ms/output, acc/out 0.533,
+  passes/output 0.570. Stage ms/output: draft 1.934, serial B1 verify 6.660,
+  block verify total 8.116, block forward 8.028.
+- llama.cpp HIP B2 timing artifact:
+  `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.json`
+  plus JSONL. Base 52.11 tok/s, MTP 72.48 tok/s, 1.391x. Trace excludes first
+  warmup task: 223 visible tokens, cycle wall 14.156 ms/output, acc/out 0.610
+  traced (0.567 server predicted denominator), draft acceptance 0.805,
+  passes/output 0.390. Stage ms/output: draft 2.128, verifier total 12.021,
+  raw target forward 0.517, `common_speculative_process` bucket
+  (`mtp_context_replay_append`) 11.324.
+
+Conclusion documented in `docs/MTP-LLAMACPP-PARITY.md`: the remaining instrumented
+gap after dp4a is explained by hipEngine verifier economics, specifically the
+extra B1/serial verify bucket. Draft, snapshot, commit, accept policy, and hidden
+cycle-wall overhead are too small. Do not compare llama's `target_block_forward`
+directly; most of its verify/state cost sits in `mtp_context_replay_append`.
