@@ -253,7 +253,7 @@ in llama most verifier time is under `mtp_context_replay_append`, and the deep s
 puts that cost specifically in `llama_process_build_draft_batch` (target decode drain
 and nextn embedding handoff), not in the draft-context decode.
 
-#### Compat draft split: the 2 ms draft target is not top-k width
+#### Compat draft split: prewarm fixes initialization; steady-state draft drain remains
 
 The first compat-dp4a deep split showed `draft_initial ~= 4.03 ms/output` and
 `draft_topk_readback ~= 3.80 ms/output`. A top-1 diagnostic fix was implemented so
@@ -264,20 +264,35 @@ was flat:
 | --- | ---: | ---: | ---: | ---: | ---: |
 | compat dp4a B2, old top-10 diagnostic | 52.42 | 19.096 ms | 4.031 | 3.799 | 14.749 |
 | compat dp4a B2, top-1 diagnostic | 52.48 | 19.074 ms | 4.043 | 3.833 | 14.715 |
+| compat dp4a B2 + prewarmed device-chain | **52.79** | **18.963 ms** | 4.028 | 3.839 | **14.620** |
+| compat dp4a B2 + prewarmed device-seed-chain | 52.53 | 19.065 ms | 4.020 | 3.827 | 14.724 |
 
-So the draft-side slowdown is not top-k width by itself. The current compat route
-does not use the resident device-chain draft path (`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN`
-defaults off), so `draft_topk_readback` is still a per-depth synchronization drain.
-Enabling device-chain on a smoke run proved the other side of the trade:
+So the draft-side slowdown is not top-k width by itself. The first device-chain smoke
+also showed the wrong bottleneck because it measured the lazy 268 MB full-vocab
+embedding-table upload inside the short run:
 
 | probe | MTP tok/s | cycle wall / output | `draft_initial` | `draft_device_chain_ensure_embed_table` | result |
 | --- | ---: | ---: | ---: | ---: | --- |
 | compat dp4a B2 + device-chain, smoke | 36.12 | 27.704 ms | 14.855 | 11.888 | full-vocab embed-table upload dominates the short run |
+| compat dp4a B2 + prewarmed device-chain, full | **52.79** | **18.963 ms** | 4.028 | 0.000 | upload removed; steady-state still slow |
 
-That means the draft fix is not "ask for top-1"; it is either a persistent/prewarmed
-device-chain full-vocab table, a capped-vocab device chain that does not destroy
-acceptance, or a fused resident draft path that avoids per-depth drains without
-uploading a fresh full-vocab embedding table per prompt.
+The prewarm/cache fix removes that initialization artifact, but it does **not** close
+the llama gap. A split-bucket rerun of the same device-chain route shows why:
+
+| split bucket, compat dp4a B2 + device-chain | ms/output |
+| --- | ---: |
+| `draft_initial` | 4.033 |
+| `draft_topk_readback` | 3.839 |
+| `draft_device_chain_drain` | **3.830** |
+| `draft_topk_d2h` | **0.008** |
+
+The "readback" bucket is therefore almost entirely a GPU drain, not host copy time.
+This is the draft-side target for replication: hipEngine is draining roughly
+**3.83 ms/output** of resident draft GPU work where llama's draft sampler/top-k bucket
+is **1.886 ms/output** and total `draft_initial` is **2.140 ms/output**.
+Persistent/prewarmed device-chain and resident `pending_h` semantics are now explicit
+routes, but the remaining win requires reducing the actual device draft work/drain
+or fusing it differently; avoiding D2H alone cannot produce the missing tokens.
 
 The next optimization question is therefore specific: either make the B1 probe much
 cheaper/fused, or find a no-probe policy whose full draft/context/verifier lifecycle
@@ -293,7 +308,7 @@ speculative-policy/verifier economics, not an unattributed llama.cpp kernel buck
 | ---: | --- | --- | --- |
 | 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | **Implemented and rejected for promotion 2026-06-30.** It cuts B1 serial work but moves too much work into 2-row blocks; exact B5 is **60.40 tok/s**, below the retained exact **60.78** and dp4a **61.61** rows. |
 | 2 | Confidence-gated no-probe policy | Llama wins by avoiding B1 entirely, but our previous no-probe route collapsed acc/output to **0.324**. Fused-B1 proved that simply replacing the B1 serial probe with a two-row block is not enough. | Full-suite acc/output stays near retained B5/llama-compat levels and total tok/s beats the retained exact route, not just the fused-B1 diagnostic. |
-| 3 | Compat draft drain removal | Compat B2 spends **~4.04 ms/output** in draft, mostly per-depth drain/readback. Top-1 diagnostic width did not help; device-chain smoke exposed full-vocab table upload as the next blocker. | Persistent/prewarmed device-chain or fused resident draft cuts compat `draft_initial` toward **~2 ms/output** without lowering full-suite acceptance. |
+| 3 | Compat draft GPU-drain reduction | Compat B2 spends **~4.03 ms/output** in draft. Prewarmed device-chain removes the embed-table upload and proves D2H is tiny (`draft_topk_d2h` **0.008 ms/output**), but `draft_device_chain_drain` is still **3.830 ms/output**. | Cut compat `draft_initial` toward llama's **2.140 ms/output** without lowering full-suite acceptance. Focus on resident draft GPU work/fusion, not more host-copy removal. |
 | 4 | Block verifier layer-time reduction | In retained B5, block verify is mostly GPU layer work: linear-attn **~5.05 ms/output**, full-attn **~1.82 ms/output**. This is secondary to B1 economics but still material after fused B1. | Reduce `target_block_layer_total` with exactness unchanged and no same-suite tok/s regression. |
 | 5 | Keep llama.cpp deep instrumentation aligned | The current split proved llama's verifier drain lives in `llama_process_build_draft_batch`, not raw `target_block_forward`. Keep this patch available for A/B after every major hipEngine verifier change. | Re-run llama deep trace when upstream or local diagnostic patch changes; do not compare raw async buckets. |
 
@@ -326,10 +341,10 @@ Why it fails the promotion gate:
   **60.78 tok/s** and far below the accuracy-traded dp4a **61.61 tok/s**; it is not
   a retained speed win.
 
-**Next implementation unit:** confidence-gated no-probe / direct block policy. The
-new lesson is that preserving B1 economy while changing the probe verifier is too
-small; the route must skip B1 on cycles where confidence predicts that a full block
-will pay, without collapsing acc/output like the old no-probe run.
+**Replication-lane next unit:** keep the llama-compatible no-probe B2 shape and cut
+the measured compat costs directly: resident draft GPU drain first, then B2 block
+verifier layer time. Confidence-gated no-probe may still be useful for the default
+hipEngine policy, but it is not the current llama.cpp replication task.
 
 #### Can we adopt a true llama.cpp mode?
 
@@ -344,7 +359,7 @@ What a true llama mode needs to replicate:
 | --- | --- | --- |
 | `--spec-draft-n-max 2`, `--spec-draft-p-min 0.0` lifecycle | llama drafts every cycle up to B2 unless the MTP sampler itself stops; no hipEngine p_min gate. | Implemented in opt-in `--llama-compat`; suite routes are fixed to B2 to avoid mislabeled artifacts. |
 | No B1 probe / one target block verify per cycle | This removes the `target_serial_verify_step` bucket entirely. | Implemented in `--llama-compat`: disables adaptive B1 probe/fallback and forces block verify with `--target-block-min-rows 2`. |
-| llama MTP context handoff (`common_speculative_process` / `pending_h` / `verify_h`) | Draft quality depends on how target verify hidden rows seed the next MTP draft. | Closest hipEngine replica is enabled: shifted prompt catch-up via `--mtp-context-replay` plus device-resident MTP KV. This is still a semantic compatibility route, not a mechanical copy of llama's context internals. |
+| llama MTP context handoff (`common_speculative_process` / `pending_h` / `verify_h`) | Draft quality depends on how target verify hidden rows seed the next MTP draft. | Shifted prompt catch-up via `--mtp-context-replay` plus device-resident MTP KV is implemented in `--llama-compat`. Explicit subroutes now add prewarmed resident device-chain drafting and optional resident device seed (`pending_h`) starts. |
 | llama accept/checkpoint semantics | Partial accepts restore/commit through llama's checkpoint and `common_speculative_accept` path. | hipEngine has rollback/direct-commit paths, but they are not mechanically identical. |
 | q8_1 / dp4a verify economy | This is part of llama's speed/acceptance economics, and it fails hipEngine's ja gate. | Exact compat route stays precision-preserving; `llama-compat-dp4a` adds default-off `--verify-dp4a` for llama's accuracy-traded regime. |
 
@@ -354,6 +369,10 @@ Implemented opt-in routes (2026-06-30):
 | --- | --- | ---: | --- |
 | `llama-compat` | `--llama-compat` | B2 fixed | Precision-preserving closest semantic replica: B2, p_min 0, full draft vocab, shifted context replay + device KV, no B1 probe/fallback, one block verify/cycle. |
 | `llama-compat-dp4a` | `--llama-compat --verify-dp4a` | B2 fixed | Same semantics plus llama-style q8_1/dp4a selected-expert verify. Accuracy-traded; ja gate failure remains expected until proven otherwise. |
+| `llama-compat-device-chain` | `--llama-compat --resident-mtp-device-chain` | B2 fixed | Adds prewarmed resident device-chain drafting, mirroring llama's resident `ctx_dft` lifecycle more closely than per-depth host embedding handoff. |
+| `llama-compat-device-chain-dp4a` | `--llama-compat --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Accuracy-traded device-chain route; best measured compat replication row so far. |
+| `llama-compat-device-seed-chain` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain` | B2 fixed | Also starts each draft from resident target `pending_h` rather than a host-copied seed. |
+| `llama-compat-device-seed-chain-dp4a` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Full llama-lifecycle diagnostic: B2 no-probe, context replay + device KV, resident device seed, prewarmed device chain, and dp4a verify. |
 
 `--llama-compat` is deliberately an override flag: if a wrapper passes conflicting
 draft/policy knobs first, the bench normalizes them after parsing. The suite also
@@ -382,45 +401,88 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2.json
 ```
 
+Accuracy-traded prewarmed device-chain route command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-full.json
+```
+
+Accuracy-traded resident device-seed + device-chain route command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-seed-chain-dp4a \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-seed-chain-dp4a-b2-full.json
+```
+
+Split-bucket attribution rerun for `draft_device_chain_drain` / `draft_topk_d2h`:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-full-split.json
+```
+
 Measured full-suite result (2026-06-30, same model/gfx1151, stage timings enabled):
 
 | config | AR tok/s | MTP tok/s | vs AR | cycle wall / output | acc / output | draft acceptance | passes / output | rows / output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `llama-compat` exact B2 | 54.76 | **51.16** | 0.934× | 19.570 ms | 0.559 | 0.635 | 0.441 | 1.322 |
 | `llama-compat-dp4a` B2 (top-1 diagnostic) | 54.77 | **52.48** | 0.958× | 19.074 ms | 0.561 | 0.640 | 0.439 | 1.316 |
+| `llama-compat-device-chain-dp4a` B2 | 54.71 | **52.79** | 0.965× | 18.963 ms | 0.561 | 0.640 | 0.439 | 1.316 |
+| `llama-compat-device-seed-chain-dp4a` B2 | 54.74 | **52.53** | 0.960× | 19.065 ms | 0.561 | 0.640 | 0.439 | 1.316 |
 | prior dp4a+B1-probe B5 | 54.60 | **60.01** | 1.099× | 16.690 ms | 0.533 | 0.735 | 0.570 | 1.154 |
 | llama.cpp HIP B2 trace | 52.13 | **72.12** | 1.383× | 14.231 ms | 0.610 traced | 0.805 | 0.390 | 1.148 |
 
 Stage ms/output:
 
-| bucket | compat exact B2 | compat dp4a B2 | prior dp4a+B1 B5 | llama.cpp HIP B2 | interpretation |
-| --- | ---: | ---: | ---: | ---: | --- |
-| `draft_initial` | 4.084 | 4.043 | 1.943 | 2.140 | hipEngine compat's shifted-context/full-vocab B2 draft is expensive; the prior capped/probed route drafts much cheaper. |
-| `target_serial_verify_step` | 0.000 | 0.000 | 6.660 | 0.000 | compat successfully removes the B1 serial probe. |
-| `draft_topk_readback` | n/a | 3.833 | 1.134 | n/a | compat's B2 draft still pays per-depth drains; top-1 diagnostic width did not remove this. |
-| `target_block_verify_total` | 15.164 | 14.715 | 8.073 | 12.083 | the saved serial probe is paid back by a much more expensive B2 block verifier. |
-| `target_block_forward` | 15.021 | 14.585 | 7.985 | 0.549 | llama's raw forward bucket is not comparable; most llama verify/state work is in `mtp_context_replay_append`. |
-| `mtp_context_replay_append` | 0.008 | 0.008 | 0.000 | 11.348 | hipEngine's context replay cost is not in this bucket; its cost manifests in draft/block wall. |
-| `mtp_device_kv_commit` | 0.299 | 0.296 | 0.000 | n/a | small but nonzero compat lifecycle overhead. |
-| `cycle_wall_ms_per_output` | 19.570 | 19.074 | 16.690 | 14.231 | compat is 2.38 ms/output slower than the prior dp4a+B1 route and 4.84 ms/output slower than llama's traced path. |
+| bucket | compat exact B2 | compat dp4a B2 | compat device-chain dp4a B2 | prior dp4a+B1 B5 | llama.cpp HIP B2 | interpretation |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `draft_initial` | 4.084 | 4.043 | 4.033 split / 4.028 headline | 1.943 | 2.140 | hipEngine compat's shifted-context/full-vocab B2 draft is expensive; prewarmed device-chain does not reduce steady-state draft drain. |
+| `target_serial_verify_step` | 0.000 | 0.000 | 0.000 | 6.660 | 0.000 | compat successfully removes the B1 serial probe. |
+| `draft_topk_readback` | n/a | 3.833 | 3.839 | 1.134 | n/a | now split: this is almost all GPU drain, not copy time. |
+| `draft_device_chain_drain` | n/a | n/a | **3.830** | n/a | n/a | resident device-chain still waits on the full draft GPU work at chain end. |
+| `draft_topk_d2h` | n/a | n/a | **0.008** | n/a | n/a | D2H is too small to be the missing llama gap. |
+| `target_block_verify_total` | 15.164 | 14.715 | 14.714 split / 14.620 headline | 8.073 | 12.083 | the saved serial probe is paid back by a much more expensive B2 block verifier. |
+| `target_block_forward` | 15.021 | 14.585 | 14.581 | 7.985 | 0.549 | llama's raw forward bucket is not comparable; most llama verify/state work is in `mtp_context_replay_append`. |
+| `mtp_context_replay_append` | 0.008 | 0.008 | 0.009 | 0.000 | 11.348 | hipEngine's context replay cost is not in this bucket; its cost manifests in draft/block wall. |
+| `mtp_device_kv_commit` | 0.299 | 0.296 | 0.297 | 0.000 | n/a | small but nonzero compat lifecycle overhead. |
+| `cycle_wall_ms_per_output` | 19.570 | 19.074 | 19.066 split / 18.963 headline | 16.690 | 14.231 | best compat replication is still ~4.73 ms/output slower than llama's traced path. |
 
-**Result:** copying the observable llama policy is not sufficient. The mode does remove
-the B1 probe and preserves decent full-suite acceptance, but the hipEngine realization
-of that lifecycle is slower than the retained B1-probe path: compared with prior
-dp4a+B1 B5, compat saves **6.65 ms/output** of serial verify, but adds roughly
-**+6.64 ms/output** in block verify and **+2.10 ms/output** in draft work. dp4a buys
-only **+1.27 tok/s** over exact compat. The residual gap is now even more concrete:
-we need a cheaper B2 compat draft/verifier lifecycle, not just the llama no-probe
-policy flag.
+**Result:** copying the observable llama policy is not sufficient. Adding the next
+llama lifecycle pieces also does not close the gap: prewarmed device-chain improves
+the compat dp4a headline only **52.48 -> 52.79 tok/s**, and resident device seed is
+slightly worse (**52.53 tok/s**). The route does remove the B1 probe and preserves
+decent full-suite acceptance, but the hipEngine realization of that lifecycle is
+slower than the retained B1-probe path. Compared with prior dp4a+B1 B5, compat saves
+**6.65 ms/output** of serial verify, but adds roughly **+6.64 ms/output** in block
+verify and **+2.09 ms/output** in draft work. Versus llama.cpp HIP B2, the best
+replication row is still slower by about **4.73 ms/output**: **~1.89 ms/output** in
+draft, **~2.54 ms/output** in block verify, and the rest in small lifecycle/accounting
+differences plus weaker acceptance/pass economy. The residual gap is now even more
+concrete: reduce the actual resident draft GPU drain and B2 block verifier cost, not
+just the llama no-probe policy flag or host readbacks.
 
 So the real answer is: there is no architectural reason we cannot add a true
 `llama-compat` mode while keeping exact mode as default. The reasons not to promote
 it by default are the known correctness tradeoff (dp4a ja top-1 **0.700 < 0.90**) and
 the fact that the current approximate no-probe routes did not reproduce llama's
 economics. The clean experiment is now implemented and measured: the exact route lands
-at **51.16 tok/s**, and the dp4a route lands at **52.48 tok/s**, both below hipEngine
-AR and well below llama HIP. Semantic parity alone was not the missing piece; the gap
-is implementation/backend cost in the compat draft/verifier lifecycle.
+at **51.16 tok/s**, the dp4a route lands at **52.48 tok/s**, and the best prewarmed
+device-chain dp4a replication row lands at **52.79 tok/s**, all below hipEngine AR and
+well below llama HIP. Semantic parity alone was not the missing piece; the gap is
+implementation/backend cost in the compat draft/verifier lifecycle.
 
 Commands used:
 

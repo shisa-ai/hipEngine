@@ -304,6 +304,30 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--llama-compat",
         "--verify-dp4a",
     ],
+    # Next llama.cpp-replication step: same semantic-compat route, but use the
+    # resident device-chained draft path and prewarm its token-embedding table
+    # before measured cycles, matching llama.cpp's resident ctx_dft lifecycle more
+    # closely than per-depth host readback/embedding upload.
+    "llama-compat-device-chain": [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+    ],
+    "llama-compat-device-chain-dp4a": [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+    ],
+    "llama-compat-device-seed-chain": [
+        "--llama-compat",
+        "--resident-mtp-device-seed",
+        "--resident-mtp-device-chain",
+    ],
+    "llama-compat-device-seed-chain-dp4a": [
+        "--llama-compat",
+        "--resident-mtp-device-seed",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+    ],
     # Default + recover the full draft vocab after a cap miss. Hypothesis: the
     # 32K draft vocab cap starves acceptance on tokens whose ids exceed 32768
     # (suspected CJK/ja), permanently dragging ja acc/out. Recovering full vocab
@@ -453,6 +477,10 @@ MTP_ROUTES: dict[str, list[str]] = {
 MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat": [2],
     "llama-compat-dp4a": [2],
+    "llama-compat-device-chain": [2],
+    "llama-compat-device-chain-dp4a": [2],
+    "llama-compat-device-seed-chain": [2],
+    "llama-compat-device-seed-chain-dp4a": [2],
 }
 
 SCOPES = {

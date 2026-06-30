@@ -177,6 +177,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
     token_embd_f32: np.ndarray
     runtime: HipRuntime | None = None
     vocab_cap: int = 32768
+    device_chain_enabled: bool | None = None
+    prewarm_device_chain: bool = False
     num_heads: int = 16
     num_kv_heads: int = 2
     experts_used: int = 8
@@ -206,12 +208,17 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._combine_lib = build_paro_combine(load=True)
         self._gather_lib = build_gather(load=True)
         self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
-        self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
+        if self.device_chain_enabled is None:
+            self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
+        else:
+            self._device_chain_enabled = bool(self.device_chain_enabled)
         # Max draft depth the precomputed-rope / topk-accumulator buffers cover.
         self._draft_chain_cap = 16
         self._embed_table_f32: DeviceBuffer | None = None
         self._upload_weights()
         self._allocate_buffers()
+        if self.prewarm_device_chain and self._device_chain_enabled:
+            self.ensure_device_chain_ready()
 
     def _get(self, name: str) -> np.ndarray:
         return self.weights[name][0]
@@ -355,6 +362,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
+
+    def ensure_device_chain_ready(self) -> None:
+        """Preload resident state needed by the device-chained draft path."""
+
+        self._ensure_embed_table()
 
     def propose_chain(
         self,
@@ -557,9 +569,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
             return
         rows = int(self.vocab)
         table = np.ascontiguousarray(self.token_embd_f32[:rows], dtype=np.float32)
-        buf = self._malloc(table.nbytes)
-        copy_host_to_device(buf, host_array_ptr(table), table.nbytes, runtime=self.runtime)
-        self._embed_table_f32 = buf
+        self._embed_table_f32 = _cached_upload(
+            f"resident_mtp:token_embd_f32:vocab{rows}:hidden{self.hidden_size}",
+            table,
+            runtime=self.runtime,
+        )
 
     def _propose_chain_device(
         self,
@@ -663,14 +677,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
             current_seed, next_seed = next_seed, current_seed
         # Single drain + readback of the whole chain's top-k.
         t_readback0 = time.perf_counter() if stage_timings is not None else 0.0
+        t_drain0 = time.perf_counter() if stage_timings is not None else 0.0
         runtime.device_synchronize()
+        if stage_timings is not None:
+            _stage_add(stage_timings, "draft_device_chain_drain", (time.perf_counter() - t_drain0) * 1000)
         topk_host = np.empty((n, int(top_k)), dtype=np.int32)
+        t_d2h0 = time.perf_counter() if stage_timings is not None else 0.0
         copy_device_to_host(
             host_array_ptr(topk_host),
             DeviceBuffer(self.topk_all.ptr, topk_host.nbytes),
             topk_host.nbytes,
             runtime=runtime,
         )
+        if stage_timings is not None:
+            _stage_add(stage_timings, "draft_topk_d2h", (time.perf_counter() - t_d2h0) * 1000)
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_topk_readback", (time.perf_counter() - t_readback0) * 1000)
         tokens = [int(topk_host[depth, 0]) for depth in range(n)]

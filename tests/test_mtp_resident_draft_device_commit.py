@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+
 import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind
@@ -111,3 +113,72 @@ def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypa
     assert cache_len == 7
     assert len(run_calls) == 2
     assert runner.last_top1_probs == [0.75, 0.25]
+
+
+def test_ensure_device_chain_ready_preloads_embed_table() -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    calls = []
+    runner._ensure_embed_table = lambda: calls.append("ensure")
+
+    runner.ensure_device_chain_ready()
+
+    assert calls == ["ensure"]
+
+
+def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:
+    class Runtime:
+        def __init__(self) -> None:
+            self.syncs = 0
+
+        def device_synchronize(self) -> None:
+            self.syncs += 1
+
+    def fake_copy_device_to_host(dst, src, nbytes, *, runtime=None) -> None:
+        out = (ctypes.c_int32 * (int(nbytes) // 4)).from_address(int(dst))
+        for index in range(len(out)):
+            out[index] = 3 + index
+
+    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(resident_draft_mod, "copy_device_to_host", fake_copy_device_to_host)
+
+    runtime = Runtime()
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.runtime = runtime
+    runner.hidden_size = 4
+    runner.qk_head_dim = 2
+    runner.vocab = 8
+    runner.token_embd_f32 = np.arange(32, dtype=np.float32).reshape(8, 4)
+    runner.token_embed = DeviceBuffer(0x1000, 16)
+    runner.cos_all = DeviceBuffer(0x2000, 32)
+    runner.sin_all = DeviceBuffer(0x3000, 32)
+    runner.pos_all = DeviceBuffer(0x4000, 16)
+    runner.ctx_all = DeviceBuffer(0x5000, 16)
+    runner.topk_all = DeviceBuffer(0x6000, 16)
+    runner._embed_table_f32 = DeviceBuffer(0x7000, 128)
+    runner._ensure_embed_table = lambda: None
+    runner._run_one = lambda *args, **kwargs: None
+    runner._topk_indices_into = lambda *args, **kwargs: None
+
+    stage_timings: dict[str, float] = {}
+    tokens, topk_rows, cache_len = runner._propose_chain_device(
+        current_seed=DeviceBuffer(0x8000, 16),
+        next_seed=DeviceBuffer(0x9000, 16),
+        start_token=1,
+        start_position=0,
+        draft_n_max=1,
+        top_k=1,
+        rope_cos=np.ones((4, 2), dtype=np.float32),
+        rope_sin=np.zeros((4, 2), dtype=np.float32),
+        dense_key_cache=None,
+        dense_value_cache=None,
+        dense_cache_len=5,
+        stage_timings=stage_timings,
+    )
+
+    assert tokens == [3]
+    assert topk_rows == [[3]]
+    assert cache_len == 5
+    assert runtime.syncs == 1
+    assert "draft_device_chain_drain" in stage_timings
+    assert "draft_topk_d2h" in stage_timings
+    assert "draft_topk_readback" in stage_timings

@@ -842,6 +842,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-device-chain",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "llama.cpp parity diagnostic: enable the resident MTP device-chained draft path "
+            "and prewarm its token-embedding table before measured cycles. This removes the "
+            "per-depth host top-k/embedding handoff when p_min=0 and top_k<=8."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -975,7 +985,9 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.mtp_draft_vocab_cap = 0
 
     args.resident_mtp_draft = True
-    args.resident_mtp_device_seed = False
+    args.resident_mtp_device_seed = bool(getattr(args, "resident_mtp_device_seed", False))
+    if not hasattr(args, "resident_mtp_device_chain"):
+        args.resident_mtp_device_chain = False
     args.mtp_context_replay = True
     args.mtp_device_kv_cache = True
 
@@ -1075,6 +1087,8 @@ def main(argv: list[str] | None = None):
         parser.error("--adaptive-full-vocab-after-cap-miss requires --resident-mtp-draft")
     if args.resident_mtp_device_seed and not args.resident_mtp_draft:
         parser.error("--resident-mtp-device-seed requires --resident-mtp-draft")
+    if args.resident_mtp_device_chain and not args.resident_mtp_draft:
+        parser.error("--resident-mtp-device-chain requires --resident-mtp-draft")
     if args.resident_mtp_device_seed and args.topk_branch_redraft:
         parser.error("--resident-mtp-device-seed is not yet compatible with --topk-branch-redraft")
     if args.adaptive_full_vocab_after_cap_miss and args.mtp_draft_vocab_cap <= 0:
@@ -1110,6 +1124,12 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-seed requires resident draft top-k <= 64")
     if args.resident_mtp_device_seed and args.draft_p_min > 0.0:
         parser.error("--resident-mtp-device-seed requires --draft-p-min 0")
+    if args.resident_mtp_device_chain and proposal_topk_candidate_count > 8:
+        parser.error("--resident-mtp-device-chain requires resident draft top-k <= 8")
+    if args.resident_mtp_device_chain and args.draft_p_min > 0.0:
+        parser.error("--resident-mtp-device-chain requires --draft-p-min 0")
+    if args.resident_mtp_device_chain and args.record_draft_confidence:
+        parser.error("--resident-mtp-device-chain is not compatible with --record-draft-confidence")
     if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
         parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
     if args.fused_b1_block_probe:
@@ -1242,6 +1262,7 @@ def main(argv: list[str] | None = None):
     resident_draft = None
     resident_draft_full_vocab = None
     resident_mtp_draft_effective = False
+    resident_mtp_device_chain_effective = False
     resident_mtp_draft_full_vocab_recovery_effective = False
     resident_mtp_draft_fallback_reason = None
     _cache_session = os.environ.get("HIPENGINE_MTP_BENCH_CACHE_SESSION") == "1"
@@ -1276,7 +1297,10 @@ def main(argv: list[str] | None = None):
                     token_embd_f32,
                     runtime=runtime,
                     vocab_cap=int(args.mtp_draft_vocab_cap or sh_raw.shape[0]),
+                    device_chain_enabled=True if args.resident_mtp_device_chain else None,
+                    prewarm_device_chain=bool(args.resident_mtp_device_chain),
                 )
+                resident_mtp_device_chain_effective = bool(resident_draft._device_chain_enabled)
                 if (
                     args.adaptive_full_vocab_after_cap_miss
                     and int(args.mtp_draft_vocab_cap) > 0
@@ -1287,6 +1311,8 @@ def main(argv: list[str] | None = None):
                         token_embd_f32,
                         runtime=runtime,
                         vocab_cap=int(sh_raw.shape[0]),
+                        device_chain_enabled=True if args.resident_mtp_device_chain else None,
+                        prewarm_device_chain=bool(args.resident_mtp_device_chain),
                     )
                     resident_mtp_draft_full_vocab_recovery_effective = True
                 resident_mtp_draft_effective = True
@@ -2615,6 +2641,8 @@ def main(argv: list[str] | None = None):
                 ),
                 "mtp_context_mode": mtp_context_mode,
                 "mtp_device_kv_cache": bool(args.mtp_device_kv_cache),
+                "resident_mtp_device_chain": bool(args.resident_mtp_device_chain),
+                "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),
                 "mtp_device_kv_rows_after": int(mtp_device_kv_len),
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
@@ -2714,7 +2742,8 @@ def main(argv: list[str] | None = None):
     print(
         f"Resident MTP draft: requested={bool(args.resident_mtp_draft)} "
         f"effective={bool(resident_mtp_draft_effective)} "
-        f"device_seed={bool(args.resident_mtp_device_seed)}"
+        f"device_seed={bool(args.resident_mtp_device_seed)} "
+        f"device_chain={bool(resident_mtp_device_chain_effective)}"
     )
     if resident_mtp_draft_fallback_reason:
         print(f"Resident MTP draft fallback: {resident_mtp_draft_fallback_reason}")
@@ -2798,10 +2827,12 @@ def main(argv: list[str] | None = None):
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
             "resident_mtp_draft": bool(args.resident_mtp_draft),
             "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
+            "resident_mtp_device_chain": bool(args.resident_mtp_device_chain),
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "llama_compat": bool(args.llama_compat),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
+            "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),
             "resident_mtp_draft_full_vocab_recovery_effective": bool(
                 resident_mtp_draft_full_vocab_recovery_effective
             ),

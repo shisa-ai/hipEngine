@@ -556,6 +556,13 @@ def test_arg_parser_exposes_resident_mtp_device_seed() -> None:
     assert args.resident_mtp_device_seed is True
 
 
+def test_arg_parser_exposes_resident_mtp_device_chain() -> None:
+    args = build_arg_parser().parse_args(["--resident-mtp-draft", "--resident-mtp-device-chain"])
+
+    assert args.resident_mtp_draft is True
+    assert args.resident_mtp_device_chain is True
+
+
 def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-draft-confidence"])
 
@@ -590,7 +597,6 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
             "--mtp-draft-vocab-cap",
             "32768",
             "--no-resident-mtp-draft",
-            "--resident-mtp-device-seed",
             "--no-mtp-device-kv-cache",
             "--target-graph-batched-verify",
             "--no-target-block-verify",
@@ -623,6 +629,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.mtp_draft_vocab_cap == 0
     assert args.resident_mtp_draft is True
     assert args.resident_mtp_device_seed is False
+    assert args.resident_mtp_device_chain is False
     assert args.mtp_context_replay is True
     assert args.mtp_device_kv_cache is True
     assert args.target_graph_verify is False
@@ -641,6 +648,17 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.fused_b1_block_probe is False
     assert args.adaptive_probe_draft_n_max == 1
     assert args.adaptive_strict_block_probe is False
+
+
+def test_apply_llama_compat_args_preserves_explicit_device_lifecycle_route_flags() -> None:
+    args = build_arg_parser().parse_args(
+        ["--llama-compat", "--resident-mtp-device-seed", "--resident-mtp-device-chain"]
+    )
+
+    apply_llama_compat_args(args)
+
+    assert args.resident_mtp_device_seed is True
+    assert args.resident_mtp_device_chain is True
 
 
 def test_llama_compat_diagnostic_topk_does_not_force_host_top10() -> None:
@@ -673,6 +691,14 @@ def test_main_allows_resident_device_seed_with_context_replay(monkeypatch, capsy
     stderr = capsys.readouterr().err
     assert "ROCm/HIP not available" in stderr
     assert "not yet compatible" not in stderr
+
+
+def test_main_rejects_resident_device_chain_without_resident_draft(capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--resident-mtp-device-chain"])
+
+    assert excinfo.value.code == 2
+    assert "--resident-mtp-device-chain requires --resident-mtp-draft" in capsys.readouterr().err
 
 
 def test_arg_parser_exposes_adaptive_strict_block_probe() -> None:

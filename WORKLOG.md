@@ -129809,3 +129809,72 @@ Conclusion:
 - Next queued fix is confidence-gated no-probe/direct block: skip B1 only when
   confidence predicts the full block will pay, without reproducing the old no-probe
   acc/output collapse.
+
+## 2026-06-30 — llama.cpp replication lane: device-chain prewarm and pending_h routes
+
+User clarified that this unit is not default-route promotion work; it is the
+llama.cpp replication lane. Implemented the next replication steps:
+
+- `scripts/gguf_mtp_bench.py --resident-mtp-device-chain` now explicitly enables
+  resident device-chained MTP drafting and prewarms the full-vocab FP32 token
+  embedding table before measured cycles.
+- `Qwen35GGUFResidentMTPDraftRunner` accepts explicit `device_chain_enabled` /
+  `prewarm_device_chain` constructor args. `_ensure_embed_table()` now uses the
+  process cached upload path so the 268MB table is reusable across in-process
+  runners.
+- Added suite routes fixed to B2:
+  `llama-compat-device-chain`, `llama-compat-device-chain-dp4a`,
+  `llama-compat-device-seed-chain`, and
+  `llama-compat-device-seed-chain-dp4a`.
+- `--llama-compat` now preserves an explicit `--resident-mtp-device-seed`, so
+  the new device-seed-chain route can start drafts from resident target
+  `pending_h` instead of clearing that flag.
+- Split device-chain readback instrumentation into
+  `draft_device_chain_drain` and `draft_topk_d2h` while retaining the historical
+  `draft_topk_readback` total bucket.
+
+Validation:
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py hipengine/speculative/mtp_resident_draft.py`
+- `PYTHONPATH=. pytest -q tests/test_mtp_resident_draft_device_commit.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py`
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo | grep -E 'Name:|gfx' | head -40` on gfx1151/Radeon 8060S.
+
+Benchmarks, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+
+- Smoke prewarmed device-chain dp4a:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-smoke.json`
+  -> AR 54.65 tok/s, B2 61.96 tok/s = 1.1338x AR, acc/output 0.667.
+  `draft_device_chain_ensure_embed_table` fell to ~0 in measured cycles.
+- Full prewarmed device-chain dp4a:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-full.json`
+  -> AR 54.71 tok/s, B2 52.79 tok/s = 0.965x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 18.963 ms/output,
+  `draft_initial` 4.028 ms/output, `target_block_verify_total`
+  14.620 ms/output.
+- Smoke device-seed-chain dp4a:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-seed-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-seed-chain-dp4a-b2-smoke.json`
+  -> AR 54.99 tok/s, B2 62.09 tok/s = 1.129x AR, acc/output 0.667.
+- Full device-seed-chain dp4a:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-seed-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-seed-chain-dp4a-b2-full.json`
+  -> AR 54.74 tok/s, B2 52.53 tok/s = 0.9596x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 19.065 ms/output. Device seed removes
+  the host seed upload micro-bucket but does not move full-suite economics.
+- Split-bucket full rerun, prewarmed device-chain dp4a:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-full-split.json`
+  -> AR 54.74 tok/s, B2 52.51 tok/s = 0.9593x AR, acc/output 0.561.
+  Attribution: `draft_topk_readback` 3.839 ms/output =
+  `draft_device_chain_drain` 3.830 + `draft_topk_d2h` 0.008. The draft gap is
+  GPU drain, not D2H.
+
+Conclusion:
+- Prewarm/cached device-chain fixes the previous measured first-cycle embed-table
+  upload artifact but only improves full compat dp4a from 52.48 to 52.79 tok/s.
+- Resident `pending_h`/device seed is now explicit and measured, but is not the
+  missing llama.cpp economics lever.
+- Best current llama-replication row is still ~4.73 ms/output slower than llama.cpp
+  HIP B2 traced path: ~1.9 ms/output draft drain plus ~2.5 ms/output B2 verifier,
+  with the rest in small lifecycle/accounting and weaker acceptance/pass economy.
+  Next replication work should reduce resident draft GPU drain and B2 block verifier
+  layer time directly.

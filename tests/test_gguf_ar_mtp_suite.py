@@ -171,8 +171,32 @@ def test_suite_exposes_b1_probe_block_direct_cap32k_route() -> None:
 def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTES["llama-compat"] == ["--llama-compat"]
     assert suite.MTP_ROUTES["llama-compat-dp4a"] == ["--llama-compat", "--verify-dp4a"]
+    assert suite.MTP_ROUTES["llama-compat-device-chain"] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+    ]
+    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a"] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+    ]
+    assert suite.MTP_ROUTES["llama-compat-device-seed-chain"] == [
+        "--llama-compat",
+        "--resident-mtp-device-seed",
+        "--resident-mtp-device-chain",
+    ]
+    assert suite.MTP_ROUTES["llama-compat-device-seed-chain-dp4a"] == [
+        "--llama-compat",
+        "--resident-mtp-device-seed",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+    ]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-dp4a"] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain"] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a"] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain"] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain-dp4a"] == [2]
 
 
 def test_suite_exposes_fused_b1_block_probe_route() -> None:
@@ -218,6 +242,61 @@ def test_suite_llama_compat_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys
     out = capsys.readouterr().out
     assert "--budgets 2" in out
     assert "--extra-arg=--llama-compat" in out
+    assert "--extra-arg=--verify-dp4a" in out
+    assert '"budgets": [\n    2\n  ]' in out
+    assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
+
+
+def test_suite_llama_compat_device_chain_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "full",
+            "--mtp-route",
+            "llama-compat-device-chain-dp4a",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--budgets 2" in out
+    assert "--extra-arg=--llama-compat" in out
+    assert "--extra-arg=--resident-mtp-device-chain" in out
+    assert "--extra-arg=--verify-dp4a" in out
+    assert '"budgets": [\n    2\n  ]' in out
+    assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
+
+
+def test_suite_llama_compat_device_seed_chain_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "full",
+            "--mtp-route",
+            "llama-compat-device-seed-chain-dp4a",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--budgets 2" in out
+    assert "--extra-arg=--llama-compat" in out
+    assert "--extra-arg=--resident-mtp-device-seed" in out
+    assert "--extra-arg=--resident-mtp-device-chain" in out
     assert "--extra-arg=--verify-dp4a" in out
     assert '"budgets": [\n    2\n  ]' in out
     assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
