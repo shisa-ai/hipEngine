@@ -1,0 +1,38 @@
+{
+ "schema": 1,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "kind": "vulkan_perop_gflops_why_faster",
+ "hardware": "AMD Radeon 8060S / gfx1151",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "method": "GGML_VK_PERF_LOGGER=1 on llama-cli Vulkan AR decode; effective GFLOPS tracks BW for memory-bound GEMVs",
+ "vulkan_ar_ops": {
+  "lm_head_q6_K_m248320_k2048": {
+   "us": 1794,
+   "gflops": 566
+  },
+  "attn_q8_0_m8192_k2048_qkv_fused": {
+   "us": 90.8,
+   "gflops": 369
+  },
+  "moe_q4_K_m512_k2048_n8_expert256_MUL_MAT_ID": {
+   "us": 24.9,
+   "gflops": 674
+  },
+  "moe_q5_K_m2048_k512_n8_MUL_MAT_ID": {
+   "us": 31.7,
+   "gflops": 528
+  }
+ },
+ "hipengine_lm_head_q6_K": {
+  "us": 1850,
+  "gflops": 550
+ },
+ "findings": [
+  "lm-head (large contiguous GEMV) is EQUALLY BW-efficient on both: Vulkan 566 vs hipEngine 550 GFLOPS. Vulkan has NO raw-bandwidth magic.",
+  "Vulkan wins on SMALLER ops via FUSION: qkv fused into one m=8192 GEMV; all 8 selected experts in one MUL_MAT_ID call (674 GFLOPS, its best op).",
+  "hipEngine SPLITS these (separate q/k/v, narrower expert GEMVs) -> small matmuls under-saturate BW."
+ ],
+ "lever": "Fuse hipEngine attention qkv into one GEMV + consolidate selected-expert MoE into a single MUL_MAT_ID-style batched call (widen existing pack8 ids-GEMV). Same fewer/larger/better-saturated ops Vulkan exploits, at exact precision. Pairs with verify vec-rowtile."
+}

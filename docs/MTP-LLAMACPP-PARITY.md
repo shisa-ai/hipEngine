@@ -29,6 +29,32 @@ Two attributions:
 The gap therefore decomposes into **(backend: HIP vs Vulkan) + (MTP uplift)** — not
 uplift alone. The AR/verify analysis below is within the HIP/ROCm backend.
 
+### Why Vulkan is faster: kernel FUSION, not raw BW (lm-head is equal on both)
+
+Vulkan per-op timing (`GGML_VK_PERF_LOGGER=1`, AR decode) gives effective GFLOPS,
+which for these memory-bound GEMVs tracks effective bandwidth:
+
+| op (AR decode) | Vulkan | hipEngine | note |
+| --- | --- | --- | --- |
+| lm-head `q6_K m=248320 k=2048` | 1794 µs, **566 GFLOPS** | ~1850 µs, **~550 GFLOPS** | **EQUAL** — both saturate BW on a large contiguous GEMV |
+| attn proj `q8_0 m=8192 k=2048` | 90.8 µs, 369 GFLOPS (**qkv FUSED into one m=8192 op**) | split into separate q/k/v `q8_0_t16` GEMVs | Vulkan fuses; hipEngine splits |
+| MoE `MUL_MAT_ID_VEC q4_K m=512 k=2048 n=8 n_expert=256` | 24.9 µs, **674 GFLOPS** (**all 8 selected experts in ONE call**) | per-expert / narrower selected GEMVs | Vulkan's expert-batched `MUL_MAT_ID` is the highest-GFLOPS op |
+
+**Finding:** on the *large* op (lm-head) the two backends are **equally BW-efficient
+(566 vs 550 GFLOPS)** — Vulkan has no magic raw-bandwidth edge. Vulkan wins on the
+*smaller* ops by **fusing them into larger matmuls**: qkv into one `m=8192` GEMV, and
+all 8 selected experts into one `MUL_MAT_ID` (674 GFLOPS, its best op). Larger fused
+ops saturate BW better and cut launch count. hipEngine splits these (separate q/k/v,
+narrower expert GEMVs), leaving BW under-saturated on the small matmuls — which is
+*also* why hipEngine's AR is launch-light but its small GEMVs run below the lm-head's
+efficiency.
+
+**Concrete correctness-preserving lever for the backend gap:** fuse hipEngine's
+attention **qkv projection** into one GEMV and consolidate the **selected-expert MoE**
+into a single `MUL_MAT_ID`-style batched call (it already has a pack8 ids-GEMV; widen
+it / fuse gate+up+down dispatch). This is the same "fewer, larger, better-saturated
+ops" Vulkan exploits — at exact precision. Pairs with the verify vec-rowtile lever.
+
 ### AR decode (within HIP): hipEngine beats llama HIP; gap to Vulkan is backend
 
 | AR decode (single-token), same model | llama.cpp HIP | hipEngine GGUF |
