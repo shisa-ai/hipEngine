@@ -129498,3 +129498,18 @@ our HIP kernels beat llama HIP, hence our faster AR). It is the dp4a-vs-exact VE
 precision difference cascading into passes/output. Can't take it without failing the
 ja gate. Within exact precision the b1-probe route is already the optimum (every
 cheaper-verify/no-probe variant regressed). 1.11x is the exact-precision MTP optimum.
+
+## 2026-06-30 — FINAL RESULT documented: MTP gap = dp4a verify (perf + ja accuracy cost)
+
+Captured the final result in docs/MTP-LLAMACPP-PARITY.md (FINAL RESULT section) with
+the EXACT perf and accuracy cost of llama's dp4a verify:
+- PERF: hipEngine exact MTP 60.8/1.114x (passes/out 0.567) vs llama HIP dp4a 67.3/1.31x
+  (passes/out 0.402). We do 41% more verify work/output. Swapping only the verify to
+  dp4a on hipEngine: +1.3% E2E (60.8->61.61, 1.114->1.1322x), STILL 8.5% behind llama
+  HIP (67.3). dp4a block-verify wall -3.9%; dp4a AR unchanged (54.97~54.95).
+- ACCURACY: dp4a verify FAILS the gate (KL<=0.05 AND top-1>=90% vs cpu_reference).
+  scratchpad/dp4a_correctness.py: general_ja top-1 0.700 (21/30) FAIL, first divergence
+  token 20; code 1.000 PASS. q8_1 loses CJK precision.
+Conclusion: within the gate, hipEngine MTP is at its exact-precision optimum and beats
+llama HIP on AR+accuracy. Matching llama HIP MTP needs dp4a (fails ja, insufficient
+alone) or a Vulkan backend. Artifact: results/2026-06-30-mtp-gap-vs-llama-hip-FINAL.json.

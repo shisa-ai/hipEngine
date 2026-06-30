@@ -1,0 +1,56 @@
+{
+ "schema": 1,
+ "status": "final_result_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "kind": "mtp_gap_vs_llama_hip_FINAL_dp4a_perf_and_accuracy_cost",
+ "hardware": "gfx1151",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "summary": "hipEngine AR faster than llama HIP (54.95 vs 51.38); the ONLY MTP deficit is llama dp4a verify, which FAILS hipEngine ja correctness gate.",
+ "perf_cost": {
+  "hipengine_exact": {
+   "ar": 54.95,
+   "mtp": 60.8,
+   "uplift": 1.114,
+   "passes_per_output": 0.567,
+   "acc_per_output": 0.535,
+   "ms_per_output": 16.4
+  },
+  "llama_hip_dp4a": {
+   "ar": 51.38,
+   "mtp": 67.3,
+   "uplift": 1.31,
+   "passes_per_output": 0.402,
+   "acc_per_output": 0.598,
+   "ms_per_output": 14.9
+  },
+  "gap": "hipEngine does 41% more target-verify passes/output (0.567 vs 0.402). llama 1 verify pass/cycle (passes/out=1-acc/out=0.402); hipEngine ~1.22 (b1-probe needed because exact verify makes wasted block-rows costly; no-probe regressed to 1.069x).",
+  "dp4a_on_hipengine": {
+   "verify_swap_e2e_b5_tok_s": 61.61,
+   "verify_swap_uplift": 1.1322,
+   "e2e_gain_pct": 1.3,
+   "still_behind_llama_hip_pct": 8.5,
+   "block_verify_wall_delta_pct": -3.9,
+   "ar_delta": "54.97 vs 54.95 (none)",
+   "note": "dp4a verify alone insufficient to reach llama HIP 67.3; our fast exact AR shrinks the uplift ratio and the no-probe structure needs whole-pipeline dp4a."
+  }
+ },
+ "accuracy_cost": {
+  "gate": "KL <= 0.05 AND top-1 agreement >= 90% vs kernels/cpu_reference (AGENTS.md/docs/TESTING.md)",
+  "test": "scratchpad/dp4a_correctness.py, HIPENGINE_GGUF_T16_SELECTED_DP4A=1, real ja+code context, 30 tokens",
+  "results": {
+   "code": {
+    "top1_agreement": 1.0,
+    "gate": "PASS",
+    "first_divergence": null
+   },
+   "general_ja": {
+    "top1_agreement": 0.7,
+    "gate": "FAIL",
+    "first_divergence_token": 20
+   }
+  },
+  "verdict": "dp4a verify is a HARD FAIL on Japanese (0.700 < 0.90); q8_1 activation quantization loses CJK precision, greedy path diverges at token 20 and compounds. Code unaffected (1.000). llama MTP speed is bought with an accuracy loss that violates hipEngine correctness guard."
+ },
+ "conclusion": "Within the correctness gate hipEngine MTP (1.114x/60.8) is at its exact-precision optimum and beats llama HIP on AR and accuracy. Matching llama HIP MTP needs its dp4a verify (fails ja gate 0.700, and reaches only ~61.6 < 67.3 here). Paths to exceed: relax ja gate for dp4a (fails CJK, insufficient alone) or add a Vulkan backend (beats llama on AR+MTP on this APU)."
+}

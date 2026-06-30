@@ -39,6 +39,68 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 => No remaining correctness-preserving HIP-kernel lever for AR/verify; the residual
 gap is the **Vulkan-vs-HIP backend** + llama's dp4a precision.
 
+### FINAL RESULT — the MTP gap vs llama HIP is the dp4a verify, with an exact accuracy cost
+
+**Bottom line:** hipEngine's GGUF AR decode is *faster* than llama.cpp HIP's
+(54.95 vs 51.38 tok/s) — our exact HIP kernels are genuinely good, and fusion /
+verify-amortization are already captured. The **only** place we trail llama HIP is
+the **MTP verify loop**, and the entire deficit is llama's **dp4a verify pass**,
+which **does not pass hipEngine's correctness gate**.
+
+**Exact performance cost (what dp4a buys, what it doesn't):**
+
+| HIP-vs-HIP, full suite | hipEngine (exact) | llama HIP (dp4a) |
+| --- | --- | --- |
+| AR tok/s | **54.95** | 51.38 |
+| MTP tok/s | 60.8 | **67.3** |
+| ms / output token | 16.4 | 14.9 |
+| MTP uplift over own AR | 1.114× | **1.31×** |
+| target-verify passes / output | **0.567** | **0.402** |
+| acc / output | 0.535 | 0.598 |
+
+- We do **41% more target-verify work per output token** (0.567 vs 0.402). llama runs
+  **1 verify pass/cycle** (passes/out = `1 − acc/out` = 0.402); hipEngine runs ~1.22
+  (a cheap B1-probe pass + the block pass).
+- **Why:** llama's dp4a verify is cheaper per row, so it (a) pays less per pass and
+  (b) can speculate full blocks with **no probe** (wasted rows are cheap). Our *exact*
+  verify is pricier per row, so a wasted block-row is costly → the B1-probe is the best
+  route (removing it regressed to **1.069×**, acc/out collapsing 0.535→0.379).
+- **Swapping only the verify to dp4a on hipEngine buys +1.3% E2E** (60.8 → **61.61
+  tok/s**, 1.114×→**1.1322×**, `results/2026-06-30-ar-mtp-suite-full-dp4a-verify-diagnostic.json`)
+  — still **8.5% behind llama HIP (67.3)**, because our exact AR is already fast (a
+  fixed verify saving is a *smaller ratio* over a fast AR) and the no-probe structure
+  needs whole-pipeline dp4a. On the GPU-bound block verify the wall barely moves
+  (exact 42.9 ms → all-dp4a 41.2 ms = **−3.9%**); dp4a does **not** speed AR at all
+  (54.97 ≈ 54.95). The isolated MoE-GEMV dp4a is ~2–3× but does not translate E2E
+  (GPU-bound + added per-layer `quantize_q8_1` launches).
+
+**Exact accuracy cost — llama's dp4a verify FAILS hipEngine's correctness gate:**
+
+- Gate (`AGENTS.md`/`docs/TESTING.md`): **KL ≤ 0.05 AND top-1 agreement ≥ 90%** vs
+  `kernels/cpu_reference/` on fixture inputs.
+- Measured greedy top-1 agreement of the dp4a (q8_1) verify vs the exact path
+  (`scratchpad/dp4a_correctness.py`, flag `HIPENGINE_GGUF_T16_SELECTED_DP4A=1`, real
+  ja+code context, 30 tokens):
+
+  | category | dp4a greedy top-1 agreement | gate ≥ 0.90 | first divergence |
+  | --- | --- | --- | --- |
+  | code | **1.000** (30/30) | PASS | none |
+  | **general_ja** | **0.700** (21/30) | **FAIL** | token 20 |
+
+- **dp4a is a hard FAIL on Japanese: 0.700 < 0.90** (q8_1 activation quantization
+  loses CJK precision; the greedy path diverges from exact at token 20 and compounds).
+  Code is unaffected (1.000). So llama's MTP speed advantage is bought with an accuracy
+  loss that violates hipEngine's stated correctness guard — it is **not** a free win.
+
+**Conclusion:** within the correctness gate, hipEngine's MTP (1.114× / 60.8 tok/s) is
+at its exact-precision optimum and **already beats llama HIP on AR and on accuracy**.
+Matching llama HIP's MTP tok/s requires its dp4a verify, which fails our ja gate
+(0.700 top-1) and even then only reaches ~61.6 tok/s here (still < 67.3). The two
+honest paths to actually exceed llama remain: relax the ja accuracy gate for dp4a
+(not recommended — fails CJK, and insufficient alone), or add a **Vulkan backend**
+(beats llama on both AR and MTP on this APU). The exact-precision HIP design point is
+documented as closed.
+
 Profiling harness (both engines, reproducible): llama HIP via `rocprofv3
 --kernel-trace` on `llama-bench`/`llama-cli` (MTP path deadlocks rocprof at finalize
 → use the batched-forward proxy `llama-bench -p 4 -b 4`); llama Vulkan via
