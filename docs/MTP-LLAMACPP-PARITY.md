@@ -239,6 +239,24 @@ llama-style no-probe route on hipEngine does collapse (`56.42 tok/s`, acc/output
 `0.324`), so the current blocker is speculative-policy/acceptance economics, not an
 unattributed llama.cpp kernel bucket.
 
+#### Can we adopt llama.cpp's non-serial verifier?
+
+Not as a direct policy transplant. "llama non-serial verifier" has two separable
+meanings:
+
+| option | status | evidence / implication |
+| --- | --- | --- |
+| Copy llama's **one full-block pass per cycle, no B1 probe** policy | **Rejected for hipEngine** | Full-suite no-probe route regressed to **56.42 tok/s** with acc/output **0.324**. The missing B1 probe wastes full-block rows on rejected drafts, so the lower pass count does not survive. |
+| Force the existing hipEngine block verifier to cover B1 probes | **Already explored; not a drop-in win** | Low-row block verify is exact, but B1 is branch-sensitive. Prior B1 block probes were either invalid for root-topK branch accepts or much slower under strict root-K1 because miss cycles pay a two-row block plus rollback/replay. |
+| Build a new hipEngine-specific **cheap B1 verifier** | **Viable next lever** | This would not be "copy llama.cpp"; it would fuse/shorten the B1 probe while preserving the acceptance guard that keeps acc/output near **0.53**. It must beat the current **6.66 ms/output** `target_serial_verify_step` without collapsing acceptance. |
+
+So the answer is: we can adopt the **goal** of no serial probe overhead, but not
+llama.cpp's exact mechanism. llama gets away with no-probe because its dp4a/q8_1
+verify economy and draft behavior make wasted rows cheap enough. hipEngine's tested
+no-probe route collapses acceptance, so the correct next implementation target is a
+dedicated cheap/fused B1 probe or a new no-probe policy that first proves acc/output
+does not collapse on the full prompt suite.
+
 Commands used:
 
 ```bash

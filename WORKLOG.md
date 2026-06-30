@@ -129613,3 +129613,14 @@ gap after dp4a is explained by hipEngine verifier economics, specifically the
 extra B1/serial verify bucket. Draft, snapshot, commit, accept policy, and hidden
 cycle-wall overhead are too small. Do not compare llama's `target_block_forward`
 directly; most of its verify/state cost sits in `mtp_context_replay_append`.
+
+## 2026-06-30 — Documented llama non-serial verifier adoption decision
+
+Clarified `docs/MTP-LLAMACPP-PARITY.md` after the bucket table. We cannot directly
+adopt llama.cpp's no-serial/no-probe policy: hipEngine full-suite no-probe already
+regressed to 56.42 tok/s with acc/output 0.324. Forcing the existing block verifier
+onto B1 was also explored earlier: low-row block verify is exact, but B1 root-topK
+branch behavior makes the naive block shortcut invalid, and strict B1 block miss
+cycles were slower. The viable lever is not a direct llama copy; it is a new
+hipEngine-specific cheap/fused B1 probe or a new no-probe policy that proves
+acc/output does not collapse on the full prompt suite.
