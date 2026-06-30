@@ -15,16 +15,18 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 | llama.cpp HIP/ROCm (dp4a) | 51.38 | 67.3 (suite) / 75.4 (cli prompt) | ~1.31–1.47× |
 | llama.cpp **Vulkan** (dp4a) | **62.65** | **84.6 (cli prompt)** | ~1.35× |
 
-**The gap is two independent factors, neither of which is hipEngine's base decode:**
-1. **Backend (largest):** Vulkan ≫ HIP/ROCm on this Strix-Halo iGPU. hipEngine's own
-   HIP kernels actually **beat llama's HIP** (AR 54.95 > 51.38); llama only pulls
-   ahead by using **Vulkan**, where the *same-size* lm-head GEMV is equally
-   BW-efficient (566 vs 550 GFLOPS) but Vulkan **fuses** the smaller ops (qkv into one
-   `m=8192` GEMV; 8 experts into one `MUL_MAT_ID`) → better BW saturation + fewer
-   launches. hipEngine is HIP-only → on the disadvantaged backend.
-2. **MTP uplift:** llama's verify **amortizes the weight read across the B+1 batch**
-   inside `mul_mat_vec_q` (+ dp4a) and its draft can **share the target's KV context**
-   (`is_mem_shared`); hipEngine's verify re-reads weights per row and runs exact.
+**There are two separate comparisons:**
+1. **HIP-vs-HIP parity (the 67.3 tok/s row):** hipEngine's base decode is not behind:
+   AR is **54.95 vs llama HIP 51.38 tok/s**. The remaining HIP-vs-HIP gap is MTP
+   uplift/economics: llama's pipeline uses dp4a/q8_1 verify and can run no-probe
+   full-block speculation at **0.402 target passes/output**; hipEngine's exact route
+   needs a B1 probe and spends **0.567 passes/output**. Copying dp4a into hipEngine
+   reaches only **61.3-61.6 tok/s** and fails the ja correctness gate.
+2. **Best llama.cpp parity (Vulkan rows):** Vulkan adds a separate backend factor on
+   Strix Halo: llama Vulkan AR is **62.65 tok/s** vs hipEngine HIP **54.95 tok/s**.
+   The large lm-head is equally BW-efficient (566 vs 550 GFLOPS), but Vulkan's driver
+   and fused ggml op shapes are stronger on the smaller ops. hipEngine is HIP-only, so
+   matching llama Vulkan is a backend project, not an MTP-policy fix.
 
 **Correctness-preserving levers (exact precision) — TESTED 2026-06-30, both already captured:**
 - **Fusion: already done** — qkv is a single fused `attn_qkv` GEMV; selected-expert
@@ -38,6 +40,32 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 
 => No remaining correctness-preserving HIP-kernel lever for AR/verify; the residual
 gap is the **Vulkan-vs-HIP backend** + llama's dp4a precision.
+
+### FINAL STAGE LEDGER — hipEngine GGUF HIP vs llama.cpp HIP
+
+This is the current authoritative stage-by-stage attribution. Older historical
+sections below are retained for archaeology; where they conflict with this table, this
+table wins.
+
+| Stage | hipEngine GGUF HIP | llama.cpp HIP | What it means |
+| --- | --- | --- | --- |
+| AR wall | **54.95 tok/s** (~18.2 ms/tok) | 51.38 tok/s (~19.5 ms wall; 17.26 ms GPU + host exposed) | hipEngine wins base decode. |
+| AR launch shape | **762 launches/tok**, larger exact kernels, host mostly hidden | **1632 launches/tok**, `mul_mat_vec_q` dp4a dominates, ~2.2 ms host exposed | llama's dp4a kernel is good, but HIP launch shape costs it. |
+| AR kernel mix | q8_0 attention proj **42%**, q4_K MoE **21%**, q6_K lm-head **9.6%**, GDN **8%** | `mul_mat_vec_q` dp4a **76.5%**, `mul_mat_vec_f` **5.8%**, `quantize_q8_1` **2.2%**, GDN **1.4%** | No hidden AR-stage deficit in hipEngine. |
+| Large lm-head bandwidth | q6_K lm-head ~1850 us, **~550 GFLOPS** | Vulkan comparison: 1794 us, **566 GFLOPS** | Large contiguous GEMV is already at parity-class BW. |
+| Current exact block verify | rows=4: **42.40 ms wall**, **38.08 ms GPU**, **875 launches**, only **10.2% host exposed** | llama MTP rocprof deadlocks at finalize; 4-row `llama-bench -p 4 -b 4` proxy shows dp4a matmuls dominate | The old host/graph hypothesis is dead; hipEngine verify is GPU-bound. |
+| hipEngine verify GPU mix | q8_0 attention **32.7%**, GDN **16.1%**, q4/qK MoE selected **25.9%**, rowtile lm-head **5.9%**, router/norm/misc **19.4%** | proxy: `mul_mat_vec_q_moe` **40.5%** + `mul_mat_vec_q` **33.8%** | llama's advantage is cheaper dp4a/q8_1 verify, not missing hipEngine fusion. |
+| Exact MTP economics | B5 **60.78 tok/s**, **1.1134x**, acc/out **0.535**, passes/out **0.567** | B2 **67.3 tok/s**, ~**1.31x**, acc/out **0.598**, passes/out **0.402** | hipEngine does **41% more target-pass work/output**. |
+| dp4a transplant | B5 **61.61 tok/s**, **1.1322x**, +1.3% E2E; block verify **42.9 -> 41.2 ms** (-3.9%) | native llama HIP still **67.3 tok/s** | dp4a helps, but does not close the gap. |
+| no-probe llama recipe | B5 **56.42 tok/s**, acc/out **0.324** | llama succeeds with no-probe economy | The recipe does not transfer; hipEngine needs the B1 probe. |
+| Correctness | exact path passes; dp4a ja top-1 **0.700 < 0.90** gate | llama speed row uses dp4a/q8_1 | Matching llama's precision regime violates hipEngine's guard. |
+
+**Deal:** every stage has now been accounted for. hipEngine is not missing a secret
+llama.cpp HIP kernel stage. It has a faster exact AR pipeline, an exact verifier that
+is already GPU-bound and already has the useful fusion/amortization, and a speculative
+policy that needs one extra cheap probe because exact failed rows are expensive. llama
+HIP's remaining advantage is a whole-pipeline dp4a/no-probe economy; reproducing only
+the dp4a kernel in hipEngine gives ~61.6 tok/s, not 67.3, and fails Japanese.
 
 ### FINAL RESULT — the MTP gap vs llama HIP is the dp4a verify, with an exact accuracy cost
 
@@ -166,23 +194,19 @@ which for these memory-bound GEMVs tracks effective bandwidth:
 | op (AR decode) | Vulkan | hipEngine | note |
 | --- | --- | --- | --- |
 | lm-head `q6_K m=248320 k=2048` | 1794 µs, **566 GFLOPS** | ~1850 µs, **~550 GFLOPS** | **EQUAL** — both saturate BW on a large contiguous GEMV |
-| attn proj `q8_0 m=8192 k=2048` | 90.8 µs, 369 GFLOPS (**qkv FUSED into one m=8192 op**) | split into separate q/k/v `q8_0_t16` GEMVs | Vulkan fuses; hipEngine splits |
-| MoE `MUL_MAT_ID_VEC q4_K m=512 k=2048 n=8 n_expert=256` | 24.9 µs, **674 GFLOPS** (**all 8 selected experts in ONE call**) | per-expert / narrower selected GEMVs | Vulkan's expert-batched `MUL_MAT_ID` is the highest-GFLOPS op |
+| attn proj `q8_0 m=8192 k=2048` | 90.8 µs, 369 GFLOPS (**qkv FUSED into one m=8192 op**) | current audit: qkv already fused as one `attn_qkv` GEMV | no missing qkv-fusion lever remains |
+| MoE `MUL_MAT_ID_VEC q4_K m=512 k=2048 n=8 n_expert=256` | 24.9 µs, **674 GFLOPS** (**all 8 selected experts in ONE call**) | current audit: pack8 selected MoE already consolidated with gate+up+silu fused | high-level MoE consolidation already captured |
 
 **Finding:** on the *large* op (lm-head) the two backends are **equally BW-efficient
-(566 vs 550 GFLOPS)** — Vulkan has no magic raw-bandwidth edge. Vulkan wins on the
-*smaller* ops by **fusing them into larger matmuls**: qkv into one `m=8192` GEMV, and
-all 8 selected experts into one `MUL_MAT_ID` (674 GFLOPS, its best op). Larger fused
-ops saturate BW better and cut launch count. hipEngine splits these (separate q/k/v,
-narrower expert GEMVs), leaving BW under-saturated on the small matmuls — which is
-*also* why hipEngine's AR is launch-light but its small GEMVs run below the lm-head's
-efficiency.
+(566 vs 550 GFLOPS)** — Vulkan has no magic raw-bandwidth edge. The initial read was
+that hipEngine lacked Vulkan's qkv/selected-expert fusion. The follow-up audit below
+closed that: hipEngine already has fused `attn_qkv` and pack8 selected-MoE. So the
+remaining Vulkan advantage is backend/compiler/op-shape efficiency on the small ops,
+not a missing high-level fusion item in the HIP path.
 
-**Concrete correctness-preserving lever for the backend gap:** fuse hipEngine's
-attention **qkv projection** into one GEMV and consolidate the **selected-expert MoE**
-into a single `MUL_MAT_ID`-style batched call (it already has a pack8 ids-GEMV; widen
-it / fuse gate+up+down dispatch). This is the same "fewer, larger, better-saturated
-ops" Vulkan exploits — at exact precision. Pairs with the verify vec-rowtile lever.
+**Concrete implication:** a hipEngine Vulkan backend is the clean way to capture this
+backend factor. More HIP-side qkv/MoE fusion is not an available correctness-preserving
+lever for the current path.
 
 ### 2026-06-30 IMPLEMENTED+TESTED: both levers are ALREADY captured by existing kernels
 
@@ -237,7 +261,7 @@ batched dp4a `mul_mat_q`/`mul_mat_vec_q` amortizes weight reads across verify ro
 more cheaply *relative to its slower AR* than hipEngine's per-row exact verify does
 relative to its faster AR. That relative-amortization is the suspected uplift lever.
 
-### Verify mechanism: llama amortizes weight reads across rows; hipEngine re-reads per row
+### Verify mechanism: initial hypothesis, then refuted by direct test
 
 llama-cli MTP B2 on the explain_concept prompt = **75–78 tok/s** (uplift ~1.47–1.52×
 over its 51 AR; even higher than the server-suite 67.3 because this is a favorable
@@ -246,23 +270,20 @@ second-context/queue setup; not size- or graph-dependent), so the verify was pro
 via its equivalent **batched B+1-row forward** (`llama-bench -p 4 -b 4 -ub 4`, which
 finalizes cleanly):
 
-| verify-shape (4-row) forward | llama.cpp HIP | hipEngine |
+| verify-shape (4-row) forward | llama.cpp HIP | hipEngine initial read |
 | --- | --- | --- |
 | matmul kernels | `mul_mat_vec_q_moe` 40.5% + `mul_mat_vec_q` 33.8% (dp4a vec; batch is a grid dim → **each block reads a weight tile ONCE, computes all B+1 rows** = weight-read amortized across verify rows) | `q8_0_t16_dual_split` etc. with `blockIdx.y = row` → **a separate block per row, weight re-read B+1×** (NO cross-row amortization). The only amortized hipEngine path (WMMA prefill) is SLOWER at rows=4 (56.9 vs 42.3 ms) due to tile-setup overhead. |
 
-**Uplift mechanism (attribution):** llama's verify is cheaper *per row* because it
-(a) amortizes the weight read across the B+1 batch within the vec kernel and (b) uses
-dp4a. hipEngine's per-row exact verify re-reads each weight B+1× and pays exact
-compute. This — not AR decode — is the source of llama's higher MTP uplift.
+**2026-06-30 correction:** this was the right hypothesis to test, but it is no longer
+an open lever. The exact q8_0 rowtile was built and bit-exact for rows 2-6, then
+lost to the existing rows kernel: rows=4 **31.0 vs 28.7 us** (0.93x), rows=6 **40.3
+vs 38.0 us** (0.94x). The current `grid.y=R` kernel already gets the useful
+multi-row benefit through occupancy; rowtile underutilizes the small q8_0 weights.
+Only the huge shared lm-head benefits, and that rowtile is already shipped.
 
-**Concrete correctness-preserving lever (untested):** a **vec-rowtile** verify GEMV
-for the q8_0 attention and q4_k/q5_k/q6_k MoE weights — read each weight tile once,
-accumulate all B+1 rows in registers (the EXACT pattern that already won for the
-Q6_K lm-head rowtile, 1.0534×→1.1134×). This is the amortization llama gets, at
-**exact precision** (no dp4a, no ja-gate risk). hipEngine never tried this for the
-verify GEMVs — only the WMMA path (slower, tile overhead). Whether it beats the
-per-row decode at rows=4 (where the q8_0 weight is small/MALL-served) is the open
-question to test next.
+**Current attribution:** llama's verify is cheaper because it runs the whole
+speculative economy in dp4a/q8_1 and can afford no-probe full-block attempts.
+hipEngine's exact verifier is GPU-bound and already at its exact-precision floor.
 
 ---
 
@@ -639,19 +660,18 @@ attempt:
 
 ### Per-stage gap vs llama.cpp (AR + MTP pipeline)
 
-Numbers marked (S) are stale single-prompt diagnostics that need re-measurement
-on current code; (M) are current-session measurements.
+Superseded by the final stage ledger at the top, but retained here in the historical
+section with current numbers instead of stale single-prompt estimates.
 
-| Pipeline stage | hipEngine | llama.cpp | Gap | Status |
-| --- | --- | --- | --- | --- |
-| Target AR decode (c=1) | (M) ~18.2 ms/tok (~55 tok/s) | ~21 ms/tok (~47 tok/s) | **hipEngine faster** | kernels near-peak; not the problem |
-| — dense Q8_0 GEMV (47% of decode) | (M) 51–70% of peak BW | — | small | not starved (was mis-measured as 20%) |
-| — selected-MoE GEMV (26% of decode) | (M) 70–80% of peak BW | — | small | already amortized at rows>1 |
-| — lm-head Q6_K (10% of decode) | (M) ~1.8 ms/tok | — | ? | once/token; not yet attacked |
-| MTP draft (resident NextN, c=1×B) | (M) ~3.3 ms/depth (B3) | folded in graph | ~2× | device-resident + device-chained (#3) |
-| MTP target verify (current resident-serial route) | (M) 18.63 ms host / 16.56 ms kernel per target step; ~709 launches/step | folded into ~9 ms 4-token fused graph | structural | GPU-bound; launch collapse alone is not the first lever on current route |
-| Partial-accept rollback (B5) | (M) replay-forward dominates; LM-head skip landed (#4) | n/a | — | replay forward is the same GPU wall |
-| **Net MTP throughput (full suite)** | **default `resident-b1-probe-block-direct-cap32k` B3 56.54 tok/s = 1.0356× AR; prior serial fallback remains below AR** | **67.3 tok/s B2 (1.342× AR)** | **~+19% relative tok/s to match llama.cpp** | **AR-beat closed; parity gap is still amortization + acceptance economics** |
+| Pipeline stage | hipEngine | llama.cpp HIP | Gap / status |
+| --- | --- | --- | --- |
+| Target AR decode (c=1) | **54.95 tok/s**, ~18.2 ms/tok, 762 launches/tok | 51.38 tok/s, 17.26 ms GPU plus ~2.2 ms exposed host, 1632 launches/tok | **hipEngine faster**; AR is not the MTP gap. |
+| AR kernel mix | q8_0 attention **42%**, q4_K MoE **21%**, q6_K lm-head **9.6%**, GDN **8%** | `mul_mat_vec_q` dp4a **76.5%**, `mul_mat_vec_f` **5.8%**, `quantize_q8_1` **2.2%** | Different precision/layout regimes; no hidden hipEngine AR deficit. |
+| Large lm-head | ~1850 us, **~550 GFLOPS** | Vulkan comparison: 1794 us, **566 GFLOPS** | Large GEMV bandwidth is parity-class. |
+| Current block verify | rows=4 **42.40 ms wall**, **38.08 ms GPU**, **875 launches**, **10.2% host exposed** | MTP path deadlocks `rocprofv3` finalize; 4-row proxy matmuls: `mul_mat_vec_q_moe` **40.5%** + `mul_mat_vec_q` **33.8%** | hipEngine verify is GPU-bound; graph/launch collapse is not the lever. |
+| Verify GPU breakdown | q8_0 attention **32.7%**, GDN **16.1%**, selected MoE **25.9%**, rowtile lm-head **5.9%**, misc **19.4%** | dp4a/q8_1 matmuls dominate proxy | Exact components are already optimized, unquantizable, or dp4a-gated. |
+| Exact MTP throughput | B5 **60.78 tok/s**, **1.1134x**, acc/out **0.535**, passes/out **0.567** | B2 **67.3 tok/s**, ~**1.31x**, acc/out **0.598**, passes/out **0.402** | llama spends fewer target passes/output and uses cheaper dp4a rows. |
+| Accuracy-traded dp4a transplant | B5 **61.61 tok/s**, **1.1322x**; ja top-1 **0.700** gate fail | native llama HIP still **67.3 tok/s** | dp4a is not sufficient and not correctness-retainable. |
 
 ### Everything we tried — expected vs actual
 

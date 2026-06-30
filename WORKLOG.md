@@ -129540,3 +129540,16 @@ economy (doesn't transfer to our fast AR). Accuracy cost unchanged: ja top-1 0.7
 does NOT reach llama HIP. Shipped default stays exact (1.114x). Artifacts:
 results/2026-06-30-ar-mtp-dp4a-mode-b3b4b5.json,
 results/2026-06-30-ar-mtp-suite-full-dp4a-verify-diagnostic.json.
+
+## 2026-06-30 — Clarified GGUF MTP llama.cpp parity stage attribution
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` to resolve stale/mixed conclusions after the
+final dp4a/no-probe evidence. Added an authoritative HIP-vs-HIP stage ledger at the
+top: hipEngine AR 54.95 tok/s vs llama HIP 51.38, exact MTP B5 60.78 tok/s/1.1134x
+with 0.567 target passes/output vs llama HIP B2 67.3 tok/s/~1.31x with 0.402
+passes/output, dp4a transplant 61.61 tok/s/1.1322x, no-probe 56.42 tok/s with
+acc/out 0.324, and dp4a ja top-1 0.700 < 0.90 gate. Marked the earlier Vulkan
+fusion and verify-rowtile hypotheses as tested/refuted: qkv/selected-MoE fusion is
+already captured, dense rowtile lost to the current grid-y rows kernel, and the
+current block verifier is GPU-bound rather than graph/host-bound. No code or
+benchmark data changed.
