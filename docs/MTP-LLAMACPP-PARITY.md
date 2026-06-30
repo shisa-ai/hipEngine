@@ -247,7 +247,7 @@ fewer target passes/output (`0.390` traced here, `~0.402` retained) while mainta
 higher draft acceptance. Directly copying `target_block_forward` is the wrong target;
 in llama most verifier time is under `mtp_context_replay_append`, and the deep split
 puts that cost specifically in `llama_process_build_draft_batch` (target decode drain
-+ nextn embedding handoff), not in the draft-context decode.
+and nextn embedding handoff), not in the draft-context decode.
 
 #### Compat draft split: the 2 ms draft target is not top-k width
 
@@ -282,6 +282,21 @@ is cheap enough per output. The older approximate no-probe route collapsed accep
 acceptance near llama's retained row (`0.56` acc/output), but is still slower than AR
 because its B2 draft/context + block verifier costs too much. The current blocker is
 speculative-policy/verifier economics, not an unattributed llama.cpp kernel bucket.
+
+#### Queued fixes, ordered by expected impact
+
+| priority | fix | why this is next | success gate |
+| ---: | --- | --- | --- |
+| 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | Exact/full-suite route beats current exact B5 and dp4a B5 wall/tok/s; `target_serial_verify_step` is removed or reduced below **2 ms/output** without moving `target_block_verify_total` up by the same amount. |
+| 2 | Confidence-gated no-probe policy | Llama wins by avoiding B1 entirely, but our previous no-probe route collapsed acc/output to **0.324**. Only revisit after fused B1 establishes the reference and only with a full-suite confidence gate. | Full-suite acc/output stays near retained B5/llama-compat levels and total tok/s beats fused-B1 route, not just a single prompt. |
+| 3 | Compat draft drain removal | Compat B2 spends **~4.04 ms/output** in draft, mostly per-depth drain/readback. Top-1 diagnostic width did not help; device-chain smoke exposed full-vocab table upload as the next blocker. | Persistent/prewarmed device-chain or fused resident draft cuts compat `draft_initial` toward **~2 ms/output** without lowering full-suite acceptance. |
+| 4 | Block verifier layer-time reduction | In retained B5, block verify is mostly GPU layer work: linear-attn **~5.05 ms/output**, full-attn **~1.82 ms/output**. This is secondary to B1 economics but still material after fused B1. | Reduce `target_block_layer_total` with exactness unchanged and no same-suite tok/s regression. |
+| 5 | Keep llama.cpp deep instrumentation aligned | The current split proved llama's verifier drain lives in `llama_process_build_draft_batch`, not raw `target_block_forward`. Keep this patch available for A/B after every major hipEngine verifier change. | Re-run llama deep trace when upstream or local diagnostic patch changes; do not compare raw async buckets. |
+
+**Next implementation unit:** build the fused B1/block verifier first. Treat it as a
+new opt-in diagnostic route until it passes exact row/state tests and the full
+`gguf_ar_mtp_suite.py --scope full` gate. If it introduces a temporary bench flag,
+record the cleanup trigger in `docs/REFACTOR.md` in the same commit.
 
 #### Can we adopt a true llama.cpp mode?
 

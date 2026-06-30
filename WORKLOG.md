@@ -129736,3 +129736,25 @@ wall gap is 2.46 ms/output, fully explained by verifier economics after accounti
 for hipEngine's slightly faster draft. The compat draft target is not top-k width;
 it needs persistent/prewarmed device-chain state, capped-vocab chain with acceptance
 proof, or a fused resident path that removes per-depth drains.
+
+## 2026-06-30 — Queued MTP parity fixes, fused B1 first
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` with the ordered fix queue:
+
+1. Fused B1/block verifier path first. Goal: preserve the retained B1 probe's
+   acceptance economy while avoiding the separate 6.647 ms/output serial target pass.
+   Success gate: full-suite exact route beats current exact/dp4a B5, and
+   `target_serial_verify_step` is removed or reduced below ~2 ms/output without
+   shifting the same cost into `target_block_verify_total`.
+2. Confidence-gated no-probe only after fused B1 is measured; previous no-probe
+   collapsed acc/output to 0.324.
+3. Compat draft drain removal via persistent/prewarmed device-chain state or fused
+   resident draft; top-1 diagnostic width did not help and device-chain smoke exposed
+   full-vocab table upload as the blocker.
+4. Block verifier layer-time reduction, especially linear-attn layers (~5.05
+   ms/output), after verifier economics are fixed.
+5. Keep llama.cpp deep instrumentation aligned for A/B; compare verifier totals and
+   `llama_process_build_draft_batch`, not raw async `target_block_forward`.
+
+Next implementation unit is explicitly fused B1/block verifier. If it adds a
+temporary bench flag, add the cleanup trigger to `docs/REFACTOR.md` with that change.
