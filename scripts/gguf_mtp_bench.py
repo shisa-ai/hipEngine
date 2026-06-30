@@ -660,6 +660,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "perf. Best measured: ~61.6 tok/s / 1.132x AR (B5) - still below llama HIP 67.3."
         ),
     )
+    parser.add_argument(
+        "--llama-compat",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "OPT-IN diagnostic: force the GGUF MTP route toward llama.cpp semantics "
+            "(B2, p_min=0, full draft vocab, no B1 probe/fallback, shifted MTP context "
+            "replay + device KV, one target block verify per cycle). Use with "
+            "--verify-dp4a for the llama.cpp accuracy-traded speed regime. Default off; "
+            "the shipped exact route is unchanged."
+        ),
+    )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument(
@@ -934,9 +946,51 @@ subprocess path before trusting timing.
 """
 
 
+def apply_llama_compat_args(args: argparse.Namespace) -> None:
+    """Force the closest hipEngine route to llama.cpp's MTP lifecycle.
+
+    This is intentionally opt-in and diagnostic. It overrides conflicting
+    argparse values after parsing so wrapper commands that pass --draft-n-max
+    before --llama-compat cannot silently create a non-compat run.
+    """
+    if not bool(getattr(args, "llama_compat", False)):
+        return
+
+    args.draft_n_max = 2
+    args.root_topk_accept = 1
+    args.sibling_topk_accept = 1
+    args.topk_branch_redraft = False
+    args.draft_p_min = 0.0
+    args.mtp_draft_vocab_cap = 0
+
+    args.resident_mtp_draft = True
+    args.resident_mtp_device_seed = False
+    args.mtp_context_replay = True
+    args.mtp_device_kv_cache = True
+
+    args.target_graph_verify = False
+    args.target_graph_batched_verify = False
+    args.target_block_verify = True
+    args.target_block_verify_mode = "bulk"
+    args.target_block_min_rows = 2
+    args.target_block_direct_state_commit = True
+    args.target_b1_branch_safe_block_verify = False
+
+    args.adaptive_draft_window = False
+    args.adaptive_ar_fallback = False
+    args.adaptive_ar_fallback_max_accepted = 0
+    args.adaptive_ar_fallback_cooldown = 0
+    args.adaptive_full_vocab_after_cap_miss = False
+    args.adaptive_block_after_full_accept = False
+    args.adaptive_probe_draft_n_max = 1
+    args.adaptive_strict_block_probe = False
+    args.adaptive_strict_fallback_draft_n_max = 1
+
+
 def main(argv: list[str] | None = None):
     parser = build_arg_parser()
     args = parser.parse_args(argv)
+    apply_llama_compat_args(args)
     if getattr(args, "verify_dp4a", False):
         # Opt-in llama-style dp4a verify: enable the selected-expert q8_1/dp4a GEMVs.
         # Read live by the runner's _gguf_*_selected_dp4a_enabled() (os.environ).
@@ -2649,6 +2703,7 @@ def main(argv: list[str] | None = None):
             "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
+            "llama_compat": bool(args.llama_compat),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_draft_full_vocab_recovery_effective": bool(
                 resident_mtp_draft_full_vocab_recovery_effective

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 
+import pytest
+
 from scripts import gguf_ar_mtp_suite as suite
 
 
@@ -164,6 +166,61 @@ def test_suite_exposes_b1_probe_block_direct_cap32k_route() -> None:
         "--mtp-draft-vocab-cap",
         "32768",
     ]
+
+
+def test_suite_exposes_llama_compat_routes() -> None:
+    assert suite.MTP_ROUTES["llama-compat"] == ["--llama-compat"]
+    assert suite.MTP_ROUTES["llama-compat-dp4a"] == ["--llama-compat", "--verify-dp4a"]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat"] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-dp4a"] == [2]
+
+
+def test_suite_llama_compat_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "full",
+            "--mtp-route",
+            "llama-compat-dp4a",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--budgets 2" in out
+    assert "--extra-arg=--llama-compat" in out
+    assert "--extra-arg=--verify-dp4a" in out
+    assert '"budgets": [\n    2\n  ]' in out
+    assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
+
+
+def test_suite_llama_compat_rejects_non_b2_budget_override(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "smoke",
+            "--mtp-route",
+            "llama-compat",
+            "--budgets",
+            "5",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    with pytest.raises(suite.SuiteError, match="fixed to budgets \\[2\\]"):
+        suite.main()
 
 
 def test_suite_dry_run_forwards_cycle_stage_timing_flag(monkeypatch, tmp_path, capsys) -> None:

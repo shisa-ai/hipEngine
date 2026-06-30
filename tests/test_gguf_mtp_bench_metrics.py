@@ -10,6 +10,7 @@ from scripts import gguf_mtp_bench as bench
 from scripts.gguf_mtp_bench import (
     _draft_top1_prob,
     _rope_tables,
+    apply_llama_compat_args,
     build_arg_parser,
     compute_speculative_metrics,
     count_topk_draft_candidates,
@@ -530,6 +531,79 @@ def test_arg_parser_exposes_cycle_stage_timing_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-cycle-stage-timings"])
 
     assert args.record_cycle_stage_timings is True
+
+
+def test_arg_parser_exposes_llama_compat_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--llama-compat"])
+
+    assert args.llama_compat is True
+
+
+def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--llama-compat",
+            "--draft-n-max",
+            "5",
+            "--root-topk-accept",
+            "40",
+            "--sibling-topk-accept",
+            "8",
+            "--topk-branch-redraft",
+            "--draft-p-min",
+            "0.5",
+            "--mtp-draft-vocab-cap",
+            "32768",
+            "--no-resident-mtp-draft",
+            "--resident-mtp-device-seed",
+            "--no-mtp-device-kv-cache",
+            "--target-graph-batched-verify",
+            "--no-target-block-verify",
+            "--target-block-verify-mode",
+            "native",
+            "--target-block-min-rows",
+            "4",
+            "--no-target-block-direct-state-commit",
+            "--target-b1-branch-safe-block-verify",
+            "--adaptive-draft-window",
+            "--adaptive-ar-fallback",
+            "--adaptive-ar-fallback-cooldown",
+            "4",
+            "--adaptive-full-vocab-after-cap-miss",
+            "--adaptive-block-after-full-accept",
+            "--adaptive-probe-draft-n-max",
+            "3",
+            "--adaptive-strict-block-probe",
+        ]
+    )
+
+    apply_llama_compat_args(args)
+
+    assert args.draft_n_max == 2
+    assert args.root_topk_accept == 1
+    assert args.sibling_topk_accept == 1
+    assert args.topk_branch_redraft is False
+    assert args.draft_p_min == 0.0
+    assert args.mtp_draft_vocab_cap == 0
+    assert args.resident_mtp_draft is True
+    assert args.resident_mtp_device_seed is False
+    assert args.mtp_context_replay is True
+    assert args.mtp_device_kv_cache is True
+    assert args.target_graph_verify is False
+    assert args.target_graph_batched_verify is False
+    assert args.target_block_verify is True
+    assert args.target_block_verify_mode == "bulk"
+    assert args.target_block_min_rows == 2
+    assert args.target_block_direct_state_commit is True
+    assert args.target_b1_branch_safe_block_verify is False
+    assert args.adaptive_draft_window is False
+    assert args.adaptive_ar_fallback is False
+    assert args.adaptive_ar_fallback_max_accepted == 0
+    assert args.adaptive_ar_fallback_cooldown == 0
+    assert args.adaptive_full_vocab_after_cap_miss is False
+    assert args.adaptive_block_after_full_accept is False
+    assert args.adaptive_probe_draft_n_max == 1
+    assert args.adaptive_strict_block_probe is False
 
 
 def test_main_allows_resident_device_seed_with_context_replay(monkeypatch, capsys) -> None:

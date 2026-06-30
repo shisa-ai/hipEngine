@@ -276,6 +276,17 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--mtp-draft-vocab-cap", "32768",
         "--verify-dp4a",
     ],
+    # True llama.cpp semantic-compat diagnostic: B2, p_min=0, full draft vocab,
+    # shifted prompt/context replay, device MTP KV, no B1 probe / no adaptive AR
+    # fallback, and one target block verify per cycle. Exact variant remains
+    # precision-preserving; dp4a variant enters llama's accuracy-traded regime.
+    "llama-compat": [
+        "--llama-compat",
+    ],
+    "llama-compat-dp4a": [
+        "--llama-compat",
+        "--verify-dp4a",
+    ],
     # Default + recover the full draft vocab after a cap miss. Hypothesis: the
     # 32K draft vocab cap starves acceptance on tokens whose ids exceed 32768
     # (suspected CJK/ja), permanently dragging ja acc/out. Recovering full vocab
@@ -420,6 +431,11 @@ MTP_ROUTES: dict[str, list[str]] = {
     ],
     "resident-draft": ["--resident-mtp-draft"],
     "resident-block": ["--resident-mtp-draft", "--target-block-verify"],
+}
+
+MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
+    "llama-compat": [2],
+    "llama-compat-dp4a": [2],
 }
 
 SCOPES = {
@@ -575,10 +591,19 @@ def main() -> int:
     scope = SCOPES[args.scope]
     cycles = args.cycles if args.cycles is not None else scope["cycles"]
     limit = args.limit if args.limit is not None else scope["limit"]
-    budgets = (
-        [int(x) for x in args.budgets.split(",")] if args.budgets else list(scope["budgets"])
-    )
     route_args = MTP_ROUTES[args.mtp_route]
+    route_default_budgets = MTP_ROUTE_DEFAULT_BUDGETS.get(args.mtp_route)
+    budgets = (
+        [int(x) for x in args.budgets.split(",")]
+        if args.budgets
+        else list(route_default_budgets or scope["budgets"])
+    )
+    if route_default_budgets is not None and budgets != route_default_budgets:
+        raise SuiteError(
+            f"route '{args.mtp_route}' is fixed to budgets {route_default_budgets}; "
+            f"got {budgets}. --llama-compat forces draft_n_max=2, so other labels "
+            "would misrepresent the child artifacts."
+        )
     # Some routes carry a fixed --adaptive-probe-draft-n-max N that gguf_mtp_bench
     # requires N <= draft budget; drop incompatible low budgets so a multi-budget
     # sweep doesn't error (e.g. resident-production probes at 3, so B1/B2 are out).
@@ -668,6 +693,7 @@ def main() -> int:
         "ar_decode_tokens": ar_decode_tokens,
         "mtp_route": args.mtp_route,
         "mtp_route_extra_args": route_args,
+        "mtp_route_default_budgets": route_default_budgets,
         "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
     }
 
