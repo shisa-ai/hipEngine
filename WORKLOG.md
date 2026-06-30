@@ -129953,3 +129953,82 @@ Conclusion:
   lm-head/top-k section, with secondary attention/FFN cost.
 - The verifier gap is target-layer work, especially B2 linear-attention layers,
   not a missing high-level llama.cpp lifecycle switch.
+
+## 2026-07-01 — llama.cpp replication lane: exact Q6_K draft top-1/gather
+
+Implemented the first direct compat-lane gap fix: an exact Q6_K pack8 lm-head
+top-1/gather specialization for resident MTP draft `top_k == 1`.
+
+- New kernel symbol:
+  `hipengine_gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32`.
+- Kernel shape:
+  - stage 1 preserves the same per-output pack8 Q6_K dot-product reduction order as
+    `gguf_q6_k_pack8_gemv_kernel`, but writes one `(value, token_id)` winner per
+    output pack instead of materializing the full logits row;
+  - stage 2 reduces pack winners and optionally gathers the selected FP32 embedding
+    row for the next draft depth.
+- Resident draft wiring:
+  - `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER=1` default-on;
+  - only fires for `_propose_chain_device(..., top_k == 1)`;
+  - disabled control uses the old full logits -> top-k -> gather chain.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py hipengine/speculative/mtp_resident_draft.py tests/test_gguf_q6_k_pack8_gemv_decode.py`
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py`
+- `PYTHONPATH=. pytest -q tests/test_mtp_resident_draft_device_commit.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py`
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo` confirms gfx1151/Radeon 8060S.
+- Lineage check:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` failed because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent on this host
+  (`fatal: cannot change to ...: No such file or directory`). This kernel is an
+  in-tree specialization of the existing Q6_K pack8 GEMV, not a copied external
+  kernel.
+
+New unit gate:
+
+- `test_q6_k_bf16_top1_gather_matches_logits_topk_chain` compares fused
+  Q6 top-1/gather against
+  `gguf_q6_k_pack8_gemv_decode_bf16_f32_out -> topk_f32_rows_i32 ->
+  gather_f32_rows_by_i32id` and asserts identical selected id, selected value, and
+  embedding row.
+
+Benchmarks, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+
+- Smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-smoke.json`
+  -> AR 54.96 tok/s, B2 62.89 tok/s = 1.144x AR, acc/output 0.667.
+- Full, enabled:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-full.json`
+  -> AR 54.75 tok/s, B2 53.34 tok/s = 0.974x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 18.772 ms/output, `draft_initial` 3.712,
+  `draft_topk_readback` 3.518, `target_block_verify_total` 14.737.
+- Full, disabled control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER=0 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-control-full.json`
+  -> AR 54.74 tok/s, B2 52.60 tok/s = 0.961x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 19.033 ms/output, `draft_initial` 4.033,
+  `draft_topk_readback` 3.838, `target_block_verify_total` 14.682.
+- Full sync-stage attribution:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-draftsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-draftsync-full.json`
+  -> AR 54.69 tok/s, B2 53.43 tok/s = 0.977x AR, cycle wall
+  18.737 ms/output, `draft_initial` 3.758, `draft_run_lm_head` 1.916,
+  `draft_device_topk_gather` 0.00055, `target_block_verify_total` 14.661,
+  `target_block_linear_attn_layers` 9.422, `target_block_full_attn_layers` 3.367.
+
+Same-tree A/B conclusion:
+
+- Exact top-1/gather improves llama-compat device-chain dp4a B2 **52.60 -> 53.34
+  tok/s** (+1.4%) with unchanged acceptance.
+- Cycle wall improves **19.033 -> 18.772 ms/output** (-0.261), and the draft bucket
+  improves **4.033 -> 3.712 ms/output** (-0.321).
+- Sync-stage attribution confirms this removes the separate device top-k/gather
+  bucket (**0.357 -> 0.001 ms/output**) but does not move the B2 verifier: remaining
+  gap vs llama.cpp HIP B2 trace is still about **+4.51 ms/output**, split roughly
+  **+1.62 ms/output draft** and **+2.58 ms/output verifier**.
+- Next replication target: B2 block verifier layer time, especially
+  `target_block_linear_attn_layers` (~9.42 ms/output) and
+  `target_block_full_attn_layers` (~3.37 ms/output). Draft top-k/gather is no longer
+  the issue.

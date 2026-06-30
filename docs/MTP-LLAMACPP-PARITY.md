@@ -191,6 +191,14 @@ Artifacts:
   `benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-full-split.json`
 - hipEngine llama-compat dp4a prewarmed device-chain sync-stage draft attribution:
   `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-draftsync-full.json`
+- hipEngine llama-compat dp4a prewarmed device-chain after exact Q6_K top-1/gather
+  specialization:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-full.json`
+  and same-tree disabled control
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-control-full.json`
+- hipEngine llama-compat dp4a prewarmed device-chain after Q6_K top-1/gather,
+  sync-stage draft attribution:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-draftsync-full.json`
 - hipEngine fused-B1 block probe B5:
   `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
   and non-stage check
@@ -376,6 +384,87 @@ This answers the current parity question precisely:
   layer bucket (**9.451 ms/output**) and full-attention layers (**3.375 ms/output**),
   not a missing `pending_h` handoff or a hidden host copy.
 
+#### First gap-closing fix: exact Q6_K top-1 + embedding gather for compat draft
+
+Implemented an exact Q6_K lm-head specialization for the llama-compat device-chain
+draft path:
+
+- New kernel: `hipengine_gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32`.
+- It preserves the same per-output Q6_K dot-product reduction and top-1 tie-break as
+  `gguf_q6_k_pack8_gemv_decode_bf16_f32_out -> topk_f32_rows_i32`, but writes one
+  winner per pack8 block, reduces those winners, and optionally gathers the selected
+  FP32 embedding row for the next draft depth.
+- Runtime flag: `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER=1` by default, scoped to
+  resident MTP draft `top_k == 1`. Set it to `0` for same-tree A/B.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py
+
+PYTHONPATH=. pytest -q \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py
+```
+
+The new unit gate compares the fused kernel against the old logits -> top-k ->
+gather chain and requires identical selected id, selected value, and embedding row.
+
+Same-tree full-suite A/B, Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings
+--require-cached-build`:
+
+| config | AR tok/s | MTP tok/s | vs AR | cycle wall / output | acc / output | draft acceptance | `draft_initial` | `draft_topk_readback` | `target_block_verify_total` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q6 top-1/gather disabled | 54.74 | 52.60 | 0.961x | 19.033 ms | 0.561 | 0.640 | 4.033 ms | 3.838 ms | 14.682 ms |
+| Q6 top-1/gather enabled | 54.75 | **53.34** | **0.974x** | **18.772 ms** | 0.561 | 0.640 | **3.712 ms** | **3.518 ms** | 14.737 ms |
+
+Measured effect:
+
+- Headline: **52.60 -> 53.34 tok/s** on the llama-compat dp4a B2 diagnostic route
+  (**+1.4%**), with unchanged acceptance.
+- Cycle wall: **-0.261 ms/output**.
+- Draft drain: **-0.321 ms/output** (`draft_initial`), almost exactly the section this
+  fix targeted.
+- Verifier: unchanged within noise (**+0.056 ms/output** in this A/B).
+
+Sync-stage rerun after the fix:
+
+| bucket | before Q6 top-1/gather | after Q6 top-1/gather | delta |
+| --- | ---: | ---: | ---: |
+| MTP tok/s | 52.37 | **53.43** | +2.0% |
+| `cycle_wall_ms_per_output` | 19.122 | **18.737** | **-0.385 ms** |
+| `draft_initial` | 4.084 | **3.758** | **-0.326 ms** |
+| `draft_run_lm_head` | 1.882 | 1.916 | +0.034 ms |
+| `draft_device_topk_gather` | 0.357 | **0.001** | **-0.356 ms** |
+| `draft_topk_readback` | 0.007 | 0.007 | flat |
+| `target_block_verify_total` | 14.715 | **14.661** | -0.055 ms |
+| `target_block_linear_attn_layers` | 9.451 | **9.422** | -0.029 ms |
+| `target_block_full_attn_layers` | 3.375 | **3.367** | -0.008 ms |
+
+This closes the obvious top-k/gather waste, but it does **not** close the llama.cpp
+gap. After the fix, the sync-stage diagnostic is still **18.737 ms/output** vs
+llama.cpp HIP B2 trace **14.231 ms/output**, a remaining **+4.51 ms/output**:
+
+- draft side: `draft_initial` **3.758** vs llama **2.140** = **+1.62 ms/output**;
+- verifier side: `target_block_verify_total` **14.661** vs llama **12.083** =
+  **+2.58 ms/output**;
+- the rest is small lifecycle/accounting plus acceptance/pass economy.
+
+The next compat-lane target is therefore no longer device top-k/gather. It is the
+actual target verifier layer cost, especially `target_block_linear_attn_layers`
+(still **9.42 ms/output**) and `target_block_full_attn_layers` (**3.37 ms/output**),
+plus any remaining draft lm-head/attention/FFN work that differs from llama.cpp's
+MTP draft decode shape.
+
 So the remaining replication work is concrete: reduce the resident draft LM-head /
 top-k section and the B2 target block layer time. Simply copying the llama.cpp
 high-level no-probe lifecycle has already been tested and does not make the speed
@@ -395,7 +484,7 @@ speculative-policy/verifier economics, not an unattributed llama.cpp kernel buck
 | ---: | --- | --- | --- |
 | 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | **Implemented and rejected for promotion 2026-06-30.** It cuts B1 serial work but moves too much work into 2-row blocks; exact B5 is **60.40 tok/s**, below the retained exact **60.78** and dp4a **61.61** rows. |
 | 2 | Confidence-gated no-probe policy | Llama wins by avoiding B1 entirely, but our previous no-probe route collapsed acc/output to **0.324**. Fused-B1 proved that simply replacing the B1 serial probe with a two-row block is not enough. | Full-suite acc/output stays near retained B5/llama-compat levels and total tok/s beats the retained exact route, not just the fused-B1 diagnostic. |
-| 3 | Compat draft GPU-drain reduction | Compat B2 spends **~4.03 ms/output** in draft. Prewarmed device-chain removes the embed-table upload and proves D2H is tiny (`draft_topk_d2h` **0.008 ms/output**), but `draft_device_chain_drain` is still **3.830 ms/output**. | Cut compat `draft_initial` toward llama's **2.140 ms/output** without lowering full-suite acceptance. Focus on resident draft GPU work/fusion, not more host-copy removal. |
+| 3 | Compat draft GPU-drain reduction | Compat B2 spent **~4.03 ms/output** in draft. The first exact fix, Q6_K top-1/gather, removed the separate device top-k/gather section and cut `draft_initial` to **3.76 ms/output** in the sync-stage route. | Continue cutting compat `draft_initial` toward llama's **2.140 ms/output** without lowering full-suite acceptance. Remaining draft work is actual lm-head/attention/FFN cost, not D2H. |
 | 4 | Block verifier layer-time reduction | In retained B5, block verify is mostly GPU layer work: linear-attn **~5.05 ms/output**, full-attn **~1.82 ms/output**. This is secondary to B1 economics but still material after fused B1. | Reduce `target_block_layer_total` with exactness unchanged and no same-suite tok/s regression. |
 | 5 | Keep llama.cpp deep instrumentation aligned | The current split proved llama's verifier drain lives in `llama_process_build_draft_batch`, not raw `target_block_forward`. Keep this patch available for A/B after every major hipEngine verifier change. | Re-run llama deep trace when upstream or local diagnostic patch changes; do not compare raw async buckets. |
 

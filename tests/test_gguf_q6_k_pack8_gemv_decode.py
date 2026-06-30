@@ -30,11 +30,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
     gguf_q6_k_pack8_gemv_decode_bf16_bf16_out,
     gguf_q6_k_pack8_gemv_decode_bf16_f32_out,
+    gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
     gguf_q6_k_pack8_gemv_decode_fp16_f32_out,
     gguf_q6_k_pack8_gemv_decode_fp16_fp16_out,
     plan_gguf_q6_k_pack8_gemv_build,
     register_gguf_q6_k_pack8_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.convert.gather import build_gather, gather_f32_rows_by_i32id
+from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, topk_f32_rows_i32
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from tests._gguf_synthetic_weights import make_q6_k_weight
@@ -65,6 +68,7 @@ def test_p9_b4b_registry_keys_resolve() -> None:
         "pack8_gemv_decode_fp16_fp16_out",
         "pack8_gemv_decode_bf16_f32_out",
         "pack8_gemv_decode_fp16_f32_out",
+        "pack8_gemv_decode_bf16_top1_gather_f32",
     ):
         fn = resolve(backend="hip_gfx1100", layer="linear", quant="gguf_q6_k", variant=variant)
         assert fn is not None, f"missing registry entry: {variant}"
@@ -104,6 +108,15 @@ def _run_dense(fn, x, qweight, rows, in_features, out_features, out_dtype, libra
     finally:
         for b in (x_buf, w_buf, out_buf):
             free(b)
+
+
+def test_q6_k_top1_gather_wrapper_validates_before_gpu_load() -> None:
+    with pytest.raises(ValueError, match="rows"):
+        gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(0, 0, 0, 0, 0, None, None, None, 0, 256, 8, 0)
+    with pytest.raises(ValueError, match="together"):
+        gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(0, 0, 0, 0, 0, None, 1, None, 1, 256, 8, 0)
+    with pytest.raises(ValueError, match="hidden_size"):
+        gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(0, 0, 0, 0, 0, None, 1, 2, 1, 256, 8, 0)
 
 
 _HALF_TOL = dict(atol=1.0e-3, rtol=1.0e-2)
@@ -202,3 +215,109 @@ def test_p9_b4b_fp16_f32_lm_head_matches_cpu_oracle(rows, in_features, out_featu
     )
     expected = gguf_quant_gemv(x_ref, qweight, GGMLQuantizationType.Q6_K)
     np.testing.assert_allclose(actual, expected, **_F32_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_k_bf16_top1_gather_matches_logits_topk_chain(q6_k_dense_library) -> None:
+    rows, in_features, out_features, hidden = 1, 512, 4096, 32
+    rng = np.random.default_rng(20260701)
+    qweight = make_q6_k_weight(out_features, in_features)
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+    embed_table = rng.normal(0.0, 0.2, size=(out_features, hidden)).astype(np.float32)
+
+    lm_lib = build_lm_head(load=True)
+    gather_lib = build_gather(load=True)
+    x_buf = malloc(x_bf16.nbytes)
+    w_buf = malloc(qweight.nbytes)
+    logits_buf = malloc(rows * out_features * 4)
+    topk_values_buf = malloc(rows * 4)
+    topk_indices_buf = malloc(rows * 4)
+    embed_table_buf = malloc(embed_table.nbytes)
+    baseline_embed_buf = malloc(rows * hidden * 4)
+    fused_values_buf = malloc(rows * 4)
+    fused_indices_buf = malloc(rows * 4)
+    fused_embed_buf = malloc(rows * hidden * 4)
+    block_values_buf = malloc((out_features // 8) * 4)
+    block_indices_buf = malloc((out_features // 8) * 4)
+    try:
+        copy_host_to_device(x_buf, host_array_ptr(x_bf16), x_bf16.nbytes)
+        copy_host_to_device(w_buf, host_array_ptr(qweight), qweight.nbytes)
+        copy_host_to_device(embed_table_buf, host_array_ptr(embed_table), embed_table.nbytes)
+
+        gguf_q6_k_pack8_gemv_decode_bf16_f32_out(
+            x_buf.ptr,
+            w_buf.ptr,
+            logits_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=q6_k_dense_library,
+        )
+        topk_f32_rows_i32(
+            logits_buf.ptr,
+            topk_values_buf.ptr,
+            topk_indices_buf.ptr,
+            rows,
+            out_features,
+            1,
+            library=lm_lib,
+        )
+        gather_f32_rows_by_i32id(
+            embed_table_buf.ptr,
+            topk_indices_buf.ptr,
+            baseline_embed_buf.ptr,
+            rows,
+            hidden,
+            out_features,
+            library=gather_lib,
+        )
+
+        gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
+            x_buf.ptr,
+            w_buf.ptr,
+            block_values_buf.ptr,
+            block_indices_buf.ptr,
+            fused_indices_buf.ptr,
+            fused_values_buf.ptr,
+            embed_table_buf.ptr,
+            fused_embed_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            hidden,
+            library=q6_k_dense_library,
+        )
+
+        baseline_index = np.empty((rows,), dtype=np.int32)
+        fused_index = np.empty((rows,), dtype=np.int32)
+        baseline_value = np.empty((rows,), dtype=np.float32)
+        fused_value = np.empty((rows,), dtype=np.float32)
+        baseline_embed = np.empty((rows, hidden), dtype=np.float32)
+        fused_embed = np.empty((rows, hidden), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(baseline_index), topk_indices_buf, baseline_index.nbytes)
+        copy_device_to_host(host_array_ptr(fused_index), fused_indices_buf, fused_index.nbytes)
+        copy_device_to_host(host_array_ptr(baseline_value), topk_values_buf, baseline_value.nbytes)
+        copy_device_to_host(host_array_ptr(fused_value), fused_values_buf, fused_value.nbytes)
+        copy_device_to_host(host_array_ptr(baseline_embed), baseline_embed_buf, baseline_embed.nbytes)
+        copy_device_to_host(host_array_ptr(fused_embed), fused_embed_buf, fused_embed.nbytes)
+    finally:
+        for b in (
+            block_indices_buf,
+            block_values_buf,
+            fused_embed_buf,
+            fused_indices_buf,
+            fused_values_buf,
+            baseline_embed_buf,
+            embed_table_buf,
+            topk_indices_buf,
+            topk_values_buf,
+            logits_buf,
+            w_buf,
+            x_buf,
+        ):
+            free(b)
+
+    np.testing.assert_array_equal(fused_index, baseline_index)
+    np.testing.assert_array_equal(fused_value, baseline_value)
+    np.testing.assert_array_equal(fused_embed, baseline_embed)

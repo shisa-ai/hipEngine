@@ -61,6 +61,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
     gguf_q6_k_pack8_gemv_decode_bf16_f32_out,
+    gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
 )
 from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     _cached_upload,
@@ -209,6 +210,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._combine_lib = build_paro_combine(load=True)
         self._gather_lib = build_gather(load=True)
         self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
+        self._q6_top1_gather_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER", True)
         if self.device_chain_enabled is None:
             self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
         else:
@@ -341,6 +343,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.ffn_out_bf16 = self._malloc(h * 2)
         self.head_normed_bf16 = self._malloc(h * 2)
         self.logits = self._malloc(self.vocab * 4)
+        self.q6_top1_block_values = self._malloc((self.vocab // 8) * 4)
+        self.q6_top1_block_indices = self._malloc((self.vocab // 8) * 4)
         self.topk_values = self._malloc(64 * 4)
         self.topk_indices = self._malloc(64 * 4)
         # Device-chain (sub-win B) scratch: per-depth rope/pos/ctx precomputed
@@ -642,6 +646,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - t_prepare0) * 1000)
         current_cache_len = int(dense_cache_len)
+        q6_top1_gather_enabled = bool(getattr(self, "_q6_top1_gather_enabled", False))
         for depth in range(n):
             t_forward0 = time.perf_counter() if stage_timings is not None else 0.0
             self._run_one(
@@ -655,6 +660,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
                 stage_timings=stage_timings,
+                top1_out_ptr=(self.topk_all.ptr + depth * top_k * 4) if (top_k == 1 and q6_top1_gather_enabled) else None,
+                top1_next_embed_ptr=(
+                    self.token_embed.ptr
+                    if (top_k == 1 and q6_top1_gather_enabled and depth + 1 < n)
+                    else None
+                ),
             )
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
@@ -662,20 +673,25 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 current_cache_len += 1
             # Record this depth's top-k on device (no sync, no readback).
             t_topk0 = time.perf_counter() if stage_timings is not None else 0.0
-            self._topk_indices_into(self.topk_all.ptr + depth * top_k * 4, top_k)
-            # Device-gather the next depth's embedding from this depth's top-1.
-            if depth + 1 < n:
-                gather_f32_rows_by_i32id(
-                    self._embed_table_f32.ptr,
-                    self.topk_all.ptr + depth * top_k * 4,
-                    self.token_embed.ptr,
-                    1,
-                    self.hidden_size,
-                    self.vocab,
-                    library=self._gather_lib,
-                    runtime=runtime,
-                )
-            if self.sync_stage_timings and stage_timings is not None:
+            if top_k == 1 and q6_top1_gather_enabled:
+                # The Q6_K lm-head fast path already wrote the top-1 id and,
+                # for non-final depths, gathered the next token embedding.
+                pass
+            else:
+                self._topk_indices_into(self.topk_all.ptr + depth * top_k * 4, top_k)
+                # Device-gather the next depth's embedding from this depth's top-1.
+                if depth + 1 < n:
+                    gather_f32_rows_by_i32id(
+                        self._embed_table_f32.ptr,
+                        self.topk_all.ptr + depth * top_k * 4,
+                        self.token_embed.ptr,
+                        1,
+                        self.hidden_size,
+                        self.vocab,
+                        library=self._gather_lib,
+                        runtime=runtime,
+                    )
+            if bool(getattr(self, "sync_stage_timings", False)) and stage_timings is not None:
                 runtime.device_synchronize()
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_device_topk_gather", (time.perf_counter() - t_topk0) * 1000)
@@ -860,6 +876,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
         stage_timings: dict[str, float] | None = None,
+        top1_out_ptr: int | None = None,
+        top1_next_embed_ptr: int | None = None,
     ) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size
@@ -1064,16 +1082,34 @@ class Qwen35GGUFResidentMTPDraftRunner:
         t_stage = mark_stage("draft_run_moe_down_combine", t_stage)
         mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         f32_to_bf16(next_seed.ptr, self.head_normed_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
-        gguf_q6_k_pack8_gemv_decode_bf16_f32_out(
-            self.head_normed_bf16.ptr,
-            self.shared_head.ptr,
-            self.logits.ptr,
-            1,
-            h,
-            self.vocab,
-            library=self._q6_pack8_lib,
-            runtime=runtime,
-        )
+        if top1_out_ptr is not None:
+            gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
+                self.head_normed_bf16.ptr,
+                self.shared_head.ptr,
+                self.q6_top1_block_values.ptr,
+                self.q6_top1_block_indices.ptr,
+                int(top1_out_ptr),
+                self.topk_values.ptr,
+                self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                1,
+                h,
+                self.vocab,
+                h if top1_next_embed_ptr is not None else 0,
+                library=self._q6_pack8_lib,
+                runtime=runtime,
+            )
+        else:
+            gguf_q6_k_pack8_gemv_decode_bf16_f32_out(
+                self.head_normed_bf16.ptr,
+                self.shared_head.ptr,
+                self.logits.ptr,
+                1,
+                h,
+                self.vocab,
+                library=self._q6_pack8_lib,
+                runtime=runtime,
+            )
         mark_stage("draft_run_lm_head", t_stage)
 
     def _topk_indices_into(self, out_indices_ptr: int, top_k: int) -> None:

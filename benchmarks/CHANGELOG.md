@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-01
+
+- [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-compat-device-chain-dp4a B2 full suite: MTP `52.60 -> 53.34 tok/s` (+1.4%) and cycle wall `19.033 -> 18.772 ms/output` with unchanged acceptance (`acc/output 0.561`, draft acceptance 0.640) due to exact Q6_K draft top-1/gather specialization for resident device-chain `top_k==1`; sync-stage bucket `draft_device_topk_gather` `0.357 -> 0.001 ms/output`, verifier remains ~14.66 ms/output. `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-full.json`.
+
 ## 2026-06-30
 
 - [hipEngine] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / mtp-bench full suite: best MTP 1.0534x AR (B5) -> 1.1134x AR (B5, +5.7%; confirm 1.114x) due to a new Q6_K T16 small-B **rowtile** lm-head GEMV for the verify (reads the 417MB head once across 2-6 block rows instead of per row; 1.85-3.48x faster lm-head, bit-exact vs per-row decode). All budgets up (B2 1.062, B3 1.080, B4 1.089). acc/out unchanged. `benchmarks/results/2026-06-30-ar-mtp-suite-full-rowtile-lmhead.json`.
