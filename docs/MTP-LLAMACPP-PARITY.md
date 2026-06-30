@@ -7,7 +7,29 @@ New goal: stand up clean per-stage profiling for BOTH engines on the same model
 stages/kernels. Full write access to `~/llama.cpp` granted; HIP and Vulkan both in
 scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 GiB.
 
-### Headline reframing: AR decode is NOT the gap — hipEngine WINS it
+### BACKEND is the biggest single factor: Vulkan >> HIP on Strix Halo (8060S)
+
+| same model, same prompt where noted | AR (tg128) | MTP B2 (llama-cli, explain_concept prompt) |
+| --- | --- | --- |
+| llama.cpp **HIP/ROCm** | 51.38 | 75.4 |
+| llama.cpp **Vulkan** | **62.65** | **84.6** |
+| hipEngine (HIP/ROCm only) | 54.95 | 60.8 (full suite; same-prompt TBD) |
+
+Two attributions:
+1. **hipEngine's HIP kernels are FASTER than llama's HIP** (AR 54.95 > 51.38). The
+   earlier "hipEngine wins AR" holds only against llama's *slower* (HIP) backend.
+2. **llama's Vulkan AR (62.65) beats hipEngine's best HIP (54.95) by ~14%**, and
+   Vulkan MTP (84.6) vs hipEngine (60.8). On this RDNA3.5 APU the **Vulkan shader
+   compiler/driver is materially more efficient for these GEMVs than ROCm/HIP**. So
+   a large part of "where we lose" is the **ROCm-vs-Vulkan backend gap**, which is
+   SEPARATE from the MTP algorithm. hipEngine is HIP-only, i.e. structurally on the
+   disadvantaged backend for this hardware. Closing it means either (a) a hipEngine
+   Vulkan backend, or (b) raising the HIP GEMV efficiency toward Vulkan's.
+
+The gap therefore decomposes into **(backend: HIP vs Vulkan) + (MTP uplift)** — not
+uplift alone. The AR/verify analysis below is within the HIP/ROCm backend.
+
+### AR decode (within HIP): hipEngine beats llama HIP; gap to Vulkan is backend
 
 | AR decode (single-token), same model | llama.cpp HIP | hipEngine GGUF |
 | --- | --- | --- |

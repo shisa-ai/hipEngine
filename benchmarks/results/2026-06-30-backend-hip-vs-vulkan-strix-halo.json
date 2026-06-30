@@ -1,0 +1,27 @@
+{
+ "schema": 1,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "kind": "backend_hip_vs_vulkan_strix_halo",
+ "hardware": "AMD Radeon 8060S / gfx1151 (Strix Halo APU)",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "llama_build": "6e9007ae6",
+ "ar_tg128": {
+  "llama_hip": 51.38,
+  "llama_vulkan": 62.65,
+  "hipengine_hip": 54.95
+ },
+ "mtp_b2_cli_explain_concept": {
+  "llama_hip": 75.4,
+  "llama_vulkan": 84.6,
+  "hipengine_hip_suite": 60.8
+ },
+ "findings": [
+  "Vulkan is the FASTER backend on Strix Halo: llama Vulkan AR 62.65 vs HIP 51.38 (+22%); Vulkan MTP 84.6 vs HIP 75.4.",
+  "hipEngine HIP kernels BEAT llama HIP kernels on AR (54.95 vs 51.38) - hipEngine HIP impl is good.",
+  "llama Vulkan AR (62.65) beats hipEngine best-HIP (54.95) by ~14%; Vulkan MTP (84.6) >> hipEngine (60.8).",
+  "The MTP gap decomposes into BACKEND (ROCm/HIP vs Vulkan shader compiler/driver efficiency on this iGPU) + MTP UPLIFT (verify amortization). hipEngine is HIP-only -> structurally on the disadvantaged backend."
+ ],
+ "implication": "A large part of the gap is the ROCm-vs-Vulkan backend, separate from the MTP algorithm. Closing needs either a hipEngine Vulkan backend or raising HIP GEMV efficiency toward Vulkan; plus the vec-rowtile verify amortization for the uplift component."
+}
