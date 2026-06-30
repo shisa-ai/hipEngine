@@ -1,5 +1,41 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
+## 2026-06-30 — DUAL-ENGINE PER-STAGE ATTRIBUTION (active goal): where the MTP gap actually is
+
+New goal: stand up clean per-stage profiling for BOTH engines on the same model
+(Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151) and attribute the MTP tok/s gap to specific
+stages/kernels. Full write access to `~/llama.cpp` granted; HIP and Vulkan both in
+scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 GiB.
+
+### Headline reframing: AR decode is NOT the gap — hipEngine WINS it
+
+| AR decode (single-token), same model | llama.cpp HIP | hipEngine GGUF |
+| --- | --- | --- |
+| Wall tok/s (`llama-bench tg128` / hipEngine suite) | **51.38** | **54.95** |
+| GPU kernel ms/token (rocprof kernel-trace) | 17.26 | ~18 |
+| Kernel launches / token | **1632** | **762** |
+| Dominant kernel(s) | `mul_mat_vec_q` (dp4a) **76.5%**, one unified GEMV for attn+MoE+lm-head; `quantize_q8_1` 2.2% | specialized EXACT kernels: q8_0 attn proj ~42% (`q8_0_t16_dual_split`+`_gemv`+`_triple`), q4_k MoE ~21%, q6_k lm-head ~9.6%, GDN ~8% |
+| Bound by | host launch overhead (1632 small dp4a launches → ~2.2ms host exposed on top of 17.26ms GPU = ~19.5ms wall) | GPU-bound, host hidden (762 larger exact launches; 18.2ms wall ≈ GPU time) |
+
+**Finding:** hipEngine's AR decode is **faster** than llama's (54.95 vs 51.38).
+hipEngine uses fewer, larger *exact* kernels that are GPU-bound (host hidden);
+llama uses a single highly-optimized *dp4a* `mul_mat_vec_q` for 76.5% of decode but
+issues 2× the launches, exposing ~2.2ms/token of host overhead. So the base decode
+is not where hipEngine loses — **the entire MTP gap (60.8 vs 67.3 tok/s) is in the
+speculative machinery / uplift** (llama 1.342× vs hipEngine 1.114× over their own
+AR). This redirects the investigation from AR GEMVs (we win) to the verify/draft
+economics. (Method: `rocprofv3 --kernel-trace` on `llama-bench -p 0 -n 64 -r 1`
+and the hipEngine AR step loop; normalized per-token.)
+
+**Next:** profile llama's MTP verify (batched B+1 rows) — hypothesis: llama's
+batched dp4a `mul_mat_q`/`mul_mat_vec_q` amortizes weight reads across verify rows
+more cheaply *relative to its slower AR* than hipEngine's per-row exact verify does
+relative to its faster AR. That relative-amortization is the suspected uplift lever.
+
+---
+
+# GGUF MTP llama.cpp Parity Trace (history)
+
 - Date: 2026-06-29 (Goal — Part 1 set: target-verify amortization is the sole remaining gap; acceptance shown already at llama.cpp parity via cap32k-recover; shootout order inverted, verify-wall promoted to P0; llama.cpp parity shootout matrix update; B1-probe/block-direct/cap32k AR-beating route retained; bulk row-1 direct-commit exactness diagnostic; native row-1 direct-commit diagnostic; context replay + device-seed route rejection; device-seed + draft-KV route rejection; resident draft p_min strict-block rejection; direct verifier row-state commit diagnostic; resident device hidden-seed diagnostic; hybrid strict-block cap32k rejection; cap32k recovery full-suite diagnostic; strict-context route added; deferred hidden-copy rejection; device top-k40 rejection; resident top-k40 full-suite update; production verifier/full-suite update; systemic workbench update; performance-path update 2026-06-27; correctness-solved update 2026-06-26; original trace 2026-06-25)
 - Branch: `mtp-gguf`
 - Hardware for all runtime numbers below: **gfx1151 / AMD Radeon 8060S (Ryzen AI Max+ 395)**, not the default W7900. Numbers state their scope; the current authoritative MTP numbers are full-suite AR/MTP suite rows.

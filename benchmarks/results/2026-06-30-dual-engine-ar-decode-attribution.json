@@ -1,0 +1,40 @@
+{
+ "schema": 1,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "kind": "dual_engine_ar_decode_attribution",
+ "hardware": "AMD Radeon 8060S / gfx1151",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "llama_build": "6e9007ae6",
+ "method": "rocprofv3 --kernel-trace on llama-bench -p 0 -n 64 -r 1 (HIP) and hipEngine AR step loop; normalized per-token",
+ "ar_decode": {
+  "llama_hip": {
+   "tok_s": 51.38,
+   "gpu_ms_per_tok": 17.26,
+   "launches_per_tok": 1632,
+   "top_kernels_pct": {
+    "mul_mat_vec_q_dp4a": 76.5,
+    "mul_mat_vec_f": 5.8,
+    "k_get_rows": 3.4,
+    "quantize_q8_1": 2.2,
+    "rms_norm": 2.1,
+    "gated_delta_net": 1.4,
+    "flash_attn_tile": 0.6
+   }
+  },
+  "hipengine": {
+   "tok_s": 54.95,
+   "gpu_ms_per_tok": 18.2,
+   "launches_per_tok": 762,
+   "top_kernels_pct": {
+    "q8_0_attn_proj_total": 42,
+    "q4_k_moe_selected": 21,
+    "q6_k_lm_head": 9.6,
+    "gdn_recurrent": 8
+   }
+  }
+ },
+ "finding": "hipEngine AR is FASTER (54.95 vs 51.38). llama uses one unified dp4a mul_mat_vec_q (76.5%) but 1632 launches/tok exposing ~2.2ms host; hipEngine uses fewer larger EXACT kernels (762 launches) GPU-bound with host hidden. AR decode is NOT the gap. The MTP gap is entirely in the speculative uplift (llama 1.342x vs hipEngine 1.114x).",
+ "next": "Profile llama MTP verify (batched B+1 rows) - suspected relative-amortization uplift lever."
+}
