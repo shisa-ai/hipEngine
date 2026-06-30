@@ -577,6 +577,20 @@ def test_arg_parser_exposes_resident_mtp_draft_sync_stage_timings() -> None:
     assert args.resident_mtp_draft_sync_stage_timings is True
 
 
+def test_arg_parser_exposes_target_block_sync_stage_timings() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--target-block-verify",
+            "--record-cycle-stage-timings",
+            "--target-block-sync-stage-timings",
+        ]
+    )
+
+    assert args.target_block_verify is True
+    assert args.record_cycle_stage_timings is True
+    assert args.target_block_sync_stage_timings is True
+
+
 def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-draft-confidence"])
 
@@ -732,6 +746,22 @@ def test_main_rejects_resident_draft_sync_stage_timings_without_resident_draft(c
 
     assert excinfo.value.code == 2
     assert "--resident-mtp-draft-sync-stage-timings requires --resident-mtp-draft" in capsys.readouterr().err
+
+
+def test_main_rejects_target_block_sync_stage_timings_without_cycle_timings(capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--target-block-verify", "--target-block-sync-stage-timings"])
+
+    assert excinfo.value.code == 2
+    assert "--target-block-sync-stage-timings requires --record-cycle-stage-timings" in capsys.readouterr().err
+
+
+def test_main_rejects_target_block_sync_stage_timings_without_block_verify(capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--record-cycle-stage-timings", "--target-block-sync-stage-timings"])
+
+    assert excinfo.value.code == 2
+    assert "--target-block-sync-stage-timings requires --target-block-verify" in capsys.readouterr().err
 
 
 def test_arg_parser_exposes_adaptive_strict_block_probe() -> None:

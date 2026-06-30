@@ -323,6 +323,13 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--resident-mtp-draft-sync-stage-timings",
         "--verify-dp4a",
     ],
+    "llama-compat-device-chain-dp4a-allsync": [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--resident-mtp-draft-sync-stage-timings",
+        "--target-block-sync-stage-timings",
+        "--verify-dp4a",
+    ],
     "llama-compat-device-seed-chain": [
         "--llama-compat",
         "--resident-mtp-device-seed",
@@ -486,6 +493,7 @@ MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat-device-chain": [2],
     "llama-compat-device-chain-dp4a": [2],
     "llama-compat-device-chain-dp4a-draftsync": [2],
+    "llama-compat-device-chain-dp4a-allsync": [2],
     "llama-compat-device-seed-chain": [2],
     "llama-compat-device-seed-chain-dp4a": [2],
 }

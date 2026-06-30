@@ -186,6 +186,13 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--resident-mtp-draft-sync-stage-timings",
         "--verify-dp4a",
     ]
+    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-allsync"] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--resident-mtp-draft-sync-stage-timings",
+        "--target-block-sync-stage-timings",
+        "--verify-dp4a",
+    ]
     assert suite.MTP_ROUTES["llama-compat-device-seed-chain"] == [
         "--llama-compat",
         "--resident-mtp-device-seed",
@@ -202,6 +209,7 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-draftsync"] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-allsync"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain-dp4a"] == [2]
 

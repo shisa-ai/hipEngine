@@ -130032,3 +130032,71 @@ Same-tree A/B conclusion:
   `target_block_linear_attn_layers` (~9.42 ms/output) and
   `target_block_full_attn_layers` (~3.37 ms/output). Draft top-k/gather is no longer
   the issue.
+
+## 2026-07-01 — llama.cpp replication lane: direct-state verifier cleanup
+
+Implemented the next compat-lane verifier cleanup and attribution split:
+
+- Added `--target-block-sync-stage-timings` and suite route
+  `llama-compat-device-chain-dp4a-allsync` for diagnostic-only verifier sync
+  buckets.
+- Split target block verifier internals into linear/full attention sub-buckets:
+  qkv/gate projection, alpha/beta, chain conv/GDN, ssm_out, selected-MoE router,
+  selected expert gate/up, selected expert down, shared expert, combine, full-attn
+  qkv/rope/KV/attention/output.
+- Removed two direct-state verifier wastes in the llama-compat block path:
+  direct linear-attention no longer runs the unused BF16->F32 QKV cast, and
+  `verify_target_block(..., defer_linear_state_commit=True)` skips the final
+  captured-state copy when the caller will immediately commit/restore a captured
+  row.
+- Moved direct-exact detection before `_linear_state_snapshot()` and skip the
+  snapshot entirely when direct commit is exact (`bulk`, `start + rows < 1024`),
+  which covers the measured B2 compat suite. Non-exact rollback/replay paths still
+  require the snapshot.
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py tests/test_mtp_resident_draft_device_commit.py`
+- `git diff --check`
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo` confirms gfx1151/Radeon 8060S.
+
+Benchmarks, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+
+- Smoke after defer-state cleanup:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-deferstate-smoke.json`
+  -> AR 54.91 tok/s, B2 63.90 tok/s = 1.164x AR, acc/output 0.667.
+- Full after defer-state cleanup:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-deferstate-full.json`
+  -> AR 54.73 tok/s, B2 54.36 tok/s = 0.993x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 18.417 ms/output,
+  `target_block_verify_total` 14.387.
+- Smoke after snapshot skip:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-smoke.json`
+  -> AR 54.83 tok/s, B2 66.23 tok/s = 1.208x AR, acc/output 0.667.
+- Full after snapshot skip (retained diagnostic row):
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-full.json`
+  -> AR 54.67 tok/s, B2 55.41 tok/s = 1.014x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 18.069 ms/output,
+  `target_block_verify_total` 14.044, `target_block_layer_total` 12.477,
+  `target_block_linear_attn_layers` 9.185, `target_block_full_attn_layers` 3.292.
+- Final all-sync smoke attribution:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-smoke.json`
+  -> AR 54.74 tok/s, B2 53.61 tok/s = 0.979x AR (diagnostic sync overhead),
+  `target_block_verify_total` 15.581 ms/output,
+  `target_block_linear_attn_layers` 10.191, `target_block_full_attn_layers` 3.126.
+  Top sub-buckets: `target_block_linear_attn_norm_qkv_gate` 2.429,
+  `target_block_linear_attn_ffn_moe_expert_gate_up` 1.563,
+  `target_block_linear_attn_ffn_moe_expert_down` 1.241,
+  `draft_run_lm_head` 1.472.
+
+Compared with the prior Q6 top-1/gather full row, the direct-state cleanup moves
+llama-compat dp4a B2 **53.34 -> 55.41 tok/s** (+3.9%) and cuts
+`target_block_verify_total` **14.737 -> 14.044 ms/output** (-0.694), with unchanged
+acceptance. Remaining gap vs llama.cpp HIP B2 deep trace is now about
+**+3.84 ms/output**: draft **+1.57** and verifier **+1.96**. Next target is target
+linear-attention projection plus selected-MoE expert gate/up/down cost, with draft
+lm-head still the largest draft-side bucket.

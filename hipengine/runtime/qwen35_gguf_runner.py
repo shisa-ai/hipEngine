@@ -198,6 +198,32 @@ from hipengine.runtime.gguf_linear import (
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
 
 
+def _add_sync_stage_timing(
+    timings: dict[str, float] | None,
+    name: str,
+    ms: float,
+) -> None:
+    if timings is None:
+        return
+    if ms < 0.0:
+        raise RuntimeError(f"negative GGUF sync stage timing for {name}: {ms}")
+    timings[name] = timings.get(name, 0.0) + float(ms)
+
+
+def _mark_sync_stage(
+    runtime: HipRuntime,
+    timings: dict[str, float] | None,
+    enabled: bool,
+    name: str,
+    t0: float,
+) -> float:
+    if not enabled or timings is None:
+        return t0
+    runtime.device_synchronize()
+    _add_sync_stage_timing(timings, name, (time.perf_counter() - t0) * 1000)
+    return time.perf_counter()
+
+
 @dataclass(frozen=True)
 class Qwen35GGUFNextTokenProbeResult:
     token_id: int
@@ -1534,6 +1560,9 @@ class Qwen35GGUFFullStackRunner:
         *,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        stage_timings: dict[str, float] | None = None,
+        sync_stage_timings: bool = False,
+        stage_prefix: str = "target_block_full_attn",
     ) -> None:
         """Run row-bulk QKV/KV write with the c1-equivalent batch decode attention."""
 
@@ -1552,6 +1581,8 @@ class Qwen35GGUFFullStackRunner:
         cast_library = self._cast_library()
         kv_write_library = self._paged_kv_write_library()
         paged_attn_library = self._paged_attn_decode_library()
+        sync_stages = bool(sync_stage_timings and stage_timings is not None)
+        t_stage = time.perf_counter() if sync_stages else 0.0
         gguf_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             layer.weight("attn_norm").allocation().tensor.ptr,
@@ -1638,6 +1669,13 @@ class Qwen35GGUFFullStackRunner:
             library=cast_library,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_norm_qkv_split",
+            t_stage,
+        )
         gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
             scratch.full_query_raw.ptr,
             scratch.full_key_raw.ptr,
@@ -1658,6 +1696,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_head_norm_rope",
+            t_stage,
+        )
         qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
             scratch.full_key.ptr,
             scratch.full_v.ptr,
@@ -1671,6 +1716,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             library=kv_write_library,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_kv_write",
+            t_stage,
         )
         qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
             scratch.full_query.ptr,
@@ -1688,6 +1740,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             library=paged_attn_library,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_paged_attn",
+            t_stage,
         )
         qwen35_full_attn_gate_mul_bf16(
             scratch.full_query_raw.ptr,
@@ -1708,6 +1767,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_gate_output",
+            t_stage,
+        )
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
@@ -1717,6 +1783,9 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             expert_sidecar=expert_sidecar,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=f"{stage_prefix}_ffn",
         )
 
     def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
@@ -1959,6 +2028,10 @@ class Qwen35GGUFFullStackRunner:
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         linear_state_rows: tuple[object, object] | None = None,
+        commit_final_linear_state: bool = True,
+        stage_timings: dict[str, float] | None = None,
+        sync_stage_timings: bool = False,
+        stage_prefix: str = "target_block_linear_attn",
     ) -> None:
         assert self.weights is not None
         if rows <= 0:
@@ -1971,6 +2044,8 @@ class Qwen35GGUFFullStackRunner:
         recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise ValueError(f"layer {layer_id} has no linear-attention state")
+        sync_stages = bool(sync_stage_timings and stage_timings is not None)
+        t_stage = time.perf_counter() if sync_stages else 0.0
         gguf_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             layer.weight("attn_norm").allocation().tensor.ptr,
@@ -2014,6 +2089,13 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_norm_qkv_gate",
+            t_stage,
+        )
         if cfg.is_moe:
             # The small dense time-step projections feed the recurrent update.
             # Use the registry-dispatched GGUF linear path so qwen35moe's GGUF
@@ -2060,13 +2142,12 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        bf16_to_f32(
-            scratch.linear_qkv.ptr,
-            scratch.linear_qkv_f32.ptr,
-            rows * self.linear_qkv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=runtime,
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_alpha_beta",
+            t_stage,
         )
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
@@ -2081,6 +2162,13 @@ class Qwen35GGUFFullStackRunner:
                 cfg.ssm_conv_kernel,
                 stream=stream,
                 runtime=runtime,
+            )
+            t_stage = _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_chain_conv",
+                t_stage,
             )
             qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
                 scratch.conv_out.ptr,
@@ -2103,20 +2191,35 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-            runtime.memcpy_async(
-                conv_state.ptr,
-                conv_state_rows.ptr + (rows - 1) * int(conv_state.nbytes),
-                int(conv_state.nbytes),
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
+            t_stage = _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_chain_gdn",
+                t_stage,
             )
-            runtime.memcpy_async(
-                recurrent_state.ptr,
-                recurrent_state_rows.ptr + (rows - 1) * int(recurrent_state.nbytes),
-                int(recurrent_state.nbytes),
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
+            if commit_final_linear_state:
+                runtime.memcpy_async(
+                    conv_state.ptr,
+                    conv_state_rows.ptr + (rows - 1) * int(conv_state.nbytes),
+                    int(conv_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    recurrent_state.ptr,
+                    recurrent_state_rows.ptr + (rows - 1) * int(recurrent_state.nbytes),
+                    int(recurrent_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                t_stage = _mark_sync_stage(
+                    runtime,
+                    stage_timings,
+                    sync_stages,
+                    f"{stage_prefix}_final_state_copy",
+                    t_stage,
+                )
             launch_gguf_linear(
                 layer.weight("ssm_out"),
                 scratch.recurrent_out.ptr,
@@ -2128,6 +2231,13 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+            t_stage = _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_ssm_out",
+                t_stage,
+            )
             self._run_post_attention_ffn_rows(
                 layer_id,
                 hidden_ptr,
@@ -2137,8 +2247,26 @@ class Qwen35GGUFFullStackRunner:
                 rows=rows,
                 stream=stream,
                 expert_sidecar=expert_sidecar,
+                stage_timings=stage_timings,
+                sync_stage_timings=sync_stage_timings,
+                stage_prefix=f"{stage_prefix}_ffn",
             )
             return
+        bf16_to_f32(
+            scratch.linear_qkv.ptr,
+            scratch.linear_qkv_f32.ptr,
+            rows * self.linear_qkv_width,
+            stream=stream,
+            library=cast_library,
+            runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_qkv_bf16_to_f32",
+            t_stage,
+        )
         qwen35_linear_attn_conv_prefill_f32(
             scratch.linear_qkv_f32.ptr,
             conv_state.ptr,
@@ -2150,6 +2278,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_prefill_conv",
+            t_stage,
+        )
         self._run_gdn_prefill(
             layer=layer,
             scratch=scratch,
@@ -2158,6 +2293,13 @@ class Qwen35GGUFFullStackRunner:
             recurrent_state=recurrent_state,
             stream=stream,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_prefill_gdn",
+            t_stage,
         )
         launch_gguf_linear(
             layer.weight("ssm_out"),
@@ -2169,6 +2311,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_ssm_out",
+            t_stage,
+        )
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
@@ -2178,6 +2327,9 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             expert_sidecar=expert_sidecar,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=f"{stage_prefix}_ffn",
         )
 
     def _run_full_attention_layer(
@@ -2433,10 +2585,15 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        stage_timings: dict[str, float] | None = None,
+        sync_stage_timings: bool = False,
+        stage_prefix: str = "target_block_ffn",
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         runtime = self.runtime or get_hip_runtime()
+        sync_stages = bool(sync_stage_timings and stage_timings is not None)
+        t_stage = time.perf_counter() if sync_stages else 0.0
         gguf_add_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             attn_out_ptr,
@@ -2449,6 +2606,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_post_norm_residual",
+            t_stage,
+        )
         if self.weights.config.is_moe:
             if rows == 1:
                 self._run_post_attention_moe_c1(layer_id, out_ptr, scratch, stream=stream)
@@ -2460,6 +2624,9 @@ class Qwen35GGUFFullStackRunner:
                     rows=rows,
                     stream=stream,
                     expert_sidecar=expert_sidecar,
+                    stage_timings=stage_timings,
+                    sync_stage_timings=sync_stage_timings,
+                    stage_prefix=f"{stage_prefix}_moe",
                 )
             return
         if not launch_gguf_linear_pair(
@@ -2494,6 +2661,13 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_gate_up",
+            t_stage,
+        )
         silu_mul_separate_out_bf16(
             scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
@@ -2502,6 +2676,13 @@ class Qwen35GGUFFullStackRunner:
             features=self.ffn_size,
             stream=stream,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_silu",
+            t_stage,
         )
         launch_gguf_linear(
             layer.weight("ffn_down"),
@@ -2520,6 +2701,13 @@ class Qwen35GGUFFullStackRunner:
             rows * self.hidden_size,
             stream=stream,
             runtime=runtime,
+        )
+        _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_down_residual",
+            t_stage,
         )
 
     def _run_post_attention_moe_c1(self, layer_id: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
@@ -2826,6 +3014,9 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        stage_timings: dict[str, float] | None = None,
+        sync_stage_timings: bool = False,
+        stage_prefix: str = "target_block_ffn_moe",
     ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
@@ -2837,6 +3028,8 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("qwen35moe bulk MoE scratch is missing shared-gate logits")
         layer = self.weights.layer(layer_id)
         runtime = self.runtime or get_hip_runtime()
+        sync_stages = bool(sync_stage_timings and stage_timings is not None)
+        t_stage = time.perf_counter() if sync_stages else 0.0
         top_k = int(cfg.expert_used_count)
         if top_k <= 0:
             raise ValueError("qwen35moe GGUF expert_used_count must be positive")
@@ -2873,6 +3066,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_router",
+            t_stage,
+        )
 
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
@@ -2891,6 +3091,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         ):
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_compact_wmma",
+                t_stage,
+            )
             return
         if _gguf_row_compact_gemv_enabled() and _try_run_post_attention_moe_rows_compact_gemv(
             self,
@@ -2906,6 +3113,13 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         ):
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_compact_gemv",
+                t_stage,
+            )
             return
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
         expert_silu_ready = False
@@ -3012,6 +3226,13 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_expert_gate_up",
+            t_stage,
+        )
         if not expert_silu_ready:
             silu_mul_separate_out_bf16(
                 scratch.ffn_gate_up.ptr,
@@ -3021,6 +3242,13 @@ class Qwen35GGUFFullStackRunner:
                 features=cfg.expert_feed_forward_length,
                 stream=stream,
                 runtime=runtime,
+            )
+            t_stage = _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_expert_silu",
+                t_stage,
             )
         if expert_sidecar is not None:
             _launch_selected_expert_pack8_moe_linear(
@@ -3061,6 +3289,13 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_expert_down",
+            t_stage,
+        )
 
         if launch_gguf_linear_pair_concat(
             layer.weight("ffn_gate_shexp"),
@@ -3123,6 +3358,13 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_shared_gate_up_silu",
+            t_stage,
+        )
         launch_gguf_linear(
             layer.weight("ffn_down_shexp"),
             scratch.moe_shared_intermediate.ptr,
@@ -3132,6 +3374,13 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_shared_down",
+            t_stage,
         )
         weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
             scratch.moe_down_out.ptr,
@@ -3146,6 +3395,13 @@ class Qwen35GGUFFullStackRunner:
             1,
             stream=stream,
             runtime=runtime,
+        )
+        _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_combine_residual",
+            t_stage,
         )
 
     def close(self) -> None:
@@ -4018,6 +4274,8 @@ class Qwen35GGUFResidentSession:
         advance_state_only: bool = False,
         capture_linear_state_rows: bool = False,
         record_stage_timings: bool = False,
+        sync_stage_timings: bool = False,
+        defer_linear_state_commit: bool = False,
     ) -> Qwen35GGUFBlockVerifyResult:
         """Consume a continuation block and return greedy target rows.
 
@@ -4050,6 +4308,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session is closed")
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
         self.last_verify_stage_timings_ms = stage_timings if stage_timings is not None else {}
+        sync_stages = bool(sync_stage_timings and stage_timings is not None)
 
         def add_verify_stage(name: str, ms: float) -> None:
             if stage_timings is None:
@@ -4108,6 +4367,8 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 runtime=runtime,
             )
+            if sync_stages:
+                runtime.device_synchronize()
             add_verify_stage(
                 "target_block_embedding",
                 (time.perf_counter() - t_embedding0) * 1000 if stage_timings is not None else 0.0,
@@ -4119,6 +4380,8 @@ class Qwen35GGUFResidentSession:
             )
             with wmma_prefill_session(block_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
                 for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                    if sync_stages:
+                        runtime.device_synchronize()
                     t_layer0 = time.perf_counter() if stage_timings is not None else 0.0
                     expert_sidecar = None
                     if (
@@ -4170,6 +4433,10 @@ class Qwen35GGUFResidentSession:
                                     if capture_linear_state_rows
                                     else None
                                 ),
+                                commit_final_linear_state=not bool(defer_linear_state_commit),
+                                stage_timings=stage_timings,
+                                sync_stage_timings=sync_stage_timings,
+                                stage_prefix="target_block_linear_attn",
                             )
                         elif layer_type == FULL_ATTENTION:
                             key_cache, value_cache = self.scratch.full_cache(layer_id)
@@ -4182,6 +4449,9 @@ class Qwen35GGUFResidentSession:
                                     layer_scratch,
                                     stream=stream,
                                     expert_sidecar=expert_sidecar,
+                                    stage_timings=stage_timings,
+                                    sync_stage_timings=sync_stage_timings,
+                                    stage_prefix="target_block_full_attn",
                                 )
                             else:
                                 self.runner._run_full_attention_prefill_layer_aotriton(
@@ -4243,6 +4513,8 @@ class Qwen35GGUFResidentSession:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     stream,
                 )
+                if sync_stages:
+                    runtime.device_synchronize()
                 add_verify_stage(
                     "target_block_output_norm_hidden",
                     (time.perf_counter() - t_output0) * 1000 if stage_timings is not None else 0.0,

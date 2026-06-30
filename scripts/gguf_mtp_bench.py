@@ -649,6 +649,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--target-block-sync-stage-timings",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic only: when cycle stage timings are enabled, insert synchronization points "
+            "inside the target block verifier to attribute linear/full attention and MoE sections. "
+            "This changes timing and is not a performance route."
+        ),
+    )
+    parser.add_argument(
         "--verify-dp4a",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1144,6 +1154,10 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-draft-sync-stage-timings requires --resident-mtp-draft")
     if args.resident_mtp_draft_sync_stage_timings and not args.record_cycle_stage_timings:
         parser.error("--resident-mtp-draft-sync-stage-timings requires --record-cycle-stage-timings")
+    if args.target_block_sync_stage_timings and not args.target_block_verify:
+        parser.error("--target-block-sync-stage-timings requires --target-block-verify")
+    if args.target_block_sync_stage_timings and not args.record_cycle_stage_timings:
+        parser.error("--target-block-sync-stage-timings requires --record-cycle-stage-timings")
     if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
         parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
     if args.fused_b1_block_probe:
@@ -1839,6 +1853,8 @@ def main(argv: list[str] | None = None):
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
                             record_stage_timings=bool(args.record_cycle_stage_timings),
+                            sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                            defer_linear_state_commit=direct_state_commit,
                         )
                         record_target_verify(
                             len(block_inputs),
@@ -1963,16 +1979,18 @@ def main(argv: list[str] | None = None):
             if can_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
-                t_snapshot0 = time.perf_counter()
-                snapshot = session._linear_state_snapshot()
-                add_cycle_stage("target_block_snapshot", (time.perf_counter() - t_snapshot0) * 1000)
+                block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
+                direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
+                    args.target_block_verify_mode,
+                    start_position=seq_position,
+                    rows=len(block_inputs),
+                )
+                snapshot = None
+                if not (direct_state_commit and direct_state_commit_exact_mode):
+                    t_snapshot0 = time.perf_counter()
+                    snapshot = session._linear_state_snapshot()
+                    add_cycle_stage("target_block_snapshot", (time.perf_counter() - t_snapshot0) * 1000)
                 try:
-                    block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
-                    direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
-                        args.target_block_verify_mode,
-                        start_position=seq_position,
-                        rows=len(block_inputs),
-                    )
                     t_forward0 = time.perf_counter()
                     if args.target_block_verify_mode == "serial-exact":
                         block_result = session.verify_target_block_serial_exact(
@@ -1990,6 +2008,8 @@ def main(argv: list[str] | None = None):
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
                             record_stage_timings=bool(args.record_cycle_stage_timings),
+                            sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                            defer_linear_state_commit=direct_state_commit,
                         )
                         record_target_verify(
                             len(block_inputs),
@@ -2038,6 +2058,8 @@ def main(argv: list[str] | None = None):
                                 for row in range(len(replay_tokens))
                             ]
                         else:
+                            if snapshot is None:
+                                raise RuntimeError("target block replay requested without a linear-state snapshot")
                             session._restore_linear_state_snapshot(snapshot, position=seq_position)
                             if direct_state_commit or args.target_block_verify_mode == "serial-exact":
                                 replay_result = session.verify_target_block_serial_exact(
@@ -2092,6 +2114,8 @@ def main(argv: list[str] | None = None):
                                 for row in range(len(block_target_tokens))
                             )
                         elif direct_state_commit:
+                            if snapshot is None:
+                                raise RuntimeError("target block serial replay requested without a linear-state snapshot")
                             session._restore_linear_state_snapshot(snapshot, position=seq_position)
                             replay_result = session.verify_target_block_serial_exact(block_inputs)
                             record_target_verify(
@@ -2117,7 +2141,8 @@ def main(argv: list[str] | None = None):
                     current_device_token = int(target_tokens[-1])
                     block_verify_used = True
                 finally:
-                    session._free_linear_state_snapshot(snapshot)
+                    if snapshot is not None:
+                        session._free_linear_state_snapshot(snapshot)
                 t1 = time.perf_counter()
                 elapsed_ms = (t1 - t0) * 1000
                 add_cycle_stage("target_block_verify_total", elapsed_ms)
@@ -2665,6 +2690,7 @@ def main(argv: list[str] | None = None):
                 "target_prefill_mode": target_prefill_mode,
                 "target_block_verify": bool(block_verify_used),
                 "target_block_direct_state_commit": bool(args.target_block_direct_state_commit and block_verify_used),
+                "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings and block_verify_used),
                 "target_b1_branch_safe_block_verify": bool(b1_branch_safe_block_verify_used),
                 "target_graph_batched_verify": bool(batched_verify_used),
                 "target_verify_layer_passes": int(target_verify_layer_passes),
@@ -2848,6 +2874,7 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft_sync_stage_timings": bool(args.resident_mtp_draft_sync_stage_timings),
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
+            "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "llama_compat": bool(args.llama_compat),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),

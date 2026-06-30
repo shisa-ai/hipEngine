@@ -199,6 +199,12 @@ Artifacts:
 - hipEngine llama-compat dp4a prewarmed device-chain after Q6_K top-1/gather,
   sync-stage draft attribution:
   `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-q6top1-draftsync-full.json`
+- hipEngine llama-compat dp4a prewarmed device-chain after verifier direct-state
+  cleanup:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-full.json`
+- hipEngine llama-compat dp4a all-sync fine-grained verifier attribution after
+  verifier direct-state cleanup:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-smoke.json`
 - hipEngine fused-B1 block probe B5:
   `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
   and non-stage check
@@ -465,27 +471,144 @@ actual target verifier layer cost, especially `target_block_linear_attn_layers`
 plus any remaining draft lm-head/attention/FFN work that differs from llama.cpp's
 MTP draft decode shape.
 
+#### Second gap-closing fix: defer exact direct-state writes and skip unnecessary snapshots
+
+The next llama-compat cleanup targeted verifier lifecycle overhead that hipEngine
+was still paying even though the compat route already captures per-row linear states:
+
+- In the direct-state block verifier, the linear-attention direct branch no longer
+  runs the BF16-to-F32 QKV conversion used only by the non-direct prefill conv path.
+- `verify_target_block(..., defer_linear_state_commit=True)` no longer copies the
+  final captured Conv/GDN state back into the resident state when the caller will
+  immediately commit an accepted captured row or restore/replay.
+- The `llama-compat-device-chain-dp4a` block path now skips
+  `_linear_state_snapshot()` when direct commit is exact for the block
+  (`bulk` verifier with `start_position + rows < 1024`, which covers the measured
+  B2 suite). Rollback still keeps the snapshot on non-exact paths.
+- New diagnostic flag `--target-block-sync-stage-timings` and suite route
+  `llama-compat-device-chain-dp4a-allsync` add verifier-internal sync buckets for
+  attribution only.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_mtp_bench.py \
+  scripts/gguf_ar_mtp_suite.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py
+
+PYTHONPATH=. pytest -q \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py \
+  tests/test_mtp_resident_draft_device_commit.py
+```
+
+Full-suite A/B against the prior Q6 top-1/gather row, same command family:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-full.json
+```
+
+| config | AR tok/s | MTP tok/s | vs AR | cycle wall / output | acc / output | draft acceptance | `target_block_verify_total` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| after Q6 top-1/gather | 54.75 | 53.34 | 0.974x | 18.772 ms | 0.561 | 0.640 | 14.737 ms |
+| + direct-state cleanup | 54.67 | **55.41** | **1.014x** | **18.069 ms** | 0.561 | 0.640 | **14.044 ms** |
+
+Measured effect:
+
+- Headline: **53.34 -> 55.41 tok/s** on the llama-compat dp4a B2 route
+  (**+3.9%**), with unchanged acceptance.
+- Cycle wall: **18.772 -> 18.069 ms/output** (**-0.702 ms/output**).
+- Verifier: `target_block_verify_total` **14.737 -> 14.044 ms/output**
+  (**-0.694 ms/output**).
+- The fixed cost was not draft-side: `draft_initial` stayed flat
+  (**3.712 -> 3.708 ms/output**).
+
+Stage deltas vs the Q6 top-1/gather row:
+
+| bucket | before | after | delta |
+| --- | ---: | ---: | ---: |
+| `target_block_verify_total` | 14.737 | **14.044** | **-0.694 ms** |
+| `target_block_forward` | 14.590 | **13.997** | **-0.593 ms** |
+| `target_block_layer_total` | 12.847 | **12.477** | **-0.370 ms** |
+| `target_block_linear_attn_layers` | 9.467 | **9.185** | **-0.282 ms** |
+| `target_block_full_attn_layers` | 3.380 | **3.292** | **-0.088 ms** |
+| `target_block_setup` | 0.270 | **0.049** | **-0.221 ms** |
+| `target_block_snapshot` | 0.090 | **0.000** | **-0.090 ms** |
+| `target_block_replay_or_commit` | 0.051 | **0.042** | -0.009 ms |
+
+Final all-sync smoke attribution after this cleanup, diagnostic-only:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-allsync \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-smoke.json
+```
+
+Top synchronized buckets, ms/output:
+
+| bucket | ms/output |
+| --- | ---: |
+| `target_block_verify_total` | 15.581 |
+| `target_block_layer_total` | 13.317 |
+| `target_block_linear_attn_layers` | **10.191** |
+| `target_block_full_attn_layers` | 3.126 |
+| `draft_initial` | 2.763 |
+| `target_block_linear_attn_norm_qkv_gate` | **2.429** |
+| `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.563** |
+| `draft_run_lm_head` | 1.472 |
+| `target_block_linear_attn_ffn_moe_expert_down` | **1.241** |
+| `target_block_lm_head_sample` | 0.969 |
+| `target_block_linear_attn_ssm_out` | 0.851 |
+| `target_block_linear_attn_chain_gdn` | 0.790 |
+| `target_block_full_attn_norm_qkv_split` | 0.700 |
+| `target_block_linear_attn_ffn_moe_router` | 0.581 |
+
+This is now the clearest operation-level target list: after semantic replication and
+direct-state cleanup, the remaining verifier cost is dominated by target linear
+attention projection (`norm_qkv_gate`) plus selected-MoE expert gate/up/down in the
+linear-attention layers. The remaining draft cost is still mainly the MTP lm-head.
+
+Updated remaining gap vs llama.cpp HIP B2 deep trace:
+
+| bucket | hipEngine compat B2 after cleanup | llama.cpp HIP B2 deep | remaining delta |
+| --- | ---: | ---: | ---: |
+| cycle wall / output | 18.069 ms | 14.231 ms | **+3.838 ms** |
+| `draft_initial` | 3.708 ms | 2.140 ms | **+1.568 ms** |
+| `target_block_verify_total` | 14.044 ms | 12.083 ms | **+1.961 ms** |
+
 So the remaining replication work is concrete: reduce the resident draft LM-head /
 top-k section and the B2 target block layer time. Simply copying the llama.cpp
 high-level no-probe lifecycle has already been tested and does not make the speed
 match.
 
-The next optimization question is therefore specific: either make the B1 probe much
-cheaper/fused, or find a no-probe policy whose full draft/context/verifier lifecycle
-is cheap enough per output. The older approximate no-probe route collapsed acceptance
-(`56.42 tok/s`, acc/output `0.324`). The newer true `llama-compat` route below keeps
-acceptance near llama's retained row (`0.56` acc/output), but is still slower than AR
-because its B2 draft/context + block verifier costs too much. The current blocker is
-speculative-policy/verifier economics, not an unattributed llama.cpp kernel bucket.
+The next optimization question is therefore specific: keep the no-probe
+`llama-compat` semantics and reduce the measured operation costs. The older
+approximate no-probe route collapsed acceptance (`56.42 tok/s`, acc/output `0.324`).
+The true `llama-compat-device-chain-dp4a` route now keeps acceptance near llama's
+retained row (`0.561` acc/output) and finally beats its same-run AR baseline
+(`55.41 tok/s`, `1.014x`), but it remains well short of llama.cpp HIP MTP. The
+current blocker is operation cost in draft lm-head and target linear-attention/MoE
+verifier sections, not an unattributed llama.cpp kernel bucket.
 
 #### Queued fixes, ordered by expected impact
 
 | priority | fix | why this is next | success gate |
 | ---: | --- | --- | --- |
 | 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | **Implemented and rejected for promotion 2026-06-30.** It cuts B1 serial work but moves too much work into 2-row blocks; exact B5 is **60.40 tok/s**, below the retained exact **60.78** and dp4a **61.61** rows. |
-| 2 | Confidence-gated no-probe policy | Llama wins by avoiding B1 entirely, but our previous no-probe route collapsed acc/output to **0.324**. Fused-B1 proved that simply replacing the B1 serial probe with a two-row block is not enough. | Full-suite acc/output stays near retained B5/llama-compat levels and total tok/s beats the retained exact route, not just the fused-B1 diagnostic. |
-| 3 | Compat draft GPU-drain reduction | Compat B2 spent **~4.03 ms/output** in draft. The first exact fix, Q6_K top-1/gather, removed the separate device top-k/gather section and cut `draft_initial` to **3.76 ms/output** in the sync-stage route. | Continue cutting compat `draft_initial` toward llama's **2.140 ms/output** without lowering full-suite acceptance. Remaining draft work is actual lm-head/attention/FFN cost, not D2H. |
-| 4 | Block verifier layer-time reduction | In retained B5, block verify is mostly GPU layer work: linear-attn **~5.05 ms/output**, full-attn **~1.82 ms/output**. This is secondary to B1 economics but still material after fused B1. | Reduce `target_block_layer_total` with exactness unchanged and no same-suite tok/s regression. |
+| 2 | Compat target block layer-time reduction | After direct-state cleanup, compat B2 still spends **14.044 ms/output** in target block verify. The all-sync split points to linear-attn `norm_qkv_gate` plus selected-MoE expert gate/up/down as the dominant sub-buckets. | Reduce `target_block_layer_total` / `target_block_linear_attn_layers` with acceptance unchanged and full-suite B2 moving toward llama's **12.083 ms/output** verifier trace. |
+| 3 | Compat draft GPU-drain reduction | Compat B2 still spends **3.708 ms/output** in draft after Q6 top-1/gather. All-sync attribution keeps MTP lm-head as the largest draft sub-bucket. | Continue cutting compat `draft_initial` toward llama's **2.140 ms/output** without lowering full-suite acceptance. Remaining draft work is actual lm-head/attention/FFN cost, not D2H. |
+| 4 | Confidence-gated no-probe policy | True llama-compat now proves no-probe can keep acc/output near **0.561**, but still needs operation-cost work to compete with the retained exact B5 route. | After operation-cost fixes, revisit whether a confidence gate can improve rows/output without reintroducing the B1 serial probe. |
 | 5 | Keep llama.cpp deep instrumentation aligned | The current split proved llama's verifier drain lives in `llama_process_build_draft_batch`, not raw `target_block_forward`. Keep this patch available for A/B after every major hipEngine verifier change. | Re-run llama deep trace when upstream or local diagnostic patch changes; do not compare raw async buckets. |
 
 **Fused-B1 implementation result (2026-06-30):** added default-off
@@ -548,6 +671,7 @@ Implemented opt-in routes (2026-06-30):
 | `llama-compat-device-chain` | `--llama-compat --resident-mtp-device-chain` | B2 fixed | Adds prewarmed resident device-chain drafting, mirroring llama's resident `ctx_dft` lifecycle more closely than per-depth host embedding handoff. |
 | `llama-compat-device-chain-dp4a` | `--llama-compat --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Accuracy-traded device-chain route; best measured compat replication row so far. |
 | `llama-compat-device-chain-dp4a-draftsync` | `--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --verify-dp4a` | B2 fixed | Diagnostic-only sync-stage route that attributes the resident draft GPU drain. Not a performance route. |
+| `llama-compat-device-chain-dp4a-allsync` | `--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --target-block-sync-stage-timings --verify-dp4a` | B2 fixed | Diagnostic-only route that sync-splits both resident draft and target block verifier sections. Not a performance route. |
 | `llama-compat-device-seed-chain` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain` | B2 fixed | Also starts each draft from resident target `pending_h` rather than a host-copied seed. |
 | `llama-compat-device-seed-chain-dp4a` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Full llama-lifecycle diagnostic: B2 no-probe, context replay + device KV, resident device seed, prewarmed device chain, and dp4a verify. |
 

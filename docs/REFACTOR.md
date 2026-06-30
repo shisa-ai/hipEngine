@@ -141,13 +141,14 @@ should be boring.
   draft/context + block verifier lifecycle is too costly. Split instrumentation
   shows device-chain `draft_topk_readback` is almost all GPU drain
   (`draft_device_chain_drain` **3.830 ms/output**) and not D2H
-  (`draft_topk_d2h` **0.008 ms/output**). Follow-up
-  `llama-compat-device-chain-dp4a-draftsync` adds
-  `--resident-mtp-draft-sync-stage-timings` and sync-splits that drain for
-  attribution only: B2 **52.37 tok/s = 0.957x AR**, with
-  `draft_run_lm_head` **1.882 ms/output** as the largest draft sub-bucket and
-  `target_block_verify_total` **14.715 ms/output** still **+2.63 ms/output**
-  above the llama.cpp HIP deep trace.
+  (`draft_topk_d2h` **0.008 ms/output**). Follow-up Q6 top-1/gather plus
+  direct-state verifier cleanup lifts the best compat dp4a B2 diagnostic row to
+  **55.41 tok/s = 1.014x AR**, with unchanged acceptance. The new
+  `llama-compat-device-chain-dp4a-allsync` route adds
+  `--resident-mtp-draft-sync-stage-timings` and
+  `--target-block-sync-stage-timings` for attribution only; its buckets show the
+  remaining verifier cost is target linear-attention/MoE operation time, not
+  snapshot/commit bookkeeping.
 - Remove / promote when: after full-suite stage-bucket evidence decides the
   question. Current evidence says these are replication diagnostics, not default
   promotion candidates; keep only the smallest route set needed for future parity
@@ -167,6 +168,19 @@ should be boring.
 - Remove when: the resident draft LM-head/top-k or verifier layer-time follow-up has
   its own lower-overhead profiler/rocprof attribution, or after the llama.cpp
   replication lane is closed. Until then keep it only as a named diagnostic route.
+
+## `--target-block-sync-stage-timings` (default OFF, attribution-only)
+- Added 2026-07-01. Bench flag inserts `hipDeviceSynchronize()` boundaries inside
+  the target block verifier when `--record-cycle-stage-timings` is enabled. Suite
+  route `llama-compat-device-chain-dp4a-allsync` combines it with resident draft
+  sync timings for one-pass draft+verifier attribution.
+- Purpose: split `target_block_linear_attn_layers` and
+  `target_block_full_attn_layers` into operation buckets (`norm_qkv_gate`,
+  `chain_gdn`, selected-MoE expert gate/up/down, shared expert, combine, and
+  full-attn KV/attention/output sections). The flag changes timing by adding
+  synchronization and is not a performance path.
+- Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
+  same operation split, or after the llama.cpp replication lane is closed.
 
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
