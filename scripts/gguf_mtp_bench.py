@@ -196,12 +196,40 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
             raise ValueError(f"cycles[{index}].{field} must be non-negative")
         return value
 
+    def optional_timing(cycle: dict, index: int, field: str) -> float | None:
+        if field not in cycle:
+            return None
+        return require_timing(cycle, index, field)
+
+    def optional_stage_timings(cycle: dict, index: int) -> dict[str, float]:
+        raw = cycle.get("stage_timings_ms")
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise ValueError(f"cycles[{index}].stage_timings_ms must be an object")
+        out: dict[str, float] = {}
+        for name, value in raw.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"cycles[{index}].stage_timings_ms keys must be non-empty strings")
+            if type(value) not in (int, float):
+                raise ValueError(f"cycles[{index}].stage_timings_ms.{name} must be numeric")
+            result = float(value)
+            if not math.isfinite(result):
+                raise ValueError(f"cycles[{index}].stage_timings_ms.{name} must be finite")
+            if result < 0.0:
+                raise ValueError(f"cycles[{index}].stage_timings_ms.{name} must be non-negative")
+            out[name] = result
+        return out
+
     verify_cycle_count = len(cycles)
     total_drafts = 0
     total_accepted = 0
     visible_output_tokens = 0
     total_ar_ms = 0.0
     total_draft_ms = 0.0
+    cycle_wall_ms_total = 0.0
+    cycle_wall_count = 0
+    stage_timing_totals_ms: dict[str, float] = {}
     target_verify_layer_passes = 0
     target_verify_rows_evaluated = 0
     target_verify_serial_rows = 0
@@ -226,6 +254,12 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
         visible_output_tokens += visible_output
         total_ar_ms += require_timing(cycle, index, "ar_decode_ms")
         total_draft_ms += require_timing(cycle, index, "mtp_draft_ms")
+        cycle_wall_ms = optional_timing(cycle, index, "cycle_wall_ms")
+        if cycle_wall_ms is not None:
+            cycle_wall_ms_total += cycle_wall_ms
+            cycle_wall_count += 1
+        for name, stage_ms in optional_stage_timings(cycle, index).items():
+            stage_timing_totals_ms[name] = stage_timing_totals_ms.get(name, 0.0) + stage_ms
         target_verify_layer_passes += optional_int(cycle, index, "target_verify_layer_passes")
         target_verify_rows_evaluated += optional_int(cycle, index, "target_verify_rows_evaluated")
         target_verify_serial_rows += optional_int(cycle, index, "target_verify_serial_rows")
@@ -261,7 +295,7 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
         target_verify_replay_rows / visible_output_tokens if visible_output_tokens > 0 else 0.0
     )
 
-    return {
+    result = {
         "accept_per_draft": accept_per_draft,
         "accepted_per_output": accepted_per_output,
         "avg_cycle_ms": avg_cycle_ms,
@@ -300,6 +334,36 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
             "target_verify_replay_rows_per_output": "accepted-prefix replay rows / visible_output_token_count",
         },
     }
+    if cycle_wall_count > 0:
+        cycle_wall_over_legacy_ms_total = (
+            cycle_wall_ms_total - total_cycle_ms if cycle_wall_count == verify_cycle_count else None
+        )
+        result.update(
+            {
+                "cycle_wall_ms_total": cycle_wall_ms_total,
+                "cycle_wall_ms_count": cycle_wall_count,
+                "cycle_wall_ms_per_output": (
+                    cycle_wall_ms_total / visible_output_tokens if visible_output_tokens > 0 else 0.0
+                ),
+                "cycle_wall_over_legacy_ms_total": cycle_wall_over_legacy_ms_total,
+                "cycle_wall_over_legacy_ms_per_output": (
+                    cycle_wall_over_legacy_ms_total / visible_output_tokens
+                    if cycle_wall_over_legacy_ms_total is not None and visible_output_tokens > 0
+                    else None
+                ),
+            }
+        )
+    if stage_timing_totals_ms:
+        result["stage_timing_totals_ms"] = dict(sorted(stage_timing_totals_ms.items()))
+        result["stage_timing_per_cycle_ms"] = {
+            name: ms / verify_cycle_count for name, ms in sorted(stage_timing_totals_ms.items())
+        }
+        result["stage_timing_per_output_ms"] = {
+            name: ms / visible_output_tokens
+            for name, ms in sorted(stage_timing_totals_ms.items())
+            if visible_output_tokens > 0
+        }
+    return result
 
 
 def llama_cpp_mtp_catchup_rows(
@@ -769,6 +833,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Diagnostic only: record per-depth resident draft top-1 softmax probabilities "
             "in raw cycle artifacts without changing the acceptance policy."
+        ),
+    )
+    parser.add_argument(
+        "--record-cycle-stage-timings",
+        action="store_true",
+        help=(
+            "Diagnostic only: add cycle_wall_ms plus a stage_timings_ms breakdown to raw cycles. "
+            "This records draft, verify, replay/commit, KV/context commit, and hidden bookkeeping "
+            "windows so MTP economics gaps can be decomposed without changing retained metrics."
         ),
     )
     parser.add_argument(
@@ -1283,6 +1356,16 @@ def main(argv: list[str] | None = None):
                 mtp_device_kv_len = len(mtp_context_tokens)
 
         for cycle in range(args.cycles):
+            cycle_wall_t0 = time.perf_counter()
+            stage_timings_ms: dict[str, float] = {}
+
+            def add_cycle_stage(name: str, ms: float) -> None:
+                if not args.record_cycle_stage_timings:
+                    return
+                if ms < 0.0:
+                    raise RuntimeError(f"negative cycle stage timing for {name}: {ms}")
+                stage_timings_ms[name] = stage_timings_ms.get(name, 0.0) + float(ms)
+
             # AR fallback is a permanent latch by default (cooldown 0). With
             # --adaptive-ar-fallback-cooldown N>0 it is recoverable: after N
             # fallback cycles, re-probe one drafting cycle; if it misses again the
@@ -1444,7 +1527,9 @@ def main(argv: list[str] | None = None):
                             break
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
+            add_cycle_stage("draft_initial", draft_ms)
             if cycle_diagnostic_topk_candidate_count > cycle_topk_candidate_count:
+                t_diag_topk0 = time.perf_counter()
                 for (
                     topk_row_index,
                     diagnostic_depth,
@@ -1456,6 +1541,7 @@ def main(argv: list[str] | None = None):
                         draft_depth=diagnostic_depth,
                     )
                     draft_top10_tokens[topk_row_index] = diagnostic_top10_tokens
+                add_cycle_stage("draft_diagnostic_topk", (time.perf_counter() - t_diag_topk0) * 1000)
 
             # Verify/account with llama.cpp semantics. The target evaluates the
             # sampled token plus accepted draft prefix and returns one final
@@ -1672,7 +1758,9 @@ def main(argv: list[str] | None = None):
                     session._free_linear_state_snapshot(snapshot)
                 block_verify_used = True
                 b1_branch_safe_block_verify_used = True
-                ar_decode_ms += (time.perf_counter() - t0) * 1000
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                add_cycle_stage("target_b1_branch_block_verify_total", elapsed_ms)
+                ar_decode_ms += elapsed_ms
             can_block_verify = (
                 bool(args.target_block_verify)
                 and cycle_block_verify_allowed
@@ -1690,7 +1778,9 @@ def main(argv: list[str] | None = None):
             if can_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
+                t_snapshot0 = time.perf_counter()
                 snapshot = session._linear_state_snapshot()
+                add_cycle_stage("target_block_snapshot", (time.perf_counter() - t_snapshot0) * 1000)
                 try:
                     block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
                     direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
@@ -1698,6 +1788,7 @@ def main(argv: list[str] | None = None):
                         start_position=seq_position,
                         rows=len(block_inputs),
                     )
+                    t_forward0 = time.perf_counter()
                     if args.target_block_verify_mode == "serial-exact":
                         block_result = session.verify_target_block_serial_exact(
                             block_inputs,
@@ -1720,6 +1811,8 @@ def main(argv: list[str] | None = None):
                             block_passes=1,
                             block_rows=len(block_inputs),
                         )
+                    add_cycle_stage("target_block_forward", (time.perf_counter() - t_forward0) * 1000)
+                    t_account0 = time.perf_counter()
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
                     if int(block_acceptance["accepted_draft_tokens"]) == 0 and cycle_root_topk_accept > 1:
@@ -1738,6 +1831,8 @@ def main(argv: list[str] | None = None):
                     consumed_rows = int(block_acceptance["accepted_draft_tokens"]) + 1
                     if consumed_rows < len(block_inputs):
                         record_target_verify(0, discarded_rows=len(block_inputs) - consumed_rows)
+                    add_cycle_stage("target_block_acceptance_accounting", (time.perf_counter() - t_account0) * 1000)
+                    t_commit0 = time.perf_counter()
                     if consumed_rows < len(block_inputs):
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
@@ -1830,12 +1925,15 @@ def main(argv: list[str] | None = None):
                                 np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
                                 for row in range(len(block_target_tokens))
                             )
+                    add_cycle_stage("target_block_replay_or_commit", (time.perf_counter() - t_commit0) * 1000)
                     current_device_token = int(target_tokens[-1])
                     block_verify_used = True
                 finally:
                     session._free_linear_state_snapshot(snapshot)
                 t1 = time.perf_counter()
-                ar_decode_ms += (t1 - t0) * 1000
+                elapsed_ms = (t1 - t0) * 1000
+                add_cycle_stage("target_block_verify_total", elapsed_ms)
+                ar_decode_ms += elapsed_ms
             can_batched_verify = (
                 bool(args.target_graph_batched_verify)
                 and target_graph_verify_enabled
@@ -1860,7 +1958,9 @@ def main(argv: list[str] | None = None):
                 recorded_tokens = target_graph.read_generated_token_ids(record_start + replay_steps)[record_start:record_start + replay_steps]
                 recorded_hidden = target_graph.read_generated_hidden_seeds(start=record_start, count=replay_steps)
                 t1 = time.perf_counter()
-                ar_decode_ms += (t1 - t0) * 1000
+                elapsed_ms = (t1 - t0) * 1000
+                add_cycle_stage("target_batched_graph_verify", elapsed_ms)
+                ar_decode_ms += elapsed_ms
                 target_tokens.extend(int(token) for token in recorded_tokens)
                 target_hidden_seeds.extend(
                     np.ascontiguousarray(recorded_hidden[row:row + 1], dtype=np.float32)
@@ -1881,10 +1981,12 @@ def main(argv: list[str] | None = None):
                     target_graph_verify_fallback_reason = "batched verify conditions not met; fell back to eager step"
                 while True:
                     t0 = time.perf_counter()
+                    used_graph_step = False
                     if target_graph_verify_enabled and target_graph is not None and int(verify_input_token) == current_device_token:
                         target_graph.replay(1)
                         record_target_verify(1, layer_passes=1, graph_rows=1)
                         target_result = target_graph.read_sample(return_logits=False)
+                        used_graph_step = True
                     else:
                         if target_graph is not None:
                             target_graph.close()
@@ -1899,7 +2001,12 @@ def main(argv: list[str] | None = None):
                         )
                         record_target_verify(1, serial_rows=1)
                     t1 = time.perf_counter()
-                    ar_decode_ms += (t1 - t0) * 1000
+                    elapsed_ms = (t1 - t0) * 1000
+                    add_cycle_stage(
+                        "target_graph_verify_step" if used_graph_step else "target_serial_verify_step",
+                        elapsed_ms,
+                    )
+                    ar_decode_ms += elapsed_ms
                     target_token = int(target_result.token_id)
                     current_device_token = target_token
                     target_tokens.append(target_token)
@@ -1982,7 +2089,9 @@ def main(argv: list[str] | None = None):
                                 redraft_top10_by_depth[absolute_depth] = redraft_top10
                             else:
                                 redraft_top10_by_depth.append(redraft_top10)
-                        redraft_ms += (time.perf_counter() - t_redraft0) * 1000
+                        redraft_delta_ms = (time.perf_counter() - t_redraft0) * 1000
+                        redraft_ms += redraft_delta_ms
+                        add_cycle_stage("draft_branch_redraft", redraft_delta_ms)
                         if redraft_start_depth is None:
                             redraft_start_depth = depth
                         pending_branch_redraft = False
@@ -2050,6 +2159,7 @@ def main(argv: list[str] | None = None):
                         continue
                     break
 
+            t_accept_policy0 = time.perf_counter()
             draft_ms += redraft_ms
             if redraft_start_depth is not None:
                 accepted_draft_tokens_for_redraft = len(target_tokens) - 1
@@ -2171,6 +2281,7 @@ def main(argv: list[str] | None = None):
                         token_id=int(output_tokens[-1]),
                         position=seq_position + int(acceptance["visible_output_tokens"]) - 1,
                     )
+            add_cycle_stage("accept_policy_and_seed", (time.perf_counter() - t_accept_policy0) * 1000)
 
             mtp_device_kv_commit_ms = 0.0
             if args.mtp_device_kv_cache:
@@ -2243,6 +2354,7 @@ def main(argv: list[str] | None = None):
                     )
                     mtp_device_kv_len += accepted_draft_tokens
                 mtp_device_kv_commit_ms = (time.perf_counter() - t_commit0) * 1000
+                add_cycle_stage("mtp_device_kv_commit", mtp_device_kv_commit_ms)
                 draft_ms += mtp_device_kv_commit_ms
 
             if args.mtp_context_replay:
@@ -2251,6 +2363,7 @@ def main(argv: list[str] | None = None):
                 # drafts.  The final corrective target token becomes
                 # ``prev_token`` and is appended as a seed row by the next
                 # draft() call.
+                t_context_append0 = time.perf_counter()
                 if target_hidden_seeds:
                     context_append_tokens = [cycle_prev_token] + [int(token) for token in output_tokens[:-1]]
                     context_append_hidden_rows = [cycle_pending_hidden_seed] + target_hidden_seeds[:accepted_draft_tokens]
@@ -2263,6 +2376,7 @@ def main(argv: list[str] | None = None):
                     )
                 elif not args.resident_mtp_device_seed:
                     raise RuntimeError("context replay requires host verifier hidden rows")
+                add_cycle_stage("mtp_context_replay_append", (time.perf_counter() - t_context_append0) * 1000)
             prev_token = int(output_tokens[-1])
             previous_cycle_accepted_for_record = previous_cycle_accepted
             previous_cycle_accepted = accepted_draft_tokens
@@ -2290,7 +2404,7 @@ def main(argv: list[str] | None = None):
                 comparison_target_tokens, reported_draft_top10_tokens
             )
 
-            cycle_details.append({
+            cycle_record = {
                 "cycle": cycle,
                 "cycle_prev_token": int(cycle_prev_token),
                 "cycle_seq_position": int(seq_position),
@@ -2370,7 +2484,13 @@ def main(argv: list[str] | None = None):
                 "target_verify_discarded_rows": int(target_verify_discarded_rows),
                 "ar_decode_ms": round(ar_decode_ms, 2),
                 "mtp_draft_ms": round(draft_ms, 2),
-            })
+            }
+            if args.record_cycle_stage_timings:
+                cycle_record["cycle_wall_ms"] = round((time.perf_counter() - cycle_wall_t0) * 1000, 4)
+                cycle_record["stage_timings_ms"] = {
+                    name: round(ms, 4) for name, ms in sorted(stage_timings_ms.items())
+                }
+            cycle_details.append(cycle_record)
             decode_times.append(ar_decode_ms + draft_ms)
 
     finally:
@@ -2461,6 +2581,16 @@ def main(argv: list[str] | None = None):
         f"rows/output={metrics['target_verify_rows_per_output']:.3f} "
         f"replay_rows/output={metrics['target_verify_replay_rows_per_output']:.3f}"
     )
+    if args.record_cycle_stage_timings and metrics.get("cycle_wall_ms_per_output") is not None:
+        print(
+            "cycle_wall: "
+            f"ms/output={metrics['cycle_wall_ms_per_output']:.3f} "
+            f"over_legacy_ms/output={(metrics.get('cycle_wall_over_legacy_ms_per_output') or 0.0):.3f}"
+        )
+        stage_totals = metrics.get("stage_timing_per_output_ms") or {}
+        if stage_totals:
+            top = sorted(stage_totals.items(), key=lambda item: float(item[1]), reverse=True)[:6]
+            print("stage_ms/output: " + ", ".join(f"{k}={v:.3f}" for k, v in top))
     if warm_metrics is not None:
         print(
             "warm_excluding_cycle0: "
@@ -2518,6 +2648,7 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft": bool(args.resident_mtp_draft),
             "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
             "record_draft_confidence": bool(args.record_draft_confidence),
+            "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_draft_full_vocab_recovery_effective": bool(
                 resident_mtp_draft_full_vocab_recovery_effective
@@ -2583,6 +2714,30 @@ def main(argv: list[str] | None = None):
             "target_verify_replay_rows_per_output": round(
                 float(metrics["target_verify_replay_rows_per_output"]), 4
             ),
+            "cycle_wall_ms_total": (
+                round(float(metrics["cycle_wall_ms_total"]), 2)
+                if metrics.get("cycle_wall_ms_total") is not None else None
+            ),
+            "cycle_wall_ms_per_output": (
+                round(float(metrics["cycle_wall_ms_per_output"]), 4)
+                if metrics.get("cycle_wall_ms_per_output") is not None else None
+            ),
+            "cycle_wall_over_legacy_ms_total": (
+                round(float(metrics["cycle_wall_over_legacy_ms_total"]), 2)
+                if metrics.get("cycle_wall_over_legacy_ms_total") is not None else None
+            ),
+            "cycle_wall_over_legacy_ms_per_output": (
+                round(float(metrics["cycle_wall_over_legacy_ms_per_output"]), 4)
+                if metrics.get("cycle_wall_over_legacy_ms_per_output") is not None else None
+            ),
+            "stage_timing_totals_ms": (
+                {k: round(float(v), 4) for k, v in metrics["stage_timing_totals_ms"].items()}
+                if metrics.get("stage_timing_totals_ms") else None
+            ),
+            "stage_timing_per_output_ms": (
+                {k: round(float(v), 4) for k, v in metrics["stage_timing_per_output_ms"].items()}
+                if metrics.get("stage_timing_per_output_ms") else None
+            ),
             "denominators": metrics["denominators"],
             "warm_excluding_cycle0": (
                 {
@@ -2614,6 +2769,30 @@ def main(argv: list[str] | None = None):
                     "target_verify_rows_per_output": round(float(warm_metrics["target_verify_rows_per_output"]), 4),
                     "target_verify_replay_rows_per_output": round(
                         float(warm_metrics["target_verify_replay_rows_per_output"]), 4
+                    ),
+                    "cycle_wall_ms_total": (
+                        round(float(warm_metrics["cycle_wall_ms_total"]), 2)
+                        if warm_metrics.get("cycle_wall_ms_total") is not None else None
+                    ),
+                    "cycle_wall_ms_per_output": (
+                        round(float(warm_metrics["cycle_wall_ms_per_output"]), 4)
+                        if warm_metrics.get("cycle_wall_ms_per_output") is not None else None
+                    ),
+                    "cycle_wall_over_legacy_ms_total": (
+                        round(float(warm_metrics["cycle_wall_over_legacy_ms_total"]), 2)
+                        if warm_metrics.get("cycle_wall_over_legacy_ms_total") is not None else None
+                    ),
+                    "cycle_wall_over_legacy_ms_per_output": (
+                        round(float(warm_metrics["cycle_wall_over_legacy_ms_per_output"]), 4)
+                        if warm_metrics.get("cycle_wall_over_legacy_ms_per_output") is not None else None
+                    ),
+                    "stage_timing_totals_ms": (
+                        {k: round(float(v), 4) for k, v in warm_metrics["stage_timing_totals_ms"].items()}
+                        if warm_metrics.get("stage_timing_totals_ms") else None
+                    ),
+                    "stage_timing_per_output_ms": (
+                        {k: round(float(v), 4) for k, v in warm_metrics["stage_timing_per_output_ms"].items()}
+                        if warm_metrics.get("stage_timing_per_output_ms") else None
                     ),
                 }
                 if warm_metrics is not None else None

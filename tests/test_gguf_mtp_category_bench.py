@@ -14,6 +14,7 @@ from scripts.gguf_mtp_category_bench import (
     DEFAULT_HELDOUT_PROMPT_IDS,
     DEFAULT_PROMPTS,
     BenchError,
+    aggregate_rows,
     build_split_contract,
     build_summary,
     compare_objective_metrics,
@@ -126,6 +127,31 @@ def test_parse_budgets_rejects_duplicate_values() -> None:
 def test_parse_budgets_wraps_non_integer_values() -> None:
     with pytest.raises(BenchError, match="--budgets entries must be integers"):
         parse_budgets("1,bad")
+
+
+def test_aggregate_rows_propagates_optional_cycle_stage_timings() -> None:
+    row = _row("code_1", "code", output=3, accepted=1, drafts=2, ar_ms=38.0, draft_ms=9.0)
+    row["cycles"][0]["cycle_wall_ms"] = 50.0
+    row["cycles"][0]["stage_timings_ms"] = {
+        "draft_initial": 9.0,
+        "target_block_forward": 38.0,
+        "accept_policy_and_seed": 1.0,
+    }
+
+    metrics = aggregate_rows([row])
+
+    assert metrics["cycle_wall_ms_count"] == 1
+    assert metrics["cycle_wall_ms_total"] == 50.0
+    assert metrics["cycle_wall_ms_per_output"] == pytest.approx(50.0 / 3.0)
+    assert metrics["cycle_wall_over_legacy_ms_total"] == 3.0
+    assert metrics["cycle_wall_over_legacy_ms_per_output"] == 1.0
+    assert metrics["stage_timing_totals_ms"] == {
+        "accept_policy_and_seed": 1.0,
+        "draft_initial": 9.0,
+        "target_block_forward": 38.0,
+    }
+    assert metrics["stage_timing_per_output_ms"]["target_block_forward"] == pytest.approx(38.0 / 3.0)
+    assert metrics["stage_timing_per_cycle_ms"]["draft_initial"] == 9.0
 
 
 @pytest.mark.parametrize("text", ["", " ", "1,", ",1", "1,,5"])

@@ -129553,3 +129553,26 @@ fusion and verify-rowtile hypotheses as tested/refuted: qkv/selected-MoE fusion 
 already captured, dense rowtile lost to the current grid-y rows kernel, and the
 current block verifier is GPU-bound rather than graph/host-bound. No code or
 benchmark data changed.
+
+## 2026-06-30 — Added GGUF MTP cycle-stage timing diagnostics
+
+User asked to document the revised MTP economics finding and add deeper
+instrumentation for the remaining ~1.4 ms/output gap vs llama.cpp HIP. Added
+default-off `--record-cycle-stage-timings` to `scripts/gguf_mtp_bench.py` and
+threaded it through `scripts/gguf_mtp_category_bench.py` and
+`scripts/gguf_ar_mtp_suite.py`. The diagnostic records raw per-cycle
+`cycle_wall_ms` plus `stage_timings_ms` buckets for draft, target block verify
+snapshot/forward/accounting/replay, graph/serial verify, redraft, acceptance/seed,
+MTP KV commit, and context append. Aggregates now expose `cycle_wall_*` and
+`stage_timing_*` fields without changing the retained legacy tok/s denominator.
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` with the current gap budget: hipEngine exact
+B5 60.78 tok/s = 16.45 ms/output, dp4a+B1-probe 61.61 tok/s = 16.23 ms/output,
+llama HIP 67.3 tok/s = 14.86 ms/output. dp4a saves only ~0.22 ms/output, leaving
+~1.37 ms/output to attribute. Added the recommended full-suite command using
+`--record-cycle-stage-timings` and documented how to interpret dominant buckets
+before choosing the next optimization.
+
+Validation:
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_ar_mtp_suite.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_ar_mtp_suite.py`

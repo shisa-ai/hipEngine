@@ -211,6 +211,52 @@ def test_compute_speculative_metrics_allows_ar_fallback_zero_draft_cycle() -> No
     assert metrics["tokens_per_sec"] == 1000.0 / 18.0
 
 
+def test_compute_speculative_metrics_aggregates_optional_stage_timings() -> None:
+    metrics = compute_speculative_metrics(
+        [
+            {
+                "generated_draft_tokens": 1,
+                "accepted_draft_tokens": 1,
+                "visible_output_tokens": 2,
+                "ar_decode_ms": 20.0,
+                "mtp_draft_ms": 5.0,
+                "cycle_wall_ms": 26.5,
+                "stage_timings_ms": {
+                    "draft_initial": 5.0,
+                    "target_block_forward": 18.0,
+                    "accept_policy_and_seed": 0.5,
+                },
+            },
+            {
+                "generated_draft_tokens": 1,
+                "accepted_draft_tokens": 0,
+                "visible_output_tokens": 1,
+                "ar_decode_ms": 18.0,
+                "mtp_draft_ms": 4.0,
+                "cycle_wall_ms": 23.0,
+                "stage_timings_ms": {
+                    "draft_initial": 4.0,
+                    "target_serial_verify_step": 18.0,
+                    "accept_policy_and_seed": 0.25,
+                },
+            },
+        ]
+    )
+
+    assert metrics["cycle_wall_ms_total"] == 49.5
+    assert metrics["cycle_wall_ms_per_output"] == 16.5
+    assert metrics["cycle_wall_over_legacy_ms_total"] == 2.5
+    assert metrics["cycle_wall_over_legacy_ms_per_output"] == pytest.approx(2.5 / 3)
+    assert metrics["stage_timing_totals_ms"] == {
+        "accept_policy_and_seed": 0.75,
+        "draft_initial": 9.0,
+        "target_block_forward": 18.0,
+        "target_serial_verify_step": 18.0,
+    }
+    assert metrics["stage_timing_per_output_ms"]["draft_initial"] == 3.0
+    assert metrics["stage_timing_per_cycle_ms"]["accept_policy_and_seed"] == 0.375
+
+
 @pytest.mark.parametrize(
     ("missing_field", "message"),
     [
@@ -261,6 +307,30 @@ def test_compute_speculative_metrics_rejects_impossible_cycle_counts() -> None:
                 "mtp_draft_ms": 7.0,
             }
         ])
+
+
+@pytest.mark.parametrize(
+    ("cycle_update", "message"),
+    [
+        ({"cycle_wall_ms": "bad"}, r"cycles\[0\]\.cycle_wall_ms must be numeric"),
+        ({"stage_timings_ms": []}, r"cycles\[0\]\.stage_timings_ms must be an object"),
+        ({"stage_timings_ms": {"draft_initial": -1.0}}, r"stage_timings_ms\.draft_initial must be non-negative"),
+    ],
+)
+def test_compute_speculative_metrics_rejects_malformed_stage_timings(
+    cycle_update: dict[str, object], message: str
+) -> None:
+    cycle = {
+        "generated_draft_tokens": 1,
+        "accepted_draft_tokens": 0,
+        "visible_output_tokens": 1,
+        "ar_decode_ms": 50.0,
+        "mtp_draft_ms": 7.0,
+    }
+    cycle.update(cycle_update)
+
+    with pytest.raises(ValueError, match=message):
+        compute_speculative_metrics([cycle])
 
 
 def test_select_topk_tokens_returns_descending_tokens_and_greedy() -> None:
@@ -456,6 +526,12 @@ def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
     assert args.record_draft_confidence is True
 
 
+def test_arg_parser_exposes_cycle_stage_timing_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--record-cycle-stage-timings"])
+
+    assert args.record_cycle_stage_timings is True
+
+
 def test_main_allows_resident_device_seed_with_context_replay(monkeypatch, capsys) -> None:
     monkeypatch.setattr(bench, "_hip_available", lambda: False)
 
@@ -497,13 +573,13 @@ def test_arg_parser_exposes_adaptive_strict_block_probe() -> None:
     assert args.adaptive_strict_fallback_root_topk == 40
 
 
-def test_validate_draft_n_max_accepts_b1_through_b5() -> None:
-    for budget in range(1, 6):
+def test_validate_draft_n_max_accepts_b1_through_b8() -> None:
+    for budget in range(1, 9):
         assert validate_draft_n_max(budget) == budget
-    with pytest.raises(ValueError, match="1..5"):
+    with pytest.raises(ValueError, match="1..8"):
         validate_draft_n_max(0)
-    with pytest.raises(ValueError, match="1..5"):
-        validate_draft_n_max(6)
+    with pytest.raises(ValueError, match="1..8"):
+        validate_draft_n_max(9)
 
 
 def test_root_topk_acceptance_accepts_non_argmax_root_branch() -> None:

@@ -536,6 +536,13 @@ def _mtp_rows(mtp: dict[str, Any]) -> dict[str, Any]:
             "target_verify_layer_passes_per_output": row.get("target_verify_layer_passes_per_output"),
             "target_verify_rows_per_output": row.get("target_verify_rows_per_output"),
             "target_verify_replay_rows_per_output": row.get("target_verify_replay_rows_per_output"),
+            "cycle_wall_ms_total": row.get("cycle_wall_ms_total"),
+            "cycle_wall_ms_per_output": row.get("cycle_wall_ms_per_output"),
+            "cycle_wall_over_legacy_ms_total": row.get("cycle_wall_over_legacy_ms_total"),
+            "cycle_wall_over_legacy_ms_per_output": row.get("cycle_wall_over_legacy_ms_per_output"),
+            "stage_timing_totals_ms": row.get("stage_timing_totals_ms"),
+            "stage_timing_per_output_ms": row.get("stage_timing_per_output_ms"),
+            "stage_timing_per_cycle_ms": row.get("stage_timing_per_cycle_ms"),
         }
     return rows
 
@@ -557,6 +564,11 @@ def main() -> int:
     ap.add_argument("--raw-root", type=Path, default=None)
     ap.add_argument("--output", type=Path, default=None)
     ap.add_argument("--timestamp", default=None, help="ISO stamp for the artifact (default: now)")
+    ap.add_argument(
+        "--record-cycle-stage-timings",
+        action="store_true",
+        help="Pass --record-cycle-stage-timings to MTP children and aggregate optional stage timing fields.",
+    )
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -639,6 +651,8 @@ def main() -> int:
     # computes the ratio itself (see _enforce_apple_to_apple + the verdict below).
     for a in route_args:
         mtp_cmd.append(f"--extra-arg={a}")
+    if args.record_cycle_stage_timings:
+        mtp_cmd.append("--extra-arg=--record-cycle-stage-timings")
     if limit is not None:
         mtp_cmd += ["--limit", str(limit)]
     if args.reuse_existing:
@@ -654,6 +668,7 @@ def main() -> int:
         "ar_decode_tokens": ar_decode_tokens,
         "mtp_route": args.mtp_route,
         "mtp_route_extra_args": route_args,
+        "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
     }
 
     if args.dry_run:

@@ -1069,6 +1069,46 @@ def cycle_int_sum(row: dict[str, Any], key: str) -> int:
     return total
 
 
+def cycle_stage_timing_sums(row: dict[str, Any]) -> tuple[int, float, dict[str, float]]:
+    wall_count = 0
+    wall_total = 0.0
+    stage_totals: dict[str, float] = {}
+    prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
+    for index, cycle in enumerate(row.get("cycles", [])):
+        if not isinstance(cycle, dict):
+            continue
+        if "cycle_wall_ms" in cycle:
+            wall_total += finite_float(cycle.get("cycle_wall_ms"), prompt_id=prompt_id, field=f"cycles[{index}].cycle_wall_ms")
+            wall_count += 1
+        stage_raw = cycle.get("stage_timings_ms")
+        if stage_raw is None:
+            continue
+        if not isinstance(stage_raw, dict):
+            raise BenchError(f"cycle {index} for {prompt_id} stage_timings_ms must be an object")
+        for name, value in stage_raw.items():
+            if not isinstance(name, str) or not name:
+                raise BenchError(f"cycle {index} for {prompt_id} stage_timings_ms keys must be non-empty strings")
+            stage_totals[name] = stage_totals.get(name, 0.0) + finite_float(
+                value,
+                prompt_id=prompt_id,
+                field=f"cycles[{index}].stage_timings_ms.{name}",
+            )
+    return wall_count, wall_total, stage_totals
+
+
+def combine_stage_timing_sums(rows: list[dict[str, Any]]) -> tuple[int, float, dict[str, float]]:
+    wall_count = 0
+    wall_total = 0.0
+    stage_totals: dict[str, float] = {}
+    for row in rows:
+        row_wall_count, row_wall_total, row_stage_totals = cycle_stage_timing_sums(row)
+        wall_count += row_wall_count
+        wall_total += row_wall_total
+        for name, value in row_stage_totals.items():
+            stage_totals[name] = stage_totals.get(name, 0.0) + value
+    return wall_count, wall_total, dict(sorted(stage_totals.items()))
+
+
 def finite_float(value: Any, *, prompt_id: str, field: str) -> float:
     if type(value) not in (int, float):
         raise BenchError(f"non-numeric timing field {field} for {prompt_id}: {value!r}")
@@ -1224,9 +1264,11 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, 
     target_verify_replay_rows = sum(cycle_int_sum(row, "target_verify_replay_rows") for row in rows)
     target_verify_direct_commit_rows = sum(cycle_int_sum(row, "target_verify_direct_commit_rows") for row in rows)
     target_verify_discarded_rows = sum(cycle_int_sum(row, "target_verify_discarded_rows") for row in rows)
+    cycle_wall_count, cycle_wall_total_ms, stage_timing_totals_ms = combine_stage_timing_sums(rows)
+    cycle_count = sum(len(row.get("cycles", [])) for row in rows)
     decode_tps = 1000.0 * total_output / total_cycle_ms if total_cycle_ms > 0 else 0.0
     ar_tps = 1000.0 * total_output / total_ar_ms if total_ar_ms > 0 else 0.0
-    return {
+    result = {
         "prompts": len(rows),
         "total_output_tokens": total_output,
         "total_accepted": total_accepted,
@@ -1257,6 +1299,29 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, 
             target_verify_replay_rows / total_output if total_output else None
         ),
     }
+    if cycle_wall_count:
+        cycle_wall_over_legacy_ms = cycle_wall_total_ms - total_cycle_ms if cycle_wall_count == cycle_count else None
+        result.update(
+            {
+                "cycle_wall_ms_count": cycle_wall_count,
+                "cycle_wall_ms_total": cycle_wall_total_ms,
+                "cycle_wall_ms_per_output": cycle_wall_total_ms / total_output if total_output else None,
+                "cycle_wall_over_legacy_ms_total": cycle_wall_over_legacy_ms,
+                "cycle_wall_over_legacy_ms_per_output": (
+                    cycle_wall_over_legacy_ms / total_output
+                    if cycle_wall_over_legacy_ms is not None and total_output else None
+                ),
+            }
+        )
+    if stage_timing_totals_ms:
+        result["stage_timing_totals_ms"] = stage_timing_totals_ms
+        result["stage_timing_per_output_ms"] = {
+            name: value / total_output for name, value in stage_timing_totals_ms.items()
+        } if total_output else {}
+        result["stage_timing_per_cycle_ms"] = {
+            name: value / cycle_count for name, value in stage_timing_totals_ms.items()
+        } if cycle_count else {}
+    return result
 
 
 def aggregate_off_from_b1(rows: list[dict[str, Any]], *, expected_cycles: int | None = None) -> dict[str, Any]:

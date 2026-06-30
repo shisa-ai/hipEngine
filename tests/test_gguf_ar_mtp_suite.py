@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from scripts import gguf_ar_mtp_suite as suite
 
 
@@ -162,3 +164,25 @@ def test_suite_exposes_b1_probe_block_direct_cap32k_route() -> None:
         "--mtp-draft-vocab-cap",
         "32768",
     ]
+
+
+def test_suite_dry_run_forwards_cycle_stage_timing_flag(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "smoke",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--record-cycle-stage-timings",
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--extra-arg=--record-cycle-stage-timings" in out
+    assert '"record_cycle_stage_timings": true' in out
