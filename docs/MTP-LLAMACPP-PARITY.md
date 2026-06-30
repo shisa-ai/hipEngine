@@ -32,6 +32,33 @@ batched dp4a `mul_mat_q`/`mul_mat_vec_q` amortizes weight reads across verify ro
 more cheaply *relative to its slower AR* than hipEngine's per-row exact verify does
 relative to its faster AR. That relative-amortization is the suspected uplift lever.
 
+### Verify mechanism: llama amortizes weight reads across rows; hipEngine re-reads per row
+
+llama-cli MTP B2 on the explain_concept prompt = **75–78 tok/s** (uplift ~1.47–1.52×
+over its 51 AR; even higher than the server-suite 67.3 because this is a favorable
+English prompt). rocprof of the MTP path itself DEADLOCKS at finalize (the draft-mtp
+second-context/queue setup; not size- or graph-dependent), so the verify was profiled
+via its equivalent **batched B+1-row forward** (`llama-bench -p 4 -b 4 -ub 4`, which
+finalizes cleanly):
+
+| verify-shape (4-row) forward | llama.cpp HIP | hipEngine |
+| --- | --- | --- |
+| matmul kernels | `mul_mat_vec_q_moe` 40.5% + `mul_mat_vec_q` 33.8% (dp4a vec; batch is a grid dim → **each block reads a weight tile ONCE, computes all B+1 rows** = weight-read amortized across verify rows) | `q8_0_t16_dual_split` etc. with `blockIdx.y = row` → **a separate block per row, weight re-read B+1×** (NO cross-row amortization). The only amortized hipEngine path (WMMA prefill) is SLOWER at rows=4 (56.9 vs 42.3 ms) due to tile-setup overhead. |
+
+**Uplift mechanism (attribution):** llama's verify is cheaper *per row* because it
+(a) amortizes the weight read across the B+1 batch within the vec kernel and (b) uses
+dp4a. hipEngine's per-row exact verify re-reads each weight B+1× and pays exact
+compute. This — not AR decode — is the source of llama's higher MTP uplift.
+
+**Concrete correctness-preserving lever (untested):** a **vec-rowtile** verify GEMV
+for the q8_0 attention and q4_k/q5_k/q6_k MoE weights — read each weight tile once,
+accumulate all B+1 rows in registers (the EXACT pattern that already won for the
+Q6_K lm-head rowtile, 1.0534×→1.1134×). This is the amortization llama gets, at
+**exact precision** (no dp4a, no ja-gate risk). hipEngine never tried this for the
+verify GEMVs — only the WMMA path (slower, tile overhead). Whether it beats the
+per-row decode at rows=4 (where the q8_0 weight is small/MALL-served) is the open
+question to test next.
+
 ---
 
 # GGUF MTP llama.cpp Parity Trace (history)
