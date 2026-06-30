@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
@@ -3463,6 +3464,7 @@ class Qwen35GGUFResidentSession:
     _hidden_seed_fp32_populated: bool = field(default=False, init=False)
     _lm_head_threads: int = field(default=128, init=False)
     _lm_head_stage1_blocks: int = field(default=0, init=False)
+    last_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
 
@@ -4015,6 +4017,7 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         advance_state_only: bool = False,
         capture_linear_state_rows: bool = False,
+        record_stage_timings: bool = False,
     ) -> Qwen35GGUFBlockVerifyResult:
         """Consume a continuation block and return greedy target rows.
 
@@ -4045,6 +4048,16 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
+        stage_timings: dict[str, float] | None = {} if record_stage_timings else None
+        self.last_verify_stage_timings_ms = stage_timings if stage_timings is not None else {}
+
+        def add_verify_stage(name: str, ms: float) -> None:
+            if stage_timings is None:
+                return
+            if ms < 0.0:
+                raise RuntimeError(f"negative target block stage timing for {name}: {ms}")
+            stage_timings[name] = stage_timings.get(name, 0.0) + float(ms)
+
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident bulk prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
@@ -4068,6 +4081,7 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
         runtime = self.runtime or get_hip_runtime()
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+        t_setup0 = time.perf_counter() if stage_timings is not None else 0.0
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
             self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
@@ -4081,7 +4095,9 @@ class Qwen35GGUFResidentSession:
         zero_index = np.zeros((1,), dtype=np.int64)
         copy_host_to_device(token_counter_buf, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+        add_verify_stage("target_block_setup", (time.perf_counter() - t_setup0) * 1000 if stage_timings is not None else 0.0)
         try:
+            t_embedding0 = time.perf_counter() if stage_timings is not None else 0.0
             launch_gguf_embedding(
                 self.runner.weights.root("token_embedding"),
                 self._prefill_token_buf.ptr,
@@ -4092,6 +4108,10 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 runtime=runtime,
             )
+            add_verify_stage(
+                "target_block_embedding",
+                (time.perf_counter() - t_embedding0) * 1000 if stage_timings is not None else 0.0,
+            )
             src = self._prefill_hidden_a
             dst = self._prefill_hidden_b
             block_wmma_prefill = gguf_wmma_prefill_enabled(
@@ -4099,6 +4119,7 @@ class Qwen35GGUFResidentSession:
             )
             with wmma_prefill_session(block_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
                 for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                    t_layer0 = time.perf_counter() if stage_timings is not None else 0.0
                     expert_sidecar = None
                     if (
                         self.use_expert_sidecar
@@ -4176,7 +4197,17 @@ class Qwen35GGUFResidentSession:
                     finally:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
+                        if stage_timings is not None:
+                            layer_ms = (time.perf_counter() - t_layer0) * 1000
+                            if layer_type == LINEAR_ATTENTION:
+                                add_verify_stage("target_block_linear_attn_layers", layer_ms)
+                            elif layer_type == FULL_ATTENTION:
+                                add_verify_stage("target_block_full_attn_layers", layer_ms)
+                            else:
+                                add_verify_stage("target_block_other_layers", layer_ms)
+                            add_verify_stage("target_block_layer_total", layer_ms)
                     src, dst = dst, src
+                t_output0 = time.perf_counter() if stage_timings is not None else 0.0
                 final_scratch = self._bulk_prefill_scratch.for_chunk(
                     start,
                     rows,
@@ -4212,18 +4243,28 @@ class Qwen35GGUFResidentSession:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     stream,
                 )
+                add_verify_stage(
+                    "target_block_output_norm_hidden",
+                    (time.perf_counter() - t_output0) * 1000 if stage_timings is not None else 0.0,
+                )
             if advance_state_only:
                 # Accepted-prefix replay: target tokens already known from the
                 # first full-block pass and discarded here. Skip the per-row
                 # LM-head vocab GEMV + greedy sampling; keep the FP32 hidden rows
                 # (decode continuity) and the linear/KV state advance above.
+                t_sample0 = time.perf_counter() if stage_timings is not None else 0.0
                 token_host = np.ascontiguousarray(tokens, dtype=np.int64)
                 runtime.device_synchronize()
+                add_verify_stage(
+                    "target_block_lm_head_sample",
+                    (time.perf_counter() - t_sample0) * 1000 if stage_timings is not None else 0.0,
+                )
             else:
                 # rows 2-6: default to the batched lm-head path so the Q6_K t16
                 # rowtile GEMV reads the 417MB head once across all block rows
                 # (vs the per-row loop re-reading it per row). Bit-exact; the env
                 # flag can still force it for other row counts.
+                t_sample0 = time.perf_counter() if stage_timings is not None else 0.0
                 row_lm_head = _gguf_verify_row_lm_head_enabled() or (2 <= rows <= 6)
                 if row_lm_head:
                     token_host = self._sample_target_block_rows_from_hidden(
@@ -4250,10 +4291,20 @@ class Qwen35GGUFResidentSession:
                 runtime.device_synchronize()
                 if not row_lm_head:
                     copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
+                add_verify_stage(
+                    "target_block_lm_head_sample",
+                    (time.perf_counter() - t_sample0) * 1000 if stage_timings is not None else 0.0,
+                )
+            t_hidden0 = time.perf_counter() if stage_timings is not None else 0.0
             hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
             copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
+            add_verify_stage(
+                "target_block_hidden_readback",
+                (time.perf_counter() - t_hidden0) * 1000 if stage_timings is not None else 0.0,
+            )
         finally:
             pass
+        t_cursor0 = time.perf_counter() if stage_timings is not None else 0.0
         self._verify_hidden_seed_rows_populated = rows
         self._position = end
         self.scratch.position_host[0] = end
@@ -4266,6 +4317,10 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         self._hidden_seed_fp32_populated = True
+        add_verify_stage(
+            "target_block_cursor_update",
+            (time.perf_counter() - t_cursor0) * 1000 if stage_timings is not None else 0.0,
+        )
         return Qwen35GGUFBlockVerifyResult(
             input_token_ids=[int(token) for token in tokens.tolist()],
             token_ids=[int(token) for token in token_host.tolist()],

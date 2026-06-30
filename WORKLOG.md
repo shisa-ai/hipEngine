@@ -129679,3 +129679,60 @@ compat draft/context + block verifier is too expensive. Compared with prior
 dp4a+B1 B5, compat saves 6.66 ms/output of serial verify but adds ~6.63 ms/output
 in block verify plus ~2.10 ms/output in draft work. dp4a improves exact compat by
 only +1.27 tok/s. Semantic no-probe parity alone is not the missing llama.cpp win.
+
+## 2026-06-30 — Deep MTP stage splits for hipEngine and llama.cpp
+
+Extended hipEngine cycle-stage instrumentation into resident draft and block verify
+sub-buckets:
+- resident draft: seed upload, input prep, MTP layer forward, top-k/drain readback,
+  and device-chain setup/top-k gather when enabled.
+- target block verify: setup, embedding, linear-attn layers, full-attn layers,
+  output norm/hidden seed, lm-head/sample, hidden readback, cursor update.
+
+Extended the local llama.cpp HIP diagnostic patch:
+- `tools/server/server-context.cpp` still emits one JSONL record per speculative
+  cycle when `LLAMA_MTP_STAGE_TIMINGS` is set.
+- `common/speculative.cpp` now accumulates MTP internals and merges them into that
+  cycle record: draft initial decode/sample/next decode, `process()` scan/build,
+  draft-context decode, target nextn embedding copy, and accept pending-h update.
+
+Validation:
+- `python3 -m py_compile scripts/gguf_mtp_bench.py hipengine/speculative/mtp_resident_draft.py hipengine/runtime/qwen35_gguf_runner.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py::test_llama_compat_diagnostic_topk_does_not_force_host_top10 tests/test_gguf_mtp_bench_metrics.py::test_default_diagnostic_topk_keeps_rank_histogram_width tests/test_llamacpp_mtp_bench_metrics.py::test_llamacpp_mtp_stage_timing_summary_excludes_first_task`
+- `cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 8`
+
+Measured full-suite diagnostics on Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151, greedy,
+reasoning off:
+- `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json`: AR
+  54.56 tok/s, MTP B5 59.61 tok/s = 1.093x, wall 16.800 ms/output, acc/output
+  0.535. Stage ms/output: serial B1 6.682, block verify 8.157, block layer
+  total 7.022, linear-attn 5.195, full-attn 1.827, draft 1.937.
+- `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a-deep.json`: AR
+  54.60 tok/s, MTP B5 60.01 tok/s = 1.099x, wall 16.690 ms/output, acc/output
+  0.533. Stage ms/output: serial B1 6.647, block verify 8.073, block layer
+  total 6.864, linear-attn 5.049, full-attn 1.816, draft 1.943.
+- `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`
+  plus JSONL: base 52.13 tok/s, MTP 72.12 tok/s = 1.383x. Trace excluding warmup:
+  223 visible tokens, wall 14.231 ms/output, acc/output 0.610, draft acceptance
+  0.805, passes/output 0.390, rows/output 1.148. Stage ms/output: verifier total
+  12.083, `mtp_context_replay_append` 11.348, `llama_process_build_draft_batch`
+  11.235, draft 2.140, `llama_draft_sample_topk` 1.886. Interpretation: llama's
+  raw `target_block_forward` remains async; the target decode drain and nextn
+  embedding handoff show up under `common_speculative_process()`.
+
+Compat draft probes:
+- `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-top1-deep.json`:
+  no material change from top-10 diagnostics. B2 52.48 tok/s, wall 19.074 ms/output,
+  draft 4.043, draft top-k/drain 3.833, block verify 14.715.
+- `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-devicechain-smoke.json`:
+  device-chain smoke was slower (36.12 tok/s, wall 27.704 ms/output) because the
+  full-vocab embedding table upload dominated (`draft_device_chain_ensure_embed_table`
+  11.888 ms/output in the short smoke).
+
+Documented in `docs/MTP-LLAMACPP-PARITY.md`: the retained B5 gap is verifier
+economics. hipEngine dp4a verifier work is serial B1 + block verify = 14.720
+ms/output; llama traced verifier total is 12.083 ms/output. The net instrumented
+wall gap is 2.46 ms/output, fully explained by verifier economics after accounting
+for hipEngine's slightly faster draft. The compat draft target is not top-k width;
+it needs persistent/prewarmed device-chain state, capped-vocab chain with acceptance
+proof, or a fused resident path that removes per-depth drains.

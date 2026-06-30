@@ -987,6 +987,21 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.adaptive_strict_fallback_draft_n_max = 1
 
 
+def _diagnostic_topk_candidate_count(args: argparse.Namespace, proposal_count: int) -> int:
+    """Return the draft top-k width used for diagnostics/proposal readback.
+
+    The strict llama-compat route only accepts top-1 candidates, and asking the
+    resident draft runner for top-10 forces a full-vocab host readback because
+    its device top-k path is capped at 8.  Keep the historical top-10 diagnostic
+    rows for non-compat exploratory routes where rank histograms matter.
+    """
+
+    proposal = max(1, int(proposal_count))
+    if bool(getattr(args, "llama_compat", False)):
+        return proposal
+    return max(10, proposal)
+
+
 def main(argv: list[str] | None = None):
     parser = build_arg_parser()
     args = parser.parse_args(argv)
@@ -1058,7 +1073,7 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-seed requires --draft-p-min 0")
     if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
         parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
-    diagnostic_topk_candidate_count = max(10, proposal_topk_candidate_count)
+    diagnostic_topk_candidate_count = _diagnostic_topk_candidate_count(args, proposal_topk_candidate_count)
     topk_candidate_count = proposal_topk_candidate_count
     if args.decode_repack:
         os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
@@ -1460,7 +1475,10 @@ def main(argv: list[str] | None = None):
                 cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
             cycle_draft_n_max = 0 if cycle_ar_fallback else int(cycle_draft_window)
             cycle_topk_candidate_count = max(1, cycle_root_topk_accept, cycle_sibling_topk_accept)
-            cycle_diagnostic_topk_candidate_count = max(10, cycle_topk_candidate_count)
+            cycle_diagnostic_topk_candidate_count = _diagnostic_topk_candidate_count(
+                args,
+                cycle_topk_candidate_count,
+            )
             cycle_full_vocab_recovery = (
                 bool(adaptive_full_vocab_recovery_active)
                 and resident_draft_full_vocab is not None
@@ -1506,6 +1524,7 @@ def main(argv: list[str] | None = None):
                             dense_cache_len=mtp_device_kv_len,
                             draft_p_min=float(args.draft_p_min),
                             record_top1_probs=bool(args.record_draft_confidence),
+                            record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                     )
                 else:
@@ -1522,6 +1541,7 @@ def main(argv: list[str] | None = None):
                         dense_cache_len=mtp_device_kv_len,
                         draft_p_min=float(args.draft_p_min),
                         record_top1_probs=bool(args.record_draft_confidence),
+                        record_stage_timings=bool(args.record_cycle_stage_timings),
                     )
                 if args.record_draft_confidence:
                     cycle_draft_top1_probs = [float(value) for value in cycle_resident_draft.last_top1_probs]
@@ -1582,6 +1602,9 @@ def main(argv: list[str] | None = None):
             t3 = time.perf_counter()
             draft_ms = (t3 - t2) * 1000
             add_cycle_stage("draft_initial", draft_ms)
+            if cycle_resident_draft is not None:
+                for stage_name, stage_ms in sorted(cycle_resident_draft.last_stage_timings_ms.items()):
+                    add_cycle_stage(stage_name, stage_ms)
             if cycle_diagnostic_topk_candidate_count > cycle_topk_candidate_count:
                 t_diag_topk0 = time.perf_counter()
                 for (
@@ -1708,6 +1731,7 @@ def main(argv: list[str] | None = None):
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
+                            record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                         record_target_verify(
                             len(block_inputs),
@@ -1858,6 +1882,7 @@ def main(argv: list[str] | None = None):
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
+                            record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                         record_target_verify(
                             len(block_inputs),
@@ -1866,6 +1891,8 @@ def main(argv: list[str] | None = None):
                             block_rows=len(block_inputs),
                         )
                     add_cycle_stage("target_block_forward", (time.perf_counter() - t_forward0) * 1000)
+                    for stage_name, stage_ms in sorted(session.last_verify_stage_timings_ms.items()):
+                        add_cycle_stage(stage_name, stage_ms)
                     t_account0 = time.perf_counter()
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
@@ -2494,6 +2521,7 @@ def main(argv: list[str] | None = None):
                 "next_adaptive_draft_n_max": int(adaptive_draft_n_max),
                 "root_topk_accept": cycle_root_topk_accept,
                 "sibling_topk_accept": cycle_sibling_topk_accept,
+                "diagnostic_topk_candidate_count": cycle_diagnostic_topk_candidate_count,
                 "configured_root_topk_accept": args.root_topk_accept,
                 "configured_sibling_topk_accept": args.sibling_topk_accept,
                 "adaptive_strict_block_probe": bool(args.adaptive_strict_block_probe),

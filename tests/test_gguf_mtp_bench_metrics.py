@@ -9,6 +9,7 @@ import pytest
 from scripts import gguf_mtp_bench as bench
 from scripts.gguf_mtp_bench import (
     _draft_top1_prob,
+    _diagnostic_topk_candidate_count,
     _rope_tables,
     apply_llama_compat_args,
     build_arg_parser,
@@ -604,6 +605,19 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.adaptive_block_after_full_accept is False
     assert args.adaptive_probe_draft_n_max == 1
     assert args.adaptive_strict_block_probe is False
+
+
+def test_llama_compat_diagnostic_topk_does_not_force_host_top10() -> None:
+    args = build_arg_parser().parse_args(["--llama-compat"])
+    apply_llama_compat_args(args)
+
+    assert _diagnostic_topk_candidate_count(args, 1) == 1
+
+
+def test_default_diagnostic_topk_keeps_rank_histogram_width() -> None:
+    args = build_arg_parser().parse_args([])
+
+    assert _diagnostic_topk_candidate_count(args, 1) == 10
 
 
 def test_main_allows_resident_device_seed_with_context_replay(monkeypatch, capsys) -> None:

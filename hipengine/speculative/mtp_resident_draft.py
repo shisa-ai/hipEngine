@@ -9,6 +9,7 @@ by the Python acceptance harness.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -76,6 +77,14 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     mtp_split_q_gate_f32,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
+
+
+def _stage_add(timings: dict[str, float] | None, name: str, ms: float) -> None:
+    if timings is None:
+        return
+    if ms < 0.0:
+        raise RuntimeError(f"negative resident MTP stage timing for {name}: {ms}")
+    timings[name] = timings.get(name, 0.0) + float(ms)
 
 
 def _bf16_host_to_f32(array: np.ndarray) -> np.ndarray:
@@ -174,6 +183,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
     eps: float = 1e-6
     _buffers: list[DeviceBuffer] = field(default_factory=list, init=False)
     last_top1_probs: list[float] = field(default_factory=list, init=False)
+    last_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -361,15 +371,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int = 0,
         draft_p_min: float = 0.0,
         record_top1_probs: bool = False,
+        record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
+        stage_timings: dict[str, float] | None = {} if record_stage_timings else None
+        self.last_stage_timings_ms = stage_timings if stage_timings is not None else {}
         if draft_n_max <= 0:
             raise ValueError("draft_n_max must be positive")
         if top_k <= 0 or top_k > 64:
             raise ValueError("resident GGUF MTP top_k must be in 1..64")
+        t_seed0 = time.perf_counter() if stage_timings is not None else 0.0
         hidden = np.ascontiguousarray(hidden_seed, dtype=np.float32)
         if hidden.shape != (1, self.hidden_size):
             raise ValueError("hidden_seed must have shape [1, hidden_size]")
         copy_host_to_device(self.seed_a, host_array_ptr(hidden), hidden.nbytes, runtime=self.runtime)
+        if stage_timings is not None:
+            _stage_add(stage_timings, "draft_seed_upload", (time.perf_counter() - t_seed0) * 1000)
         return self._propose_chain_from_seed_buffer(
             start_token=start_token,
             start_position=start_position,
@@ -382,6 +398,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             dense_cache_len=dense_cache_len,
             draft_p_min=draft_p_min,
             record_top1_probs=record_top1_probs,
+            stage_timings=stage_timings,
         )
 
     def propose_chain_from_device_seed(
@@ -399,14 +416,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int = 0,
         draft_p_min: float = 0.0,
         record_top1_probs: bool = False,
+        record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
 
+        stage_timings: dict[str, float] | None = {} if record_stage_timings else None
+        self.last_stage_timings_ms = stage_timings if stage_timings is not None else {}
         ptr = int(hidden_seed_ptr)
         if ptr <= 0:
             raise ValueError("hidden_seed_ptr must be a non-zero device pointer")
         runtime = self.runtime or get_hip_runtime()
+        t_seed0 = time.perf_counter() if stage_timings is not None else 0.0
         runtime.memcpy(self.seed_a.ptr, ptr, self.hidden_size * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+        if stage_timings is not None:
+            _stage_add(stage_timings, "draft_seed_upload", (time.perf_counter() - t_seed0) * 1000)
         return self._propose_chain_from_seed_buffer(
             start_token=start_token,
             start_position=start_position,
@@ -419,6 +442,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             dense_cache_len=dense_cache_len,
             draft_p_min=draft_p_min,
             record_top1_probs=record_top1_probs,
+            stage_timings=stage_timings,
         )
 
     def _propose_chain_from_seed_buffer(
@@ -435,6 +459,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int,
         draft_p_min: float,
         record_top1_probs: bool = False,
+        stage_timings: dict[str, float] | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         self.last_top1_probs = []
         if draft_n_max <= 0:
@@ -460,6 +485,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=int(dense_cache_len),
+                stage_timings=stage_timings,
             )
         current_seed = self.seed_a
         next_seed = self.seed_b
@@ -469,6 +495,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         tokens: list[int] = []
         topk_rows: list[list[int]] = []
         for depth in range(int(draft_n_max)):
+            t_prepare0 = time.perf_counter() if stage_timings is not None else 0.0
             if current_token < 0 or current_token >= int(self.token_embd_f32.shape[0]):
                 raise ValueError("draft token id outside embedding table")
             embed = np.ascontiguousarray(self.token_embd_f32[current_token:current_token + 1], dtype=np.float32)
@@ -481,6 +508,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
             copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=self.runtime)
             copy_host_to_device(self.position_i64, host_array_ptr(pos), pos.nbytes, runtime=self.runtime)
             copy_host_to_device(self.context_i64, host_array_ptr(ctx), ctx.nbytes, runtime=self.runtime)
+            if stage_timings is not None:
+                _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - t_prepare0) * 1000)
+            t_forward0 = time.perf_counter() if stage_timings is not None else 0.0
             self._run_one(
                 current_seed,
                 next_seed,
@@ -492,6 +522,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
             )
+            if stage_timings is not None:
+                _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
+            t_topk0 = time.perf_counter() if stage_timings is not None else 0.0
             if draft_p_min > 0.0 or record_top1_probs:
                 top_ids, top1_prob = self._read_topk_with_prob(top_k)
                 if record_top1_probs:
@@ -500,6 +533,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     break
             else:
                 top_ids = self._read_topk(top_k)
+            if stage_timings is not None:
+                _stage_add(stage_timings, "draft_topk_readback", (time.perf_counter() - t_topk0) * 1000)
             draft_token = int(top_ids[0])
             tokens.append(draft_token)
             topk_rows.append([int(token) for token in top_ids])
@@ -540,6 +575,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_key_cache: DeviceBuffer | None,
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
+        stage_timings: dict[str, float] | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         """Device-chained NextN draft: one drain + one D->H for the whole chain.
 
@@ -551,9 +587,17 @@ class Qwen35GGUFResidentMTPDraftRunner:
         runtime = self.runtime or get_hip_runtime()
         n = int(draft_n_max)
         d = self.qk_head_dim
+        t_ensure0 = time.perf_counter() if stage_timings is not None else 0.0
         self._ensure_embed_table()
+        if stage_timings is not None:
+            _stage_add(
+                stage_timings,
+                "draft_device_chain_ensure_embed_table",
+                (time.perf_counter() - t_ensure0) * 1000,
+            )
         if start_token < 0 or start_token >= int(self.token_embd_f32.shape[0]):
             raise ValueError("draft token id outside embedding table")
+        t_prepare0 = time.perf_counter() if stage_timings is not None else 0.0
         # Depth-0 embedding: single host gather + upload (start_token may exceed
         # the capped resident table; depths 1+ are device-gathered).
         embed0 = np.ascontiguousarray(self.token_embd_f32[start_token:start_token + 1], dtype=np.float32)
@@ -579,8 +623,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
         copy_host_to_device(self.sin_all, host_array_ptr(np.ascontiguousarray(sin_strided)), sin_strided.nbytes, runtime=runtime)
         copy_host_to_device(self.pos_all, host_array_ptr(np.ascontiguousarray(positions)), positions.nbytes, runtime=runtime)
         copy_host_to_device(self.ctx_all, host_array_ptr(np.ascontiguousarray(ctxs)), ctxs.nbytes, runtime=runtime)
+        if stage_timings is not None:
+            _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - t_prepare0) * 1000)
         current_cache_len = int(dense_cache_len)
         for depth in range(n):
+            t_forward0 = time.perf_counter() if stage_timings is not None else 0.0
             self._run_one(
                 current_seed,
                 next_seed,
@@ -592,9 +639,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
             )
+            if stage_timings is not None:
+                _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
             if dense_key_cache is not None:
                 current_cache_len += 1
             # Record this depth's top-k on device (no sync, no readback).
+            t_topk0 = time.perf_counter() if stage_timings is not None else 0.0
             self._topk_indices_into(self.topk_all.ptr + depth * top_k * 4, top_k)
             # Device-gather the next depth's embedding from this depth's top-1.
             if depth + 1 < n:
@@ -608,8 +658,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     library=self._gather_lib,
                     runtime=runtime,
                 )
+            if stage_timings is not None:
+                _stage_add(stage_timings, "draft_device_topk_gather", (time.perf_counter() - t_topk0) * 1000)
             current_seed, next_seed = next_seed, current_seed
         # Single drain + readback of the whole chain's top-k.
+        t_readback0 = time.perf_counter() if stage_timings is not None else 0.0
         runtime.device_synchronize()
         topk_host = np.empty((n, int(top_k)), dtype=np.int32)
         copy_device_to_host(
@@ -618,6 +671,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             topk_host.nbytes,
             runtime=runtime,
         )
+        if stage_timings is not None:
+            _stage_add(stage_timings, "draft_topk_readback", (time.perf_counter() - t_readback0) * 1000)
         tokens = [int(topk_host[depth, 0]) for depth in range(n)]
         topk_rows = [[int(token) for token in topk_host[depth].tolist()] for depth in range(n)]
         return tokens, topk_rows, current_cache_len

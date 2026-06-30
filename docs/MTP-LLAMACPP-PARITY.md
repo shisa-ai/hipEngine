@@ -166,7 +166,8 @@ The deeper instrumentation is now in place on both sides:
 
 - hipEngine: `--record-cycle-stage-timings` on `scripts/gguf_ar_mtp_suite.py`.
 - llama.cpp HIP: local diagnostic patch in
-  `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`; set
+  `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp` plus
+  `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`; set
   `LLAMA_MTP_STAGE_TIMINGS=/path/file.jsonl` to emit one JSONL record per MTP verify
   cycle. The hipEngine harness summarizes it via `--stage-timings-jsonl`.
 
@@ -180,18 +181,23 @@ official tok/s ladder.
 
 Artifacts:
 
-- `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5.json`
-- `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a.json`
-- `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.json`
-- `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.jsonl`
+- hipEngine exact B5 deep: `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json`
+- hipEngine dp4a+B1 B5 deep: `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a-deep.json`
+- hipEngine llama-compat dp4a B2 after top-1 diagnostic fix:
+  `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-top1-deep.json`
+- hipEngine llama-compat dp4a device-chain smoke:
+  `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-devicechain-smoke.json`
+- llama.cpp HIP B2 deep:
+  `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`
+  and `.jsonl`
 
 #### Instrumented economics
 
 | config | AR tok/s | MTP tok/s | uplift | cycle wall / output | accepted / output | draft acceptance | target passes / output | target rows / output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine exact B5 | 54.56 | 59.52 | 1.091× | 16.828 ms | 0.535 | 0.723 | 0.567 | 1.163 |
-| hipEngine dp4a+B1 B5 | 54.46 | 59.84 | 1.099× | 16.736 ms | 0.533 | 0.735 | 0.570 | 1.154 |
-| llama.cpp HIP B2 | 52.11 | 72.48 | 1.391× | 14.156 ms traced / 13.797 ms server | 0.567 server / 0.610 traced | 0.805 | 0.390 | 1.148 |
+| hipEngine exact B5 | 54.56 | 59.61 | 1.093× | 16.800 ms | 0.535 | 0.723 | 0.567 | 1.163 |
+| hipEngine dp4a+B1 B5 | 54.60 | 60.01 | 1.099× | 16.690 ms | 0.533 | 0.735 | 0.570 | 1.154 |
+| llama.cpp HIP B2 | 52.13 | 72.12 | 1.383× | 14.231 ms traced / 13.866 ms server | 0.567 server / 0.610 traced | 0.805 | 0.390 | 1.148 |
 
 Denominator note: llama's server summary reports accepted/output over 240 predicted
 tokens (`0.567`); the per-cycle trace excludes the first warmup task and reports 223
@@ -201,15 +207,23 @@ visible traced tokens (`0.610`). Stage ms/output uses the traced denominator.
 
 | bucket | hipEngine exact B5 | hipEngine dp4a+B1 B5 | llama.cpp HIP B2 | interpretation |
 | --- | ---: | ---: | ---: | --- |
-| `cycle_wall_ms_per_output` | 16.828 | 16.736 | 14.156 | Instrumented wall. dp4a closes only 0.092 ms/output in this run. |
-| `draft_initial` | 1.944 | 1.934 | 2.128 | Draft is not the gap; hipEngine is slightly faster here. |
-| `target_serial_verify_step` | **6.717** | **6.660** | 0.000 | This is the hipEngine B1 probe / serial verifier cost. llama has no equivalent bucket. |
-| `target_block_verify_total` | 8.141 | 8.116 | 12.021 | Compare verifier total, not `target_block_forward` alone. |
-| `target_block_forward` | 8.051 | 8.028 | 0.517 | llama's raw `llama_decode(ctx_tgt)` is tiny because most speculative state work is below. |
-| `mtp_context_replay_append` | 0.000 | 0.000 | **11.324** | llama's `common_speculative_process()` cost; this is part of verifier total. |
-| `target_block_snapshot` | 0.057 | 0.054 | 0.001 | Not the gap. |
-| `target_block_acceptance_accounting` | 0.001 | 0.001 | 0.175 | Visible in llama, still too small to explain the delta. |
-| `target_block_replay_or_commit` | 0.030 | 0.032 | 0.003 | Not the gap. |
+| `cycle_wall_ms_per_output` | 16.800 | 16.690 | 14.231 | Instrumented wall. dp4a closes only 0.110 ms/output in this run. |
+| `draft_initial` | 1.937 | 1.943 | 2.140 | Draft is not the retained B5 gap; hipEngine is slightly faster here. |
+| `draft_topk_readback` | 1.158 | 1.134 | n/a | hipEngine name is a synchronization drain + top-k readback, not pure top-k kernel time. |
+| `llama_draft_sample_topk` | n/a | n/a | 1.886 | llama draft is sampler/top-k dominated; MTP decode itself is small (`0.118 + 0.134`). |
+| `target_serial_verify_step` | **6.682** | **6.647** | 0.000 | This is the hipEngine B1 probe / serial verifier cost. llama has no equivalent bucket. |
+| `target_block_verify_total` | 8.157 | 8.073 | 12.083 | Compare verifier total, not raw `target_block_forward` alone. |
+| `target_block_layer_total` | 7.022 | 6.864 | n/a | hipEngine block verifier is GPU layer work: mostly linear-attn layers. |
+| `target_block_linear_attn_layers` | 5.195 | 5.049 | n/a | Biggest hipEngine block sub-bucket. |
+| `target_block_full_attn_layers` | 1.827 | 1.816 | n/a | Secondary hipEngine block sub-bucket. |
+| `target_block_lm_head_sample` | 0.573 | 0.586 | n/a | Not the gap. |
+| `target_block_forward` | 8.065 | 7.985 | 0.549 | llama's raw `llama_decode(ctx_tgt)` is async; its GPU drain lands below. |
+| `mtp_context_replay_append` | 0.000 | 0.000 | **11.348** | llama's `common_speculative_process()` cost; this is part of verifier total. |
+| `llama_process_build_draft_batch` | n/a | n/a | **11.235** | This is the newly split llama bucket. It effectively includes target decode drain + target nextn embedding handoff. |
+| `llama_process_decode_ctx_dft` | n/a | n/a | 0.112 | Draft-context catch-up decode is not the big llama cost. |
+| `target_block_snapshot` | 0.060 | 0.056 | 0.001 | Not the gap. |
+| `target_block_acceptance_accounting` | 0.001 | 0.001 | 0.181 | Visible in llama, still too small to explain the delta. |
+| `target_block_replay_or_commit` | 0.029 | 0.029 | 0.004 | Not the gap. |
 | `accept_policy_and_seed` | 0.002 | 0.002 | 0.002 | Not the gap. |
 | `cycle_wall_over_legacy_ms_per_output` | 0.026 | 0.026 | n/a | hipEngine has no hidden wall outside the legacy timing denominator. |
 
@@ -218,11 +232,11 @@ policy bookkeeping, or hidden host wall. The gap is the extra hipEngine verifica
 economy:
 
 - hipEngine dp4a verifier work = `target_serial_verify_step + target_block_verify_total`
-  = **14.777 ms/output**.
-- llama verifier work = `target_block_verify_total` = **12.021 ms/output**.
-- Difference = **+2.756 ms/output** for hipEngine, mostly the B1 serial probe.
-- hipEngine draft is **0.195 ms/output faster**, so the net instrumented wall gap is
-  ~**2.58 ms/output** (16.736 - 14.156), which is fully explained by verifier
+  = **14.720 ms/output**.
+- llama verifier work = `target_block_verify_total` = **12.083 ms/output**.
+- Difference = **+2.637 ms/output** for hipEngine, mostly the B1 serial probe.
+- hipEngine draft is **0.197 ms/output faster**, so the net instrumented wall gap is
+  ~**2.46 ms/output** (16.690 - 14.231), which is fully explained by verifier
   economics.
 
 This is the fine-grained version of the earlier retained-row conclusion. The retained
@@ -231,7 +245,35 @@ diagnostic protocols and instrumentation overhead differ, but the attribution is
 same: llama gets its speedup by avoiding the hipEngine B1 serial probe and spending
 fewer target passes/output (`0.390` traced here, `~0.402` retained) while maintaining
 higher draft acceptance. Directly copying `target_block_forward` is the wrong target;
-in llama most verifier time is under `mtp_context_replay_append`.
+in llama most verifier time is under `mtp_context_replay_append`, and the deep split
+puts that cost specifically in `llama_process_build_draft_batch` (target decode drain
++ nextn embedding handoff), not in the draft-context decode.
+
+#### Compat draft split: the 2 ms draft target is not top-k width
+
+The first compat-dp4a deep split showed `draft_initial ~= 4.03 ms/output` and
+`draft_topk_readback ~= 3.80 ms/output`. A top-1 diagnostic fix was implemented so
+`--llama-compat` no longer forces top-10 proposal readback, but the full-suite result
+was flat:
+
+| config | MTP tok/s | cycle wall / output | `draft_initial` | `draft_topk_readback` | `target_block_verify_total` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| compat dp4a B2, old top-10 diagnostic | 52.42 | 19.096 ms | 4.031 | 3.799 | 14.749 |
+| compat dp4a B2, top-1 diagnostic | 52.48 | 19.074 ms | 4.043 | 3.833 | 14.715 |
+
+So the draft-side slowdown is not top-k width by itself. The current compat route
+does not use the resident device-chain draft path (`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN`
+defaults off), so `draft_topk_readback` is still a per-depth synchronization drain.
+Enabling device-chain on a smoke run proved the other side of the trade:
+
+| probe | MTP tok/s | cycle wall / output | `draft_initial` | `draft_device_chain_ensure_embed_table` | result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| compat dp4a B2 + device-chain, smoke | 36.12 | 27.704 ms | 14.855 | 11.888 | full-vocab embed-table upload dominates the short run |
+
+That means the draft fix is not "ask for top-1"; it is either a persistent/prewarmed
+device-chain full-vocab table, a capped-vocab device chain that does not destroy
+acceptance, or a fused resident draft path that avoids per-depth drains without
+uploading a fresh full-vocab embedding table per prompt.
 
 The next optimization question is therefore specific: either make the B1 probe much
 cheaper/fused, or find a no-probe policy whose full draft/context/verifier lifecycle
@@ -297,27 +339,28 @@ Measured full-suite result (2026-06-30, same model/gfx1151, stage timings enable
 | config | AR tok/s | MTP tok/s | vs AR | cycle wall / output | acc / output | draft acceptance | passes / output | rows / output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `llama-compat` exact B2 | 54.76 | **51.16** | 0.934× | 19.570 ms | 0.559 | 0.635 | 0.441 | 1.322 |
-| `llama-compat-dp4a` B2 | 54.73 | **52.42** | 0.958× | 19.096 ms | 0.561 | 0.640 | 0.439 | 1.316 |
-| prior dp4a+B1-probe B5 | 54.46 | **59.84** | 1.099× | 16.736 ms | 0.533 | 0.735 | 0.570 | 1.154 |
-| llama.cpp HIP B2 trace | 52.11 | **72.48** | 1.391× | 14.156 ms | 0.610 traced | 0.805 | 0.390 | 1.148 |
+| `llama-compat-dp4a` B2 (top-1 diagnostic) | 54.77 | **52.48** | 0.958× | 19.074 ms | 0.561 | 0.640 | 0.439 | 1.316 |
+| prior dp4a+B1-probe B5 | 54.60 | **60.01** | 1.099× | 16.690 ms | 0.533 | 0.735 | 0.570 | 1.154 |
+| llama.cpp HIP B2 trace | 52.13 | **72.12** | 1.383× | 14.231 ms | 0.610 traced | 0.805 | 0.390 | 1.148 |
 
 Stage ms/output:
 
 | bucket | compat exact B2 | compat dp4a B2 | prior dp4a+B1 B5 | llama.cpp HIP B2 | interpretation |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `draft_initial` | 4.084 | 4.031 | 1.934 | 2.128 | hipEngine compat's shifted-context/full-vocab B2 draft is expensive; the prior capped/probed route drafts much cheaper. |
+| `draft_initial` | 4.084 | 4.043 | 1.943 | 2.140 | hipEngine compat's shifted-context/full-vocab B2 draft is expensive; the prior capped/probed route drafts much cheaper. |
 | `target_serial_verify_step` | 0.000 | 0.000 | 6.660 | 0.000 | compat successfully removes the B1 serial probe. |
-| `target_block_verify_total` | 15.164 | 14.749 | 8.116 | 12.021 | the saved serial probe is paid back by a much more expensive B2 block verifier. |
-| `target_block_forward` | 15.021 | 14.619 | 8.028 | 0.517 | llama's raw forward bucket is not comparable; most llama verify/state work is in `mtp_context_replay_append`. |
-| `mtp_context_replay_append` | 0.008 | 0.008 | 0.000 | 11.324 | hipEngine's context replay cost is not in this bucket; its cost manifests in draft/block wall. |
+| `draft_topk_readback` | n/a | 3.833 | 1.134 | n/a | compat's B2 draft still pays per-depth drains; top-1 diagnostic width did not remove this. |
+| `target_block_verify_total` | 15.164 | 14.715 | 8.073 | 12.083 | the saved serial probe is paid back by a much more expensive B2 block verifier. |
+| `target_block_forward` | 15.021 | 14.585 | 7.985 | 0.549 | llama's raw forward bucket is not comparable; most llama verify/state work is in `mtp_context_replay_append`. |
+| `mtp_context_replay_append` | 0.008 | 0.008 | 0.000 | 11.348 | hipEngine's context replay cost is not in this bucket; its cost manifests in draft/block wall. |
 | `mtp_device_kv_commit` | 0.299 | 0.296 | 0.000 | n/a | small but nonzero compat lifecycle overhead. |
-| `cycle_wall_ms_per_output` | 19.570 | 19.096 | 16.736 | 14.156 | compat is 2.36 ms/output slower than the prior dp4a+B1 route and 4.94 ms/output slower than llama's traced path. |
+| `cycle_wall_ms_per_output` | 19.570 | 19.074 | 16.690 | 14.231 | compat is 2.38 ms/output slower than the prior dp4a+B1 route and 4.84 ms/output slower than llama's traced path. |
 
 **Result:** copying the observable llama policy is not sufficient. The mode does remove
 the B1 probe and preserves decent full-suite acceptance, but the hipEngine realization
 of that lifecycle is slower than the retained B1-probe path: compared with prior
-dp4a+B1 B5, compat saves **6.66 ms/output** of serial verify, but adds roughly
-**+6.63 ms/output** in block verify and **+2.10 ms/output** in draft work. dp4a buys
+dp4a+B1 B5, compat saves **6.65 ms/output** of serial verify, but adds roughly
+**+6.64 ms/output** in block verify and **+2.10 ms/output** in draft work. dp4a buys
 only **+1.27 tok/s** over exact compat. The residual gap is now even more concrete:
 we need a cheaper B2 compat draft/verifier lifecycle, not just the llama no-probe
 policy flag.
@@ -327,7 +370,7 @@ So the real answer is: there is no architectural reason we cannot add a true
 it by default are the known correctness tradeoff (dp4a ja top-1 **0.700 < 0.90**) and
 the fact that the current approximate no-probe routes did not reproduce llama's
 economics. The clean experiment is now implemented and measured: the exact route lands
-at **51.16 tok/s**, and the dp4a route lands at **52.42 tok/s**, both below hipEngine
+at **51.16 tok/s**, and the dp4a route lands at **52.48 tok/s**, both below hipEngine
 AR and well below llama HIP. Semantic parity alone was not the missing piece; the gap
 is implementation/backend cost in the compat draft/verifier lifecycle.
 
@@ -340,7 +383,7 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --budgets 5 \
   --record-cycle-stage-timings \
   --require-cached-build \
-  --output benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5.json
+  --output benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json
 
 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --scope full \
@@ -348,7 +391,7 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --budgets 5 \
   --record-cycle-stage-timings \
   --require-cached-build \
-  --output benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a.json
+  --output benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-dp4a-deep.json
 
 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
@@ -363,9 +406,9 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   --max-tokens 24 \
   --server-extra-arg=--reasoning \
   --server-extra-arg=off \
-  --stage-timings-jsonl benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.jsonl \
-  --output benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-both.json \
-  --log-dir /tmp/llamacpp-mtp-stage-timing-b2-natural24-both-logs
+  --stage-timings-jsonl benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.jsonl \
+  --output benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json \
+  --log-dir /tmp/llamacpp-mtp-stage-timing-b2-natural24-deep-logs
 ```
 
 Important: these stage windows are **diagnostic**, not a new retained benchmark
