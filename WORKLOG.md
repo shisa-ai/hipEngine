@@ -129637,3 +129637,45 @@ variants), not the full llama lifecycle (`spec-draft-n-max 2`, `spec-draft-p-min
 semantics, q8_1/dp4a). The right next experiment is a pinned llama-compat route with
 full-suite + stage-bucket evidence. Exact default remains unchanged because dp4a
 fails the ja gate.
+
+## 2026-06-30 — Implemented opt-in llama-compat MTP routes
+
+Added default-off `scripts/gguf_mtp_bench.py --llama-compat`. The helper normalizes
+conflicting parsed args to the closest llama.cpp semantic shape: B2, root/sibling
+top-1, p_min 0, full draft vocab, shifted context replay, device MTP KV, no
+adaptive B1 probe/fallback, no graph verifier, and one bulk target block verify
+per cycle with direct state commit. The child artifact now records
+`workload.llama_compat`.
+
+Added `scripts/gguf_ar_mtp_suite.py` routes `llama-compat` and
+`llama-compat-dp4a`; both default/fix budgets to B2 to avoid mislabeled artifacts
+because the bench flag forces `draft_n_max=2`. Updated
+`docs/MTP-LLAMACPP-PARITY.md` with the route matrix and commands, and
+`docs/REFACTOR.md` with the cleanup/promotion trigger.
+
+Validation:
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py`
+
+## 2026-06-30 — Measured full-suite llama-compat B2 routes
+
+Ran the new fixed-B2 compat routes with stage timings on
+Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151, full 10-prompt suite, greedy, reasoning off:
+
+- `benchmarks/results/2026-06-30-ar-mtp-llama-compat-b2.json`:
+  AR 54.76 tok/s, MTP B2 51.16 tok/s = 0.934x AR, acc/output 0.559,
+  draft acceptance 0.635, passes/output 0.441, rows/output 1.322, cycle wall
+  19.570 ms/output. Stage ms/output: draft 4.084, serial verify 0.000, block
+  verify total 15.164, block forward 15.021, MTP KV commit 0.299.
+- `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2.json`:
+  AR 54.73 tok/s, MTP B2 52.42 tok/s = 0.958x AR, acc/output 0.561,
+  draft acceptance 0.640, passes/output 0.439, rows/output 1.316, cycle wall
+  19.096 ms/output. Stage ms/output: draft 4.031, serial verify 0.000, block
+  verify total 14.749, block forward 14.619, MTP KV commit 0.296.
+
+Conclusion documented in `docs/MTP-LLAMACPP-PARITY.md`: true compat removes the B1
+serial probe and preserves reasonable acceptance, but still loses because the B2
+compat draft/context + block verifier is too expensive. Compared with prior
+dp4a+B1 B5, compat saves 6.66 ms/output of serial verify but adds ~6.63 ms/output
+in block verify plus ~2.10 ms/output in draft work. dp4a improves exact compat by
+only +1.27 tok/s. Semantic no-probe parity alone is not the missing llama.cpp win.

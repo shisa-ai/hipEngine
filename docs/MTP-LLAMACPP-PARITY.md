@@ -234,10 +234,12 @@ higher draft acceptance. Directly copying `target_block_forward` is the wrong ta
 in llama most verifier time is under `mtp_context_replay_append`.
 
 The next optimization question is therefore specific: either make the B1 probe much
-cheaper/fused, or find a no-probe policy that does not collapse acceptance. The tested
-llama-style no-probe route on hipEngine does collapse (`56.42 tok/s`, acc/output
-`0.324`), so the current blocker is speculative-policy/acceptance economics, not an
-unattributed llama.cpp kernel bucket.
+cheaper/fused, or find a no-probe policy whose full draft/context/verifier lifecycle
+is cheap enough per output. The older approximate no-probe route collapsed acceptance
+(`56.42 tok/s`, acc/output `0.324`). The newer true `llama-compat` route below keeps
+acceptance near llama's retained row (`0.56` acc/output), but is still slower than AR
+because its B2 draft/context + block verifier costs too much. The current blocker is
+speculative-policy/verifier economics, not an unattributed llama.cpp kernel bucket.
 
 #### Can we adopt a true llama.cpp mode?
 
@@ -250,21 +252,84 @@ What a true llama mode needs to replicate:
 
 | llama.cpp piece | why it matters | current hipEngine status |
 | --- | --- | --- |
-| `--spec-draft-n-max 2`, `--spec-draft-p-min 0.0` lifecycle | llama drafts every cycle up to B2 unless the MTP sampler itself stops; no hipEngine p_min gate. | Our fastest route uses B5 + `--draft-p-min 0.5`; no-probe tests kept hipEngine policy knobs. |
-| No B1 probe / one target block verify per cycle | This removes the `target_serial_verify_step` bucket entirely. | Existing no-probe route did this structurally, but with hipEngine draft/fallback policy and worse acceptance. |
-| llama MTP context handoff (`common_speculative_process` / `pending_h` / `verify_h`) | Draft quality depends on how target verify hidden rows seed the next MTP draft. | hipEngine has resident/context variants, but not a pinned "match llama semantics exactly" mode. |
+| `--spec-draft-n-max 2`, `--spec-draft-p-min 0.0` lifecycle | llama drafts every cycle up to B2 unless the MTP sampler itself stops; no hipEngine p_min gate. | Implemented in opt-in `--llama-compat`; suite routes are fixed to B2 to avoid mislabeled artifacts. |
+| No B1 probe / one target block verify per cycle | This removes the `target_serial_verify_step` bucket entirely. | Implemented in `--llama-compat`: disables adaptive B1 probe/fallback and forces block verify with `--target-block-min-rows 2`. |
+| llama MTP context handoff (`common_speculative_process` / `pending_h` / `verify_h`) | Draft quality depends on how target verify hidden rows seed the next MTP draft. | Closest hipEngine replica is enabled: shifted prompt catch-up via `--mtp-context-replay` plus device-resident MTP KV. This is still a semantic compatibility route, not a mechanical copy of llama's context internals. |
 | llama accept/checkpoint semantics | Partial accepts restore/commit through llama's checkpoint and `common_speculative_accept` path. | hipEngine has rollback/direct-commit paths, but they are not mechanically identical. |
-| q8_1 / dp4a verify economy | This is part of llama's speed/acceptance economics, and it fails hipEngine's ja gate. | Available only as default-off `--verify-dp4a`; exact default must not use it. |
+| q8_1 / dp4a verify economy | This is part of llama's speed/acceptance economics, and it fails hipEngine's ja gate. | Exact compat route stays precision-preserving; `llama-compat-dp4a` adds default-off `--verify-dp4a` for llama's accuracy-traded regime. |
+
+Implemented opt-in routes (2026-06-30):
+
+| route | extra args | budget | purpose |
+| --- | --- | ---: | --- |
+| `llama-compat` | `--llama-compat` | B2 fixed | Precision-preserving closest semantic replica: B2, p_min 0, full draft vocab, shifted context replay + device KV, no B1 probe/fallback, one block verify/cycle. |
+| `llama-compat-dp4a` | `--llama-compat --verify-dp4a` | B2 fixed | Same semantics plus llama-style q8_1/dp4a selected-expert verify. Accuracy-traded; ja gate failure remains expected until proven otherwise. |
+
+`--llama-compat` is deliberately an override flag: if a wrapper passes conflicting
+draft/policy knobs first, the bench normalizes them after parsing. The suite also
+refuses non-B2 budget overrides for these routes because the child bench would force
+`draft_n_max=2`; allowing a `B5` label would make the artifact misleading.
+
+Exact route command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-b2.json
+```
+
+Accuracy-traded dp4a route command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-dp4a \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2.json
+```
+
+Measured full-suite result (2026-06-30, same model/gfx1151, stage timings enabled):
+
+| config | AR tok/s | MTP tok/s | vs AR | cycle wall / output | acc / output | draft acceptance | passes / output | rows / output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `llama-compat` exact B2 | 54.76 | **51.16** | 0.934× | 19.570 ms | 0.559 | 0.635 | 0.441 | 1.322 |
+| `llama-compat-dp4a` B2 | 54.73 | **52.42** | 0.958× | 19.096 ms | 0.561 | 0.640 | 0.439 | 1.316 |
+| prior dp4a+B1-probe B5 | 54.46 | **59.84** | 1.099× | 16.736 ms | 0.533 | 0.735 | 0.570 | 1.154 |
+| llama.cpp HIP B2 trace | 52.11 | **72.48** | 1.391× | 14.156 ms | 0.610 traced | 0.805 | 0.390 | 1.148 |
+
+Stage ms/output:
+
+| bucket | compat exact B2 | compat dp4a B2 | prior dp4a+B1 B5 | llama.cpp HIP B2 | interpretation |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `draft_initial` | 4.084 | 4.031 | 1.934 | 2.128 | hipEngine compat's shifted-context/full-vocab B2 draft is expensive; the prior capped/probed route drafts much cheaper. |
+| `target_serial_verify_step` | 0.000 | 0.000 | 6.660 | 0.000 | compat successfully removes the B1 serial probe. |
+| `target_block_verify_total` | 15.164 | 14.749 | 8.116 | 12.021 | the saved serial probe is paid back by a much more expensive B2 block verifier. |
+| `target_block_forward` | 15.021 | 14.619 | 8.028 | 0.517 | llama's raw forward bucket is not comparable; most llama verify/state work is in `mtp_context_replay_append`. |
+| `mtp_context_replay_append` | 0.008 | 0.008 | 0.000 | 11.324 | hipEngine's context replay cost is not in this bucket; its cost manifests in draft/block wall. |
+| `mtp_device_kv_commit` | 0.299 | 0.296 | 0.000 | n/a | small but nonzero compat lifecycle overhead. |
+| `cycle_wall_ms_per_output` | 19.570 | 19.096 | 16.736 | 14.156 | compat is 2.36 ms/output slower than the prior dp4a+B1 route and 4.94 ms/output slower than llama's traced path. |
+
+**Result:** copying the observable llama policy is not sufficient. The mode does remove
+the B1 probe and preserves decent full-suite acceptance, but the hipEngine realization
+of that lifecycle is slower than the retained B1-probe path: compared with prior
+dp4a+B1 B5, compat saves **6.66 ms/output** of serial verify, but adds roughly
+**+6.63 ms/output** in block verify and **+2.10 ms/output** in draft work. dp4a buys
+only **+1.27 tok/s** over exact compat. The residual gap is now even more concrete:
+we need a cheaper B2 compat draft/verifier lifecycle, not just the llama no-probe
+policy flag.
 
 So the real answer is: there is no architectural reason we cannot add a true
 `llama-compat` mode while keeping exact mode as default. The reasons not to promote
 it by default are the known correctness tradeoff (dp4a ja top-1 **0.700 < 0.90**) and
 the fact that the current approximate no-probe routes did not reproduce llama's
-economics. The next clean experiment is to build a mode that intentionally matches
-llama's MTP semantics as closely as hipEngine permits, label it accuracy-traded, and
-run the same full suite + stage buckets. If that mode still lands near **56-62 tok/s**,
-the gap is implementation/backend. If it jumps toward **67+ tok/s**, the missing
-piece was indeed semantic parity rather than the B1 probe design itself.
+economics. The clean experiment is now implemented and measured: the exact route lands
+at **51.16 tok/s**, and the dp4a route lands at **52.42 tok/s**, both below hipEngine
+AR and well below llama HIP. Semantic parity alone was not the missing piece; the gap
+is implementation/backend cost in the compat draft/verifier lifecycle.
 
 Commands used:
 

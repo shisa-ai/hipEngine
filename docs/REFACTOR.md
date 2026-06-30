@@ -117,3 +117,22 @@ should be boring.
 - Remove when: either a Vulkan backend supersedes the perf goal, or the project
   decides to drop dp4a experimentation entirely. Until then it is the documented
   opt-in for the dp4a/accuracy tradeoff. See docs/MTP-LLAMACPP-PARITY.md "COFFIN NAIL".
+
+## `--llama-compat` / `llama-compat{,-dp4a}` routes (default OFF, semantic diagnostic)
+- Added 2026-06-30. Bench flag `--llama-compat` forces the closest hipEngine
+  replica of llama.cpp MTP semantics: B2, `draft_p_min=0`, full draft vocab,
+  shifted MTP context replay, device MTP KV, no adaptive B1 probe/fallback, and
+  one target block verifier per cycle. Suite routes `llama-compat` and
+  `llama-compat-dp4a` are fixed to B2 so the artifact label matches the forced
+  child `draft_n_max`.
+- Purpose: isolate whether the remaining llama HIP MTP gap is semantic-policy
+  mismatch versus implementation/backend cost. The exact compat route is
+  precision-preserving; `llama-compat-dp4a` adds the already-known
+  accuracy-traded q8_1/dp4a regime. Full-suite B2 evidence landed the same day:
+  exact compat **51.16 tok/s = 0.934x AR**, dp4a compat **52.42 tok/s = 0.958x
+  AR**. Both remove the serial B1 probe and keep acc/output ~0.56, but lose to
+  AR because the compat draft/context + block verifier lifecycle is too costly.
+- Remove / promote when: after full-suite stage-bucket evidence decides the
+  question. Current evidence says "do not promote"; keep only the smallest
+  diagnostic needed for future parity audits, or delete the routes during the next
+  MTP flag cleanup unless another llama.cpp semantic delta is identified.
