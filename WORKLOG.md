@@ -129443,3 +129443,25 @@ Artifacts: results/2026-06-30-dual-engine-ar-decode-attribution.json,
 -verify-mechanism.json, -backend-hip-vs-vulkan-strix-halo.json, -vulkan-perop-gflops.json.
 Full attribution tables in docs/MTP-LLAMACPP-PARITY.md (top section). Remaining detail:
 per-op GFLOPS for hipEngine attention/MoE; same-prompt apples MTP; RGP Vulkan if needed.
+
+## 2026-06-30 — Implemented+tested fusion & verify amortization: BOTH already captured
+
+Acted on the two attribution levers (build/test, not propose).
+- FUSION: already done. qkv is a single fused attn_qkv GEMV (qwen35_gguf_runner.py:1753);
+  selected-expert MoE pack8-consolidated with gate+up+silu fused. Mirrors Vulkan's
+  fused qkv + MUL_MAT_ID. No new fusion available.
+- VERIFY AMORTIZATION: built a bit-exact q8_0 t16 rowtile (read tile once, accumulate
+  ROW_TILE rows; bit-exact vs per-row decode rows 2-6). A/B vs the runner's ACTUAL
+  verify kernel (q8_0_t16_gemv_kernel at rows=R, single launch grid.y=R): rowtile
+  0.93-0.94x (rows4 31.0 vs 28.7us; rows6 40.3 vs 38.0us). The existing grid.y kernel
+  already amortizes via OCCUPANCY (R x more blocks on small weights) - rowtile's
+  single-block-per-tile underutilizes. Rowtile only beats naive 4x-separate-launches
+  (1.36-1.58x), which the runner doesn't do. REFUTED, reverted (not landed). Rowtile
+  is the right tool only for the huge lm-head (already shipped).
+
+Net: both directed levers already captured by hipEngine HIP kernels; the dense verify
+GEMV is already occupancy-amortized at rows>1 (q8_0_t16_dual_split 141us->220us for
+1->4 rows = 2.5x cheaper per row). No remaining correctness-preserving HIP-kernel lever
+for the AR/verify dense path. Residual MTP gap = Vulkan-vs-HIP backend (needs a Vulkan
+backend to close) + llama dp4a precision. Artifact:
+results/2026-06-30-fusion-and-verify-amortization-tested.json.

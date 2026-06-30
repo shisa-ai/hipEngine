@@ -26,14 +26,18 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
    inside `mul_mat_vec_q` (+ dp4a) and its draft can **share the target's KV context**
    (`is_mem_shared`); hipEngine's verify re-reads weights per row and runs exact.
 
-**Correctness-preserving levers (exact precision, for later optimization phases):**
-- **Fusion** (closes part of the backend gap): fuse qkv projection; consolidate
-  selected-expert MoE into one `MUL_MAT_ID`-style batched call.
-- **Verify vec-rowtile** (closes part of the uplift gap): read each weight tile once,
-  accumulate B+1 verify rows in registers — the pattern that already won for the
-  Q6_K lm-head rowtile (1.0534×→1.1134×).
-- A **Vulkan backend for hipEngine** would directly capture factor 1, but is a large
-  architectural undertaking.
+**Correctness-preserving levers (exact precision) — TESTED 2026-06-30, both already captured:**
+- **Fusion: already done** — qkv is a single fused `attn_qkv` GEMV; selected-expert
+  MoE is pack8-consolidated with gate+up+silu fused. Mirrors Vulkan's qkv/`MUL_MAT_ID`.
+- **Verify vec-rowtile: built+bit-exact but REFUTED** (0.93× vs the existing
+  `grid.y`-occupancy rows-kernel; reverted). The dense verify GEMV is already
+  occupancy-amortized at rows>1. Rowtile is the right tool only for the lm-head
+  (already shipped).
+- A **Vulkan backend for hipEngine** would directly capture the (now-dominant)
+  backend factor, but is a large architectural undertaking.
+
+=> No remaining correctness-preserving HIP-kernel lever for AR/verify; the residual
+gap is the **Vulkan-vs-HIP backend** + llama's dp4a precision.
 
 Profiling harness (both engines, reproducible): llama HIP via `rocprofv3
 --kernel-trace` on `llama-bench`/`llama-cli` (MTP path deadlocks rocprof at finalize
@@ -86,6 +90,34 @@ attention **qkv projection** into one GEMV and consolidate the **selected-expert
 into a single `MUL_MAT_ID`-style batched call (it already has a pack8 ids-GEMV; widen
 it / fuse gate+up+down dispatch). This is the same "fewer, larger, better-saturated
 ops" Vulkan exploits — at exact precision. Pairs with the verify vec-rowtile lever.
+
+### 2026-06-30 IMPLEMENTED+TESTED: both levers are ALREADY captured by existing kernels
+
+Acted on the two levers above (build/test, not just propose). Result: **both are
+already implemented in hipEngine's HIP path; neither has remaining headroom.**
+
+- **Fusion — already done.** Attention qkv is a single fused `attn_qkv` weight/GEMV
+  (`qwen35_gguf_runner.py:1753`), not split q/k/v. The selected-expert MoE is already
+  consolidated (`_launch_selected_expert_pack8_moe_pair` ids-GEMV) with gate+up fused
+  (`dual`) and silu fused (`q4_k_t16_selected_dual_silu_direct`). Mirrors Vulkan's
+  fused qkv + `MUL_MAT_ID`. No new fusion to add.
+- **Verify amortization — built, bit-exact, but REFUTED (reverted).** Wrote a q8_0
+  t16 **rowtile** (read each weight tile once, accumulate ROW_TILE rows — the lm-head
+  rowtile pattern). Bit-exact vs per-row decode (rows 2-6). A/B vs the runner's
+  *actual* verify kernel (`q8_0_t16_gemv_kernel` at rows=R, single launch `grid.y=R`):
+  rowtile **0.93-0.94×** (rows=4: 31.0 vs 28.7 µs; rows=6: 40.3 vs 38.0 µs). The
+  existing `grid.y` kernel already amortizes via **occupancy** — at rows=R it launches
+  R× more blocks (better GPU utilization on these small weights) than the rowtile's
+  single block/tile. The rowtile only beats *naive 4×-separate-launches* (1.36-1.58×),
+  which the runner doesn't do. Right tool only for the huge lm-head (already shipped).
+  Not landed.
+
+**Net:** hipEngine's HIP kernels already capture both fusion and verify amortization
+(the dense GEMV at rows>1 is already occupancy-amortized: `q8_0_t16_dual_split` 141 µs
+at rows=1 → 220 µs at rows=4 = 1.56× for 4× rows = 2.5× cheaper per row). The residual
+MTP gap is therefore the **Vulkan-vs-HIP backend** (which hipEngine can't close without
+a Vulkan backend) plus llama's dp4a precision. No remaining correctness-preserving
+HIP-kernel lever for the AR/verify dense path.
 
 ### AR decode (within HIP): hipEngine beats llama HIP; gap to Vulkan is backend
 
