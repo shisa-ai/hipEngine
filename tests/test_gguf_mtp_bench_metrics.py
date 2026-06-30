@@ -19,6 +19,7 @@ from scripts.gguf_mtp_bench import (
     llama_cpp_mtp_catchup_rows,
     root_topk_acceptance_from_target_samples,
     select_topk_tokens,
+    should_use_fused_b1_block_probe,
     sibling_topk_acceptance_from_target_samples,
     target_block_direct_commit_is_exact,
     target_membership_in_draft_topk,
@@ -67,6 +68,39 @@ def test_b1_branch_safe_block_verify_flag_parses_with_target_block_verify() -> N
     )
     assert args.target_block_verify is True
     assert args.target_b1_branch_safe_block_verify is True
+
+
+def test_fused_b1_block_probe_flag_parses() -> None:
+    args = build_arg_parser().parse_args(["--fused-b1-block-probe"])
+
+    assert args.fused_b1_block_probe is True
+
+
+def test_fused_b1_block_probe_selector_is_only_for_adaptive_b1_probe() -> None:
+    kwargs = {
+        "fused_b1_block_probe": True,
+        "adaptive_block_after_full_accept": True,
+        "adaptive_block_verify_active": False,
+        "cycle_ar_fallback": False,
+        "cycle_draft_window": 1,
+        "adaptive_probe_draft_n_max": 1,
+        "cycle_root_topk_accept": 1,
+        "cycle_sibling_topk_accept": 1,
+        "topk_branch_redraft": False,
+    }
+
+    assert should_use_fused_b1_block_probe(**kwargs) is True
+    assert should_use_fused_b1_block_probe(**{**kwargs, "adaptive_block_verify_active": True}) is False
+    assert should_use_fused_b1_block_probe(**{**kwargs, "cycle_draft_window": 5}) is False
+    assert should_use_fused_b1_block_probe(**{**kwargs, "cycle_root_topk_accept": 40}) is False
+
+
+def test_fused_b1_block_probe_validation_rejects_inert_config(capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--fused-b1-block-probe"])
+
+    assert excinfo.value.code == 2
+    assert "--fused-b1-block-probe requires --target-block-verify" in capsys.readouterr().err
 
 
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
@@ -572,6 +606,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
             "4",
             "--adaptive-full-vocab-after-cap-miss",
             "--adaptive-block-after-full-accept",
+            "--fused-b1-block-probe",
             "--adaptive-probe-draft-n-max",
             "3",
             "--adaptive-strict-block-probe",
@@ -603,6 +638,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.adaptive_ar_fallback_cooldown == 0
     assert args.adaptive_full_vocab_after_cap_miss is False
     assert args.adaptive_block_after_full_accept is False
+    assert args.fused_b1_block_probe is False
     assert args.adaptive_probe_draft_n_max == 1
     assert args.adaptive_strict_block_probe is False
 

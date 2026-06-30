@@ -187,6 +187,10 @@ Artifacts:
   `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-top1-deep.json`
 - hipEngine llama-compat dp4a device-chain smoke:
   `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-devicechain-smoke.json`
+- hipEngine fused-B1 block probe B5:
+  `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
+  and non-stage check
+  `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full-nostage.json`
 - llama.cpp HIP B2 deep:
   `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`
   and `.jsonl`
@@ -287,16 +291,45 @@ speculative-policy/verifier economics, not an unattributed llama.cpp kernel buck
 
 | priority | fix | why this is next | success gate |
 | ---: | --- | --- | --- |
-| 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | Exact/full-suite route beats current exact B5 and dp4a B5 wall/tok/s; `target_serial_verify_step` is removed or reduced below **2 ms/output** without moving `target_block_verify_total` up by the same amount. |
-| 2 | Confidence-gated no-probe policy | Llama wins by avoiding B1 entirely, but our previous no-probe route collapsed acc/output to **0.324**. Only revisit after fused B1 establishes the reference and only with a full-suite confidence gate. | Full-suite acc/output stays near retained B5/llama-compat levels and total tok/s beats fused-B1 route, not just a single prompt. |
+| 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | **Implemented and rejected for promotion 2026-06-30.** It cuts B1 serial work but moves too much work into 2-row blocks; exact B5 is **60.40 tok/s**, below the retained exact **60.78** and dp4a **61.61** rows. |
+| 2 | Confidence-gated no-probe policy | Llama wins by avoiding B1 entirely, but our previous no-probe route collapsed acc/output to **0.324**. Fused-B1 proved that simply replacing the B1 serial probe with a two-row block is not enough. | Full-suite acc/output stays near retained B5/llama-compat levels and total tok/s beats the retained exact route, not just the fused-B1 diagnostic. |
 | 3 | Compat draft drain removal | Compat B2 spends **~4.04 ms/output** in draft, mostly per-depth drain/readback. Top-1 diagnostic width did not help; device-chain smoke exposed full-vocab table upload as the next blocker. | Persistent/prewarmed device-chain or fused resident draft cuts compat `draft_initial` toward **~2 ms/output** without lowering full-suite acceptance. |
 | 4 | Block verifier layer-time reduction | In retained B5, block verify is mostly GPU layer work: linear-attn **~5.05 ms/output**, full-attn **~1.82 ms/output**. This is secondary to B1 economics but still material after fused B1. | Reduce `target_block_layer_total` with exactness unchanged and no same-suite tok/s regression. |
 | 5 | Keep llama.cpp deep instrumentation aligned | The current split proved llama's verifier drain lives in `llama_process_build_draft_batch`, not raw `target_block_forward`. Keep this patch available for A/B after every major hipEngine verifier change. | Re-run llama deep trace when upstream or local diagnostic patch changes; do not compare raw async buckets. |
 
-**Next implementation unit:** build the fused B1/block verifier first. Treat it as a
-new opt-in diagnostic route until it passes exact row/state tests and the full
-`gguf_ar_mtp_suite.py --scope full` gate. If it introduces a temporary bench flag,
-record the cleanup trigger in `docs/REFACTOR.md` in the same commit.
+**Fused-B1 implementation result (2026-06-30):** added default-off
+`--fused-b1-block-probe` and suite route
+`resident-fused-b1-block-direct-cap32k-minrows2-pmin05`. The flag lets adaptive B1
+probe cycles use one strict two-row block over `[prev, draft0]` instead of entering
+the serial verifier loop. Row-state commit uses the existing exact direct-commit
+block path.
+
+| route / artifact | MTP tok/s | vs AR | acc / output | passes / output | rows / output | `target_serial_verify_step` | `target_block_verify_total` | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| retained exact B5, non-stage rowtile confirm | **60.78** | **1.113×** | 0.535 | n/a | n/a | n/a | n/a | current exact default |
+| fused-B1 B5, non-stage | **60.40** | **1.107×** | 0.535 | n/a | n/a | n/a | n/a | **do not promote** |
+| retained exact B5, stage-timed | 59.61 | 1.093× | 0.535 | 0.567 | 1.163 | **6.682 ms/out** | **8.157 ms/out** | baseline attribution |
+| fused-B1 B5, stage-timed | 60.40 | 1.107× | 0.535 | 0.465 | 1.205 | **2.095 ms/out** | **12.447 ms/out** | serial mostly removed, block cost rises |
+| retained dp4a B5, non-stage | **61.61** | **1.132×** | 0.533 | n/a | n/a | n/a | n/a | accuracy-traded ceiling still higher |
+
+Why it fails the promotion gate:
+
+- It does what it says mechanically: stage-timed serial rows fall from **78** to
+  **25** on B5, and those remaining serial rows are p_min zero-draft AR cycles
+  (`linear_draft_tokens=0`), not missed fused B1 probes.
+- But it turns many B1 probes into two-row target blocks: block passes rise from
+  **44** to **75**, block rows from **172** to **234**, and
+  `target_block_verify_total` rises by **+4.29 ms/output**. The serial bucket falls
+  by **-4.59 ms/output**, so the verifier bucket only improves by about
+  **0.30 ms/output** in the instrumented run.
+- The non-stage full-suite row is **60.40 tok/s**, below the retained exact
+  **60.78 tok/s** and far below the accuracy-traded dp4a **61.61 tok/s**; it is not
+  a retained speed win.
+
+**Next implementation unit:** confidence-gated no-probe / direct block policy. The
+new lesson is that preserving B1 economy while changing the probe verifier is too
+small; the route must skip B1 on cycles where confidence predicts that a full block
+will pay, without collapsing acc/output like the old no-probe run.
 
 #### Can we adopt a true llama.cpp mode?
 

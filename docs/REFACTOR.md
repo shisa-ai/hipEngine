@@ -136,3 +136,17 @@ should be boring.
   question. Current evidence says "do not promote"; keep only the smallest
   diagnostic needed for future parity audits, or delete the routes during the next
   MTP flag cleanup unless another llama.cpp semantic delta is identified.
+
+## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
+- Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
+  adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with
+  one strict two-row target block instead of the serial target step loop. The suite
+  route mirrors `resident-b1-probe-block-direct-cap32k-minrows2-pmin05` plus this
+  flag. **Default off** until a full-suite row proves it improves wall time.
+- Purpose: test the first queued llama.cpp-parity fix from
+  `docs/MTP-LLAMACPP-PARITY.md`: remove or shrink `target_serial_verify_step`
+  without merely shifting the same cost into `target_block_verify_total`.
+- Remove / promote when: promote into the retained route only if exact full-suite
+  B5 beats the current default and stage buckets show serial verifier cost falls
+  below ~2 ms/output with no acceptance regression. Otherwise delete the flag/route
+  after the parity A/B is recorded.

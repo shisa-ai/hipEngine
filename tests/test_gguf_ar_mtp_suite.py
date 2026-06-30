@@ -175,6 +175,28 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-dp4a"] == [2]
 
 
+def test_suite_exposes_fused_b1_block_probe_route() -> None:
+    assert suite.MTP_ROUTES["resident-fused-b1-block-direct-cap32k-minrows2-pmin05"] == [
+        "--resident-mtp-draft",
+        "--root-topk-accept",
+        "1",
+        "--sibling-topk-accept",
+        "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows",
+        "2",
+        "--adaptive-block-after-full-accept",
+        "--fused-b1-block-probe",
+        "--adaptive-probe-draft-n-max",
+        "1",
+        "--draft-p-min",
+        "0.5",
+        "--mtp-draft-vocab-cap",
+        "32768",
+    ]
+
+
 def test_suite_llama_compat_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.setattr(
         sys,

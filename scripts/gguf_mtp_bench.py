@@ -720,6 +720,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--fused-b1-block-probe",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic: when --adaptive-block-after-full-accept is probing with B1, verify "
+            "[prev, draft0] with one strict target block instead of falling back to the "
+            "serial target step loop. Requires strict top-1, --target-block-min-rows 2, "
+            "and direct/replay correctness from --target-block-verify."
+        ),
+    )
+    parser.add_argument(
         "--adaptive-probe-draft-n-max",
         type=int,
         default=3,
@@ -982,6 +993,7 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.adaptive_ar_fallback_cooldown = 0
     args.adaptive_full_vocab_after_cap_miss = False
     args.adaptive_block_after_full_accept = False
+    args.fused_b1_block_probe = False
     args.adaptive_probe_draft_n_max = 1
     args.adaptive_strict_block_probe = False
     args.adaptive_strict_fallback_draft_n_max = 1
@@ -1000,6 +1012,33 @@ def _diagnostic_topk_candidate_count(args: argparse.Namespace, proposal_count: i
     if bool(getattr(args, "llama_compat", False)):
         return proposal
     return max(10, proposal)
+
+
+def should_use_fused_b1_block_probe(
+    *,
+    fused_b1_block_probe: bool,
+    adaptive_block_after_full_accept: bool,
+    adaptive_block_verify_active: bool,
+    cycle_ar_fallback: bool,
+    cycle_draft_window: int,
+    adaptive_probe_draft_n_max: int,
+    cycle_root_topk_accept: int,
+    cycle_sibling_topk_accept: int,
+    topk_branch_redraft: bool,
+) -> bool:
+    """Return true when the adaptive B1 probe should use the block verifier."""
+
+    return (
+        bool(fused_b1_block_probe)
+        and bool(adaptive_block_after_full_accept)
+        and not bool(adaptive_block_verify_active)
+        and not bool(cycle_ar_fallback)
+        and int(cycle_draft_window) == 1
+        and int(adaptive_probe_draft_n_max) == 1
+        and int(cycle_root_topk_accept) == 1
+        and int(cycle_sibling_topk_accept) == 1
+        and not bool(topk_branch_redraft)
+    )
 
 
 def main(argv: list[str] | None = None):
@@ -1073,6 +1112,17 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-seed requires --draft-p-min 0")
     if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
         parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
+    if args.fused_b1_block_probe:
+        if not args.target_block_verify:
+            parser.error("--fused-b1-block-probe requires --target-block-verify")
+        if not args.adaptive_block_after_full_accept:
+            parser.error("--fused-b1-block-probe requires --adaptive-block-after-full-accept")
+        if args.adaptive_probe_draft_n_max != 1:
+            parser.error("--fused-b1-block-probe requires --adaptive-probe-draft-n-max 1")
+        if int(args.target_block_min_rows) != 2:
+            parser.error("--fused-b1-block-probe requires --target-block-min-rows 2")
+        if args.root_topk_accept != 1 or args.sibling_topk_accept != 1 or args.topk_branch_redraft:
+            parser.error("--fused-b1-block-probe requires strict top-1 linear drafting")
     diagnostic_topk_candidate_count = _diagnostic_topk_candidate_count(args, proposal_topk_candidate_count)
     topk_candidate_count = proposal_topk_candidate_count
     if args.decode_repack:
@@ -1473,6 +1523,21 @@ def main(argv: list[str] | None = None):
                 cycle_sibling_topk_accept = int(args.sibling_topk_accept)
                 cycle_draft_window = int(adaptive_draft_n_max)
                 cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
+            cycle_fused_b1_block_probe = should_use_fused_b1_block_probe(
+                fused_b1_block_probe=bool(args.fused_b1_block_probe),
+                adaptive_block_after_full_accept=bool(args.adaptive_block_after_full_accept),
+                adaptive_block_verify_active=bool(adaptive_block_verify_active),
+                cycle_ar_fallback=bool(cycle_ar_fallback),
+                cycle_draft_window=int(cycle_draft_window),
+                adaptive_probe_draft_n_max=int(args.adaptive_probe_draft_n_max),
+                cycle_root_topk_accept=int(cycle_root_topk_accept),
+                cycle_sibling_topk_accept=int(cycle_sibling_topk_accept),
+                topk_branch_redraft=bool(args.topk_branch_redraft),
+            )
+            if cycle_fused_b1_block_probe:
+                cycle_block_verify_allowed = True
+                if cycle_policy == "default":
+                    cycle_policy = "fused_b1_block_probe"
             cycle_draft_n_max = 0 if cycle_ar_fallback else int(cycle_draft_window)
             cycle_topk_candidate_count = max(1, cycle_root_topk_accept, cycle_sibling_topk_accept)
             cycle_diagnostic_topk_candidate_count = _diagnostic_topk_candidate_count(
@@ -2515,6 +2580,8 @@ def main(argv: list[str] | None = None):
                 "cycle_draft_vocab_cap": int(cycle_draft_vocab_cap),
                 "next_cycle_full_vocab_recovery": bool(adaptive_full_vocab_recovery_active),
                 "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
+                "fused_b1_block_probe": bool(args.fused_b1_block_probe),
+                "cycle_fused_b1_block_probe": bool(cycle_fused_b1_block_probe),
                 "cycle_block_verify_allowed": bool(cycle_block_verify_allowed),
                 "next_adaptive_block_verify_active": bool(adaptive_block_verify_active),
                 "next_cycle_ar_fallback": bool(adaptive_ar_fallback_active),
@@ -2629,7 +2696,8 @@ def main(argv: list[str] | None = None):
     print(
         "Adaptive block after full accept: "
         f"{args.adaptive_block_after_full_accept} "
-        f"probe_n_max={args.adaptive_probe_draft_n_max}"
+        f"probe_n_max={args.adaptive_probe_draft_n_max} "
+        f"fused_b1_probe={args.fused_b1_block_probe}"
     )
     print(
         "Adaptive strict block probe: "
@@ -2710,6 +2778,7 @@ def main(argv: list[str] | None = None):
             "adaptive_ar_fallback_max_accepted": int(args.adaptive_ar_fallback_max_accepted),
             "adaptive_full_vocab_after_cap_miss": bool(args.adaptive_full_vocab_after_cap_miss),
             "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
+            "fused_b1_block_probe": bool(args.fused_b1_block_probe),
             "adaptive_probe_draft_n_max": int(args.adaptive_probe_draft_n_max),
             "adaptive_strict_block_probe": bool(args.adaptive_strict_block_probe),
             "adaptive_strict_probe_cycles": int(args.adaptive_strict_probe_cycles),

@@ -129758,3 +129758,54 @@ Updated `docs/MTP-LLAMACPP-PARITY.md` with the ordered fix queue:
 
 Next implementation unit is explicitly fused B1/block verifier. If it adds a
 temporary bench flag, add the cleanup trigger to `docs/REFACTOR.md` with that change.
+
+## 2026-06-30 — Fused B1/block probe implemented and rejected for promotion
+
+Implemented the first queued MTP parity fix as an opt-in diagnostic:
+- `scripts/gguf_mtp_bench.py --fused-b1-block-probe`
+- suite route `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
+
+Mechanics:
+- Only active with strict top-1, `--adaptive-block-after-full-accept`,
+  `--adaptive-probe-draft-n-max 1`, `--target-block-verify`, and
+  `--target-block-min-rows 2`.
+- Adaptive B1 probe cycles now verify `[prev, draft0]` with the existing exact
+  strict block verifier/direct row-state commit instead of the serial verifier loop.
+- `--llama-compat` clears the flag because that route has no B1 probe.
+
+Validation:
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py`
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo | grep -E 'Name:|gfx' | head -40` on gfx1151/Radeon 8060S.
+
+Benchmarks, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+- Smoke fused B5:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-fused-b1-block-direct-cap32k-minrows2-pmin05 --budgets 5 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-smoke.json`
+  -> AR 54.89 tok/s, B5 40.62 tok/s = 0.740x AR, acc/output 0.571.
+- Smoke control default B5:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --budgets 5 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-b1-probe-block-direct-cap32k-minrows2-pmin05-b5-smoke-control.json`
+  -> AR 54.90 tok/s, B5 42.58 tok/s = 0.776x AR, acc/output 0.571.
+- Full fused B5 with stage timings:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-fused-b1-block-direct-cap32k-minrows2-pmin05 --budgets 5 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
+  -> AR 54.55 tok/s, B5 60.40 tok/s = 1.1073x AR, acc/output 0.535,
+  draft acceptance 0.723. Stage ms/output: serial 2.095, block verify 12.447,
+  block layer total 10.768, draft 2.013. Serial rows 78->25 vs exact deep, but
+  block passes 44->75 and block rows 172->234.
+- Full fused B5 without stage timings:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-fused-b1-block-direct-cap32k-minrows2-pmin05 --budgets 5 --require-cached-build --output benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full-nostage.json`
+  -> AR 54.57 tok/s, B5 60.40 tok/s = 1.1070x AR, acc/output 0.535,
+  draft acceptance 0.723.
+
+Conclusion:
+- The flag works mechanically and cuts B1 serial work, but it moves nearly the same
+  cost into 2-row block verifier work. Non-stage B5 60.40 is below the retained
+  exact row 60.78 and below the accuracy-traded dp4a row 61.61, so it is not
+  promoted.
+- The remaining serial bucket in fused B5 is p_min zero-draft AR cycles
+  (`linear_draft_tokens=0`), not missed fused probes.
+- Next queued fix is confidence-gated no-probe/direct block: skip B1 only when
+  confidence predicts the full block will pay, without reproducing the old no-probe
+  acc/output collapse.

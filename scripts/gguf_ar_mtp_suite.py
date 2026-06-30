@@ -259,6 +259,23 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--draft-p-min", "0.5",
         "--mtp-draft-vocab-cap", "32768",
     ],
+    # Fused-B1 experiment: keep the retained B1-probe acceptance economy, but use
+    # one strict 2-row target block for the probe cycle instead of the serial target
+    # step loop. Promote only if the full-suite stage buckets show the serial verifier
+    # cost disappears without reappearing as block-verify over-read.
+    "resident-fused-b1-block-direct-cap32k-minrows2-pmin05": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--fused-b1-block-probe",
+        "--adaptive-probe-draft-n-max", "1",
+        "--draft-p-min", "0.5",
+        "--mtp-draft-vocab-cap", "32768",
+    ],
     # Default + llama.cpp-style dp4a verify (OPT-IN, DEFAULT OFF, ACCURACY-DEGRADING).
     # Max accuracy-traded MTP perf for users who accept llama's precision loss. FAILS the
     # ja correctness gate (greedy top-1 0.700 < 0.90). Best ~61.6 tok/s / 1.132x AR (B5) -
