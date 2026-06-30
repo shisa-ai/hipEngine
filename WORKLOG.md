@@ -129465,3 +129465,36 @@ GEMV is already occupancy-amortized at rows>1 (q8_0_t16_dual_split 141us->220us 
 for the AR/verify dense path. Residual MTP gap = Vulkan-vs-HIP backend (needs a Vulkan
 backend to close) + llama dp4a precision. Artifact:
 results/2026-06-30-fusion-and-verify-amortization-tested.json.
+
+## 2026-06-30 — MTP gap vs llama HIP localized: passes-per-output (dp4a verify cascade)
+
+User question: our AR is faster, so where exactly is MTP behind llama HIP? Confirmed
+the 67.3 baseline is the HIP server build (llama.cpp-hip/build/bin/llama-server). So
+this is HIP-vs-HIP; the deficit is entirely the MTP verify loop.
+
+  metric           hipEngine   llama HIP
+  AR               54.95       51.38
+  MTP              60.8        67.3
+  ms/output        16.4        14.9
+  uplift           1.11x       1.31x
+  acc/output       0.535       0.598
+  verify passes/out 0.567      0.402
+
+Decomposition: llama does 1 verify pass/cycle -> passes/out = 1 - acc/out = 0.402.
+hipEngine does ~1.22 passes/cycle -> 0.567 (41% MORE target-verify work per output).
+Two causes, both rooted in dp4a-vs-exact verify:
+1. Each pass costs more for us (exact vs llama dp4a; dp4a verify ~1.13x cheaper).
+2. We need the B1-probe pass; llama doesn't. Our exact verify makes a WASTED block-row
+   costly -> the b1-probe avoids committing full blocks to bad drafts (=1.22 passes/cycle).
+   Removing the probe regressed to 1.069x (acc/out collapsed 0.535->0.379). llama skips
+   the probe and speculates full blocks because its dp4a verify makes wasted rows cheap.
+
+Causal chain: llama dp4a verify cheaper/row -> can verify full blocks no-probe (1
+pass/cycle) -> fewer passes/output -> higher uplift. Our exact verify pricier ->
+forces probe + costs more/pass -> 0.567 passes/out.
+
+So the MTP gap vs llama HIP is NOT a kernel/fusion gap (those are already captured;
+our HIP kernels beat llama HIP, hence our faster AR). It is the dp4a-vs-exact VERIFY
+precision difference cascading into passes/output. Can't take it without failing the
+ja gate. Within exact precision the b1-probe route is already the optimum (every
+cheaper-verify/no-probe variant regressed). 1.11x is the exact-precision MTP optimum.
