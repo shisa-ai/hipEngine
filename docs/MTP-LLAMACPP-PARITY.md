@@ -239,23 +239,32 @@ llama-style no-probe route on hipEngine does collapse (`56.42 tok/s`, acc/output
 `0.324`), so the current blocker is speculative-policy/acceptance economics, not an
 unattributed llama.cpp kernel bucket.
 
-#### Can we adopt llama.cpp's non-serial verifier?
+#### Can we adopt a true llama.cpp mode?
 
-Not as a direct policy transplant. "llama non-serial verifier" has two separable
-meanings:
+Yes, as an explicit opt-in **llama-compat / accuracy-traded mode**. No, not as the
+shipped exact default. The current "no-probe" hipEngine experiments should not be
+over-read as a full llama.cpp clone: they tested the high-level idea (one block pass,
+no B1 probe) inside hipEngine's existing policy stack, not every llama.cpp semantic.
 
-| option | status | evidence / implication |
+What a true llama mode needs to replicate:
+
+| llama.cpp piece | why it matters | current hipEngine status |
 | --- | --- | --- |
-| Copy llama's **one full-block pass per cycle, no B1 probe** policy | **Rejected for hipEngine** | Full-suite no-probe route regressed to **56.42 tok/s** with acc/output **0.324**. The missing B1 probe wastes full-block rows on rejected drafts, so the lower pass count does not survive. |
-| Force the existing hipEngine block verifier to cover B1 probes | **Already explored; not a drop-in win** | Low-row block verify is exact, but B1 is branch-sensitive. Prior B1 block probes were either invalid for root-topK branch accepts or much slower under strict root-K1 because miss cycles pay a two-row block plus rollback/replay. |
-| Build a new hipEngine-specific **cheap B1 verifier** | **Viable next lever** | This would not be "copy llama.cpp"; it would fuse/shorten the B1 probe while preserving the acceptance guard that keeps acc/output near **0.53**. It must beat the current **6.66 ms/output** `target_serial_verify_step` without collapsing acceptance. |
+| `--spec-draft-n-max 2`, `--spec-draft-p-min 0.0` lifecycle | llama drafts every cycle up to B2 unless the MTP sampler itself stops; no hipEngine p_min gate. | Our fastest route uses B5 + `--draft-p-min 0.5`; no-probe tests kept hipEngine policy knobs. |
+| No B1 probe / one target block verify per cycle | This removes the `target_serial_verify_step` bucket entirely. | Existing no-probe route did this structurally, but with hipEngine draft/fallback policy and worse acceptance. |
+| llama MTP context handoff (`common_speculative_process` / `pending_h` / `verify_h`) | Draft quality depends on how target verify hidden rows seed the next MTP draft. | hipEngine has resident/context variants, but not a pinned "match llama semantics exactly" mode. |
+| llama accept/checkpoint semantics | Partial accepts restore/commit through llama's checkpoint and `common_speculative_accept` path. | hipEngine has rollback/direct-commit paths, but they are not mechanically identical. |
+| q8_1 / dp4a verify economy | This is part of llama's speed/acceptance economics, and it fails hipEngine's ja gate. | Available only as default-off `--verify-dp4a`; exact default must not use it. |
 
-So the answer is: we can adopt the **goal** of no serial probe overhead, but not
-llama.cpp's exact mechanism. llama gets away with no-probe because its dp4a/q8_1
-verify economy and draft behavior make wasted rows cheap enough. hipEngine's tested
-no-probe route collapses acceptance, so the correct next implementation target is a
-dedicated cheap/fused B1 probe or a new no-probe policy that first proves acc/output
-does not collapse on the full prompt suite.
+So the real answer is: there is no architectural reason we cannot add a true
+`llama-compat` mode while keeping exact mode as default. The reasons not to promote
+it by default are the known correctness tradeoff (dp4a ja top-1 **0.700 < 0.90**) and
+the fact that the current approximate no-probe routes did not reproduce llama's
+economics. The next clean experiment is to build a mode that intentionally matches
+llama's MTP semantics as closely as hipEngine permits, label it accuracy-traded, and
+run the same full suite + stage buckets. If that mode still lands near **56-62 tok/s**,
+the gap is implementation/backend. If it jumps toward **67+ tok/s**, the missing
+piece was indeed semantic parity rather than the B1 probe design itself.
 
 Commands used:
 

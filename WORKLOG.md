@@ -129624,3 +129624,16 @@ branch behavior makes the naive block shortcut invalid, and strict B1 block miss
 cycles were slower. The viable lever is not a direct llama copy; it is a new
 hipEngine-specific cheap/fused B1 probe or a new no-probe policy that proves
 acc/output does not collapse on the full prompt suite.
+
+## 2026-06-30 — Corrected llama-mode conclusion: true compat mode is still viable
+
+User correctly challenged the overly broad "cannot adopt exact mechanism" framing.
+Updated `docs/MTP-LLAMACPP-PARITY.md`: there is no architectural reason we cannot
+keep exact mode as default and add a separate opt-in llama-compat/accuracy-traded
+mode. The existing no-probe experiments were not a full semantic clone of llama.cpp;
+they tested one-block/no-B1 inside hipEngine's route stack (B5, p_min/cap/fallback
+variants), not the full llama lifecycle (`spec-draft-n-max 2`, `spec-draft-p-min
+0.0`, MTP context handoff via `common_speculative_process`, checkpoint/accept
+semantics, q8_1/dp4a). The right next experiment is a pinned llama-compat route with
+full-suite + stage-bucket evidence. Exact default remains unchanged because dp4a
+fails the ja gate.
