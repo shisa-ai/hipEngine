@@ -129411,3 +129411,35 @@ Q6_K T16 rowtile lm-head kernel (1.0534x->1.1134x, default), new mtp_dense_attn_
 correctness gate, audited llama baseline, and a complete evidence-backed lever map
 (every uplift lever + AR multiplier + verify amortization, all measured). docs/
 MTP-LLAMACPP-PARITY.md Goal-Part-1 marked CLOSED. No further perf work on this target.
+
+## 2026-06-30 — Dual-engine attribution (new goal): harness up, gap decomposed
+
+Stood up clean per-stage profiling for BOTH engines on the same model (gfx1151) and
+attributed the MTP gap. Harness: llama HIP via rocprofv3 --kernel-trace on
+llama-bench/llama-cli (MTP path deadlocks rocprof at finalize -> batched-forward proxy
+llama-bench -p 4 -b 4); llama Vulkan via GGML_VK_PERF_LOGGER=1 (per-op GFLOPS);
+hipEngine via the AR/MTP suite + rocprof. Full write access to ~/llama.cpp used
+read-only so far (no source edits needed yet).
+
+tok/s ladder (same model): hipEngine HIP AR 54.95 / MTP 60.8 (1.114x); llama HIP AR
+51.38 / MTP 67.3 suite, 75.4 cli; llama VULKAN AR 62.65 / MTP 84.6 cli.
+
+GAP = two independent factors, neither is hipEngine's base decode:
+1. BACKEND (largest): Vulkan >> HIP on Strix Halo. hipEngine HIP kernels BEAT llama
+   HIP (AR 54.95 > 51.38). llama wins via VULKAN: same-size lm-head GEMV is equally
+   BW-efficient (Vulkan 566 vs hipEngine 550 GFLOPS) but Vulkan FUSES the smaller ops
+   (qkv -> one m=8192 GEMV; 8 experts -> one MUL_MAT_ID @674 GFLOPS) for better BW
+   saturation + fewer launches. hipEngine is HIP-only.
+2. MTP UPLIFT: llama verify amortizes the weight read across the B+1 batch inside
+   mul_mat_vec_q (+ dp4a); draft can share the target KV (is_mem_shared). hipEngine
+   verify re-reads weights per row, exact.
+
+Correctness-preserving levers (for later optimization phases): (a) fuse qkv +
+consolidate selected-expert MoE into one MUL_MAT_ID-style call (backend gap); (b)
+verify vec-rowtile read-once/accumulate-B+1-rows (uplift gap, same pattern as the
+lm-head rowtile win); (c) a hipEngine Vulkan backend (large, captures factor 1).
+
+Artifacts: results/2026-06-30-dual-engine-ar-decode-attribution.json,
+-verify-mechanism.json, -backend-hip-vs-vulkan-strix-halo.json, -vulkan-perop-gflops.json.
+Full attribution tables in docs/MTP-LLAMACPP-PARITY.md (top section). Remaining detail:
+per-op GFLOPS for hipEngine attention/MoE; same-prompt apples MTP; RGP Vulkan if needed.

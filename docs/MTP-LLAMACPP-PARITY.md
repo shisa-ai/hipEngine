@@ -7,7 +7,39 @@ New goal: stand up clean per-stage profiling for BOTH engines on the same model
 stages/kernels. Full write access to `~/llama.cpp` granted; HIP and Vulkan both in
 scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 GiB.
 
-### BACKEND is the biggest single factor: Vulkan >> HIP on Strix Halo (8060S)
+### SUMMARY — full tok/s ladder + gap decomposition (read this first)
+
+| config (same model, gfx1151) | AR tok/s | MTP tok/s | uplift |
+| --- | --- | --- | --- |
+| hipEngine (HIP/ROCm, exact) | 54.95 | 60.8 (suite) | 1.114× |
+| llama.cpp HIP/ROCm (dp4a) | 51.38 | 67.3 (suite) / 75.4 (cli prompt) | ~1.31–1.47× |
+| llama.cpp **Vulkan** (dp4a) | **62.65** | **84.6 (cli prompt)** | ~1.35× |
+
+**The gap is two independent factors, neither of which is hipEngine's base decode:**
+1. **Backend (largest):** Vulkan ≫ HIP/ROCm on this Strix-Halo iGPU. hipEngine's own
+   HIP kernels actually **beat llama's HIP** (AR 54.95 > 51.38); llama only pulls
+   ahead by using **Vulkan**, where the *same-size* lm-head GEMV is equally
+   BW-efficient (566 vs 550 GFLOPS) but Vulkan **fuses** the smaller ops (qkv into one
+   `m=8192` GEMV; 8 experts into one `MUL_MAT_ID`) → better BW saturation + fewer
+   launches. hipEngine is HIP-only → on the disadvantaged backend.
+2. **MTP uplift:** llama's verify **amortizes the weight read across the B+1 batch**
+   inside `mul_mat_vec_q` (+ dp4a) and its draft can **share the target's KV context**
+   (`is_mem_shared`); hipEngine's verify re-reads weights per row and runs exact.
+
+**Correctness-preserving levers (exact precision, for later optimization phases):**
+- **Fusion** (closes part of the backend gap): fuse qkv projection; consolidate
+  selected-expert MoE into one `MUL_MAT_ID`-style batched call.
+- **Verify vec-rowtile** (closes part of the uplift gap): read each weight tile once,
+  accumulate B+1 verify rows in registers — the pattern that already won for the
+  Q6_K lm-head rowtile (1.0534×→1.1134×).
+- A **Vulkan backend for hipEngine** would directly capture factor 1, but is a large
+  architectural undertaking.
+
+Profiling harness (both engines, reproducible): llama HIP via `rocprofv3
+--kernel-trace` on `llama-bench`/`llama-cli` (MTP path deadlocks rocprof at finalize
+→ use the batched-forward proxy `llama-bench -p 4 -b 4`); llama Vulkan via
+`GGML_VK_PERF_LOGGER=1` (per-op GFLOPS); hipEngine via the AR/MTP suite + rocprof.
+
 
 | same model, same prompt where noted | AR (tg128) | MTP B2 (llama-cli, explain_concept prompt) |
 | --- | --- | --- |
