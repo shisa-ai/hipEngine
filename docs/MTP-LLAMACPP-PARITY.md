@@ -101,6 +101,37 @@ honest paths to actually exceed llama remain: relax the ja accuracy gate for dp4
 (beats llama on both AR and MTP on this APU). The exact-precision HIP design point is
 documented as closed.
 
+### COFFIN NAIL — dp4a is NECESSARY but NOT SUFFICIENT to match llama HIP MTP
+
+A default-off opt-in **`--verify-dp4a`** mode (bench flag + suite route
+`resident-b1-probe-block-direct-cap32k-minrows2-pmin05-dp4a`) was added so anyone who
+accepts llama's precision loss can get the max accuracy-traded perf. Measured, full
+suite, gfx1151 (artifact `results/2026-06-30-ar-mtp-suite-full-dp4a-verify-diagnostic.json`):
+
+| config | B3 | B4 | **B5 (best)** | vs llama HIP 67.3 |
+| --- | --- | --- | --- | --- |
+| dp4a + b1-probe (`--verify-dp4a`, the mode) | 59.85 | 60.10 | **61.3–61.6** (1.13×) | **−8.5%** |
+| dp4a + no-probe (the "1 pass/cycle" recipe) | 55.71 | 56.34 | 56.42 (1.04×) | −16% |
+| exact default (shipped) | 58.83 | 59.53 | 60.76 (1.114×) | −9.7% |
+
+**Two findings nail the claim:**
+1. **The "dp4a + 1 verify pass/cycle" hypothesis is FALSE on hipEngine.** No-probe is
+   *worse* (56.4, acc/out collapses to 0.324) — our exact/dp4a draft + adaptive-AR-
+   fallback latches to AR on a rejected block; the b1-probe is essential. dp4a's
+   slightly-less-accurate drafts make no-probe slightly worse, not better.
+2. **dp4a + b1-probe (best dp4a) reaches only ~61.6 tok/s — still 8.5% short of llama
+   HIP 67.3.** So dp4a is *necessary but not sufficient*: llama's 1.31× uplift also
+   needs its **slower AR baseline** (51.38 — a fixed verify saving is a bigger *ratio*
+   over a slower AR) and its **no-probe acceptance economy** (which doesn't transfer
+   to our fast-AR setup). hipEngine's faster exact AR (54.95) structurally caps the
+   uplift ratio even with dp4a.
+
+**Accuracy cost of using the mode** (unchanged): ja greedy top-1 **0.700 < 0.90 gate
+FAIL** (first divergence token 20), code 1.000. So `--verify-dp4a` is correctly
+default-off and labelled accuracy-degrading; it buys ~+1.3% over the exact default at
+the cost of failing the ja gate, and does **not** reach llama HIP. The mode exists for
+users who explicitly accept that trade; the shipped default stays exact (1.114×).
+
 Profiling harness (both engines, reproducible): llama HIP via `rocprofv3
 --kernel-trace` on `llama-bench`/`llama-cli` (MTP path deadlocks rocprof at finalize
 → use the batched-forward proxy `llama-bench -p 4 -b 4`); llama Vulkan via

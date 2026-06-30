@@ -129513,3 +129513,30 @@ the EXACT perf and accuracy cost of llama's dp4a verify:
 Conclusion: within the gate, hipEngine MTP is at its exact-precision optimum and beats
 llama HIP on AR+accuracy. Matching llama HIP MTP needs dp4a (fails ja, insufficient
 alone) or a Vulkan backend. Artifact: results/2026-06-30-mtp-gap-vs-llama-hip-FINAL.json.
+
+## 2026-06-30 — Added default-off --verify-dp4a mode; COFFIN NAIL: dp4a necessary but NOT sufficient
+
+User asked: add a default-off dp4a/llama verify mode and test whether dp4a + 1
+verify-pass/cycle matches llama HIP MTP. Built + tested.
+
+Mode: bench flag --verify-dp4a (default off, sets HIPENGINE_GGUF_*_SELECTED_DP4A) +
+suite route resident-b1-probe-block-direct-cap32k-minrows2-pmin05-dp4a. Smoke-tested
+(flag plumbs). docs/REFACTOR.md entry added.
+
+Full-suite results (gfx1151) vs llama HIP 67.3:
+- dp4a + b1-probe (the mode): B3 59.85, B4 60.10, B5 61.3-61.6 (1.13x). B5 OPTIMAL
+  (not B3/B4). acc/out 0.533. Still -8.5% vs llama HIP.
+- dp4a + NO-probe (the user's "1 pass/cycle" hypothesis): B5 56.42 (1.038x), acc/out
+  COLLAPSES to 0.324 (adaptive-AR-fallback latches on rejected blocks). WORSE than
+  exact default. The 1-pass/cycle recipe does NOT transfer to hipEngine; the b1-probe
+  is essential.
+- exact default (shipped): B5 60.76 (1.114x).
+
+COFFIN NAIL: dp4a is NECESSARY but NOT SUFFICIENT to match llama HIP MTP. Best dp4a
+(61.6) is still 8.5% short of 67.3 because llama's 1.31x uplift also needs its SLOWER
+AR baseline (fixed verify saving = bigger ratio over slower AR) + no-probe acceptance
+economy (doesn't transfer to our fast AR). Accuracy cost unchanged: ja top-1 0.700 <
+0.90 FAIL. Mode is default-off, accuracy-degrading, buys ~+1.3% over exact default,
+does NOT reach llama HIP. Shipped default stays exact (1.114x). Artifacts:
+results/2026-06-30-ar-mtp-dp4a-mode-b3b4b5.json,
+results/2026-06-30-ar-mtp-suite-full-dp4a-verify-diagnostic.json.

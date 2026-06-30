@@ -584,6 +584,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "small blocks benchmark faster on the GEMV prefill fallback."
         ),
     )
+    parser.add_argument(
+        "--verify-dp4a",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "OPT-IN, DEFAULT OFF, ACCURACY-DEGRADING: enable llama.cpp-style dp4a (q8_1) "
+            "selected-expert verify GEMVs (sets the HIPENGINE_GGUF_*_SELECTED_DP4A flags). "
+            "Trades correctness for speed: FAILS the ja correctness gate (greedy top-1 0.700 "
+            "< 0.90 vs cpu_reference; code 1.000). For users who want max accuracy-traded MTP "
+            "perf. Best measured: ~61.6 tok/s / 1.132x AR (B5) - still below llama HIP 67.3."
+        ),
+    )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument(
@@ -852,6 +864,16 @@ subprocess path before trusting timing.
 def main(argv: list[str] | None = None):
     parser = build_arg_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "verify_dp4a", False):
+        # Opt-in llama-style dp4a verify: enable the selected-expert q8_1/dp4a GEMVs.
+        # Read live by the runner's _gguf_*_selected_dp4a_enabled() (os.environ).
+        # Default OFF; accuracy-degrading (fails the ja correctness gate).
+        for _flag in (
+            "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A",
+            "HIPENGINE_GGUF_T16_SELECTED_DP4A",
+            "HIPENGINE_GGUF_RAW_SELECTED_DP4A",
+        ):
+            os.environ[_flag] = "1"
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:

@@ -259,6 +259,23 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--draft-p-min", "0.5",
         "--mtp-draft-vocab-cap", "32768",
     ],
+    # Default + llama.cpp-style dp4a verify (OPT-IN, DEFAULT OFF, ACCURACY-DEGRADING).
+    # Max accuracy-traded MTP perf for users who accept llama's precision loss. FAILS the
+    # ja correctness gate (greedy top-1 0.700 < 0.90). Best ~61.6 tok/s / 1.132x AR (B5) -
+    # still below llama HIP 67.3 (dp4a alone does NOT close the gap; see FINAL RESULT doc).
+    "resident-b1-probe-block-direct-cap32k-minrows2-pmin05-dp4a": [
+        "--resident-mtp-draft",
+        "--root-topk-accept", "1",
+        "--sibling-topk-accept", "1",
+        "--target-block-verify",
+        "--target-block-direct-state-commit",
+        "--target-block-min-rows", "2",
+        "--adaptive-block-after-full-accept",
+        "--adaptive-probe-draft-n-max", "1",
+        "--draft-p-min", "0.5",
+        "--mtp-draft-vocab-cap", "32768",
+        "--verify-dp4a",
+    ],
     # Default + recover the full draft vocab after a cap miss. Hypothesis: the
     # 32K draft vocab cap starves acceptance on tokens whose ids exceed 32768
     # (suspected CJK/ja), permanently dragging ja acc/out. Recovering full vocab
