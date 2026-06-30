@@ -852,6 +852,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-sync-stage-timings",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic only: when cycle stage timings are enabled, insert synchronization points "
+            "inside the resident MTP draft runner to attribute the device-chain GPU drain by draft "
+            "section. This changes timing and is not a performance route."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -1130,6 +1140,10 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-chain requires --draft-p-min 0")
     if args.resident_mtp_device_chain and args.record_draft_confidence:
         parser.error("--resident-mtp-device-chain is not compatible with --record-draft-confidence")
+    if args.resident_mtp_draft_sync_stage_timings and not args.resident_mtp_draft:
+        parser.error("--resident-mtp-draft-sync-stage-timings requires --resident-mtp-draft")
+    if args.resident_mtp_draft_sync_stage_timings and not args.record_cycle_stage_timings:
+        parser.error("--resident-mtp-draft-sync-stage-timings requires --record-cycle-stage-timings")
     if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
         parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
     if args.fused_b1_block_probe:
@@ -1299,6 +1313,7 @@ def main(argv: list[str] | None = None):
                     vocab_cap=int(args.mtp_draft_vocab_cap or sh_raw.shape[0]),
                     device_chain_enabled=True if args.resident_mtp_device_chain else None,
                     prewarm_device_chain=bool(args.resident_mtp_device_chain),
+                    sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
                 )
                 resident_mtp_device_chain_effective = bool(resident_draft._device_chain_enabled)
                 if (
@@ -1313,6 +1328,7 @@ def main(argv: list[str] | None = None):
                         vocab_cap=int(sh_raw.shape[0]),
                         device_chain_enabled=True if args.resident_mtp_device_chain else None,
                         prewarm_device_chain=bool(args.resident_mtp_device_chain),
+                        sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
                     )
                     resident_mtp_draft_full_vocab_recovery_effective = True
                 resident_mtp_draft_effective = True
@@ -2643,6 +2659,7 @@ def main(argv: list[str] | None = None):
                 "mtp_device_kv_cache": bool(args.mtp_device_kv_cache),
                 "resident_mtp_device_chain": bool(args.resident_mtp_device_chain),
                 "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),
+                "resident_mtp_draft_sync_stage_timings": bool(args.resident_mtp_draft_sync_stage_timings),
                 "mtp_device_kv_rows_after": int(mtp_device_kv_len),
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
@@ -2828,6 +2845,7 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft": bool(args.resident_mtp_draft),
             "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
             "resident_mtp_device_chain": bool(args.resident_mtp_device_chain),
+            "resident_mtp_draft_sync_stage_timings": bool(args.resident_mtp_draft_sync_stage_timings),
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "llama_compat": bool(args.llama_compat),

@@ -180,6 +180,12 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--resident-mtp-device-chain",
         "--verify-dp4a",
     ]
+    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-draftsync"] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--resident-mtp-draft-sync-stage-timings",
+        "--verify-dp4a",
+    ]
     assert suite.MTP_ROUTES["llama-compat-device-seed-chain"] == [
         "--llama-compat",
         "--resident-mtp-device-seed",
@@ -195,6 +201,7 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-dp4a"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a"] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-draftsync"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain-dp4a"] == [2]
 
@@ -269,6 +276,36 @@ def test_suite_llama_compat_device_chain_dry_run_defaults_to_b2(monkeypatch, tmp
     assert "--budgets 2" in out
     assert "--extra-arg=--llama-compat" in out
     assert "--extra-arg=--resident-mtp-device-chain" in out
+    assert "--extra-arg=--verify-dp4a" in out
+    assert '"budgets": [\n    2\n  ]' in out
+    assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
+
+
+def test_suite_llama_compat_device_chain_draftsync_dry_run_defaults_to_b2(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "full",
+            "--mtp-route",
+            "llama-compat-device-chain-dp4a-draftsync",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--budgets 2" in out
+    assert "--extra-arg=--llama-compat" in out
+    assert "--extra-arg=--resident-mtp-device-chain" in out
+    assert "--extra-arg=--resident-mtp-draft-sync-stage-timings" in out
     assert "--extra-arg=--verify-dp4a" in out
     assert '"budgets": [\n    2\n  ]' in out
     assert '"mtp_route_default_budgets": [\n    2\n  ]' in out

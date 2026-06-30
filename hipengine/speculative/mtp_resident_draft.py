@@ -179,6 +179,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
     vocab_cap: int = 32768
     device_chain_enabled: bool | None = None
     prewarm_device_chain: bool = False
+    sync_stage_timings: bool = False
     num_heads: int = 16
     num_kv_heads: int = 2
     experts_used: int = 8
@@ -533,6 +534,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
+                stage_timings=stage_timings,
             )
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
@@ -652,6 +654,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
+                stage_timings=stage_timings,
             )
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
@@ -672,6 +675,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     library=self._gather_lib,
                     runtime=runtime,
                 )
+            if self.sync_stage_timings and stage_timings is not None:
+                runtime.device_synchronize()
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_device_topk_gather", (time.perf_counter() - t_topk0) * 1000)
             current_seed, next_seed = next_seed, current_seed
@@ -854,6 +859,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_key_cache: DeviceBuffer | None,
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
+        stage_timings: dict[str, float] | None = None,
     ) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size
@@ -862,9 +868,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
         d = self.qk_head_dim
         top_k = self.experts_used
         inter = self.inter_dim
+        sync_stages = bool(self.sync_stage_timings and stage_timings is not None)
+
+        def mark_stage(name: str, t0: float) -> float:
+            if sync_stages:
+                runtime.device_synchronize()
+                _stage_add(stage_timings, name, (time.perf_counter() - t0) * 1000)
+                return time.perf_counter()
+            return t0
+
+        t_stage = time.perf_counter() if sync_stages else 0.0
         runtime.memset(self.selected_out.ptr, 0, self.selected_out.nbytes)
 
         self._project_current_to_attn_normed(hidden_seed)
+        t_stage = mark_stage("draft_run_project", t_stage)
         gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wq.ptr, self.q_full.ptr, 1, h, heads * 2 * d, library=self._k_lib, runtime=runtime)
         mtp_split_q_gate_f32(self.q_full.ptr, self.query.ptr, self.gate.ptr, 1, heads, d, library=self._mtp_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.query.ptr, self.q_norm.ptr, self.query.ptr, heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
@@ -897,6 +914,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             key_ptr = self.key_cur.ptr
             value_ptr = self.value_cur.ptr
             cache_tokens = 1
+        t_stage = mark_stage("draft_run_qkv_kvwrite", t_stage)
         mtp_dense_attn_f32(
             self.query.ptr,
             key_ptr,
@@ -917,6 +935,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         mtp_sigmoid_gate_mul_f32(self.attn.ptr, self.gate.ptr, self.gated.ptr, heads, d, library=self._mtp_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.gated.ptr, self.wo.ptr, self.wo_out.ptr, 1, heads * d, h, library=self._k_lib, runtime=runtime)
         mtp_add_f32(self.projected.ptr, self.wo_out.ptr, self.attended.ptr, h, library=self._mtp_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_attention", t_stage)
 
         mtp_rmsnorm_f32(self.attended.ptr, self.post_norm_weight.ptr, self.post_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         mtp_linear_f32(self.post_norm.ptr, self.router_weight_f32.ptr, self.router_logits.ptr, 1, h, 256, library=self._mtp_lib, runtime=runtime)
@@ -953,6 +972,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, library=self._mtp_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
         mtp_linear_f32(self.post_norm.ptr, self.shared_gate_vec_f32.ptr, self.shared_gate_logit.ptr, 1, h, 1, library=self._mtp_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_ffn_up_shared", t_stage)
 
         if self._device_moe_enabled:
             # Device-resident selected-MoE down + combine: no host readback of
@@ -1041,6 +1061,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             mtp_add_f32(self.attended.ptr, self.selected_out.ptr, self.tmp.ptr, h, library=self._mtp_lib, runtime=runtime)
             mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, library=self._mtp_lib, runtime=runtime)
 
+        t_stage = mark_stage("draft_run_moe_down_combine", t_stage)
         mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         f32_to_bf16(next_seed.ptr, self.head_normed_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
         gguf_q6_k_pack8_gemv_decode_bf16_f32_out(
@@ -1053,6 +1074,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._q6_pack8_lib,
             runtime=runtime,
         )
+        mark_stage("draft_run_lm_head", t_stage)
 
     def _topk_indices_into(self, out_indices_ptr: int, top_k: int) -> None:
         """Write the top-``top_k`` logit indices to a device buffer (no sync)."""

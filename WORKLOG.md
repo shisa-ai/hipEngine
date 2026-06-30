@@ -129878,3 +129878,78 @@ Conclusion:
   with the rest in small lifecycle/accounting and weaker acceptance/pass economy.
   Next replication work should reduce resident draft GPU drain and B2 block verifier
   layer time directly.
+
+## 2026-07-01 — llama.cpp replication lane: sync-stage draft attribution
+
+Added a default-off attribution flag for the llama.cpp replication lane:
+
+- `scripts/gguf_mtp_bench.py --resident-mtp-draft-sync-stage-timings`
+  requires `--resident-mtp-draft --record-cycle-stage-timings` and inserts
+  `hipDeviceSynchronize()` boundaries inside the resident MTP draft `_run_one()`
+  sections.
+- Suite route `llama-compat-device-chain-dp4a-draftsync` is fixed to B2 and expands
+  to `--llama-compat --resident-mtp-device-chain
+  --resident-mtp-draft-sync-stage-timings --verify-dp4a`.
+- New buckets: `draft_run_project`, `draft_run_qkv_kvwrite`,
+  `draft_run_attention`, `draft_run_ffn_up_shared`,
+  `draft_run_moe_down_combine`, `draft_run_lm_head`, and
+  `draft_device_topk_gather`.
+
+Code-level llama.cpp audit:
+
+- `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`
+  `common_speculative_impl_draft_mtp::process()` builds a draft batch from target
+  `nextn` embeddings shifted right plus per-seq `pending_h`, decodes `ctx_dft`,
+  copies target verify rows into `verify_h`, and refreshes `pending_h`.
+- `draft()` starts from `pending_h`, samples `ctx_dft`, feeds
+  `llama_get_embeddings_nextn_ith(ctx_dft, i_batch)` into the next draft decode, and
+  stops at B2/p_min. `accept()` refreshes `pending_h` from `verify_h[n_accepted]`.
+- hipEngine `--llama-compat` now matches this observable lifecycle at the policy
+  level: B2, p_min 0, shifted context replay, device MTP KV, no B1 probe/fallback,
+  resident device-chain drafting, optional device seed, and optional dp4a verify.
+  It does not yet match llama.cpp's operation cost.
+
+Validation:
+
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py hipengine/speculative/mtp_resident_draft.py`
+- `PYTHONPATH=. pytest -q tests/test_mtp_resident_draft_device_commit.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py`
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo | grep -E 'Name:|gfx' | head -40` on gfx1151/Radeon 8060S.
+
+Benchmarks, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+
+- Smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-draftsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-draftsync-smoke.json`
+  -> AR 54.85 tok/s, B2 60.66 tok/s = 1.106x AR, acc/output 0.667.
+- Full:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-draftsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-draftsync-full.json`
+  -> AR 54.72 tok/s, B2 52.37 tok/s = 0.957x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 19.122 ms/output, passes/output 0.439,
+  rows/output 1.316.
+
+Full sync-stage attribution, ms/output:
+
+- Draft: `draft_initial` 4.084, `draft_mtp_layer_forward` 3.639,
+  `draft_run_lm_head` 1.882, `draft_run_attention` 0.718,
+  `draft_run_ffn_up_shared` 0.557, `draft_device_topk_gather` 0.357,
+  `draft_run_qkv_kvwrite` 0.211, `draft_run_moe_down_combine` 0.166,
+  `draft_run_project` 0.101, `draft_topk_readback` 0.007.
+- Verifier: `target_block_verify_total` 14.715, `target_block_layer_total` 12.827,
+  `target_block_linear_attn_layers` 9.451, `target_block_full_attn_layers` 3.375,
+  `target_block_lm_head_sample` 1.198, `mtp_device_kv_commit` 0.297.
+
+Conclusion:
+
+- Semantic llama.cpp compatibility is implemented closely enough for the next
+  question: if perf does not match, where is the operation-cost delta?
+- Measured answer: vs llama.cpp HIP B2 deep trace (cycle wall 14.231 ms/output,
+  `draft_initial` 2.140, `target_block_verify_total` 12.083), hipEngine compat
+  sync-stage is still about **+4.89 ms/output** slower. That decomposes into
+  **+1.94 ms/output draft** and **+2.63 ms/output verifier**, with the rest from
+  acceptance/pass economy and small lifecycle/accounting.
+- The draft gap is not `pending_h` or D2H. It is mostly the full-vocab draft
+  lm-head/top-k section, with secondary attention/FFN cost.
+- The verifier gap is target-layer work, especially B2 linear-attention layers,
+  not a missing high-level llama.cpp lifecycle switch.

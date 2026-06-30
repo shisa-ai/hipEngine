@@ -187,6 +187,10 @@ Artifacts:
   `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-top1-deep.json`
 - hipEngine llama-compat dp4a device-chain smoke:
   `benchmarks/results/2026-06-30-ar-mtp-llama-compat-dp4a-b2-devicechain-smoke.json`
+- hipEngine llama-compat dp4a prewarmed device-chain split:
+  `benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-full-split.json`
+- hipEngine llama-compat dp4a prewarmed device-chain sync-stage draft attribution:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-draftsync-full.json`
 - hipEngine fused-B1 block probe B5:
   `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
   and non-stage check
@@ -294,6 +298,89 @@ Persistent/prewarmed device-chain and resident `pending_h` semantics are now exp
 routes, but the remaining win requires reducing the actual device draft work/drain
 or fusing it differently; avoiding D2H alone cannot produce the missing tokens.
 
+#### Sync-stage draft attribution: where that GPU drain actually goes
+
+Follow-up diagnostic route:
+`llama-compat-device-chain-dp4a-draftsync` =
+`--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --verify-dp4a`.
+This route inserts `hipDeviceSynchronize()` boundaries inside each resident MTP draft
+layer section, so it changes timing and is **not** a retained performance route. Its
+only purpose is attribution of the previous `draft_device_chain_drain` bucket.
+
+Command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-draftsync \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-draftsync-full.json
+```
+
+Measured full-suite result, Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off, 10 prompts:
+
+| config | AR tok/s | MTP tok/s | vs AR | cycle wall / output | acc / output | draft acceptance | passes / output | rows / output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hipEngine compat device-chain dp4a B2, sync-stage | 54.72 | **52.37** | 0.957x | 19.122 ms | 0.561 | 0.640 | 0.439 | 1.316 |
+| llama.cpp HIP B2 deep trace | 52.13 | **72.12** | 1.383x | 14.231 ms | 0.610 traced | 0.805 | 0.390 | 1.148 |
+
+Draft-side split, ms/output:
+
+| bucket | hipEngine compat device-chain dp4a B2 sync-stage | llama.cpp HIP B2 deep | delta / meaning |
+| --- | ---: | ---: | --- |
+| `draft_initial` | **4.084** | **2.140** | hipEngine draft costs **+1.944 ms/output**. |
+| `draft_mtp_layer_forward` | 3.639 | n/a | Sum of the synchronized hipEngine draft layer sections. |
+| `draft_run_project` | 0.101 | n/a | Not the gap. |
+| `draft_run_qkv_kvwrite` | 0.211 | n/a | Not the gap. |
+| `draft_run_attention` | 0.718 | n/a | Material, but smaller than lm-head. |
+| `draft_run_ffn_up_shared` | 0.557 | n/a | Material, secondary. |
+| `draft_run_moe_down_combine` | 0.166 | n/a | Not the gap. |
+| `draft_run_lm_head` | **1.882** | n/a | Biggest hipEngine draft section; roughly equals llama's whole `llama_draft_sample_topk` bucket. |
+| `draft_device_topk_gather` | 0.357 | n/a | Device top-k + embedding gather for the next draft depth. |
+| `draft_topk_readback` | 0.007 | n/a | D2H remains tiny after sync splitting. |
+| `llama_draft_decode_initial` | n/a | 0.118 | llama MTP decode itself is small. |
+| `llama_draft_decode_next` | n/a | 0.134 | llama MTP decode itself is small. |
+| `llama_draft_sample_topk` | n/a | **1.886** | llama draft is sampler/top-k dominated. |
+
+Verifier-side split, ms/output:
+
+| bucket | hipEngine compat device-chain dp4a B2 sync-stage | llama.cpp HIP B2 deep | delta / meaning |
+| --- | ---: | ---: | --- |
+| `target_block_verify_total` | **14.715** | **12.083** | hipEngine verifier costs **+2.632 ms/output**. |
+| `target_block_layer_total` | 12.827 | n/a | hipEngine's block verifier is still real target-layer work. |
+| `target_block_linear_attn_layers` | **9.451** | n/a | Biggest hipEngine verifier sub-bucket. |
+| `target_block_full_attn_layers` | 3.375 | n/a | Secondary hipEngine verifier sub-bucket. |
+| `target_block_lm_head_sample` | 1.198 | n/a | Material, but not the biggest verifier delta. |
+| `mtp_device_kv_commit` | 0.297 | n/a | Small compat lifecycle overhead. |
+| `target_block_forward` | 14.573 | 0.549 | Raw bucket is async-misaligned across engines. |
+| `mtp_context_replay_append` | 0.009 | 11.348 | llama's target decode drain and nextn embedding handoff live here. |
+| `llama_process_build_draft_batch` | n/a | 11.235 | Main llama verifier drain is in process/build, not draft decode. |
+| `llama_process_decode_ctx_dft` | n/a | 0.112 | Draft-context catch-up is not the big llama cost. |
+
+This answers the current parity question precisely:
+
+- hipEngine now matches the **observable llama.cpp MTP semantics** in the compat lane:
+  B2, no B1 probe, p_min 0, shifted MTP context replay, device MTP KV, resident
+  device-chain drafting, and optional dp4a verify.
+- hipEngine does **not** yet match llama.cpp's **operation cost**. The measured gap is
+  still about **4.89 ms/output** in the diagnostic trace (`19.122 - 14.231`):
+  **+1.94 ms/output draft** and **+2.63 ms/output verifier**, with the rest from
+  acceptance/pass economy and small lifecycle/accounting differences.
+- The draft gap is no longer a black box. Inside the prior GPU drain, the largest
+  section is the full-vocab draft LM head (**1.882 ms/output**), followed by draft
+  attention (**0.718**), FFN/up/shared (**0.557**), and device top-k/gather
+  (**0.357**). D2H is still negligible.
+- The verifier gap is target-layer work, especially hipEngine's B2 linear-attention
+  layer bucket (**9.451 ms/output**) and full-attention layers (**3.375 ms/output**),
+  not a missing `pending_h` handoff or a hidden host copy.
+
+So the remaining replication work is concrete: reduce the resident draft LM-head /
+top-k section and the B2 target block layer time. Simply copying the llama.cpp
+high-level no-probe lifecycle has already been tested and does not make the speed
+match.
+
 The next optimization question is therefore specific: either make the B1 probe much
 cheaper/fused, or find a no-probe policy whose full draft/context/verifier lifecycle
 is cheap enough per output. The older approximate no-probe route collapsed acceptance
@@ -371,6 +458,7 @@ Implemented opt-in routes (2026-06-30):
 | `llama-compat-dp4a` | `--llama-compat --verify-dp4a` | B2 fixed | Same semantics plus llama-style q8_1/dp4a selected-expert verify. Accuracy-traded; ja gate failure remains expected until proven otherwise. |
 | `llama-compat-device-chain` | `--llama-compat --resident-mtp-device-chain` | B2 fixed | Adds prewarmed resident device-chain drafting, mirroring llama's resident `ctx_dft` lifecycle more closely than per-depth host embedding handoff. |
 | `llama-compat-device-chain-dp4a` | `--llama-compat --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Accuracy-traded device-chain route; best measured compat replication row so far. |
+| `llama-compat-device-chain-dp4a-draftsync` | `--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --verify-dp4a` | B2 fixed | Diagnostic-only sync-stage route that attributes the resident draft GPU drain. Not a performance route. |
 | `llama-compat-device-seed-chain` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain` | B2 fixed | Also starts each draft from resident target `pending_h` rather than a host-copied seed. |
 | `llama-compat-device-seed-chain-dp4a` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Full llama-lifecycle diagnostic: B2 no-probe, context replay + device KV, resident device seed, prewarmed device chain, and dp4a verify. |
 
@@ -434,6 +522,17 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --output benchmarks/results/2026-06-30-ar-mtp-llama-compat-device-chain-dp4a-b2-full-split.json
 ```
 
+Sync-stage attribution rerun for the inside of `draft_device_chain_drain`:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-draftsync \
+  --record-cycle-stage-timings \
+  --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-draftsync-full.json
+```
+
 Measured full-suite result (2026-06-30, same model/gfx1151, stage timings enabled):
 
 | config | AR tok/s | MTP tok/s | vs AR | cycle wall / output | acc / output | draft acceptance | passes / output | rows / output |
@@ -441,6 +540,7 @@ Measured full-suite result (2026-06-30, same model/gfx1151, stage timings enable
 | `llama-compat` exact B2 | 54.76 | **51.16** | 0.934× | 19.570 ms | 0.559 | 0.635 | 0.441 | 1.322 |
 | `llama-compat-dp4a` B2 (top-1 diagnostic) | 54.77 | **52.48** | 0.958× | 19.074 ms | 0.561 | 0.640 | 0.439 | 1.316 |
 | `llama-compat-device-chain-dp4a` B2 | 54.71 | **52.79** | 0.965× | 18.963 ms | 0.561 | 0.640 | 0.439 | 1.316 |
+| `llama-compat-device-chain-dp4a-draftsync` B2 | 54.72 | **52.37** | 0.957× | 19.122 ms | 0.561 | 0.640 | 0.439 | 1.316 |
 | `llama-compat-device-seed-chain-dp4a` B2 | 54.74 | **52.53** | 0.960× | 19.065 ms | 0.561 | 0.640 | 0.439 | 1.316 |
 | prior dp4a+B1-probe B5 | 54.60 | **60.01** | 1.099× | 16.690 ms | 0.533 | 0.735 | 0.570 | 1.154 |
 | llama.cpp HIP B2 trace | 52.13 | **72.12** | 1.383× | 14.231 ms | 0.610 traced | 0.805 | 0.390 | 1.148 |
