@@ -153,6 +153,7 @@ Current source artifacts:
 | hipEngine llama-compat verifier all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Attribution-only smoke with extra sync points inside verifier layer families and selected-MoE gate/up/down. Do not use for headline tok/s. |
 | hipEngine llama-compat verifier block rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json` | Diagnostic-only B2-shaped `verify_target_block` kernel trace for the retained compat route (`--mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank verifier kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
+| hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
 | hipEngine llama-compat rejected Q6 top-1 scalehoist check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rerun-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-smoke.json` | Diagnostic only: keeps pack8's `vocab/8` final reduce but hoists Q6_K `d*scale` values into shared memory. Same-session smoke rejected it, so no full-suite run and no headline update. |
@@ -320,19 +321,48 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+2.379 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_stage1` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.108 ms/output** | Activation quantization/cast, final reduce/gather, llama launch-width, one-row MMVQ shape, and pack8 scale-hoisting are now measured/rejected. Focus on a different Q6_K body/layout or a broader fused top-1/sampler path that moves the async row. |
+| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_stage1`, draft rocprof `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.108 ms/output** | Draft rocprof now proves this is GPU-bound draft work: Q6_K top-1 stage1 alone is **3.607 ms/cycle** (about **1.50 ms/output** at the retained 2.4 outputs/cycle), while host residual is only **0.364 ms/cycle**. Next fix must change the Q6_K top-1 body/layout or remove/fuse that work enough to move async `draft_initial`. |
 | 3 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.955 ms/output** | Block rocprof ranks the active kernel work: dense Q8T16 projections first, selected-MoE GEMV second, verifier lm-head third. |
 | 4 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.102 target rows/output | Full histograms show this is extra discarded-row rate (compat 0.250 vs llama 0.148 rows/output); revisit policy after operation cost is closer. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 
 Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8 uses
-two attribution-only smokes. Verifier leaf rows come from
+two attribution-only smokes plus one ROCTX/kernel trace. Verifier leaf rows come from
 `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json`;
 draft lm-head leaf rows come from
 `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json`.
-Do not use either all-sync row for headline tok/s; use them only to choose which
-leaf bucket should move the full-suite `draft_initial` or
+Draft kernel-family rows come from
+`benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2.json`.
+Do not use the all-sync or rocprof rows for headline tok/s; use them only to
+choose which leaf bucket should move the full-suite `draft_initial` or
 `target_block_verify_total` row next.
+
+#### Current draft-chain rocprof attribution
+
+This table profiles the retained `llama-compat` draft shape directly:
+`scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 --q6-top1-dp4a
+--selected-down-x8-repack q6 --record-stage-timings --skip-warmbuild`.
+The child runs under `rocprofv3 --kernel-trace --marker-trace` with
+`--require-cached`, and each measured ROCTX range covers only the B2 resident
+draft chain. The target step used to refresh the next seed is outside the
+marker window.
+
+Summary for the B2-shaped draft profile: **6.866 ms/cycle host wall**,
+**6.502 ms/cycle kernel time**, **94.7% kernel share**, **92.5 kernel
+calls/cycle**, and only **0.364 ms/cycle host residual**. The approximate
+ms/output column divides by the retained full-suite `llama-compat` row's
+**2.4 visible outputs/cycle** (240 outputs / 100 cycles), so use it as
+attribution, not as a replacement for the full-suite timing rows.
+
+| kernel-family bucket | calls/cycle | ms/cycle | approx ms/output | kernel share | next action |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1` | 2.0 | **3.607** | **1.503** | **55.5%** | First draft target. This single kernel family is larger than the whole current +1.108 ms/output draft gap, so any llama-compat draft win must reduce or replace this body. |
+| `top1_stage2_gather` | 2.0 | 0.092 | 0.039 | 1.4% | Not the missing cost; prior stage2/gather work already made this small. |
+| `gguf_k_prefill_out` | 16.0 | 0.841 | 0.351 | 12.9% | Secondary draft dense/shared GEMV target after Q6 top-1. |
+| `hipengine_mtp_linear_f32` | 4.0 | 0.678 | 0.283 | 10.4% | Router/gate F32 linear overhead; consider only after top-1. |
+| `gguf_q4_k_selected_dual_prefill_out` | 2.0 | 0.441 | 0.184 | 6.8% | Selected gate/up target, but prior X8/raw attempts regressed. |
+| `hipengine_mtp_dense_attn_f32` | 2.0 | 0.346 | 0.144 | 5.3% | Attention core is visible but not first. |
+| `gguf_k_selected_prefill_out` | 2.0 | 0.326 | 0.136 | 5.0% | Selected down remains secondary. |
 
 #### Current all-sync leaf attribution
 

@@ -131792,3 +131792,49 @@ No benchmark rerun for this docs-only maintenance change; it preserves the
 current active gap budget from the retained artifacts: **+2.379 ms/output**
 total, with **+1.108 ms/output** draft drain, **+0.955 ms/output** verifier
 drain, and **+0.102 target rows/output** row economy.
+
+## 2026-07-01 — MTP llama-compat draft-chain rocprof instrumentation
+
+Added `scripts/gguf_mtp_draft_rocprof.py`, a standalone ROCTX/rocprof harness
+for the retained B2 resident draft-chain shape. It mirrors the verifier profiler
+pattern: warm-build outside rocprof, run the profiled child with
+`--require-cached`, mark only the draft proposal window, and summarize filtered
+kernel families plus the resident draft runner's stage timings. Also plumbed
+`compiler_version` / `require_cached_build` through
+`Qwen35GGUFResidentMTPDraftRunner` so the profiled child refuses to spawn `hipcc`.
+
+Validation / runs:
+
+- `python3 -m py_compile hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_draft_rocprof.py`
+  -> pass.
+- Child smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_draft_rocprof.py --child --steps 1 --warmup 0 --q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings --child-json /tmp/hipengine-gguf-mtp-draft-child-smoke.json`
+  -> pass, cold single-window `avg_host_ms=6.622`.
+- Diagnostic rocprof:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 --q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings --skip-warmbuild --out benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2.json`
+  -> pass. `rocprofv3` emitted non-fatal dispatch timestamp swap warnings.
+
+Result artifact:
+`benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2.json`
+(`performance_claim=false`, diagnostic only).
+
+Draft-chain profile result, B2-shaped retained compat route:
+
+- Host wall: **6.866 ms/cycle**.
+- Summed kernel time: **6.502 ms/cycle**.
+- Kernel share: **94.7%**.
+- Host residual: **0.364 ms/cycle**.
+- Launches: **92.5 kernel calls/cycle**.
+- Dominant kernel: `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1`,
+  **3.607 ms/cycle**, **55.5%** of draft kernel time.
+- Top-level buckets: Q6 top-1 **3.699 ms/cycle**, dense/shared GEMV
+  **0.841**, F32 router/gate linear **0.678**, selected gate/up **0.441**,
+  attention core **0.349**, selected down **0.326**.
+
+Interpretation: the retained `llama-compat` draft gap is GPU-bound, not a
+host/readback gap. At the retained full-suite denominator (240 outputs / 100
+cycles = 2.4 outputs/cycle), Q6 top-1 stage1 alone is roughly
+**1.50 ms/output**, larger than the current **+1.108 ms/output** draft gap vs
+llama.cpp HIP. Next draft work should target a different Q6_K top-1 body/layout
+or a fused/reduced sampler path that moves full-suite `draft_initial`; prior
+t64, row-shape, and scale-hoist attempts remain rejected.

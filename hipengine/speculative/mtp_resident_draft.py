@@ -197,6 +197,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
     device_chain_enabled: bool | None = None
     prewarm_device_chain: bool = False
     sync_stage_timings: bool = False
+    compiler_version: str | None = None
+    require_cached_build: bool = False
     num_heads: int = 16
     num_kv_heads: int = 2
     experts_used: int = 8
@@ -215,16 +217,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if self.vocab <= 0 or self.vocab % 8 != 0:
             raise ValueError("resident GGUF MTP vocab cap must be positive and divisible by 8")
         self._check_real_model_qtypes()
-        self._mtp_lib = build_mtp_nextn(load=True)
-        self._k_lib = build_gguf_k_gemv(load=True)
-        self._q4_lib = build_gguf_q4_k_gemv(load=True)
-        self._q6_pack8_lib = build_gguf_q6_k_pack8_gemv(load=True)
-        self._cast_lib = build_cast(load=True)
-        self._router_lib = build_qwen35_router(load=True)
-        self._lm_head_lib = build_lm_head(load=True)
-        self._silu_lib = build_paro_silu(load=True)
-        self._combine_lib = build_paro_combine(load=True)
-        self._gather_lib = build_gather(load=True)
+        build_kwargs = {
+            "load": True,
+            "compiler_version": self.compiler_version,
+            "require_cached": bool(self.require_cached_build),
+        }
+        self._mtp_lib = build_mtp_nextn(**build_kwargs)
+        self._k_lib = build_gguf_k_gemv(**build_kwargs)
+        self._q4_lib = build_gguf_q4_k_gemv(**build_kwargs)
+        self._q6_pack8_lib = build_gguf_q6_k_pack8_gemv(**build_kwargs)
+        self._cast_lib = build_cast(**build_kwargs)
+        self._router_lib = build_qwen35_router(**build_kwargs)
+        self._lm_head_lib = build_lm_head(**build_kwargs)
+        self._silu_lib = build_paro_silu(**build_kwargs)
+        self._combine_lib = build_paro_combine(**build_kwargs)
+        self._gather_lib = build_gather(**build_kwargs)
         self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
         self._q6_top1_gather_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER", True)
         self._q6_top1_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", False)
