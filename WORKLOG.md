@@ -132692,3 +132692,22 @@ Result: blocked by missing read-only reference checkout
 `/home/lhl/amd-gpu-tuning/nano-vllm-amd` (`git -C ... rev-parse` cannot change
 to that path). This is an environment/reference availability issue, not a test
 failure for the in-tree F32 export.
+
+## 2026-07-01 — MTP parity three-lane dashboard contract
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` to make the top-of-file
+default-exact / `llama-compat` / llama.cpp HIP speed-stage table the canonical
+active parity dashboard. The table schema is now explicit: every promoted live
+row keeps the three lanes, the `llama-compat` delta, and the next llama.cpp
+source path or kernel family to inspect. Fine-grained buckets stay in the
+inventory/attribution tables until they map cleanly to a llama.cpp stage or move
+the retained full-suite parent bucket.
+
+No new benchmark was run. Current active numbers are unchanged:
+`llama-compat` F32 `ssm_out` B2 is **15.735 ms/output** versus traced llama.cpp
+HIP B2 **14.231 ms/output**, leaving **+1.504 ms/output** to close
+(**+1.112 ms/output** draft drain, **+0.075 ms/output** verifier drain, and
+**+0.118 target rows/output**). Existing uncommitted Q6 diagnostic code and
+scratch artifacts were left unstaged.
+
+Validation: docs-only; re-read the changed active tracker section.

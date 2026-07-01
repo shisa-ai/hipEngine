@@ -97,7 +97,7 @@ Active comparison rules:
 | Separate rollups from leaves. | Rollup rows decide priority; all-sync and rocprof rows identify the kernel or source path. Do not replace the rollup gap with an attribution-only number. |
 | Compare source only after structure matches. | Once `llama-compat` has the same B2/no-probe shape for a row, any remaining positive delta becomes a source-code comparison task against the named llama.cpp path or kernel family. |
 
-#### Live three-lane speed/stage gap tracker (update every parity run)
+#### Canonical live three-lane speed/stage gap tracker (update every parity run)
 
 Last refreshed from the full-suite artifacts
 `benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-q8shareddual-full.json`
@@ -113,6 +113,14 @@ column is the live optimization budget; the final column names the next source
 path or kernel family to compare. If a new fine-grained bucket has no direct
 llama.cpp analog, leave the direct comparison to the detailed inventory and move
 the gap only through its nearest parent row here.
+
+The table schema is fixed for the parity sprint: every live row must keep the
+same three lanes, the `llama-compat` delta, and the next llama.cpp source or
+kernel family to inspect. New fine-grained buckets belong in the full-suite
+inventory or attribution tables first; promote them to this board only when they
+either map cleanly to a llama.cpp stage or move the retained full-suite parent
+bucket. This keeps the remaining couple of milliseconds visible as an explicit
+stage budget instead of burying it in prose.
 
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
