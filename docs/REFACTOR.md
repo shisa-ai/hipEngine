@@ -270,6 +270,25 @@ should be boring.
   body/layout or a fused row-stage/top-1 reduce makes this row-shape diagnostic
   obsolete. It is evidence, not a performance route.
 
+## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack8_scalehoist` (diagnostic rejected)
+- Added 2026-07-01. Bench flag
+  `--resident-mtp-draft-q6-top1-stage1-shape pack8_scalehoist` and suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist` /
+  `...-scalehoist-allsync` exercise a Q6_K draft lm-head top-1 stage that keeps
+  the retained pack8 `vocab/8` final reduce but hoists each Q6_K block's
+  `d*scale[16]` values into shared memory.
+- Purpose: test whether the remaining q8_1/dp4a Q6_K draft stage1 cost is from
+  repeated Q6 scale loads rather than the dot body or output geometry. Correctness
+  passes against the q8_1/Q6_K oracle, and `rocprofv3` confirms
+  `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1_kernel` launches.
+  Same-session smoke rejected it: retained `x8q6` rerun **68.65 tok/s**,
+  cycle **14.589 ms/output**, `draft_initial` **2.482 ms/output** vs
+  scalehoist **68.54 tok/s**, cycle **14.610 ms/output**, `draft_initial`
+  **2.485 ms/output**, with identical acceptance.
+- Remove when: the draft Q6_K top-1 path moves to a different retained
+  body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
+  not a performance route and should not update the active llama-compat headline.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with

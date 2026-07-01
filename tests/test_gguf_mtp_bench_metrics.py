@@ -642,6 +642,12 @@ def test_arg_parser_exposes_q6_top1_stage1_shape_diagnostic() -> None:
 
     assert args.resident_mtp_draft_q6_top1_stage1_shape == "row"
 
+    scalehoist_args = build_arg_parser().parse_args(
+        ["--resident-mtp-draft-q6-top1-stage1-shape", "pack8_scalehoist"]
+    )
+
+    assert scalehoist_args.resident_mtp_draft_q6_top1_stage1_shape == "pack8_scalehoist"
+
 
 def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     args = build_arg_parser().parse_args(

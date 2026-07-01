@@ -35,6 +35,12 @@ _SYM_Q8_1_DP4A_TOP1_GATHER_F32_THREADS = (
     "hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32_threads"
 )
 _SYM_Q8_1_DP4A_TOP1_STAGE1_F32 = "hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32"
+_SYM_Q8_1_DP4A_TOP1_SCALEHOIST_STAGE1_F32 = (
+    "hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32"
+)
+_SYM_Q8_1_DP4A_TOP1_SCALEHOIST_GATHER_F32_THREADS = (
+    "hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32_threads"
+)
 _SYM_Q8_1_DP4A_TOP1_ROW_STAGE1_F32 = (
     "hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32"
 )
@@ -304,6 +310,80 @@ def gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
         runtime.check(int(err))
 
 
+def gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32(
+    xq_ptr: int,
+    qweight_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    embed_table_f32_ptr: int | None,
+    next_embed_f32_ptr: int | None,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    hidden_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    stage1_threads: int | None = None,
+) -> None:
+    """Diagnostic q8_1/dp4a Q6_K top-1 path with pack8 scale hoisting."""
+
+    _check_common(rows, in_features, out_features)
+    if in_features % 32 != 0:
+        raise ValueError("in_features must be divisible by q8_1 block size 32")
+    if hidden_size < 0:
+        raise ValueError("hidden_size must be non-negative")
+    has_embed = embed_table_f32_ptr is not None or next_embed_f32_ptr is not None
+    if has_embed and (embed_table_f32_ptr is None or next_embed_f32_ptr is None):
+        raise ValueError("embed_table_f32_ptr and next_embed_f32_ptr must be provided together")
+    if has_embed and hidden_size <= 0:
+        raise ValueError("hidden_size must be positive when gathering embeddings")
+    if out_features > 2**31 - 1:
+        raise ValueError("out_features must fit in int32 for top-1 indices")
+    threads = _stage1_threads(stage1_threads)
+    library = library or build_gguf_q6_k_pack8_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYM_Q8_1_DP4A_TOP1_SCALEHOIST_GATHER_F32_THREADS)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int32,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(embed_table_f32_ptr) if embed_table_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(next_embed_f32_ptr) if next_embed_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int32(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32(
     x_ptr: int,
     qweight_ptr: int,
@@ -379,6 +459,58 @@ def gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
     library = library or build_gguf_q6_k_pack8_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYM_Q8_1_DP4A_TOP1_STAGE1_F32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int32,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int32(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32(
+    xq_ptr: int,
+    qweight_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    stage1_threads: int | None = None,
+) -> None:
+    """Diagnostic stage1-only q8_1/dp4a Q6_K top-1 launch with scale hoisting."""
+
+    _check_common(rows, in_features, out_features)
+    if in_features % 32 != 0:
+        raise ValueError("in_features must be divisible by q8_1 block size 32")
+    if out_features > 2**31 - 1:
+        raise ValueError("out_features must fit in int32 for top-1 indices")
+    threads = _stage1_threads(stage1_threads)
+    library = library or build_gguf_q6_k_pack8_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYM_Q8_1_DP4A_TOP1_SCALEHOIST_STAGE1_F32)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -636,6 +768,16 @@ def register_gguf_q6_k_pack8_gemv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k",
+            "pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32",
+        ),
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear", "gguf_q6_k", "pack8_gemv_decode_bf16_top1_stage1_f32"),
         gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32,
         replace=replace,
@@ -643,6 +785,16 @@ def register_gguf_q6_k_pack8_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear", "gguf_q6_k", "pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32"),
         gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k",
+            "pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32",
+        ),
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32,
         replace=replace,
     )
     register(
@@ -672,6 +824,8 @@ __all__ = [
     "gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32",
     "gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32",
     "gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32",
+    "gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32",
+    "gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32",
     "gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32",
     "gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32",
     "gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32",

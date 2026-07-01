@@ -131242,3 +131242,57 @@ acceptance. Also promoted the all-sync split table to an explicit leaf
 attribution section so diagnostic sub-buckets stay visible without replacing
 headline full-suite rows. No benchmark rerun; this is a docs-only tracking
 change using the already retained 2026-07-01 artifacts.
+
+## 2026-07-01 — Rejected Q6 top-1 pack8 scale-hoist diagnostic
+
+Implemented a default-off Q6_K draft lm-head diagnostic for the active
+llama-compat route:
+
+- Added
+  `gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_{stage1,gather}_f32`.
+  The kernel keeps the retained pack8 output shape and `vocab/8` final reduce,
+  but hoists each Q6_K block's `d*scale[16]` values into shared memory before
+  the dot4 loop. This tested whether the retained q8_1/dp4a stage1 bucket was
+  losing time to repeated scale loads rather than output geometry.
+- Exposed `--resident-mtp-draft-q6-top1-stage1-shape pack8_scalehoist` and
+  suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist` and
+  `...-scalehoist-allsync`.
+
+Measurements on AMD Radeon 8060S / gfx1151, model
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, smoke prompt-suite route B2:
+
+- Retained control rerun:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rerun-smoke.json`
+  -> B2 **68.65 tok/s**, cycle **14.589 ms/output**,
+  `draft_initial` **2.482 ms/output**, `draft_topk_readback`
+  **2.323 ms/output**, `target_block_verify_total` **11.776 ms/output**,
+  `acc/output=0.667`, draft acceptance **1.000**.
+- Scalehoist diagnostic:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-smoke.json`
+  -> B2 **68.54 tok/s**, cycle **14.610 ms/output**,
+  `draft_initial` **2.485 ms/output**, `draft_topk_readback`
+  **2.341 ms/output**, `target_block_verify_total` **11.797 ms/output**,
+  `acc/output=0.667`, draft acceptance **1.000**.
+
+Conclusion: reject; repeated Q6 scale loads are not the missing draft-stage cost
+in the retained pack8 body. No all-sync/full-suite run was justified because the
+same-session async smoke and intended draft buckets were already worse. Active
+lane remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`.
+
+Validation:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx'`
+  -> gfx1151 Radeon 8060S visible.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  remains blocked because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_q6_k_pack8_gemv_decode.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+  -> pass.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -k 'q8_1_dp4a_top1 or q6top1dp4a or q6_top1_stage1_shape or q6_top1_stage1_thread'`
+  -> **4 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace -d /tmp/hipengine-q6-scalehoist-rocprof -f csv -- pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py -k q8_1_dp4a_top1`
+  -> **1 passed**. Trace confirmed
+  `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1_kernel` launched with
+  `Workgroup_Size_X=128` and `Workgroup_Size_X=64` in the fixture.

@@ -93,6 +93,7 @@ Current source artifacts:
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
+| hipEngine llama-compat rejected Q6 top-1 scalehoist check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rerun-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-smoke.json` | Diagnostic only: keeps pack8's `vocab/8` final reduce but hoists Q6_K `d*scale` values into shared memory. Same-session smoke rejected it, so no full-suite run and no headline update. |
 | hipEngine llama-compat rejected q5/both X8 selected-down check | `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json` | Diagnostic only: q6-only X8 selected-down is retained for the accuracy-traded compat lane; q5/both smoke regressed vs q6-only, so q5 stays on T16. |
 | hipEngine llama-compat rejected Q5 T16 selected-down one-wave check | `benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-t64-rerun-micro.json`, `benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-q5t32-micro.json`, `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-q5t32-control-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q5t32-smoke.json` | Diagnostic only: llama.cpp MoE MMVQ uses one wave/token, and Q5 selected-down improved in isolation at 32 threads, but the real compat route regressed vs the retained 64-thread/Q6-X8 lane. |
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
@@ -229,7 +230,7 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+2.356 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_stage1` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.104 ms/output** | Activation quantization/cast and final reduce/gather are now measured negligible. Simple llama launch-width and one-row MMVQ shape copies are rejected; focus on a Q6_K body/layout that reduces stage1 without expanding the final reduce, or a broader fused top-1/reduce path that moves the async row. |
+| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_stage1` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.104 ms/output** | Activation quantization/cast, final reduce/gather, llama launch-width, one-row MMVQ shape, and pack8 scale-hoisting are now measured/rejected. Focus on a different Q6_K body/layout or a broader fused top-1/sampler path that moves the async row. |
 | 3 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.940 ms/output** | Q8T16 pair layout/schedule first, then selected-MoE gate/up/down bodies. |
 | 4 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.102 target rows/output | Revisit policy only after operation cost is closer; this is secondary today. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
@@ -284,6 +285,27 @@ instead of `vocab/8`. Aggregate Q6 top-1 is therefore worse
 identical acceptance. The next draft fix is not a mechanical copy of llama.cpp's
 row scheduler; it needs a Q6_K stage1 body/layout or fused top-1 reduce that
 keeps the small final-reduce economy.
+
+The Q6 top-1 pack8 scale-hoist diagnostic is also rejected. hipEngine added
+`--resident-mtp-draft-q6-top1-stage1-shape pack8_scalehoist` plus routes
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist` and
+`...-scalehoist-allsync` to keep pack8's `vocab/8` final reduce while hoisting
+each Q6_K block's `d*scale[16]` values into shared memory. Correctness matches
+the q8_1/Q6_K oracle and `rocprofv3` confirms
+`gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1_kernel` launches at both
+128 and 64 thread shapes in the fixture. Same-session async smoke rejected the
+route before all-sync/full-suite was justified:
+
+| smoke route | B2 tok/s | cycle wall | draft_initial | draft_topk_readback | target verify | acceptance |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| retained `x8q6` rerun | **68.65** | **14.589 ms/output** | **2.482 ms/output** | **2.323 ms/output** | **11.776 ms/output** | 0.667 acc/output, 1.000 draft |
+| `x8q6-scalehoist` | 68.54 | 14.610 ms/output | 2.485 ms/output | 2.341 ms/output | 11.797 ms/output | 0.667 acc/output, 1.000 draft |
+
+Conclusion: repeated Q6 scale loads are not the missing draft-stage cost in the
+current pack8 body. Keep `pack8_scalehoist` as evidence only; the active compat
+lane remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`, and the next
+draft-side attempt needs a different Q6_K body/layout or a broader fused
+sampler path that moves the async `draft_initial` row.
 
 The pair-dispatch cache is a small host-side cleanup, not the missing mechanism:
 full-suite compat B2 moved **55.410 -> 55.453 tok/s** and

@@ -190,6 +190,19 @@ __device__ inline float q6_k_q8_1_dp4a_term(
   return xd * d * static_cast<float>(scales[scale_index]) * static_cast<float>(dot);
 }
 
+__device__ inline float q6_k_q8_1_dp4a_scaled_term(
+    const uint8_t* block,
+    int group32,
+    int lane4,
+    float d_scale,
+    uint32_t x_pack,
+    int q8_sum,
+    float xd) {
+  const int dot_u = q6_pack8_dp4a_u8_s8(q6_k_pack4_unsigned(block, group32, lane4), x_pack, 0);
+  const int dot = dot_u - 32 * q8_sum;
+  return xd * d_scale * static_cast<float>(dot);
+}
+
 __device__ inline float q6_k_q8_1_llama_vecdot(
     const uint8_t* block,
     const gguf_q8_1_block* xq_block_base,
@@ -692,6 +705,154 @@ __launch_bounds__(128, 4) __global__ void gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_st
   }
 }
 
+// Diagnostic q8_1/dp4a stage1 variant that preserves the pack8 output shape
+// while hoisting each Q6_K block's d*scale values into shared memory. This tests
+// whether the current stage1 bucket is losing time to repeated scale loads
+// without expanding the final top-1 reduce like the row-shaped diagnostic.
+__launch_bounds__(128, 4) __global__ void gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ block_values,
+    int32_t* __restrict__ block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t out_packed,
+    int64_t q8_blocks_per_row) {
+  const int64_t out_pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  const int64_t out_col = out_pack << 3;
+  if (out_col >= out_features) return;
+
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t row_bytes = blocks_per_row * Q6_K_BLOCK_BYTES;
+  const gguf_q8_1_block* __restrict__ xq_row = xq + row * q8_blocks_per_row;
+
+  const uint8_t* __restrict__ row_ptr[PACK8];
+#pragma unroll
+  for (int ch = 0; ch < PACK8; ++ch) {
+    row_ptr[ch] = qweight + (out_col + ch) * row_bytes;
+  }
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+
+  constexpr int groups4_per_block = QK_K / 4; // 64 dot4 groups per Q6_K block.
+  __shared__ float s_scale[2 * PACK8 * Q6_K_GROUPS16];
+  const int blocks_per_iter = blockDim.x >> 6; // 1 for 64 threads, 2 for 128.
+
+  for (int64_t blk_base = 0; blk_base < blocks_per_row; blk_base += blocks_per_iter) {
+    const int scale_items = blocks_per_iter * PACK8 * Q6_K_GROUPS16;
+    for (int item = tid; item < scale_items; item += blockDim.x) {
+      const int iter = item / (PACK8 * Q6_K_GROUPS16);
+      const int rem = item - iter * PACK8 * Q6_K_GROUPS16;
+      const int ch = rem >> 4;
+      const int g16 = rem & 15;
+      const int64_t block_idx = blk_base + iter;
+      float d_scale = 0.0f;
+      if (block_idx < blocks_per_row) {
+        const uint8_t* __restrict__ block = row_ptr[ch] + block_idx * Q6_K_BLOCK_BYTES;
+        const float d_f = fp16_bytes_to_float(block + 208);
+        const int8_t* __restrict__ scales = reinterpret_cast<const int8_t*>(block + 192);
+        d_scale = d_f * static_cast<float>(scales[g16]);
+      }
+      s_scale[item] = d_scale;
+    }
+    __syncthreads();
+
+    const int iter = tid >> 6;
+    const int group4 = tid & (groups4_per_block - 1);
+    const int64_t block_idx = blk_base + iter;
+    if (iter < blocks_per_iter && block_idx < blocks_per_row) {
+      const int within = group4 << 2;
+      const int group32 = within >> 5;
+      const int lane4 = within & 31;
+      const int scale_index = within >> 4;
+      const int64_t q8_index = block_idx * 8 + group32;
+
+      const gguf_q8_1_block* __restrict__ xb = xq_row + q8_index;
+      const uint32_t x_pack = *reinterpret_cast<const uint32_t*>(xb->qs + lane4);
+      const int q8_sum = q6_pack8_dp4a_u8_s8(0x01010101u, x_pack, 0);
+      const float xd = static_cast<float>(xb->d);
+
+      const uint8_t* __restrict__ b0 = row_ptr[0] + block_idx * Q6_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ b1 = row_ptr[1] + block_idx * Q6_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ b2 = row_ptr[2] + block_idx * Q6_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ b3 = row_ptr[3] + block_idx * Q6_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ b4 = row_ptr[4] + block_idx * Q6_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ b5 = row_ptr[5] + block_idx * Q6_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ b6 = row_ptr[6] + block_idx * Q6_K_BLOCK_BYTES;
+      const uint8_t* __restrict__ b7 = row_ptr[7] + block_idx * Q6_K_BLOCK_BYTES;
+      const int scale_base = iter * PACK8 * Q6_K_GROUPS16;
+
+      acc0 += q6_k_q8_1_dp4a_scaled_term(b0, group32, lane4, s_scale[scale_base + 0 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+      acc1 += q6_k_q8_1_dp4a_scaled_term(b1, group32, lane4, s_scale[scale_base + 1 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+      acc2 += q6_k_q8_1_dp4a_scaled_term(b2, group32, lane4, s_scale[scale_base + 2 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+      acc3 += q6_k_q8_1_dp4a_scaled_term(b3, group32, lane4, s_scale[scale_base + 3 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+      acc4 += q6_k_q8_1_dp4a_scaled_term(b4, group32, lane4, s_scale[scale_base + 4 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+      acc5 += q6_k_q8_1_dp4a_scaled_term(b5, group32, lane4, s_scale[scale_base + 5 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+      acc6 += q6_k_q8_1_dp4a_scaled_term(b6, group32, lane4, s_scale[scale_base + 6 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+      acc7 += q6_k_q8_1_dp4a_scaled_term(b7, group32, lane4, s_scale[scale_base + 7 * Q6_K_GROUPS16 + scale_index], x_pack, q8_sum, xd);
+    }
+    __syncthreads();
+  }
+
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc0);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc1);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc2);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc3);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc4);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc5);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc6);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc7);
+
+  __shared__ float xchg[4 * PACK8];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+    xchg[sub_id * PACK8 + 0] = acc0;
+    xchg[sub_id * PACK8 + 1] = acc1;
+    xchg[sub_id * PACK8 + 2] = acc2;
+    xchg[sub_id * PACK8 + 3] = acc3;
+    xchg[sub_id * PACK8 + 4] = acc4;
+    xchg[sub_id * PACK8 + 5] = acc5;
+    xchg[sub_id * PACK8 + 6] = acc6;
+    xchg[sub_id * PACK8 + 7] = acc7;
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    float r[PACK8];
+    for (int ch = 0; ch < PACK8; ++ch) {
+      r[ch] = 0.0f;
+    }
+    const int sub_groups = blockDim.x >> 5;
+    for (int g = 0; g < sub_groups; ++g) {
+      for (int ch = 0; ch < PACK8; ++ch) {
+        r[ch] += xchg[g * PACK8 + ch];
+      }
+    }
+    float best_value = -3.4028234663852886e+38F;
+    int32_t best_index = INT32_MAX;
+    for (int ch = 0; ch < PACK8; ++ch) {
+      const int64_t index64 = out_col + ch;
+      if (index64 < out_features) {
+        const int32_t index = static_cast<int32_t>(index64);
+        if (better_pair_i32(r[ch], index, best_value, best_index)) {
+          best_value = r[ch];
+          best_index = index;
+        }
+      }
+    }
+    const int64_t off = row * out_packed + out_pack;
+    block_values[off] = best_value;
+    block_indices[off] = best_index;
+  }
+}
+
 // Diagnostic llama.cpp-shape top-1 stage1 for the q8_1/dp4a Q6_K lm-head path.
 // Grid: (out_features, rows). Block: (wave32, 2 warps), matching llama.cpp
 // RDNA3 MMVQ's ncols_dst=1 / Q6_K geometry instead of hipEngine's pack8 row.
@@ -970,6 +1131,37 @@ int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1(
+    const gguf_q8_1_block* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int stage1_threads,
+    hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || block_values == nullptr ||
+      block_indices == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      out_features > INT32_MAX || (out_features & 7) != 0 ||
+      (in_features % QK_K) != 0 || (in_features % Q8_1_BLOCK) != 0 ||
+      !valid_top1_stage1_threads(stage1_threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  hipLaunchKernelGGL(
+      gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1_kernel,
+      dim3(static_cast<unsigned int>(out_packed),
+           static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(stage1_threads)),
+      0,
+      stream,
+      xq, qweight, block_values, block_indices, rows, in_features, out_features, out_packed, q8_blocks_per_row);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_q6_k_q8_1_dp4a_top1_row_stage1(
     const gguf_q8_1_block* xq,
     const uint8_t* qweight,
@@ -1017,6 +1209,43 @@ int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_gather(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipError_t err = static_cast<hipError_t>(launch_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1(
+      xq, qweight, block_values, block_indices, rows, in_features, out_features, stage1_threads, stream));
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+  return launch_top1_stage2_gather(
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      out_features >> 3,
+      hidden,
+      out_features,
+      stream);
+}
+
+int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_gather(
+    const gguf_q8_1_block* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    int stage1_threads,
+    hipStream_t stream) {
+  if (hidden < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipError_t err = static_cast<hipError_t>(launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1(
       xq, qweight, block_values, block_indices, rows, in_features, out_features, stage1_threads, stream));
   if (err != hipSuccess) {
     return static_cast<int>(err);
@@ -1291,6 +1520,28 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
       stream);
 }
 
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32(
+    const void* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1(
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      qweight,
+      block_values,
+      block_indices,
+      rows,
+      in_features,
+      out_features,
+      static_cast<int>(stage1_threads),
+      stream);
+}
+
 extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32(
     const void* xq,
     const uint8_t* qweight,
@@ -1308,6 +1559,38 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f
       rows,
       in_features,
       out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32_threads(
+    const void* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_gather(
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      qweight,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      in_features,
+      out_features,
+      hidden,
+      static_cast<int>(stage1_threads),
       stream);
 }
 

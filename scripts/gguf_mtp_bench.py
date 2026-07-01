@@ -918,12 +918,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--resident-mtp-draft-q6-top1-stage1-shape",
-        choices=("pack8", "row"),
+        choices=("pack8", "pack8_scalehoist", "row"),
         default="pack8",
         help=(
             "Diagnostic llama-compat scheduler A/B for the resident draft Q6_K top-1 "
-            "lm-head stage1 kernel. 'pack8' is the current hipEngine shape; 'row' "
-            "launches one output row per block with a llama.cpp-like Q6_K MMVQ body."
+            "lm-head stage1 kernel. 'pack8' is the current hipEngine shape; "
+            "'pack8_scalehoist' keeps pack8 output economy but hoists Q6_K scales; "
+            "'row' launches one output row per block with a llama.cpp-like Q6_K MMVQ body."
         ),
     )
     parser.add_argument(
