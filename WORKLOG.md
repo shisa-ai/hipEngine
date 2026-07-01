@@ -132435,3 +132435,24 @@ Active parity lane remains
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1`. Updated
 `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`; no benchmark rollup change
 because this is not retained.
+
+## 2026-07-01 — MTP parity dashboard source anchors
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking rules so each retained or
+diagnostic parity refresh keeps the three-lane hipEngine default /
+`llama-compat` / llama.cpp HIP tables together and also names the exact llama.cpp
+file/function or kernel family to inspect for each live gap row.
+
+No benchmark numbers changed. This is a documentation/tracking change only. The
+new source-anchor table maps:
+
+- total MTP wall to llama.cpp `common/speculative.cpp`
+  `common_speculative_impl_draft_mtp` and stage accounting;
+- draft drain to `llama_draft_sample_topk`, sampling code, and `mmvq.cu`
+  `mul_mat_vec_q` / Q6_K dispatch;
+- target verifier drain to `llama_process_build_draft_batch`,
+  `llama_process_decode_ctx_dft`, `mul_mat_vec_q`, and `mul_mat_vec_q_moe`;
+- row economy to llama.cpp scan/build and accept-accounting logic.
+
+Validation: re-read the changed `docs/MTP-LLAMACPP-PARITY.md` active tracking
+section. No GPU or pytest run needed for docs-only tracking text.

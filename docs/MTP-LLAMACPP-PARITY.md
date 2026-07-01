@@ -61,6 +61,7 @@ Required refresh shape for each retained or diagnostic parity run:
 | Full-suite bucket inventory | Every high-level bucket emitted by the current hipEngine full-suite artifacts plus the closest llama.cpp analog when one exists. | Makes the next target mechanical: pick the largest positive compat delta with a valid analog. |
 | All-sync leaf attribution | Fine-grained `llama-compat` split rows that explain the large full-suite buckets, with the exact attribution-only artifact named. | Prevents mixing headline speed rows with extra-sync diagnostic rows while still showing which kernel body to attack next. |
 | Active gap budget / target map | Remaining ms or rows to close and the llama.cpp source area to inspect next. | Keeps the implementation work tied to a measured llama-compat gap, not intuition. |
+| Llama.cpp source anchors | Exact llama.cpp file/function or kernel family for each live gap row. | Makes the next copy-or-retune target explicit once `llama-compat` structurally mirrors llama.cpp. |
 
 Current gap to close: the active `denseq8all-x8top1` compat lane with default-on
 resident Q8 shared gate/up dual GEMV is **+2.100 ms/output** vs the traced
@@ -73,9 +74,10 @@ unrelated AR or host setup rows.
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
 the full-suite bucket inventory, then the attribution-only all-sync and
-rocprof leaf tables. A new fine-grained bucket only becomes an active parity
-target when it rolls up into `draft_initial`, `target_block_verify_total`,
-target rows/output, or total cycle wall.
+rocprof leaf tables, and finally the source-anchor table for the matching
+llama.cpp implementation point. A new fine-grained bucket only becomes an
+active parity target when it rolls up into `draft_initial`,
+`target_block_verify_total`, target rows/output, or total cycle wall.
 
 Dashboard contract:
 
@@ -356,6 +358,20 @@ match but the timings do not.
 | 3 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.579 ms/output** | Dense raw-Q8 dp4a all-sidecar reduced the biggest dense projection bucket. Direct verifier Q6 top-1 was tested and rejected (`target_block_lm_head_sample` **1.058 -> 1.874 ms/output** on same-session smoke), so remaining verifier work should focus on selected-MoE GEMV, dense singleton leftovers, or a materially different fused verifier sampler rather than simply copying the draft top-1 path. |
 | 4 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.151 target rows/output | Full histograms show this is extra discarded-row rate (compat 0.299 vs llama 0.148 rows/output); revisit policy after operation cost is closer. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
+
+#### Llama.cpp source anchors for the live gap
+
+This table is not a new measurement. It pins each live `llama-compat` budget row
+to the llama.cpp HIP implementation area that should be inspected when the
+structure matches but the timing does not. Update it when the llama.cpp commit,
+route shape, or stage labels change.
+
+| live budget row | llama.cpp HIP source anchor | hipEngine rows that must move |
+| --- | --- | --- |
+| Total MTP wall | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `common_speculative_impl_draft_mtp` (`:841`), stage accounting (`common_speculative_mtp_stage_add`, `:56`), and the B2 process/draft/accept loop (`:1009`-`:1230`). | `cycle_wall_ms_per_output`, retained MTP tok/s, and the standing three-lane snapshot. |
+| Draft drain | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_draft_sample_topk` (`:1140`), `llama_draft_decode_initial` (`:1114`), `llama_draft_decode_next` (`:1191`); `/home/lhl/llama.cpp/llama.cpp-hip/common/sampling.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/src/llama-sampler.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` (`:477`) and Q6_K dispatch (`:1058`). | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, draft all-sync Q6 top-1 stages, and draft-chain rocprof rows. |
+| Target verifier drain | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_process_build_draft_batch` (`:1047`) and `llama_process_decode_ctx_dft` (`:1051`); `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` (`:477`), `mul_mat_vec_q_moe` (`:683`), and dispatch switch (`:976`-`:1216`). | `target_block_verify_total`, `target_block_layer_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, and verifier rocprof kernel-family rows. |
+| Verify row economy | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: batch scan/build and accept accounting (`llama_process_scan_batch`, `:1009`; `llama_accept_update_pending_h`, `:1230`). | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, and the row-economy histograms. |
 
 Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8 and
 raw-Q8 dp4a all-sidecar plus X8 draft lm-head top-1 uses
