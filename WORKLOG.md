@@ -131711,3 +131711,70 @@ Validation:
 No retained headline update yet: the current retained default/compat artifacts
 predate `cycle_histograms`, so the next full retained `llama-compat` run should
 refresh the histogram tracker directly.
+
+## 2026-07-01 — Full MTP rowhist refresh for exact and llama-compat lanes
+
+Ran the full retained `llama-compat` route and the default exact B5 route with
+the new `cycle_histograms` fields so `docs/MTP-LLAMACPP-PARITY.md` now has a
+three-lane row-economy table instead of a smoke-only compat row.
+
+ROCm / lineage preflight:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx' | head -n 40`
+  -> gfx1151 / Radeon 8060S.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is still blocked
+  because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+
+Full `llama-compat` rowhist:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rowhist-full.json`
+
+Result: AR **54.72 tok/s**, B2 **60.28 tok/s**, **1.1015x** vs AR,
+cycle **16.610 ms/output**, `acc/output=0.583`, draft acceptance `0.700`,
+target rows/output **1.250**, verifier drain **13.038 ms/output**.
+
+Compat histograms, 100 cycles / 240 visible outputs:
+
+- `generated_draft_tokens={"2": 100}`
+- `accepted_draft_tokens={"0": 17, "1": 26, "2": 57}`
+- `visible_output_tokens={"1": 17, "2": 26, "3": 57}`
+- `target_verify_rows_evaluated={"3": 100}`
+- `target_verify_discarded_rows={"0": 57, "1": 26, "2": 17}`
+- `target_verify_rows_minus_visible_output={"0": 57, "1": 26, "2": 17}`
+
+Full exact/default rowhist:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --budgets 5 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-rowhist-full.json`
+
+Result: AR **54.57 tok/s**, B5 **60.52 tok/s**, **1.109x** vs AR,
+cycle **16.552 ms/output**, `acc/output=0.535`, draft acceptance `0.723`,
+target rows/output **1.163**, serial B1 probe **6.670 ms/output**, block
+verifier **7.915 ms/output**.
+
+Exact histograms, 100 cycles / 215 visible outputs:
+
+- `generated_draft_tokens={"0": 25, "1": 39, "2": 10, "3": 11, "4": 8, "5": 7}`
+- `accepted_draft_tokens={"0": 41, "1": 36, "2": 7, "3": 5, "4": 5, "5": 6}`
+- `visible_output_tokens={"1": 41, "2": 36, "3": 7, "4": 5, "5": 5, "6": 6}`
+- `target_verify_rows_evaluated={"1": 34, "2": 30, "3": 10, "4": 11, "5": 8, "6": 7}`
+- `target_verify_discarded_rows={"0": 83, "1": 5, "2": 7, "3": 4, "4": 1}`
+- `target_verify_rows_minus_visible_output={"0": 83, "1": 5, "2": 7, "3": 4, "4": 1}`
+
+Comparison vs llama.cpp HIP B2 measured rows from
+`benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.jsonl`
+excluding warmup task `0`: llama has 87 cycles / 223 outputs, target
+rows/output **1.148**, discarded rows/output **0.148**, and histograms
+`generated_draft_tokens={"1": 5, "2": 82}`,
+`accepted_draft_tokens={"0": 11, "1": 16, "2": 60}`,
+`target_verify_rows_evaluated={"2": 5, "3": 82}`,
+`target_verify_discarded_rows={"0": 63, "1": 15, "2": 9}`.
+
+Conclusion: the remaining `llama-compat` gap is now tracked as **+2.379
+ms/output**, split into draft drain **+1.108 ms/output**, target verifier drain
+**+0.955 ms/output**, and row economy **+0.102 target rows/output**. The row
+economy gap is exactly visible as extra discarded-row rate: compat discards
+60/240 = **0.250 rows/output** while llama discards 33/223 = **0.148
+rows/output**. Operation cost remains first priority because draft+verifier
+drain explains about 2.06 ms/output of the 2.38 ms/output wall gap.
