@@ -149,6 +149,21 @@ suite row before moving the headline numbers.
 | Target rows / output | **1.266** | 1.148 | 0.118 rows/output | Secondary lever after operation cost: compat still evaluates more target rows than llama. |
 | Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
 
+#### Llama-compat target map
+
+Use this table as the short work queue when comparing a new `llama-compat` run
+against llama.cpp. The left side is the hipEngine bucket that must move; the
+right side is the llama.cpp bucket or source area to inspect when the structures
+match but the timings do not.
+
+| priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
+| ---: | --- | --- | --- | ---: | --- |
+| 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+2.562 ms/output** | Any real win must show up here after async/full-suite validation. |
+| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.153 ms/output** | Split sampler/drain further; copy llama's activation quantization or lm-head schedule only if it moves the async row. |
+| 3 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+1.095 ms/output** | Q8T16 pair layout/schedule first, then selected-MoE gate/up/down bodies. |
+| 4 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.118 target rows/output | Revisit policy only after operation cost is closer; this is secondary today. |
+| 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
+
 Latest verifier/draft split attribution after q6top1dp4a
 (`llama-compat-device-chain-dp4a-allsync`, attribution-only smoke):
 

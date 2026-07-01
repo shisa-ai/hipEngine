@@ -130767,3 +130767,16 @@ cannot run because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent
 (`fatal: cannot change to ... No such file or directory`). This diagnostic was
 implemented in-tree using llama.cpp HIP source as the shape reference, not by
 copying nano-vllm code.
+
+## 2026-07-01 — MTP parity target-map dashboard update
+
+Added a compact `Llama-compat target map` to
+`docs/MTP-LLAMACPP-PARITY.md` under the active three-lane dashboard. The table
+keeps the current retained compat-vs-llama gap as an explicit work queue:
+cycle wall **+2.562 ms/output**, draft drain **+1.153 ms/output**, verifier
+drain **+1.095 ms/output**, and target row economy **+0.118 rows/output**. It
+also names the hipEngine buckets to update and the corresponding llama.cpp
+comparison points (`llama_draft_sample_topk`, `mtp_context_replay_append`,
+`mul_mat_vec_q`, and `mul_mat_vec_q_moe`) so future runs can show where the
+llama-compat lane still diverges. Documentation-only change; no new benchmark
+claim.
