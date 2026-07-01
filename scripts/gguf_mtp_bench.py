@@ -225,6 +225,10 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
             out[name] = result
         return out
 
+    def bump_hist(hist: dict[str, int], value: int) -> None:
+        key = str(int(value))
+        hist[key] = hist.get(key, 0) + 1
+
     verify_cycle_count = len(cycles)
     total_drafts = 0
     total_accepted = 0
@@ -243,6 +247,18 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
     target_verify_replay_rows = 0
     target_verify_direct_commit_rows = 0
     target_verify_discarded_rows = 0
+    cycle_histograms: dict[str, dict[str, int]] = {
+        "generated_draft_tokens": {},
+        "accepted_draft_tokens": {},
+        "visible_output_tokens": {},
+        "target_verify_layer_passes": {},
+        "target_verify_rows_evaluated": {},
+        "target_verify_block_rows": {},
+        "target_verify_replay_rows": {},
+        "target_verify_direct_commit_rows": {},
+        "target_verify_discarded_rows": {},
+        "target_verify_rows_minus_visible_output": {},
+    }
     for index, cycle in enumerate(cycles):
         if not isinstance(cycle, dict):
             raise ValueError(f"cycles[{index}] must be an object")
@@ -253,6 +269,9 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
             raise ValueError(f"cycles[{index}].accepted_draft_tokens must be <= generated_draft_tokens")
         if accepted_drafts > visible_output:
             raise ValueError(f"cycles[{index}].accepted_draft_tokens must be <= visible_output_tokens")
+        bump_hist(cycle_histograms["generated_draft_tokens"], generated_drafts)
+        bump_hist(cycle_histograms["accepted_draft_tokens"], accepted_drafts)
+        bump_hist(cycle_histograms["visible_output_tokens"], visible_output)
         total_drafts += generated_drafts
         total_accepted += accepted_drafts
         visible_output_tokens += visible_output
@@ -264,15 +283,35 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
             cycle_wall_count += 1
         for name, stage_ms in optional_stage_timings(cycle, index).items():
             stage_timing_totals_ms[name] = stage_timing_totals_ms.get(name, 0.0) + stage_ms
-        target_verify_layer_passes += optional_int(cycle, index, "target_verify_layer_passes")
-        target_verify_rows_evaluated += optional_int(cycle, index, "target_verify_rows_evaluated")
-        target_verify_serial_rows += optional_int(cycle, index, "target_verify_serial_rows")
-        target_verify_graph_rows += optional_int(cycle, index, "target_verify_graph_rows")
-        target_verify_block_passes += optional_int(cycle, index, "target_verify_block_passes")
-        target_verify_block_rows += optional_int(cycle, index, "target_verify_block_rows")
-        target_verify_replay_rows += optional_int(cycle, index, "target_verify_replay_rows")
-        target_verify_direct_commit_rows += optional_int(cycle, index, "target_verify_direct_commit_rows")
-        target_verify_discarded_rows += optional_int(cycle, index, "target_verify_discarded_rows")
+        cycle_target_verify_layer_passes = optional_int(cycle, index, "target_verify_layer_passes")
+        cycle_target_verify_rows_evaluated = optional_int(cycle, index, "target_verify_rows_evaluated")
+        cycle_target_verify_serial_rows = optional_int(cycle, index, "target_verify_serial_rows")
+        cycle_target_verify_graph_rows = optional_int(cycle, index, "target_verify_graph_rows")
+        cycle_target_verify_block_passes = optional_int(cycle, index, "target_verify_block_passes")
+        cycle_target_verify_block_rows = optional_int(cycle, index, "target_verify_block_rows")
+        cycle_target_verify_replay_rows = optional_int(cycle, index, "target_verify_replay_rows")
+        cycle_target_verify_direct_commit_rows = optional_int(cycle, index, "target_verify_direct_commit_rows")
+        cycle_target_verify_discarded_rows = optional_int(cycle, index, "target_verify_discarded_rows")
+        target_verify_layer_passes += cycle_target_verify_layer_passes
+        target_verify_rows_evaluated += cycle_target_verify_rows_evaluated
+        target_verify_serial_rows += cycle_target_verify_serial_rows
+        target_verify_graph_rows += cycle_target_verify_graph_rows
+        target_verify_block_passes += cycle_target_verify_block_passes
+        target_verify_block_rows += cycle_target_verify_block_rows
+        target_verify_replay_rows += cycle_target_verify_replay_rows
+        target_verify_direct_commit_rows += cycle_target_verify_direct_commit_rows
+        target_verify_discarded_rows += cycle_target_verify_discarded_rows
+        bump_hist(cycle_histograms["target_verify_layer_passes"], cycle_target_verify_layer_passes)
+        bump_hist(cycle_histograms["target_verify_rows_evaluated"], cycle_target_verify_rows_evaluated)
+        bump_hist(cycle_histograms["target_verify_block_rows"], cycle_target_verify_block_rows)
+        bump_hist(cycle_histograms["target_verify_replay_rows"], cycle_target_verify_replay_rows)
+        bump_hist(cycle_histograms["target_verify_direct_commit_rows"], cycle_target_verify_direct_commit_rows)
+        bump_hist(cycle_histograms["target_verify_discarded_rows"], cycle_target_verify_discarded_rows)
+        if "target_verify_rows_evaluated" in cycle:
+            bump_hist(
+                cycle_histograms["target_verify_rows_minus_visible_output"],
+                cycle_target_verify_rows_evaluated - visible_output,
+            )
     total_cycle_ms = total_ar_ms + total_draft_ms
 
     accept_per_draft = total_accepted / total_drafts if total_drafts > 0 else 0.0
@@ -328,6 +367,7 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
         "target_verify_layer_passes_per_output": target_verify_layer_passes_per_output,
         "target_verify_rows_per_output": target_verify_rows_per_output,
         "target_verify_replay_rows_per_output": target_verify_replay_rows_per_output,
+        "cycle_histograms": cycle_histograms,
         "denominators": {
             "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
             "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",

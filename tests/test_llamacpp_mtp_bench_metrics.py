@@ -169,6 +169,16 @@ def test_llamacpp_mtp_stage_timing_summary_excludes_first_task(tmp_path) -> None
     assert measured["cycle_wall_ms_per_output"] == 15.0
     assert measured["target_verify_layer_passes_per_output"] == 2 / 3
     assert measured["target_verify_rows_per_output"] == 5 / 3
+    assert measured["cycle_histograms"] == {
+        "generated_draft_tokens": {"1": 1, "2": 1},
+        "accepted_draft_tokens": {"0": 1, "1": 1},
+        "visible_output_tokens": {"1": 1, "2": 1},
+        "target_verify_layer_passes": {"1": 2},
+        "target_verify_rows_evaluated": {"2": 1, "3": 1},
+        "target_verify_block_rows": {"0": 2},
+        "target_verify_discarded_rows": {"1": 2},
+        "target_verify_rows_minus_visible_output": {"1": 2},
+    }
     assert measured["stage_timing_totals_ms"] == {
         "draft_initial": 6.0,
         "mtp_context_replay_append": 20.0,

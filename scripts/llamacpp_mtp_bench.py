@@ -503,6 +503,28 @@ def _summarize_stage_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         stages = row.get("stage_timings_ms") or {}
         for name, value in stages.items():
             stage_totals[name] = stage_totals.get(name, 0.0) + float(value)
+    cycle_histograms: dict[str, dict[str, int]] = {
+        "generated_draft_tokens": {},
+        "accepted_draft_tokens": {},
+        "visible_output_tokens": {},
+        "target_verify_layer_passes": {},
+        "target_verify_rows_evaluated": {},
+        "target_verify_block_rows": {},
+        "target_verify_discarded_rows": {},
+        "target_verify_rows_minus_visible_output": {},
+    }
+    for row in rows:
+        visible = int(row.get("visible_output_tokens") or 0)
+        _bump_hist(cycle_histograms["generated_draft_tokens"], int(row.get("generated_draft_tokens") or 0))
+        _bump_hist(cycle_histograms["accepted_draft_tokens"], int(row.get("accepted_draft_tokens") or 0))
+        _bump_hist(cycle_histograms["visible_output_tokens"], visible)
+        _bump_hist(cycle_histograms["target_verify_layer_passes"], int(row.get("target_verify_layer_passes") or 0))
+        target_row_count = int(row.get("target_verify_rows_evaluated") or 0)
+        _bump_hist(cycle_histograms["target_verify_rows_evaluated"], target_row_count)
+        _bump_hist(cycle_histograms["target_verify_block_rows"], int(row.get("target_verify_block_rows") or 0))
+        _bump_hist(cycle_histograms["target_verify_discarded_rows"], int(row.get("target_verify_discarded_rows") or 0))
+        if "target_verify_rows_evaluated" in row:
+            _bump_hist(cycle_histograms["target_verify_rows_minus_visible_output"], target_row_count - visible)
 
     return {
         "cycles": len(rows),
@@ -516,6 +538,7 @@ def _summarize_stage_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "target_verify_layer_passes_per_output": (target_passes / total_output) if total_output else None,
         "target_verify_rows_per_output": (target_rows / total_output) if total_output else None,
         "target_verify_discarded_rows_per_output": (discarded_rows / total_output) if total_output else None,
+        "cycle_histograms": cycle_histograms,
         "stage_timing_totals_ms": dict(sorted(stage_totals.items())),
         "stage_timing_per_output_ms": (
             {name: value / total_output for name, value in sorted(stage_totals.items())}
@@ -526,6 +549,11 @@ def _summarize_stage_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             if rows else {}
         ),
     }
+
+
+def _bump_hist(hist: dict[str, int], value: int) -> None:
+    key = str(int(value))
+    hist[key] = hist.get(key, 0) + 1
 
 
 def _summary_tps(summary: dict[str, Any], protocol: str) -> float | None:

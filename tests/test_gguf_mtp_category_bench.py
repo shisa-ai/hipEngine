@@ -152,6 +152,18 @@ def test_aggregate_rows_propagates_optional_cycle_stage_timings() -> None:
     }
     assert metrics["stage_timing_per_output_ms"]["target_block_forward"] == pytest.approx(38.0 / 3.0)
     assert metrics["stage_timing_per_cycle_ms"]["draft_initial"] == 9.0
+    assert metrics["cycle_histograms"] == {
+        "generated_draft_tokens": {"2": 1},
+        "accepted_draft_tokens": {"1": 1},
+        "visible_output_tokens": {"3": 1},
+        "target_verify_layer_passes": {"3": 1},
+        "target_verify_rows_evaluated": {"3": 1},
+        "target_verify_block_rows": {"0": 1},
+        "target_verify_replay_rows": {"0": 1},
+        "target_verify_direct_commit_rows": {"0": 1},
+        "target_verify_discarded_rows": {"0": 1},
+        "target_verify_rows_minus_visible_output": {"0": 1},
+    }
 
 
 @pytest.mark.parametrize("text", ["", " ", "1,", ",1", "1,,5"])

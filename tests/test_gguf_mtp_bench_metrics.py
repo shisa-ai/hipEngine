@@ -188,6 +188,18 @@ def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
     assert metrics["target_verify_layer_passes_per_output"] == 1.0
     assert metrics["target_verify_rows_per_output"] == 8 / 6
     assert metrics["target_verify_replay_rows_per_output"] == 1 / 6
+    assert metrics["cycle_histograms"] == {
+        "generated_draft_tokens": {"1": 5},
+        "accepted_draft_tokens": {"0": 4, "1": 1},
+        "visible_output_tokens": {"1": 4, "2": 1},
+        "target_verify_layer_passes": {"1": 4, "2": 1},
+        "target_verify_rows_evaluated": {"1": 3, "2": 1, "3": 1},
+        "target_verify_block_rows": {"0": 4, "2": 1},
+        "target_verify_replay_rows": {"0": 4, "1": 1},
+        "target_verify_direct_commit_rows": {"0": 4, "1": 1},
+        "target_verify_discarded_rows": {"0": 4, "1": 1},
+        "target_verify_rows_minus_visible_output": {"0": 4, "2": 1},
+    }
     assert metrics["denominators"] == {
         "accept_per_draft": "accepted_draft_tokens / generated_draft_tokens",
         "accepted_per_output": "accepted_draft_tokens / visible_output_token_count",

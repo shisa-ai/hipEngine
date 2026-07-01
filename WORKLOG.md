@@ -131660,3 +131660,54 @@ Conclusion: reject. A mechanical raw-GGUF selected gate/up body/layout copy of
 llama.cpp's MoE MMVQ is slower than retained T16 dp4a on the current B2 verifier
 shape. Do not run full-suite or update the retained headline gap. Updated
 `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+
+## 2026-07-01 — MTP row-economy histogram buckets wired
+
+Added per-cycle row-economy histograms to the MTP parity instrumentation so the
+active `llama-compat` tracker can compare not just average rows/output but the
+distribution of accepted, visible, verified, and discarded rows:
+
+- hipEngine `scripts/gguf_mtp_bench.py` now emits `cycle_histograms` for
+  generated drafts, accepted drafts, visible outputs, target verifier passes,
+  target rows, block/replay/direct-commit/discarded rows, and
+  `target_verify_rows_minus_visible_output`.
+- `scripts/gguf_mtp_category_bench.py` aggregates those histograms across
+  prompt/category rows.
+- `scripts/gguf_ar_mtp_suite.py` forwards them into `mtp_by_budget`.
+- `scripts/llamacpp_mtp_bench.py` emits matching histogram keys in the
+  llama.cpp stage-timing summary.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` with the row-hist smoke artifact and an
+  active row-economy histogram tracker beside the existing three-lane speed gap.
+
+Smoke artifact:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rowhist-smoke.json`
+
+Result: B2 **68.20 tok/s**, cycle **14.683 ms/output**,
+`acc/output=0.667`, draft acceptance `1.000`. Histogram smoke shows
+`accepted_draft_tokens={"2": 3}`,
+`target_verify_rows_evaluated={"3": 3}`,
+`target_verify_discarded_rows={"0": 3}`, and
+`target_verify_rows_minus_visible_output={"0": 3}`.
+
+Current llama.cpp HIP B2 histogram, using the current summarizer on
+`benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.jsonl`
+and excluding warmup task `0`: **87 cycles / 223 outputs**,
+`generated_draft_tokens={"1": 5, "2": 82}`,
+`accepted_draft_tokens={"0": 11, "1": 16, "2": 60}`,
+`visible_output_tokens={"1": 11, "2": 16, "3": 60}`,
+`target_verify_rows_evaluated={"2": 5, "3": 82}`,
+`target_verify_discarded_rows={"0": 63, "1": 15, "2": 9}`, and
+`target_verify_rows_minus_visible_output={"0": 63, "1": 15, "2": 9}`.
+
+Validation:
+
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/llamacpp_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py tests/test_llamacpp_mtp_bench_metrics.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_ar_mtp_suite.py`
+  -> pass.
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py::test_compute_speculative_metrics_counts_visible_accepted_tokens tests/test_llamacpp_mtp_bench_metrics.py::test_llamacpp_mtp_stage_timing_summary_excludes_first_task tests/test_gguf_mtp_category_bench.py::test_aggregate_rows_propagates_optional_cycle_stage_timings tests/test_gguf_ar_mtp_suite.py::test_suite_mtp_rows_forwards_cycle_histograms`
+  -> **4 passed**.
+- `git diff --check` -> pass.
+
+No retained headline update yet: the current retained default/compat artifacts
+predate `cycle_histograms`, so the next full retained `llama-compat` run should
+refresh the histogram tracker directly.

@@ -823,6 +823,7 @@ def _mtp_rows(mtp: dict[str, Any]) -> dict[str, Any]:
             "stage_timing_totals_ms": row.get("stage_timing_totals_ms"),
             "stage_timing_per_output_ms": row.get("stage_timing_per_output_ms"),
             "stage_timing_per_cycle_ms": row.get("stage_timing_per_cycle_ms"),
+            "cycle_histograms": row.get("cycle_histograms"),
         }
     return rows
 

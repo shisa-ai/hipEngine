@@ -140,6 +140,7 @@ Current source artifacts:
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
 | hipEngine llama-compat | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`, artifact `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, and q6-only X8 selected-down repack (`--selected-down-x8-repack q6`). |
+| hipEngine llama-compat row-hist smoke | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rowhist-smoke.json` | Instrumentation-only smoke proving `cycle_histograms` now flow through the suite output. Do not replace the retained headline until the full retained route is rerun with these fields. |
 | hipEngine llama-compat verifier all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Attribution-only smoke with extra sync points inside verifier layer families and selected-MoE gate/up/down. Do not use for headline tok/s. |
 | hipEngine llama-compat verifier block rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json` | Diagnostic-only B2-shaped `verify_target_block` kernel trace for the retained compat route (`--mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank verifier kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
@@ -279,6 +280,28 @@ suite row before moving the headline numbers.
 | Target verifier drain | **13.023 ms/output** | 12.083 ms/output | **0.940 ms/output** | Remaining B2 layer work is Q8T16 pair projection plus selected gate/up/down bodies. |
 | Target rows / output | **1.250** | 1.148 | 0.102 rows/output | Secondary lever after operation cost: compat still evaluates more target rows than llama. |
 | Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
+
+#### Row-economy histogram tracker
+
+`cycle_histograms` are now a required output bucket for hipEngine MTP metrics,
+category aggregation, suite rollup, and the llama.cpp stage-timing summary. The
+next retained full-suite `llama-compat` run must populate this table directly;
+for now the retained default/compat rows predate the histogram fields, so the
+only hipEngine histogram evidence is the smoke artifact named below. The
+llama.cpp values are measured by summarizing
+`benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.jsonl`
+with the current harness, excluding warmup task `0`.
+
+| row-economy bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat reading |
+| --- | --- | --- | --- | --- |
+| histogram source | pending retained rerun | smoke only: `...x8q6-rowhist-smoke.json` | `...natural24-deep.jsonl`, measured rows | Full compat histogram still needs a retained rerun before this can move the headline gap. |
+| cycles / visible outputs | pending | 3 / 9 smoke | 87 / 223 | Smoke proves plumbing only; compare distributions after full route rerun. |
+| `generated_draft_tokens` | pending | `{2: 3}` | `{1: 5, 2: 82}` | Both lanes are effectively B2, with llama ending five cycles at one generated draft. |
+| `accepted_draft_tokens` | pending | `{2: 3}` | `{0: 11, 1: 16, 2: 60}` | Need full compat distribution to see whether low-accept cycles explain the +0.102 rows/output gap. |
+| `visible_output_tokens` | pending | `{3: 3}` | `{1: 11, 2: 16, 3: 60}` | Full-accept cycles emit three visible tokens; low-accept cycles expose row waste. |
+| `target_verify_rows_evaluated` | pending | `{3: 3}` | `{2: 5, 3: 82}` | Llama mostly verifies three target rows per B2 cycle. |
+| `target_verify_discarded_rows` | pending | `{0: 3}` | `{0: 63, 1: 15, 2: 9}` | Llama wastes rows on 24/87 measured cycles; compat needs the full distribution, not just the average. |
+| `target_verify_rows_minus_visible_output` | pending | `{0: 3}` | `{0: 63, 1: 15, 2: 9}` | This is the row-economy error bar to track beside `target_rows_per_output`. |
 
 #### Llama-compat target map
 

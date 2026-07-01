@@ -29,6 +29,27 @@ def test_suite_default_route_uses_draft_confidence_gate() -> None:
     assert flags[flags.index("--draft-p-min") + 1] == "0.5"
 
 
+def test_suite_mtp_rows_forwards_cycle_histograms() -> None:
+    histograms = {
+        "accepted_draft_tokens": {"0": 1, "2": 3},
+        "target_verify_rows_minus_visible_output": {"0": 3, "1": 1},
+    }
+    rows = suite._mtp_rows(
+        {
+            "totals": {
+                "b2": {
+                    "decode_tok_s_weighted": 12.0,
+                    "accepted_per_output": 0.5,
+                    "draft_acceptance": 0.75,
+                    "cycle_histograms": histograms,
+                }
+            }
+        }
+    )
+
+    assert rows["b2"]["cycle_histograms"] == histograms
+
+
 def test_suite_exposes_resident_strict_context_route() -> None:
     assert suite.MTP_ROUTES["resident-strict-context"] == [
         "--resident-mtp-draft",

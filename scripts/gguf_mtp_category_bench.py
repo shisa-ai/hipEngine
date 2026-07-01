@@ -1069,6 +1069,58 @@ def cycle_int_sum(row: dict[str, Any], key: str) -> int:
     return total
 
 
+def _bump_hist(hist: dict[str, int], value: int) -> None:
+    key = str(int(value))
+    hist[key] = hist.get(key, 0) + 1
+
+
+def _cycle_int_value(row: dict[str, Any], cycle: dict[str, Any], index: int, key: str) -> int:
+    value = cycle.get(key, 0)
+    if type(value) is not int:
+        prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
+        raise BenchError(f"cycle {index} for {prompt_id} {key} must be a non-negative integer")
+    if value < 0:
+        prompt_id = str(row.get("prompt_id") or row.get("suite_id") or row.get("id") or "<unknown>")
+        raise BenchError(f"cycle {index} for {prompt_id} {key} must be a non-negative integer")
+    return int(value)
+
+
+def combine_cycle_histograms(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    histograms: dict[str, dict[str, int]] = {
+        "generated_draft_tokens": {},
+        "accepted_draft_tokens": {},
+        "visible_output_tokens": {},
+        "target_verify_layer_passes": {},
+        "target_verify_rows_evaluated": {},
+        "target_verify_block_rows": {},
+        "target_verify_replay_rows": {},
+        "target_verify_direct_commit_rows": {},
+        "target_verify_discarded_rows": {},
+        "target_verify_rows_minus_visible_output": {},
+    }
+    for row in rows:
+        for index, cycle in enumerate(row.get("cycles", [])):
+            if not isinstance(cycle, dict):
+                continue
+            visible = _cycle_int_value(row, cycle, index, "visible_output_tokens")
+            target_rows = _cycle_int_value(row, cycle, index, "target_verify_rows_evaluated")
+            _bump_hist(histograms["generated_draft_tokens"], _cycle_int_value(row, cycle, index, "generated_draft_tokens"))
+            _bump_hist(histograms["accepted_draft_tokens"], _cycle_int_value(row, cycle, index, "accepted_draft_tokens"))
+            _bump_hist(histograms["visible_output_tokens"], visible)
+            _bump_hist(histograms["target_verify_layer_passes"], _cycle_int_value(row, cycle, index, "target_verify_layer_passes"))
+            _bump_hist(histograms["target_verify_rows_evaluated"], target_rows)
+            _bump_hist(histograms["target_verify_block_rows"], _cycle_int_value(row, cycle, index, "target_verify_block_rows"))
+            _bump_hist(histograms["target_verify_replay_rows"], _cycle_int_value(row, cycle, index, "target_verify_replay_rows"))
+            _bump_hist(
+                histograms["target_verify_direct_commit_rows"],
+                _cycle_int_value(row, cycle, index, "target_verify_direct_commit_rows"),
+            )
+            _bump_hist(histograms["target_verify_discarded_rows"], _cycle_int_value(row, cycle, index, "target_verify_discarded_rows"))
+            if "target_verify_rows_evaluated" in cycle:
+                _bump_hist(histograms["target_verify_rows_minus_visible_output"], target_rows - visible)
+    return histograms
+
+
 def cycle_stage_timing_sums(row: dict[str, Any]) -> tuple[int, float, dict[str, float]]:
     wall_count = 0
     wall_total = 0.0
@@ -1264,6 +1316,7 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, 
     target_verify_replay_rows = sum(cycle_int_sum(row, "target_verify_replay_rows") for row in rows)
     target_verify_direct_commit_rows = sum(cycle_int_sum(row, "target_verify_direct_commit_rows") for row in rows)
     target_verify_discarded_rows = sum(cycle_int_sum(row, "target_verify_discarded_rows") for row in rows)
+    cycle_histograms = combine_cycle_histograms(rows)
     cycle_wall_count, cycle_wall_total_ms, stage_timing_totals_ms = combine_stage_timing_sums(rows)
     cycle_count = sum(len(row.get("cycles", [])) for row in rows)
     decode_tps = 1000.0 * total_output / total_cycle_ms if total_cycle_ms > 0 else 0.0
@@ -1298,6 +1351,7 @@ def aggregate_rows(rows: list[dict[str, Any]], *, off_tps: float | None = None, 
         "target_verify_replay_rows_per_output": (
             target_verify_replay_rows / total_output if total_output else None
         ),
+        "cycle_histograms": cycle_histograms,
     }
     if cycle_wall_count:
         cycle_wall_over_legacy_ms = cycle_wall_total_ms - total_cycle_ms if cycle_wall_count == cycle_count else None
@@ -1338,6 +1392,7 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]], *, expected_cycles: int | 
     target_verify_replay_rows = sum(cycle_int_sum(row, "target_verify_replay_rows") for row in rows)
     target_verify_direct_commit_rows = sum(cycle_int_sum(row, "target_verify_direct_commit_rows") for row in rows)
     target_verify_discarded_rows = sum(cycle_int_sum(row, "target_verify_discarded_rows") for row in rows)
+    cycle_histograms = combine_cycle_histograms(rows)
     return {
         "prompts": len(rows),
         "total_output_tokens": total_output,
@@ -1361,6 +1416,7 @@ def aggregate_off_from_b1(rows: list[dict[str, Any]], *, expected_cycles: int | 
         "target_verify_replay_rows_per_output": (
             target_verify_replay_rows / total_output if total_output else None
         ),
+        "cycle_histograms": cycle_histograms,
         "source": "B1 native target-AR verifier time over the same prompt rows",
         "baseline_kind": "verifier_derived_from_b1_target_ar",
         "true_autoregressive_path": False,
