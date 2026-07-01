@@ -60,6 +60,23 @@ Dashboard contract:
 | hipEngine `llama-compat` | Active replication lane. | Should structurally match llama.cpp's B2/no-probe MTP path; every positive delta vs llama.cpp is a concrete optimization target. |
 | llama.cpp HIP | Timing target and implementation reference. | When `llama-compat` mirrors the shape but stays slower, inspect the corresponding llama.cpp stage/kernel and copy or retune the mechanism. |
 
+Live gap board:
+
+| stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | current target |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Total MTP wall | 16.800 ms/output | **16.587 ms/output** | 14.231 ms/output | **+2.356 ms/output** | Spend this row down before claiming parity movement. |
+| Draft drain | 1.937 ms/output | **3.244 ms/output** | 2.140 ms/output | **+1.104 ms/output** | Q6_K top-1 body/layout or fused top-1/sampler work that moves async `draft_initial`. |
+| Draft visible sampler/GPU drain | 1.158 ms/output | **3.060 ms/output** | 1.886 ms/output | **+1.174 ms/output** | Compare through draft drain; bucket names differ across engines. |
+| Draft transformer body | 0.133 ms/output | **0.112 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
+| Serial verifier probe | 6.682 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
+| Target verifier drain | 8.157 ms/output | **13.023 ms/output** | 12.083 ms/output | **+0.940 ms/output** | Dense Q8T16 projection MMVQ, selected-MoE GEMV, then verifier lm-head. |
+| Target rows / output | 1.163 | **1.250** | 1.148 | **+0.102 rows/output** | Secondary policy/economy target after operation cost. |
+| Setup/snapshot/commit/accounting | 0.406 ms/output | **0.092 ms/output** | 0.188 ms/output | compat faster | Guard only; not where the missing couple of ms lives. |
+
+This board is intentionally redundant with the detailed ledgers below. Keep it
+short, current, and three-lane so the next optimization target is visible without
+reading the historical sections.
+
 #### Standing three-lane parity snapshot (update first)
 
 This is the first table to refresh after any retained or diagnostic parity run.

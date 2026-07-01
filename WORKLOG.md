@@ -131430,3 +131430,12 @@ row-amortization over the current T16 layout does not move async MTP wall. The
 retained lane remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`; the next
 dense-Q8 target should inspect/copy llama.cpp's actual Q8_0 x Q8_1 MMVQ
 layout/scheduler instead of expanding T16 rowtile coverage again.
+
+## 2026-07-01 — MTP parity live gap board
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking with a compact three-lane
+live gap board: hipEngine default exact, hipEngine `llama-compat`, and llama.cpp
+HIP B2. The board records the current retained/traced speed gap as
+`+2.356 ms/output`, split into `+1.104 ms/output` draft drain,
+`+0.940 ms/output` target verifier drain, and `+0.102 target rows/output`.
+This is docs-only structure for active tracking; no benchmark rerun was needed.
