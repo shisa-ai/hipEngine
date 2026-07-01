@@ -65,6 +65,10 @@ def _apply_route_env(args: argparse.Namespace) -> None:
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"] = "1"
+    if getattr(args, "verify_dense_q8_dp4a_f32", False):
+        os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
+        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
+        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"] = "1"
     selected_down_x8 = str(getattr(args, "selected_down_x8_repack", "off"))
     if selected_down_x8 != "off":
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = selected_down_x8
@@ -240,6 +244,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
         "verify_dense_q8_dp4a_shared": bool(args.verify_dense_q8_dp4a_shared),
+        "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "selected_gate_up_x8": bool(args.selected_gate_up_x8),
         "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
@@ -323,6 +328,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--verify-dense-q8-dp4a-all")
     if args.verify_dense_q8_dp4a_shared:
         child_base.append("--verify-dense-q8-dp4a-shared")
+    if args.verify_dense_q8_dp4a_f32:
+        child_base.append("--verify-dense-q8-dp4a-f32")
     if str(args.selected_down_x8_repack) != "off":
         child_base.extend(["--selected-down-x8-repack", str(args.selected_down_x8_repack)])
     if args.selected_gate_up_x8:
@@ -385,6 +392,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
         "verify_dense_q8_dp4a_shared": bool(args.verify_dense_q8_dp4a_shared),
+        "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "selected_gate_up_x8": bool(args.selected_gate_up_x8),
         "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
@@ -632,6 +640,11 @@ def main() -> int:
         "--verify-dense-q8-dp4a-shared",
         action="store_true",
         help="Also route shared-expert Q8 gate/up/down verifier projections through raw-Q8 dp4a.",
+    )
+    parser.add_argument(
+        "--verify-dense-q8-dp4a-f32",
+        action="store_true",
+        help="Also route F32-activation dense Q8 singleton verifier projections through raw-Q8 dp4a.",
     )
     parser.add_argument("--selected-down-x8-repack", choices=("off", "q5", "q6", "both"), default="off")
     parser.add_argument(

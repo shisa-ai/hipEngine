@@ -132570,3 +132570,125 @@ python3 -m pytest \
 ```
 
 Result: passed.
+
+## 2026-07-01 — MTP llama-compat F32 ssm_out verifier dp4a retained
+
+Implemented a default-off verifier F32 activation raw-Q8 dp4a diagnostic for the
+active llama-compat lane:
+
+- `--verify-dense-q8-dp4a-f32`
+- `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32=1`
+- suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm`
+  and `...-f32ssm-allsync`
+
+This covers direct-state verifier `ssm_out`, whose activation is F32 and could
+not use the existing BF16 q8_1 quantizer. It adds
+`hipengine_gguf_q4_k_quantize_f32_q8_1` and routes rows>1 `ssm_out` through
+F32 q8_1 quantization plus `gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out` when
+raw Q8 sidecars exist.
+
+Verifier profile:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_verifier_rocprof.py --mode block-verify \
+  --verify-dp4a --selected-down-x8-repack q6 \
+  --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 \
+  --record-stage-timings --steps 4 --warmup 1 --require-cached \
+  --out benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-f32ssm.json
+```
+
+Profile result versus the active x8top1 control:
+**32.470 -> 30.936 ms/block host**, **23.893 -> 22.881 ms/block kernel**,
+and **1039 -> 1069 kernel calls/block**. Dense bucket moved
+**8.951 -> 8.319 ms/block**; remaining top kernel families are
+`q8_0_dp4a_dual_split_rowtile_gemv` **4.013 ms/block**,
+`q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv` **4.010 ms/block**,
+`q6_k_t16_gemv_rowtile` **2.657 ms/block**, and
+`qk_t16_selected_q8_1_dp4a_direct_gemv` **2.637 ms/block**.
+
+Same-session smoke A/B:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-control-smoke.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-smoke.json
+```
+
+Smoke result: **70.74 -> 71.43 tok/s**, cycle
+**14.160 -> 14.023 ms/output**, verifier drain
+**11.359 -> 11.230 ms/output**, identical acc/output **0.667** and target
+rows/output **1.000**.
+
+Full-suite check:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-full.json
+```
+
+Full-suite result retained for the accuracy-traded llama-compat lane:
+**61.31 -> 63.63 tok/s**, cycle **16.331 -> 15.735 ms/output**,
+verifier drain **12.662 -> 12.158 ms/output**, acc/output
+**0.567 -> 0.578**, draft acceptance **0.655 -> 0.685**, target
+rows/output **1.299 -> 1.266**, and AR **54.67 -> 54.69 tok/s**.
+The remaining traced gap to llama.cpp HIP B2 is now **+1.504 ms/output**:
+**+1.112 ms/output** draft drain, **+0.075 ms/output** verifier drain,
+and **+0.118 target rows/output**.
+
+Decision: promote `...denseq8all-x8top1-f32ssm` as the active
+llama-replication lane. This is not exact-default eligible because it is an
+accuracy-traded q8_1/raw-Q8 dp4a verifier route. Updated
+`docs/MTP-LLAMACPP-PARITY.md`, `docs/REFACTOR.md`, `benchmarks/README.md`,
+and `benchmarks/CHANGELOG.md`.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_mtp_verifier_rocprof.py \
+  scripts/gguf_ar_mtp_suite.py \
+  tests/test_qwen35_gguf_dense_q8_dp4a_routing.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py \
+  tests/test_gguf_q8_0_dp4a_gemv.py
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_qwen35_gguf_dense_q8_dp4a_routing.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py \
+  tests/test_gguf_q8_0_dp4a_gemv.py::test_q8_0_dp4a_f32_quantizer_single_rowtile_matches_q8_1_oracle_and_quality_gate \
+  -q
+```
+
+Result: passed. The profiler artifact reports `gguf_quantize_q8_1`
+**600 calls / 0.204 ms/block** and `q8_0_dp4a_rowtile_gemv`
+**120 calls / 1.418 ms/block** in the F32 route.
+
+Lineage check attempted:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: blocked by missing read-only reference checkout
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` (`git -C ... rev-parse` cannot change
+to that path). This is an environment/reference availability issue, not a test
+failure for the in-tree F32 export.

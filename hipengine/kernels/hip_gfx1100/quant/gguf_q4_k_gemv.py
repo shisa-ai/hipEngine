@@ -24,6 +24,7 @@ _SYMBOL_ROWTILE_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_rowtile_bf16_bf16_out"
 _SYMBOL_SELECTED_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out"
 _SYMBOL_SELECTED_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out"
 _SYMBOL_QUANTIZE_BF16_Q8_1 = "hipengine_gguf_q4_k_quantize_bf16_q8_1"
+_SYMBOL_QUANTIZE_F32_Q8_1 = "hipengine_gguf_q4_k_quantize_f32_q8_1"
 _SYMBOL_SELECTED_DUAL_Q8_1_DP4A_BF16_BF16_OUT = (
     "hipengine_gguf_q4_k_selected_dual_gemv_q8_1_dp4a_bf16_bf16_out"
 )
@@ -751,6 +752,43 @@ def gguf_q4_k_quantize_bf16_q8_1(
     _check_launch(runtime, err)
 
 
+def gguf_q4_k_quantize_f32_q8_1(
+    x_ptr: int,
+    xq_ptr: int,
+    rows: int,
+    in_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Quantize F32 activation rows to GGML-compatible q8_1 blocks."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if in_features <= 0 or in_features % _Q8_1_BLOCK != 0:
+        raise ValueError("in_features must be positive and divisible by q8_1 block size 32")
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_QUANTIZE_F32_Q8_1)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
     xq_ptr: int,
     selected_ptr: int,
@@ -948,6 +986,7 @@ __all__ = [
     "gguf_q4_k_gemv_bf16_f32_out",
     "gguf_q4_k_gemv_bf16_fp16_out",
     "gguf_q4_k_quantize_bf16_q8_1",
+    "gguf_q4_k_quantize_f32_q8_1",
     "gguf_q4_k_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out",

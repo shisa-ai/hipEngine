@@ -1318,6 +1318,16 @@ extern "C" int hipengine_gguf_q4_k_quantize_bf16_q8_1(
       x, reinterpret_cast<gguf_q8_1_block*>(xq), rows, in_features, stream);
 }
 
+extern "C" int hipengine_gguf_q4_k_quantize_f32_q8_1(
+    const float* x,
+    void* xq,
+    int64_t rows,
+    int64_t in_features,
+    hipStream_t stream) {
+  return launch_gguf_quantize_q8_1<float>(
+      x, reinterpret_cast<gguf_q8_1_block*>(xq), rows, in_features, stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_selected_dual_gemv_q8_1_dp4a_bf16_bf16_out(
     const void* xq,
     const int64_t* selected,

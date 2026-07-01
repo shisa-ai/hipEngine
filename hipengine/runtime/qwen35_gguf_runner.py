@@ -146,6 +146,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_quantize_bf16_q8_1,
+    gguf_q4_k_quantize_f32_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_selected_gemv_bf16_bf16_out,
@@ -2286,17 +2287,28 @@ class Qwen35GGUFFullStackRunner:
                     f"{stage_prefix}_final_state_copy",
                     t_stage,
                 )
-            launch_gguf_linear(
+            if not _try_launch_dense_q8_single_dp4a_f32(
                 layer.weight("ssm_out"),
                 scratch.recurrent_out.ptr,
                 scratch.attn_out.ptr,
+                scratch,
                 rows=rows,
                 in_features=cfg.ssm_inner_size,
                 out_features=self.hidden_size,
-                activation_dtype=GGUF_ACTIVATION_F32,
                 stream=stream,
                 runtime=runtime,
-            )
+            ):
+                launch_gguf_linear(
+                    layer.weight("ssm_out"),
+                    scratch.recurrent_out.ptr,
+                    scratch.attn_out.ptr,
+                    rows=rows,
+                    in_features=cfg.ssm_inner_size,
+                    out_features=self.hidden_size,
+                    activation_dtype=GGUF_ACTIVATION_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
             t_stage = _mark_sync_stage(
                 runtime,
                 stage_timings,
@@ -3550,6 +3562,7 @@ _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 _GGUF_DENSE_Q8_DP4A_SHARED_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"
+_GGUF_DENSE_Q8_DP4A_F32_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
@@ -3628,6 +3641,10 @@ def _gguf_dense_q8_dp4a_all_enabled() -> bool:
 
 def _gguf_dense_q8_dp4a_shared_enabled() -> bool:
     return _env_flag(_GGUF_DENSE_Q8_DP4A_SHARED_ENV, False)
+
+
+def _gguf_dense_q8_dp4a_f32_enabled() -> bool:
+    return _env_flag(_GGUF_DENSE_Q8_DP4A_F32_ENV, False)
 
 
 def _gguf_row_compact_gemv_enabled() -> bool:
@@ -3717,6 +3734,49 @@ def _try_launch_dense_q8_single_dp4a(
     if q8_1_workspace_ptr is None:
         return False
     gguf_q4_k_quantize_bf16_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _try_launch_dense_q8_single_dp4a_f32(
+    weight: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in raw-Q8 q8_1/dp4a singleton route for F32 verifier activations."""
+
+    if not _gguf_dense_q8_dp4a_f32_enabled() or int(rows) <= 1:
+        return False
+    raw = _dense_q8_raw_ptr(weight)
+    if raw is None:
+        return False
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_f32_q8_1(
         x_ptr,
         q8_1_workspace_ptr,
         rows,

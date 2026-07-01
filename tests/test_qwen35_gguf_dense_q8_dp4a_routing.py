@@ -30,6 +30,7 @@ def test_dense_q8_dp4a_route_is_default_off(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32", raising=False)
     monkeypatch.setattr(qgr, "gguf_q4_k_quantize_bf16_q8_1", lambda *args, **kwargs: pytest.fail("quantize"))
     monkeypatch.setattr(
         qgr,
@@ -59,6 +60,14 @@ def test_dense_q8_dp4a_shared_route_is_separately_gated(monkeypatch: pytest.Monk
 
     monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED", "1")
     assert qgr._gguf_dense_q8_dp4a_shared_enabled() is True
+
+
+def test_dense_q8_dp4a_f32_route_is_separately_gated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32", raising=False)
+    assert qgr._gguf_dense_q8_dp4a_f32_enabled() is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32", "1")
+    assert qgr._gguf_dense_q8_dp4a_f32_enabled() is True
 
 
 def test_dense_q8_dp4a_route_quantizes_once_and_launches_pair_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,6 +155,36 @@ def test_dense_q8_dp4a_all_route_launches_single_rowtile(monkeypatch: pytest.Mon
     )
 
     assert [name for name, _args, _kwargs in calls] == ["quantize", "dp4a_single"]
+    assert calls[0][1][:4] == (100, 400, 2, 2048)
+    assert calls[1][1][:6] == (400, 20, 200, 2, 2048, 4096)
+
+
+def test_dense_q8_dp4a_f32_route_launches_f32_single_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32", "1")
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def quantize(*args, **kwargs):
+        calls.append(("quantize_f32", args, kwargs))
+
+    def dp4a_single(*args, **kwargs):
+        calls.append(("dp4a_single", args, kwargs))
+
+    monkeypatch.setattr(qgr, "gguf_q4_k_quantize_f32_q8_1", quantize)
+    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out", dp4a_single)
+
+    assert qgr._try_launch_dense_q8_single_dp4a_f32(
+        _weight(),
+        100,
+        200,
+        SimpleNamespace(moe_q8_1=_buf(400, nbytes=2 * (2048 // 32) * 36)),
+        rows=2,
+        in_features=2048,
+        out_features=4096,
+        stream=7,
+        runtime=SimpleNamespace(),
+    )
+
+    assert [name for name, _args, _kwargs in calls] == ["quantize_f32", "dp4a_single"]
     assert calls[0][1][:4] == (100, 400, 2, 2048)
     assert calls[1][1][:6] == (400, 20, 200, 2, 2048, 4096)
 

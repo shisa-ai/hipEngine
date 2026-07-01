@@ -216,6 +216,68 @@ def test_q8_0_dp4a_single_rowtile_matches_q8_1_oracle_and_quality_gate() -> None
     assert top1 >= 0.90, f"top1={top1}"
 
 
+def test_q8_0_dp4a_f32_quantizer_single_rowtile_matches_q8_1_oracle_and_quality_gate() -> None:
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+        build_gguf_q4_k_gemv,
+        gguf_q4_k_quantize_f32_q8_1,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
+        build_gguf_q8_0_dp4a_gemv,
+        gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out,
+    )
+
+    rng = np.random.default_rng(20260703)
+    rows, in_features, out_features = 3, 512, 48
+    blocks = in_features // _Q8_1_BLOCK
+
+    x = rng.standard_normal((rows, in_features)).astype(np.float32)
+    weight = make_q8_0_weight(out_features, in_features)
+
+    q4_lib = build_gguf_q4_k_gemv(load=True)
+    dp4a_lib = build_gguf_q8_0_dp4a_gemv(load=True)
+
+    bufs = []
+
+    def _dev(arr):
+        b = malloc(arr.nbytes); bufs.append(b)
+        copy_host_to_device(b, host_array_ptr(np.ascontiguousarray(arr)), arr.nbytes)
+        return b
+
+    try:
+        x_buf = _dev(x)
+        w_buf = _dev(np.ascontiguousarray(weight, dtype=np.uint8))
+        xq_buf = malloc(rows * blocks * _Q8_1_BLOCK_BYTES); bufs.append(xq_buf)
+        out_buf = malloc(rows * out_features * 2); bufs.append(out_buf)
+
+        gguf_q4_k_quantize_f32_q8_1(x_buf.ptr, xq_buf.ptr, rows, in_features, library=q4_lib)
+        gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out(
+            xq_buf.ptr, w_buf.ptr, out_buf.ptr, rows, in_features, out_features, library=dp4a_lib
+        )
+        out_bits = np.empty(rows * out_features, dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(out_bits), out_buf, out_bits.nbytes)
+        out_dev = (out_bits.astype(np.uint32) << 16).view(np.float32).reshape(rows, out_features)
+    finally:
+        for b in reversed(bufs):
+            free(b)
+
+    ref_q8 = _q8_0_q8_1_oracle(x, weight)
+    rel_l2 = float(np.linalg.norm(out_dev - ref_q8) / (np.linalg.norm(ref_q8) + 1e-8))
+    assert rel_l2 <= 2e-2, f"f32 rowtile kernel vs q8_1 oracle rel_l2={rel_l2}"
+
+    ref_full = gguf_quant_gemv(x, weight, GGMLQuantizationType.Q8_0)
+    kl = _softmax_kl(ref_full, out_dev)
+    assert float(np.mean(kl)) <= 0.05, f"KL={float(np.mean(kl))}"
+    top1 = float(np.mean(np.argmax(ref_full, axis=-1) == np.argmax(out_dev, axis=-1)))
+    assert top1 >= 0.90, f"top1={top1}"
+
+
 def test_q8_0_dp4a_dual_split_rowtile_matches_q8_1_oracle_and_quality_gate() -> None:
     from hipengine.core.memory import (
         copy_device_to_host,
