@@ -7,9 +7,10 @@ B2 full-suite row now uses a parallel `mtp_dense_attn_f32` draft-attention
 kernel, moving **71.84 -> 74.38 tok/s** (+3.54%), cycle wall
 **13.940 -> 13.464 ms/output**, and draft drain **2.684 -> 2.202 ms/output**
 with unchanged acc/output **0.621**, draft acceptance **0.820**, and target
-rows/output **1.136**. Versus llama.cpp HIP B2 traced cycle **14.231 ms/output**,
-the active compat lane is now **0.767 ms/output faster** on cycle wall; the
-remaining slower child bucket is draft drain (**2.202 vs 2.140 ms/output**).
+rows/output **1.136**. Versus the llama.cpp HIP B2 same-protocol diagnostic
+rerun cycle **14.269 ms/output**, the active compat lane is now
+**0.805 ms/output faster** on cycle wall; the remaining slower child bucket is
+draft drain (**2.202 vs 2.141 ms/output**).
 This remains a llama-compat route, not the exact default.
 Current exact default fastest row also uses the shared parallel attention
 kernel, **AR 54.79 tok/s; best MTP B5 61.98 tok/s = 1.1312× AR**; exact cycle
@@ -17,6 +18,9 @@ wall moved **16.496 -> 16.162 ms/output** with unchanged acc/output **0.535**.
 New compat artifact
 `results/2026-07-02-ar-mtp-llama-compat-parallelattn-full.json`; new exact
 default artifact `results/2026-07-02-ar-mtp-default-parallelattn-full.json`;
+new llama.cpp diagnostic comparison artifacts
+`results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json` and
+`results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.jsonl`;
 prior compat control
 `results/2026-07-02-ar-mtp-llama-compat-sharedgate-routerrow-full.json`.)
 

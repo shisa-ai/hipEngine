@@ -134610,3 +134610,36 @@ python3 scripts/gguf_ar_mtp_suite.py \
   **1.136**. Reverted the candidate code and removed the uncommitted generated
   full-suite artifact because it was produced from a dirty experimental tree
   while the harness recorded only the HEAD commit.
+
+## 2026-07-02 - llama.cpp HIP MTP same-protocol rerun refresh
+
+- Retained the fresh external llama.cpp HIP B2 natural prompt diagnostic as the
+  active stage target for `docs/MTP-LLAMACPP-PARITY.md`. Command:
+
+```bash
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8024 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode both --protocol natural --max-tokens 24 \
+  --server-extra-arg=--reasoning --server-extra-arg=off \
+  --stage-timings-jsonl benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.jsonl \
+  --output benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json \
+  --log-dir /tmp/llamacpp-mtp-stage-timing-b2-natural24-rerun-logs
+```
+
+- Artifact status is `diagnostic_retained`, `performance_claim=false`.
+  Provenance: hipEngine commit `b7e747b8` dirty, llama.cpp commit
+  `1ebf790c` dirty with local MTP instrumentation patches.
+- Rerun result: base **51.98 tok/s**, MTP **71.91 tok/s**, speedup **1.3835x**,
+  request-level accepted/output **0.567**, and draft acceptance **0.805**.
+  Stage rows excluding warmup task 0: **87** cycles, **223** visible outputs,
+  accepted/output **0.610**, target rows/output **1.148**,
+  `cycle_wall_ms_per_output` **14.269**, `draft_initial` **2.141**,
+  `llama_draft_sample_topk` **1.888**, and `target_block_verify_total`
+  **12.120 ms/output**.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md` to use this rerun as the active comparison target.
+  Current retained hipEngine `llama-compat` remains faster on parent wall:
+  **13.464 vs 14.269 ms/output** (**-0.805 ms/output**). The only slower child
+  bucket remains draft drain: **2.202 vs 2.141 ms/output** (**+0.061**).
