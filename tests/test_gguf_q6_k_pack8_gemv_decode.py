@@ -33,6 +33,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
     gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack8_llama_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack8_llama_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32,
@@ -450,6 +452,16 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
     scalehoist_split_embed_buf = malloc(rows * hidden * 4)
     scalehoist_split_block_values_buf = malloc(rows * (out_features // 8) * 4)
     scalehoist_split_block_indices_buf = malloc(rows * (out_features // 8) * 4)
+    pack8_llama_values_buf = malloc(rows * 4)
+    pack8_llama_indices_buf = malloc(rows * 4)
+    pack8_llama_embed_buf = malloc(rows * hidden * 4)
+    pack8_llama_block_values_buf = malloc(rows * (out_features // 8) * 4)
+    pack8_llama_block_indices_buf = malloc(rows * (out_features // 8) * 4)
+    pack8_llama_split_values_buf = malloc(rows * 4)
+    pack8_llama_split_indices_buf = malloc(rows * 4)
+    pack8_llama_split_embed_buf = malloc(rows * hidden * 4)
+    pack8_llama_split_block_values_buf = malloc(rows * (out_features // 8) * 4)
+    pack8_llama_split_block_indices_buf = malloc(rows * (out_features // 8) * 4)
     row_values_buf = malloc(rows * 4)
     row_indices_buf = malloc(rows * 4)
     row_embed_buf = malloc(rows * hidden * 4)
@@ -549,6 +561,45 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
             out_features,
             library=q6_k_dense_library,
         )
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack8_llama_gather_f32(
+            xq_buf.ptr,
+            w_buf.ptr,
+            pack8_llama_block_values_buf.ptr,
+            pack8_llama_block_indices_buf.ptr,
+            pack8_llama_indices_buf.ptr,
+            pack8_llama_values_buf.ptr,
+            embed_table_buf.ptr,
+            pack8_llama_embed_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            hidden,
+            library=q6_k_dense_library,
+        )
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack8_llama_stage1_f32(
+            xq_buf.ptr,
+            w_buf.ptr,
+            pack8_llama_split_block_values_buf.ptr,
+            pack8_llama_split_block_indices_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            stage1_threads=64,
+            library=q6_k_dense_library,
+        )
+        gguf_q6_k_pack8_top1_stage2_gather_f32(
+            pack8_llama_split_block_values_buf.ptr,
+            pack8_llama_split_block_indices_buf.ptr,
+            pack8_llama_split_indices_buf.ptr,
+            pack8_llama_split_values_buf.ptr,
+            embed_table_buf.ptr,
+            pack8_llama_split_embed_buf.ptr,
+            rows,
+            out_features // 8,
+            hidden,
+            out_features,
+            library=q6_k_dense_library,
+        )
         gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32(
             xq_buf.ptr,
             w_buf.ptr,
@@ -600,6 +651,12 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
         scalehoist_split_index = np.empty((rows,), dtype=np.int32)
         scalehoist_split_value = np.empty((rows,), dtype=np.float32)
         scalehoist_split_embed = np.empty((rows, hidden), dtype=np.float32)
+        pack8_llama_index = np.empty((rows,), dtype=np.int32)
+        pack8_llama_value = np.empty((rows,), dtype=np.float32)
+        pack8_llama_embed = np.empty((rows, hidden), dtype=np.float32)
+        pack8_llama_split_index = np.empty((rows,), dtype=np.int32)
+        pack8_llama_split_value = np.empty((rows,), dtype=np.float32)
+        pack8_llama_split_embed = np.empty((rows, hidden), dtype=np.float32)
         row_index = np.empty((rows,), dtype=np.int32)
         row_value = np.empty((rows,), dtype=np.float32)
         row_embed = np.empty((rows, hidden), dtype=np.float32)
@@ -630,6 +687,24 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
             scalehoist_split_embed_buf,
             scalehoist_split_embed.nbytes,
         )
+        copy_device_to_host(host_array_ptr(pack8_llama_index), pack8_llama_indices_buf, pack8_llama_index.nbytes)
+        copy_device_to_host(host_array_ptr(pack8_llama_value), pack8_llama_values_buf, pack8_llama_value.nbytes)
+        copy_device_to_host(host_array_ptr(pack8_llama_embed), pack8_llama_embed_buf, pack8_llama_embed.nbytes)
+        copy_device_to_host(
+            host_array_ptr(pack8_llama_split_index),
+            pack8_llama_split_indices_buf,
+            pack8_llama_split_index.nbytes,
+        )
+        copy_device_to_host(
+            host_array_ptr(pack8_llama_split_value),
+            pack8_llama_split_values_buf,
+            pack8_llama_split_value.nbytes,
+        )
+        copy_device_to_host(
+            host_array_ptr(pack8_llama_split_embed),
+            pack8_llama_split_embed_buf,
+            pack8_llama_split_embed.nbytes,
+        )
         copy_device_to_host(host_array_ptr(row_index), row_indices_buf, row_index.nbytes)
         copy_device_to_host(host_array_ptr(row_value), row_values_buf, row_value.nbytes)
         copy_device_to_host(host_array_ptr(row_embed), row_embed_buf, row_embed.nbytes)
@@ -658,6 +733,16 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
             scalehoist_embed_buf,
             scalehoist_indices_buf,
             scalehoist_values_buf,
+            pack8_llama_split_block_indices_buf,
+            pack8_llama_split_block_values_buf,
+            pack8_llama_split_embed_buf,
+            pack8_llama_split_indices_buf,
+            pack8_llama_split_values_buf,
+            pack8_llama_block_indices_buf,
+            pack8_llama_block_values_buf,
+            pack8_llama_embed_buf,
+            pack8_llama_indices_buf,
+            pack8_llama_values_buf,
             split_block_indices_buf,
             split_block_values_buf,
             split_embed_buf,
@@ -687,6 +772,12 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
     np.testing.assert_array_equal(scalehoist_split_index, oracle_indices)
     np.testing.assert_allclose(scalehoist_split_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
     np.testing.assert_array_equal(scalehoist_split_embed, oracle_embed)
+    np.testing.assert_array_equal(pack8_llama_index, oracle_indices)
+    np.testing.assert_allclose(pack8_llama_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
+    np.testing.assert_array_equal(pack8_llama_embed, oracle_embed)
+    np.testing.assert_array_equal(pack8_llama_split_index, oracle_indices)
+    np.testing.assert_allclose(pack8_llama_split_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
+    np.testing.assert_array_equal(pack8_llama_split_embed, oracle_embed)
     np.testing.assert_array_equal(row_index, oracle_indices)
     np.testing.assert_allclose(row_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
     np.testing.assert_array_equal(row_embed, oracle_embed)

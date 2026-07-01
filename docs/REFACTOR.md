@@ -313,6 +313,25 @@ should be boring.
   body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
   not a performance route and should not update the active llama-compat headline.
 
+## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack8_llama` (diagnostic rejected)
+- Added 2026-07-01. Bench flag
+  `--resident-mtp-draft-q6-top1-stage1-shape pack8_llama` and suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama` /
+  `...-pack8llama-allsync` exercise a Q6_K draft lm-head top-1 stage that keeps
+  the retained pack8 `vocab/8` final reduce but uses the llama.cpp Q6_K MMVQ
+  vecdot decomposition inside stage1.
+- Purpose: test whether the remaining q8_1/dp4a Q6_K draft stage1 cost is the
+  pack8 dot body rather than final-reduce geometry. Correctness passes against
+  the q8_1/Q6_K oracle for fused and split stage1+stage2 paths. Same-session
+  all-sync moved the intended leaf **1.220 -> 1.205 ms/output**, but async B2
+  smoke rejected the route: retained control **68.88 tok/s**, cycle
+  **14.541 ms/output**, `draft_initial` **2.487 ms/output** vs pack8_llama
+  **67.92 tok/s**, cycle **14.747 ms/output**, `draft_initial`
+  **2.493 ms/output**, with identical acceptance.
+- Remove when: the draft Q6_K top-1 path moves to a different retained
+  body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
+  not a performance route and should not update the active llama-compat headline.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with

@@ -853,6 +853,105 @@ __launch_bounds__(128, 4) __global__ void gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_sc
   }
 }
 
+// Diagnostic pack8 stage1 variant that keeps hipEngine's vocab/8 final reduce
+// economy while using the same Q6_K vecdot decomposition as llama.cpp MMVQ.
+__launch_bounds__(128, 4) __global__ void gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_pack8_llama_stage1_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ block_values,
+    int32_t* __restrict__ block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t out_packed,
+    int64_t q8_blocks_per_row) {
+  const int64_t out_pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  const int64_t out_col = out_pack << 3;
+  if (out_col >= out_features) return;
+
+  const int blocks_per_row = static_cast<int>(in_features / QK_K);
+  const int64_t row_bytes = static_cast<int64_t>(blocks_per_row) * Q6_K_BLOCK_BYTES;
+  const gguf_q8_1_block* __restrict__ xq_row = xq + row * q8_blocks_per_row;
+
+  const uint8_t* __restrict__ row_ptr[PACK8];
+#pragma unroll
+  for (int ch = 0; ch < PACK8; ++ch) {
+    row_ptr[ch] = qweight + (out_col + ch) * row_bytes;
+  }
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  const int iqs = tid % QI6_K;
+  const int blocks_per_iter = blockDim.x / QI6_K;
+  for (int block_idx = tid / QI6_K; block_idx < blocks_per_row; block_idx += blocks_per_iter) {
+    const gguf_q8_1_block* __restrict__ xq_block_base = xq_row + block_idx * (QK_K / Q8_1_BLOCK);
+    acc0 += q6_k_q8_1_llama_vecdot(row_ptr[0] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+    acc1 += q6_k_q8_1_llama_vecdot(row_ptr[1] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+    acc2 += q6_k_q8_1_llama_vecdot(row_ptr[2] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+    acc3 += q6_k_q8_1_llama_vecdot(row_ptr[3] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+    acc4 += q6_k_q8_1_llama_vecdot(row_ptr[4] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+    acc5 += q6_k_q8_1_llama_vecdot(row_ptr[5] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+    acc6 += q6_k_q8_1_llama_vecdot(row_ptr[6] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+    acc7 += q6_k_q8_1_llama_vecdot(row_ptr[7] + static_cast<int64_t>(block_idx) * Q6_K_BLOCK_BYTES, xq_block_base, iqs);
+  }
+
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc0);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc1);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc2);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc3);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc4);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc5);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc6);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc7);
+
+  __shared__ float xchg[4 * PACK8];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+    xchg[sub_id * PACK8 + 0] = acc0;
+    xchg[sub_id * PACK8 + 1] = acc1;
+    xchg[sub_id * PACK8 + 2] = acc2;
+    xchg[sub_id * PACK8 + 3] = acc3;
+    xchg[sub_id * PACK8 + 4] = acc4;
+    xchg[sub_id * PACK8 + 5] = acc5;
+    xchg[sub_id * PACK8 + 6] = acc6;
+    xchg[sub_id * PACK8 + 7] = acc7;
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    float r[PACK8];
+    for (int ch = 0; ch < PACK8; ++ch) {
+      r[ch] = 0.0f;
+    }
+    const int sub_groups = blockDim.x >> 5;
+    for (int g = 0; g < sub_groups; ++g) {
+      for (int ch = 0; ch < PACK8; ++ch) {
+        r[ch] += xchg[g * PACK8 + ch];
+      }
+    }
+    float best_value = -3.4028234663852886e+38F;
+    int32_t best_index = INT32_MAX;
+    for (int ch = 0; ch < PACK8; ++ch) {
+      const int64_t index64 = out_col + ch;
+      if (index64 < out_features) {
+        const int32_t index = static_cast<int32_t>(index64);
+        if (better_pair_i32(r[ch], index, best_value, best_index)) {
+          best_value = r[ch];
+          best_index = index;
+        }
+      }
+    }
+    const int64_t off = row * out_packed + out_pack;
+    block_values[off] = best_value;
+    block_indices[off] = best_index;
+  }
+}
+
 // Diagnostic llama.cpp-shape top-1 stage1 for the q8_1/dp4a Q6_K lm-head path.
 // Grid: (out_features, rows). Block: (wave32, 2 warps), matching llama.cpp
 // RDNA3 MMVQ's ncols_dst=1 / Q6_K geometry instead of hipEngine's pack8 row.
@@ -1162,6 +1261,37 @@ int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_pack8_llama_stage1(
+    const gguf_q8_1_block* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int stage1_threads,
+    hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || block_values == nullptr ||
+      block_indices == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      out_features > INT32_MAX || (out_features & 7) != 0 ||
+      (in_features % QK_K) != 0 || (in_features % Q8_1_BLOCK) != 0 ||
+      !valid_top1_stage1_threads(stage1_threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  hipLaunchKernelGGL(
+      gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_pack8_llama_stage1_kernel,
+      dim3(static_cast<unsigned int>(out_packed),
+           static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(stage1_threads)),
+      0,
+      stream,
+      xq, qweight, block_values, block_indices, rows, in_features, out_features, out_packed, q8_blocks_per_row);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_q6_k_q8_1_dp4a_top1_row_stage1(
     const gguf_q8_1_block* xq,
     const uint8_t* qweight,
@@ -1246,6 +1376,43 @@ int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_gather(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipError_t err = static_cast<hipError_t>(launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1(
+      xq, qweight, block_values, block_indices, rows, in_features, out_features, stage1_threads, stream));
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+  return launch_top1_stage2_gather(
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      out_features >> 3,
+      hidden,
+      out_features,
+      stream);
+}
+
+int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_pack8_llama_gather(
+    const gguf_q8_1_block* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    int stage1_threads,
+    hipStream_t stream) {
+  if (hidden < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipError_t err = static_cast<hipError_t>(launch_q6_k_pack8_gemv_q8_1_dp4a_top1_pack8_llama_stage1(
       xq, qweight, block_values, block_indices, rows, in_features, out_features, stage1_threads, stream));
   if (err != hipSuccess) {
     return static_cast<int>(err);
@@ -1542,6 +1709,28 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_s
       stream);
 }
 
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack8_llama_stage1_f32(
+    const void* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_pack8_llama_stage1(
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      qweight,
+      block_values,
+      block_indices,
+      rows,
+      in_features,
+      out_features,
+      static_cast<int>(stage1_threads),
+      stream);
+}
+
 extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32(
     const void* xq,
     const uint8_t* qweight,
@@ -1578,6 +1767,38 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_g
     int32_t stage1_threads,
     hipStream_t stream) {
   return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_gather(
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      qweight,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      in_features,
+      out_features,
+      hidden,
+      static_cast<int>(stage1_threads),
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack8_llama_gather_f32_threads(
+    const void* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_pack8_llama_gather(
       reinterpret_cast<const gguf_q8_1_block*>(xq),
       qweight,
       block_values,

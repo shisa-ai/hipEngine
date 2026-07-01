@@ -514,7 +514,11 @@ def main() -> int:
     parser.add_argument("--vocab-cap", type=int, default=0)
     parser.add_argument("--q6-top1-dp4a", action="store_true")
     parser.add_argument("--q6-top1-stage1-threads", type=int, default=128)
-    parser.add_argument("--q6-top1-stage1-shape", choices=("pack8", "pack8_scalehoist", "row"), default="pack8")
+    parser.add_argument(
+        "--q6-top1-stage1-shape",
+        choices=("pack8", "pack8_llama", "pack8_scalehoist", "row"),
+        default="pack8",
+    )
     parser.add_argument("--selected-down-x8-repack", choices=("off", "q5", "q6", "both"), default="off")
     parser.add_argument("--record-stage-timings", action="store_true")
     parser.add_argument("--sync-stage-timings", action="store_true")

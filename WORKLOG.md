@@ -131854,3 +131854,55 @@ No benchmark rerun; this is docs-only tracker maintenance preserving the current
 active gap: **+2.379 ms/output** total, split across **+1.108 ms/output** draft
 drain, **+0.955 ms/output** verifier drain, and **+0.102 target rows/output**
 row economy.
+
+## 2026-07-01 — MTP llama-compat Q6 pack8+llama-vecdot diagnostic rejected
+
+Implemented a default-off diagnostic Q6_K draft lm-head stage1 shape:
+`HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack8_llama` /
+`--resident-mtp-draft-q6-top1-stage1-shape pack8_llama`. The kernel keeps
+hipEngine's retained pack8 `vocab/8` final reduce, but swaps the stage1 inner
+body to the llama.cpp Q6_K MMVQ vecdot decomposition. Suite routes added:
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama` and
+`...-pack8llama-allsync`, both fixed to B2.
+
+Lineage check before the kernel edit was blocked:
+`python3 scripts/check_lineage.py --kind kernel --diff stat` fails because
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_mtp_draft_rocprof.py scripts/gguf_ar_mtp_suite.py`
+  -> pass.
+- `git diff --check` -> pass.
+- `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3 -m pytest tests/test_gguf_q6_k_pack8_gemv_decode.py::test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle -q`
+  -> pass. The fixture now checks fused and split `pack8_llama` against the
+  q8_1/Q6_K oracle.
+
+Same-session smoke A/B, both explicit B2 with cached builds and cycle-stage
+timings:
+
+- Control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-control-smoke.json`
+  -> **68.88 tok/s**, cycle **14.541 ms/output**, `draft_initial`
+  **2.487 ms/output**, verifier **11.722 ms/output**, acceptance
+  `0.667 acc/output`, draft acceptance `1.000`.
+- `pack8_llama`:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama --budgets 2 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-b2-smoke.json`
+  -> **67.92 tok/s**, cycle **14.747 ms/output**, `draft_initial`
+  **2.493 ms/output**, verifier **11.920 ms/output**, same acceptance.
+
+All-sync attribution-only B2 smoke:
+
+- Control:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-control-allsync-smoke.json`
+  -> Q6 stage1 **1.220 ms/output**, Q6 aggregate **1.261 ms/output**.
+- `pack8_llama`:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-allsync-smoke.json`
+  -> Q6 stage1 **1.205 ms/output**, Q6 aggregate **1.247 ms/output**.
+
+Conclusion: the llama vecdot body gives a tiny synced Q6 leaf win, but it does
+not move the async parent draft row and the smoke route regresses. The active
+retained compat lane remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`;
+`pack8_llama` stays default-off/rejected evidence only. Next draft work must
+either remove/fuse enough work to move `draft_initial` or use a materially
+different Q6_K layout/body; mechanical Q6 body copies are exhausted for now.
