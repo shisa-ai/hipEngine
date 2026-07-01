@@ -125,7 +125,7 @@ stage budget instead of burying it in prose.
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Total MTP wall | 16.496 ms/output | **15.547 ms/output** | 14.231 ms/output | **+1.316 ms/output** | Spend this row down before claiming parity movement. |
-| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Hidden trace shows the seq-position-49 input seed is close but depth-0 `ctx_dft` output diverges; next compare draft attention/KV/position state. |
+| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Corrected resident MTP RoPE from `qk_head_dim=256` to model `rope.dimension_count=64`; hidden delta improves but proposal parity remains open, so next compare post-RoPE MTP block/KV tensors. |
 | Draft visible sampler/GPU drain | 1.151 ms/output | **2.874 ms/output** | 1.886 ms/output | **+0.988 ms/output** | Compare through draft drain; bucket names differ across engines. |
 | Draft transformer body | 0.130 ms/output | **0.111 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
 | Serial verifier probe | 6.665 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
@@ -190,6 +190,7 @@ Current source artifacts:
 | hipEngine draft-context/logit A/B diagnostic | `benchmarks/results/2026-07-02-mtp-draft-context-logit-ab-diagnostic.json` | Diagnostic-only follow-up on the same prompt; `performance_claim=false`. It rules out hipEngine accepted-row KV commit and llama.cpp's public backend-sampling toggle as the primary cause, shows resident full-logit draft is not closer, and records cycle-3 top-k score margins with/without hipEngine MTP device KV. |
 | llama.cpp draft score trace diagnostic | `benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json` | Diagnostic-only same-prompt score trace after llama.cpp commit `0f7d32267` added `draft_sample_trace` to `LLAMA_MTP_TOKEN_TRACE` rows. At the first divergence llama.cpp ranks token `8` first and `65342` second by only **0.100 logits**, while hipEngine with device KV ranks `65342` first and token `8` third, **1.260 logits** behind. This confirms the active blocker is MTP seed/context/logit parity at seq position 49, not merely accepted-row KV commit or sampler toggles. |
 | MTP hidden-state parity diagnostic | `benchmarks/results/2026-07-02-mtp-hidden-state-parity-diagnostic.json` | Diagnostic-only same-prompt hidden summary trace after hipEngine commit `6190fd08` added `--record-draft-hidden-stats` and llama.cpp commit `c0f750604` added `draft_hidden_state_trace`. The `draft_seed_input` row is close (`rms_delta` **0.00456**, first8 mean abs **0.0798**), but depth-0 `draft_next_seed` has a much larger first8 mean abs delta (**0.731**) before token selection. The next target is depth-0 draft attention/KV/rope/context state, not the `pending_h` seed handoff. |
+| Resident MTP RoPE-dimension fix diagnostic | `benchmarks/results/2026-07-02-mtp-resident-rope-dim-fix-diagnostic.json` | Diagnostic-only semantic fix; `performance_claim=false`. The GGUF metadata has `qwen35moe.rope.dimension_count=64` while resident MTP used `qk_head_dim=256` as `rotary_dim` for draft Q/K and accepted-row MTP K/V commit. Fixing that cuts the seq-position-49 depth-0 `draft_next_seed` first8 mean abs delta **0.731 -> 0.329**, but hipEngine still drafts `[65342, 18078]` while llama.cpp drafts `[8, 1411]`; token `8` is now rank 2 but still **1.391 logits** behind `65342`. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
@@ -329,6 +330,34 @@ hipEngine and llama.cpp draft attention inputs/KV rows, rope position/context
 length, and the MTP block math feeding the depth-0 hidden output at seq position
 49. Once that hidden row matches closely, re-check the draft top-k row where
 llama.cpp has token `8` over `65342` by only **0.100 logits**.
+
+RoPE-dimension follow-up artifact:
+`benchmarks/results/2026-07-02-mtp-resident-rope-dim-fix-diagnostic.json`.
+This is a semantic parity fix and diagnostic trace, not a retained speed row.
+The GGUF model reports `qwen35moe.rope.dimension_count=64`,
+`qwen35moe.rope.dimension_sections=[11, 11, 10, 0]`, and
+`blk.40.attn_q_norm.weight.shape=(256,)`. hipEngine resident MTP was using
+`qk_head_dim=256` as the RoPE `rotary_dim` in both `_run_one()` and
+accepted-row `_write_one_kv()`, while llama.cpp `graph_mtp` passes
+`n_rot=64` to `ggml_rope_multi()`. Resident MTP now derives `rotary_dim` from
+the RoPE table width.
+
+Same-prompt result after the fix:
+
+| row | before fix | after fix | llama.cpp | reading |
+| --- | ---: | ---: | ---: | --- |
+| depth-0 `draft_next_seed` first8 mean abs delta vs llama | **0.731** | **0.329** | n/a | RoPE was a real semantic mismatch. |
+| depth-1 `draft_next_seed` first8 mean abs delta vs llama | **1.689** | **1.316** | n/a | Later chain remains far apart because depth-0 token still differs. |
+| hipEngine seq-pos-49 depth-0 drafts | `[65342, 18078]` | `[65342, 18078]` | `[8, 1411]` | Proposal parity is not closed. |
+| token `8` depth-0 margin | 1.260 logits behind rank-1 `65342` | 1.391 logits behind rank-1 `65342` | rank 1; `65342` is 0.100 behind | Hidden row got closer but the lm-head ordering still differs. |
+| 10-cycle same-prompt smoke | 70.51 tok/s / 14.201 ms-output | 69.95 tok/s / 14.317 ms-output | 72.12 traced tok/s | Diagnostic only; do not replace the full-suite tracker from this row. |
+
+Updated target after the RoPE fix: compare the remaining post-RoPE MTP graph
+tensors against llama.cpp labels (`mtp_Qcur_normed`, `mtp_Kcur_normed`,
+`mtp_Vcur`, `mtp_attn_pregate`, `mtp_attn_residual`, `h_nextn`) or dump
+llama.cpp `ctx_dft` K/V row checksums. The next bug is no longer the resident
+RoPE call, but the same depth-0 MTP block still has enough drift to leave token
+`8` below token `65342`.
 
 #### Latest route decision
 

@@ -132571,6 +132571,98 @@ python3 -m pytest \
 
 Result: passed.
 
+## 2026-07-02 — resident MTP RoPE-dimension parity fix
+
+Added hipEngine draft-stage diagnostic summaries and fixed a resident MTP RoPE
+dimension mismatch found by that trace.
+
+Instrumentation:
+
+- `scripts/gguf_mtp_bench.py --record-draft-stage-stats`
+- Resident draft summaries for token embedding, MTP projection, Q/K/V after
+  RoPE, attention, FFN output, and current/previous dense MTP K/V cache rows.
+- The flag is default-off and forces resident host-chain drafting only for
+  diagnostics; normal device-chain timing is unchanged when it is off.
+
+Finding:
+
+- The GGUF model metadata has `qwen35moe.rope.dimension_count=64`, while
+  `blk.40.attn_q_norm.weight.shape=(256,)`.
+- hipEngine resident MTP used `qk_head_dim=256` as the RoPE `rotary_dim` for
+  draft Q/K and accepted-row MTP K/V commit.
+- llama.cpp `qwen35moe::graph_mtp` passes `n_rot=64` to `ggml_rope_multi()`.
+
+Fix:
+
+- `Qwen35GGUFResidentMTPDraftRunner` now derives resident draft/commit
+  `rotary_dim` from the RoPE table width and passes that to `mtp_rope_f32()`.
+- Added a regression test for qk-head-dim 256 with RoPE width 64.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/gguf_mtp_bench.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_mtp_resident_draft_device_chain.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_mtp_resident_draft_device_chain.py -q
+```
+
+Result: passed.
+
+Same-prompt diagnostic reruns:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 4 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --resident-mtp-draft --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --mtp-context-replay --mtp-device-kv-cache --target-block-verify \
+  --target-block-verify-mode bulk --target-block-min-rows 2 \
+  --target-block-direct-state-commit --root-topk-accept 1 \
+  --sibling-topk-accept 1 --draft-p-min 0.0 \
+  --record-cycle-stage-timings --record-draft-topk-scores \
+  --record-draft-hidden-stats --record-draft-stage-stats \
+  --output /tmp/hipengine-mtp-ropefix/hipengine-stage.json
+```
+
+RoPE fix result:
+
+- First-divergence prompt cycle remains hipEngine `[65342, 18078]` vs
+  llama.cpp `[8, 1411]`; proposal parity is not closed.
+- Depth-0 `draft_next_seed` first8 mean-abs delta versus llama improves
+  **0.731 -> 0.329**.
+- Depth-1 `draft_next_seed` first8 mean-abs delta improves **1.689 -> 1.316**.
+- Token `8` is now rank 2 in hipEngine's depth-0 top-k, but still **1.391
+  logits** behind `65342`; llama.cpp ranks token `8` first and `65342` second by
+  **0.100 logits**.
+- 10-cycle same-prompt compat smoke after the fix:
+  **69.95 tok/s**, **14.317 ms/output**, accept/draft **0.850**,
+  accepted/output **0.630**, target rows/output **1.111**. Diagnostic only; no
+  full-suite headline update.
+
+Retained compact artifact:
+`benchmarks/results/2026-07-02-mtp-resident-rope-dim-fix-diagnostic.json`
+(`performance_claim=false`).
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`. Next target:
+dump/compare llama.cpp MTP graph tensors (`mtp_Qcur_normed`,
+`mtp_Kcur_normed`, `mtp_Vcur`, `mtp_attn_pregate`, `h_nextn`) or `ctx_dft` K/V
+row checksums after corrected RoPE.
+
 ## 2026-07-02 — MTP hidden-state parity diagnostic
 
 Added and committed a local llama.cpp diagnostic patch:

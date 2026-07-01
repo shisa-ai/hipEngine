@@ -1154,6 +1154,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--record-draft-stage-stats",
+        action="store_true",
+        help=(
+            "Diagnostic only: record compact FP32 summaries for resident MTP draft "
+            "sub-stage tensors and dense K/V cache rows. This forces resident "
+            "host-chain drafting when needed and is not a timing route."
+        ),
+    )
+    parser.add_argument(
         "--record-cycle-stage-timings",
         action="store_true",
         help=(
@@ -1983,6 +1992,7 @@ def main(argv: list[str] | None = None):
                             record_top1_probs=bool(args.record_draft_confidence),
                             record_topk_scores=bool(args.record_draft_topk_scores),
                             record_hidden_stats=bool(args.record_draft_hidden_stats),
+                            record_stage_stats=bool(args.record_draft_stage_stats),
                             record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                     )
@@ -2002,6 +2012,7 @@ def main(argv: list[str] | None = None):
                         record_top1_probs=bool(args.record_draft_confidence),
                         record_topk_scores=bool(args.record_draft_topk_scores),
                         record_hidden_stats=bool(args.record_draft_hidden_stats),
+                        record_stage_stats=bool(args.record_draft_stage_stats),
                         record_stage_timings=bool(args.record_cycle_stage_timings),
                     )
                 if args.record_draft_confidence:
@@ -2015,7 +2026,7 @@ def main(argv: list[str] | None = None):
                         [float(value) for value in row]
                         for row in getattr(cycle_resident_draft, "last_topk_margins", [])
                     ]
-                if args.record_draft_hidden_stats:
+                if args.record_draft_hidden_stats or args.record_draft_stage_stats:
                     draft_hidden_state_trace.extend(
                         dict(item)
                         for item in getattr(cycle_resident_draft, "last_hidden_state_summaries", [])
@@ -3027,7 +3038,7 @@ def main(argv: list[str] | None = None):
                 "draft_topk_scores": reported_draft_topk_scores,
                 "draft_topk_margins": reported_draft_topk_margins,
                 "draft_hidden_state_trace": draft_hidden_state_trace
-                if args.record_draft_hidden_stats
+                if (args.record_draft_hidden_stats or args.record_draft_stage_stats)
                 else [],
                 "initial_draft_tokens": draft_tokens,
                 "redraft_tokens": redraft_tokens,
@@ -3276,6 +3287,7 @@ def main(argv: list[str] | None = None):
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_draft_topk_scores": bool(args.record_draft_topk_scores),
             "record_draft_hidden_stats": bool(args.record_draft_hidden_stats),
+            "record_draft_stage_stats": bool(args.record_draft_stage_stats),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "llama_compat": bool(args.llama_compat),

@@ -661,6 +661,14 @@ class Qwen35GGUFResidentMTPDraftRunner:
         )
         return True
 
+    def _rotary_dim_from_rope_table(self, rope_cos: np.ndarray) -> int:
+        width = int(np.asarray(rope_cos).shape[-1])
+        if width <= 0 or width % 2 != 0:
+            raise ValueError("RoPE table width must be a positive even rotary dimension")
+        if width > self.qk_head_dim:
+            raise ValueError("RoPE table width exceeds qk_head_dim")
+        return width
+
     def ensure_device_chain_ready(self) -> None:
         """Preload resident state needed by the device-chained draft path."""
 
@@ -683,6 +691,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_top1_probs: bool = False,
         record_topk_scores: bool = False,
         record_hidden_stats: bool = False,
+        record_stage_stats: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
@@ -712,6 +721,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             record_top1_probs=record_top1_probs,
             record_topk_scores=record_topk_scores,
             record_hidden_stats=record_hidden_stats,
+            record_stage_stats=record_stage_stats,
             stage_timings=stage_timings,
         )
 
@@ -732,6 +742,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_top1_probs: bool = False,
         record_topk_scores: bool = False,
         record_hidden_stats: bool = False,
+        record_stage_stats: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
@@ -760,6 +771,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             record_top1_probs=record_top1_probs,
             record_topk_scores=record_topk_scores,
             record_hidden_stats=record_hidden_stats,
+            record_stage_stats=record_stage_stats,
             stage_timings=stage_timings,
         )
 
@@ -779,6 +791,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_top1_probs: bool = False,
         record_topk_scores: bool = False,
         record_hidden_stats: bool = False,
+        record_stage_stats: bool = False,
         stage_timings: dict[str, float] | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         self.last_top1_probs = []
@@ -794,6 +807,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             and draft_p_min <= 0.0
             and not bool(record_top1_probs)
             and not bool(record_hidden_stats)
+            and not bool(record_stage_stats)
             and int(draft_n_max) <= self._draft_chain_cap
             and int(top_k) <= self.experts_used
         ):
@@ -818,7 +832,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         current_cache_len = int(dense_cache_len)
         tokens: list[int] = []
         topk_rows: list[list[int]] = []
-        if record_hidden_stats:
+        rotary_dim = self._rotary_dim_from_rope_table(rope_cos)
+        if record_hidden_stats or record_stage_stats:
             self.last_hidden_state_summaries.append(
                 self._summarize_seed_buffer(
                     current_seed,
@@ -855,8 +870,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
+                rotary_dim=rotary_dim,
                 stage_timings=stage_timings,
             )
+            if record_stage_stats:
+                self.last_hidden_state_summaries.extend(
+                    self._summarize_draft_stage_buffers(
+                        depth=depth,
+                        token_id=current_token,
+                        position=current_pos,
+                        dense_key_cache=dense_key_cache,
+                        dense_value_cache=dense_value_cache,
+                        dense_cache_len=current_cache_len,
+                    )
+                )
             if record_hidden_stats:
                 self.last_hidden_state_summaries.append(
                     self._summarize_seed_buffer(
@@ -900,6 +927,126 @@ class Qwen35GGUFResidentMTPDraftRunner:
             current_pos += 1
             current_seed, next_seed = next_seed, current_seed
         return tokens, topk_rows, current_cache_len
+
+    def _summarize_device_f32(
+        self,
+        ptr_or_buffer: int | DeviceBuffer,
+        elements: int,
+        *,
+        label: str,
+        depth: int | None = None,
+        token_id: int | None = None,
+        position: int | None = None,
+        extra: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        runtime = self.runtime or get_hip_runtime()
+        count = int(elements)
+        if count <= 0:
+            raise ValueError("cannot summarize an empty device row")
+        host = np.empty(count, dtype=np.float32)
+        if isinstance(ptr_or_buffer, DeviceBuffer):
+            src = DeviceBuffer(ptr_or_buffer.ptr, count * 4)
+        else:
+            src = DeviceBuffer(int(ptr_or_buffer), count * 4)
+        copy_device_to_host(host_array_ptr(host), src, host.nbytes, runtime=runtime)
+        result = _summarize_f32_row(
+            host,
+            label=label,
+            depth=depth,
+            token_id=token_id,
+            position=position,
+        )
+        if extra:
+            result.update(extra)
+        return result
+
+    def _summarize_draft_stage_buffers(
+        self,
+        *,
+        depth: int,
+        token_id: int,
+        position: int,
+        dense_key_cache: DeviceBuffer | None,
+        dense_value_cache: DeviceBuffer | None,
+        dense_cache_len: int,
+    ) -> list[dict[str, object]]:
+        h = self.hidden_size
+        heads = self.num_heads
+        kv_heads = self.num_kv_heads
+        d = self.qk_head_dim
+        hd = heads * d
+        kvd = kv_heads * d
+        common = {
+            "depth": int(depth),
+            "token_id": int(token_id),
+            "position": int(position),
+        }
+        summaries = [
+            self._summarize_device_f32(self.token_embed, h, label="draft_stage_token_embed", **common),
+            self._summarize_device_f32(self.e_norm, h, label="draft_stage_e_norm", **common),
+            self._summarize_device_f32(self.h_norm, h, label="draft_stage_h_norm", **common),
+            self._summarize_device_f32(self.projected, h, label="draft_stage_projected", **common),
+            self._summarize_device_f32(self.attn_normed, h, label="draft_stage_attn_normed", **common),
+            self._summarize_device_f32(self.query, hd, label="draft_stage_query_rope", **common),
+            self._summarize_device_f32(self.key_cur, kvd, label="draft_stage_key_cur_rope", **common),
+            self._summarize_device_f32(self.value_cur, kvd, label="draft_stage_value_cur", **common),
+            self._summarize_device_f32(self.attn, hd, label="draft_stage_attn_pregate", **common),
+            self._summarize_device_f32(self.gated, hd, label="draft_stage_attn_gated", **common),
+            self._summarize_device_f32(self.wo_out, h, label="draft_stage_attn_out", **common),
+            self._summarize_device_f32(self.attended, h, label="draft_stage_attn_residual", **common),
+            self._summarize_device_f32(self.post_norm, h, label="draft_stage_attn_post_norm", **common),
+            self._summarize_device_f32(self.ffn_out, h, label="draft_stage_ffn_out", **common),
+        ]
+        if dense_key_cache is not None:
+            if dense_value_cache is None:
+                raise ValueError("dense_value_cache is required with dense_key_cache")
+            key_row_bytes = kvd * 4
+            value_row_bytes = kvd * 4
+            current_row = int(dense_cache_len)
+            cache_common = {
+                **common,
+                "cache_tokens": current_row + 1,
+                "cache_row": current_row,
+            }
+            summaries.append(
+                self._summarize_device_f32(
+                    dense_key_cache.ptr + current_row * key_row_bytes,
+                    kvd,
+                    label="draft_stage_dense_key_current",
+                    extra=cache_common,
+                )
+            )
+            summaries.append(
+                self._summarize_device_f32(
+                    dense_value_cache.ptr + current_row * value_row_bytes,
+                    kvd,
+                    label="draft_stage_dense_value_current",
+                    extra=cache_common,
+                )
+            )
+            if current_row > 0:
+                prev_common = {
+                    **common,
+                    "cache_tokens": current_row + 1,
+                    "cache_row": current_row - 1,
+                }
+                summaries.append(
+                    self._summarize_device_f32(
+                        dense_key_cache.ptr + (current_row - 1) * key_row_bytes,
+                        kvd,
+                        label="draft_stage_dense_key_prev",
+                        extra=prev_common,
+                    )
+                )
+                summaries.append(
+                    self._summarize_device_f32(
+                        dense_value_cache.ptr + (current_row - 1) * value_row_bytes,
+                        kvd,
+                        label="draft_stage_dense_value_prev",
+                        extra=prev_common,
+                    )
+                )
+        return summaries
 
     def _summarize_seed_buffer(
         self,
@@ -981,13 +1128,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         embed0 = np.ascontiguousarray(self.token_embd_f32[start_token:start_token + 1], dtype=np.float32)
         copy_host_to_device(self.token_embed, host_array_ptr(embed0), embed0.nbytes, runtime=runtime)
         # Precompute per-depth rope / position / context once; upload once.
-        # The rope kernel reads ``qk_head_dim/2`` cos/sin values per token but the
-        # table only supplies ``rope_w`` (rotary_dim) real columns; the legacy
-        # path leaves the remainder of its ``self.cos`` scratch zeroed, so each
-        # depth's slot is real[:rope_w] + zeros, strided by ``d`` -> bit-identical.
         rope_w = int(np.asarray(rope_cos).shape[1])
-        if rope_w > d:
-            raise ValueError("rope table width exceeds qk_head_dim scratch stride")
+        rotary_dim = self._rotary_dim_from_rope_table(rope_cos)
         positions = np.arange(n, dtype=np.int64) + int(start_position)
         if dense_key_cache is not None:
             ctxs = np.arange(n, dtype=np.int64) + int(dense_cache_len) + 1
@@ -1017,6 +1159,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
                 dense_cache_len=current_cache_len,
+                rotary_dim=rotary_dim,
                 stage_timings=stage_timings,
                 top1_out_ptr=(self.topk_all.ptr + depth * top_k * 4) if (top_k == 1 and q6_top1_gather_enabled) else None,
                 top1_next_embed_ptr=(
@@ -1228,9 +1371,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
             gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
             gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        rotary_dim = self._rotary_dim_from_rope_table(cos)
         copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=runtime)
         copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=runtime)
-        mtp_rope_f32(self.key_cur.ptr, self.cos.ptr, self.sin.ptr, self.key_cur.ptr, 1, kv_heads, d, d, d // 2, runtime=runtime)
+        mtp_rope_f32(
+            self.key_cur.ptr,
+            self.cos.ptr,
+            self.sin.ptr,
+            self.key_cur.ptr,
+            1,
+            kv_heads,
+            d,
+            rotary_dim,
+            rotary_dim // 2,
+            runtime=runtime,
+        )
         key_row_bytes = kv_heads * d * 4
         value_row_bytes = kv_heads * d * 4
         runtime.memcpy(
@@ -1258,6 +1413,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_key_cache: DeviceBuffer | None,
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
+        rotary_dim: int,
         stage_timings: dict[str, float] | None = None,
         top1_out_ptr: int | None = None,
         top1_next_embed_ptr: int | None = None,
@@ -1316,8 +1472,30 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if not qkv_dp4a:
             gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
-        mtp_rope_f32(self.query.ptr, cos_ptr, sin_ptr, self.query.ptr, 1, heads, d, d, d // 2, runtime=runtime)
-        mtp_rope_f32(self.key_cur.ptr, cos_ptr, sin_ptr, self.key_cur.ptr, 1, kv_heads, d, d, d // 2, runtime=runtime)
+        mtp_rope_f32(
+            self.query.ptr,
+            cos_ptr,
+            sin_ptr,
+            self.query.ptr,
+            1,
+            heads,
+            d,
+            int(rotary_dim),
+            int(rotary_dim) // 2,
+            runtime=runtime,
+        )
+        mtp_rope_f32(
+            self.key_cur.ptr,
+            cos_ptr,
+            sin_ptr,
+            self.key_cur.ptr,
+            1,
+            kv_heads,
+            d,
+            int(rotary_dim),
+            int(rotary_dim) // 2,
+            runtime=runtime,
+        )
         t_stage = mark_stage("draft_run_qkv_k_rope", t_stage)
         if not qkv_dp4a:
             gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)

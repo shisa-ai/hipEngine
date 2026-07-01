@@ -4,11 +4,25 @@ import ctypes
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
 from hipengine.speculative import mtp_resident_draft as resident_draft_mod
 from hipengine.speculative.mtp_resident_draft import Qwen35GGUFResidentMTPDraftRunner
+
+
+def test_rotary_dim_from_rope_table_uses_model_rope_width() -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.qk_head_dim = 256
+
+    assert runner._rotary_dim_from_rope_table(np.zeros((4, 64), dtype=np.float32)) == 64
+
+    with pytest.raises(ValueError, match="positive even"):
+        runner._rotary_dim_from_rope_table(np.zeros((4, 63), dtype=np.float32))
+
+    with pytest.raises(ValueError, match="exceeds qk_head_dim"):
+        runner._rotary_dim_from_rope_table(np.zeros((4, 512), dtype=np.float32))
 
 
 def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -> None:
@@ -73,6 +87,7 @@ def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypa
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     runner.runtime = None
     runner.hidden_size = 4
+    runner.qk_head_dim = 4
     runner.experts_used = 8
     runner._device_chain_enabled = False
     runner._draft_chain_cap = 16
@@ -122,6 +137,7 @@ def test_record_hidden_stats_uses_host_chain_and_records_seed_summaries(monkeypa
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     runner.runtime = None
     runner.hidden_size = 4
+    runner.qk_head_dim = 4
     runner.experts_used = 8
     runner._device_chain_enabled = True
     runner._draft_chain_cap = 16

@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-02",
+  "purpose": "Record the resident MTP RoPE-dimension parity fix and same-prompt impact versus the prior hidden/logit divergence artifacts.",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD gfx1151 HIP host",
+  "software": {
+    "hipengine_base_commit": "ce9fef9208c284b3f0aa66aa6e2db3120dd807aa",
+    "hipengine_dirty": true,
+    "llama_cpp_hidden_trace_commit": "c0f7506045970f3586d879570086083128c6c77a",
+    "llama_cpp_score_trace_commit": "0f7d32267"
+  },
+  "source_artifacts": {
+    "hipengine_stage_trace_pre_fix_tmp": "/tmp/hipengine-mtp-stage-trace/hipengine-stage.json",
+    "hipengine_stage_trace_ropefix_tmp": "/tmp/hipengine-mtp-ropefix/hipengine-stage.json",
+    "hipengine_compat_10cycle_ropefix_tmp": "/tmp/hipengine-mtp-ropefix/hipengine-10.json",
+    "llamacpp_hidden_trace_tmp_jsonl": "/tmp/hipengine-mtp-hidden-trace/llamacpp-stage-hidden.jsonl",
+    "prior_hidden_artifact": "benchmarks/results/2026-07-02-mtp-hidden-state-parity-diagnostic.json",
+    "prior_score_artifact": "benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json"
+  },
+  "commands": {
+    "validation": "python3 -m py_compile scripts/gguf_mtp_bench.py hipengine/speculative/mtp_resident_draft.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_resident_draft_device_commit.py tests/test_mtp_resident_draft_device_chain.py && PYTHONPATH=. python3 -m pytest tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_resident_draft_device_commit.py tests/test_mtp_resident_draft_device_chain.py -q",
+    "hipengine_stage_trace_ropefix": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 4 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings --record-draft-topk-scores --record-draft-hidden-stats --record-draft-stage-stats --output /tmp/hipengine-mtp-ropefix/hipengine-stage.json",
+    "hipengine_compat_10cycle_ropefix": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 10 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --llama-compat --resident-mtp-device-chain --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --record-cycle-stage-timings --output /tmp/hipengine-mtp-ropefix/hipengine-10.json"
+  },
+  "fix": {
+    "issue": "Resident MTP draft and accepted-row MTP K/V commit used qk_head_dim as the RoPE rotary dimension. The GGUF model metadata has qwen35moe.rope.dimension_count=64 while qk_head_dim=256.",
+    "change": "Derive resident MTP rotary_dim from the RoPE table width and pass that to mtp_rope_f32 for draft Q/K and K/V commit rows.",
+    "scope": "hipEngine resident MTP draft and dense MTP device-KV cache rows; normal device-chain timing is unchanged except for corrected Q/K values."
+  },
+  "same_prompt_results": {
+    "first_divergence_pair": 3,
+    "seq_position": 49,
+    "hipengine_ropefix_draft_tokens": [65342, 18078],
+    "llamacpp_draft_tokens": [8, 1411],
+    "proposal_parity": "not_closed",
+    "hidden_first8_mean_abs_delta": {
+      "draft_seed_input_pre_fix": 0.079774,
+      "draft_seed_input_ropefix": 0.079774,
+      "depth0_draft_next_seed_pre_fix": 0.730973,
+      "depth0_draft_next_seed_ropefix": 0.328866,
+      "depth1_draft_next_seed_pre_fix": 1.68938,
+      "depth1_draft_next_seed_ropefix": 1.315782
+    },
+    "depth0_topk_after_ropefix": {
+      "token_ids": [65342, 8, 13787, 18078, 58, 1590, 16793, 9409, 3863, 1103],
+      "margins": [0.0, 1.391228, 1.406651, 1.483217, 4.501354, 5.846466, 6.945801, 7.086212, 7.631468, 7.701807]
+    },
+    "llamacpp_depth0_topk": {
+      "token_ids": [8, 65342, 13787, 18078, 58, 1590, 16793, 9409, 3863, 15050],
+      "margins": [0.0, 0.100338, 0.742947, 1.07196, 3.565044, 4.330864, 6.337843, 6.645287, 6.907965, 7.642456]
+    },
+    "hipengine_compat_10cycle_ropefix": {
+      "tokens_per_sec": 69.95,
+      "cycle_wall_ms_per_output": 14.3172,
+      "accept_per_draft": 0.85,
+      "accepted_per_output": 0.6296,
+      "target_verify_rows_per_output": 1.1111
+    }
+  },
+  "interpretation": [
+    "The qk_head_dim/full-head RoPE call was a real llama.cpp parity bug and materially reduced the hidden-row delta at the first divergence.",
+    "It did not close proposal parity: hipEngine still ranks token 65342 over token 8 at seq position 49, while llama.cpp ranks token 8 first by a 0.100-logit margin.",
+    "The next parity target remains inside the depth-0 MTP block after corrected RoPE: compare MTP graph tensor summaries or K/V cache contents against llama.cpp's graph_mtp labels."
+  ]
+}
