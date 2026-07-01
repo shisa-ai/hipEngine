@@ -131906,3 +131906,59 @@ retained compat lane remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`;
 `pack8_llama` stays default-off/rejected evidence only. Next draft work must
 either remove/fuse enough work to move `draft_initial` or use a materially
 different Q6_K layout/body; mechanical Q6 body copies are exhausted for now.
+
+## 2026-07-01 — llama.cpp HIP pp4 verifier-proxy kernel summary
+
+Added `scripts/llamacpp_kernel_trace_summary.py`, a small rocprofv3 CSV
+summarizer for llama.cpp HIP kernel traces. It groups demangled llama.cpp kernel
+names into parity buckets such as `llama_mmvq`, `llama_mmvq_moe`,
+`llama_quantize_q8_1`, `llama_topk_argsort`, `llama_gdn`, and copy/layout work,
+so the hipEngine verifier/draft buckets can be compared against llama.cpp's
+actual `mul_mat_vec_q` / `mul_mat_vec_q_moe` kernel families. Added focused
+synthetic tests in `tests/test_llamacpp_kernel_trace_summary.py`.
+
+Validation:
+
+- `python3 -m py_compile scripts/llamacpp_kernel_trace_summary.py` -> pass.
+- `python3 -m pytest tests/test_llamacpp_kernel_trace_summary.py -q` ->
+  `15 passed`.
+
+Refreshed the llama.cpp HIP verifier-shaped proxy trace:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/llamacpp-hip-pp4-rocprof-20260701 \
+  --output-file pp4 -- \
+  /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
+  -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  -dev ROCm0 -fa 1 -p 4 -n 0 -r 1 -b 4 -ub 4
+```
+
+`rocprofv3` completed successfully and emitted the usual non-fatal dispatch
+timestamp swap warnings. `llama-bench` reported pp4 **91.28 t/s** on
+Qwen3.6-35B-A3B-UD-Q4_K_M, ROCm/gfx1151, llama.cpp build `6e9007ae6`.
+
+Summary artifact:
+`benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json`
+(`performance_claim=false`; verifier-shaped proxy only, not the MTP headline
+denominator).
+
+Refreshed kernel-family split:
+
+- Total kernel time **54.199 ms**, **4511 dispatches**.
+- `llama_mmvq_moe` / `mul_mat_vec_q_moe`: **21.814 ms**, **240 dispatches**,
+  **40.2%**.
+- `llama_mmvq` / `mul_mat_vec_q`: **18.411 ms**, **502 dispatches**,
+  **34.0%**.
+- `llama_mmvf`: **2.246 ms**, **4.1%**.
+- `llama_quantize_q8_1`: **1.037 ms**, **1.9%**.
+- `llama_topk_argsort`: **0.610 ms**, **1.1%**.
+
+Interpretation: the active hipEngine verifier targets are still correctly named,
+but the source comparison is now more precise. llama.cpp's verifier-shaped HIP
+work is dominated by unified MMVQ families, while hipEngine's retained compat
+verifier splits analogous work across specialized Q8T16/Q6T16 and selected-MoE
+bodies. The next verifier attempt should capture more of `mul_mat_vec_q` /
+`mul_mat_vec_q_moe` scheduling economy over the retained T16 layouts or reduce
+the number of GEMV calls; repeating rejected rowtile-all/raw-sidecar mechanical
+copies is not the next step.

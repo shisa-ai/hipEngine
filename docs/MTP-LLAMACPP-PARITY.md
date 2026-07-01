@@ -161,6 +161,7 @@ Current source artifacts:
 | hipEngine llama-compat row-hist smoke | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rowhist-smoke.json` | Historical instrumentation-only smoke that proved `cycle_histograms` flow through suite output before the full retained rerun above. Do not use for headline tok/s. |
 | hipEngine llama-compat verifier all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Attribution-only smoke with extra sync points inside verifier layer families and selected-MoE gate/up/down. Do not use for headline tok/s. |
 | hipEngine llama-compat verifier block rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json` | Diagnostic-only B2-shaped `verify_target_block` kernel trace for the retained compat route (`--mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank verifier kernel families; do not use it for headline tok/s. |
+| llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. MTP under rocprof still deadlocks at finalize, so this is a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
@@ -427,6 +428,38 @@ Top individual kernel families in the same trace:
 | `qk_t16_selected_q8_1_dp4a_direct_gemv` | 37.0 | **2.629** | 10.1% | Selected down body; q6-only X8 helped but did not erase it. |
 | `qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop` | 30.0 | 1.574 | 6.0% | GDN recurrent work, below GEMV priorities. |
 | `q8_0_t16_triple_split_gemv` | 10.0 | **1.537** | 5.9% | Dense triple projection is still worth comparing to llama.cpp layout/scheduler. |
+
+The refreshed llama.cpp HIP verifier-shaped pp4 proxy confirms the source-level
+contrast. Command:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/llamacpp-hip-pp4-rocprof-20260701 \
+  --output-file pp4 -- \
+  /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench \
+  -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  -dev ROCm0 -fa 1 -p 4 -n 0 -r 1 -b 4 -ub 4
+```
+
+Summarized by `scripts/llamacpp_kernel_trace_summary.py` into
+`benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json`
+(`performance_claim=false`). This proxy is not the MTP denominator, but it shows
+what llama.cpp's verifier-shaped HIP forward spends GPU time on:
+
+| llama.cpp pp4 kernel bucket | dispatches | ms/pp4 trace | kernel share | parity reading |
+| --- | ---: | ---: | ---: | --- |
+| `llama_mmvq_moe` (`mul_mat_vec_q_moe`) | 240 | **21.814** | **40.2%** | llama's selected-MoE verifier proxy is one unified MMVQ family; hipEngine's analog is split across selected gate/up/down bodies. |
+| `llama_mmvq` (`mul_mat_vec_q`) | 502 | **18.411** | **34.0%** | llama's dense/quantized projections and lm-head use the same MMVQ family; hipEngine's analog is specialized Q8T16/Q6T16 kernels. |
+| `llama_mmvf` | 280 | 2.246 | 4.1% | F32 matvecs are secondary. |
+| `llama_quantize_q8_1` | 742 | 1.037 | 1.9% | Activation quantization is not the dominant llama cost, matching hipEngine's selected-MoE split where q8_1 quantize is also secondary. |
+| `llama_topk_argsort` | 78 | 0.610 | 1.1% | Top-k kernels are small in the verifier proxy; the MTP draft drain is still tracked through the traced `llama_draft_sample_topk` stage. |
+
+This makes the next verifier implementation target more precise: do not repeat
+the rejected rowtile-all or raw-sidecar experiments blindly. A retainable win
+needs either a T16-layout body/scheduler that captures more of llama.cpp's
+`mul_mat_vec_q`/`mul_mat_vec_q_moe` economy without lowering acceptance, or a
+different verifier shape that reduces the number of dense/selected GEMV calls
+that roll into `target_block_verify_total`.
 
 Stage timings from the child agree with the all-sync ledger: per block,
 `target_block_layer_total` is **29.890 ms**, split into
