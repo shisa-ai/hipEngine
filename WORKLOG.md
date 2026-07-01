@@ -131231,3 +131231,14 @@ as default-off diagnostic evidence only. The active parity tracker remains
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`; the remaining Q8 verifier
 work needs a true llama-style layout/scheduler win that also preserves
 full-suite acceptance/row economy.
+
+## 2026-07-01 — MTP parity tracker standing three-lane dashboard
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` to make the active parity tracker harder
+to drift: added a standing three-lane snapshot for hipEngine default exact,
+hipEngine `llama-compat`, and llama.cpp HIP, with the current retained speed
+gap split by cycle wall, draft drain, verifier drain, row economy, and
+acceptance. Also promoted the all-sync split table to an explicit leaf
+attribution section so diagnostic sub-buckets stay visible without replacing
+headline full-suite rows. No benchmark rerun; this is a docs-only tracking
+change using the already retained 2026-07-01 artifacts.

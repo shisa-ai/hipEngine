@@ -26,16 +26,18 @@ gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
 no-probe B2 structure, so its delta column is the active work queue.
 
 Update rule: every future `llama-compat` run that changes the route shape or moves
-throughput must update the source-artifact row, headline gap, stage ledger,
-full-suite bucket inventory, all-sync leaf attribution, active gap budget, and
-target map below in the same commit. Keep the three-lane tables visible; do not
-replace them with prose-only conclusions or a single tok/s headline. Old "FINAL"
-sections further down are historical once they disagree with this active tracker.
+throughput must update the standing snapshot, source-artifact row, headline gap,
+stage ledger, full-suite bucket inventory, all-sync leaf attribution, active gap
+budget, and target map below in the same commit. Keep the three-lane tables
+visible; do not replace them with prose-only conclusions or a single tok/s
+headline. Old "FINAL" sections further down are historical once they disagree
+with this active tracker.
 
 Required refresh shape for each retained or diagnostic parity run:
 
 | required row/table | what must change | why |
 | --- | --- | --- |
+| Standing three-lane snapshot | Current headline speed, cycle wall, draft drain, verifier drain, row economy, acceptance, and compat delta. | Gives the sprint a single "where are we behind right now" table. |
 | Source artifacts | Exact route name, flags/env, artifact path, and whether the row is retained, all-sync attribution-only, or rejected. | Prevents mixing headline speed rows with diagnostic sync-split rows. |
 | Three-lane speed gap | hipEngine default exact, hipEngine `llama-compat`, llama.cpp HIP, and the compat delta. | Keeps the top-line "how many tok/s or ms are left" visible. |
 | Three-lane stage ledger | The large buckets that have real cross-engine meaning: draft drain, verifier drain, row economy, and non-gaps. | Shows where the remaining couple of ms actually lives. |
@@ -57,6 +59,29 @@ Dashboard contract:
 | hipEngine default exact | Correctness-preserving control lane. | Keeps us honest about exact-mode regressions, but it is not the llama replication target. |
 | hipEngine `llama-compat` | Active replication lane. | Should structurally match llama.cpp's B2/no-probe MTP path; every positive delta vs llama.cpp is a concrete optimization target. |
 | llama.cpp HIP | Timing target and implementation reference. | When `llama-compat` mirrors the shape but stays slower, inspect the corresponding llama.cpp stage/kernel and copy or retune the mechanism. |
+
+#### Standing three-lane parity snapshot (update first)
+
+This is the first table to refresh after any retained or diagnostic parity run.
+It keeps the active speed gap and the high-level stage split in one place. Use
+retained full-suite rows for headline tok/s and async cycle wall; use all-sync
+rows only in the leaf attribution table below.
+
+| metric | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap / reading |
+| --- | ---: | ---: | ---: | --- |
+| MTP tok/s | 60.8 retained / 59.61 traced | **60.36** | 67.3 suite / 72.12 traced | **-6.94 tok/s suite / -11.76 tok/s traced**; top-line parity gap. |
+| Cycle wall / output | 16.800 ms | **16.587 ms** | 14.231 ms | **+2.356 ms/output** to close. |
+| Draft drain, `draft_initial` | 1.937 ms | **3.244 ms** | 2.140 ms | **+1.104 ms/output**; largest current high-level gap. |
+| Visible draft sampler/GPU drain | 1.158 ms | **3.060 ms** | 1.886 ms | **+1.174 ms/output**; compare through draft drain because names differ. |
+| Serial verify probe | 6.682 ms | **0.000 ms** | 0.000 ms | Closed in compat; not the replication blocker. |
+| Target verifier drain | 8.157 ms | **13.023 ms** | 12.083 ms | **+0.940 ms/output**; second high-level gap. |
+| Target rows / output | 1.163 | **1.250** | 1.148 | **+0.102 rows/output**; policy/economy lever after operation cost. |
+| Accepted / output | 0.535 | **0.583** | 0.610 | -0.027; close enough that operation cost remains first. |
+
+The current actionable target is therefore not "MTP in general"; it is the
+specific **+2.356 ms/output** compat gap split into draft drain, verifier drain,
+and a smaller row-economy delta. The detailed tables below are the required
+breakdown for deciding which llama.cpp source path to inspect next.
 
 Current source artifacts:
 
@@ -217,6 +242,8 @@ draft lm-head leaf rows come from
 Do not use either all-sync row for headline tok/s; use them only to choose which
 leaf bucket should move the full-suite `draft_initial` or
 `target_block_verify_total` row next.
+
+#### Current all-sync leaf attribution
 
 | sub-bucket | ms/output | source | interpretation |
 | --- | ---: | --- | --- |
