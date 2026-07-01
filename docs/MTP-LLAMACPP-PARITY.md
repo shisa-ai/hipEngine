@@ -17,17 +17,26 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 
 ### ACTIVE TRACKING — default vs llama-compat vs llama.cpp HIP
 
-This is the canonical dashboard for the current parity sprint. Update it after
-each retained or diagnostic MTP run that changes the default, `llama-compat`, or
-llama.cpp reference row. The headline speed row uses retained full-suite numbers
-where available; the stage rows use instrumented/deep traces on the same model
-and gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
+This is the canonical dashboard for the current parity sprint. Keep this section
+as a three-lane comparison: hipEngine default exact, hipEngine `llama-compat`,
+and llama.cpp HIP. Update it after each retained or diagnostic MTP run that
+changes any lane. The headline speed row uses retained full-suite numbers where
+available; the stage rows use instrumented/deep traces on the same model and
+gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
 no-probe B2 structure, so its delta column is the active work queue.
 
 Update rule: every future `llama-compat` run that changes the route shape or moves
 throughput must update the source-artifact row, headline gap, stage ledger, active
 gap budget, and the expanded bucket table below in the same commit. Old "FINAL"
 sections further down are historical once they disagree with this active tracker.
+
+Dashboard contract:
+
+| lane | role in this sprint | how to read it |
+| --- | --- | --- |
+| hipEngine default exact | Correctness-preserving control lane. | Keeps us honest about exact-mode regressions, but it is not the llama replication target. |
+| hipEngine `llama-compat` | Active replication lane. | Should structurally match llama.cpp's B2/no-probe MTP path; every positive delta vs llama.cpp is a concrete optimization target. |
+| llama.cpp HIP | Timing target and implementation reference. | When `llama-compat` mirrors the shape but stays slower, inspect the corresponding llama.cpp stage/kernel and copy or retune the mechanism. |
 
 Current source artifacts:
 
@@ -39,7 +48,7 @@ Current source artifacts:
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
-#### Headline speed gap
+#### Three-lane speed gap
 
 | metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a` B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -52,7 +61,7 @@ Current source artifacts:
 | target passes / output | 0.567 | **0.422** | 0.390 | +0.032 | Compat removed the B1 probe and nearly matches llama's pass economy. |
 | target rows / output | 1.163 | **1.266** | 1.148 | +0.118 | Compat still evaluates slightly more target rows/output. |
 
-#### Stage gap ledger
+#### Three-lane stage gap ledger
 
 | bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | current interpretation / next target |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -63,8 +72,8 @@ Current source artifacts:
 | `target_serial_verify_step` | 6.682 | **0.000** | 0.000 | 0.000 | Default-only B1 probe; compat removed it. |
 | `target_block_verify_total` | 8.157 | **13.178** | 12.083 | **+1.095** | Main verifier gap; unchanged within run noise by the draft lm-head change. |
 | `target_block_layer_total` | 7.022 | **11.669** | n/a | n/a | HipEngine verifier cost center; compare through total verifier drain. |
-| `target_block_linear_attn_layers` | 5.195 | **8.548** | n/a | n/a | Largest hipEngine verifier layer family. |
-| `target_block_full_attn_layers` | 1.827 | **3.090** | n/a | n/a | Secondary hipEngine verifier layer family. |
+| `target_block_linear_attn_layers` | 5.195 | **8.565** | n/a | n/a | Largest hipEngine verifier layer family. |
+| `target_block_full_attn_layers` | 1.827 | **3.104** | n/a | n/a | Secondary hipEngine verifier layer family. |
 | `target_block_lm_head_sample` | 0.573 | **1.152** | n/a | n/a | Visible verifier-side target after layer GEMVs. |
 | `mtp_device_kv_commit` | n/a | **0.301** | n/a | n/a | Compat-only bookkeeping; too small to explain the gap. |
 | `target_block_setup` + snapshot/commit/accounting | 0.406 | **0.092** | 0.188 comparable visible overhead | not the gap | Host bookkeeping is not the current limiter. |
@@ -75,7 +84,7 @@ cell as `n/a` and compare it only through `target_block_verify_total` or
 `cycle_wall_ms_per_output`. Raw `target_block_forward` is async-misaligned across
 engines and is not a valid parity target by itself.
 
-#### Expanded current bucket table
+#### Three-lane expanded bucket table
 
 This is the current full-suite cycle-stage inventory for the two hipEngine lanes,
 plus the llama.cpp HIP B2 deep-trace analog where the bucket semantics line up.
@@ -134,8 +143,8 @@ Latest verifier/draft split attribution after q6top1dp4a
 
 | verifier sub-bucket | ms/output | interpretation |
 | --- | ---: | --- |
-| `target_block_linear_attn_norm_qkv_gate` | 2.601 | Aggregate retained for continuity. |
-| `target_block_linear_attn_attn_norm` | 0.332 | RMSNorm is not the main issue. |
+| `target_block_linear_attn_norm_qkv_gate` | 2.551 | Aggregate retained for continuity. |
+| `target_block_linear_attn_attn_norm` | 0.327 | RMSNorm is not the main issue. |
 | `target_block_linear_attn_attn_qkv_gate_pair` | **2.224** | Current largest verifier target: Q8T16 `attn_qkv+attn_gate` pair projection. |
 | `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.676** | Main selected-MoE target after the down-projection t64 win. |
 | `draft_run_lm_head` | **1.253** | Improved by q8_1/dp4a Q6 top-1; still a draft-side target. |

@@ -130641,3 +130641,21 @@ Benchmark diagnostics, all on Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151, route
 Conclusion: direct-F32 q8_1 input by itself is not a retained optimization. If
 this area is revisited, it needs a fused RMSNorm+q8_1 path or broader lm-head
 scheduler change, not just removing the standalone BF16 cast launch.
+
+## 2026-07-01 — MTP parity dashboard contract
+
+Tightened `docs/MTP-LLAMACPP-PARITY.md` active tracking so the current sprint has
+an explicit three-lane dashboard contract: hipEngine default exact remains the
+correctness-preserving control lane, hipEngine `llama-compat` is the active
+llama.cpp replication lane, and llama.cpp HIP is the timing/implementation
+reference. The existing speed gap, stage ledger, expanded bucket table, and active
+gap budget remain the required rows to update after any retained or diagnostic
+`llama-compat` run that changes shape or throughput.
+
+Also synchronized a few stale displayed sub-bucket values with the retained
+artifacts: full-suite compat verifier layer families are
+`target_block_linear_attn_layers` **8.565 ms/output** and
+`target_block_full_attn_layers` **3.104 ms/output**; the q6top1dp4a all-sync
+attribution has `target_block_linear_attn_norm_qkv_gate` **2.551 ms/output** and
+`target_block_linear_attn_attn_norm` **0.327 ms/output**. Documentation/tracking
+change only; no new benchmark claim.
