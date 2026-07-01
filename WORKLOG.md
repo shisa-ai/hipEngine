@@ -132711,3 +132711,69 @@ HIP B2 **14.231 ms/output**, leaving **+1.504 ms/output** to close
 scratch artifacts were left unstaged.
 
 Validation: docs-only; re-read the changed active tracker section.
+
+## 2026-07-02 — MTP llama-compat X8 dscale Q6 top-1 diagnostic rejected
+
+Closed out the default-off
+`HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=x8_dscale` diagnostic for the resident
+draft Q6_K lm-head top-1 path. The route keeps the retained X8 Q6_K tile layout
+but adds an X8-aligned FP32 `d*scale` sidecar, with wrappers registered as
+`x8_dscale_gemv_decode_q8_1_dp4a_top1_{stage1,gather}_f32` and suite routes
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm`
+and `...-allsync`.
+
+Benchmark command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8_dscale \
+  --selected-down-x8-repack q6 --record-stage-timings --require-cached \
+  --out benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8dscale.json
+```
+
+Result: rejected versus retained X8
+`benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1.json`.
+Host wall regressed **6.805 -> 8.023 ms/cycle**, kernel time
+**6.427 -> 7.615 ms/cycle**, and `draft_lm_head_q6_top1`
+**3.648 -> 4.859 ms/cycle**. The artifact is marked
+`diagnostic_rejected` / `performance_claim=false`. Conclusion: precomputing Q6
+`d*scale` as FP32 sidecar increases memory traffic/register pressure enough to
+lose; the next draft fix needs a materially different Q6 top-1 layout/body or
+fusion that moves retained `draft_initial`.
+
+Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/REFACTOR.md`, and
+`docs/KERNELS.md`. Current active parity numbers are unchanged:
+`llama-compat` remains **15.735 ms/output** vs traced llama.cpp HIP B2
+**14.231 ms/output**, with **+1.504 ms/output** left to close.
+
+Lineage check attempted:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: blocked by missing read-only reference checkout
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd`.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/quant/gguf_x8.py \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_mtp_draft_rocprof.py \
+  scripts/gguf_ar_mtp_suite.py \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py tests/test_gguf_ar_mtp_suite.py
+
+PYTHONPATH=. python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py::test_p9_b4b_registry_keys_resolve \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py::test_q6_k_q8_1_dp4a_x8_top1_matches_q8_1_oracle \
+  -q
+```
+
+Result: passed.

@@ -233,6 +233,34 @@ def repack_gguf_q6_k_x8(raw_qweight: Any) -> GGUFQ6KX8:
     return GGUFQ6KX8(tiles=tiles, experts=experts, out_features=out_features, in_features=in_features)
 
 
+def repack_gguf_q6_k_x8_dscale_f32(raw_qweight: Any) -> np.ndarray:
+    """Build X8-aligned FP32 ``d * scale`` sidecar tiles for raw Q6_K weights.
+
+    The returned layout is ``[experts, out_pack8, k_block, 8, 16]`` and matches
+    ``repack_gguf_q6_k_x8(...).tiles`` by ``(expert, out_pack8, k_block, row)``.
+    """
+
+    raw, experts, out_features, _bytes_per_row, blocks_per_row = _as_expert_raw(
+        raw_qweight,
+        block_bytes=GGUF_Q6_K_BLOCK_BYTES,
+        quant_name="Q6_K",
+    )
+    out_packed = out_features // GGUF_X8_COLS
+    blocks = raw.reshape(experts, out_features, blocks_per_row, GGUF_Q6_K_BLOCK_BYTES)
+    d = np.ascontiguousarray(blocks[..., 208:210]).view(np.float16).reshape(
+        experts,
+        out_features,
+        blocks_per_row,
+    )
+    scales = np.ascontiguousarray(blocks[..., 192:208]).view(np.int8).astype(np.float32)
+    dscale_rows = d.astype(np.float32)[..., None] * scales
+    dscale = np.empty((experts, out_packed, blocks_per_row, GGUF_X8_COLS, 16), dtype=np.float32)
+    for out_pack in range(out_packed):
+        rows = dscale_rows[:, out_pack * GGUF_X8_COLS : (out_pack + 1) * GGUF_X8_COLS]
+        dscale[:, out_pack] = rows.transpose(0, 2, 1, 3)
+    return np.ascontiguousarray(dscale)
+
+
 def unpack_gguf_q6_k_x8(packed: GGUFQ6KX8 | np.ndarray, *, out_features: int | None = None) -> np.ndarray:
     """Reconstruct raw GGUF Q6_K expert bytes from X8 tiles."""
 
@@ -262,6 +290,7 @@ __all__ = [
     "repack_gguf_q4_k_x8",
     "repack_gguf_q5_k_x8",
     "repack_gguf_q6_k_x8",
+    "repack_gguf_q6_k_x8_dscale_f32",
     "unpack_gguf_q4_k_x8",
     "unpack_gguf_q5_k_x8",
     "unpack_gguf_q6_k_x8",

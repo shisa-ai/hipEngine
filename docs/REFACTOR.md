@@ -357,6 +357,26 @@ should be boring.
   body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
   not a performance route and should not update the active llama-compat headline.
 
+## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=x8_dscale` (diagnostic rejected)
+- Added 2026-07-01. Bench flag
+  `--resident-mtp-draft-q6-top1-stage1-shape x8_dscale` and suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm`
+  / `...-x8dscale-f32ssm-allsync` exercise the retained X8-packed Q6_K draft
+  lm-head top-1 layout with an extra X8-aligned FP32 `d*scale` sidecar.
+- Purpose: test whether the remaining retained X8 Q6_K top-1 cost is dominated
+  by repeatedly unpacking/multiplying Q6 block scales inside the dot body.
+  Correctness passes against the q8_1/Q6_K oracle for fused and split
+  stage1+stage2 paths, but draft-chain rocprof rejects the route:
+  `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8dscale.json`
+  reports host wall **6.805 -> 8.023 ms/cycle**, kernel time
+  **6.427 -> 7.615 ms/cycle**, and `draft_lm_head_q6_top1`
+  **3.648 -> 4.859 ms/cycle** versus the retained X8 artifact. Extra FP32
+  sidecar memory traffic/register pressure is worse than recomputing scales.
+- Remove when: a later draft Q6_K top-1 body/layout or fused top-1/sampler route
+  supersedes the current X8 evidence set. This route is evidence only; do not
+  promote or rerun full-suite unless a separate change materially alters the
+  dscale memory path.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with
