@@ -131507,3 +131507,13 @@ remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`. Updated
 `docs/MTP-LLAMACPP-PARITY.md` so the active three-lane tracking table stays
 visible and the rejected denseq8all row is recorded without changing the
 headline gap.
+
+## 2026-07-01 — MTP parity tracker table contract tightened
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking language so the
+three-lane speed-gap board is explicitly the canonical comparison table for
+hipEngine default exact, hipEngine `llama-compat`, and llama.cpp HIP. No
+measurement changed: retained compat gap remains **+2.356 ms/output**, split
+across **+1.104 ms/output** draft drain, **+0.940 ms/output** target verifier
+drain, and **+0.102 target rows/output**. This is docs-only tracking structure;
+no benchmark rerun was needed.

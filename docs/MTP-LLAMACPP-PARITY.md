@@ -25,6 +25,14 @@ available; the stage rows use instrumented/deep traces on the same model and
 gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
 no-probe B2 structure, so its delta column is the active work queue.
 
+Tracking invariant: the active question is always "where is
+`llama-compat` still slower than llama.cpp HIP, and by how much?" Keep the
+default exact lane beside it as a regression guard, but do not let exact-mode
+concerns obscure the replication lane. When the compat shape matches llama.cpp
+and a positive delta remains, the next implementation step is to inspect the
+matching llama.cpp source path and either copy the mechanism or document why its
+economics do not transfer.
+
 Update rule: every future `llama-compat` run that changes the route shape or moves
 throughput must update the standing snapshot, source-artifact row, headline gap,
 stage ledger, full-suite bucket inventory, all-sync leaf attribution, active gap
@@ -52,6 +60,13 @@ rows/output**. Until those rows move, this document should point optimization
 work at the corresponding llama.cpp stage/kernel rather than at unrelated AR or
 host setup rows.
 
+Use the tables in this order when choosing the next fix: first the canonical
+three-lane speed-gap board, then the standing snapshot/source artifacts, then
+the full-suite bucket inventory, then the attribution-only all-sync and
+rocprof leaf tables. A new fine-grained bucket only becomes an active parity
+target when it rolls up into `draft_initial`, `target_block_verify_total`,
+target rows/output, or total cycle wall.
+
 Dashboard contract:
 
 | lane | role in this sprint | how to read it |
@@ -60,9 +75,9 @@ Dashboard contract:
 | hipEngine `llama-compat` | Active replication lane. | Should structurally match llama.cpp's B2/no-probe MTP path; every positive delta vs llama.cpp is a concrete optimization target. |
 | llama.cpp HIP | Timing target and implementation reference. | When `llama-compat` mirrors the shape but stays slower, inspect the corresponding llama.cpp stage/kernel and copy or retune the mechanism. |
 
-Live gap board:
+Canonical three-lane speed-gap board (update every parity run):
 
-| stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | current target |
+| stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Total MTP wall | 16.800 ms/output | **16.587 ms/output** | 14.231 ms/output | **+2.356 ms/output** | Spend this row down before claiming parity movement. |
 | Draft drain | 1.937 ms/output | **3.244 ms/output** | 2.140 ms/output | **+1.104 ms/output** | Q6_K top-1 body/layout or fused top-1/sampler work that moves async `draft_initial`. |
@@ -75,7 +90,9 @@ Live gap board:
 
 This board is intentionally redundant with the detailed ledgers below. Keep it
 short, current, and three-lane so the next optimization target is visible without
-reading the historical sections.
+reading the historical sections. If a new instrumented hipEngine bucket has no
+llama.cpp analog, keep it in the full-suite inventory or leaf attribution table
+and compare it only through the nearest rollup row here.
 
 #### Standing three-lane parity snapshot (update first)
 
