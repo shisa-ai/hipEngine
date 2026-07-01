@@ -50,6 +50,7 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q8_0_dual_gemv_f32_f32_out,
     gguf_q5_k_gemv_f32_f32_out,
     gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_f32_f32_out,
@@ -242,6 +243,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             "pack8",
             {"pack8", "pack8_llama", "pack8_scalehoist", "row"},
         )
+        self._q8_shared_dual_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL", True)
         if self.device_chain_enabled is None:
             self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
         else:
@@ -1017,8 +1019,22 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._q4_lib,
             runtime=runtime,
         )
-        gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
-        gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
+        if bool(getattr(self, "_q8_shared_dual_enabled", False)):
+            gguf_q8_0_dual_gemv_f32_f32_out(
+                self.post_norm.ptr,
+                self.shared_gate.ptr,
+                self.shared_up.ptr,
+                self.shared_gate_out.ptr,
+                self.shared_up_out.ptr,
+                1,
+                h,
+                inter,
+                library=self._k_lib,
+                runtime=runtime,
+            )
+        else:
+            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
         mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, library=self._mtp_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
         mtp_linear_f32(self.post_norm.ptr, self.shared_gate_vec_f32.ptr, self.shared_gate_logit.ptr, 1, h, 1, library=self._mtp_lib, runtime=runtime)

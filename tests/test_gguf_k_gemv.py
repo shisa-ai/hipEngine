@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+
 import numpy as np
 import pytest
 
@@ -16,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q6_k_gemv_fp16_f32_out,
     gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
+    gguf_q8_0_dual_gemv_f32_f32_out,
     gguf_q8_0_gemv_f32_f32_out,
     gguf_q8_0_gemv_fp16_f32_out,
     plan_gguf_k_gemv_build,
@@ -27,6 +30,14 @@ QK_K = 256
 Q8_0_BLOCK_BYTES = 34
 Q5_K_BLOCK_BYTES = 176
 Q6_K_BLOCK_BYTES = 210
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
 
 
 def make_q8_0_weight(out_features: int, in_features: int) -> np.ndarray:
@@ -236,3 +247,85 @@ def test_gguf_k_wrapper_validates_kernel_contract() -> None:
         gguf_q6_k_gemv_f32_f32_out(
             1, 2, 3, rows=1, in_features=256, out_features=1, threads=96
         )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_0_dual_f32_matches_two_single_gemvs() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+
+    rows, in_features, out_features = 2, 64, 7
+    rng = np.random.default_rng(20260701)
+    x = np.ascontiguousarray(rng.standard_normal((rows, in_features)).astype(np.float32) * 0.125)
+    qweight_a = np.ascontiguousarray(make_q8_0_weight(out_features, in_features))
+    qweight_b = np.ascontiguousarray(qweight_a[::-1].copy())
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(load=True)
+    bufs = []
+    try:
+        xd = malloc(x.nbytes, runtime=runtime)
+        wa = malloc(qweight_a.nbytes, runtime=runtime)
+        wb = malloc(qweight_b.nbytes, runtime=runtime)
+        single_a = malloc(rows * out_features * 4, runtime=runtime)
+        single_b = malloc(rows * out_features * 4, runtime=runtime)
+        dual_a = malloc(rows * out_features * 4, runtime=runtime)
+        dual_b = malloc(rows * out_features * 4, runtime=runtime)
+        bufs.extend((xd, wa, wb, single_a, single_b, dual_a, dual_b))
+        copy_host_to_device(xd, host_array_ptr(x), runtime=runtime)
+        copy_host_to_device(wa, host_array_ptr(qweight_a), runtime=runtime)
+        copy_host_to_device(wb, host_array_ptr(qweight_b), runtime=runtime)
+
+        gguf_q8_0_gemv_f32_f32_out(
+            xd.ptr,
+            wa.ptr,
+            single_a.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q8_0_gemv_f32_f32_out(
+            xd.ptr,
+            wb.ptr,
+            single_b.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q8_0_dual_gemv_f32_f32_out(
+            xd.ptr,
+            wa.ptr,
+            wb.ptr,
+            dual_a.ptr,
+            dual_b.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        got_single_a = np.empty((rows, out_features), dtype=np.float32)
+        got_single_b = np.empty((rows, out_features), dtype=np.float32)
+        got_dual_a = np.empty((rows, out_features), dtype=np.float32)
+        got_dual_b = np.empty((rows, out_features), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(got_single_a), single_a, runtime=runtime)
+        copy_device_to_host(host_array_ptr(got_single_b), single_b, runtime=runtime)
+        copy_device_to_host(host_array_ptr(got_dual_a), dual_a, runtime=runtime)
+        copy_device_to_host(host_array_ptr(got_dual_b), dual_b, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(got_dual_a, got_single_a)
+    np.testing.assert_array_equal(got_dual_b, got_single_b)

@@ -1068,6 +1068,13 @@ extern "C" int hipengine_##NAME##_gemv_bf16_bf16_out( \
   return launch_gguf_k_gemv_out<uint16_t, uint16_t, QTYPE>( \
       x, qweight, out, rows, in_features, out_features, threads, stream); \
 } \
+extern "C" int hipengine_##NAME##_dual_gemv_f32_f32_out( \
+    const float* x, const uint8_t* qweight_a, const uint8_t* qweight_b, \
+    float* out_a, float* out_b, int64_t rows, int64_t in_features, \
+    int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_dual_gemv_out<float, float, QTYPE>( \
+      x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features, threads, stream); \
+} \
 extern "C" int hipengine_##NAME##_dual_gemv_bf16_bf16_out( \
     const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b, \
     uint16_t* out_a, uint16_t* out_b, int64_t rows, int64_t in_features, \

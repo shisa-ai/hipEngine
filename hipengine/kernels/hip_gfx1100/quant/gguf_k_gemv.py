@@ -119,6 +119,7 @@ gguf_q8_0_gemv_fp16_fp16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "
 gguf_q8_0_gemv_bf16_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_bf16_f32_out"))
 gguf_q8_0_gemv_bf16_fp16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_bf16_fp16_out"))
 gguf_q8_0_gemv_bf16_bf16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_bf16_bf16_out"))
+gguf_q8_0_dual_gemv_f32_f32_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "dual_gemv_f32_f32_out"))
 gguf_q8_0_dual_gemv_bf16_bf16_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "dual_gemv_bf16_bf16_out"))
 gguf_q8_0_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_f32_out"))
 gguf_q8_0_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_bf16_out"))
@@ -238,31 +239,18 @@ def _launch_dual(
     _validate(quant, rows, in_features, out_features, threads)
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
+    fn = _cached_fn(library, symbol, [_VOID, _VOID, _VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID])
     err = fn(
-        ctypes.c_void_p(x_ptr),
-        ctypes.c_void_p(qweight_a_ptr),
-        ctypes.c_void_p(qweight_b_ptr),
-        ctypes.c_void_p(out_a_ptr),
-        ctypes.c_void_p(out_b_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(in_features),
-        ctypes.c_int64(out_features),
-        ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
+        x_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream,
     )
     _check_launch(runtime, err)
 
@@ -365,6 +353,7 @@ _WRAPPERS = {
         "gemv_bf16_f32_out": gguf_q8_0_gemv_bf16_f32_out,
         "gemv_bf16_fp16_out": gguf_q8_0_gemv_bf16_fp16_out,
         "gemv_bf16_bf16_out": gguf_q8_0_gemv_bf16_bf16_out,
+        "dual_gemv_f32_f32_out": gguf_q8_0_dual_gemv_f32_f32_out,
         "dual_gemv_bf16_bf16_out": gguf_q8_0_dual_gemv_bf16_bf16_out,
         "pack8_gemv_bf16_f32_out": gguf_q8_0_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q8_0_pack8_gemv_bf16_bf16_out,
@@ -475,6 +464,7 @@ __all__ = [
     "gguf_q8_0_gemv_bf16_f32_out",
     "gguf_q8_0_gemv_bf16_fp16_out",
     "gguf_q8_0_gemv_bf16_bf16_out",
+    "gguf_q8_0_dual_gemv_f32_f32_out",
     "gguf_q8_0_dual_gemv_bf16_bf16_out",
     "gguf_q8_0_prefill_f32_f32_out",
     "gguf_q8_0_prefill_f32_fp16_out",

@@ -132015,3 +132015,122 @@ row-economy regression visible in the active dashboard. The current gap table in
 file. Active gap vs traced llama.cpp HIP B2: **+2.196 ms/output** total, split
 into **+1.240 ms/output** draft drain, **+0.644 ms/output** verifier drain, and
 **+0.151 target rows/output**.
+
+## 2026-07-01 — resident draft Q8 shared dual default-on
+
+Added an exact raw-Q8 dual-output F32/F32 GEMV wrapper for the resident MTP
+draft shared expert and enabled it by default behind the opt-out
+`HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=0`. The path replaces the two
+single shared gate/up `gguf_q8_0_gemv_f32_f32_out` launches with one
+`gguf_q8_0_dual_gemv_f32_f32_out` launch while preserving the two single outputs
+bit-for-bit.
+
+Preflight:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+ROCm is live on gfx1151/Radeon 8060S. The lineage check is blocked by the
+missing read-only reference checkout:
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` does not exist, so
+`git -C ... rev-parse --short HEAD` fails before reporting drift.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_draft_rocprof.py \
+  tests/test_gguf_k_gemv.py
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_gguf_k_gemv.py \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py -q
+
+git diff --check
+```
+
+Result: py_compile passed; pytest passed `116 passed`; diff check passed.
+
+Isolated draft rocprof A/B, same B2 llama-compat draft shape:
+
+- Control artifact:
+  `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-control.json`.
+  `avg_host_ms=6.858`, `avg_kernel_ms=6.477`, `kernel_calls_per_step=92.75`;
+  `gguf_k_prefill_out` 16 calls/cycle, 0.842 ms/cycle.
+- Dual artifact:
+  `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json`.
+  `avg_host_ms=6.812`, `avg_kernel_ms=6.463`, `kernel_calls_per_step=89.5`;
+  `gguf_k_prefill_out` 12 calls/cycle, 0.795 ms/cycle, plus
+  `gguf_k_dual_prefill_out` 2 calls/cycle, 0.035 ms/cycle.
+
+Same-session async smoke on the active llama-compat route:
+
+- Control artifact:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shared-control-smoke.json`.
+  AR **54.88 tok/s**, B2 **69.44 tok/s**, cycle **14.424 ms/output**,
+  acc/output **0.667**.
+- Dual artifact:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-smoke.json`.
+  AR **54.91 tok/s**, B2 **70.20 tok/s**, cycle **14.269 ms/output**,
+  acc/output **0.667**.
+
+Retained full-suite llama-compat result:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-full.json
+```
+
+Qwen3.6-35B-A3B-UD-Q4_K_M GGUF Q4_K_M, gfx1151/Radeon 8060S,
+10-prompt full suite, B2:
+
+- `apple_to_apple_ok=true`.
+- AR **54.7807 tok/s**.
+- MTP **61.1924 tok/s**, **1.1170x** AR.
+- Cycle wall **16.3644 ms/output**.
+- `draft_initial` **3.3776 ms/output**.
+- `target_block_verify_total` **12.6662 ms/output**.
+- `accepted/output` **0.5671**, draft acceptance **0.655**.
+- `target_rows/output` **1.2987**, target passes/output **0.4329**.
+
+Comparison vs the prior denseq8all rowhist lane:
+
+- MTP **60.96 -> 61.19 tok/s** (+0.38%).
+- Cycle wall **16.427 -> 16.364 ms/output**.
+- Verifier drain **12.727 -> 12.666 ms/output**.
+- Acceptance/economy unchanged.
+
+Exact default B5 confirmation after default-on:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope full --budgets 5 \
+  --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-q8shareddual-full.json
+```
+
+Result: AR **54.5533 tok/s**, B5 MTP **60.7197 tok/s**, **1.113x** AR,
+cycle **16.4964 ms/output**, acc/output **0.5349**, draft acceptance
+**0.7233**, target rows/output **1.1628**. Neutral vs the prior exact row.
+
+Decision: keep the dual wrapper default-on. It is exact, non-regressive on the
+default exact lane, and speed-positive on the active llama-compat lane. The
+active parity dashboard in `docs/MTP-LLAMACPP-PARITY.md` now tracks hipEngine
+default exact, hipEngine llama-compat, llama.cpp HIP, and the compat gap. New
+active gap vs traced llama.cpp HIP B2: **+2.133 ms/output** total, split into
+**+1.237 ms/output** draft drain, **+0.583 ms/output** verifier drain, and
+**+0.151 target rows/output**. Next real target remains draft Q6 top-1 stage1,
+then selected-MoE / verifier lm-head once draft movement lands.
