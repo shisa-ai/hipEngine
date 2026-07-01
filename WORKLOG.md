@@ -131167,3 +131167,67 @@ Conclusion: keep `HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS` as a
 default-off diagnostic only. Do not promote q5t32 into the active
 `llama-compat` route; the current retained lane remains
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`.
+
+## 2026-07-01 — Rejected raw-Q8 dp4a rowtile-pair sidecar diagnostic
+
+Implemented and measured a more llama.cpp-shaped raw-Q8 sidecar verifier pair
+diagnostic for the active llama-compat route:
+
+- Added `gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out`, which consumes
+  one prequantized q8_1 activation buffer plus two raw Q8_0 sidecar matrices and
+  emits split `attn_qkv`/`attn_gate` outputs in one 32-thread rowtile launch.
+  One wave computes one output column across up to four verifier rows, reusing
+  raw Q8_0 row bytes across rows.
+- Updated `_try_launch_dense_q8_pair_dp4a` so `--verify-dense-q8-dp4a` quantizes
+  once and launches the paired rowtile wrapper instead of two singleton raw-Q8
+  dp4a GEMVs.
+- Added suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8` and
+  `...-denseq8-allsync`, both fixed to B2.
+
+Measurements on AMD Radeon 8060S / gfx1151, model
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, route
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8`:
+
+- Async smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-smoke.json`
+  -> B2 **69.87 tok/s**, cycle **14.339 ms/output**,
+  `target_block_verify_total` **11.488 ms/output**, `acc/output=0.667`,
+  draft acceptance **1.000**. Same-route retained smoke was **69.03 tok/s**,
+  cycle **14.505 ms/output**, verifier **11.697 ms/output**.
+- All-sync smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-allsync-smoke.json`
+  -> attribution-only B2 **54.70 tok/s**, cycle **18.303 ms/output**,
+  verifier **15.431 ms/output** vs retained all-sync **15.947 ms/output**.
+- Full suite:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-full.json`
+  -> rejected: active full-suite lane **60.36 -> 59.42 tok/s**, cycle
+  **16.587 -> 16.852 ms/output**, `acc/output` **0.583 -> 0.559**, draft
+  acceptance **0.700 -> 0.635**, target rows/output **1.250 -> 1.322**, and
+  verifier drain **13.023 -> 13.093 ms/output**.
+
+Validation:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx'`
+  -> gfx1151 Radeon 8060S visible.
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dp4a_gemv.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_q8_0_dp4a_gemv.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_gguf_ar_mtp_suite.py`
+  -> pass.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_gguf_ar_mtp_suite.py`
+  -> **24 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q8_0_dp4a_gemv.py`
+  -> **2 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace -d /tmp/hipengine-q8-dual-rowtile-rocprof -f csv -- pytest -q tests/test_gguf_q8_0_dp4a_gemv.py -k dual_split_rowtile`
+  -> **1 passed**. Trace confirmed
+  `q8_0_dp4a_dual_split_rowtile_gemv_kernel<unsigned short, 4>` with
+  `Workgroup_Size_X=32`.
+- `git diff --check` -> pass.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+
+Conclusion: keep `--verify-dense-q8-dp4a` and the dense-Q8 rowtile-pair wrapper
+as default-off diagnostic evidence only. The active parity tracker remains
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`; the remaining Q8 verifier
+work needs a true llama-style layout/scheduler win that also preserves
+full-suite acceptance/row economy.

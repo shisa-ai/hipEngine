@@ -135,6 +135,76 @@ __global__ __launch_bounds__(32) void q8_0_dp4a_gemv_kernel(
   }
 }
 
+template <typename out_t, int ROW_TILE>
+__global__ __launch_bounds__(32) void q8_0_dp4a_dual_split_rowtile_gemv_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    out_t* __restrict__ out_a,
+    out_t* __restrict__ out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b) {
+  const int64_t global_col = blockIdx.x;
+  const int64_t row0 = static_cast<int64_t>(blockIdx.y) * ROW_TILE;
+  const int tid = threadIdx.x;
+  const int64_t total_cols = out_features_a + out_features_b;
+  if (global_col >= total_cols) return;
+
+  const bool use_b = global_col >= out_features_a;
+  const int64_t local_col = use_b ? (global_col - out_features_a) : global_col;
+  const int64_t out_features = use_b ? out_features_b : out_features_a;
+  const uint8_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
+  out_t* __restrict__ out = use_b ? out_b : out_a;
+
+  const int64_t blocks = in_features / Q8_0_BLOCK;
+  const uint8_t* __restrict__ wrow = qweight + local_col * blocks * Q8_0_RAW_BYTES;
+
+  float acc[ROW_TILE];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    acc[r] = 0.0f;
+  }
+
+  for (int64_t b = tid; b < blocks; b += blockDim.x) {
+    const uint8_t* __restrict__ wb = wrow + b * Q8_0_RAW_BYTES;
+    const float wd = fp16_bytes_to_float(wb);
+    const int8_t* __restrict__ wq = reinterpret_cast<const int8_t*>(wb + 2);
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      const int64_t row = row0 + r;
+      if (row < rows) {
+        const gguf_q8_1_block* __restrict__ xb = xq + row * blocks + b;
+        const float xd = static_cast<float>(xb->d);
+        int dot = 0;
+#pragma unroll
+        for (int g = 0; g < Q8_0_BLOCK / 4; ++g) {
+          const uint32_t w4 = *reinterpret_cast<const uint32_t*>(wq + g * 4);
+          const uint32_t x4 = *reinterpret_cast<const uint32_t*>(xb->qs + g * 4);
+          dot = q8_0_dp4a(w4, x4, dot);
+        }
+        acc[r] += wd * xd * static_cast<float>(dot);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    Q8_0_DP4A_WAVE_REDUCE(acc[r]);
+  }
+
+  if (tid == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      const int64_t row = row0 + r;
+      if (row < rows) {
+        out[row * out_features + local_col] = float_to_scalar<out_t>(acc[r]);
+      }
+    }
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_q8_0_dp4a_gemv_bf16_bf16_out(
@@ -156,5 +226,35 @@ extern "C" int hipengine_gguf_q8_0_dp4a_gemv_bf16_bf16_out(
                      reinterpret_cast<const uint8_t*>(qweight),
                      reinterpret_cast<uint16_t*>(out),
                      rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out(
+    const void* xq,
+    const void* qweight_a,
+    const void* qweight_b,
+    void* out_a,
+    void* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;
+  if (!xq || !qweight_a || !qweight_b || !out_a || !out_b) return hipErrorInvalidValue;
+  if (rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0) return hipErrorInvalidValue;
+  if (in_features % Q8_0_BLOCK != 0) return hipErrorInvalidValue;
+  const dim3 grid(static_cast<unsigned>(out_features_a + out_features_b),
+                  static_cast<unsigned>((rows + 3) / 4),
+                  1);
+  const dim3 block(32);
+  hipLaunchKernelGGL((q8_0_dp4a_dual_split_rowtile_gemv_kernel<uint16_t, 4>), grid, block, 0, stream,
+                     reinterpret_cast<const gguf_q8_1_block*>(xq),
+                     reinterpret_cast<const uint8_t*>(qweight_a),
+                     reinterpret_cast<const uint8_t*>(qweight_b),
+                     reinterpret_cast<uint16_t*>(out_a),
+                     reinterpret_cast<uint16_t*>(out_b),
+                     rows, in_features, out_features_a, out_features_b);
   return hipGetLastError();
 }

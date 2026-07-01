@@ -29,7 +29,11 @@ def _weight(*, quant_key: str = "gguf_q8_0_t16_v1", raw: bool = True):
 def test_dense_q8_dp4a_route_is_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", raising=False)
     monkeypatch.setattr(qgr, "gguf_q4_k_quantize_bf16_q8_1", lambda *args, **kwargs: pytest.fail("quantize"))
-    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_gemv_bf16_bf16_out", lambda *args, **kwargs: pytest.fail("dp4a"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: pytest.fail("dp4a_pair"),
+    )
 
     assert not qgr._try_launch_dense_q8_pair_dp4a(
         _weight(),
@@ -47,18 +51,18 @@ def test_dense_q8_dp4a_route_is_default_off(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
 
-def test_dense_q8_dp4a_route_quantizes_once_and_launches_two_gemvs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dense_q8_dp4a_route_quantizes_once_and_launches_pair_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", "1")
     calls: list[tuple[str, tuple, dict]] = []
 
     def quantize(*args, **kwargs):
         calls.append(("quantize", args, kwargs))
 
-    def dp4a(*args, **kwargs):
-        calls.append(("dp4a", args, kwargs))
+    def dp4a_pair(*args, **kwargs):
+        calls.append(("dp4a_pair", args, kwargs))
 
     monkeypatch.setattr(qgr, "gguf_q4_k_quantize_bf16_q8_1", quantize)
-    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_gemv_bf16_bf16_out", dp4a)
+    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out", dp4a_pair)
 
     assert qgr._try_launch_dense_q8_pair_dp4a(
         _weight(),
@@ -75,16 +79,19 @@ def test_dense_q8_dp4a_route_quantizes_once_and_launches_two_gemvs(monkeypatch: 
         runtime=SimpleNamespace(),
     )
 
-    assert [name for name, _args, _kwargs in calls] == ["quantize", "dp4a", "dp4a"]
+    assert [name for name, _args, _kwargs in calls] == ["quantize", "dp4a_pair"]
     assert calls[0][1][:4] == (100, 400, 2, 2048)
-    assert calls[1][1][:6] == (400, 20, 200, 2, 2048, 8192)
-    assert calls[2][1][:6] == (400, 20, 300, 2, 2048, 4096)
+    assert calls[1][1][:9] == (400, 20, 20, 200, 300, 2, 2048, 8192, 4096)
 
 
 def test_dense_q8_dp4a_route_requires_raw_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", "1")
     monkeypatch.setattr(qgr, "gguf_q4_k_quantize_bf16_q8_1", lambda *args, **kwargs: pytest.fail("quantize"))
-    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_gemv_bf16_bf16_out", lambda *args, **kwargs: pytest.fail("dp4a"))
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: pytest.fail("dp4a_pair"),
+    )
 
     assert not qgr._try_launch_dense_q8_pair_dp4a(
         _weight(raw=False),

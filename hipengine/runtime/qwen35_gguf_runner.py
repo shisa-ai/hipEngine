@@ -151,7 +151,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
-    gguf_q8_0_dp4a_gemv_bf16_bf16_out,
+    gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_moe_ffn_fused import (
     gguf_q4_k_selected_ffn_fused_bf16_bf16_out,
@@ -3621,22 +3621,15 @@ def _try_launch_dense_q8_pair_dp4a(
         stream=stream,
         runtime=runtime,
     )
-    gguf_q8_0_dp4a_gemv_bf16_bf16_out(
+    gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out(
         q8_1_workspace_ptr,
         raw_a,
-        out_a_ptr,
-        rows,
-        in_features,
-        out_features_a,
-        stream=stream,
-        runtime=runtime,
-    )
-    gguf_q8_0_dp4a_gemv_bf16_bf16_out(
-        q8_1_workspace_ptr,
         raw_b,
+        out_a_ptr,
         out_b_ptr,
         rows,
         in_features,
+        out_features_a,
         out_features_b,
         stream=stream,
         runtime=runtime,
