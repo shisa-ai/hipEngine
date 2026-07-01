@@ -130887,3 +130887,35 @@ smoke was slower than q6-only (**64.81 vs 69.03 tok/s**), so Q5_K selected-down
 stays on T16. This is not an exact-default promotion; it remains gated by the
 llama-compat/dp4a accuracy trade unless a future exactness/full-suite correctness
 gate proves otherwise.
+
+## 2026-07-01 — First-class q6-X8 llama-compat route
+
+Added a real bench flag and suite routes so the active q6-X8 compat lane no
+longer depends on an external shell env:
+
+- `scripts/gguf_mtp_bench.py --selected-down-x8-repack {off,q5,q6,both}`
+  sets `HIPENGINE_GGUF_SELECTED_X8_REPACK` before materialization and records
+  `selected_down_x8_repack`, `selected_down_x8_repack_env`, `verify_dp4a`,
+  `verify_dense_q8_dp4a`, and `resident_mtp_draft_q6_top1_dp4a` in raw child
+  workload metadata.
+- `scripts/gguf_ar_mtp_suite.py` route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6` forwards
+  `--llama-compat --resident-mtp-device-chain --verify-dp4a
+  --resident-mtp-draft-q6-top1-dp4a --selected-down-x8-repack q6`.
+- `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync` is the matching
+  attribution route with draft and target sync stage timings.
+
+Validation:
+
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+  -> **99 passed**.
+- Smoke command:
+
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-route-smoke.json`
+
+  Result: AR **54.75 tok/s**, B2 **68.14 tok/s** (**1.2445x** AR),
+  `apple_to_apple_ok=true`, `acc/output=0.667`, draft acceptance **1.000**.
+  Raw child metadata confirms the route is self-describing:
+  `verify_dp4a=true`, `resident_mtp_draft_q6_top1_dp4a=true`,
+  `selected_down_x8_repack="q6"`, and `selected_down_x8_repack_env="q6"`.

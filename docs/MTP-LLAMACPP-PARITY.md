@@ -52,7 +52,7 @@ Current source artifacts:
 | lane | route / artifact | why it is in the table |
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
-| hipEngine llama-compat | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, and q6-only X8 selected-down repack (`HIPENGINE_GGUF_SELECTED_X8_REPACK=q6`). |
+| hipEngine llama-compat | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`, artifact `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, and q6-only X8 selected-down repack (`--selected-down-x8-repack q6`). |
 | hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Attribution-only smoke with extra sync points inside draft and selected-MoE gate/up/down. Do not use for headline tok/s. |
 | hipEngine llama-compat rejected q5/both X8 selected-down check | `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json` | Diagnostic only: q6-only X8 selected-down is retained for the accuracy-traded compat lane; q5/both smoke regressed vs q6-only, so q5 stays on T16. |
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
@@ -63,7 +63,7 @@ Current source artifacts:
 
 #### Three-lane speed gap
 
-| metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a-q6top1dp4a` + X8-q6 B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
+| metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6` B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
 | --- | ---: | ---: | ---: | ---: | --- |
 | AR tok/s | 54.95 retained / 54.56 traced | 54.83 | 51.38 suite / 52.13 traced | hipEngine faster | AR is not the blocker. |
 | MTP tok/s | 60.8 retained / 59.61 traced | **60.36** | 67.3 suite / 72.12 traced | **-6.94 tok/s suite / -11.76 tok/s traced** | Compat now wins AR again, but still trails llama's operation cost. |
@@ -167,8 +167,8 @@ match but the timings do not.
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 
 Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8
-(`llama-compat-device-chain-dp4a-q6top1dp4a-allsync` with
-`HIPENGINE_GGUF_SELECTED_X8_REPACK=q6`, attribution-only smoke):
+(`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync`, attribution-only
+smoke):
 
 | verifier sub-bucket | ms/output | interpretation |
 | --- | ---: | --- |
@@ -214,15 +214,15 @@ The q6-only X8 selected-down run below is the current tracker row.
 **Retained 2026-07-01 q6-only X8 selected-down compat win:** q6-only X8
 selected-down repack is now the active `llama-compat` comparison lane, still
 accuracy-traded/default-off outside that route. The materializer gate is
-`HIPENGINE_GGUF_SELECTED_X8_REPACK=q6`, which routes Q6_K selected-down experts
-through the X8 q8_1/dp4a replacement layout while leaving Q5_K selected-down on
-T16. The isolated microbench explains why q6 is the only promoted family:
+`--selected-down-x8-repack q6`, which routes Q6_K selected-down experts through
+the X8 q8_1/dp4a replacement layout while leaving Q5_K selected-down on T16.
+The isolated microbench explains why q6 is the only promoted family:
 Q6 selected-down moved from production T16 **0.0610 ms** to X8
 quantize+dot **0.0337 ms** (`1.81x`), while Q5 moved only
 **0.0702 -> 0.0628 ms** and the q5/both smoke route regressed vs q6-only.
 
-Full-suite `llama-compat-device-chain-dp4a-q6top1dp4a` B2 with
-`HIPENGINE_GGUF_SELECTED_X8_REPACK=q6` moved **59.625 -> 60.362 tok/s**,
+Full-suite `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6` B2 moved
+**59.625 -> 60.362 tok/s**,
 cycle wall **16.7928 -> 16.5868 ms/output**, and
 `target_block_verify_total` **13.1776 -> 13.0228 ms/output**. Acceptance moved
 slightly up (`acc/output` **0.578 -> 0.583**, draft acceptance
@@ -340,8 +340,8 @@ retainable llama-compat fix despite the isolated pair win. Keep
 default path and `llama-compat` path stay on the existing exact pair wrapper.
 
 Latest selected-MoE inner split after q6-only X8 selected-down
-(`llama-compat-device-chain-dp4a-q6top1dp4a` with
-`HIPENGINE_GGUF_SELECTED_X8_REPACK=q6`, all-sync smoke, extra sync points):
+(`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync`, all-sync smoke,
+extra sync points):
 
 | selected-MoE bucket | aggregate ms/output | q8_1 quantize | GEMV body / SiLU | interpretation |
 | --- | ---: | ---: | ---: | --- |
@@ -1084,7 +1084,7 @@ What a true llama mode needs to replicate:
 | No B1 probe / one target block verify per cycle | This removes the `target_serial_verify_step` bucket entirely. | Implemented in `--llama-compat`: disables adaptive B1 probe/fallback and forces block verify with `--target-block-min-rows 2`. |
 | llama MTP context handoff (`common_speculative_process` / `pending_h` / `verify_h`) | Draft quality depends on how target verify hidden rows seed the next MTP draft. | Shifted prompt catch-up via `--mtp-context-replay` plus device-resident MTP KV is implemented in `--llama-compat`. Explicit subroutes now add prewarmed resident device-chain drafting and optional resident device seed (`pending_h`) starts. |
 | llama accept/checkpoint semantics | Partial accepts restore/commit through llama's checkpoint and `common_speculative_accept` path. | hipEngine has rollback/direct-commit paths, but they are not mechanically identical. |
-| q8_1 / dp4a verify + draft lm-head economy | This is part of llama's speed/acceptance economics, and it fails hipEngine's ja gate when used broadly. | Exact compat route stays precision-preserving; `llama-compat-dp4a` adds default-off `--verify-dp4a` for selected-expert verify, `llama-compat-device-chain-dp4a-q6top1dp4a` adds q8_1/dp4a Q6_K draft top-1 lm-head, and the current best row also sets `HIPENGINE_GGUF_SELECTED_X8_REPACK=q6` for Q6_K selected-down. |
+| q8_1 / dp4a verify + draft lm-head economy | This is part of llama's speed/acceptance economics, and it fails hipEngine's ja gate when used broadly. | Exact compat route stays precision-preserving; `llama-compat-dp4a` adds default-off `--verify-dp4a` for selected-expert verify, `llama-compat-device-chain-dp4a-q6top1dp4a` adds q8_1/dp4a Q6_K draft top-1 lm-head, and the current best `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6` row also sets `--selected-down-x8-repack q6` for Q6_K selected-down. |
 
 Implemented opt-in routes (2026-06-30):
 
@@ -1095,10 +1095,10 @@ Implemented opt-in routes (2026-06-30):
 | `llama-compat-device-chain` | `--llama-compat --resident-mtp-device-chain` | B2 fixed | Adds prewarmed resident device-chain drafting, mirroring llama's resident `ctx_dft` lifecycle more closely than per-depth host embedding handoff. |
 | `llama-compat-device-chain-dp4a` | `--llama-compat --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Accuracy-traded device-chain route; best measured compat replication row so far. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a` | `--llama-compat --resident-mtp-device-chain --verify-dp4a --resident-mtp-draft-q6-top1-dp4a` | B2 fixed | Base q6top1dp4a compat row. Accuracy-traded; not the exact default. |
-| `llama-compat-device-chain-dp4a-q6top1dp4a` + `HIPENGINE_GGUF_SELECTED_X8_REPACK=q6` | Same args plus q6-only X8 selected-down materialization env | B2 fixed | Current best compat replication row. Q6_K selected-down uses the X8 q8_1/dp4a replacement layout; Q5_K stays on T16 because q5/both smoke regressed. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6` | `--llama-compat --resident-mtp-device-chain --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --selected-down-x8-repack q6` | B2 fixed | Current best compat replication row. Q6_K selected-down uses the X8 q8_1/dp4a replacement layout; Q5_K stays on T16 because q5/both smoke regressed. |
 | `llama-compat-device-chain-dp4a-draftsync` | `--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --verify-dp4a` | B2 fixed | Diagnostic-only sync-stage route that attributes the resident draft GPU drain. Not a performance route. |
 | `llama-compat-device-chain-dp4a-allsync` | `--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --target-block-sync-stage-timings --verify-dp4a` | B2 fixed | Diagnostic-only route that sync-splits both resident draft and target block verifier sections. Not a performance route. |
-| `llama-compat-device-chain-dp4a-q6top1dp4a-allsync` + optional `HIPENGINE_GGUF_SELECTED_X8_REPACK=q6` | `--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --target-block-sync-stage-timings --verify-dp4a --resident-mtp-draft-q6-top1-dp4a` | B2 fixed | Diagnostic-only route that attributes q6top1dp4a draft and verifier sections; run with the X8 env when attributing the current best lane. Not a performance route. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync` | `--llama-compat --resident-mtp-device-chain --resident-mtp-draft-sync-stage-timings --target-block-sync-stage-timings --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --selected-down-x8-repack q6` | B2 fixed | Diagnostic-only route that attributes the current q6top1dp4a+x8q6 draft and verifier sections. Not a performance route. |
 | `llama-compat-device-seed-chain` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain` | B2 fixed | Also starts each draft from resident target `pending_h` rather than a host-copied seed. |
 | `llama-compat-device-seed-chain-dp4a` | `--llama-compat --resident-mtp-device-seed --resident-mtp-device-chain --verify-dp4a` | B2 fixed | Full llama-lifecycle diagnostic: B2 no-probe, context replay + device KV, resident device seed, prewarmed device chain, and dp4a verify. |
 

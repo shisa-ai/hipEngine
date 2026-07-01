@@ -685,6 +685,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--selected-down-x8-repack",
+        choices=("off", "q5", "q6", "both"),
+        default="off",
+        help=(
+            "OPT-IN accuracy-traded llama-compat diagnostic: materialize selected-down "
+            "Q5_K/Q6_K experts with the X8 q8_1/dp4a replacement layout. Current retained "
+            "compat lane uses q6 only; q5/both remain diagnostic/rejected."
+        ),
+    )
+    parser.add_argument(
         "--llama-compat",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1117,6 +1127,10 @@ def main(argv: list[str] | None = None):
         # by qwen35_gguf_runner.
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A"] = "1"
+    if str(getattr(args, "selected_down_x8_repack", "off")) != "off":
+        # Must be set before materialization so selected-down expert tensors are
+        # repacked into the X8 replacement layout.
+        os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = str(args.selected_down_x8_repack)
     if getattr(args, "resident_mtp_draft_q6_top1_dp4a", False):
         # Must be set before constructing the resident MTP draft runner.
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
@@ -2920,6 +2934,11 @@ def main(argv: list[str] | None = None):
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "llama_compat": bool(args.llama_compat),
+            "verify_dp4a": bool(args.verify_dp4a),
+            "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
+            "resident_mtp_draft_q6_top1_dp4a": bool(args.resident_mtp_draft_q6_top1_dp4a),
+            "selected_down_x8_repack": str(args.selected_down_x8_repack),
+            "selected_down_x8_repack_env": os.environ.get("HIPENGINE_GGUF_SELECTED_X8_REPACK"),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),
             "resident_mtp_draft_full_vocab_recovery_effective": bool(

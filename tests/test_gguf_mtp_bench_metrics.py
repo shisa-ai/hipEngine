@@ -625,6 +625,12 @@ def test_arg_parser_exposes_llama_compat_diagnostic() -> None:
     assert args.llama_compat is True
 
 
+def test_arg_parser_exposes_selected_down_x8_repack_mode() -> None:
+    args = build_arg_parser().parse_args(["--selected-down-x8-repack", "q6"])
+
+    assert args.selected_down_x8_repack == "q6"
+
+
 def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     args = build_arg_parser().parse_args(
         [
