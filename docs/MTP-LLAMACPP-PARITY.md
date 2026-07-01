@@ -68,6 +68,21 @@ cell as `n/a` and compare it only through `target_block_verify_total` or
 `cycle_wall_ms_per_output`. Raw `target_block_forward` is async-misaligned across
 engines and is not a valid parity target by itself.
 
+#### Active gap budget
+
+This is the sprint target list. Keep the `llama-compat` row structurally matched
+to llama.cpp B2, then spend the gap down against the traced llama.cpp HIP row.
+All-sync sub-buckets are attribution aids only; validate wins with the async/full
+suite row before moving the headline numbers.
+
+| target area | current hipEngine llama-compat B2 | llama.cpp HIP B2 target | budget to close | current named work |
+| --- | ---: | ---: | ---: | --- |
+| Total cycle wall | **18.057 ms/output** | 14.231 ms/output | **3.826 ms/output** | Every accepted optimization must eventually move this row. |
+| Draft drain | **3.713 ms/output** | 2.140 ms/output | **1.573 ms/output** | Cut MTP lm-head/sampler drain; latest all-sync split names `draft_run_lm_head` at **1.916 ms/output**. |
+| Target verifier drain | **14.025 ms/output** | 12.083 ms/output | **1.942 ms/output** | Cut B2 layer work; the leading all-sync sub-buckets are Q8T16 `attn_qkv+attn_gate` and selected-MoE gate/up/down. |
+| Target rows / output | **1.316** | 1.148 | 0.168 rows/output | Secondary lever after operation cost: compat still evaluates more target rows than llama. |
+| Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
+
 Latest verifier split attribution after pair-dispatch cache
 (`llama-compat-device-chain-dp4a-allsync`, full-suite diagnostic only):
 

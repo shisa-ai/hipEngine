@@ -130269,3 +130269,13 @@ Decision: do not pursue global `--target-block-wmma-prefill` for the
 `llama-compat` B2 verifier. It gives a tiny Q8T16 attention gain but badly
 regresses selected MoE and verifier total, so it is not the missing llama.cpp
 mechanism and does not merit a full-suite run.
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking again to add an explicit
+gap-budget table for the current llama-compat parity sprint. No benchmark was
+run; this is a docs-only organization change using the existing paircache and
+llama.cpp deep-trace artifacts. The table now keeps the exact remaining budget
+visible in one place: total cycle wall **18.057 -> 14.231 ms/output** (**3.826
+ms/output** to close), draft drain **3.713 -> 2.140 ms/output** (**1.573
+ms/output**), target verifier drain **14.025 -> 12.083 ms/output** (**1.942
+ms/output**), plus the secondary target-row gap **1.316 -> 1.148 rows/output**.
+It also names the non-gaps: AR, removed serial B1 verify, and host setup/snapshot.
