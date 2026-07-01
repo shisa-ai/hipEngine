@@ -132456,3 +132456,117 @@ new source-anchor table maps:
 
 Validation: re-read the changed `docs/MTP-LLAMACPP-PARITY.md` active tracking
 section. No GPU or pytest run needed for docs-only tracking text.
+
+## 2026-07-01 — MTP llama-compat verifier shared-Q8 diagnostic rejected
+
+Implemented a default-off verifier shared-expert Q8 dp4a diagnostic for the
+active llama-compat lane:
+
+- `--verify-dense-q8-dp4a-shared`
+- `HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED=1`
+- suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-sharedq8`
+  and `...-sharedq8-allsync`
+
+The route keeps the active lane untouched unless explicitly selected. When
+enabled, shared-expert verifier `ffn_gate_shexp`/`ffn_up_shexp` route through the
+existing raw-Q8 pair dp4a helper and `ffn_down_shexp` routes through the raw-Q8
+single dp4a helper. This covers the BF16 shared path; direct-state F32
+`ssm_out` remains on T16 because the current helper only quantizes BF16 inputs.
+
+Verifier profile control:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_verifier_rocprof.py --mode block-verify \
+  --verify-dp4a --selected-down-x8-repack q6 \
+  --verify-dense-q8-dp4a-all \
+  --record-stage-timings --steps 4 --warmup 1 --require-cached \
+  --out benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-refresh.json
+```
+
+Shared-Q8 verifier profile:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_verifier_rocprof.py --mode block-verify \
+  --verify-dp4a --selected-down-x8-repack q6 \
+  --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-shared \
+  --record-stage-timings --steps 4 --warmup 1 --require-cached \
+  --out benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-sharedq8.json
+```
+
+Profile result: isolated kernel time improved slightly
+**23.893 -> 23.648 ms/block** and host wall **32.470 -> 31.631 ms/block**, but
+kernel calls increased **1039 -> 1119/block**. `q8_0_t16_gemv` dropped from
+**80 -> 40 calls/block** and **3.187 -> 2.682 ms/block**, while q8_1
+quantization increased from **120 -> 200 calls/block**.
+
+Async smoke A/B:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-control-smoke.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-sharedq8 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-smoke.json
+```
+
+Smoke result looked positive with identical acceptance: **70.64 -> 71.66
+tok/s**, cycle **14.181 -> 13.978 ms/output**, verifier drain
+**11.377 -> 11.183 ms/output**, acc/output **0.667**, draft acceptance
+**1.000**.
+
+Full-suite check:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-sharedq8 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-full.json
+```
+
+Full-suite result rejected promotion: active lane was **61.31 tok/s**,
+**16.331 ms/output**, acc/output **0.567**, target rows/output **1.299**,
+verifier **12.662 ms/output**; sharedq8 was **59.63 tok/s**,
+**16.793 ms/output**, acc/output **0.556**, target rows/output **1.333**,
+verifier **13.038 ms/output**. The smoke win does not transfer across the full
+category suite.
+
+Decision: keep the flag/routes as default-off diagnostic evidence only. Active
+parity lane remains
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1`. Updated
+`docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`; no benchmark rollup change
+because this is rejected, not retained.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_mtp_verifier_rocprof.py \
+  scripts/gguf_ar_mtp_suite.py \
+  tests/test_qwen35_gguf_dense_q8_dp4a_routing.py \
+  tests/test_qwen35_gguf_compact_moe_wmma_routing.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py
+
+python3 -m pytest \
+  tests/test_qwen35_gguf_dense_q8_dp4a_routing.py \
+  tests/test_qwen35_gguf_compact_moe_wmma_routing.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py -q
+```
+
+Result: passed.

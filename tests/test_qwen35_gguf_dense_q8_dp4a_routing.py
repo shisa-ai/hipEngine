@@ -29,6 +29,7 @@ def _weight(*, quant_key: str = "gguf_q8_0_t16_v1", raw: bool = True):
 def test_dense_q8_dp4a_route_is_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED", raising=False)
     monkeypatch.setattr(qgr, "gguf_q4_k_quantize_bf16_q8_1", lambda *args, **kwargs: pytest.fail("quantize"))
     monkeypatch.setattr(
         qgr,
@@ -50,6 +51,14 @@ def test_dense_q8_dp4a_route_is_default_off(monkeypatch: pytest.MonkeyPatch) -> 
         stream=0,
         runtime=SimpleNamespace(),
     )
+
+
+def test_dense_q8_dp4a_shared_route_is_separately_gated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED", raising=False)
+    assert qgr._gguf_dense_q8_dp4a_shared_enabled() is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED", "1")
+    assert qgr._gguf_dense_q8_dp4a_shared_enabled() is True
 
 
 def test_dense_q8_dp4a_route_quantizes_once_and_launches_pair_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:

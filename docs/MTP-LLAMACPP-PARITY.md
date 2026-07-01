@@ -182,6 +182,7 @@ Current source artifacts:
 | hipEngine llama-compat rejected Q6 top-1 pack8-llama-body check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-b2-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-control-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama-allsync-smoke.json` | Diagnostic only: keeps pack8's `vocab/8` final reduce but swaps in llama.cpp's Q6_K vecdot body. All-sync stage1 improves slightly, but the async B2 smoke regresses, so no full-suite run and no headline update. |
 | hipEngine llama-compat rejected Q6 top-1 pack16 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-pack16-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-pack16-smoke.json`, `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-pack16.json` | Diagnostic only: doubles the retained pack8 stage1 output group to 16 vocab rows per block to reduce q8 activation reloads and final reduce entries. Same-session denseq8all smoke is neutral/slightly worse (**71.74 -> 71.72 tok/s**, `draft_initial` **2.479 -> 2.487 ms/output**), and draft rocprof shows the stage1 family itself slows **3.603 -> 3.684 ms/cycle**, so no full-suite run and no headline update. |
 | hipEngine llama-compat retained Q6 top-1 X8 lm-head sidecar | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-smoke.json`, `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-full.json` | Retained active lane: materializes `output.weight[:vocab]` as X8 tiles for the accuracy-traded draft Q6_K top-1 path. Same-session smoke moved **71.53 -> 71.76 tok/s** with identical acceptance; draft rocprof shows `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` at **3.558 ms/cycle** vs the prior pack8 **3.603 ms/cycle**; full-suite compat moves **61.19 -> 61.31 tok/s** and draft drain **3.378 -> 3.352 ms/output**. |
+| hipEngine llama-compat rejected verifier shared-Q8 dp4a check | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-refresh.json`, `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-sharedq8.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-full.json` | Diagnostic only: routes verifier shared-expert `ffn_gate_shexp`/`ffn_up_shexp`/`ffn_down_shexp` through raw-Q8 q8_1/dp4a helpers. The isolated block profile was slightly positive (kernel **23.893 -> 23.648 ms/block**) and smoke improved **70.64 -> 71.66 tok/s**, but full-suite B2 regressed **61.31 -> 59.63 tok/s**, cycle **16.331 -> 16.793 ms/output**, verifier drain **12.662 -> 13.038 ms/output**, and acceptance **0.567 -> 0.556**. Do not promote. |
 | hipEngine llama-compat rejected verifier Q6 top-1 X8 lm-head check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-vlmheadtop1-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-vlmheadtop1-smoke.json` | Diagnostic only: materializes an X8 `root.lm_head` sidecar and routes verifier row sampling through q8_1/dp4a Q6_K top-1, skipping full logits plus argmax. Same-session smoke rejected it: control **71.12 tok/s**, cycle **14.086 ms/output**, `target_block_lm_head_sample` **1.058 ms/output**, verifier **11.277 ms/output**; verifier-top1 **65.18 tok/s**, cycle **15.363 ms/output**, `target_block_lm_head_sample` **1.874 ms/output**, verifier **12.473 ms/output**, with identical acceptance. No full-suite run and no headline update. |
 | hipEngine llama-compat rejected q5/both X8 selected-down check | `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json` | Diagnostic only: q6-only X8 selected-down is retained for the accuracy-traded compat lane; q5/both smoke regressed vs q6-only, so q5 stays on T16. |
 | hipEngine llama-compat rejected Q4 X8 selected gate/up check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-control-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-allsync-smoke.json` | Diagnostic only: materializing Q4_K selected gate/up experts as X8 q8_1/dp4a replacement layout regressed same-session smoke **67.62 -> 59.08 tok/s** and target verifier drain **12.005 -> 14.117 ms/output** with identical acceptance. All-sync attributes the loss to selected gate/up GEMV, not q8_1 quantize. |
@@ -208,6 +209,7 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 | route | status | MTP tok/s | cycle wall | acc/output | draft acceptance | target rows/output | target verifier drain | decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1` + Q8 shared dual | retained active lane | **61.31 x8top1 full** | **16.331 ms/output** | **0.567** | **0.655** | **1.299** | **12.662 ms/output** | Current comparison lane vs llama.cpp HIP B2. X8-packed Q6_K lm-head top-1 sidecar shaves a small draft slice without changing acceptance/economy; raw-Q8 dp4a dense projections and default-on Q8 shared dual remain active. Next work still must recover draft/row economy or cut remaining verifier work. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-sharedq8` | rejected full-suite diagnostic | 59.63 full | 16.793 ms/output | 0.556 | 0.625 | 1.333 | 13.038 ms/output | The isolated block profile and smoke looked positive, but the full suite regressed vs the active lane (**61.31 tok/s**, **16.331 ms/output**, **0.567 acc/output**, **12.662 ms/output verifier**). Extra shared-expert q8_1/dp4a launches and changed verifier numerics do not transfer across categories; keep as evidence only. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1` | rejected smoke diagnostic | 65.18 smoke | 15.363 ms/output smoke | 0.667 smoke | 1.000 smoke | 1.000 smoke | 12.473 ms/output smoke | Same-session active-route control was **71.12 tok/s**, cycle **14.086 ms/output**, verifier **11.277 ms/output**, and `target_block_lm_head_sample` **1.058 ms/output** with identical acceptance. Direct q8_1/dp4a verifier Q6 top-1 worsens sampler cost to **1.874 ms/output** and verifier drain to **12.473 ms/output**; do not run full-suite or update the headline gap. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all` + Q8 shared dual | superseded retained diagnostic | 61.19 shared-dual full | 16.364 ms/output | 0.567 | 0.655 | 1.299 | 12.666 ms/output | Same route before X8-packed Q6_K draft lm-head top-1. Keep as the direct control row for the X8 top-1 A/B. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all` | superseded retained diagnostic | 60.96 rowhist / 60.89 prior | 16.427 ms/output | 0.567 | 0.655 | 1.299 | 12.727 ms/output | Same route before resident Q8 shared gate/up dual GEMV default-on. Keep as the control row for the shared-dual A/B. |
@@ -377,8 +379,8 @@ Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8 and
 raw-Q8 dp4a all-sidecar plus X8 draft lm-head top-1 uses
 two attribution-only smokes plus ROCTX/kernel traces. Verifier leaf rows come from
 `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json`;
-the active dense-Q8 block rocprof comes from
-`benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all.json`;
+the active dense-Q8 block rocprof refresh comes from
+`benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-refresh.json`;
 draft lm-head leaf rows come from
 `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json`.
 Draft kernel-family rows come from
@@ -452,34 +454,48 @@ It is diagnostic-only and does not replace the full-suite speed rows above. Its
 job is to keep the verifier target order mechanical when `llama-compat` already
 matches llama.cpp's B2/no-probe structure.
 
-Summary for the B2-shaped block profile: **31.133 ms/block host wall**,
-**23.427 ms/block kernel time**, **75.2% kernel share**, and
+Summary for the B2-shaped block profile refresh: **32.470 ms/block host wall**,
+**23.893 ms/block kernel time**, **73.6% kernel share**, and
 **1039.0 kernel calls/block**. The measured host residual is
-**7.706 ms/block**, but the dominant remaining work is still kernel time.
+**8.577 ms/block**, but the dominant remaining work is still kernel time.
 
 | kernel-family bucket | calls/block | ms/block | kernel share | next action |
 | --- | ---: | ---: | ---: | --- |
-| `dense_q8_0_gemv` | 160.0 | **8.902** | **38.0%** | Dense raw-Q8 dp4a closed the largest retained verifier bucket but still leaves dense singleton and rowtile bodies visible. |
-| `moe_selected_gemv` | 77.0 | **6.670** | **28.5%** | First remaining verifier target: compare selected gate/up/down body and scheduling against llama.cpp `mul_mat_vec_q_moe`. |
-| `lm_head` | 3.0 | **2.665** | **11.4%** | Second remaining target after selected-MoE; includes `q6_k_t16_gemv_rowtile`. |
-| `gdn_linear_attn` | 60.0 | 1.666 | 7.1% | Track, but smaller than selected/dense/lm-head GEMV. |
-| `moe_router` | 120.0 | 1.060 | 4.5% | Guard against regressions; not first-order gap. |
-| `rmsnorm_rope` | 92.0 | 0.550 | 2.3% | Not a priority. |
-| `memcpy_fill` | 169.0 | 0.307 | 1.3% | Not enough to close the verifier gap. |
-| `moe_combine_silu` | 120.0 | 0.261 | 1.1% | Earlier fused-SiLU route regressed async smoke; keep secondary. |
-| `attn_core` | 30.0 | 0.166 | 0.7% | Not the current limiter. |
+| `dense_q8_0_gemv` | 160.0 | **8.951** | **37.5%** | Dense raw-Q8 dp4a closed the largest retained verifier bucket but still leaves dense singleton and rowtile bodies visible. |
+| `moe_selected_gemv` | 77.0 | **6.767** | **28.3%** | First remaining verifier target: compare selected gate/up/down body and scheduling against llama.cpp `mul_mat_vec_q_moe`. |
+| `lm_head` | 3.0 | **2.722** | **11.4%** | Second remaining target after selected-MoE; includes `q6_k_t16_gemv_rowtile`. |
+| `gdn_linear_attn` | 60.0 | 1.781 | 7.5% | Track, but smaller than selected/dense/lm-head GEMV. |
+| `moe_router` | 120.0 | 1.074 | 4.5% | Guard against regressions; not first-order gap. |
+| `rmsnorm_rope` | 92.0 | 0.596 | 2.5% | Not a priority. |
+| `memcpy_fill` | 169.0 | 0.333 | 1.4% | Not enough to close the verifier gap. |
+| `moe_combine_silu` | 120.0 | 0.286 | 1.2% | Earlier fused-SiLU route regressed async smoke; keep secondary. |
+| `attn_core` | 30.0 | 0.174 | 0.7% | Not the current limiter. |
 
 Top individual kernel families in the same trace:
 
 | kernel family | calls/block | ms/block | kernel share | reading |
 | --- | ---: | ---: | ---: | --- |
-| `q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv` | 40.0 | **4.014** | 17.1% | Main selected gate/up body; now the largest single verifier body. |
-| `q8_0_dp4a_dual_split_rowtile_gemv` | 30.0 | **3.996** | 17.1% | Raw-Q8 dp4a pair body replacing the old `q8_0_t16_dual_split_gemv`. |
-| `q8_0_t16_gemv` | 80.0 | **3.180** | 13.6% | Dense singleton projections still use T16 and remain visible. |
-| `qk_t16_selected_q8_1_dp4a_direct_gemv` | 37.0 | **2.656** | 11.3% | Selected down body; q6-only X8 helped but did not erase it. |
-| `q6_k_t16_gemv_rowtile` | 1.0 | **2.641** | 11.3% | Verifier lm-head bucket. |
-| `qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop` | 30.0 | 1.503 | 6.4% | GDN recurrent work, below GEMV priorities. |
-| `q8_0_dp4a_triple_split_rowtile_gemv` | 10.0 | **1.030** | 4.4% | Raw-Q8 dp4a triple body is faster than the old T16 triple body; singleton dense remains. |
+| `q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv` | 40.0 | **4.097** | 17.1% | Main selected gate/up body; now the largest single verifier body. |
+| `q8_0_dp4a_dual_split_rowtile_gemv` | 30.0 | **4.022** | 16.8% | Raw-Q8 dp4a pair body replacing the old `q8_0_t16_dual_split_gemv`. |
+| `q8_0_t16_gemv` | 80.0 | **3.187** | 13.3% | Dense singleton projections still use T16 and remain visible. |
+| `q6_k_t16_gemv_rowtile` | 1.0 | **2.696** | 11.3% | Verifier lm-head bucket. |
+| `qk_t16_selected_q8_1_dp4a_direct_gemv` | 37.0 | **2.670** | 11.2% | Selected down body; q6-only X8 helped but did not erase it. |
+| `qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop` | 30.0 | 1.603 | 6.7% | GDN recurrent work, below GEMV priorities. |
+| `q8_0_dp4a_triple_split_rowtile_gemv` | 10.0 | **1.035** | 4.3% | Raw-Q8 dp4a triple body is faster than the old T16 triple body; singleton dense remains. |
+
+The shared-Q8 verifier diagnostic (`--verify-dense-q8-dp4a-shared`) is rejected
+despite the isolated profile looking slightly better. It routes shared-expert
+gate/up/down through the raw-Q8 q8_1/dp4a helpers, which changes the block
+profile to **31.631 ms/block host wall**, **23.648 ms/block kernel time**, and
+**1119.0 kernel calls/block**. Dense singleton T16 calls drop (`q8_0_t16_gemv`
+**80 -> 40 calls/block**, **3.187 -> 2.682 ms/block**), but q8_1 quantize rises
+(`120 -> 200 calls/block`) and the async full-suite route regresses. Same-session
+smoke improved **70.64 -> 71.66 tok/s**, cycle **14.181 -> 13.978 ms/output**,
+and verifier drain **11.377 -> 11.183 ms/output** with identical smoke
+acceptance; full-suite B2 regressed **61.31 -> 59.63 tok/s**, cycle
+**16.331 -> 16.793 ms/output**, verifier drain **12.662 -> 13.038 ms/output**,
+and target rows/output **1.299 -> 1.333**. Keep the route as diagnostic evidence
+only; the active parity lane stays `denseq8all-x8top1`.
 
 The refreshed llama.cpp HIP verifier-shaped pp4 proxy confirms the source-level
 contrast. Command:

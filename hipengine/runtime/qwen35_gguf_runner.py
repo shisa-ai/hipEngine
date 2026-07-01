@@ -3380,7 +3380,32 @@ class Qwen35GGUFFullStackRunner:
             t_stage,
         )
 
-        if launch_gguf_linear_pair_concat(
+        shared_q8_dp4a_enabled = _gguf_dense_q8_dp4a_shared_enabled()
+        shared_gate_up_dp4a = shared_q8_dp4a_enabled and _try_launch_dense_q8_pair_dp4a(
+            layer.weight("ffn_gate_shexp"),
+            layer.weight("ffn_up_shexp"),
+            scratch.post_norm.ptr,
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            scratch,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features_a=cfg.expert_shared_feed_forward_length,
+            out_features_b=cfg.expert_shared_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        if shared_gate_up_dp4a:
+            silu_mul_separate_out_bf16(
+                scratch.moe_shared_gate.ptr,
+                scratch.moe_shared_up.ptr,
+                scratch.moe_shared_intermediate.ptr,
+                rows=rows,
+                features=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif launch_gguf_linear_pair_concat(
             layer.weight("ffn_gate_shexp"),
             layer.weight("ffn_up_shexp"),
             scratch.post_norm.ptr,
@@ -3448,16 +3473,29 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_shared_gate_up_silu",
             t_stage,
         )
-        launch_gguf_linear(
-            layer.weight("ffn_down_shexp"),
-            scratch.moe_shared_intermediate.ptr,
-            scratch.moe_shared_out.ptr,
-            rows=rows,
-            in_features=cfg.expert_shared_feed_forward_length,
-            out_features=self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        if not (
+            shared_q8_dp4a_enabled and _try_launch_dense_q8_single_dp4a(
+                layer.weight("ffn_down_shexp"),
+                scratch.moe_shared_intermediate.ptr,
+                scratch.moe_shared_out.ptr,
+                scratch,
+                rows=rows,
+                in_features=cfg.expert_shared_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        ):
+            launch_gguf_linear(
+                layer.weight("ffn_down_shexp"),
+                scratch.moe_shared_intermediate.ptr,
+                scratch.moe_shared_out.ptr,
+                rows=rows,
+                in_features=cfg.expert_shared_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -3511,6 +3549,7 @@ _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
+_GGUF_DENSE_Q8_DP4A_SHARED_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
@@ -3585,6 +3624,10 @@ def _gguf_dense_q8_dp4a_enabled() -> bool:
 
 def _gguf_dense_q8_dp4a_all_enabled() -> bool:
     return _env_flag(_GGUF_DENSE_Q8_DP4A_ALL_ENV, False)
+
+
+def _gguf_dense_q8_dp4a_shared_enabled() -> bool:
+    return _env_flag(_GGUF_DENSE_Q8_DP4A_SHARED_ENV, False)
 
 
 def _gguf_row_compact_gemv_enabled() -> bool:

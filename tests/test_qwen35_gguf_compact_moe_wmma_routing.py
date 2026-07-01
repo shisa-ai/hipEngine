@@ -154,6 +154,44 @@ def test_q4k_selected_dual_dp4a_env_uses_q8_workspace(monkeypatch: pytest.Monkey
     assert [payload for name, payload in calls if name == "raw_linear"] == ["ffn_down_exps"]
 
 
+def test_shared_q8_dp4a_env_routes_shared_expert_projections(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "_gguf_dense_q8_dp4a_shared_enabled", lambda: True)
+    monkeypatch.setattr(
+        qgr,
+        "_try_launch_dense_q8_pair_dp4a",
+        lambda gate, up, *args, **kwargs: calls.append(
+            ("shared_pair_dp4a", (gate.spec.source.name, up.spec.source.name))
+        )
+        or True,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_try_launch_dense_q8_single_dp4a",
+        lambda weight, *args, **kwargs: calls.append(("shared_down_dp4a", weight.spec.source.name)) or True,
+    )
+    monkeypatch.setattr(qgr, "launch_gguf_linear_pair_concat", _fail_if_called("shared_pair_fallback"))
+    monkeypatch.setattr(qgr, "launch_gguf_linear", _fail_if_called("shared_down_fallback"))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("raw_pair", None)) or False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+
+    assert ("shared_pair_dp4a", ("ffn_gate_shexp", "ffn_up_shexp")) in calls
+    assert ("shared_down_dp4a", "ffn_down_shexp") in calls
+    assert ("silu_separate", None) in calls
+
+
 def _fake_runner_and_scratch():
     cfg = SimpleNamespace(
         is_moe=True,

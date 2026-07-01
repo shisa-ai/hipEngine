@@ -77,6 +77,14 @@ def test_fused_b1_block_probe_flag_parses() -> None:
     assert args.fused_b1_block_probe is True
 
 
+def test_dense_q8_shared_dp4a_flag_parses_default_off() -> None:
+    args = build_arg_parser().parse_args([])
+    assert args.verify_dense_q8_dp4a_shared is False
+
+    args = build_arg_parser().parse_args(["--verify-dense-q8-dp4a-shared"])
+    assert args.verify_dense_q8_dp4a_shared is True
+
+
 def test_fused_b1_block_probe_selector_is_only_for_adaptive_b1_probe() -> None:
     kwargs = {
         "fused_b1_block_probe": True,
