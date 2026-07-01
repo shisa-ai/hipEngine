@@ -109,6 +109,7 @@ Current source artifacts:
 | hipEngine llama-compat rejected Q8T16 pair t64 check | `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json` | Diagnostic only: the actual verifier `attn_qkv+attn_gate` Q8T16 pair shape is faster at the existing 128-thread launch than at 64 threads. |
 | hipEngine llama-compat rejected Q8T16 q8_1/dp4a pair check | `benchmarks/results/2026-07-01-q8-t16-pair-q8-1-dp4a-micro.json` | Diagnostic only: applying llama.cpp-style q8_1/dp4a to the existing T16 tile layout is much slower than the exact pair because T16 stores four-K dot4 bytes strided by output column. |
 | hipEngine llama-compat rejected Q8T16 pair rowtile check | `benchmarks/results/2026-07-01-q8-t16-pair-rowtile-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-rowtilepair-full.json` | Diagnostic only: exact row-amortized rowtile4 wins the isolated pair and smoke, but full-suite compat regresses, so runtime default remains the existing pair kernel. |
+| hipEngine llama-compat rejected Q8T16 rowtile-all check | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-q8rowtileall.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall-control-smoke.json` | Diagnostic only: broad exact rowtile coverage lowers the isolated block verifier dense-Q8 kernel bucket, but same-session async smoke loses to the retained `x8q6` route, so no full-suite run and no headline update. |
 | hipEngine llama-compat rejected raw-Q8 dp4a rowtile-pair sidecar | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-full.json` | Diagnostic only: the fused raw-Q8 sidecar pair launch improves smoke verifier sub-buckets but full-suite B2 regresses **60.36 -> 59.42 tok/s** with lower acceptance and more target rows/output, so the retained lane remains `x8q6` without dense-Q8 sidecar. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
@@ -123,6 +124,7 @@ the next kernel target.
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6` | retained active lane | **60.36** | **16.587 ms/output** | **0.583** | **0.700** | **1.250** | **13.023 ms/output** | Current comparison lane vs llama.cpp HIP B2. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8` | rejected diagnostic | 59.42 | 16.852 ms/output | 0.559 | 0.635 | 1.322 | 13.093 ms/output | Rowtile-pair raw-Q8 sidecar improved smoke/all-sync verifier timing, but full-suite economics regressed. Do not update the headline gap. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall` | rejected smoke diagnostic | 68.54 smoke | 14.614 ms/output smoke | 0.667 smoke | 1.000 smoke | 1.000 smoke | 11.790 ms/output smoke | Same-session control smoke was faster at **68.78 tok/s / 14.561 ms/output** with the same acceptance. Do not run full-suite or update the headline gap. |
 
 #### Three-lane speed gap
 
@@ -313,6 +315,34 @@ Stage timings from the child agree with the all-sync ledger: per block,
 `target_block_lm_head_sample` **2.801 ms**. This confirms the current verifier
 work queue: dense Q8T16 projection kernels, selected-MoE GEMV bodies, then
 verifier lm-head.
+
+The broader Q8T16 rowtile-all diagnostic is rejected as a route but retained as
+evidence. `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35 rows>1 Q8T16
+singleton, pair, and triple verifier projections through rowtile4 where the
+runtime can do so; the suite route
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall` records this env
+explicitly. Correctness passed against the existing exact singleton/pair/triple
+wrappers, and the block verifier profile showed the intended isolated movement:
+
+| block profile row | retained `x8q6` | q8rowtileall | delta |
+| --- | ---: | ---: | ---: |
+| host wall / block | 33.959 ms | **32.599 ms** | **-1.360 ms** |
+| kernel time / block | 26.053 ms | **25.276 ms** | **-0.777 ms** |
+| dense Q8 GEMV bucket | 11.420 ms | **10.811 ms** | **-0.609 ms** |
+| `q8_0_t16_dual_split*` pair body | 6.025 ms | **5.316 ms** | **-0.709 ms** |
+| `q8_0_t16_triple_split*` body | **1.537 ms** | 1.608 ms | +0.071 ms |
+| `q8_0_t16_gemv` singleton body | **3.172 ms** | 3.188 ms | +0.016 ms |
+
+Async smoke rejected promotion before a full-suite run: same-session retained
+`x8q6` reached **68.78 tok/s**, **14.561 ms/output** cycle wall, and
+**11.755 ms/output** target verifier, while q8rowtileall reached **68.54 tok/s**,
+**14.614 ms/output**, and **11.790 ms/output** with identical acceptance
+(`acc/output=0.667`, draft acceptance `1.000`, target rows/output `1.000`).
+The rowtile-all route trimmed `target_block_layer_total` by **0.105 ms/output**
+but lost that back in setup/replay/lm-head noise. Conclusion: more exact
+row-amortization over the current T16 layout is not the retained fix; the next
+dense-Q8 attempt should compare and port llama.cpp's actual `mul_mat_vec_q`
+layout/scheduler rather than expanding T16 rowtile coverage again.
 
 The Q6 top-1 stage1 thread-count diagnostic is rejected. llama.cpp's RDNA3
 Q6_K MMVQ selects a two-warp single-column shape, so hipEngine added
@@ -535,6 +565,31 @@ Conclusion: exact row-amortization over the current T16 pair layout is not a
 retainable llama-compat fix despite the isolated pair win. Keep
 `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` only as a diagnostic A/B hook. The
 default path and `llama-compat` path stay on the existing exact pair wrapper.
+
+**Rejected 2026-07-01 Q8T16 rowtile-all expansion:** implemented default-off
+`HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1`, single/triple rowtile4 wrappers, and the
+suite route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall` to
+test whether broad exact row amortization across singleton, pair, and triple
+Q8T16 verifier projections could keep the pair-rowtile isolated win while
+avoiding the earlier full-suite regression. Correctness passed vs the existing
+exact wrappers. The block-verifier profile improved the isolated dense-Q8 bucket
+(**11.420 -> 10.811 ms/block**) and total kernel time
+(**26.053 -> 25.276 ms/block**), mostly from pair body
+`q8_0_t16_dual_split*` **6.025 -> 5.316 ms/block**; triple rowtile regressed
+slightly (**1.537 -> 1.608 ms/block**) and singleton did not move.
+
+Same-session async smoke rejected the route before a full-suite run:
+
+| smoke route | B2 tok/s | cycle wall | target verify | layer total | acceptance |
+| --- | ---: | ---: | ---: | ---: | --- |
+| retained `x8q6` control | **68.78** | **14.561 ms/output** | **11.755 ms/output** | 9.436 ms/output | 0.667 acc/output, 1.000 draft |
+| `x8q6-q8rowtileall` | 68.54 | 14.614 ms/output | 11.790 ms/output | **9.331 ms/output** | 0.667 acc/output, 1.000 draft |
+
+The diagnostic proves the exact rowtile pair body is locally useful, but the
+async route cannot spend that isolated win down into wall time. The retained lane
+stays `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`. Do not retry broader T16
+rowtile as the next dense-Q8 fix; inspect/copy llama.cpp's Q8_0×Q8_1 MMVQ
+layout and scheduling instead.
 
 Latest selected-MoE inner split after q6-only X8 selected-down
 (`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync`, all-sync smoke,

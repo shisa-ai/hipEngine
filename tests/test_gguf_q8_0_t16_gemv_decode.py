@@ -23,6 +23,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_gemv_decode_fp16_fp16_out,
     gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out,
+    gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out,
     plan_gguf_q8_0_t16_gemv_build,
     register_gguf_q8_0_t16_gemv_kernels,
 )
@@ -264,6 +266,7 @@ def test_p9_h3c_registry_keys_resolve() -> None:
     register_gguf_q8_0_t16_gemv_kernels()
     for variant in (
         "t16_gemv_decode_bf16_bf16_out",
+        "t16_gemv_decode_rowtile4_bf16_bf16_out",
         "t16_gemv_decode_f32_bf16_out",
         "t16_gemv_decode_fp16_fp16_out",
         "t16_dual_gate_up_gemv_decode_bf16_bf16_out",
@@ -274,6 +277,7 @@ def test_p9_h3c_registry_keys_resolve() -> None:
         "t16_dual_gemv_decode_rowtile4_bf16_bf16_out",
         "t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out",
         "t16_triple_gemv_decode_bf16_bf16_out",
+        "t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
         "t16_triple_gemv_decode_fp16_fp16_out",
     ):
         assert resolve(
@@ -341,6 +345,48 @@ def test_p9_h3c_single_bf16_bf16_matches_cpu_oracle(rows, in_features, out_featu
     expected = gguf_quant_gemv(x_ref, qweight, GGMLQuantizationType.Q8_0)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     np.testing.assert_allclose(_bf16_u16_to_f32(actual), expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "rows,in_features,out_features",
+    [
+        (3, 512, 128),
+        (5, 512, 256),
+        (3, 2048, 4096),
+    ],
+)
+def test_q8_t16_single_rowtile4_matches_exact_single(rows, in_features, out_features, q8_t16_library) -> None:
+    rng = np.random.default_rng(19100 + rows + in_features + out_features)
+    qweight = make_q8_0_weight(out_features, in_features)
+    tiles = repack_gguf_q8_0_tile16(qweight).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    actual = _run_single(
+        gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_t16_library,
+        threads=64,
+    )
+    expected = _run_single(
+        gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_t16_library,
+        threads=128,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -652,6 +698,64 @@ def test_q8_t16_dual_split_rowtile4_matches_exact_qwen35_attention_pair_shape(q8
 
     np.testing.assert_array_equal(actual_a, expected_a)
     np.testing.assert_array_equal(actual_b, expected_b)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "rows,in_features,out_features_a,out_features_b,out_features_c",
+    [
+        (3, 512, 64, 128, 32),
+        (5, 512, 64, 128, 32),
+        (3, 2048, 4096, 1024, 1024),
+    ],
+)
+def test_q8_t16_triple_rowtile4_matches_exact_triple(
+    rows, in_features, out_features_a, out_features_b, out_features_c, q8_t16_library,
+) -> None:
+    rng = np.random.default_rng(19600 + rows + in_features + out_features_a + out_features_b + out_features_c)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    qc = make_q8_0_weight(out_features_c, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    tc = repack_gguf_q8_0_tile16(qc).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    actual_a, actual_b, actual_c = _run_triple_split(
+        gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        tc,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        out_features_c,
+        np.uint16,
+        q8_t16_library,
+        threads=64,
+    )
+    expected_a, expected_b, expected_c = _run_triple_split(
+        gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        tc,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        out_features_c,
+        np.uint16,
+        q8_t16_library,
+        threads=128,
+    )
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
+    np.testing.assert_array_equal(actual_c, expected_c)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

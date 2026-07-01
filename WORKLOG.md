@@ -131354,3 +131354,79 @@ standing tracker keeps hipEngine default exact, hipEngine `llama-compat`, and
 llama.cpp HIP in one table, uses a fixed compat-minus-llama gap convention, and
 keeps the current B2 timing deltas visible as the implementation target. This is
 docs-only; no benchmark or GPU validation was needed.
+
+## 2026-07-01 — Q8T16 rowtile-all verifier diagnostic rejected
+
+Added default-off exact Q8T16 rowtile-all coverage for the retained
+llama-compat verifier shape:
+
+- `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35 `rows>1, in=2048`
+  singleton, pair, and triple Q8T16 projections through rowtile4 wrappers where
+  available. The pair path reuses the existing pair-rowtile diagnostic.
+- New wrappers:
+  `gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out` and
+  `gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out`.
+- New suite route:
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall`, which records
+  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` in `shared_config.mtp_route_env`.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py hipengine/runtime/gguf_linear.py scripts/gguf_mtp_verifier_rocprof.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py`
+  -> pass.
+- `PYTHONPATH=. pytest -q tests/test_gguf_linear_dispatch.py -k 'rowtile4 or t16_single_qwen35 or t16_triple_qwen35'`
+  -> **3 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py -k 'rowtile4 or registry_keys'`
+  -> **9 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace -d /tmp/hipengine-q8-t16-rowtileall-rocprof -f csv -- pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py -k 'single_rowtile4_matches_exact_single or triple_rowtile4_matches_exact_triple'`
+  -> **6 passed**. Trace confirmed
+  `q8_0_t16_rowtile_gemv_kernel<unsigned short, unsigned short, 4>` launched
+  (first duration **15,854 ns**) and
+  `q8_0_t16_triple_split_rowtile_gemv_kernel<unsigned short, unsigned short, 4>`
+  launched (first duration **57,607 ns**).
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+- `python3 -m py_compile scripts/gguf_ar_mtp_suite.py` -> pass.
+- `PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall --record-cycle-stage-timings --dry-run`
+  -> confirms route env records `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1`.
+
+Block verifier smoke/profile:
+
+- Child smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_verifier_rocprof.py --child --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --q8-t16-rowtile-all --record-stage-timings --steps 1 --warmup 0 --require-cached --child-json /tmp/hipengine-block-verify-rowtile-all-child.json`
+  -> `block-verify steps=1 avg_host_ms=48.374`.
+- Profile:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --q8-t16-rowtile-all --record-stage-timings --steps 4 --warmup 1 --raw-root /tmp/hipengine-gguf-mtp-verifier-rocprof-llama-compat-block-b2-q8rowtileall --out benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-q8rowtileall.json`
+  -> artifact
+  `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-q8rowtileall.json`.
+
+Profile result vs retained block profile:
+
+- host wall **33.959 -> 32.599 ms/block**.
+- kernel time **26.053 -> 25.276 ms/block**.
+- dense-Q8 bucket **11.420 -> 10.811 ms/block**.
+- pair body `q8_0_t16_dual_split*` **6.025 -> 5.316 ms/block**.
+- triple body **1.537 -> 1.608 ms/block**.
+- singleton body **3.172 -> 3.188 ms/block**.
+
+Async smoke result:
+
+- q8rowtileall:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall-smoke.json`
+  -> B2 **68.54 tok/s**, cycle **14.614 ms/output**,
+  `target_block_verify_total` **11.790 ms/output**, `target_block_layer_total`
+  **9.331 ms/output**, `acc/output=0.667`, draft acceptance **1.000**.
+- same-session retained control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall-control-smoke.json`
+  -> B2 **68.78 tok/s**, cycle **14.561 ms/output**,
+  `target_block_verify_total` **11.755 ms/output**, `target_block_layer_total`
+  **9.436 ms/output**, `acc/output=0.667`, draft acceptance **1.000**.
+
+Conclusion: reject for promotion and do not run full-suite. The isolated
+verifier profile proves the pair rowtile body is locally useful, but broad exact
+row-amortization over the current T16 layout does not move async MTP wall. The
+retained lane remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`; the next
+dense-Q8 target should inspect/copy llama.cpp's actual Q8_0 x Q8_1 MMVQ
+layout/scheduler instead of expanding T16 rowtile coverage again.

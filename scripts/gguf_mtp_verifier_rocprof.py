@@ -61,6 +61,10 @@ def _apply_route_env(args: argparse.Namespace) -> None:
     selected_down_x8 = str(getattr(args, "selected_down_x8_repack", "off"))
     if selected_down_x8 != "off":
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = selected_down_x8
+    if getattr(args, "q8_t16_pair_rowtile", False):
+        os.environ["HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"] = "1"
+    if getattr(args, "q8_t16_rowtile_all", False):
+        os.environ["HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"] = "1"
 
 
 def _sum_stage_timings(rows: list[dict[str, float]]) -> dict[str, float]:
@@ -226,6 +230,8 @@ def _run_child(args: argparse.Namespace) -> int:
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
+        "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
+        "q8_t16_rowtile_all": bool(args.q8_t16_rowtile_all),
         "host_ms": host_ms,
         "avg_host_ms": sum(host_ms) / len(host_ms) if host_ms else 0.0,
         "token_ids": token_ids,
@@ -303,6 +309,10 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--verify-dense-q8-dp4a")
     if str(args.selected_down_x8_repack) != "off":
         child_base.extend(["--selected-down-x8-repack", str(args.selected_down_x8_repack)])
+    if args.q8_t16_pair_rowtile:
+        child_base.append("--q8-t16-pair-rowtile")
+    if args.q8_t16_rowtile_all:
+        child_base.append("--q8-t16-rowtile-all")
     if args.record_stage_timings:
         child_base.append("--record-stage-timings")
     if args.sync_stage_timings:
@@ -356,6 +366,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
+        "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
+        "q8_t16_rowtile_all": bool(args.q8_t16_rowtile_all),
         "steps": int(args.steps),
         "warmup": int(args.warmup),
         "prompt_ids": _parse_prompt_ids(args.prompt_ids),
@@ -591,6 +603,16 @@ def main() -> int:
         help="Enable the rejected dense Q8 raw-sidecar dp4a route for diagnostic profiling.",
     )
     parser.add_argument("--selected-down-x8-repack", choices=("off", "q5", "q6", "both"), default="off")
+    parser.add_argument(
+        "--q8-t16-pair-rowtile",
+        action="store_true",
+        help="Enable the existing Q8T16 attn_qkv+attn_gate pair rowtile diagnostic.",
+    )
+    parser.add_argument(
+        "--q8-t16-rowtile-all",
+        action="store_true",
+        help="Enable Q8T16 rowtile diagnostics for singleton, pair, and triple verifier projections.",
+    )
     parser.add_argument("--record-stage-timings", action="store_true")
     parser.add_argument("--sync-stage-timings", action="store_true")
     parser.add_argument("--require-cached", action="store_true")

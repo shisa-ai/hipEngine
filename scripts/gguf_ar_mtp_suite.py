@@ -330,6 +330,13 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--resident-mtp-draft-q6-top1-dp4a",
         "--selected-down-x8-repack", "q6",
     ],
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall": [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+        "--resident-mtp-draft-q6-top1-dp4a",
+        "--selected-down-x8-repack", "q6",
+    ],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8": [
         "--llama-compat",
         "--resident-mtp-device-chain",
@@ -610,6 +617,7 @@ MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat-device-chain-dp4a": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6": [2],
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row": [2],
@@ -626,6 +634,12 @@ MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat-device-chain-dp4a-denseq8-allsync": [2],
     "llama-compat-device-seed-chain": [2],
     "llama-compat-device-seed-chain-dp4a": [2],
+}
+
+MTP_ROUTE_ENVS: dict[str, dict[str, str]] = {
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall": {
+        "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "1",
+    },
 }
 
 SCOPES = {
@@ -782,6 +796,7 @@ def main() -> int:
     cycles = args.cycles if args.cycles is not None else scope["cycles"]
     limit = args.limit if args.limit is not None else scope["limit"]
     route_args = MTP_ROUTES[args.mtp_route]
+    route_env = MTP_ROUTE_ENVS.get(args.mtp_route, {})
     route_default_budgets = MTP_ROUTE_DEFAULT_BUDGETS.get(args.mtp_route)
     budgets = (
         [int(x) for x in args.budgets.split(",")]
@@ -823,6 +838,7 @@ def main() -> int:
     # ~20GB model per (prompt, budget). The AR baseline already loads once.
     mtp_env = dict(env)
     mtp_env["HIPENGINE_MTP_BENCH_CACHE_SESSION"] = "1"
+    mtp_env.update(route_env)
 
     # AR decode-tokens: a representative steady-state count (tok/s is a rate, so a
     # single AR baseline serves every budget's ratio). Match the largest budget's
@@ -883,6 +899,7 @@ def main() -> int:
         "ar_decode_tokens": ar_decode_tokens,
         "mtp_route": args.mtp_route,
         "mtp_route_extra_args": route_args,
+        "mtp_route_env": route_env,
         "mtp_route_default_budgets": route_default_budgets,
         "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
     }

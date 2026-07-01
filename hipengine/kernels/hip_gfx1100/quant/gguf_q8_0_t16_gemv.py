@@ -19,6 +19,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q8_0_t16_gemv.hip")
 _OUTPUT_NAME = "gguf_q8_0_t16_gemv.so"
 _Q8_0_SINGLE_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_bf16_bf16_out"
+_Q8_0_SINGLE_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out"
 _Q8_0_SINGLE_FP16 = "hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out"
 _Q8_0_SINGLE_F32_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_f32_bf16_out"
 _Q8_0_DUAL_BF16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out"
@@ -29,6 +30,7 @@ _Q8_0_DUAL_SPLIT_ROWTILE2_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_rowti
 _Q8_0_DUAL_SPLIT_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out"
 _Q8_0_DUAL_SPLIT_Q8_1_DP4A_BF16 = "hipengine_gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out"
 _Q8_0_TRIPLE_SPLIT_BF16 = "hipengine_gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out"
+_Q8_0_TRIPLE_SPLIT_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out"
 _Q8_0_TRIPLE_SPLIT_FP16 = "hipengine_gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out"
 _Q8_0_BLOCK = 32
 _T16_COLS = 16
@@ -93,6 +95,36 @@ def gguf_q8_0_t16_gemv_decode_bf16_bf16_out(
 
     _launch_single(
         _Q8_0_SINGLE_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 dense Q8T16 GEMV with four verifier rows per block."""
+
+    _launch_single(
+        _Q8_0_SINGLE_ROWTILE4_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -456,6 +488,48 @@ def gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
     )
 
 
+def gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    tiles_c_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    out_c_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    out_features_c: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 dense triple Q8T16 GEMV with four verifier rows per block."""
+
+    _launch_triple_split(
+        _Q8_0_TRIPLE_SPLIT_ROWTILE4_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        tiles_c_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        out_features_c,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out(
     x_ptr: int,
     tiles_a_ptr: int,
@@ -745,6 +819,7 @@ def register_gguf_q8_0_t16_gemv_kernels(*, replace: bool = True) -> None:
 
     for variant, fn in (
         ("t16_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_gemv_decode_bf16_bf16_out),
+        ("t16_gemv_decode_rowtile4_bf16_bf16_out", gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out),
         ("t16_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_gemv_decode_fp16_fp16_out),
         ("t16_gemv_decode_f32_bf16_out", gguf_q8_0_t16_gemv_decode_f32_bf16_out),
         ("t16_dual_gate_up_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out),
@@ -755,6 +830,7 @@ def register_gguf_q8_0_t16_gemv_kernels(*, replace: bool = True) -> None:
         ("t16_dual_gemv_decode_rowtile4_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out),
         ("t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out", gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out),
         ("t16_triple_gemv_decode_bf16_bf16_out", gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out),
+        ("t16_triple_gemv_decode_rowtile4_bf16_bf16_out", gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out),
         ("t16_triple_gemv_decode_fp16_fp16_out", gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out),
     ):
         register(
@@ -779,8 +855,10 @@ __all__ = [
     "gguf_q8_0_t16_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_gemv_decode_f32_bf16_out",
     "gguf_q8_0_t16_gemv_decode_fp16_fp16_out",
+    "gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out",
     "gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out",
+    "gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
     "plan_gguf_q8_0_t16_gemv_build",
     "register_gguf_q8_0_t16_gemv_kernels",
 ]

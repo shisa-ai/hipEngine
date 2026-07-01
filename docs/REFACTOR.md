@@ -251,6 +251,28 @@ should be boring.
   rowtile route remains non-retainable. It is an evidence hook only; default and
   llama-compat runtime paths stay on the existing exact pair wrapper.
 
+## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
+- Added 2026-07-01. Default-off runtime hook for broad exact Q8T16 verifier
+  row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
+  `rows>1, in=2048` singleton, pair, and triple Q8T16 projections through
+  rowtile4 wrappers where available. It also enables the pair rowtile diagnostic
+  unless `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is set explicitly. Suite route:
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall`.
+- Purpose: test whether the isolated exact pair-rowtile win can be extended over
+  the full retained llama-compat verifier shape. Correctness passes against the
+  existing exact singleton/pair/triple wrappers. The B2 block profile moved the
+  dense-Q8 bucket **11.420 -> 10.811 ms/block** and total kernel time
+  **26.053 -> 25.276 ms/block**, mostly by cutting the Q8 pair body
+  **6.025 -> 5.316 ms/block**. The async smoke rejected promotion:
+  same-session retained `x8q6` reached **68.78 tok/s / 14.561 ms/output** while
+  q8rowtileall reached **68.54 tok/s / 14.614 ms/output** with identical
+  acceptance.
+- Remove when: the parity sprint replaces the current T16 Q8 verifier layout
+  with a true llama.cpp-style Q8_0 x Q8_1 MMVQ layout/scheduler, or after the
+  dense-Q8 verifier target is resolved another way. This is evidence only; it
+  should not become default or update the retained llama-compat lane without a
+  future full-suite win.
+
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
 - Added 2026-07-01. Bench flag
   `--resident-mtp-draft-q6-top1-stage1-shape row` and suite routes

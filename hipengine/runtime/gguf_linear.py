@@ -32,6 +32,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
     register_gguf_q8_0_t16_gemv_kernels,
 )
@@ -114,6 +116,7 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
 _Q8_T16_THREADS_ENV = "HIPENGINE_GGUF_Q8_T16_THREADS"
 _Q8_T16_ALLOWED_THREADS = frozenset({64, 128})
 _Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
+_Q8_T16_ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
 _Q8_T16_QWEN35_ATTN_QKV_OUT = 8192
 _Q8_T16_QWEN35_ATTN_GATE_OUT = 4096
 _Q8_T16_QWEN35_ATTN_IN = 2048
@@ -259,8 +262,29 @@ def _q8_t16_threads_override_active(threads: int = 0) -> bool:
 def _resolve_use_q8_t16_pair_rowtile() -> bool:
     raw = os.environ.get(_Q8_T16_PAIR_ROWTILE_ENV, "")
     if not raw:
+        return _resolve_use_q8_t16_all_rowtile()
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_use_q8_t16_all_rowtile() -> bool:
+    raw = os.environ.get(_Q8_T16_ROWTILE_ALL_ENV, "")
+    if not raw:
         return False
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _use_q8_t16_all_rowtile(
+    *,
+    rows: int,
+    in_features: int,
+    threads: int = 0,
+) -> bool:
+    return (
+        rows > 1
+        and in_features == _Q8_T16_QWEN35_ATTN_IN
+        and not _q8_t16_threads_override_active(threads)
+        and _resolve_use_q8_t16_all_rowtile()
+    )
 
 
 def _use_q8_t16_pair_rowtile(
@@ -555,6 +579,24 @@ def launch_gguf_linear(
         kwargs["threads"] = threads
     if library is not None:
         kwargs["library"] = library
+    if (
+        abi == "t16"
+        and quant == "gguf_q8_0_t16_v1"
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and _use_q8_t16_all_rowtile(rows=rows, in_features=in_features, threads=threads)
+    ):
+        gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out(
+            x_ptr,
+            weight.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=64,
+            **kwargs,
+        )
+        return
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
@@ -906,6 +948,25 @@ def launch_gguf_linear_triple(
         and dispatch_c.key.quant == "gguf_q8_0_t16_v1"
         and is_registered(q8_t16_triple)
     ):
+        if _use_q8_t16_all_rowtile(rows=rows, in_features=in_features, threads=threads):
+            gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                weight_c.allocation("tiles").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                out_c_ptr,
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                out_features_c,
+                threads=64,
+                stream=stream,
+                runtime=runtime,
+            )
+            return True
         gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("tiles").tensor.ptr,

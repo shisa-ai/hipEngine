@@ -722,6 +722,50 @@ def test_t16_pair_rowtile_opt_out_keeps_exact_wrapper(monkeypatch) -> None:
     ]
 
 
+def test_t16_single_qwen35_rows_gt1_routes_to_rowtile4_when_all_opted_in(monkeypatch) -> None:
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_THREADS", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "1")
+    gl.clear_gguf_linear_dispatch_cache()
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def fake_exact(*args, **kwargs):
+        calls.append(("exact", args, kwargs))
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append(("rowtile4", args, kwargs))
+
+    original_exact = gl._LAUNCH_ABI["t16"]
+    original_rowtile = gl.gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out
+    gl._LAUNCH_ABI["t16"] = fake_exact
+    gl.gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out = fake_rowtile  # type: ignore[assignment]
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=3,
+            in_features=2048,
+            out_features=4096,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        gl._LAUNCH_ABI["t16"] = original_exact
+        gl.gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out = original_rowtile  # type: ignore[assignment]
+        gl.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            "rowtile4",
+            (100, 14, 200, 3, 2048, 4096),
+            {"threads": 64, "stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
 def test_t16_triple_fuses_q8_separate_outputs() -> None:
     """Resident Q8T16 full-attention Q/K/V can share one split-output launch."""
 
@@ -762,6 +806,59 @@ def test_t16_triple_fuses_q8_separate_outputs() -> None:
         (
             (100, 14, 14, 14, 200, 300, 400, 1, 2048, 1024, 512, 512),
             {"threads": 0, "stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_t16_triple_qwen35_rows_gt1_routes_to_rowtile4_when_all_opted_in(monkeypatch) -> None:
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_c = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_THREADS", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "1")
+    gl.clear_gguf_linear_dispatch_cache()
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def fake_exact(*args, **kwargs):
+        calls.append(("exact", args, kwargs))
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append(("rowtile4", args, kwargs))
+
+    original_exact = gl.gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out
+    original_rowtile = gl.gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out
+    gl.gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out = fake_exact  # type: ignore[assignment]
+    gl.gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out = fake_rowtile  # type: ignore[assignment]
+    try:
+        fused = launch_gguf_linear_triple(
+            weight_a,
+            weight_b,
+            weight_c,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            out_c_ptr=400,
+            rows=3,
+            in_features=2048,
+            out_features=4096,
+            out_features_b=1024,
+            out_features_c=1024,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        gl.gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out = original_exact  # type: ignore[assignment]
+        gl.gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out = original_rowtile  # type: ignore[assignment]
+        gl.clear_gguf_linear_dispatch_cache()
+
+    assert fused is True
+    assert calls == [
+        (
+            "rowtile4",
+            (100, 14, 14, 14, 200, 300, 400, 3, 2048, 4096, 1024, 1024),
+            {"threads": 64, "stream": 7, "runtime": "runtime-sentinel"},
         )
     ]
 
