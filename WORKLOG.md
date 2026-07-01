@@ -134568,3 +134568,45 @@ python3 scripts/gguf_ar_mtp_suite.py \
   `benchmarks/CHANGELOG.md`. Current reading: the active compat parent wall is
   **13.464 vs llama.cpp HIP traced 14.231 ms/output**, and the remaining slower
   child bucket is draft drain (**2.202 vs 2.140 ms/output**).
+
+## 2026-07-02 - Rejected MTP scalar start-token gather check
+
+- Tested a narrow llama-compat draft-path candidate that replaced the depth-0
+  host embedding-row gather/upload with a device scalar gather from the resident
+  capped embedding table when `start_token < vocab`.
+- Diagnostic draft-chain command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings --require-cached --skip-warmbuild \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-scalar-start-gather-gpuevents \
+  --out /tmp/gguf-mtp-draft-scalar-start-gather-gpuevents.json
+```
+
+- Draft-chain result versus the retained parallel-attention GPU-event artifact:
+  host **6.529 -> 6.500 ms/cycle**, kernel **5.498 -> 5.482 ms/cycle**,
+  kernel calls **90.5 -> 89.75/cycle**, and `memcpy_fill`
+  **0.042 -> 0.029 ms/cycle**. The added `gather_f32_row_by_id` kernel cost was
+  only **0.002 ms/cycle**, but the total movement was too small to trust without
+  a full-suite check.
+- Full-suite check command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-scalarstartgather-full.json
+```
+
+- Full-suite result rejected the candidate: B2 MTP **74.37 tok/s** versus the
+  retained **74.38 tok/s** row, `cycle_wall_ms_per_output`
+  **13.465 vs 13.464**, `draft_initial` **2.203 vs 2.202 ms/output**, unchanged
+  acc/output **0.621**, draft acceptance **0.820**, and target rows/output
+  **1.136**. Reverted the candidate code and removed the uncommitted generated
+  full-suite artifact because it was produced from a dirty experimental tree
+  while the harness recorded only the HEAD commit.
