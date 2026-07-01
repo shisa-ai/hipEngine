@@ -132134,3 +132134,95 @@ active gap vs traced llama.cpp HIP B2: **+2.133 ms/output** total, split into
 **+1.237 ms/output** draft drain, **+0.583 ms/output** verifier drain, and
 **+0.151 target rows/output**. Next real target remains draft Q6 top-1 stage1,
 then selected-MoE / verifier lm-head once draft movement lands.
+
+## 2026-07-01 — MTP llama-compat Q6 top-1 pack16 diagnostic rejected
+
+Goal: continue spending down the active llama-compat draft gap vs llama.cpp HIP.
+Hypothesis tested: the retained Q6_K q8_1/dp4a top-1 stage1 might be losing to
+q8 activation reloads and final-reduce entries, so a pack16 stage1 could halve
+the number of vocab blocks vs pack8 without changing semantics.
+
+Implementation:
+
+- Added diagnostic `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack16`.
+- Added HIP kernel
+  `gguf_q6_k_pack16_gemv_q8_1_dp4a_top1_stage1_kernel` plus split/fused Python
+  wrappers and registry entries.
+- Added suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack16`,
+  `...-denseq8all-pack16`, and `...-denseq8all-pack16-allsync`.
+- Added correctness coverage:
+  `test_q6_k_q8_1_dp4a_pack16_top1_matches_q8_1_oracle`.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py \
+  scripts/gguf_mtp_draft_rocprof.py \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py \
+  tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py \
+  tests/test_gguf_ar_mtp_suite.py \
+  tests/test_gguf_mtp_bench_metrics.py -q
+
+git diff --check
+```
+
+Result: py_compile passed; pytest passed; diff check passed. HIP preflight
+passed (`hip OK`, rocminfo reports gfx1151 / Radeon 8060S). Lineage check is
+still blocked by the missing read-only checkout:
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` does not exist.
+
+Same-session smoke A/B on Qwen3.6-35B-A3B-UD-Q4_K_M GGUF Q4_K_M,
+gfx1151/Radeon 8060S, smoke scope, B2, active denseq8all llama-compat route:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-pack16-control-smoke.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-pack16-smoke.json
+```
+
+Result: control **71.74 tok/s**, cycle **13.961 ms/output**,
+`draft_initial` **2.479 ms/output**, `target_block_verify_total`
+**11.147 ms/output**. Pack16 **71.72 tok/s**, cycle **13.963 ms/output**,
+`draft_initial` **2.487 ms/output**, `target_block_verify_total`
+**11.133 ms/output**. Acceptance was identical (`acc/output=0.667`,
+`draft_acceptance=1.000`, target rows/output `1.000`).
+
+Draft rocprof:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape pack16 \
+  --selected-down-x8-repack q6 --record-stage-timings --skip-warmbuild \
+  --out benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-pack16.json
+```
+
+Result: pack16 draft profile `avg_host_ms=6.878`, `avg_kernel_ms=6.507`,
+`kernel_share=94.6%`, `calls/step=90.5`. Q6 top-1 remains dominant:
+`gguf_q6_k_pack16_gemv_q8_1_dp4a_top1_stage1` **3.684 ms/cycle**,
+**56.6%** kernel share. This is slower than the retained pack8 profile
+(`3.603 ms/cycle`), so pack16 is rejected without a full-suite run.
+
+Decision: keep the diagnostic documented as rejected, do not update the active
+headline gap, and do not repeat pack-width-only Q6 top-1 variants unless the
+body/layout changes materially. The next draft fix must either fuse/remove work
+that rolls into async `draft_initial` or use a genuinely different Q6_K
+layout/body; simple pack8 -> pack16 amortization is exhausted.

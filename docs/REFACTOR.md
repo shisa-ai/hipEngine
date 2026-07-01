@@ -333,6 +333,27 @@ should be boring.
   body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
   not a performance route and should not update the active llama-compat headline.
 
+## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack16` (diagnostic rejected)
+- Added 2026-07-01. Bench flag
+  `--resident-mtp-draft-q6-top1-stage1-shape pack16` and suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack16`,
+  `...-denseq8all-pack16`, and `...-denseq8all-pack16-allsync` exercise a
+  Q6_K draft lm-head top-1 stage that keeps the retained pack reduction but
+  doubles the output group from 8 to 16 vocab rows per block.
+- Purpose: test whether the current draft Q6_K stage1 cost is dominated by q8_1
+  activation reloads and final-reduce entries rather than register pressure in
+  the per-output Q6 body. Correctness passes against the q8_1/Q6_K oracle for
+  fused and split stage1+stage2 paths. Same-session denseq8all smoke rejected it:
+  retained control **71.74 tok/s**, cycle **13.961 ms/output**,
+  `draft_initial` **2.479 ms/output** vs pack16 **71.72 tok/s**, cycle
+  **13.963 ms/output**, `draft_initial` **2.487 ms/output**, with identical
+  acceptance. Draft rocprof confirms the kernel-family loss:
+  `gguf_q6_k_pack16_gemv_q8_1_dp4a_top1_stage1` is **3.684 ms/cycle** vs the
+  retained pack8 stage1 **3.603 ms/cycle**.
+- Remove when: the draft Q6_K top-1 path moves to a different retained
+  body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
+  not a performance route and should not update the active llama-compat headline.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with
