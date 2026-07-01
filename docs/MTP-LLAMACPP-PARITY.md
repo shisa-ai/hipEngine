@@ -30,6 +30,7 @@ Current source artifacts:
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
 | hipEngine llama-compat | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, and pair-dispatch cleanup. |
+| hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-selectedsplit3-allsync-smoke.json` | Attribution-only smoke with extra sync points inside selected-MoE gate/up/down. Do not use for headline tok/s. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
 #### Headline speed gap
@@ -79,7 +80,7 @@ suite row before moving the headline numbers.
 | --- | ---: | ---: | ---: | --- |
 | Total cycle wall | **18.057 ms/output** | 14.231 ms/output | **3.826 ms/output** | Every accepted optimization must eventually move this row. |
 | Draft drain | **3.713 ms/output** | 2.140 ms/output | **1.573 ms/output** | Cut MTP lm-head/sampler drain; latest all-sync split names `draft_run_lm_head` at **1.916 ms/output**. |
-| Target verifier drain | **14.025 ms/output** | 12.083 ms/output | **1.942 ms/output** | Cut B2 layer work; raw-sidecar dense-Q8 q8_1/dp4a was rejected, so the remaining leading sub-buckets are selected-MoE gate/up/down plus non-dp4a Q8 pair work. |
+| Target verifier drain | **14.025 ms/output** | 12.083 ms/output | **1.942 ms/output** | Cut B2 layer work; raw-sidecar dense-Q8 q8_1/dp4a was rejected, and the selected-MoE split shows GEMV body time dominates q8_1 quantize. |
 | Target rows / output | **1.316** | 1.148 | 0.168 rows/output | Secondary lever after operation cost: compat still evaluates more target rows than llama. |
 | Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
 
@@ -101,6 +102,24 @@ full-suite compat B2 moved **55.410 -> 55.453 tok/s** and
 acceptance. Its main value is that the new split proves the remaining
 `norm_qkv_gate` bucket is the actual Q8T16 pair projection, not RMSNorm or
 fallback dispatch.
+
+Latest selected-MoE inner split
+(`llama-compat-device-chain-dp4a-allsync`, smoke, extra sync points):
+
+| selected-MoE bucket | aggregate ms/output | q8_1 quantize | GEMV body / SiLU | interpretation |
+| --- | ---: | ---: | ---: | --- |
+| `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.658** | 0.192 | 1.417 GEMV + 0.203 SiLU | Main selected-MoE body target; quantize is only ~12% of the aggregate. |
+| `target_block_linear_attn_ffn_moe_expert_down` | **1.325** | 0.161 | 1.135 GEMV | Down projection is also GEMV-bound; q8_1 setup is not enough to explain the gap. |
+| `target_block_full_attn_ffn_moe_expert_gate_up` | **0.535** | 0.066 | 0.454 GEMV + 0.062 SiLU | Same shape at lower weight because there are fewer full-attention layers. |
+| `target_block_full_attn_ffn_moe_expert_down` | **0.435** | 0.052 | 0.373 GEMV | Same conclusion: optimize selected GEMV body/scheduler, not just quantize. |
+
+Read this split together with the full-suite ledger above: the current
+`llama-compat` verifier still has two leading operation-cost targets,
+Q8T16 `attn_qkv+attn_gate` pair projection and selected-MoE GEMV bodies. The
+new selected-MoE buckets rule out q8_1 quantization overhead as the primary
+cause; copying llama.cpp more closely means comparing its `mul_mat_vec_q_moe`
+schedule/body against these selected GEMV launches, not adding another raw-Q8
+sidecar quantize path.
 
 **Rejected 2026-07-01 target-block WMMA prefill re-check:** on the same B2
 all-sync smoke prompt, `--target-block-wmma-prefill` regressed **52.10 -> 34.04

@@ -3232,6 +3232,9 @@ class Qwen35GGUFFullStackRunner:
                 q8_1_workspace_ptr=q8_1_workspace_ptr,
                 stream=stream,
                 runtime=runtime,
+                stage_timings=stage_timings,
+                sync_stage_timings=sync_stages,
+                stage_prefix=f"{stage_prefix}_expert_gate_up",
             ):
                 _launch_selected_raw_gguf_moe_linear(
                     gate_weight,
@@ -3321,6 +3324,9 @@ class Qwen35GGUFFullStackRunner:
                 ),
                 stream=stream,
                 runtime=runtime,
+                stage_timings=stage_timings,
+                sync_stage_timings=sync_stages,
+                stage_prefix=f"{stage_prefix}_expert_down",
             )
         t_stage = _mark_sync_stage(
             runtime,
@@ -8113,7 +8119,12 @@ def _launch_selected_raw_gguf_moe_pair(
     q8_1_workspace_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime,
+    stage_timings: dict[str, float] | None = None,
+    sync_stage_timings: bool = False,
+    stage_prefix: str | None = None,
 ) -> bool:
+    sync_stages = bool(sync_stage_timings and stage_timings is not None and stage_prefix)
+    t_stage = time.perf_counter() if sync_stages else 0.0
     if weight_a.spec.quant_key == "gguf_q4_k" and weight_b.spec.quant_key == "gguf_q4_k":
         if q8_1_workspace_ptr is not None and (
             _gguf_q4k_selected_dual_dp4a_enabled() or _gguf_raw_selected_dp4a_enabled()
@@ -8125,6 +8136,13 @@ def _launch_selected_raw_gguf_moe_pair(
                 in_features,
                 stream=stream,
                 runtime=runtime,
+            )
+            t_stage = _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_q8_quantize",
+                t_stage,
             )
             gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
                 q8_1_workspace_ptr,
@@ -8140,6 +8158,13 @@ def _launch_selected_raw_gguf_moe_pair(
                 out_features,
                 stream=stream,
                 runtime=runtime,
+            )
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_gemv",
+                t_stage,
             )
         else:
             gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
@@ -8157,6 +8182,13 @@ def _launch_selected_raw_gguf_moe_pair(
                 stream=stream,
                 runtime=runtime,
             )
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_gemv",
+                t_stage,
+            )
         return True
     if weight_a.spec.quant_key == "gguf_q4_k_t16_v1" and weight_b.spec.quant_key == "gguf_q4_k_t16_v1":
         if q8_1_workspace_ptr is not None and (
@@ -8169,6 +8201,13 @@ def _launch_selected_raw_gguf_moe_pair(
                 in_features,
                 stream=stream,
                 runtime=runtime,
+            )
+            t_stage = _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_q8_quantize",
+                t_stage,
             )
             gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
                 q8_1_workspace_ptr,
@@ -8184,6 +8223,13 @@ def _launch_selected_raw_gguf_moe_pair(
                 out_features,
                 stream=stream,
                 runtime=runtime,
+            )
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_gemv",
+                t_stage,
             )
         else:
             gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
@@ -8201,6 +8247,13 @@ def _launch_selected_raw_gguf_moe_pair(
                 stream=stream,
                 runtime=runtime,
             )
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_gemv",
+                t_stage,
+            )
         return True
     if weight_a.spec.quant_key == "gguf_q4_k_x8_v1" and weight_b.spec.quant_key == "gguf_q4_k_x8_v1":
         if q8_1_workspace_ptr is None:
@@ -8212,6 +8265,13 @@ def _launch_selected_raw_gguf_moe_pair(
             in_features,
             stream=stream,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_q8_quantize",
+            t_stage,
         )
         gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
             q8_1_workspace_ptr,
@@ -8227,6 +8287,13 @@ def _launch_selected_raw_gguf_moe_pair(
             out_features,
             stream=stream,
             runtime=runtime,
+        )
+        _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_gemv",
+            t_stage,
         )
         return True
     return False
@@ -8246,10 +8313,15 @@ def _launch_selected_raw_gguf_moe_linear(
     q8_1_workspace_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime,
+    stage_timings: dict[str, float] | None = None,
+    sync_stage_timings: bool = False,
+    stage_prefix: str | None = None,
 ) -> None:
     quant_key = weight.spec.quant_key
     allocation = _selected_gemv_allocation_name(weight)
     use_q8_1_input = False
+    sync_stages = bool(sync_stage_timings and stage_timings is not None and stage_prefix)
+    t_stage = time.perf_counter() if sync_stages else 0.0
     if (
         q8_1_workspace_ptr is not None
         and quant_key == "gguf_q5_k_t16_v1"
@@ -8262,6 +8334,13 @@ def _launch_selected_raw_gguf_moe_linear(
             in_features,
             stream=stream,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_q8_quantize",
+            t_stage,
         )
         fn = gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
@@ -8276,6 +8355,13 @@ def _launch_selected_raw_gguf_moe_linear(
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_q8_quantize",
+            t_stage,
+        )
         fn = gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
     elif quant_key == "gguf_q6_k_x8_v1":
@@ -8288,6 +8374,13 @@ def _launch_selected_raw_gguf_moe_linear(
             in_features,
             stream=stream,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_q8_quantize",
+            t_stage,
         )
         fn = gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
@@ -8305,6 +8398,13 @@ def _launch_selected_raw_gguf_moe_linear(
             stream=stream,
             runtime=runtime,
         )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_q8_quantize",
+            t_stage,
+        )
         fn = gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
     elif (
@@ -8320,6 +8420,13 @@ def _launch_selected_raw_gguf_moe_linear(
             in_features,
             stream=stream,
             runtime=runtime,
+        )
+        t_stage = _mark_sync_stage(
+            runtime,
+            stage_timings,
+            sync_stages,
+            f"{stage_prefix}_q8_quantize",
+            t_stage,
         )
         fn = gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
@@ -8353,6 +8460,13 @@ def _launch_selected_raw_gguf_moe_linear(
         out_features,
         stream=stream,
         runtime=runtime,
+    )
+    _mark_sync_stage(
+        runtime,
+        stage_timings,
+        sync_stages,
+        f"{stage_prefix}_gemv",
+        t_stage,
     )
 
 

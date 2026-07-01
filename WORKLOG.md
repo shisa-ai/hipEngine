@@ -130334,3 +130334,51 @@ Q8T16 dual pair kernel. Keep the default-off diagnostic only long enough for the
 compat audit; next verifier targets are selected-MoE gate/up/down and any future
 T16-native fused q8_1/dp4a pair or llama-style mmvq scheduler, not this raw
 sidecar route.
+
+Added selected-MoE inner-stage timing for the `llama-compat` B2 verifier
+all-sync diagnostics. This is instrumentation only: the hot path is unchanged
+unless `--record-cycle-stage-timings` plus the existing all-sync timing route is
+used.
+
+- `_launch_selected_raw_gguf_moe_pair()` and
+  `_launch_selected_raw_gguf_moe_linear()` now accept optional stage timing
+  hooks and emit `_q8_quantize` plus `_gemv` sub-buckets when sync timing is
+  enabled.
+- `_run_post_attention_moe_rows()` wires those hooks into rows>1 selected-MoE
+  gate/up/down, which is the B2 verifier path. A stray c1 fallback hook was
+  removed so the decode-only helper does not reference timing locals it does
+  not own.
+- Added `tests/test_qwen35_gguf_selected_moe_stage_timing.py` for dp4a pair,
+  exact pair, and dp4a selected-linear timing buckets.
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_selected_moe_stage_timing.py`
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_selected_moe_stage_timing.py`
+  -> `...`
+- `git diff --check`
+
+Benchmark, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`, smoke scope (`limit=1`, cycles=3), attribution-only
+all-sync route:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-selectedsplit3-allsync-smoke.json`
+
+Result: AR **54.94 tok/s**, B2 **51.61 tok/s**, acc/output **0.667**,
+draft acceptance **1.000**. Headline speed is intentionally not retained
+because the diagnostic adds extra sync points inside selected-MoE.
+
+Selected-MoE split, ms/output:
+
+- linear-attn gate/up **1.658** = q8_1 quantize **0.192** + GEMV **1.417** +
+  SiLU **0.203**
+- linear-attn down **1.325** = q8_1 quantize **0.161** + GEMV **1.135**
+- full-attn gate/up **0.535** = q8_1 quantize **0.066** + GEMV **0.454** +
+  SiLU **0.062**
+- full-attn down **0.435** = q8_1 quantize **0.052** + GEMV **0.373**
+
+Decision: the selected-MoE target is the GEMV body/scheduler, not q8_1
+quantization overhead. Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking to
+keep the three-lane hipEngine default / hipEngine llama-compat / llama.cpp HIP
+dashboard and add the selected-MoE split table under the full-suite gap ledger.
