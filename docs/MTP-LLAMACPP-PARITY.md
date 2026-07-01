@@ -381,6 +381,11 @@ token-repeat smoke confirmed the emitted fields, so the next retained
 diagnostic can compare llama.cpp proposal/acceptance rows against hipEngine's
 existing per-cycle `draft_tokens`, `comparison_target_tokens`, and
 `output_tokens`.
+Use `scripts/mtp_proposal_trace_compare.py --hipengine <gguf_mtp_bench.json>
+--llamacpp <stage.jsonl-or-wrapper.json>` for that comparison. It normalizes
+both engines to draft IDs, accepted prefix, emitted output IDs, bonus token, and
+first rejected draft token, then reports exact-row match rates and the first
+proposal/acceptance divergence.
 
 #### Row-economy histogram tracker
 

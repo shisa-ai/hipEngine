@@ -133416,3 +133416,34 @@ Result: passed. Raw stage rows contain token IDs, e.g. `draft_token_ids:
 `rejected_draft_token_id: null`. The compact summary reports
 `token_trace_rows: 1` for the measured token-repeat row and includes the same
 fields under `proposal_trace_sample`.
+
+## 2026-07-02 — MTP proposal trace comparator
+
+Added `scripts/mtp_proposal_trace_compare.py`, an offline diagnostic that
+normalizes hipEngine `gguf_mtp_bench.py` cycle rows and llama.cpp token-trace
+rows into comparable proposal records:
+
+- draft token IDs,
+- accepted draft prefix,
+- emitted output token IDs,
+- bonus token,
+- first rejected draft token,
+- accepted/output and draft-acceptance totals.
+
+The comparator accepts either a raw llama.cpp stage JSONL or a wrapper artifact
+with `stage_timing_summary.*.proposal_trace_sample`, then reports exact draft,
+accepted-prefix, output-token, and accepted-count match rates plus the first
+divergent row. This is the next tool for the row-economy gap: run hipEngine and
+llama.cpp on the same prompt/seed with token tracing, then inspect whether the
+proposal tokens diverge before accept accounting does.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/mtp_proposal_trace_compare.py tests/test_mtp_proposal_trace_compare.py
+
+PYTHONPATH=. python3 -m pytest tests/test_mtp_proposal_trace_compare.py -q
+```
+
+Result: passed (`2 passed`).
