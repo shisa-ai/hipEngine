@@ -369,6 +369,19 @@ amortizes over the same number of visible outputs. Smaller non-Q6 draft leaves
 still matter, but they are now a sub-millisecond cycle-cost cleanup rather than
 the main parity gap.
 
+Proposal trace instrumentation is now available for that next comparison.
+llama.cpp commit `ef8050cec` adds `LLAMA_MTP_TOKEN_TRACE=1` to the server MTP
+stage JSONL rows, recording `draft_token_ids`, `sampled_token_ids`,
+`accepted_token_ids`, `output_token_ids`, `bonus_token_id`, and
+`rejected_draft_token_id`. hipEngine wrappers expose it as
+`scripts/llamacpp_mtp_bench.py --stage-token-trace` and
+`scripts/llamacpp_mtp_rocprof.py --token-trace`; `_summarize_stage_timings`
+preserves the first rows under `proposal_trace_sample`. A short non-retained
+token-repeat smoke confirmed the emitted fields, so the next retained
+diagnostic can compare llama.cpp proposal/acceptance rows against hipEngine's
+existing per-cycle `draft_tokens`, `comparison_target_tokens`, and
+`output_tokens`.
+
 #### Row-economy histogram tracker
 
 `cycle_histograms` are now a required output bucket for hipEngine MTP metrics,

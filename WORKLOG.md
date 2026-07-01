@@ -133356,3 +133356,63 @@ row-economy parity ahead of more Q6 body variants. Next implementation work
 should compare draft proposal tokens/logits/probs and accept accounting against
 llama.cpp directly, while treating remaining non-Q6 draft leaves as a smaller
 cycle-cost cleanup.
+
+## 2026-07-02 — llama.cpp MTP token-trace instrumentation
+
+Added the next proposal/row-economy diagnostic hook.
+
+External llama.cpp checkout `/home/lhl/llama.cpp/llama.cpp-hip` now has commit
+`ef8050cec` (`tools: add MTP token trace JSON`). It gates token IDs behind
+`LLAMA_MTP_TOKEN_TRACE=1` and adds the following fields to server MTP stage
+JSONL rows when enabled: `draft_token_ids`, `sampled_token_ids`,
+`accepted_token_ids`, `output_token_ids`, `bonus_token_id`, and
+`rejected_draft_token_id`. Normal `LLAMA_MTP_STAGE_TIMINGS` rows are unchanged
+unless the new env var is set.
+
+Updated hipEngine wrappers:
+
+- `scripts/llamacpp_mtp_bench.py --stage-token-trace` sets
+  `LLAMA_MTP_TOKEN_TRACE=1` with `LLAMA_MTP_STAGE_TIMINGS`.
+- `scripts/llamacpp_mtp_rocprof.py --token-trace` sets the same env var for
+  profiled runs.
+- `_summarize_stage_timings` now includes `token_trace_rows` and a compact
+  `proposal_trace_sample` so llama.cpp rows can be compared against hipEngine's
+  existing per-cycle `draft_tokens`, `comparison_target_tokens`, and
+  `output_tokens`.
+
+Validation:
+
+```bash
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 8
+
+python3 -m py_compile \
+  scripts/llamacpp_mtp_bench.py scripts/llamacpp_mtp_rocprof.py \
+  tests/test_llamacpp_mtp_bench_metrics.py tests/test_llamacpp_mtp_rocprof.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_llamacpp_mtp_bench_metrics.py tests/test_llamacpp_mtp_rocprof.py -q
+```
+
+Result: passed (`11 passed` for the Python tests).
+
+Non-retained smoke:
+
+```bash
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8023 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol token-repeat --shapes 32/4 \
+  --max-tokens 4 \
+  --stage-timings-jsonl /tmp/hipengine-llamacpp-token-trace/stage.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning \
+  --server-extra-arg=off --output /tmp/hipengine-llamacpp-token-trace/out.json \
+  --log-dir /tmp/hipengine-llamacpp-token-trace/logs
+```
+
+Result: passed. Raw stage rows contain token IDs, e.g. `draft_token_ids:
+[9707, 9707]`, `accepted_token_ids: [9707, 9707]`, `output_token_ids:
+[9707, 9707, 9707]`, `bonus_token_id: 9707`, and
+`rejected_draft_token_id: null`. The compact summary reports
+`token_trace_rows: 1` for the measured token-repeat row and includes the same
+fields under `proposal_trace_sample`.

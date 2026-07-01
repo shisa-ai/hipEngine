@@ -111,6 +111,16 @@ def build_rocprof_command(args: argparse.Namespace, *, trace_dir: Path, server_c
     return cmd
 
 
+def build_profile_env(args: argparse.Namespace, *, stage_path: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_path)
+    if args.roctx_ranges:
+        env["LLAMA_MTP_ROCTX"] = "1"
+    if args.token_trace:
+        env["LLAMA_MTP_TOKEN_TRACE"] = "1"
+    return env
+
+
 def wait_for_health(host: str, port: int, timeout_s: float) -> None:
     url = f"http://{host}:{port}/health"
     deadline = time.monotonic() + float(timeout_s)
@@ -242,10 +252,7 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
 
     server_command = build_server_command(args)
     rocprof_command = build_rocprof_command(args, trace_dir=trace_dir, server_command=server_command)
-    env = os.environ.copy()
-    env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_path)
-    if args.roctx_ranges:
-        env["LLAMA_MTP_ROCTX"] = "1"
+    env = build_profile_env(args, stage_path=stage_path)
 
     response: dict[str, Any] | None = None
     request_error: str | None = None
@@ -324,6 +331,7 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
             "min_p": float(args.min_p),
             "seed": int(args.seed),
             "roctx_ranges": bool(args.roctx_ranges),
+            "token_trace": bool(args.token_trace),
         },
         "server_command": server_command,
         "rocprof_command": rocprof_command,
@@ -412,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--request-timeout", type=float, default=900.0)
     parser.add_argument("--profiler-finalize-timeout", type=float, default=90.0)
     parser.add_argument("--roctx-ranges", action="store_true", help="Enable llama.cpp LLAMA_MTP_ROCTX ranges and collect marker traces.")
+    parser.add_argument("--token-trace", action="store_true", help="Enable llama.cpp LLAMA_MTP_TOKEN_TRACE fields in stage timing rows.")
     parser.add_argument("--hardware", default="AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)")
     parser.add_argument("--label", default="llamacpp-hip-mtp-whole-run")
     parser.add_argument("--top", type=int, default=24)

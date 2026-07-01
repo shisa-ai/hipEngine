@@ -65,6 +65,11 @@ def main() -> int:
         default=None,
         help="Set LLAMA_MTP_STAGE_TIMINGS to this JSONL path for the MTP server process.",
     )
+    parser.add_argument(
+        "--stage-token-trace",
+        action="store_true",
+        help="When stage timings are enabled, also set LLAMA_MTP_TOKEN_TRACE=1.",
+    )
     parser.add_argument("--server-start-timeout", type=float, default=600.0)
     parser.add_argument("--request-timeout", type=float, default=900.0)
     parser.add_argument("--output", type=Path, required=True)
@@ -125,6 +130,8 @@ def main() -> int:
                 stage_timing_path.parent.mkdir(parents=True, exist_ok=True)
                 stage_timing_path.unlink(missing_ok=True)
                 env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_timing_path)
+                if args.stage_token_trace:
+                    env["LLAMA_MTP_TOKEN_TRACE"] = "1"
             with log_path.open("wb") as log:
                 server_process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env)
             try:
@@ -526,6 +533,12 @@ def _summarize_stage_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if "target_verify_rows_evaluated" in row:
             _bump_hist(cycle_histograms["target_verify_rows_minus_visible_output"], target_row_count - visible)
 
+    proposal_trace_sample = [
+        trace
+        for trace in (_stage_token_trace(row) for row in rows)
+        if trace is not None
+    ][:32]
+
     return {
         "cycles": len(rows),
         "total_output_tokens": total_output,
@@ -539,6 +552,8 @@ def _summarize_stage_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "target_verify_rows_per_output": (target_rows / total_output) if total_output else None,
         "target_verify_discarded_rows_per_output": (discarded_rows / total_output) if total_output else None,
         "cycle_histograms": cycle_histograms,
+        "token_trace_rows": len([row for row in rows if _stage_token_trace(row) is not None]),
+        "proposal_trace_sample": proposal_trace_sample,
         "stage_timing_totals_ms": dict(sorted(stage_totals.items())),
         "stage_timing_per_output_ms": (
             {name: value / total_output for name, value in sorted(stage_totals.items())}
@@ -554,6 +569,31 @@ def _summarize_stage_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _bump_hist(hist: dict[str, int], value: int) -> None:
     key = str(int(value))
     hist[key] = hist.get(key, 0) + 1
+
+
+def _stage_token_trace(row: dict[str, Any]) -> dict[str, Any] | None:
+    token_keys = (
+        "draft_token_ids",
+        "sampled_token_ids",
+        "accepted_token_ids",
+        "output_token_ids",
+        "bonus_token_id",
+        "rejected_draft_token_id",
+    )
+    if not any(key in row for key in token_keys):
+        return None
+    trace: dict[str, Any] = {
+        "task_id": row.get("task_id"),
+        "cycle": row.get("cycle"),
+        "checkpoint_restore": bool(row.get("checkpoint_restore", False)),
+        "generated_draft_tokens": int(row.get("generated_draft_tokens") or 0),
+        "accepted_draft_tokens": int(row.get("accepted_draft_tokens") or 0),
+        "visible_output_tokens": int(row.get("visible_output_tokens") or 0),
+    }
+    for key in token_keys:
+        if key in row:
+            trace[key] = row[key]
+    return trace
 
 
 def _summary_tps(summary: dict[str, Any], protocol: str) -> float | None:
@@ -619,6 +659,7 @@ def _config_json(args: argparse.Namespace) -> dict[str, Any]:
         "shapes": args.shapes,
         "server_extra_arg": args.server_extra_arg,
         "stage_timings_jsonl": str(args.stage_timings_jsonl) if args.stage_timings_jsonl is not None else None,
+        "stage_token_trace": bool(args.stage_token_trace),
     }
 
 

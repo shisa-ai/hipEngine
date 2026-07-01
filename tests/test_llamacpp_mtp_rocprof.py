@@ -33,6 +33,7 @@ def _args(**overrides):
         "seed": 12345,
         "rocprofv3": "rocprofv3",
         "roctx_ranges": False,
+        "token_trace": False,
     }
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -79,3 +80,14 @@ def test_llamacpp_mtp_rocprof_roctx_command_enables_marker_trace() -> None:
     assert "--marker-trace" in cmd
     assert cmd[cmd.index("-d") + 1] == "/tmp/trace"
     assert cmd[-1] == "/tmp/llama-server"
+
+
+def test_llamacpp_mtp_rocprof_profile_env_enables_optional_traces() -> None:
+    env = rocprof.build_profile_env(
+        _args(roctx_ranges=True, token_trace=True),
+        stage_path=Path("/tmp/stage.jsonl"),
+    )
+
+    assert env["LLAMA_MTP_STAGE_TIMINGS"] == "/tmp/stage.jsonl"
+    assert env["LLAMA_MTP_ROCTX"] == "1"
+    assert env["LLAMA_MTP_TOKEN_TRACE"] == "1"

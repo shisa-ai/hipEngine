@@ -128,6 +128,12 @@ def test_llamacpp_mtp_stage_timing_summary_excludes_first_task(tmp_path) -> None
             "visible_output_tokens": 2,
             "accepted_draft_tokens": 1,
             "generated_draft_tokens": 2,
+            "draft_token_ids": [10, 11],
+            "sampled_token_ids": [10, 99],
+            "accepted_token_ids": [10],
+            "output_token_ids": [10, 99],
+            "bonus_token_id": 99,
+            "rejected_draft_token_id": 11,
             "cycle_wall_ms": 30.0,
             "target_verify_layer_passes": 1,
             "target_verify_rows_evaluated": 3,
@@ -186,6 +192,23 @@ def test_llamacpp_mtp_stage_timing_summary_excludes_first_task(tmp_path) -> None
         "target_block_verify_total": 32.0,
     }
     assert measured["stage_timing_per_output_ms"]["target_block_verify_total"] == 32 / 3
+    assert measured["token_trace_rows"] == 1
+    assert measured["proposal_trace_sample"] == [
+        {
+            "task_id": 1,
+            "cycle": None,
+            "checkpoint_restore": False,
+            "generated_draft_tokens": 2,
+            "accepted_draft_tokens": 1,
+            "visible_output_tokens": 2,
+            "draft_token_ids": [10, 11],
+            "sampled_token_ids": [10, 99],
+            "accepted_token_ids": [10],
+            "output_token_ids": [10, 99],
+            "bonus_token_id": 99,
+            "rejected_draft_token_id": 11,
+        }
+    ]
 
 
 def test_llamacpp_mtp_server_command_passes_extra_args_after_mtp_flags() -> None:
