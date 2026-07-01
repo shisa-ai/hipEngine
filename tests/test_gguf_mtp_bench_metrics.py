@@ -8,6 +8,8 @@ import pytest
 
 from scripts import gguf_mtp_bench as bench
 from scripts.gguf_mtp_bench import (
+    draft_topk_margins_from_scores,
+    draft_topk_scores_from_logits,
     _draft_top1_prob,
     _diagnostic_topk_candidate_count,
     _rope_tables,
@@ -424,6 +426,17 @@ def test_select_topk_tokens_uses_argmax_for_top1() -> None:
     assert top1 == [1]
 
 
+def test_draft_topk_scores_and_margins_follow_selected_token_order() -> None:
+    logits = np.array([0.1, 4.0, -1.0, 2.5, 3.0], dtype=np.float32)
+
+    scores = draft_topk_scores_from_logits(logits, [1, 4, 3])
+
+    assert scores == pytest.approx([4.0, 3.0, 2.5])
+    assert draft_topk_margins_from_scores(scores) == pytest.approx([0.0, 1.0, 1.5])
+    with pytest.raises(ValueError, match="outside logits row"):
+        draft_topk_scores_from_logits(logits, [99])
+
+
 def test_draft_top1_prob_matches_softmax_argmax_probability() -> None:
     logits = np.array([0.0, 2.0, 1.0], dtype=np.float32)
 
@@ -647,6 +660,12 @@ def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-draft-confidence"])
 
     assert args.record_draft_confidence is True
+
+
+def test_arg_parser_exposes_record_draft_topk_scores_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--record-draft-topk-scores"])
+
+    assert args.record_draft_topk_scores is True
 
 
 def test_arg_parser_exposes_cycle_stage_timing_diagnostic() -> None:

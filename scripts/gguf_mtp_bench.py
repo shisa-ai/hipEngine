@@ -140,6 +140,29 @@ def select_topk_tokens(
     return candidate_pool[0], candidate_pool[:requested_k]
 
 
+def draft_topk_scores_from_logits(logits_row: "np.ndarray", token_ids: list[int]) -> list[float]:
+    """Return logits for already-selected top-k token IDs."""
+
+    if logits_row.ndim != 1:
+        raise ValueError("logits_row must be rank-1")
+    scores: list[float] = []
+    for token_id in token_ids:
+        token = int(token_id)
+        if token < 0 or token >= int(logits_row.shape[0]):
+            raise ValueError("top-k token id outside logits row")
+        scores.append(float(logits_row[token]))
+    return scores
+
+
+def draft_topk_margins_from_scores(scores: list[float]) -> list[float]:
+    """Return top-1 logit minus each top-k logit."""
+
+    if not scores:
+        return []
+    top = float(scores[0])
+    return [float(top - float(score)) for score in scores]
+
+
 def validate_draft_n_max(draft_n_max: int) -> int:
     """Validate the benchmark's currently implemented diagnostic draft depth.
 
@@ -1078,6 +1101,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--record-draft-topk-scores",
+        action="store_true",
+        help=(
+            "Diagnostic only: when host draft logits are available, record logits and "
+            "top-1 margins for the reported draft top-k token IDs. Resident fast paths "
+            "that never materialize full logits leave these arrays empty."
+        ),
+    )
+    parser.add_argument(
         "--record-cycle-stage-timings",
         action="store_true",
         help=(
@@ -1779,6 +1811,7 @@ def main(argv: list[str] | None = None):
         for cycle in range(args.cycles):
             cycle_wall_t0 = time.perf_counter()
             stage_timings_ms: dict[str, float] = {}
+            cycle_start_seq_position = int(seq_position)
 
             def add_cycle_stage(name: str, ms: float) -> None:
                 if not args.record_cycle_stage_timings:
@@ -1861,6 +1894,8 @@ def main(argv: list[str] | None = None):
             t2 = time.perf_counter()
             draft_tokens = []
             draft_top10_tokens = []
+            draft_topk_scores: list[list[float]] = []
+            draft_topk_margins: list[list[float]] = []
             draft_diagnostic_logits: list[tuple[int, int, np.ndarray]] = []
             cycle_draft_top1_probs: list[float] = []
             replay_tokens = [cycle_prev_token]
@@ -1891,6 +1926,7 @@ def main(argv: list[str] | None = None):
                             dense_cache_len=mtp_device_kv_len,
                             draft_p_min=float(args.draft_p_min),
                             record_top1_probs=bool(args.record_draft_confidence),
+                            record_topk_scores=bool(args.record_draft_topk_scores),
                             record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                     )
@@ -1908,10 +1944,20 @@ def main(argv: list[str] | None = None):
                         dense_cache_len=mtp_device_kv_len,
                         draft_p_min=float(args.draft_p_min),
                         record_top1_probs=bool(args.record_draft_confidence),
+                        record_topk_scores=bool(args.record_draft_topk_scores),
                         record_stage_timings=bool(args.record_cycle_stage_timings),
                     )
                 if args.record_draft_confidence:
                     cycle_draft_top1_probs = [float(value) for value in cycle_resident_draft.last_top1_probs]
+                if args.record_draft_topk_scores:
+                    draft_topk_scores = [
+                        [float(value) for value in row]
+                        for row in getattr(cycle_resident_draft, "last_topk_scores", [])
+                    ]
+                    draft_topk_margins = [
+                        [float(value) for value in row]
+                        for row in getattr(cycle_resident_draft, "last_topk_margins", [])
+                    ]
             elif cycle_draft_n_max > 0:
                 for draft_depth in range(cycle_draft_n_max):
                     token_embed = token_embd_f32[current_token:current_token + 1].copy()
@@ -1957,6 +2003,10 @@ def main(argv: list[str] | None = None):
                     )
                     draft_tokens.append(draft_token)
                     draft_top10_tokens.append(top10_tokens)
+                    if args.record_draft_topk_scores:
+                        scores = draft_topk_scores_from_logits(draft_logits_row, top10_tokens)
+                        draft_topk_scores.append(scores)
+                        draft_topk_margins.append(draft_topk_margins_from_scores(scores))
                     if cycle_diagnostic_topk_candidate_count > cycle_topk_candidate_count:
                         draft_diagnostic_logits.append(
                             (len(draft_top10_tokens) - 1, draft_depth, draft_logits_row)
@@ -1985,6 +2035,15 @@ def main(argv: list[str] | None = None):
                         draft_depth=diagnostic_depth,
                     )
                     draft_top10_tokens[topk_row_index] = diagnostic_top10_tokens
+                    if args.record_draft_topk_scores:
+                        scores = draft_topk_scores_from_logits(diagnostic_logits_row, diagnostic_top10_tokens)
+                        margins = draft_topk_margins_from_scores(scores)
+                        if topk_row_index < len(draft_topk_scores):
+                            draft_topk_scores[topk_row_index] = scores
+                            draft_topk_margins[topk_row_index] = margins
+                        else:
+                            draft_topk_scores.append(scores)
+                            draft_topk_margins.append(margins)
                 add_cycle_stage("draft_diagnostic_topk", (time.perf_counter() - t_diag_topk0) * 1000)
 
             # Verify/account with llama.cpp semantics. The target evaluates the
@@ -2864,9 +2923,13 @@ def main(argv: list[str] | None = None):
 
             reported_draft_tokens = draft_tokens
             reported_draft_top10_tokens = draft_top10_tokens
+            reported_draft_topk_scores = draft_topk_scores
+            reported_draft_topk_margins = draft_topk_margins
             if redraft_start_depth is not None and topk_branch_depth is not None:
                 reported_draft_tokens = redraft_tokens_by_depth
                 reported_draft_top10_tokens = redraft_top10_by_depth
+                reported_draft_topk_scores = []
+                reported_draft_topk_margins = []
 
             target_in_draft_top10, target_rank_in_draft_top10 = target_membership_in_draft_topk(
                 comparison_target_tokens, reported_draft_top10_tokens
@@ -2875,6 +2938,8 @@ def main(argv: list[str] | None = None):
             cycle_record = {
                 "cycle": cycle,
                 "cycle_prev_token": int(cycle_prev_token),
+                "cycle_start_seq_position": int(cycle_start_seq_position),
+                "cycle_end_seq_position": int(seq_position),
                 "cycle_seq_position": int(seq_position),
                 "target_token": target_tokens[0],
                 "target_tokens": target_tokens,
@@ -2883,6 +2948,8 @@ def main(argv: list[str] | None = None):
                 "draft_token": int(reported_draft_tokens[0]) if reported_draft_tokens else None,
                 "draft_tokens": reported_draft_tokens,
                 "draft_top10_tokens": reported_draft_top10_tokens,
+                "draft_topk_scores": reported_draft_topk_scores,
+                "draft_topk_margins": reported_draft_topk_margins,
                 "initial_draft_tokens": draft_tokens,
                 "redraft_tokens": redraft_tokens,
                 "redraft_start_depth": redraft_start_depth,
@@ -3128,6 +3195,7 @@ def main(argv: list[str] | None = None):
             "resident_mtp_device_chain": bool(args.resident_mtp_device_chain),
             "resident_mtp_draft_sync_stage_timings": bool(args.resident_mtp_draft_sync_stage_timings),
             "record_draft_confidence": bool(args.record_draft_confidence),
+            "record_draft_topk_scores": bool(args.record_draft_topk_scores),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "llama_compat": bool(args.llama_compat),

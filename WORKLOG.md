@@ -133531,3 +133531,91 @@ PYTHONPATH=. python3 -m pytest tests/test_mtp_proposal_trace_compare.py -q
 ```
 
 Result: passed (`3 passed`).
+
+## 2026-07-02 — MTP draft-context/logit A/B follow-up
+
+Added diagnostic-only draft top-k score instrumentation:
+
+- `scripts/gguf_mtp_bench.py --record-draft-topk-scores`
+- raw cycle fields `cycle_start_seq_position`, `cycle_end_seq_position`,
+  `draft_topk_scores`, and `draft_topk_margins`
+- resident host-chain score recording when full draft logits are available
+  (`device-chain` top-1 paths intentionally leave score arrays empty)
+
+Retained diagnostic artifact:
+`benchmarks/results/2026-07-02-mtp-draft-context-logit-ab-diagnostic.json`
+(`performance_claim=false`).
+
+Follow-up commands used the same prompt as
+`2026-07-02-mtp-proposal-trace-compare-diagnostic.json`:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 10 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --resident-mtp-draft --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 \
+  --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 \
+  --resident-mtp-draft-router-row-parallel \
+  --mtp-context-replay --no-mtp-device-kv-cache \
+  --target-block-verify --target-block-verify-mode bulk \
+  --target-block-min-rows 2 --target-block-direct-state-commit \
+  --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 \
+  --record-cycle-stage-timings \
+  --output /tmp/hipengine-mtp-kv-ab/hipengine-host-replay.json
+```
+
+```bash
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8025 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 27 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-kv-ab/llamacpp-no-backend-stage.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --server-extra-arg=--no-spec-draft-backend-sampling \
+  --output /tmp/hipengine-mtp-kv-ab/llamacpp-no-backend.json \
+  --log-dir /tmp/hipengine-mtp-kv-ab/logs-no-backend
+```
+
+Results:
+
+- hipEngine `--no-mtp-device-kv-cache` still has the same first divergence vs
+  llama.cpp: pair 3, hipEngine drafts `[65342, 18078]`, llama.cpp drafts
+  `[8, 1411]`; flattened output prefix remains 20 tokens. This rules out the
+  accepted-row KV commit writer as the primary cause on this prompt.
+- llama.cpp with `--no-spec-draft-backend-sampling` still has the same first
+  divergence, so the public backend-sampling toggle is not the explanation.
+- hipEngine resident full-logit draft path is not closer: it diverges earlier
+  (cycle 2 drafts `[40798, 25]` vs target `[40798, 1590]`) and gets 14/20
+  accepted in the 10-cycle diagnostic.
+- Resident Q6 host-chain scored trace at cycle 3 depth 0:
+  - no device KV: token `8` rank 3, margin 1.876 logits behind token `65342`
+  - device KV: token `8` rank 3, margin 1.260 logits behind token `65342`
+- Device KV changes logits and moves llama.cpp's token closer, but it does not
+  flip the decision. The next target is MTP context/logit parity against
+  llama.cpp `ctx_dft`, not KV commit bookkeeping alone.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/gguf_mtp_bench.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py -q
+```
+
+Result: passed (`95 passed`).

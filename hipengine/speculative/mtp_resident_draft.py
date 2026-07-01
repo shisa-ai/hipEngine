@@ -119,6 +119,13 @@ def _stage_add(timings: dict[str, float] | None, name: str, ms: float) -> None:
     timings[name] = timings.get(name, 0.0) + float(ms)
 
 
+def _margins_from_scores(scores: list[float]) -> list[float]:
+    if not scores:
+        return []
+    top = float(scores[0])
+    return [float(top - float(score)) for score in scores]
+
+
 def _bf16_host_to_f32(array: np.ndarray) -> np.ndarray:
     raw = np.asarray(array)
     if raw.dtype == np.float32:
@@ -636,6 +643,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int = 0,
         draft_p_min: float = 0.0,
         record_top1_probs: bool = False,
+        record_topk_scores: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
@@ -663,6 +671,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             dense_cache_len=dense_cache_len,
             draft_p_min=draft_p_min,
             record_top1_probs=record_top1_probs,
+            record_topk_scores=record_topk_scores,
             stage_timings=stage_timings,
         )
 
@@ -681,6 +690,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int = 0,
         draft_p_min: float = 0.0,
         record_top1_probs: bool = False,
+        record_topk_scores: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
@@ -707,6 +717,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             dense_cache_len=dense_cache_len,
             draft_p_min=draft_p_min,
             record_top1_probs=record_top1_probs,
+            record_topk_scores=record_topk_scores,
             stage_timings=stage_timings,
         )
 
@@ -724,9 +735,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int,
         draft_p_min: float,
         record_top1_probs: bool = False,
+        record_topk_scores: bool = False,
         stage_timings: dict[str, float] | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         self.last_top1_probs = []
+        self.last_topk_scores = []
+        self.last_topk_margins = []
         if draft_n_max <= 0:
             raise ValueError("draft_n_max must be positive")
         if top_k <= 0 or top_k > 64:
@@ -791,7 +805,18 @@ class Qwen35GGUFResidentMTPDraftRunner:
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
             t_topk0 = time.perf_counter() if stage_timings is not None else 0.0
-            if draft_p_min > 0.0 or record_top1_probs:
+            if bool(record_topk_scores):
+                top_ids, top_scores, top1_prob = self._read_topk_with_scores(
+                    top_k,
+                    compute_top1_prob=bool(draft_p_min > 0.0 or record_top1_probs),
+                )
+                self.last_topk_scores.append(top_scores)
+                self.last_topk_margins.append(_margins_from_scores(top_scores))
+                if record_top1_probs:
+                    self.last_top1_probs.append(float(top1_prob or 0.0))
+                if top1_prob is not None and top1_prob < float(draft_p_min):
+                    break
+            elif draft_p_min > 0.0 or record_top1_probs:
                 top_ids, top1_prob = self._read_topk_with_prob(top_k)
                 if record_top1_probs:
                     self.last_top1_probs.append(float(top1_prob))
@@ -1889,6 +1914,35 @@ class Qwen35GGUFResidentMTPDraftRunner:
         exp = np.exp(shifted)
         top1_prob = float(exp[int(top_sorted[0])] / exp.sum())
         return [int(token) for token in top_sorted.tolist()], top1_prob
+
+    def _read_topk_with_scores(
+        self,
+        top_k: int,
+        *,
+        compute_top1_prob: bool = False,
+    ) -> tuple[list[int], list[float], float | None]:
+        """Read full logits and return top-k ids, logits, and optional top-1 prob."""
+
+        runtime = self.runtime or get_hip_runtime()
+        runtime.device_synchronize()
+        logits = np.empty((self.vocab,), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(logits),
+            DeviceBuffer(self.logits.ptr, logits.nbytes),
+            logits.nbytes,
+            runtime=runtime,
+        )
+        top_count = min(int(top_k), int(logits.shape[0]))
+        top_idx = np.argpartition(logits, -top_count)[-top_count:]
+        top_sorted = top_idx[np.argsort(logits[top_idx])[::-1]]
+        top_ids = [int(token) for token in top_sorted.tolist()]
+        scores = [float(logits[token]) for token in top_ids]
+        top1_prob = None
+        if compute_top1_prob:
+            shifted = logits - float(scores[0])
+            exp = np.exp(shifted)
+            top1_prob = float(exp[int(top_sorted[0])] / exp.sum())
+        return top_ids, scores, top1_prob
 
 
 __all__ = ["Qwen35GGUFResidentMTPDraftRunner"]

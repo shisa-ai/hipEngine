@@ -1,0 +1,76 @@
+{
+  "schema": "hipengine.mtp_draft_context_logit_ab.v1",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-02",
+  "purpose": "same-prompt follow-up for hipEngine llama-compat vs llama.cpp HIP MTP proposal drift",
+  "base_commit": "6c3e8f32ed3b0fd2977a22cdfcc7d76ec66e751e",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+  "source_artifacts": {
+    "hipengine_host_replay_no_device_kv": "/tmp/hipengine-mtp-kv-ab/hipengine-host-replay.json",
+    "hipengine_resident_q6_no_device_kv_scores": "/tmp/hipengine-mtp-kv-ab/hipengine-resident-host-q6-topk-scores.json",
+    "hipengine_resident_q6_device_kv_scores": "/tmp/hipengine-mtp-kv-ab/hipengine-resident-host-q6-devicekv-topk-scores.json",
+    "hipengine_exact_resident_host_replay": "/tmp/hipengine-mtp-kv-ab/hipengine-exact-draft-host-replay.json",
+    "hipengine_nonresident_hostlogit_scores": "/tmp/hipengine-mtp-kv-ab/hipengine-hostlogit-topk-scores.json",
+    "llamacpp_no_backend_sampling": "/tmp/hipengine-mtp-kv-ab/llamacpp-no-backend.json",
+    "compare_host_replay_vs_llama": "/tmp/hipengine-mtp-kv-ab/compare-host-replay-vs-llama.json",
+    "compare_hip_vs_llama_no_backend": "/tmp/hipengine-mtp-kv-ab/compare-hip-vs-llama-no-backend.json"
+  },
+  "commands": {
+    "hipengine_host_replay_no_device_kv": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 10 --draft-n-max 2 --prompt <prompt> --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --no-mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings",
+    "llamacpp_no_backend_sampling": "env PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8025 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 27 --stage-timings-jsonl /tmp/hipengine-mtp-kv-ab/llamacpp-no-backend-stage.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --server-extra-arg=--no-spec-draft-backend-sampling",
+    "hipengine_resident_q6_device_kv_scores": "same as host replay, with --mtp-device-kv-cache and --record-draft-topk-scores, cycles=4"
+  },
+  "results": {
+    "host_replay_no_device_kv_vs_llama": {
+      "exact_draft_rows": 3,
+      "compared_rows": 10,
+      "output_stream_common_prefix_tokens": 20,
+      "first_divergence": {
+        "pair_index": 3,
+        "hipengine_draft_token_ids": [65342, 18078],
+        "llamacpp_draft_token_ids": [8, 1411],
+        "hipengine_output_token_ids": [65342, 18078, 28649],
+        "llamacpp_output_token_ids": [65342]
+      },
+      "interpretation": "Disabling hipEngine resident MTP device KV does not change the first divergence; the manual accepted-row KV writer is not the primary cause on this prompt."
+    },
+    "llamacpp_no_backend_sampling_vs_hipengine": {
+      "exact_draft_rows": 3,
+      "compared_rows": 10,
+      "output_stream_common_prefix_tokens": 20,
+      "first_divergence": {
+        "pair_index": 3,
+        "hipengine_draft_token_ids": [65342, 18078],
+        "llamacpp_draft_token_ids": [8, 1411]
+      },
+      "interpretation": "llama.cpp --no-spec-draft-backend-sampling still diverges the same way, so the public backend-sampling toggle is not the explanation."
+    },
+    "hipengine_exact_resident_host_replay": {
+      "accepted_draft_tokens": 14,
+      "generated_draft_tokens": 20,
+      "visible_output_tokens": 24,
+      "first_miss_cycle": 2,
+      "first_miss_draft_token_ids": [40798, 25],
+      "first_miss_target_token_ids": [40798, 1590],
+      "interpretation": "The resident full-logit draft path is not closer to llama.cpp on this prompt; it diverges earlier than the retained Q6 route."
+    },
+    "hipengine_resident_q6_cycle3_scores": {
+      "no_device_kv": {
+        "context_rows_before_draft": 1,
+        "depth0_top10": [65342, 13787, 8, 18078, 58, 1590, 9409, 16793, 1103, 3863],
+        "depth0_scores": [26.0703, 24.7507, 24.1943, 23.2419, 22.0778, 19.014, 18.9114, 18.4882, 18.3934, 17.7114],
+        "depth0_margins": [0.0, 1.3196, 1.876, 2.8284, 3.9925, 7.0563, 7.1589, 7.5821, 7.6769, 8.3589]
+      },
+      "device_kv": {
+        "context_rows_before_draft": 49,
+        "depth0_top10": [65342, 13787, 8, 18078, 58, 1590, 9409, 16793, 3863, 15050],
+        "depth0_scores": [25.8332, 24.9292, 24.5731, 23.5786, 21.9993, 19.9989, 19.1782, 18.7689, 18.4883, 17.7588],
+        "depth0_margins": [0.0, 0.904, 1.2601, 2.2546, 3.8339, 5.8344, 6.655, 7.0644, 7.3449, 8.0745]
+      },
+      "interpretation": "Device KV changes logits and moves llama.cpp's token 8 closer, but token 8 remains rank 3 and 1.260 logits behind hipEngine's top-1. The remaining gap is MTP context/logit parity, not merely whether KV is enabled."
+    }
+  },
+  "next_target": "Compare hipEngine resident MTP attention/logit rows against llama.cpp ctx_dft logits or add a llama-side top-k score trace; within hipEngine, keep using --record-draft-topk-scores plus cycle_start_seq_position/cycle_end_seq_position to isolate drift."
+}
