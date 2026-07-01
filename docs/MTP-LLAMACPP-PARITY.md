@@ -79,7 +79,7 @@ suite row before moving the headline numbers.
 | --- | ---: | ---: | ---: | --- |
 | Total cycle wall | **18.057 ms/output** | 14.231 ms/output | **3.826 ms/output** | Every accepted optimization must eventually move this row. |
 | Draft drain | **3.713 ms/output** | 2.140 ms/output | **1.573 ms/output** | Cut MTP lm-head/sampler drain; latest all-sync split names `draft_run_lm_head` at **1.916 ms/output**. |
-| Target verifier drain | **14.025 ms/output** | 12.083 ms/output | **1.942 ms/output** | Cut B2 layer work; the leading all-sync sub-buckets are Q8T16 `attn_qkv+attn_gate` and selected-MoE gate/up/down. |
+| Target verifier drain | **14.025 ms/output** | 12.083 ms/output | **1.942 ms/output** | Cut B2 layer work; raw-sidecar dense-Q8 q8_1/dp4a was rejected, so the remaining leading sub-buckets are selected-MoE gate/up/down plus non-dp4a Q8 pair work. |
 | Target rows / output | **1.316** | 1.148 | 0.168 rows/output | Secondary lever after operation cost: compat still evaluates more target rows than llama. |
 | Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
 
@@ -112,6 +112,23 @@ compact WMMA became the dominant regression (`target_block_linear_attn_ffn_moe_c
 **2.075 ms/output**). Conclusion: the global target-block WMMA flag is the
 wrong shape for the llama-compat B2 verifier and should remain off; it does not
 justify a full-suite run.
+
+**Rejected 2026-07-01 dense-Q8 q8_1/dp4a raw-sidecar check:** a new default-off
+diagnostic, `--verify-dense-q8-dp4a`, retained raw Q8_0 sidecars for
+linear-attention `attn_qkv`/`attn_gate` T16 weights and routed rows>1 verifier
+blocks through the existing q8_1/dp4a dense Q8 GEMV. It fired correctly, but did
+not close the gap. Async smoke moved **66.66 -> 66.19 tok/s** and
+`target_block_verify_total` **11.960 -> 12.072 ms/output**. All-sync smoke showed
+the named Q8 pair bucket regressing:
+`target_block_linear_attn_attn_qkv_gate_pair` **2.217 ms/output** became
+`target_block_linear_attn_attn_qkv_gate_dense_q8_dp4a` **2.622 ms/output**. The
+reason is now concrete: llama.cpp's q8_1/dp4a dense matvec economy does not
+transfer through hipEngine's raw-sidecar two-GEMV route; the extra q8_1 quantize
+launch plus two per-output GEMV launches lose to the current Q8T16 dual pair
+kernel. No full-suite run is justified until a T16-native fused q8_1/dp4a pair
+kernel or a broader llama-style mmvq scheduler changes that cost model. Artifacts:
+`benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-denseq8-smoke.json`
+and `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-denseq8-allsync-smoke.json`.
 
 **There are two separate comparisons:**
 1. **HIP-vs-HIP parity (the 67.3 tok/s row):** hipEngine's base decode is not behind:

@@ -675,6 +675,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--verify-dense-q8-dp4a",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "OPT-IN diagnostic: retain raw Q8_0 sidecars for linear-attention attn_qkv/attn_gate "
+            "T16 weights and route rows>1 verifier blocks through q8_1/dp4a dense Q8 GEMVs. "
+            "Intended for llama-compat parity A/B only; default off."
+        ),
+    )
+    parser.add_argument(
         "--llama-compat",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1091,6 +1101,12 @@ def main(argv: list[str] | None = None):
             "HIPENGINE_GGUF_RAW_SELECTED_DP4A",
         ):
             os.environ[_flag] = "1"
+    if getattr(args, "verify_dense_q8_dp4a", False):
+        # Must be set before materialization so T16 dense Q8_0 weights retain
+        # raw GGUF bytes alongside tiles. The runtime route itself is read live
+        # by qwen35_gguf_runner.
+        os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
+        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A"] = "1"
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
@@ -1303,6 +1319,8 @@ def main(argv: list[str] | None = None):
         bool(args.use_wmma_prefill),
         bool(args.use_gemv_decode),
         os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
+        os.environ.get("HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"),
+        os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A"),
     )
     if _cache_session and _session_key in _SESSION_CACHE:
         session = _SESSION_CACHE[_session_key]

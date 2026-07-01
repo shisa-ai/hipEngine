@@ -11,6 +11,7 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DECODE_REPACK_ENV,
+    HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV,
     HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV,
     HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV,
     HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV,
@@ -27,6 +28,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     gguf_decode_repack_enabled,
+    gguf_q8_0_raw_sidecar_enabled,
     gguf_selected_down_raw_enabled,
     gguf_selected_down_raw_mode,
     gguf_selected_gate_up_x8_enabled,
@@ -126,6 +128,27 @@ def test_qwen35moe_decode_repack_plan_replaces_covered_weights(monkeypatch: pyte
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
     assert layer0["ffn_gate_shexp"].quant_key == "gguf_q8_0_t16_v1"
     assert layer0["ffn_gate_inp"].layout == LAYOUT_DENSE_F32
+
+
+def test_qwen35moe_decode_repack_can_keep_q8_attention_raw_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_decode_repack_enabled() is True
+    assert gguf_q8_0_raw_sidecar_enabled() is True
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["attn_qkv"].layout == LAYOUT_GGUF_Q8_0_T16
+    assert layer0["attn_qkv"].allocation_names == ("tiles", "raw")
+    assert layer0["attn_gate"].layout == LAYOUT_GGUF_Q8_0_T16
+    assert layer0["attn_gate"].allocation_names == ("tiles", "raw")
+    assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
+    assert layer0["ffn_gate_shexp"].allocation_names == ("tiles",)
 
 
 def test_qwen35moe_decode_repack_can_plan_selected_down_x8(monkeypatch: pytest.MonkeyPatch) -> None:

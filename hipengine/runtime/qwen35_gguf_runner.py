@@ -150,6 +150,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
+    gguf_q8_0_dp4a_gemv_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_moe_ffn_fused import (
     gguf_q4_k_selected_ffn_fused_bf16_bf16_out,
 )
@@ -2065,20 +2068,39 @@ class Qwen35GGUFFullStackRunner:
             t_norm_qkv_gate_ms += norm_ms
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_norm", norm_ms)
             t_stage = time.perf_counter()
-        pair_fused = launch_gguf_linear_pair(
+        qkv_gate_route = "pair"
+        pair_fused = _try_launch_dense_q8_pair_dp4a(
             layer.weight("attn_qkv"),
             layer.weight("attn_gate"),
             scratch.norm.ptr,
             scratch.linear_qkv.ptr,
             scratch.linear_z.ptr,
+            scratch,
             rows=rows,
             in_features=self.hidden_size,
-            out_features=self.linear_qkv_width,
+            out_features_a=self.linear_qkv_width,
             out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
         )
+        if pair_fused:
+            qkv_gate_route = "dense_q8_dp4a"
+        else:
+            pair_fused = launch_gguf_linear_pair(
+                layer.weight("attn_qkv"),
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                out_features_b=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         if not pair_fused:
+            qkv_gate_route = "fallback"
             launch_gguf_linear(
                 layer.weight("attn_qkv"),
                 scratch.norm.ptr,
@@ -2104,8 +2126,7 @@ class Qwen35GGUFFullStackRunner:
             t_now = time.perf_counter()
             qkv_gate_ms = (t_now - t_stage) * 1000
             t_norm_qkv_gate_ms += qkv_gate_ms
-            qkv_gate_suffix = "pair" if pair_fused else "fallback"
-            _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_qkv_gate_{qkv_gate_suffix}", qkv_gate_ms)
+            _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_qkv_gate_{qkv_gate_route}", qkv_gate_ms)
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_norm_qkv_gate", t_norm_qkv_gate_ms)
             t_stage = time.perf_counter()
         if cfg.is_moe:
@@ -3438,6 +3459,7 @@ _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
+_GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
@@ -3505,6 +3527,10 @@ def _gguf_raw_selected_dp4a_enabled() -> bool:
     return _env_flag(_GGUF_RAW_SELECTED_DP4A_ENV, False)
 
 
+def _gguf_dense_q8_dp4a_enabled() -> bool:
+    return _env_flag(_GGUF_DENSE_Q8_DP4A_ENV, False)
+
+
 def _gguf_row_compact_gemv_enabled() -> bool:
     return _env_flag(_GGUF_ROW_COMPACT_GEMV_ENV, False)
 
@@ -3547,6 +3573,69 @@ def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enable
             f"got {getattr(workspace, 'nbytes', 'unknown')}"
         )
     return int(workspace.ptr)
+
+
+def _try_launch_dense_q8_pair_dp4a(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in llama-compat Q8_0 q8_1/dp4a route for verifier block projections."""
+
+    if not _gguf_dense_q8_dp4a_enabled() or int(rows) <= 1:
+        return False
+    if (
+        weight_a.spec.quant_key != "gguf_q8_0_t16_v1"
+        or weight_b.spec.quant_key != "gguf_q8_0_t16_v1"
+    ):
+        return False
+    try:
+        raw_a = weight_a.allocation("raw").tensor.ptr
+        raw_b = weight_b.allocation("raw").tensor.ptr
+    except KeyError:
+        return False
+    q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(scratch, rows, in_features, enabled=True)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_bf16_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw_a,
+        out_a_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw_b,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_b,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
 
 
 def _gguf_aotriton_prefill_mode(start: int, rows: int, key_rows: int) -> str:

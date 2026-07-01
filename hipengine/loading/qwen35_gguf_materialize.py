@@ -48,6 +48,7 @@ HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
 HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV = "HIPENGINE_GGUF_SELECTED_X8_REPACK"
 HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV = "HIPENGINE_GGUF_SELECTED_DOWN_RAW"
 HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_X8"
+HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV = "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"
 
 
 @dataclass(frozen=True)
@@ -360,6 +361,23 @@ def gguf_selected_gate_up_x8_enabled(value: bool | str | None = None) -> bool:
     return raw.strip().lower() not in {"", "0", "false", "off", "no"}
 
 
+def gguf_q8_0_raw_sidecar_enabled(value: bool | str | None = None) -> bool:
+    """Return whether T16 dense Q8_0 residents should retain raw GGUF bytes too.
+
+    This is a default-off llama-compat diagnostic sidecar. The current consumer is
+    the dense-Q8 q8_1/dp4a verifier probe, which only needs linear-attention
+    ``attn_qkv`` and ``attn_gate`` raw bytes.
+    """
+
+    if value is None:
+        raw = os.environ.get(HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV, "")
+    elif isinstance(value, bool):
+        raw = "1" if value else ""
+    else:
+        raw = str(value)
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
 def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: bool) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
@@ -478,12 +496,15 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q8_0 and decode_repack and slot_path.startswith("layers.") and len(tensor.shape) == 2:
+        allocation_names = ("tiles",)
+        if gguf_q8_0_raw_sidecar_enabled() and _is_linear_attention_q8_pair_tensor(slot_path, tensor):
+            allocation_names = ("tiles", "raw")
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q8_0_t16_v1",
             layout=LAYOUT_GGUF_Q8_0_T16,
-            allocation_names=("tiles",),
+            allocation_names=allocation_names,
         )
     if qtype in (GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0):
         return Qwen35GGUFWeightSpec(
@@ -549,6 +570,14 @@ def _is_selected_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
 
 def _is_selected_down_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
     return len(tensor.shape) == 3 and slot_path.endswith(".ffn_down_exps")
+
+
+def _is_linear_attention_q8_pair_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:
+    return (
+        len(tensor.shape) == 2
+        and GGMLQuantizationType(tensor.ggml_type) == GGMLQuantizationType.Q8_0
+        and slot_path.endswith((".attn_qkv", ".attn_gate"))
+    )
 
 
 def _sidecar_layouts_for_tensor(slot_path: str, tensor: GGUFTensorInfo) -> tuple[str, ...]:
@@ -653,6 +682,15 @@ def _materialize_spec(
                 runtime=runtime,
             )
         }
+        if "raw" in spec.allocation_names:
+            allocations["raw"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.raw_sidecar",
+                raw,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
     elif spec.layout == LAYOUT_RAW_GGUF:
         allocations = {
             "raw": load_host_array_to_device_as_dtype(
@@ -699,6 +737,7 @@ __all__ = [
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",
+    "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV",
     "HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV",
     "HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV",
     "HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV",
@@ -721,6 +760,7 @@ __all__ = [
     "_gguf_ssm_a_to_kernel_a_log",
     "audit_qwen35_gguf_precision_contractions",
     "gguf_decode_repack_enabled",
+    "gguf_q8_0_raw_sidecar_enabled",
     "gguf_selected_down_raw_enabled",
     "gguf_selected_down_raw_mode",
     "gguf_selected_gate_up_x8_enabled",

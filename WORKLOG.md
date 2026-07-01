@@ -130279,3 +130279,58 @@ ms/output** to close), draft drain **3.713 -> 2.140 ms/output** (**1.573
 ms/output**), target verifier drain **14.025 -> 12.083 ms/output** (**1.942
 ms/output**), plus the secondary target-row gap **1.316 -> 1.148 rows/output**.
 It also names the non-gaps: AR, removed serial B1 verify, and host setup/snapshot.
+
+Implemented and rejected a dense-Q8 q8_1/dp4a raw-sidecar diagnostic for the
+llama.cpp replication lane. This targeted the measured
+`target_block_linear_attn_attn_qkv_gate_pair` bucket rather than changing the
+default exact path:
+
+- Added `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR` in
+  `hipengine/loading/qwen35_gguf_materialize.py`, retaining a raw Q8_0 allocation
+  alongside T16 tiles only for linear-attention `attn_qkv` / `attn_gate` when
+  explicitly requested.
+- Added `HIPENGINE_GGUF_DENSE_Q8_DP4A` and `_try_launch_dense_q8_pair_dp4a()` in
+  `hipengine/runtime/qwen35_gguf_runner.py`. For rows>1 verifier blocks it
+  q8_1-quantizes `scratch.norm` once, then runs the existing raw dense Q8_0
+  dp4a GEMV for `attn_qkv` and `attn_gate`. Default off; exact/default path
+  unchanged.
+- Added `scripts/gguf_mtp_bench.py --verify-dense-q8-dp4a` and suite routes
+  `llama-compat-device-chain-dp4a-denseq8{,-allsync}`.
+- Kernel lineage check caveat: `python3 scripts/check_lineage.py --kind kernel
+  --diff stat` still fails because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is
+  missing. No new kernel body was ported; this routes an existing in-tree kernel.
+
+Validation:
+
+- `python3 -m py_compile hipengine/loading/qwen35_gguf_materialize.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_materialize.py`
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_materialize.py -q`
+  -> `...ssssssssssssssss` (local fixture-dependent materialization tests skipped).
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo` confirms gfx1151/Radeon 8060S.
+
+Benchmarks, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`, smoke scope (`limit=1`, cycles=3):
+
+- All-sync diagnostic:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-denseq8-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-denseq8-allsync-smoke.json`
+  -> AR **54.69 tok/s**, B2 **52.26 tok/s**, acc/output **0.667**, draft
+  acceptance **1.000**. The route fired as
+  `target_block_linear_attn_attn_qkv_gate_dense_q8_dp4a`, but the Q8 pair
+  bucket regressed vs paircache all-sync smoke:
+  **2.217 -> 2.622 ms/output**. `target_block_verify_total` was flat/noisy
+  (**16.092 -> 16.052 ms/output**).
+- Async smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-denseq8 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-denseq8-smoke.json`
+  -> AR **54.98 tok/s**, B2 **66.19 tok/s**, acc/output **0.667**, draft
+  acceptance **1.000**. Compared with paircache async smoke B2 **66.66 tok/s**,
+  `cycle_wall_ms_per_output` regressed **15.023 -> 15.136**, and
+  `target_block_verify_total` regressed **11.960 -> 12.072 ms/output**.
+
+Decision: reject the raw-sidecar dense-Q8 q8_1/dp4a route for the current
+llama-compat B2 verifier. It is not the missing llama.cpp mechanism: the extra
+q8_1 quantize launch plus two raw dense GEMV launches lose to hipEngine's current
+Q8T16 dual pair kernel. Keep the default-off diagnostic only long enough for the
+compat audit; next verifier targets are selected-MoE gate/up/down and any future
+T16-native fused q8_1/dp4a pair or llama-style mmvq scheduler, not this raw
+sidecar route.
