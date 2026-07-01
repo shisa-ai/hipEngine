@@ -47,6 +47,7 @@ LAYOUT_GGUF_Q6_K_X8 = "gguf_q6_k_x8_v1"
 HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
 HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV = "HIPENGINE_GGUF_SELECTED_X8_REPACK"
 HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV = "HIPENGINE_GGUF_SELECTED_DOWN_RAW"
+HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"
 HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_X8"
 HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV = "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"
 HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
@@ -352,6 +353,16 @@ def _gguf_selected_down_raw_enabled_for(quant: str) -> bool:
     return mode == "both" or mode == quant
 
 
+def gguf_selected_gate_up_raw_enabled(value: bool | str | None = None) -> bool:
+    if value is None:
+        raw = os.environ.get(HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV, "")
+    elif isinstance(value, bool):
+        raw = "1" if value else ""
+    else:
+        raw = str(value)
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
 def gguf_selected_gate_up_x8_enabled(value: bool | str | None = None) -> bool:
     if value is None:
         raw = os.environ.get(HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV, "")
@@ -398,6 +409,14 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
     if qtype == GGMLQuantizationType.Q4_K:
         if len(tensor.shape) != 2:
             if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
+                if gguf_selected_gate_up_raw_enabled() and not _is_selected_down_expert_tensor(slot_path, tensor):
+                    return Qwen35GGUFWeightSpec(
+                        slot_path=slot_path,
+                        source=tensor,
+                        quant_key="gguf_q4_k",
+                        layout=LAYOUT_RAW_GGUF,
+                        allocation_names=("raw",),
+                    )
                 if gguf_selected_gate_up_x8_enabled() and not _is_selected_down_expert_tensor(slot_path, tensor):
                     return Qwen35GGUFWeightSpec(
                         slot_path=slot_path,
@@ -749,6 +768,7 @@ __all__ = [
     "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV",
     "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV",
     "HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV",
+    "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV",
     "HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV",
     "HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV",
     "LAYOUT_GGUF_EXPERT_PACK8_SIDECAR",
@@ -774,6 +794,7 @@ __all__ = [
     "gguf_q8_0_raw_sidecar_enabled",
     "gguf_selected_down_raw_enabled",
     "gguf_selected_down_raw_mode",
+    "gguf_selected_gate_up_raw_enabled",
     "gguf_selected_gate_up_x8_enabled",
     "gguf_selected_x8_repack_enabled",
     "gguf_selected_x8_repack_mode",

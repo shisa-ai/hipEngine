@@ -14,6 +14,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV,
     HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV,
     HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV,
+    HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV,
     HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV,
     HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV,
     LAYOUT_DENSE_BF16,
@@ -32,6 +33,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     gguf_q8_0_raw_sidecar_enabled,
     gguf_selected_down_raw_enabled,
     gguf_selected_down_raw_mode,
+    gguf_selected_gate_up_raw_enabled,
     gguf_selected_gate_up_x8_enabled,
     gguf_selected_x8_repack_enabled,
     gguf_selected_x8_repack_mode,
@@ -275,6 +277,44 @@ def test_qwen35moe_decode_repack_can_plan_selected_gate_up_x8(monkeypatch: pytes
     assert layer0["ffn_up_exps"].layout == LAYOUT_GGUF_Q4_K_X8
     assert layer0["ffn_up_exps"].quant_key == "gguf_q4_k_x8_v1"
     assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
+
+
+def test_qwen35moe_decode_repack_can_keep_selected_gate_up_raw(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_selected_gate_up_raw_enabled() is True
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_gate_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_gate_exps"].quant_key == "gguf_q4_k"
+    assert layer0["ffn_gate_exps"].allocation_names == ("raw",)
+    assert layer0["ffn_up_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_up_exps"].quant_key == "gguf_q4_k"
+    assert layer0["ffn_up_exps"].allocation_names == ("raw",)
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
+
+
+def test_qwen35moe_selected_gate_up_raw_takes_precedence_over_x8(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    plan = plan_qwen35_gguf_materialization(model_map)
+    layer0 = plan.layer_specs[0]
+    assert layer0["ffn_gate_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_gate_exps"].quant_key == "gguf_q4_k"
+    assert layer0["ffn_up_exps"].layout == LAYOUT_RAW_GGUF
+    assert layer0["ffn_up_exps"].quant_key == "gguf_q4_k"
 
 
 def test_qwen35moe_selected_down_raw_takes_precedence_over_x8(monkeypatch: pytest.MonkeyPatch) -> None:

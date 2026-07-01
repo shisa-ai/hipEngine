@@ -131591,3 +131591,72 @@ hipEngine `llama-compat`, llama.cpp HIP, plus compat delta. No measurements
 changed. The current retained compat budget remains **+2.356 ms/output**, split
 across **+1.104 ms/output** draft drain, **+0.940 ms/output** target verifier
 drain, and **+0.102 target rows/output**.
+
+## 2026-07-01 — Raw GGUF selected gate/up llama-compat diagnostic rejected
+
+Added a default-off raw selected gate/up diagnostic for the llama-compat parity
+lane:
+
+- `HIPENGINE_GGUF_SELECTED_GATE_UP_RAW=1` / `--selected-gate-up-raw` keeps Q4_K
+  selected gate/up experts in raw GGUF layout under decode-repack.
+- Suite routes:
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup` and
+  `...-rawgateup-allsync`.
+- With `--verify-dp4a`, the runtime hits the existing raw selected-dual
+  q8_1/dp4a body, which is the closest in-tree analogue to llama.cpp
+  `mul_mat_vec_q_moe`.
+
+Environment checks:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx' | head -n 40` -> gfx1151 / Radeon 8060S.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is still blocked
+  because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+
+Validation:
+
+- `python3 -m py_compile hipengine/loading/qwen35_gguf_materialize.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_qwen35_gguf_materialize.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+  -> pass.
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py::test_suite_exposes_llama_compat_routes tests/test_gguf_ar_mtp_suite.py::test_suite_llama_compat_q6top1dp4a_x8q6_rawgateup_dry_run_defaults_to_b2 tests/test_gguf_mtp_bench_metrics.py::test_arg_parser_exposes_selected_gate_up_raw_mode`
+  -> **3 passed**.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_materialize.py -k 'selected_gate_up_raw or selected_gate_up_x8'`
+  -> **3 skipped** because the local GGUF fixture is absent.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_compact_moe_gemv_routing.py -k 'raw_selected_dp4a or q4k_selected_dual_dp4a or row_bulk_t16_selected_dp4a or selected_gate_up'`
+  -> **3 passed**.
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -k 'llama_compat or selected_gate_up'`
+  -> **15 passed**.
+- Dry-run:
+  `PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup --record-cycle-stage-timings --dry-run`
+  -> command includes `--extra-arg=--selected-gate-up-raw` and B2 default budget.
+
+Same-session async smoke:
+
+- retained control
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-control-smoke.json`
+  -> B2 **68.55 tok/s**, cycle **14.612 ms/output**, verifier drain
+  **11.792 ms/output**, acceptance `0.667 acc/output`, draft acceptance `1.000`.
+- rawgateup
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-smoke.json`
+  -> B2 **62.04 tok/s**, cycle **16.142 ms/output**, verifier drain
+  **13.328 ms/output**, identical acceptance.
+
+All-sync attribution:
+
+- retained control
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-control-allsync-smoke.json`
+  -> B2 **53.37 tok/s**, cycle **18.757 ms/output**, verifier
+  **15.874 ms/output**.
+- rawgateup
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-allsync-smoke.json`
+  -> B2 **48.38 tok/s**, cycle **20.693 ms/output**, verifier
+  **17.803 ms/output**.
+- The loss is the raw gate/up GEMV body, not quantization:
+  linear-attn gate/up GEMV **1.422 -> 2.153 ms/output** with q8_1 quantize
+  **0.189 -> 0.199**; full-attn gate/up GEMV **0.461 -> 0.729** with q8_1
+  quantize **0.064 -> 0.076**.
+
+Conclusion: reject. A mechanical raw-GGUF selected gate/up body/layout copy of
+llama.cpp's MoE MMVQ is slower than retained T16 dp4a on the current B2 verifier
+shape. Do not run full-suite or update the retained headline gap. Updated
+`docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.

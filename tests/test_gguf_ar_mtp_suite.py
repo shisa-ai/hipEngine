@@ -203,6 +203,15 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "q6",
         "--selected-gate-up-x8",
     ]
+    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup"] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+        "--resident-mtp-draft-q6-top1-dp4a",
+        "--selected-down-x8-repack",
+        "q6",
+        "--selected-gate-up-raw",
+    ]
     assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8"] == [
         "--llama-compat",
         "--resident-mtp-device-chain",
@@ -276,6 +285,17 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "q6",
         "--selected-gate-up-x8",
     ]
+    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-allsync"] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--resident-mtp-draft-sync-stage-timings",
+        "--target-block-sync-stage-timings",
+        "--verify-dp4a",
+        "--resident-mtp-draft-q6-top1-dp4a",
+        "--selected-down-x8-repack",
+        "q6",
+        "--selected-gate-up-raw",
+    ]
     assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-allsync"] == [
         "--llama-compat",
         "--resident-mtp-device-chain",
@@ -344,6 +364,9 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup"
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup"
+    ] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8"
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64"] == [2]
@@ -356,6 +379,9 @@ def test_suite_exposes_llama_compat_routes() -> None:
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-allsync"
+    ] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-allsync"
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-allsync"
@@ -511,6 +537,40 @@ def test_suite_llama_compat_q6top1dp4a_x8q6_x8gateup_dry_run_defaults_to_b2(
     assert "--extra-arg=q6" in out
     assert "--extra-arg=--selected-gate-up-x8" in out
     assert '"mtp_route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup"' in out
+    assert '"budgets": [\n    2\n  ]' in out
+    assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
+
+
+def test_suite_llama_compat_q6top1dp4a_x8q6_rawgateup_dry_run_defaults_to_b2(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "full",
+            "--mtp-route",
+            "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--budgets 2" in out
+    assert "--extra-arg=--llama-compat" in out
+    assert "--extra-arg=--resident-mtp-device-chain" in out
+    assert "--extra-arg=--verify-dp4a" in out
+    assert "--extra-arg=--resident-mtp-draft-q6-top1-dp4a" in out
+    assert "--extra-arg=--selected-down-x8-repack" in out
+    assert "--extra-arg=q6" in out
+    assert "--extra-arg=--selected-gate-up-raw" in out
+    assert '"mtp_route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup"' in out
     assert '"budgets": [\n    2\n  ]' in out
     assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
 
