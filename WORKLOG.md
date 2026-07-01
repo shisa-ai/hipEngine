@@ -131107,3 +131107,63 @@ Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking so future
   **+0.940 ms/output** verifier drain, and **+0.102 target rows/output**.
 
 Docs-only change; no GPU validation needed.
+
+## 2026-07-01 — Rejected Q5 T16 selected-down one-wave scheduler diagnostic
+
+Added a q5-only diagnostic launch-width override for the T16 selected-down
+q8_1/dp4a direct kernel:
+
+- `HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS={32,64,128}` affects only
+  `launch_qk_q8_1_dp4a_direct` (Q5/Q6 selected-down). Unset inherits the
+  retained `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` default of 64.
+- Q4 gate/up stays on `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS`, so the
+  llama.cpp-like one-wave test can isolate Q5 selected-down without disturbing
+  the retained Q4 scheduler.
+
+Measurements on AMD Radeon 8060S / gfx1151, model
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, smoke prompt-suite route
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`:
+
+- Q4 control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS=32 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --x-rows 2 --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-q5t32-control-micro.json`
+  -> Q4 still reports `selected_dp4a_threads=64`,
+  `t16_dp4a_dot_prequantized=0.04007 ms`.
+- Q5 t64 rerun:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-t64-rerun-micro.json`
+  -> prequantized dot **0.03608 ms**, quantize+dot **0.04031 ms**,
+  selected-down float **0.06004 ms**.
+- Q5 q5t32:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS=32 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-q5t32-micro.json`
+  -> prequantized dot **0.03305 ms**, quantize+dot **0.03685 ms**,
+  KL mean **0.00398**, KL max **0.03093**, top-1 **0.9375**.
+- Async smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS=32 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q5t32-smoke.json`
+  -> B2 **68.14 tok/s**, cycle **14.776 ms/output**,
+  `acc/output=0.667`, draft acceptance **1.000**. Rejected vs same-route
+  pack8/q6 smoke around **69.06 tok/s / 14.501 ms/output** with identical
+  acceptance.
+
+Validation:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx'`
+  -> gfx1151 Radeon 8060S visible.
+- `python3 -m py_compile scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py tests/test_gguf_t16_selected_gemv_decode.py`
+  -> pass.
+- `git diff --check`
+  -> pass.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_t16_selected_gemv_decode.py -k q8_1_dp4a`
+  -> **3 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS=32 rocprofv3 --kernel-trace -d /tmp/hipengine-q5t32-rocprof-validation -f csv -- pytest -q tests/test_gguf_t16_selected_gemv_decode.py -k q8_1_dp4a`
+  -> **3 passed**. Trace confirmed Q4 direct dp4a kernels launch with
+  `Workgroup_Size_X=64` and
+  `qk_t16_selected_q8_1_dp4a_direct_gemv_kernel<unsigned short>` launches with
+  `Workgroup_Size_X=32`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat`
+  remains blocked because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+
+Conclusion: keep `HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS` as a
+default-off diagnostic only. Do not promote q5t32 into the active
+`llama-compat` route; the current retained lane remains
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`.

@@ -191,6 +191,7 @@ def main() -> None:
         "HIPENGINE_HIP_ARCH",
         "HIPENGINE_COMPILER_VERSION_FILE",
         "HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS",
+        "HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS",
     ):
         value = os.environ.get(name)
         if value:
@@ -201,6 +202,10 @@ def main() -> None:
         "host": platform.node(),
         "hip_arch": os.environ.get("HIPENGINE_HIP_ARCH"),
         "selected_dp4a_threads": os.environ.get("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS", "64"),
+        "selected_q5_dp4a_threads": os.environ.get(
+            "HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS",
+            os.environ.get("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS", "64"),
+        ),
         "shape": {
             "rows": args.rows,
             "experts": args.experts,

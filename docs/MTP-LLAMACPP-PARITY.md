@@ -69,6 +69,7 @@ Current source artifacts:
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
 | hipEngine llama-compat rejected q5/both X8 selected-down check | `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json` | Diagnostic only: q6-only X8 selected-down is retained for the accuracy-traded compat lane; q5/both smoke regressed vs q6-only, so q5 stays on T16. |
+| hipEngine llama-compat rejected Q5 T16 selected-down one-wave check | `benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-t64-rerun-micro.json`, `benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-q5t32-micro.json`, `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-q5t32-control-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q5t32-smoke.json` | Diagnostic only: llama.cpp MoE MMVQ uses one wave/token, and Q5 selected-down improved in isolation at 32 threads, but the real compat route regressed vs the retained 64-thread/Q6-X8 lane. |
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
 | hipEngine llama-compat rejected Q8T16 pair t64 check | `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json` | Diagnostic only: the actual verifier `attn_qkv+attn_gate` Q8T16 pair shape is faster at the existing 128-thread launch than at 64 threads. |
 | hipEngine llama-compat rejected Q8T16 q8_1/dp4a pair check | `benchmarks/results/2026-07-01-q8-t16-pair-q8-1-dp4a-micro.json` | Diagnostic only: applying llama.cpp-style q8_1/dp4a to the existing T16 tile layout is much slower than the exact pair because T16 stores four-K dot4 bytes strided by output column. |
@@ -261,6 +262,20 @@ microbench dot **0.0518 -> 0.0405 ms** and Q5 selected-down dot
 acceptance (`acc/output` **0.561 -> 0.578**, draft acceptance
 **0.640 -> 0.685**). Default for selected T16 dp4a is now 64 threads; set
 `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=128` only for rollback diagnostics.
+
+The Q5 selected-down one-wave scheduler copy is rejected. A q5-only override
+(`HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS=32`) keeps Q4 gate/up at the
+retained 64-thread launch while testing Q5 selected-down with one wave/token,
+closer to llama.cpp's MoE MMVQ shape. The isolated Q5 microbench improved:
+prequantized dot **0.03608 -> 0.03305 ms**, quantize+dot
+**0.04031 -> 0.03685 ms**, with KL mean **0.00398**, KL max **0.03093**, and
+top-1 **0.9375** vs the T16 float path. A Q4 control confirmed Q4 still used
+64 threads (`t16_dp4a_dot_prequantized` **0.04007 ms**). The async compat smoke
+still regressed the retained route: q5t32 **68.14 tok/s / 14.776 ms/output**
+vs current pack8/q6 smoke around **69.06 tok/s / 14.501 ms/output**, with the
+same smoke acceptance (`acc/output=0.667`, draft acceptance `1.000`). Keep the
+override as a diagnostic only; the active compat lane stays on 64-thread Q5 T16
+plus q6-only X8 selected-down.
 
 The q8_1/dp4a Q6_K draft top-1 lm-head is the first draft-side approximation
 that survived full-suite validation. It keeps the exact Q6 top-1/gather path as

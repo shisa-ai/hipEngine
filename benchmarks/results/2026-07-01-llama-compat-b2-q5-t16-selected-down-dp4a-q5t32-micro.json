@@ -1,0 +1,34 @@
+{
+  "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS=32 python3 scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-q5t32-micro.json",
+  "correctness_vs_t16_float": {
+    "kl_max": 0.030930646259469285,
+    "kl_mean": 0.003979930688156821,
+    "max_abs": 3.0,
+    "mean_abs": 0.2793957591056824,
+    "top1": 0.9375
+  },
+  "hip_arch": "gfx1151",
+  "host": "gfx1151",
+  "iters": 120,
+  "schema": "hipengine.gguf_q5_k_t16_selected_down_dp4a_microbench.v1",
+  "selected_dp4a_threads": "64",
+  "selected_q5_dp4a_threads": "32",
+  "shape": {
+    "experts": 256,
+    "in_features": 512,
+    "input_scale": 0.1,
+    "out_features": 2048,
+    "rows": 16
+  },
+  "speedup": {
+    "t16_down_over_dp4a_dot": 1.9065950409293424,
+    "t16_down_over_dp4a_quantize_plus_dot": 1.7101993245148477
+  },
+  "timing_ms": {
+    "q8_1_quantize": 0.002498691901564598,
+    "t16_q5_dp4a_dot_prequantized": 0.03305194938244919,
+    "t16_q5_dp4a_quantize_plus_dot": 0.03684756617682675,
+    "t16_selected_down": 0.06301668278562526
+  },
+  "warmup": 30
+}
