@@ -182,6 +182,7 @@ def _run_child(args: argparse.Namespace) -> int:
             device_chain_enabled=True,
             prewarm_device_chain=True,
             sync_stage_timings=bool(args.sync_stage_timings),
+            gpu_event_stage_timings=bool(args.gpu_event_stage_timings),
             require_cached_build=bool(args.require_cached),
         )
         try:
@@ -289,6 +290,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "selected_silu_down_fused_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"),
         "router_row_parallel": bool(args.router_row_parallel),
         "router_row_parallel_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"),
+        "gpu_event_stage_timings": bool(args.gpu_event_stage_timings),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "host_ms": host_ms,
         "avg_host_ms": sum(host_ms) / len(host_ms) if host_ms else 0.0,
@@ -370,6 +372,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--record-stage-timings")
     if args.sync_stage_timings:
         child_base.append("--sync-stage-timings")
+    if args.gpu_event_stage_timings:
+        child_base.append("--gpu-event-stage-timings")
 
     if not args.skip_warmbuild:
         print("[gguf-mtp-draft-rocprof] warm-build pass (no profiler)...", flush=True)
@@ -420,6 +424,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
         "selected_silu_down_fused": bool(args.selected_silu_down_fused),
         "router_row_parallel": bool(args.router_row_parallel),
+        "gpu_event_stage_timings": bool(args.gpu_event_stage_timings),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "steps": int(args.steps),
         "warmup": int(args.warmup),
@@ -593,6 +598,7 @@ def main() -> int:
     parser.add_argument("--selected-down-x8-repack", choices=("off", "q5", "q6", "both"), default="off")
     parser.add_argument("--record-stage-timings", action="store_true")
     parser.add_argument("--sync-stage-timings", action="store_true")
+    parser.add_argument("--gpu-event-stage-timings", action="store_true")
     parser.add_argument("--require-cached", action="store_true")
     parser.add_argument("--skip-warmbuild", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=Path("/tmp/hipengine-hipcc-version.txt"))
@@ -607,6 +613,8 @@ def main() -> int:
         default=REPO_ROOT / "benchmarks" / "results" / f"{date.today().isoformat()}-gguf-mtp-draft-rocprof.json",
     )
     args = parser.parse_args()
+    if args.gpu_event_stage_timings and not args.record_stage_timings:
+        parser.error("--gpu-event-stage-timings requires --record-stage-timings")
     return _run_child(args) if args.child else _run_parent(args)
 
 

@@ -134418,3 +134418,57 @@ python3 scripts/gguf_ar_mtp_suite.py \
   **13.940 vs llama.cpp HIP traced 14.231 ms/output**; the remaining slower
   child bucket is draft drain (**2.684 vs 2.140 ms/output**), while verifier
   drain and row economy are ahead.
+
+## 2026-07-02 - MTP draft-chain HIP event stage attribution
+
+- Added default-off HIP event timing for the resident device-chain MTP draft
+  path. `--resident-mtp-draft-gpu-event-stage-timings` on
+  `scripts/gguf_mtp_bench.py` and `--gpu-event-stage-timings` on
+  `scripts/gguf_mtp_draft_rocprof.py` require the existing stage-timing mode
+  and add non-sync `draft_gpu_*` buckets for queued draft GPU intervals.
+- Added HIP event wrappers in `hipengine/core/hip.py` and a small event pool in
+  `Qwen35GGUFResidentMTPDraftRunner`; events are pre-reserved for the measured
+  chain and closed on normal resolution or exceptions.
+- Validation:
+
+```bash
+python3 -m py_compile hipengine/core/hip.py hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_mtp_draft_rocprof.py
+git diff --check
+python3 -m json.tool benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-routerrow-sharedgate-gpuevents.json
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --child --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --steps 1 --warmup 0 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings --require-cached \
+  --child-json /tmp/gguf-mtp-draft-child-gpuevent-smoke-rerun.json
+```
+
+- Child smoke passed with draft tokens `[[21, 22]]`; the rerun recorded
+  `draft_gpu_run_lm_head` **3.706 ms**, `draft_gpu_decode_initial`
+  **2.857 ms**, and `draft_gpu_decode_next` **2.944 ms** for the one measured
+  chain.
+- Reran the diagnostic draft-chain rocprof split:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings --require-cached --skip-warmbuild \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-gpuevents \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-routerrow-sharedgate-gpuevents.json
+```
+
+- Diagnostic result: `performance_claim=false`; host **6.896 ms/cycle**,
+  kernel **5.793 ms/cycle**, kernel share **84.0%**, **90.0** kernel
+  calls/cycle. The async host drain is real queued GPU work:
+  `draft_device_chain_drain` **5.505 ms/cycle** and `draft_topk_readback`
+  **6.126 ms/cycle**, while `draft_topk_d2h` is only **0.052 ms/cycle**.
+  Event buckets attribute the residual draft drain mostly to
+  `draft_gpu_run_lm_head` **3.707 ms/cycle**, with secondary QKV/attention and
+  selected-MoE buckets.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` with the new artifact row, the active
+  gap-budget note, the target map, and a GPU-event draft attribution table.
+  No benchmark rollup update: this is diagnostic-only instrumentation, not a
+  retained speed claim.

@@ -120,6 +120,75 @@ def _stage_add(timings: dict[str, float] | None, name: str, ms: float) -> None:
     timings[name] = timings.get(name, 0.0) + float(ms)
 
 
+class _GpuEventStageRecorder:
+    """HIP-event timing for queued draft work without per-stage sync points."""
+
+    def __init__(self, runtime: HipRuntime, *, enabled: bool) -> None:
+        self.runtime = runtime
+        self.enabled = bool(enabled)
+        self._last_event: int | None = None
+        self._intervals: list[tuple[str, int | None, int, int]] = []
+        self._events: list[int] = []
+        self._pool: list[int] = []
+
+    def reserve(self, count: int) -> None:
+        if not self.enabled:
+            return
+        for _ in range(max(0, int(count))):
+            self._pool.append(self._create_event())
+
+    def start(self) -> None:
+        if not self.enabled:
+            return
+        self._last_event = self._new_event()
+        self.runtime.event_record(self._last_event, 0)
+
+    def mark(self, name: str, *, depth: int | None = None) -> None:
+        if not self.enabled:
+            return
+        if self._last_event is None:
+            self.start()
+        assert self._last_event is not None
+        event = self._new_event()
+        self.runtime.event_record(event, 0)
+        self._intervals.append((str(name), None if depth is None else int(depth), self._last_event, event))
+        self._last_event = event
+
+    def resolve_into(self, timings: dict[str, float] | None) -> None:
+        if not self.enabled:
+            return
+        try:
+            for name, depth, start, stop in self._intervals:
+                self.runtime.event_synchronize(stop)
+                ms = self.runtime.event_elapsed_time_ms(start, stop)
+                _stage_add(timings, name, ms)
+                if depth is not None:
+                    _stage_add(timings, f"{name}_d{depth}", ms)
+                    _stage_add(timings, f"draft_gpu_depth{depth}_forward", ms)
+                    if int(depth) == 0:
+                        _stage_add(timings, "draft_gpu_decode_initial", ms)
+                    else:
+                        _stage_add(timings, "draft_gpu_decode_next", ms)
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        while self._pool:
+            self.runtime.event_destroy(self._pool.pop())
+        while self._events:
+            self.runtime.event_destroy(self._events.pop())
+        self._last_event = None
+        self._intervals.clear()
+
+    def _new_event(self) -> int:
+        event = self._pool.pop() if self._pool else self._create_event()
+        self._events.append(event)
+        return event
+
+    def _create_event(self) -> int:
+        return self.runtime.event_create()
+
+
 def _margins_from_scores(scores: list[float]) -> list[float]:
     if not scores:
         return []
@@ -284,6 +353,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
     device_chain_enabled: bool | None = None
     prewarm_device_chain: bool = False
     sync_stage_timings: bool = False
+    gpu_event_stage_timings: bool = False
     compiler_version: str | None = None
     require_cached_build: bool = False
     num_heads: int = 16
@@ -821,20 +891,31 @@ class Qwen35GGUFResidentMTPDraftRunner:
             and int(draft_n_max) <= self._draft_chain_cap
             and int(top_k) <= self.experts_used
         ):
-            return self._propose_chain_device(
-                current_seed=self.seed_a,
-                next_seed=self.seed_b,
-                start_token=int(start_token),
-                start_position=int(start_position),
-                draft_n_max=int(draft_n_max),
-                top_k=int(top_k),
-                rope_cos=rope_cos,
-                rope_sin=rope_sin,
-                dense_key_cache=dense_key_cache,
-                dense_value_cache=dense_value_cache,
-                dense_cache_len=int(dense_cache_len),
-                stage_timings=stage_timings,
+            gpu_events = (
+                _GpuEventStageRecorder(self.runtime or get_hip_runtime(), enabled=True)
+                if bool(self.gpu_event_stage_timings) and stage_timings is not None
+                else None
             )
+            try:
+                return self._propose_chain_device(
+                    current_seed=self.seed_a,
+                    next_seed=self.seed_b,
+                    start_token=int(start_token),
+                    start_position=int(start_position),
+                    draft_n_max=int(draft_n_max),
+                    top_k=int(top_k),
+                    rope_cos=rope_cos,
+                    rope_sin=rope_sin,
+                    dense_key_cache=dense_key_cache,
+                    dense_value_cache=dense_value_cache,
+                    dense_cache_len=int(dense_cache_len),
+                    stage_timings=stage_timings,
+                    gpu_events=gpu_events,
+                )
+            except BaseException:
+                if gpu_events is not None:
+                    gpu_events.close()
+                raise
         current_seed = self.seed_a
         next_seed = self.seed_b
         current_token = int(start_token)
@@ -1264,6 +1345,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
         stage_timings: dict[str, float] | None = None,
+        gpu_events: _GpuEventStageRecorder | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         """Device-chained NextN draft: one drain + one D->H for the whole chain.
 
@@ -1310,6 +1392,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
             _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - t_prepare0) * 1000)
         current_cache_len = int(dense_cache_len)
         q6_top1_gather_enabled = bool(getattr(self, "_q6_top1_gather_enabled", False))
+        if gpu_events is not None:
+            gpu_events.reserve(n * 9 + 1)
+            gpu_events.start()
         for depth in range(n):
             t_forward0 = time.perf_counter() if stage_timings is not None else 0.0
             self._run_one(
@@ -1324,6 +1409,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_cache_len=current_cache_len,
                 rotary_dim=rotary_dim,
                 stage_timings=stage_timings,
+                gpu_events=gpu_events,
+                gpu_event_depth=depth,
                 top1_out_ptr=(self.topk_all.ptr + depth * top_k * 4) if (top_k == 1 and q6_top1_gather_enabled) else None,
                 top1_next_embed_ptr=(
                     self.token_embed.ptr
@@ -1355,6 +1442,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         library=self._gather_lib,
                         runtime=runtime,
                     )
+            if gpu_events is not None:
+                gpu_events.mark("draft_gpu_device_topk_gather", depth=depth)
             if bool(getattr(self, "sync_stage_timings", False)) and stage_timings is not None:
                 runtime.device_synchronize()
             if stage_timings is not None:
@@ -1366,6 +1455,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         runtime.device_synchronize()
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_device_chain_drain", (time.perf_counter() - t_drain0) * 1000)
+        if gpu_events is not None:
+            gpu_events.resolve_into(stage_timings)
         topk_host = np.empty((n, int(top_k)), dtype=np.int32)
         t_d2h0 = time.perf_counter() if stage_timings is not None else 0.0
         copy_device_to_host(
@@ -1578,6 +1669,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int,
         rotary_dim: int,
         stage_timings: dict[str, float] | None = None,
+        gpu_events: _GpuEventStageRecorder | None = None,
+        gpu_event_depth: int | None = None,
         top1_out_ptr: int | None = None,
         top1_next_embed_ptr: int | None = None,
     ) -> None:
@@ -1611,6 +1704,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         t_project0 = time.perf_counter() if sync_stages else 0.0
         self._project_current_to_attn_normed(hidden_seed, stage_marker=mark_substage if sync_stages else None)
         add_aggregate_stage("draft_run_project", t_project0)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_project", depth=gpu_event_depth)
         t_qkv0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_qkv0 if sync_stages else t_stage
         qkv_dp4a = self._try_dense_q8_dp4a_triple_f32(
@@ -1688,6 +1783,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             cache_tokens = 1
         t_stage = mark_stage("draft_run_qkv_v_kvwrite", t_stage)
         add_aggregate_stage("draft_run_qkv_kvwrite", t_qkv0)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_qkv_kvwrite", depth=gpu_event_depth)
         t_attention0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_attention0 if sync_stages else t_stage
         mtp_dense_attn_f32(
@@ -1721,6 +1818,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         mtp_add_f32(self.projected.ptr, self.wo_out.ptr, self.attended.ptr, h, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_attention_out", t_stage)
         add_aggregate_stage("draft_run_attention", t_attention0)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_attention", depth=gpu_event_depth)
 
         t_ffn0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_ffn0 if sync_stages else t_stage
@@ -1766,6 +1865,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         f32_to_bf16(self.post_norm.ptr, self.post_norm_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_post_norm_cast_bf16", t_stage)
         add_aggregate_stage("draft_run_ffn_router_select", t_ffn0)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_ffn_router_select", depth=gpu_event_depth)
         gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
             self.post_norm_bf16.ptr,
             self.selected.ptr,
@@ -1782,6 +1883,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             runtime=runtime,
         )
         t_stage = mark_stage("draft_run_ffn_selected_gate_up", t_stage)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_ffn_selected_gate_up", depth=gpu_event_depth)
         shared_gate_up_dp4a = self._try_dense_q8_dp4a_dual_f32(
             self.post_norm.ptr,
             self.shared_gate.ptr,
@@ -1849,6 +1952,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             )
         t_stage = mark_stage("draft_run_ffn_shared_gate_linear", t_stage)
         add_aggregate_stage("draft_run_ffn_up_shared", t_ffn0)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_ffn_up_shared", depth=gpu_event_depth)
 
         t_moe_down0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_moe_down0 if sync_stages else t_stage
@@ -1942,6 +2047,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, library=self._mtp_lib, runtime=runtime)
 
         add_aggregate_stage("draft_run_moe_down_combine", t_moe_down0)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_moe_down_combine", depth=gpu_event_depth)
         t_stage = time.perf_counter() if sync_stages else t_stage
         t_lm_head0 = time.perf_counter() if sync_stages else 0.0
         mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
@@ -2305,6 +2412,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             t_stage = mark_stage("draft_run_lm_head_q6_full_logits", t_stage)
         if sync_stages:
             _stage_add(stage_timings, "draft_run_lm_head", (time.perf_counter() - t_lm_head0) * 1000)
+        if gpu_events is not None:
+            gpu_events.mark("draft_gpu_run_lm_head", depth=gpu_event_depth)
 
     def _topk_indices_into(self, out_indices_ptr: int, top_k: int) -> None:
         """Write the top-``top_k`` logit indices to a device buffer (no sync)."""

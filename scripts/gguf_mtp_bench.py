@@ -1211,6 +1211,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-gpu-event-stage-timings",
+        action="store_true",
+        help=(
+            "Diagnostic only: with resident device-chain drafting and --record-cycle-stage-timings, "
+            "add HIP event elapsed-time buckets for queued draft GPU sub-stages without inserting "
+            "per-stage device synchronizes."
+        ),
+    )
+    parser.add_argument(
         "--root-topk-accept",
         type=int,
         default=DEFAULT_ROOT_TOPK_ACCEPT,
@@ -1527,6 +1536,12 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-draft-sync-stage-timings requires --resident-mtp-draft")
     if args.resident_mtp_draft_sync_stage_timings and not args.record_cycle_stage_timings:
         parser.error("--resident-mtp-draft-sync-stage-timings requires --record-cycle-stage-timings")
+    if args.resident_mtp_draft_gpu_event_stage_timings and not args.resident_mtp_draft:
+        parser.error("--resident-mtp-draft-gpu-event-stage-timings requires --resident-mtp-draft")
+    if args.resident_mtp_draft_gpu_event_stage_timings and not args.resident_mtp_device_chain:
+        parser.error("--resident-mtp-draft-gpu-event-stage-timings requires --resident-mtp-device-chain")
+    if args.resident_mtp_draft_gpu_event_stage_timings and not args.record_cycle_stage_timings:
+        parser.error("--resident-mtp-draft-gpu-event-stage-timings requires --record-cycle-stage-timings")
     if args.target_block_sync_stage_timings and not args.target_block_verify:
         parser.error("--target-block-sync-stage-timings requires --target-block-verify")
     if args.target_block_sync_stage_timings and not args.record_cycle_stage_timings:
@@ -1704,6 +1719,7 @@ def main(argv: list[str] | None = None):
                     device_chain_enabled=True if args.resident_mtp_device_chain else None,
                     prewarm_device_chain=bool(args.resident_mtp_device_chain),
                     sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
+                    gpu_event_stage_timings=bool(args.resident_mtp_draft_gpu_event_stage_timings),
                 )
                 resident_mtp_device_chain_effective = bool(resident_draft._device_chain_enabled)
                 if (
@@ -1719,6 +1735,7 @@ def main(argv: list[str] | None = None):
                         device_chain_enabled=True if args.resident_mtp_device_chain else None,
                         prewarm_device_chain=bool(args.resident_mtp_device_chain),
                         sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
+                        gpu_event_stage_timings=bool(args.resident_mtp_draft_gpu_event_stage_timings),
                     )
                     resident_mtp_draft_full_vocab_recovery_effective = True
                 resident_mtp_draft_effective = True
@@ -3158,6 +3175,9 @@ def main(argv: list[str] | None = None):
                 "resident_mtp_device_chain": bool(args.resident_mtp_device_chain),
                 "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),
                 "resident_mtp_draft_sync_stage_timings": bool(args.resident_mtp_draft_sync_stage_timings),
+                "resident_mtp_draft_gpu_event_stage_timings": bool(
+                    args.resident_mtp_draft_gpu_event_stage_timings
+                ),
                 "mtp_device_kv_rows_after": int(mtp_device_kv_len),
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
@@ -3345,6 +3365,9 @@ def main(argv: list[str] | None = None):
             "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
             "resident_mtp_device_chain": bool(args.resident_mtp_device_chain),
             "resident_mtp_draft_sync_stage_timings": bool(args.resident_mtp_draft_sync_stage_timings),
+            "resident_mtp_draft_gpu_event_stage_timings": bool(
+                args.resident_mtp_draft_gpu_event_stage_timings
+            ),
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_draft_topk_scores": bool(args.record_draft_topk_scores),
             "record_draft_hidden_stats": bool(args.record_draft_hidden_stats),
