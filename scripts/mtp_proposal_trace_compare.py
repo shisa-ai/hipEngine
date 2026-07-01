@@ -151,7 +151,7 @@ def compare_rows(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow], *, 
             }
 
     return {
-        "schema": "hipengine.mtp_proposal_trace_compare.v1",
+        "schema": "hipengine.mtp_proposal_trace_compare.v2",
         "compared_rows": n,
         "hipengine_rows": len(hip_rows),
         "llamacpp_rows": len(llama_rows),
@@ -165,7 +165,48 @@ def compare_rows(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow], *, 
         "accepted_count_match_rate": (accepted_count_match / n) if n else None,
         "hipengine_totals": _totals(hip_rows[:n]),
         "llamacpp_totals": _totals(llama_rows[:n]),
+        "output_stream": _stream_compare(hip_rows[:n], llama_rows[:n]),
         "first_divergence": first_divergence,
+    }
+
+
+def _stream_compare(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow]) -> dict[str, Any]:
+    hip = _flatten_outputs(hip_rows)
+    llama = _flatten_outputs(llama_rows)
+    prefix = _common_prefix_len(hip, llama)
+    return {
+        "hipengine_tokens": len(hip),
+        "llamacpp_tokens": len(llama),
+        "common_prefix_tokens": prefix,
+        "exact_match": hip == llama,
+        "common_prefix_rate_vs_hip": (prefix / len(hip)) if hip else None,
+        "common_prefix_rate_vs_llamacpp": (prefix / len(llama)) if llama else None,
+        "first_token_divergence": _first_token_divergence(hip, llama, prefix),
+    }
+
+
+def _flatten_outputs(rows: list[ProposalRow]) -> list[int]:
+    tokens: list[int] = []
+    for row in rows:
+        tokens.extend(row.output_token_ids)
+    return tokens
+
+
+def _common_prefix_len(left: list[int], right: list[int]) -> int:
+    limit = min(len(left), len(right))
+    for index in range(limit):
+        if left[index] != right[index]:
+            return index
+    return limit
+
+
+def _first_token_divergence(left: list[int], right: list[int], prefix: int) -> dict[str, Any] | None:
+    if prefix >= len(left) and prefix >= len(right):
+        return None
+    return {
+        "token_index": prefix,
+        "hipengine_token": left[prefix] if prefix < len(left) else None,
+        "llamacpp_token": right[prefix] if prefix < len(right) else None,
     }
 
 

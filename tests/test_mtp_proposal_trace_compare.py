@@ -74,9 +74,82 @@ def test_compare_proposal_traces_reports_first_divergence(tmp_path: Path) -> Non
     assert summary["accepted_count_match_rows"] == 1
     assert summary["hipengine_totals"]["accepted_per_output"] == 2 / 4
     assert summary["llamacpp_totals"]["accepted_per_output"] == 3 / 5
+    assert summary["output_stream"]["common_prefix_tokens"] == 3
+    assert summary["output_stream"]["exact_match"] is False
+    assert summary["output_stream"]["first_token_divergence"] == {
+        "token_index": 3,
+        "hipengine_token": 99,
+        "llamacpp_token": 20,
+    }
     assert summary["first_divergence"]["pair_index"] == 1
     assert summary["first_divergence"]["hipengine"]["rejected_draft_token_id"] == 20
     assert summary["first_divergence"]["llamacpp"]["rejected_draft_token_id"] == 42
+
+
+def test_compare_proposal_traces_separates_chunking_from_stream_match() -> None:
+    hip_rows = [
+        compare.ProposalRow(
+            source="hipengine",
+            index=0,
+            cycle=0,
+            generated_draft_tokens=2,
+            accepted_draft_tokens=2,
+            visible_output_tokens=3,
+            draft_token_ids=[1, 2],
+            accepted_token_ids=[1, 2],
+            output_token_ids=[1, 2, 3],
+            bonus_token_id=3,
+            rejected_draft_token_id=None,
+        ),
+        compare.ProposalRow(
+            source="hipengine",
+            index=1,
+            cycle=1,
+            generated_draft_tokens=1,
+            accepted_draft_tokens=0,
+            visible_output_tokens=1,
+            draft_token_ids=[9],
+            accepted_token_ids=[],
+            output_token_ids=[4],
+            bonus_token_id=4,
+            rejected_draft_token_id=9,
+        ),
+    ]
+    llama_rows = [
+        compare.ProposalRow(
+            source="llamacpp",
+            index=0,
+            cycle=0,
+            generated_draft_tokens=1,
+            accepted_draft_tokens=0,
+            visible_output_tokens=1,
+            draft_token_ids=[8],
+            accepted_token_ids=[],
+            output_token_ids=[1],
+            bonus_token_id=1,
+            rejected_draft_token_id=8,
+        ),
+        compare.ProposalRow(
+            source="llamacpp",
+            index=1,
+            cycle=1,
+            generated_draft_tokens=2,
+            accepted_draft_tokens=2,
+            visible_output_tokens=3,
+            draft_token_ids=[2, 3],
+            accepted_token_ids=[2, 3],
+            output_token_ids=[2, 3, 4],
+            bonus_token_id=4,
+            rejected_draft_token_id=None,
+        ),
+    ]
+
+    summary = compare.compare_rows(hip_rows, llama_rows)
+
+    assert summary["exact_output_rows"] == 0
+    assert summary["output_stream"]["exact_match"] is True
+    assert summary["output_stream"]["common_prefix_tokens"] == 4
+    assert summary["output_stream"]["first_token_divergence"] is None
 
 
 def test_load_llamacpp_rows_from_wrapper_artifact(tmp_path: Path) -> None:

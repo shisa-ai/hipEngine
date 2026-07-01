@@ -133447,3 +133447,87 @@ PYTHONPATH=. python3 -m pytest tests/test_mtp_proposal_trace_compare.py -q
 ```
 
 Result: passed (`2 passed`).
+
+## 2026-07-02 — same-prompt MTP proposal trace comparison
+
+Ran the first same-prompt hipEngine active `llama-compat` vs llama.cpp HIP B2
+proposal trace diagnostic. This is retained as a diagnostic artifact only:
+`benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json`
+(`performance_claim=false`).
+
+hipEngine command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 10 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off \
+  --llama-compat --resident-mtp-device-chain --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 \
+  --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 \
+  --resident-mtp-draft-router-row-parallel \
+  --record-cycle-stage-timings \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine.json
+```
+
+llama.cpp command:
+
+```bash
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8024 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 27 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-stage.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/logs
+```
+
+Comparison command:
+
+```bash
+PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py \
+  --hipengine /tmp/hipengine-mtp-proposal-trace/hipengine.json \
+  --llamacpp /tmp/hipengine-mtp-proposal-trace/llamacpp.json \
+  --out /tmp/hipengine-mtp-proposal-trace/compare-v2.json
+```
+
+Result:
+
+- First three measured proposal cycles match exactly across draft IDs, accepted
+  prefix, and output IDs.
+- First cycle-level divergence is pair 3: hipEngine drafts `[65342, 18078]`,
+  accepts both, and emits `[65342, 18078, 28649]`; llama.cpp drafts `[8, 1411]`,
+  accepts zero, and emits `[65342]`.
+- Flattened output streams share a 20-token prefix before diverging at token
+  index 20 (`4071` vs `413`), so the first difference is cycle chunking /
+  draft-context state before text divergence.
+- This points away from prompt formatting and target verifier state: at the
+  first divergence the target next token is still `65342` in both engines.
+  Next implementation target is hipEngine's resident MTP device-KV/context mirror
+  versus llama.cpp's `common_speculative_process()` shifted `ctx_dft` rows and
+  post-accept `common_context_seq_rm()` trimming.
+
+Extended `scripts/mtp_proposal_trace_compare.py` to schema v2 with flattened
+output-stream comparison, so row chunking can be separated from true output text
+divergence.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/mtp_proposal_trace_compare.py tests/test_mtp_proposal_trace_compare.py
+
+PYTHONPATH=. python3 -m pytest tests/test_mtp_proposal_trace_compare.py -q
+```
+
+Result: passed (`3 passed`).

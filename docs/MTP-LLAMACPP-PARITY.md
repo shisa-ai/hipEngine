@@ -125,7 +125,7 @@ stage budget instead of burying it in prose.
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Total MTP wall | 16.496 ms/output | **15.547 ms/output** | 14.231 ms/output | **+1.316 ms/output** | Spend this row down before claiming parity movement. |
-| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Q6_K top-1 body/layout or fused top-1/sampler work that moves async `draft_initial`. |
+| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | First check draft-context mirror/KV row contents and proposal chunking; Q6_K body is now per-call parity. |
 | Draft visible sampler/GPU drain | 1.151 ms/output | **2.874 ms/output** | 1.886 ms/output | **+0.988 ms/output** | Compare through draft drain; bucket names differ across engines. |
 | Draft transformer body | 0.130 ms/output | **0.111 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
 | Serial verifier probe | 6.665 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
@@ -186,6 +186,7 @@ Current source artifacts:
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. This remains a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | llama.cpp HIP MTP whole-run rocprof proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json` | Diagnostic-only `llama-server` MTP request under `rocprofv3 --kernel-trace`, with `LLAMA_MTP_STAGE_TIMINGS` enabled. It produces the first llama.cpp MTP kernel-family bucket split in this tracker, but it is whole-process and required `SIGKILL` after profiler finalize timeout, so use it only as a source/kernel proxy. |
 | llama.cpp HIP MTP ROCTX range proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json` | Diagnostic-only rerun after llama.cpp commit `dd7ec418c` added `LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers. The artifact includes `range_name_summaries` for stage-window kernel buckets, but it is still whole-process and includes warmup/prompt/server ranges, so do not use it as a headline timing row. |
+| hipEngine vs llama.cpp proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json` | Diagnostic-only same-prompt token trace using hipEngine active `llama-compat` and llama.cpp HIP B2 with `LLAMA_MTP_TOKEN_TRACE=1`; `performance_claim=false`. It proves prompt and target state align for the first three measured cycles, then draft proposals diverge before any rejection. Use it to target draft-context mirror/KV row contents and row chunking. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
@@ -214,6 +215,52 @@ Current source artifacts:
 | hipEngine llama-compat rejected raw-Q8 dp4a rowtile-pair sidecar | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8-rowtilepair-full.json` | Diagnostic only: the fused raw-Q8 sidecar pair launch improves smoke verifier sub-buckets but full-suite B2 regresses **60.36 -> 59.42 tok/s** with lower acceptance and more target rows/output. This pair-only variant is rejected; the later `denseq8all` route supersedes it as the retained dense-Q8 llama-replication lane. |
 | hipEngine llama-compat retained raw-Q8 dp4a all-sidecar + Q8 shared dual | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-full.json`, `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Superseded active lane: raw Q8_0 x q8_1 rowtile coverage for pair, singleton, and Q/K/V triple verifier projections cuts the isolated dense-Q8 bucket **11.420 -> 8.902 ms/block**. Default-on resident Q8 shared gate/up dual GEMV cuts the draft shared projection call count and moved the retained full-suite lane to **61.19 tok/s**, total wall **16.364 ms/output**, verifier drain **12.666 ms/output**, with unchanged acceptance **0.567** and target rows/output **1.299**. The X8 top-1 and F32 `ssm_out` rows supersede it. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
+
+#### Latest proposal trace finding
+
+Artifact:
+`benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json`.
+This is a one-prompt diagnostic, not a retained performance claim. The prompt
+matches the first code-suite prompt and both engines use B2/no-probe,
+reasoning-off, top-1, and the same GGUF model on gfx1151.
+
+| comparison | hipEngine active `llama-compat` | llama.cpp HIP B2 | reading |
+| --- | ---: | ---: | --- |
+| cycle rows compared | 10 | 10 | Same measured prompt after llama.cpp warmup exclusion. |
+| exact draft rows | 3 / 10 | 3 / 10 | First three proposal cycles match exactly. |
+| exact output rows | 3 / 10 | 3 / 10 | First chunking divergence is cycle-pair 3. |
+| accepted-count match rows | 6 / 10 | 6 / 10 | Later rows sometimes match counts but not proposal tokens. |
+| visible output tokens | 27 | 26 | hipEngine emits one more token in this short diagnostic. |
+| accepted / output | 0.630 | 0.615 | This prompt is not the full-suite row-economy deficit; do not generalize it. |
+| draft acceptance | 0.850 | 0.842 | Same caution: one prompt only. |
+| flattened output stream prefix | 20 tokens | 20 tokens | Text remains aligned beyond the first cycle chunking mismatch. |
+| first stream token divergence | token index 20 = `4071` | token index 20 = `413` | Stream divergence occurs after the chunking divergence. |
+
+First cycle-level divergence:
+
+| field | hipEngine | llama.cpp |
+| --- | --- | --- |
+| pair / cycle | pair 3 / cycle 3 | pair 3 / traced cycle 9 |
+| draft tokens | `[65342, 18078]` | `[8, 1411]` |
+| accepted draft tokens | 2 | 0 |
+| output tokens | `[65342, 18078, 28649]` | `[65342]` |
+
+Interpretation: this is not prompt formatting and not an initial target-state
+bug. The first three measured cycles have identical drafts, accepted prefixes,
+and outputs. At the divergence, the target next token is still `65342` in both
+engines, but llama.cpp's MTP draft context proposes `[8, 1411]` while hipEngine
+proposes `[65342, 18078]`. That points at draft-context mirror state or K/V row
+contents after the shifted target-batch process, not at target verification.
+
+Next source-level target: compare hipEngine's resident MTP device-KV update
+against llama.cpp's `common_speculative_process()` path. llama.cpp decodes the
+whole target verify batch through `ctx_dft` with shifted target embeddings, then
+after accept keeps rows up to `slot.prompt.tokens.pos_next()` and updates
+`pending_h` from `verify_h[min(n_accepted, n_rows - 1)]`. hipEngine currently
+keeps the cycle-start row from draft probing, trims speculative rows to
+`cycle_base + 1`, and manually writes accepted draft K/V rows from verifier
+hidden rows. The measured draft-token drift says those rows are not yet a
+proven byte/semantic match to llama.cpp's mirrored `ctx_dft` rows.
 
 #### Latest route decision
 
@@ -417,7 +464,7 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+1.316 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle | llama B2 no-probe draft proposal and accept accounting | **-0.193 outputs/cycle**, +0.118 target rows/output | ROCTX range buckets show the Q6_K lm-head dispatch is already per-call parity, while cycle wall is nearly parity. The main remaining gap is llama.cpp amortizing similar cycle work over more accepted tokens: compat discarded rows/output is **0.266** vs llama **0.148**. Next work should compare draft proposal tokens/logits/probs and accept accounting directly against llama.cpp. |
+| 2 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.193 outputs/cycle**, +0.118 target rows/output | ROCTX range buckets show the Q6_K lm-head dispatch is already per-call parity, while cycle wall is nearly parity. The main remaining gap is llama.cpp amortizing similar cycle work over more accepted tokens: compat discarded rows/output is **0.266** vs llama **0.148**. Same-prompt token tracing now shows first-three-cycle parity followed by draft-context drift before any rejection, so the next work is to make hipEngine's resident MTP KV/context mirror match llama.cpp's shifted `ctx_dft` process rows. |
 | 3 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.915 ms/output**, but only **~+0.144 ms/output** is non-amortization at the total-cycle level | Router-row proved one non-Q6 leaf transfers: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle** and full-suite draft drain **3.252 -> 3.055 ms/output**. The X8 Q6_K top-1 dispatch is **1.789 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call**, so do not repeat Q6 body variants blindly. Remaining operation-cost work should target measured non-Q6 leaves: selected gate/up **0.466**, Q/gate QKV **0.392**, attention core **0.371**, selected down **0.353**, and shared-gate scalar linear **0.219 ms/cycle**. |
 | 4 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.083 ms/output** | Direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a moved the parent row **12.662 -> 12.158 ms/output**; router-row leaves it essentially unchanged at **12.166 ms/output**. The verifier parent is now nearly at llama.cpp's traced 12.083 ms/output, so further verifier work should be justified by full-suite movement rather than isolated leaf wins. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
@@ -432,9 +479,9 @@ route shape, or stage labels change.
 | live budget row | llama.cpp HIP source anchor | hipEngine rows that must move |
 | --- | --- | --- |
 | Total MTP wall | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `common_speculative_impl_draft_mtp` (`:841`), stage accounting (`common_speculative_mtp_stage_add`, `:56`), and the B2 process/draft/accept loop (`:1009`-`:1230`). | `cycle_wall_ms_per_output`, retained MTP tok/s, and the standing three-lane snapshot. |
-| Draft drain | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_draft_sample_topk` (`:1140`), `llama_draft_decode_initial` (`:1114`), `llama_draft_decode_next` (`:1191`); `/home/lhl/llama.cpp/llama.cpp-hip/common/sampling.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/src/llama-sampler.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` (`:477`) and Q6_K dispatch (`:1058`). | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, draft all-sync Q6 top-1 stages, and draft-chain rocprof rows. |
+| Draft drain | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_draft_sample_topk`, `llama_draft_decode_initial`, `llama_draft_decode_next`, plus `common_speculative_impl_draft_mtp::process()` for shifted target-batch mirroring; `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`: `server_slot::update_batch()`, `common_speculative_process()`, `common_context_seq_rm()` after accept; `/home/lhl/llama.cpp/llama.cpp-hip/common/sampling.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/src/llama-sampler.cpp`; `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` and Q6_K dispatch. | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, proposal trace stream/chunking, draft all-sync Q6 top-1 stages, and draft-chain rocprof rows. |
 | Target verifier drain | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: `llama_process_build_draft_batch` (`:1047`) and `llama_process_decode_ctx_dft` (`:1051`); `/home/lhl/llama.cpp/llama.cpp-hip/ggml/src/ggml-cuda/mmvq.cu`: `mul_mat_vec_q` (`:477`), `mul_mat_vec_q_moe` (`:683`), and dispatch switch (`:976`-`:1216`). | `target_block_verify_total`, `target_block_layer_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, and verifier rocprof kernel-family rows. |
-| Verify row economy | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: batch scan/build and accept accounting (`llama_process_scan_batch`, `:1009`; `llama_accept_update_pending_h`, `:1230`). | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, and the row-economy histograms. |
+| Verify row economy | `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp`: batch scan/build, `verify_h` capture, `pending_h` update, and accept accounting (`llama_process_scan_batch`, `llama_process_build_draft_batch`, `llama_accept_update_pending_h`); `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`: accepted-token insertion and post-accept context trim. | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, proposal trace chunking, and the row-economy histograms. |
 
 Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8,
 raw-Q8 dp4a all-sidecar, X8 draft lm-head top-1, and F32 `ssm_out` raw-Q8 dp4a uses
