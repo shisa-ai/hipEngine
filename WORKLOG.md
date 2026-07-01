@@ -130235,3 +130235,13 @@ The main value is attribution: the previous `norm_qkv_gate` target is now known 
 be mostly the Q8T16 `attn_qkv+attn_gate` pair projection, not RMSNorm or fallback
 dispatch. Next optimization target remains target B2 layer compute, specifically
 that Q8T16 pair projection and selected-MoE gate/up/down, plus draft lm-head.
+
+Updated the active tracking dashboard in `docs/MTP-LLAMACPP-PARITY.md` so the top
+of the doc now keeps a canonical three-way comparison table for hipEngine default
+exact B5, hipEngine `llama-compat-device-chain-dp4a` B2, and llama.cpp HIP B2.
+The dashboard names the current source artifacts, separates headline tok/s from
+the traced stage ledger, and keeps the current compat gap explicit:
+**+3.826 ms/output** total, split into **+1.573 ms/output** draft and
+**+1.942 ms/output** target-block verifier. No new benchmark was run; this is a
+docs-only tracking update using the existing paircache and llama.cpp deep-trace
+artifacts.

@@ -17,35 +17,56 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 
 ### ACTIVE TRACKING — default vs llama-compat vs llama.cpp HIP
 
-This table is the live dashboard for the current parity sprint. The headline
-speed row uses retained full-suite numbers where available; the stage rows use
-instrumented/deep traces on the same model and gfx1151 host. `llama-compat` is
-the route we expect to mirror llama.cpp's no-probe B2 structure, so its deltas
-are the next optimization targets.
+This is the canonical dashboard for the current parity sprint. Update it after
+each retained or diagnostic MTP run that changes the default, `llama-compat`, or
+llama.cpp reference row. The headline speed row uses retained full-suite numbers
+where available; the stage rows use instrumented/deep traces on the same model
+and gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
+no-probe B2 structure, so its delta column is the active work queue.
 
-| row | hipEngine default exact | hipEngine `llama-compat-device-chain-dp4a` | llama.cpp HIP B2 | active reading |
-| --- | ---: | ---: | ---: | --- |
-| AR tok/s | 54.95 | 54.75 | 51.38 suite / 52.13 traced | hipEngine AR is not the blocker. |
-| MTP tok/s | 60.8 retained | **55.45** current full | 67.3 suite / 72.12 traced | compat still trails llama by ~11.9 tok/s vs suite. |
-| uplift over own AR | 1.114x | **1.013x** | ~1.31x suite / 1.383x traced | compat structure is right, operation cost is too high. |
-| cycle wall / output | 16.800 ms deep | **18.057 ms** current full | 14.231 ms traced | compat needs **3.826 ms/output**. |
-| accepted / output | 0.535 | **0.561** | 0.610 traced | acceptance is close enough to focus on cost. |
-| draft acceptance | 0.723 | **0.640** | 0.805 | llama still drafts cleaner, but cost dominates current gap. |
-| target passes / output | 0.567 | **0.439** | 0.390 | compat removed the B1 probe and now mirrors llama's pass economy. |
-| target rows / output | 1.163 | **1.316** | 1.148 | compat evaluates more rows/output than llama; acceptance/policy still matters. |
+Current source artifacts:
 
-Stage gap to llama.cpp HIP traced row:
+| lane | route / artifact | why it is in the table |
+| --- | --- | --- |
+| hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
+| hipEngine llama-compat | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, and pair-dispatch cleanup. |
+| llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
-| bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 | compat delta | next action |
+#### Headline speed gap
+
+| metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a` B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `cycle_wall_ms_per_output` | 16.800 | **18.057** | 14.231 | **+3.826** | Total remaining compat gap. |
-| `draft_initial` | 1.937 | **3.713** | 2.140 | **+1.573** | Cut resident draft lm-head/top-k drain. |
-| `target_serial_verify_step` | 6.682 | **0.000** | 0.000 | 0.000 | Default-only B1 probe; compat has removed it. |
-| `target_block_verify_total` | 8.157 | **14.025** | 12.083 | **+1.942** | Cut B2 target block layer work. |
-| `target_block_layer_total` | 7.022 | **12.463** | n/a | n/a | Main hipEngine verifier cost center. |
-| `target_block_linear_attn_layers` | 5.195 | **9.161** | n/a | n/a | Largest verifier layer family. |
-| `target_block_full_attn_layers` | 1.827 | **3.302** | n/a | n/a | Secondary verifier layer family. |
-| `target_block_lm_head_sample` | 0.573 | **1.198** | n/a | n/a | Not the largest gap, but visible. |
+| AR tok/s | 54.95 retained / 54.56 traced | 54.75 | 51.38 suite / 52.13 traced | hipEngine faster | AR is not the blocker. |
+| MTP tok/s | 60.8 retained / 59.61 traced | **55.45** | 67.3 suite / 72.12 traced | **-11.85 tok/s suite / -16.67 tok/s traced** | Compat still has the right shape but not llama's operation cost. |
+| uplift over own AR | 1.114x retained / 1.093x traced | **1.013x** | ~1.31x suite / 1.383x traced | **-0.30x to -0.37x** | The gap is MTP economics, not base decode. |
+| cycle wall / output | 16.800 ms traced | **18.057 ms** | 14.231 ms traced | **+3.826 ms/output** | This is the current compat wall-clock gap to shave. |
+| accepted / output | 0.535 | **0.561** | 0.610 traced | -0.049 | Acceptance is close enough that cost is the first target. |
+| draft acceptance | 0.723 | **0.640** | 0.805 | -0.165 | Llama still drafts cleaner; revisit policy after cost work. |
+| target passes / output | 0.567 | **0.439** | 0.390 | +0.049 | Compat removed the B1 probe and mostly matches llama's pass economy. |
+| target rows / output | 1.163 | **1.316** | 1.148 | +0.168 | Compat evaluates more rows/output; acceptance/policy still matters. |
+
+#### Stage gap ledger
+
+| bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | current interpretation / next target |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `cycle_wall_ms_per_output` | 16.800 | **18.057** | 14.231 | **+3.826** | Total remaining traced compat gap. |
+| `draft_initial` | 1.937 | **3.713** | 2.140 | **+1.573** | Draft-side gap; current named target is MTP lm-head/top-k drain. |
+| `draft_mtp_layer_forward` | 0.133 | **0.110** | 0.252 decode subtotal | compat faster | Draft transformer work is not the problem. |
+| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.158 | **3.524** | 1.886 | **+1.638** | Names differ, but this is the visible draft GPU-drain/sampler gap. |
+| `target_serial_verify_step` | 6.682 | **0.000** | 0.000 | 0.000 | Default-only B1 probe; compat removed it. |
+| `target_block_verify_total` | 8.157 | **14.025** | 12.083 | **+1.942** | Main verifier gap; cut B2 target layer work. |
+| `target_block_layer_total` | 7.022 | **12.463** | n/a | n/a | HipEngine verifier cost center; compare through total verifier drain. |
+| `target_block_linear_attn_layers` | 5.195 | **9.161** | n/a | n/a | Largest hipEngine verifier layer family. |
+| `target_block_full_attn_layers` | 1.827 | **3.302** | n/a | n/a | Secondary hipEngine verifier layer family. |
+| `target_block_lm_head_sample` | 0.573 | **1.198** | n/a | n/a | Visible verifier-side target after layer GEMVs. |
+| `mtp_device_kv_commit` | n/a | **0.295** | n/a | n/a | Compat-only bookkeeping; too small to explain the gap. |
+| `target_block_setup` + snapshot/commit/accounting | 0.406 | **0.092** | 0.188 comparable visible overhead | not the gap | Host bookkeeping is not the current limiter. |
+| llama `mtp_context_replay_append` | n/a | 0.009 | **11.348** | n/a | In llama, verifier GPU drain lands here; do not compare raw `target_block_forward`. |
+
+Rule for this table: if a bucket has no true llama.cpp analog, leave the llama
+cell as `n/a` and compare it only through `target_block_verify_total` or
+`cycle_wall_ms_per_output`. Raw `target_block_forward` is async-misaligned across
+engines and is not a valid parity target by itself.
 
 Latest verifier split attribution after pair-dispatch cache
 (`llama-compat-device-chain-dp4a-allsync`, full-suite diagnostic only):
