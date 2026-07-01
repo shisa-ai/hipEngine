@@ -205,6 +205,10 @@ Artifacts:
 - hipEngine llama-compat dp4a all-sync fine-grained verifier attribution after
   verifier direct-state cleanup:
   `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-smoke.json`
+  and full-suite attribution
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-full.json`
+- hipEngine llama-compat row-compact selected-MoE GEMV rejected smoke:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-rowcompact-allsync-smoke.json`
 - hipEngine fused-B1 block probe B5:
   `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
   and non-stage check
@@ -557,40 +561,53 @@ Stage deltas vs the Q6 top-1/gather row:
 | `target_block_snapshot` | 0.090 | **0.000** | **-0.090 ms** |
 | `target_block_replay_or_commit` | 0.051 | **0.042** | -0.009 ms |
 
-Final all-sync smoke attribution after this cleanup, diagnostic-only:
+Final all-sync full-suite attribution after this cleanup, diagnostic-only.  The
+retained performance row remains the async full-suite `55.41 tok/s` result above;
+this run intentionally synchronizes inside draft and verifier buckets, so its
+`44.34 tok/s` throughput is not a performance comparison.
 
 ```bash
 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
-  --scope smoke \
+  --scope full \
   --mtp-route llama-compat-device-chain-dp4a-allsync \
   --record-cycle-stage-timings \
   --require-cached-build \
-  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-smoke.json
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-full.json
 ```
 
-Top synchronized buckets, ms/output:
+Full-suite synchronized buckets, ms/output:
 
 | bucket | ms/output |
 | --- | ---: |
-| `target_block_verify_total` | 15.581 |
-| `target_block_layer_total` | 13.317 |
-| `target_block_linear_attn_layers` | **10.191** |
-| `target_block_full_attn_layers` | 3.126 |
-| `draft_initial` | 2.763 |
-| `target_block_linear_attn_norm_qkv_gate` | **2.429** |
-| `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.563** |
-| `draft_run_lm_head` | 1.472 |
-| `target_block_linear_attn_ffn_moe_expert_down` | **1.241** |
-| `target_block_lm_head_sample` | 0.969 |
-| `target_block_linear_attn_ssm_out` | 0.851 |
-| `target_block_linear_attn_chain_gdn` | 0.790 |
-| `target_block_full_attn_norm_qkv_split` | 0.700 |
-| `target_block_linear_attn_ffn_moe_router` | 0.581 |
+| `target_block_verify_total` | 18.495 |
+| `target_block_layer_total` | 17.083 |
+| `target_block_linear_attn_layers` | **12.961** |
+| `target_block_full_attn_layers` | 4.121 |
+| `draft_initial` | 3.761 |
+| `draft_mtp_layer_forward` | 3.664 |
+| `target_block_linear_attn_norm_qkv_gate` | **3.061** |
+| `target_block_linear_attn_ffn_moe_expert_gate_up` | **2.051** |
+| `draft_run_lm_head` | 1.916 |
+| `target_block_linear_attn_ffn_moe_expert_down` | **1.627** |
+| `target_block_lm_head_sample` | 1.197 |
+| `target_block_linear_attn_ssm_out` | 1.109 |
+| `target_block_linear_attn_chain_gdn` | 0.937 |
+| `target_block_full_attn_norm_qkv_split` | 0.914 |
+| `target_block_linear_attn_ffn_moe_router` | 0.740 |
 
 This is now the clearest operation-level target list: after semantic replication and
 direct-state cleanup, the remaining verifier cost is dominated by target linear
 attention projection (`norm_qkv_gate`) plus selected-MoE expert gate/up/down in the
 linear-attention layers. The remaining draft cost is still mainly the MTP lm-head.
+
+Rejected follow-up: enabling the existing row-compact selected-MoE GEMV route
+(`HIPENGINE_GGUF_ROW_COMPACT_GEMV=1`) made the same all-sync smoke materially
+slower: B2 **36.05 tok/s**, cycle **27.765 ms/output**,
+`target_block_verify_total` **24.277 ms/output**, with the new
+`target_block_linear_attn_ffn_moe_compact_gemv` bucket alone at
+**8.977 ms/output**. This confirms the current selected-MoE split path is faster
+for the compat B2 verifier shape; row-compact GEMV is not the missing llama.cpp
+mechanism.
 
 Updated remaining gap vs llama.cpp HIP B2 deep trace:
 

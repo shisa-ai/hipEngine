@@ -130132,3 +130132,37 @@ Smoke benchmark, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
   draft acceptance 0.800. This is a route smoke, not a retained performance row:
   fused B1 remains below AR/default, but the patched branch-safe direct-commit path
   executes with `target_verify_direct_commit_rows=3` and `target_verify_replay_rows=0`.
+
+## 2026-07-01 — llama-compat full-suite all-sync attribution and row-compact rejection
+
+Ran the current compat B2 dp4a route with full-suite synchronized draft+target
+stage timing. This is diagnostic-only because syncs inside the hot path reduce
+throughput; the retained performance row remains the async full-suite
+`llama-compat-device-chain-dp4a` result at **55.41 tok/s**.
+
+Benchmark, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-skip-snapshot-allsync-full.json`
+  -> AR 54.67 tok/s, B2 44.34 tok/s = 0.811x AR (sync diagnostic),
+  acc/output 0.561, draft acceptance 0.640. Top full-suite synchronized buckets
+  in ms/output: `target_block_verify_total` 18.495,
+  `target_block_layer_total` 17.083, `target_block_linear_attn_layers` 12.961,
+  `target_block_full_attn_layers` 4.121, `draft_initial` 3.761,
+  `target_block_linear_attn_norm_qkv_gate` 3.061,
+  `target_block_linear_attn_ffn_moe_expert_gate_up` 2.051,
+  `draft_run_lm_head` 1.916,
+  `target_block_linear_attn_ffn_moe_expert_down` 1.627,
+  `target_block_lm_head_sample` 1.197.
+
+Tested the remaining default-off row-compact selected-MoE GEMV gate against the
+same current compat shape:
+
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_ROW_COMPACT_GEMV=1 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-rowcompact-allsync-smoke.json`
+  -> AR 54.99 tok/s, B2 36.05 tok/s = 0.656x AR, acc/output 0.625,
+  draft acceptance 0.833. It is clearly negative: cycle 27.765 ms/output,
+  `target_block_verify_total` 24.277 ms/output, and
+  `target_block_linear_attn_ffn_moe_compact_gemv` alone costs 8.977 ms/output.
+  Decision: keep `HIPENGINE_GGUF_ROW_COMPACT_GEMV` default-off/rejected; current
+  split selected-MoE GEMVs are faster for the llama-compat B2 verifier shape.
