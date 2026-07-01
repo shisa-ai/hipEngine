@@ -343,10 +343,31 @@ suite row before moving the headline numbers.
 | target area | current hipEngine llama-compat B2 | llama.cpp HIP B2 target | budget to close | current named work |
 | --- | ---: | ---: | ---: | --- |
 | Total cycle wall | **15.547 ms/output** | 14.231 ms/output | **1.316 ms/output** | Every accepted optimization must eventually move this row. |
-| Draft drain | **3.055 ms/output** | 2.140 ms/output | **0.915 ms/output** | Row-parallel router logits lowered full-suite draft drain by **0.197 ms/output** and draft-chain host wall by **0.598 ms/cycle**. The next draft target is back to Q6 top-1 plus the remaining selected/dense leaves. |
+| Draft drain | **3.055 ms/output** | 2.140 ms/output | **0.915 ms/output** | Row-parallel router logits lowered full-suite draft drain by **0.197 ms/output** and draft-chain host wall by **0.598 ms/cycle**. ROCTX now shows Q6_K lm-head per-call parity; treat the remaining per-output draft gap as amortization plus smaller non-Q6 leaves. |
 | Target verifier drain | **12.166 ms/output** | 12.083 ms/output | **0.083 ms/output** | F32 `ssm_out` raw-Q8 dp4a closed most of the dense singleton gap; remaining B2 verifier leaf work is selected gate/up/down and verifier lm-head, but the parent gap is now small. |
-| Target rows / output | **1.266** | 1.148 | 0.118 rows/output | Secondary lever after operation cost: compat still evaluates more target rows than llama, but improved versus the prior active lane. |
+| Target rows / output | **1.266** | 1.148 | 0.118 rows/output | Promoted active lever after the ROCTX correction: compat still evaluates more target rows than llama because draft acceptance/output-cycle economy is worse. |
 | Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
+
+Post-ROCTX correction: the remaining `+1.316 ms/output` headline gap is mostly
+amortization, not a slow Q6_K lm-head body. Using the retained full-suite
+`llama-compat` row and the traced llama.cpp HIP B2 row:
+
+| decomposition metric | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | reading |
+| --- | ---: | ---: | --- |
+| visible outputs / cycle | **2.370** | **2.563** | llama gets **+0.193** more visible outputs/cycle. |
+| cycle wall / output | **15.547 ms** | **14.231 ms** | The headline gap is **+1.316 ms/output**. |
+| inferred wall / cycle | **36.846 ms** | **36.477 ms** | The actual per-cycle operation-cost gap is only **+0.369 ms/cycle**. |
+| amortization share | n/a | n/a | At hipEngine's current per-cycle wall, llama's output/cycle economy would save **~1.172 ms/output**. |
+| residual cycle-cost share | n/a | n/a | The remaining non-amortization gap is only **~0.144 ms/output**. |
+| Q6_K lm-head dispatch | **1.789 ms/call** (`gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`) | **1.781 ms/call** (`mul_mat_vec_q<GGML_TYPE_Q6_K,ncols=1>`) | Per-call Q6 body is effectively at parity (**+0.5%** hipEngine). |
+
+The active interpretation changes accordingly: stop treating more Q6_K
+stage1-body variants as the first-order fix unless a source diff finds a
+specific missed mechanism. The bigger remaining lever is to make the
+llama-compat proposal/acceptance economy match llama.cpp so the same cycle work
+amortizes over the same number of visible outputs. Smaller non-Q6 draft leaves
+still matter, but they are now a sub-millisecond cycle-cost cleanup rather than
+the main parity gap.
 
 #### Row-economy histogram tracker
 
@@ -378,8 +399,8 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+1.316 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.915 ms/output** | Router-row proved one non-Q6 leaf transfers: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle** and full-suite draft drain **3.252 -> 3.055 ms/output**. Remaining draft rocprof is still GPU-bound: X8 Q6_K top-1 stage1 is **3.611 ms/cycle** in the router-row fine-sync profile, while the next non-Q6 leaves are selected gate/up **0.466**, Q/gate QKV **0.392**, attention core **0.371**, selected down **0.353**, and shared-gate scalar linear **0.219 ms/cycle**. T64, row-shape, scale-hoist, pack8+llama-vecdot, pack16, X8 dscale, and simple X8 locality are exhausted as small levers. |
-| 3 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.118 target rows/output | Full histograms show this is extra discarded-row rate (compat 0.266 vs llama 0.148 rows/output); revisit policy after operation cost is closer. |
+| 2 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle | llama B2 no-probe draft proposal and accept accounting | **-0.193 outputs/cycle**, +0.118 target rows/output | ROCTX range buckets show the Q6_K lm-head dispatch is already per-call parity, while cycle wall is nearly parity. The main remaining gap is llama.cpp amortizing similar cycle work over more accepted tokens: compat discarded rows/output is **0.266** vs llama **0.148**. Next work should compare draft proposal tokens/logits/probs and accept accounting directly against llama.cpp. |
+| 3 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.915 ms/output**, but only **~+0.144 ms/output** is non-amortization at the total-cycle level | Router-row proved one non-Q6 leaf transfers: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle** and full-suite draft drain **3.252 -> 3.055 ms/output**. The X8 Q6_K top-1 dispatch is **1.789 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call**, so do not repeat Q6 body variants blindly. Remaining operation-cost work should target measured non-Q6 leaves: selected gate/up **0.466**, Q/gate QKV **0.392**, attention core **0.371**, selected down **0.353**, and shared-gate scalar linear **0.219 ms/cycle**. |
 | 4 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.083 ms/output** | Direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a moved the parent row **12.662 -> 12.158 ms/output**; router-row leaves it essentially unchanged at **12.166 ms/output**. The verifier parent is now nearly at llama.cpp's traced 12.083 ms/output, so further verifier work should be justified by full-suite movement rather than isolated leaf wins. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 
@@ -466,9 +487,9 @@ attribution, not as a replacement for the full-suite timing rows.
 
 | kernel-family bucket | calls/cycle | ms/cycle | approx ms/output | kernel share | next action |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` | 2.0 | **3.578** | **1.510** | **59.8%** | First remaining draft target. This single kernel family is still larger than the current +0.915 ms/output draft gap, so any large llama-compat draft win must reduce or replace this body. |
+| `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` | 2.0 | **3.578** | **1.510** | **59.8%** | Largest draft kernel family, but the ROCTX llama.cpp comparison shows per-call parity: hipEngine **1.789 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call**. Treat this as an amortization/acceptance target before writing more Q6 body variants. |
 | `top1_stage2_gather` | 2.0 | 0.095 | 0.040 | 1.6% | Not the missing cost; prior stage2/gather work already made this small. |
-| `gguf_k_prefill_out` | 12.0 | 0.784 | 0.331 | 13.1% | Secondary draft dense/shared GEMV target after Q6 top-1; Q8 shared gate/up dual reduced this from 16 single calls/cycle. |
+| `gguf_k_prefill_out` | 12.0 | 0.784 | 0.331 | 13.1% | Secondary draft dense/shared GEMV target after proposal/row-economy parity; Q8 shared gate/up dual reduced this from 16 single calls/cycle. |
 | `gguf_k_dual_prefill_out` | 2.0 | 0.034 | 0.014 | 0.6% | Q8 shared gate/up dual launch; it removes single-call traffic but is too small to close the draft gap alone. |
 | `hipengine_mtp_linear_f32` | 2.0 | 0.195 | 0.082 | 3.3% | Remaining scalar shared-gate linear only; router linear moved to `qwen35_router_logits`. |
 | `qwen35_router_logits` | 2.0 | 0.023 | 0.010 | 0.4% | New row-parallel router logits path; no longer a top draft target. |
@@ -489,7 +510,7 @@ parent bucket.
 
 | sync-stage leaf | ms/cycle | reading |
 | --- | ---: | --- |
-| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | **3.611** | Still the largest single draft leaf; simple scale/layout variants are now exhausted. |
+| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | **3.611** | Still the largest single draft leaf, but llama.cpp's matching Q6_K dispatch is per-call parity. Further work should first prove a proposal/acceptance or launch-amortization mismatch, not another isolated Q6 scale/layout variant. |
 | `draft_run_ffn_selected_gate_up` | **0.466** | Largest remaining non-Q6 leaf. Prior raw/X8 verifier-shaped copies regressed, so any draft fix needs a different mechanism or full-suite proof. |
 | `draft_run_qkv_q_gate` | **0.392** | Q/gate projection + split + Q norm. Candidate for a draft-specific dense-Q8/q8_1 path only if F32 output precision is handled. |
 | `draft_run_attention_core` | **0.371** | Attention core; visible but smaller than selected gate/up and Q6 top-1. |
@@ -536,9 +557,9 @@ for every X8 tile. The measured draft-chain rocprof row regresses against the
 retained X8 artifact: **6.805 -> 8.023 ms/cycle host wall**,
 **6.427 -> 7.615 ms/cycle kernel time**, and `draft_lm_head_q6_top1`
 **3.648 -> 4.859 ms/cycle**. This rules out simple scale precompute as the
-missing draft fix; the next Q6 top-1 change needs a materially different
-memory/layout/reduction mechanism or enough fusion to move async
-`draft_initial`.
+missing draft fix. After the ROCTX per-call comparison, another Q6 top-1 change
+needs evidence of a proposal/acceptance or launch-amortization mismatch first,
+or a materially different fusion that moves async `draft_initial`.
 
 #### Current all-sync leaf attribution
 

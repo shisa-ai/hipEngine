@@ -133318,3 +133318,41 @@ Interpretation: the useful draft analog is now explicit. The llama.cpp
 `mtp_context_replay_append` parent rows are still whole-process and include
 warmup/prompt/server ranges; if this remains too coarse, filter marker ranges
 to measured JSONL cycles or use selected-region profiling after warmup.
+
+## 2026-07-02 — MTP parity gap reclassified after ROCTX buckets
+
+Re-read the new llama.cpp ROCTX artifact against the active hipEngine
+`llama-compat` full-suite row and the retained draft-chain profile:
+
+- llama.cpp artifact:
+  `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json`
+- hipEngine active full-suite row:
+  `benchmarks/results/2026-07-02-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-routerrow-full.json`
+- hipEngine draft profile:
+  `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json`
+
+The prior "Q6 top-1 body first" reading is no longer correct. In the two real
+llama.cpp `draft_initial` windows, the matching Q6_K lm-head kernel
+`mul_mat_vec_q<(ggml_type)14, 1, false, false>` takes **3.567577 ms / 2
+dispatches** and **3.555031 ms / 2 dispatches**, or **1.781 ms/dispatch**.
+hipEngine's active `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` profile reports
+**14.312943 ms / 8 calls**, or **1.789 ms/call**. That is only **+0.0085
+ms/call / +0.5%** slower, effectively per-call parity.
+
+The top-line retained gap decomposes differently:
+
+- hipEngine `llama-compat`: 237 outputs / 100 cycles = **2.370 outputs/cycle**,
+  **15.547 ms/output**, inferred **36.846 ms/cycle**.
+- llama.cpp HIP B2 trace: 223 outputs / 87 cycles = **2.563 outputs/cycle**,
+  **14.231 ms/output**, inferred **36.477 ms/cycle**.
+- Actual per-cycle operation-cost gap is only **+0.369 ms/cycle**, or roughly
+  **+0.144 ms/output** at llama's output/cycle economy.
+- The visible `+1.316 ms/output` headline gap is mostly amortization: at
+  hipEngine's current per-cycle wall, llama's output/cycle economy would save
+  about **1.172 ms/output**.
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking to promote proposal /
+row-economy parity ahead of more Q6 body variants. Next implementation work
+should compare draft proposal tokens/logits/probs and accept accounting against
+llama.cpp directly, while treating remaining non-Q6 draft leaves as a smaller
+cycle-cost cleanup.
