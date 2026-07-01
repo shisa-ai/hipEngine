@@ -133619,3 +133619,56 @@ PYTHONPATH=. python3 -m pytest \
 ```
 
 Result: passed (`95 passed`).
+
+## 2026-07-02 — llama.cpp MTP draft score trace at first divergence
+
+Added and committed a local llama.cpp diagnostic patch:
+
+- `/home/lhl/llama.cpp/llama.cpp-hip` commit `0f7d32267`
+  (`tools: add MTP draft score trace`)
+- `LLAMA_MTP_TOKEN_TRACE=1` stage rows now include `draft_sample_trace`
+  candidate IDs, logits, probabilities, and logit margins for MTP draft samples.
+
+Validation / rerun:
+
+```bash
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16
+
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8026 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 27 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-llama-score-trace/llamacpp-stage.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-llama-score-trace/llamacpp.json \
+  --log-dir /tmp/hipengine-mtp-llama-score-trace/logs
+```
+
+Retained compact artifact:
+`benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json`
+(`performance_claim=false`).
+
+Result on the same diagnostic prompt:
+
+- First three measured prompt cycles still match.
+- First divergence is still pair 3 / seq position 49:
+  hipEngine drafts `[65342, 18078]`, llama.cpp drafts `[8, 1411]`, and target
+  next token remains `65342`.
+- llama.cpp depth-0 candidate row: token `8` rank 1, token `65342` rank 2,
+  margin **0.1003 logits**.
+- hipEngine resident Q6 with device KV: token `65342` rank 1, token `8` rank 3,
+  margin **1.2601 logits** behind.
+- hipEngine no-device-KV replay: token `8` rank 3, margin **1.8760 logits**
+  behind.
+
+Interpretation: the first proposal divergence is a draft context/logit parity
+miss, not prompt formatting, target verifier state, public llama backend
+sampling, or accepted-row KV commit alone. Device KV moves the row in the right
+direction, but the remaining mismatch is large enough that it needs direct
+`verify_h -> pending_h -> ctx_dft` / MTP KV row comparison at seq position 49.
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` with the score table and active target.

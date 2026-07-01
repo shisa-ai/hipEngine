@@ -125,7 +125,7 @@ stage budget instead of burying it in prose.
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Total MTP wall | 16.496 ms/output | **15.547 ms/output** | 14.231 ms/output | **+1.316 ms/output** | Spend this row down before claiming parity movement. |
-| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Next check MTP context/logit parity against llama.cpp `ctx_dft`; Q6_K body is now per-call parity and KV commit alone is ruled out. |
+| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | llama-side score trace now proves the seq-position-49 draft-logit mismatch; next compare hipEngine seed/pending_h and `ctx_dft` row contents against llama.cpp. |
 | Draft visible sampler/GPU drain | 1.151 ms/output | **2.874 ms/output** | 1.886 ms/output | **+0.988 ms/output** | Compare through draft drain; bucket names differ across engines. |
 | Draft transformer body | 0.130 ms/output | **0.111 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
 | Serial verifier probe | 6.665 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
@@ -188,6 +188,7 @@ Current source artifacts:
 | llama.cpp HIP MTP ROCTX range proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json` | Diagnostic-only rerun after llama.cpp commit `dd7ec418c` added `LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers. The artifact includes `range_name_summaries` for stage-window kernel buckets, but it is still whole-process and includes warmup/prompt/server ranges, so do not use it as a headline timing row. |
 | hipEngine vs llama.cpp proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json` | Diagnostic-only same-prompt token trace using hipEngine active `llama-compat` and llama.cpp HIP B2 with `LLAMA_MTP_TOKEN_TRACE=1`; `performance_claim=false`. It proves prompt and target state align for the first three measured cycles, then draft proposals diverge before any rejection. Use it to target draft-context mirror/KV row contents and row chunking. |
 | hipEngine draft-context/logit A/B diagnostic | `benchmarks/results/2026-07-02-mtp-draft-context-logit-ab-diagnostic.json` | Diagnostic-only follow-up on the same prompt; `performance_claim=false`. It rules out hipEngine accepted-row KV commit and llama.cpp's public backend-sampling toggle as the primary cause, shows resident full-logit draft is not closer, and records cycle-3 top-k score margins with/without hipEngine MTP device KV. |
+| llama.cpp draft score trace diagnostic | `benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json` | Diagnostic-only same-prompt score trace after llama.cpp commit `0f7d32267` added `draft_sample_trace` to `LLAMA_MTP_TOKEN_TRACE` rows. At the first divergence llama.cpp ranks token `8` first and `65342` second by only **0.100 logits**, while hipEngine with device KV ranks `65342` first and token `8` third, **1.260 logits** behind. This confirms the active blocker is MTP seed/context/logit parity at seq position 49, not merely accepted-row KV commit or sampler toggles. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
@@ -275,12 +276,37 @@ This is still one-prompt diagnostic evidence, not a performance claim.
 | hipEngine resident Q6 scores, no device KV | At cycle 3 depth 0, token `8` is rank 3 and **1.876 logits** behind token `65342`. | llama.cpp's divergent token is a plausible candidate but not a tie in hipEngine. |
 | hipEngine resident Q6 scores, with device KV | Device KV changes logits and moves token `8` closer, but it is still rank 3 and **1.260 logits** behind token `65342`. | KV history is influencing the scorer, but hipEngine's MTP context/logits still do not match llama.cpp `ctx_dft`. |
 
-Updated target: do not spend more cycles on the accepted-row KV commit alone.
-The next useful split is MTP context/logit parity: compare hipEngine resident MTP
-attention/logit rows against llama.cpp `ctx_dft` for the same cycle, or add a
-llama-side top-k score trace. hipEngine now records `cycle_start_seq_position`,
-`cycle_end_seq_position`, `draft_topk_scores`, and `draft_topk_margins` behind
-`--record-draft-topk-scores` for this exact purpose. Device-chain top-1 paths
+Llama-side score trace artifact:
+`benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json`.
+This adds a diagnostic patch to the local llama.cpp tree at commit `0f7d32267`
+(`tools: add MTP draft score trace`) and records candidate IDs, logits,
+probabilities, and logit margins in `LLAMA_MTP_TOKEN_TRACE` stage rows.
+
+At the first same-prompt divergence:
+
+| token at seq position 49 / depth 0 | llama.cpp rank / margin | hipEngine device-KV rank / margin | hipEngine no-device-KV rank / margin |
+| ---: | ---: | ---: | ---: |
+| `8` | **1 / 0.000** | 3 / 1.260 | 3 / 1.876 |
+| `65342` | 2 / **0.100** | **1 / 0.000** | **1 / 0.000** |
+| `13787` | 3 / 0.743 | 2 / 0.904 | 2 / 1.320 |
+| `18078` | 4 / 1.072 | 4 / 2.255 | 4 / 2.828 |
+
+Reading: llama.cpp's divergent choice is a borderline draft row, but it is not
+just a tie-break difference in hipEngine. With device KV enabled, hipEngine still
+has to move token `8` by about **1.26 logits** to match llama.cpp's `ctx_dft`
+ordering, and no-device replay is farther away. That rules out accepted-row KV
+commit and public backend-sampling as first-order causes and keeps the target on
+MTP context/logit parity.
+
+Updated target: compare hipEngine's resident MTP seed, `pending_h`, and `ctx_dft`
+row contents against llama.cpp `common_speculative_process()` plus
+`common_speculative_impl_draft_mtp::draft()` at seq position 49. The next useful
+instrumentation is not another Q6_K body variant; it is a hidden/KV row dump or
+row-level checksum around the llama.cpp `verify_h -> pending_h -> ctx_dft`
+handoff and the hipEngine `pending_hidden_row_index` / MTP device-KV rows.
+hipEngine now records `cycle_start_seq_position`, `cycle_end_seq_position`,
+`draft_topk_scores`, and `draft_topk_margins` behind
+`--record-draft-topk-scores` for this exact comparison. Device-chain top-1 paths
 still leave score arrays empty because they intentionally avoid materializing
 full vocab logits.
 
@@ -486,7 +512,7 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+1.316 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.193 outputs/cycle**, +0.118 target rows/output | ROCTX range buckets show the Q6_K lm-head dispatch is already per-call parity, while cycle wall is nearly parity. The main remaining gap is llama.cpp amortizing similar cycle work over more accepted tokens: compat discarded rows/output is **0.266** vs llama **0.148**. Same-prompt token tracing now shows first-three-cycle parity followed by draft-context drift before any rejection. Follow-up A/B ruled out accepted-row KV commit and llama.cpp's backend-sampling toggle; device KV moves token `8` closer but keeps it rank 3, so the next work is MTP context/logit parity against llama.cpp `ctx_dft`. |
+| 2 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.193 outputs/cycle**, +0.118 target rows/output | ROCTX range buckets show the Q6_K lm-head dispatch is already per-call parity, while cycle wall is nearly parity. The main remaining gap is llama.cpp amortizing similar cycle work over more accepted tokens: compat discarded rows/output is **0.266** vs llama **0.148**. Same-prompt token tracing now shows first-three-cycle parity followed by draft-context drift before any rejection. Llama-side score tracing shows the first drift row is token `8` over `65342` by **0.100 logits** in llama.cpp, while hipEngine device KV still ranks token `8` third and **1.260 logits** behind. Next work is seq-position-49 `pending_h` / `ctx_dft` row parity. |
 | 3 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.915 ms/output**, but only **~+0.144 ms/output** is non-amortization at the total-cycle level | Router-row proved one non-Q6 leaf transfers: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle** and full-suite draft drain **3.252 -> 3.055 ms/output**. The X8 Q6_K top-1 dispatch is **1.789 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call**, so do not repeat Q6 body variants blindly. Remaining operation-cost work should target measured non-Q6 leaves: selected gate/up **0.466**, Q/gate QKV **0.392**, attention core **0.371**, selected down **0.353**, and shared-gate scalar linear **0.219 ms/cycle**. |
 | 4 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.083 ms/output** | Direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a moved the parent row **12.662 -> 12.158 ms/output**; router-row leaves it essentially unchanged at **12.166 ms/output**. The verifier parent is now nearly at llama.cpp's traced 12.083 ms/output, so further verifier work should be justified by full-suite movement rather than isolated leaf wins. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
