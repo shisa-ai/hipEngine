@@ -193,6 +193,7 @@ Current source artifacts:
 | Resident MTP RoPE-dimension fix diagnostic | `benchmarks/results/2026-07-02-mtp-resident-rope-dim-fix-diagnostic.json` | Diagnostic-only semantic fix; `performance_claim=false`. The GGUF metadata has `qwen35moe.rope.dimension_count=64` while resident MTP used `qk_head_dim=256` as `rotary_dim` for draft Q/K and accepted-row MTP K/V commit. Fixing that cuts the seq-position-49 depth-0 `draft_next_seed` first8 mean abs delta **0.731 -> 0.329**, but hipEngine still drafts `[65342, 18078]` while llama.cpp drafts `[8, 1411]`; token `8` is now rank 2 but still **1.391 logits** behind `65342`. |
 | llama.cpp tensor-stage parity diagnostic | `benchmarks/results/2026-07-02-mtp-llamacpp-tensor-stage-trace-diagnostic.json` | Diagnostic-only same-prompt tensor summary trace after local llama.cpp commit `687c17d26` added `LLAMA_MTP_TENSOR_TRACE=1` for selected `graph_mtp` labels. At seq position 49 / depth 0, token embed, e/h norm, projected state, post-RoPE Q/K, and V are close; the first large jump is `draft_stage_attn_pregate` (**rms 1.056 hipEngine vs 1.410 llama.cpp**, first8 MAE **0.147**). The next semantic target is draft attention history/KV rows, context length, or mask/softmax behavior. |
 | MTP attention-history row trace diagnostic | `benchmarks/results/2026-07-02-mtp-attention-history-row-trace-diagnostic.json` | Diagnostic-only same-prompt row-aware trace after hipEngine added `--record-draft-cache-rows` and llama.cpp commit `1ebf790cd` added process-row tensor tracing. At seq position 49 / depth 0, hipEngine dense K/V rows match llama.cpp at sampled positions 40, 48, and 49 (`first8_mae` **0.0118-0.0468** on reliable rows), while `draft_stage_attn_pregate` still differs (**rms 1.056 vs 1.410**). The next semantic target is effective attention execution: visible count/mask, GQA head mapping, score scale/softmax, or FA-on math. |
+| MTP attention-debug host recompute diagnostic | `benchmarks/results/2026-07-02-mtp-attention-debug-diagnostic.json` | Diagnostic-only same-prompt hipEngine host recomputation of resident dense attention after adding `--record-draft-attention-debug`; `performance_claim=false`. At seq position 49 / depth 0, hipEngine GPU `draft_stage_attn_pregate` matches a host recompute over its own dense K/V cache (`cpu_device_mae_mean` **4.1e-7**, max abs **9.3e-6**). The top attention row is 48 for 7 heads and 49 for 9 heads, so the previously sampled late rows cover the dominant hipEngine attention weights. Next split is llama.cpp FA-on effective attention/mask/weight distribution, not hipEngine dense-attention kernel math. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
@@ -425,6 +426,38 @@ Two negative A/B checks are also retained in the artifact:
 | --- | --- | --- |
 | llama.cpp FA-on default cache vs `--cache-type-k f32 --cache-type-v f32` | No proposal or attention-row movement at the seq-position-49 divergence. | F32 KV cache storage is not the missing parity lever; FA-on casts K/V as needed inside `build_attn_mha()`. |
 | llama.cpp FA-on vs `--flash-attn off` | No-FA changes the proposal/acceptance path before this FA-on divergence and drafts `[198, 262]` at the comparable later cycle instead of `[8, 1411]`. | Flash attention changes semantics enough that the active parity target remains llama.cpp FA-on unless we explicitly change the route decision. |
+
+Attention-debug host-recompute follow-up artifact:
+`benchmarks/results/2026-07-02-mtp-attention-debug-diagnostic.json`.
+hipEngine now has `--record-draft-attention-debug`, which requires
+`--record-draft-stage-stats` and `--mtp-device-kv-cache`. It reads back the
+resident draft Q/K/V cache plus GPU attention output, recomputes dense causal
+GQA attention on the host, and records per-head top score/weight rows. This is
+still one-prompt diagnostic evidence and `performance_claim=false`.
+
+At the same seq-position-49 / depth-0 divergence, hipEngine GPU attention is
+internally consistent with the dense-cache formula:
+
+| attention debug row | token / position | cache tokens | CPU-vs-GPU MAE mean | CPU-vs-GPU max abs | top-row histogram | reading |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| depth 0 | `1103` / 49 | 50 | **4.1e-7** | **9.3e-6** | row 48: 7 heads; row 49: 9 heads | hipEngine dense attention kernel and host formula match for the exact row that diverges from llama.cpp. |
+| depth 1 | `65342` / 50 | 51 | **4.0e-7** | **1.025e-5** | row 49: 2 heads; row 50: 14 heads | The second draft step also matches host recompute; late rows dominate as expected. |
+
+Example depth-0 per-head weights:
+
+| query head | kv head | top rows | top weights | CPU-vs-GPU max abs |
+| ---: | ---: | --- | --- | ---: |
+| 0 | 0 | 48, 49, 46, 42, 47 | 0.5268, 0.1461, 0.0784, 0.0722, 0.0492 | 1.19e-6 |
+| 1 | 0 | 49, 38, 42, 20, 48 | 0.9910, 0.0021, 0.0021, 0.0011, 0.0007 | 4.8e-7 |
+| 10 | 1 | 49, 10, 47, 48, 2 | 0.9892, 0.0033, 0.0014, 0.0011, 0.0011 | 2.4e-7 |
+
+Interpretation: the active mismatch is no longer hipEngine's resident dense
+attention math, nor obviously missing early prompt rows. At depth 0, every head
+has its largest attention weight on row 48 or 49, and those sampled K/V rows are
+already close to llama.cpp. The next required split is llama.cpp-side FA-on
+effective attention visibility: mask keep count, logical row order/layout, GQA
+head mapping, scale, and per-head top score/weight distribution for the same
+seq-position-49 row.
 
 #### Latest route decision
 

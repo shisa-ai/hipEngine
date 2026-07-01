@@ -693,6 +693,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_hidden_stats: bool = False,
         record_stage_stats: bool = False,
         record_cache_rows: tuple[int, ...] | list[int] | None = None,
+        record_attention_debug: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
@@ -724,6 +725,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             record_hidden_stats=record_hidden_stats,
             record_stage_stats=record_stage_stats,
             record_cache_rows=record_cache_rows,
+            record_attention_debug=record_attention_debug,
             stage_timings=stage_timings,
         )
 
@@ -746,6 +748,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_hidden_stats: bool = False,
         record_stage_stats: bool = False,
         record_cache_rows: tuple[int, ...] | list[int] | None = None,
+        record_attention_debug: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
@@ -776,6 +779,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             record_hidden_stats=record_hidden_stats,
             record_stage_stats=record_stage_stats,
             record_cache_rows=record_cache_rows,
+            record_attention_debug=record_attention_debug,
             stage_timings=stage_timings,
         )
 
@@ -797,6 +801,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_hidden_stats: bool = False,
         record_stage_stats: bool = False,
         record_cache_rows: tuple[int, ...] | list[int] | None = None,
+        record_attention_debug: bool = False,
         stage_timings: dict[str, float] | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         self.last_top1_probs = []
@@ -888,6 +893,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         dense_value_cache=dense_value_cache,
                         dense_cache_len=current_cache_len,
                         record_cache_rows=record_cache_rows,
+                        record_attention_debug=record_attention_debug,
                     )
                 )
             if record_hidden_stats:
@@ -945,16 +951,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
         position: int | None = None,
         extra: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        runtime = self.runtime or get_hip_runtime()
         count = int(elements)
         if count <= 0:
             raise ValueError("cannot summarize an empty device row")
-        host = np.empty(count, dtype=np.float32)
-        if isinstance(ptr_or_buffer, DeviceBuffer):
-            src = DeviceBuffer(ptr_or_buffer.ptr, count * 4)
-        else:
-            src = DeviceBuffer(int(ptr_or_buffer), count * 4)
-        copy_device_to_host(host_array_ptr(host), src, host.nbytes, runtime=runtime)
+        host = self._read_device_f32(ptr_or_buffer, count)
         result = _summarize_f32_row(
             host,
             label=label,
@@ -966,6 +966,19 @@ class Qwen35GGUFResidentMTPDraftRunner:
             result.update(extra)
         return result
 
+    def _read_device_f32(self, ptr_or_buffer: int | DeviceBuffer, elements: int) -> np.ndarray:
+        runtime = self.runtime or get_hip_runtime()
+        count = int(elements)
+        if count <= 0:
+            raise ValueError("cannot read an empty device row")
+        host = np.empty(count, dtype=np.float32)
+        if isinstance(ptr_or_buffer, DeviceBuffer):
+            src = DeviceBuffer(ptr_or_buffer.ptr, count * 4)
+        else:
+            src = DeviceBuffer(int(ptr_or_buffer), count * 4)
+        copy_device_to_host(host_array_ptr(host), src, host.nbytes, runtime=runtime)
+        return host
+
     def _summarize_draft_stage_buffers(
         self,
         *,
@@ -976,6 +989,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
         record_cache_rows: tuple[int, ...] | list[int] | None = None,
+        record_attention_debug: bool = False,
     ) -> list[dict[str, object]]:
         h = self.hidden_size
         heads = self.num_heads
@@ -1082,7 +1096,101 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     )
                 )
                 seen_rows.add(cache_row)
+            if record_attention_debug:
+                summaries.append(
+                    self._summarize_attention_debug(
+                        depth=depth,
+                        token_id=token_id,
+                        position=position,
+                        dense_key_cache=dense_key_cache,
+                        dense_value_cache=dense_value_cache,
+                        dense_cache_len=dense_cache_len,
+                    )
+                )
         return summaries
+
+    def _summarize_attention_debug(
+        self,
+        *,
+        depth: int,
+        token_id: int,
+        position: int,
+        dense_key_cache: DeviceBuffer,
+        dense_value_cache: DeviceBuffer,
+        dense_cache_len: int,
+    ) -> dict[str, object]:
+        heads = self.num_heads
+        kv_heads = self.num_kv_heads
+        d = self.qk_head_dim
+        if heads <= 0 or kv_heads <= 0 or d <= 0 or heads % kv_heads != 0:
+            raise ValueError("invalid attention shape for MTP attention debug")
+        cache_tokens = int(dense_cache_len) + 1
+        if cache_tokens <= 0:
+            raise ValueError("attention debug requires at least one cache row")
+        query = self._read_device_f32(self.query, heads * d).reshape(heads, d)
+        key = self._read_device_f32(
+            dense_key_cache,
+            cache_tokens * kv_heads * d,
+        ).reshape(cache_tokens, kv_heads, d)
+        value = self._read_device_f32(
+            dense_value_cache,
+            cache_tokens * kv_heads * d,
+        ).reshape(cache_tokens, kv_heads, d)
+        device_attn = self._read_device_f32(self.attn, heads * d).reshape(heads, d)
+        kv_group = heads // kv_heads
+        scale = np.float32(d ** -0.5)
+        head_summaries: list[dict[str, object]] = []
+        mean_abs_diffs: list[float] = []
+        max_abs_diffs: list[float] = []
+        for qh in range(heads):
+            kh = qh // kv_group
+            scores = np.empty(cache_tokens, dtype=np.float32)
+            for row in range(cache_tokens):
+                scores[row] = np.float32(np.dot(key[row, kh], query[qh]) * scale)
+            max_score = np.float32(np.max(scores))
+            exp_scores = np.exp((scores - max_score).astype(np.float32)).astype(np.float32)
+            exp_sum = np.float32(np.sum(exp_scores, dtype=np.float32))
+            weights = exp_scores / exp_sum if float(exp_sum) > 0.0 else np.zeros_like(exp_scores)
+            cpu_out = np.zeros(d, dtype=np.float32)
+            for row in range(cache_tokens):
+                cpu_out += np.float32(weights[row]) * value[row, kh]
+            diff = np.abs(cpu_out - device_attn[qh])
+            mean_abs = float(np.mean(diff.astype(np.float64)))
+            max_abs = float(np.max(diff.astype(np.float64)))
+            mean_abs_diffs.append(mean_abs)
+            max_abs_diffs.append(max_abs)
+            top_count = min(5, cache_tokens)
+            top_rows = np.argsort(weights)[-top_count:][::-1]
+            head_summaries.append(
+                {
+                    "query_head": int(qh),
+                    "kv_head": int(kh),
+                    "visible_count": int(cache_tokens),
+                    "max_score": _summary_float(float(max_score)),
+                    "exp_sum": _summary_float(float(exp_sum)),
+                    "top_rows": [int(row) for row in top_rows],
+                    "top_scores": [_summary_float(float(scores[row])) for row in top_rows],
+                    "top_weights": [_summary_float(float(weights[row])) for row in top_rows],
+                    "cpu_out_first4": [_summary_float(float(x)) for x in cpu_out[:4]],
+                    "device_out_first4": [_summary_float(float(x)) for x in device_attn[qh, :4]],
+                    "cpu_device_mae": _summary_float(mean_abs),
+                    "cpu_device_max_abs": _summary_float(max_abs),
+                }
+            )
+        return {
+            "label": "draft_stage_attention_debug",
+            "depth": int(depth),
+            "token_id": int(token_id),
+            "position": int(position),
+            "cache_tokens": int(cache_tokens),
+            "heads": int(heads),
+            "kv_heads": int(kv_heads),
+            "head_dim": int(d),
+            "scale": _summary_float(float(scale)),
+            "cpu_device_mae_mean": _summary_float(float(np.mean(mean_abs_diffs))),
+            "cpu_device_max_abs": _summary_float(float(np.max(max_abs_diffs))),
+            "per_head": head_summaries,
+        }
 
     def _summarize_seed_buffer(
         self,

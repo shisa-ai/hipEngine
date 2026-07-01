@@ -705,6 +705,12 @@ def test_arg_parser_exposes_record_draft_cache_rows_diagnostic() -> None:
     assert args.record_draft_cache_rows == (0, 1, 2, 48, 49)
 
 
+def test_arg_parser_exposes_record_draft_attention_debug_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--record-draft-attention-debug"])
+
+    assert args.record_draft_attention_debug is True
+
+
 def test_arg_parser_exposes_cycle_stage_timing_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-cycle-stage-timings"])
 
@@ -885,6 +891,26 @@ def test_main_rejects_resident_device_chain_without_resident_draft(capsys) -> No
 
     assert excinfo.value.code == 2
     assert "--resident-mtp-device-chain requires --resident-mtp-draft" in capsys.readouterr().err
+
+
+def test_main_rejects_draft_attention_debug_without_stage_stats(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--record-draft-attention-debug", "--mtp-device-kv-cache"])
+
+    assert excinfo.value.code == 2
+    assert "--record-draft-attention-debug requires --record-draft-stage-stats" in capsys.readouterr().err
+
+
+def test_main_rejects_draft_attention_debug_without_device_kv(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--record-draft-attention-debug", "--record-draft-stage-stats"])
+
+    assert excinfo.value.code == 2
+    assert "--record-draft-attention-debug requires --mtp-device-kv-cache" in capsys.readouterr().err
 
 
 def test_main_rejects_resident_draft_sync_stage_timings_without_cycle_timings(capsys) -> None:

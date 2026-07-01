@@ -1193,6 +1193,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--record-draft-attention-debug",
+        action="store_true",
+        help=(
+            "Diagnostic only: with --record-draft-stage-stats and --mtp-device-kv-cache, "
+            "read back resident draft Q/K/V plus the GPU attention output, recompute dense "
+            "attention on the host, and emit per-head top score/weight summaries."
+        ),
+    )
+    parser.add_argument(
         "--record-cycle-stage-timings",
         action="store_true",
         help=(
@@ -1510,6 +1519,10 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-chain is not compatible with --record-draft-confidence")
     if args.record_draft_cache_rows and not args.record_draft_stage_stats:
         parser.error("--record-draft-cache-rows requires --record-draft-stage-stats")
+    if args.record_draft_attention_debug and not args.record_draft_stage_stats:
+        parser.error("--record-draft-attention-debug requires --record-draft-stage-stats")
+    if args.record_draft_attention_debug and not args.mtp_device_kv_cache:
+        parser.error("--record-draft-attention-debug requires --mtp-device-kv-cache")
     if args.resident_mtp_draft_sync_stage_timings and not args.resident_mtp_draft:
         parser.error("--resident-mtp-draft-sync-stage-timings requires --resident-mtp-draft")
     if args.resident_mtp_draft_sync_stage_timings and not args.record_cycle_stage_timings:
@@ -2026,6 +2039,7 @@ def main(argv: list[str] | None = None):
                             record_hidden_stats=bool(args.record_draft_hidden_stats),
                             record_stage_stats=bool(args.record_draft_stage_stats),
                             record_cache_rows=tuple(args.record_draft_cache_rows),
+                            record_attention_debug=bool(args.record_draft_attention_debug),
                             record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                     )
@@ -2047,6 +2061,7 @@ def main(argv: list[str] | None = None):
                         record_hidden_stats=bool(args.record_draft_hidden_stats),
                         record_stage_stats=bool(args.record_draft_stage_stats),
                         record_cache_rows=tuple(args.record_draft_cache_rows),
+                        record_attention_debug=bool(args.record_draft_attention_debug),
                         record_stage_timings=bool(args.record_cycle_stage_timings),
                     )
                 if args.record_draft_confidence:
@@ -3323,6 +3338,7 @@ def main(argv: list[str] | None = None):
             "record_draft_hidden_stats": bool(args.record_draft_hidden_stats),
             "record_draft_stage_stats": bool(args.record_draft_stage_stats),
             "record_draft_cache_rows": list(args.record_draft_cache_rows),
+            "record_draft_attention_debug": bool(args.record_draft_attention_debug),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "llama_compat": bool(args.llama_compat),

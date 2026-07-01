@@ -237,12 +237,14 @@ def test_record_stage_stats_passes_requested_cache_rows(monkeypatch) -> None:
         draft_p_min=0.0,
         record_stage_stats=True,
         record_cache_rows=(0, 5),
+        record_attention_debug=True,
     )
 
     assert tokens == [3]
     assert topk_rows == [[3]]
     assert cache_len == 7
     assert summary_kwargs[0]["record_cache_rows"] == (0, 5)
+    assert summary_kwargs[0]["record_attention_debug"] is True
     assert runner.last_hidden_state_summaries == [{"label": "draft_seed_input"}, {"label": "stage"}]
 
 
@@ -303,6 +305,67 @@ def test_stage_cache_row_summaries_include_requested_history_without_duplicates(
         ("draft_stage_dense_value_history", 2),
     ]
     assert all(item["cache_tokens"] == 50 for item in cache_summaries)
+
+
+def test_attention_debug_recomputes_dense_attention_from_device_rows() -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.num_heads = 2
+    runner.num_kv_heads = 1
+    runner.qk_head_dim = 2
+    runner.query = DeviceBuffer(0x1000, 16)
+    runner.attn = DeviceBuffer(0x2000, 16)
+    dense_key_cache = DeviceBuffer(0x3000, 16)
+    dense_value_cache = DeviceBuffer(0x4000, 16)
+
+    query = np.asarray([[1.0, 0.0], [0.0, 2.0]], dtype=np.float32)
+    key = np.asarray([[[1.0, 0.0]], [[0.0, 1.0]]], dtype=np.float32)
+    value = np.asarray([[[1.0, 3.0]], [[5.0, 7.0]]], dtype=np.float32)
+    scale = np.float32(2 ** -0.5)
+    device_attn = np.zeros((2, 2), dtype=np.float32)
+    for qh in range(2):
+        scores = np.asarray(
+            [np.float32(np.dot(key[row, 0], query[qh]) * scale) for row in range(2)],
+            dtype=np.float32,
+        )
+        max_score = np.float32(np.max(scores))
+        exp_scores = np.exp((scores - max_score).astype(np.float32)).astype(np.float32)
+        exp_sum = np.float32(np.sum(exp_scores, dtype=np.float32))
+        weights = exp_scores / exp_sum
+        for row in range(2):
+            device_attn[qh] += np.float32(weights[row]) * value[row, 0]
+
+    def read_device(ptr_or_buffer, elements):
+        ptr = ptr_or_buffer.ptr if isinstance(ptr_or_buffer, DeviceBuffer) else int(ptr_or_buffer)
+        arrays = {
+            0x1000: query.reshape(-1),
+            0x2000: device_attn.reshape(-1),
+            0x3000: key.reshape(-1),
+            0x4000: value.reshape(-1),
+        }
+        assert ptr in arrays
+        assert int(elements) == arrays[ptr].size
+        return np.ascontiguousarray(arrays[ptr], dtype=np.float32)
+
+    runner._read_device_f32 = read_device
+
+    summary = runner._summarize_attention_debug(
+        depth=0,
+        token_id=1103,
+        position=49,
+        dense_key_cache=dense_key_cache,
+        dense_value_cache=dense_value_cache,
+        dense_cache_len=1,
+    )
+
+    assert summary["label"] == "draft_stage_attention_debug"
+    assert summary["cache_tokens"] == 2
+    assert summary["heads"] == 2
+    assert summary["kv_heads"] == 1
+    assert summary["head_dim"] == 2
+    assert summary["cpu_device_mae_mean"] <= 1e-7
+    assert summary["cpu_device_max_abs"] <= 1e-7
+    assert [head["top_rows"][0] for head in summary["per_head"]] == [0, 1]
+    assert [head["visible_count"] for head in summary["per_head"]] == [2, 2]
 
 
 def test_ensure_device_chain_ready_preloads_embed_table() -> None:

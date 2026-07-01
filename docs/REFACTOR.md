@@ -462,11 +462,15 @@ should be boring.
 ## `--record-draft-stage-stats`
 - Added 2026-07-02. Bench flag that records compact FP32 summaries for resident
   MTP draft sub-stage tensors and dense MTP K/V cache rows in
-  `draft_hidden_state_trace`. It forces host-chain resident drafting when enabled
-  so intermediate buffers can be read back, and is not a timing route.
+  `draft_hidden_state_trace`. Default-off extensions
+  `--record-draft-cache-rows` and `--record-draft-attention-debug` add selected
+  history rows plus host-recomputed dense-attention score/weight diagnostics.
+  It forces host-chain resident drafting when enabled so intermediate buffers
+  can be read back, and is not a timing route.
 - Purpose: diagnose the remaining llama.cpp parity miss after hidden-state
   tracing narrowed the first divergence to the depth-0 MTP block. The first use
   found and fixed the resident MTP RoPE dimension mismatch (`qk_head_dim=256`
-  vs model `rope.dimension_count=64`).
+  vs model `rope.dimension_count=64`); the attention-debug extension ruled out
+  hipEngine's dense-attention kernel math for the seq-position-49 divergence.
 - Remove when: llama.cpp tensor/KV parity is either achieved or superseded by a
   more complete graph-tensor trace facility. Keep it default-off until then.

@@ -134013,3 +134013,95 @@ Interpretation: the first large remaining semantic jump is no longer sampled
 K/V generation or sampled dense cache contents. Next split is effective
 attention execution at position 49: visible count/mask, GQA head mapping, score
 scale/softmax, or FA-on math.
+
+## 2026-07-02 - MTP attention-debug host recompute
+
+Context: continuing the llama.cpp MTP parity sprint after sampled dense K/V rows
+matched but `draft_stage_attn_pregate` still diverged at seq position 49.
+
+Code changes:
+
+- Added `--record-draft-attention-debug` to `scripts/gguf_mtp_bench.py`.
+  The flag requires `--record-draft-stage-stats` and `--mtp-device-kv-cache`.
+- Threaded `record_attention_debug` through resident draft proposal calls.
+- Added resident draft helper `_summarize_attention_debug`, which reads back
+  Q/K/V cache and GPU attention output, recomputes dense causal GQA attention on
+  the host, and records per-head top score/weight summaries.
+- Added parser/error-path tests plus a deterministic pure-Numpy unit for the
+  host recomputation summary.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/REFACTOR.md`, and retained
+  compact artifact
+  `benchmarks/results/2026-07-02-mtp-attention-debug-diagnostic.json`
+  (`performance_claim=false`).
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/gguf_mtp_bench.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py::test_arg_parser_exposes_record_draft_attention_debug_diagnostic \
+  tests/test_gguf_mtp_bench_metrics.py::test_main_rejects_draft_attention_debug_without_stage_stats \
+  tests/test_gguf_mtp_bench_metrics.py::test_main_rejects_draft_attention_debug_without_device_kv \
+  tests/test_mtp_resident_draft_device_commit.py::test_record_stage_stats_passes_requested_cache_rows \
+  tests/test_mtp_resident_draft_device_commit.py::test_attention_debug_recomputes_dense_attention_from_device_rows -q
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py -q
+```
+
+ROCm check:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx'
+```
+
+Hardware: gfx1151 / Radeon 8060S Graphics.
+
+Diagnostic command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 4 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --resident-mtp-draft --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --mtp-context-replay --mtp-device-kv-cache --target-block-verify \
+  --target-block-verify-mode bulk --target-block-min-rows 2 \
+  --target-block-direct-state-commit --root-topk-accept 1 \
+  --sibling-topk-accept 1 --draft-p-min 0.0 \
+  --record-cycle-stage-timings --record-draft-topk-scores \
+  --record-draft-hidden-stats --record-draft-stage-stats \
+  --record-draft-cache-rows 0,1,2,16,32,40,48,49 \
+  --record-draft-attention-debug \
+  --output /tmp/hipengine-mtp-attn-debug/hipengine-stage.json
+```
+
+Result:
+
+- Cycle 3 reproduced the same hipEngine drafts `[65342, 18078]` and targets
+  `[65342, 18078, 28649]`.
+- Depth 0 (`token_id=1103`, position 49, 50 cache tokens): host recompute vs
+  GPU attention `cpu_device_mae_mean=4.1e-7`, max abs `9.3e-6`.
+- Depth 1 (`token_id=65342`, position 50, 51 cache tokens): host recompute vs
+  GPU attention `cpu_device_mae_mean=4.0e-7`, max abs `1.025e-5`.
+- Depth-0 top attention row histogram: row 48 for 7 heads, row 49 for 9 heads.
+  Depth-1 top histogram: row 49 for 2 heads, row 50 for 14 heads.
+
+Interpretation: hipEngine resident dense-attention math matches its own dense
+cache at the divergence row. Because depth-0 heads are dominated by rows 48/49
+and those rows already match llama.cpp closely, the next split needs llama.cpp
+FA-on effective attention instrumentation: mask keep count, row order/layout,
+GQA mapping, scale, and per-head top score/weight distribution.
