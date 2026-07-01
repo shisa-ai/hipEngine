@@ -87,6 +87,17 @@ acceptance. Its main value is that the new split proves the remaining
 `norm_qkv_gate` bucket is the actual Q8T16 pair projection, not RMSNorm or
 fallback dispatch.
 
+**Rejected 2026-07-01 target-block WMMA prefill re-check:** on the same B2
+all-sync smoke prompt, `--target-block-wmma-prefill` regressed **52.10 -> 34.04
+tok/s** and `target_block_verify_total` **16.092 -> 26.285 ms/output**. The
+Q8T16 attention aggregate barely improved (`target_block_linear_attn_norm_qkv_gate`
+**2.574 -> 2.529 ms/output**, only **-0.045 ms/output**), while selected-MoE
+compact WMMA became the dominant regression (`target_block_linear_attn_ffn_moe_compact_wmma`
+**6.484 ms/output**, plus `target_block_full_attn_ffn_moe_compact_wmma`
+**2.075 ms/output**). Conclusion: the global target-block WMMA flag is the
+wrong shape for the llama-compat B2 verifier and should remain off; it does not
+justify a full-suite run.
+
 **There are two separate comparisons:**
 1. **HIP-vs-HIP parity (the 67.3 tok/s row):** hipEngine's base decode is not behind:
    AR is **54.95 vs llama HIP 51.38 tok/s**. The remaining HIP-vs-HIP gap is MTP
@@ -285,6 +296,9 @@ Artifacts:
   `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-full.json`
   plus all-sync split attribution
   `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-allsync-full.json`
+- hipEngine llama-compat target-block WMMA prefill rejected smoke:
+  `benchmarks/results/2026-07-01-mtp-llama-compat-device-chain-dp4a-allsync-wmma-smoke-mtp.json`
+  and `.md`
 - hipEngine fused-B1 block probe B5:
   `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
   and non-stage check
@@ -1466,6 +1480,7 @@ section with current numbers instead of stale single-prompt estimates.
 | --- | --- | --- | --- |
 | dp4a q8_1+sudot4, selected MoE | 2.6× isolated kernel | flat e2e (BW already saturated) | diagnostic only |
 | dp4a dense Q8_0 attention | faster verify | 1.2× isolated, flat e2e | not promoted |
+| target-block WMMA prefill in `llama-compat` B2 | use the existing batched WMMA path to amortize small verifier rows | all-sync smoke regressed **52.10 -> 34.04 tok/s**; `target_block_verify_total` **16.092 -> 26.285 ms/output**. Q8T16 attention saved only **0.045 ms/output**, while selected-MoE compact WMMA added **6.484 ms/output** in linear-attn layers plus **2.075 ms/output** in full-attn layers | rejected; global target-block WMMA remains off |
 | split-K dense Q8_0 (c=1) | more MLP → more BW | **0.74× (negative)** | rejected |
 | non-temporal weight loads (c=1) | +14% via cache-bypass | +14% isolated, **flat/worse e2e** | not promoted, reverted |
 | MoE-FFN HIP graph (launch cut) | fewer launches | −0.84% e2e (slight regress) | not promoted |

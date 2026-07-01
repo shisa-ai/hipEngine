@@ -130245,3 +130245,27 @@ the traced stage ledger, and keeps the current compat gap explicit:
 **+1.942 ms/output** target-block verifier. No new benchmark was run; this is a
 docs-only tracking update using the existing paircache and llama.cpp deep-trace
 artifacts.
+
+Ran the pending target-block WMMA-prefill re-check for the `llama-compat` B2
+all-sync verifier shape:
+
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 3 --budgets 2 --raw-root /tmp/hipengine-mtp-wmma-smoke-20260701 --output benchmarks/results/2026-07-01-mtp-llama-compat-device-chain-dp4a-allsync-wmma-smoke-mtp.json --python /home/lhl/miniforge3/envs/therock/bin/python3 --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--llama-compat --extra-arg=--resident-mtp-device-chain --extra-arg=--resident-mtp-draft-sync-stage-timings --extra-arg=--target-block-sync-stage-timings --extra-arg=--verify-dp4a --extra-arg=--target-block-wmma-prefill --extra-arg=--record-cycle-stage-timings --limit 1`
+  -> B2 **34.04 tok/s**, accepted/output **0.667**, draft acceptance **1.000**.
+
+Compared with the same paircache all-sync smoke
+`benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-allsync-smoke.json`:
+
+- `decode_tok_s_weighted`: **52.10 -> 34.04 tok/s**
+- `cycle_wall_ms_per_output`: **19.215 -> 29.404 ms**
+- `target_block_verify_total`: **16.092 -> 26.285 ms/output**
+- `target_block_linear_attn_norm_qkv_gate`: **2.574 -> 2.529 ms/output**
+  (only **-0.045 ms/output**)
+- selected-MoE moved from split expert GEMVs to compact WMMA and became the
+  regression: `target_block_linear_attn_ffn_moe_compact_wmma` **6.484
+  ms/output** and `target_block_full_attn_ffn_moe_compact_wmma` **2.075
+  ms/output**.
+
+Decision: do not pursue global `--target-block-wmma-prefill` for the
+`llama-compat` B2 verifier. It gives a tiny Q8T16 attention gain but badly
+regresses selected MoE and verifier total, so it is not the missing llama.cpp
+mechanism and does not merit a full-suite run.
