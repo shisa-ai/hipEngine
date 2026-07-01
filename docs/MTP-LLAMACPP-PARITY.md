@@ -78,6 +78,15 @@ Dashboard contract:
 | hipEngine `llama-compat` | Active replication lane. | Should structurally match llama.cpp's B2/no-probe MTP path; every positive delta vs llama.cpp is a concrete optimization target. |
 | llama.cpp HIP | Timing target and implementation reference. | When `llama-compat` mirrors the shape but stays slower, inspect the corresponding llama.cpp stage/kernel and copy or retune the mechanism. |
 
+Active comparison rules:
+
+| rule | requirement |
+| --- | --- |
+| Keep the three lanes together. | Every active speed or stage table must keep columns for hipEngine default exact, hipEngine `llama-compat`, llama.cpp HIP, and the compat delta. A compat-only diagnostic is allowed only in the leaf attribution section and must name the parent row it is expected to move. |
+| Track the gap in ms/output first. | Tok/s stays visible, but the working budget is the compat ms/output delta vs llama.cpp. A change is not parity progress until it moves `cycle_wall_ms_per_output`, `draft_initial`, `target_block_verify_total`, or target rows/output in the retained full-suite lane. |
+| Separate rollups from leaves. | Rollup rows decide priority; all-sync and rocprof rows identify the kernel or source path. Do not replace the rollup gap with an attribution-only number. |
+| Compare source only after structure matches. | Once `llama-compat` has the same B2/no-probe shape for a row, any remaining positive delta becomes a source-code comparison task against the named llama.cpp path or kernel family. |
+
 #### Live three-lane gap board (update every parity run)
 
 Last refreshed from the full rowhist artifacts

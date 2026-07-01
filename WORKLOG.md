@@ -131838,3 +131838,19 @@ cycles = 2.4 outputs/cycle), Q6 top-1 stage1 alone is roughly
 llama.cpp HIP. Next draft work should target a different Q6_K top-1 body/layout
 or a fused/reduced sampler path that moves full-suite `draft_initial`; prior
 t64, row-shape, and scale-hoist attempts remain rejected.
+
+## 2026-07-01 — MTP parity active tracker contract
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` with explicit active comparison rules for
+the parity sprint. The top tracker now requires every active speed/stage table
+to keep hipEngine default exact, hipEngine `llama-compat`, llama.cpp HIP, and
+the compat delta together. It also records the working rule that ms/output
+rollups (`cycle_wall_ms_per_output`, `draft_initial`,
+`target_block_verify_total`, target rows/output) own the optimization budget,
+while all-sync and rocprof rows are attribution-only leaves that must name the
+parent full-suite row they are expected to move.
+
+No benchmark rerun; this is docs-only tracker maintenance preserving the current
+active gap: **+2.379 ms/output** total, split across **+1.108 ms/output** draft
+drain, **+0.955 ms/output** verifier drain, and **+0.102 target rows/output**
+row economy.
