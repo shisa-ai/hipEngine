@@ -133923,3 +133923,93 @@ longer current-token embedding/projection/Q/K/V. Next target is draft attention
 history: compare hipEngine dense MTP device-KV rows against llama.cpp `ctx_dft`
 K/V rows plus the effective attention length/mask at seq position 49. If those
 match, inspect attention/softmax math; otherwise fix the KV/history mirror.
+
+## 2026-07-02 — MTP attention-history row trace split
+
+Added row-aware diagnostic instrumentation for the next seq-position-49 MTP
+parity split.
+
+hipEngine changes:
+
+- Added `--record-draft-cache-rows ROWS` to `scripts/gguf_mtp_bench.py`.
+- The flag extends `--record-draft-stage-stats` by summarizing selected dense
+  MTP K/V history rows while continuing to emit current and previous rows.
+- Requested duplicate current/previous rows are suppressed; rows outside the
+  visible cache window are skipped.
+
+llama.cpp local reference:
+
+- `/home/lhl/llama.cpp/llama.cpp-hip` commit `1ebf790cd`
+  (`tools: trace MTP process tensor rows`)
+- Adds `row_index` / `row_count` to MTP tensor and hidden traces.
+- Drains `ctx_dft` process/catch-up graph tensors into the same stage event and
+  records `process_h_input` rows.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/gguf_mtp_bench.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py::test_arg_parser_exposes_record_draft_cache_rows_diagnostic \
+  tests/test_mtp_resident_draft_device_commit.py::test_record_stage_stats_passes_requested_cache_rows \
+  tests/test_mtp_resident_draft_device_commit.py::test_stage_cache_row_summaries_include_requested_history_without_duplicates -q
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py -q
+
+git -C /home/lhl/llama.cpp/llama.cpp-hip diff --check
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16
+```
+
+Diagnostic rerun:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 4 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --resident-mtp-draft --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --mtp-context-replay --mtp-device-kv-cache --target-block-verify \
+  --target-block-verify-mode bulk --target-block-min-rows 2 \
+  --target-block-direct-state-commit --root-topk-accept 1 \
+  --sibling-topk-accept 1 --draft-p-min 0.0 \
+  --record-cycle-stage-timings --record-draft-topk-scores \
+  --record-draft-hidden-stats --record-draft-stage-stats \
+  --record-draft-cache-rows 0,1,2,16,32,40,48,49 \
+  --output /tmp/hipengine-mtp-kv-history/hipengine-stage.json
+```
+
+Retained compact artifact:
+`benchmarks/results/2026-07-02-mtp-attention-history-row-trace-diagnostic.json`
+(`performance_claim=false`).
+
+Result at the same seq-position-49 / depth-0 divergence:
+
+- hipEngine still drafts `[65342, 18078]`; llama.cpp FA-on drafts `[8, 1411]`.
+- Sampled dense K/V history rows are close:
+  row 40 key/value first8 MAE **0.011814 / 0.046811**,
+  row 48 key/value **0.019440 / 0.021270**,
+  row 49 key/value **0.013736 / 0.018544**.
+- `draft_stage_attn_pregate` still differs sharply:
+  hipEngine rms **1.056160** vs llama.cpp rms **1.409786**, first8 MAE
+  **0.147055**.
+- llama.cpp FA-on with F32 K/V cache storage did not move the divergence.
+- llama.cpp `--flash-attn off` changes proposal/acceptance semantics before this
+  divergence, so it is not the active parity target.
+
+Interpretation: the first large remaining semantic jump is no longer sampled
+K/V generation or sampled dense cache contents. Next split is effective
+attention execution at position 49: visible count/mask, GQA head mapping, score
+scale/softmax, or FA-on math.

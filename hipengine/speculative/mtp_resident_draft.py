@@ -692,6 +692,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_topk_scores: bool = False,
         record_hidden_stats: bool = False,
         record_stage_stats: bool = False,
+        record_cache_rows: tuple[int, ...] | list[int] | None = None,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
@@ -722,6 +723,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             record_topk_scores=record_topk_scores,
             record_hidden_stats=record_hidden_stats,
             record_stage_stats=record_stage_stats,
+            record_cache_rows=record_cache_rows,
             stage_timings=stage_timings,
         )
 
@@ -743,6 +745,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_topk_scores: bool = False,
         record_hidden_stats: bool = False,
         record_stage_stats: bool = False,
+        record_cache_rows: tuple[int, ...] | list[int] | None = None,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
@@ -772,6 +775,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             record_topk_scores=record_topk_scores,
             record_hidden_stats=record_hidden_stats,
             record_stage_stats=record_stage_stats,
+            record_cache_rows=record_cache_rows,
             stage_timings=stage_timings,
         )
 
@@ -792,6 +796,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_topk_scores: bool = False,
         record_hidden_stats: bool = False,
         record_stage_stats: bool = False,
+        record_cache_rows: tuple[int, ...] | list[int] | None = None,
         stage_timings: dict[str, float] | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         self.last_top1_probs = []
@@ -882,6 +887,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         dense_key_cache=dense_key_cache,
                         dense_value_cache=dense_value_cache,
                         dense_cache_len=current_cache_len,
+                        record_cache_rows=record_cache_rows,
                     )
                 )
             if record_hidden_stats:
@@ -969,6 +975,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_key_cache: DeviceBuffer | None,
         dense_value_cache: DeviceBuffer | None,
         dense_cache_len: int,
+        record_cache_rows: tuple[int, ...] | list[int] | None = None,
     ) -> list[dict[str, object]]:
         h = self.hidden_size
         heads = self.num_heads
@@ -1046,6 +1053,35 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         extra=prev_common,
                     )
                 )
+            seen_rows = {current_row}
+            if current_row > 0:
+                seen_rows.add(current_row - 1)
+            for raw_row in record_cache_rows or ():
+                cache_row = int(raw_row)
+                if cache_row < 0 or cache_row >= current_row + 1 or cache_row in seen_rows:
+                    continue
+                history_common = {
+                    **common,
+                    "cache_tokens": current_row + 1,
+                    "cache_row": cache_row,
+                }
+                summaries.append(
+                    self._summarize_device_f32(
+                        dense_key_cache.ptr + cache_row * key_row_bytes,
+                        kvd,
+                        label="draft_stage_dense_key_history",
+                        extra=history_common,
+                    )
+                )
+                summaries.append(
+                    self._summarize_device_f32(
+                        dense_value_cache.ptr + cache_row * value_row_bytes,
+                        kvd,
+                        label="draft_stage_dense_value_history",
+                        extra=history_common,
+                    )
+                )
+                seen_rows.add(cache_row)
         return summaries
 
     def _summarize_seed_buffer(

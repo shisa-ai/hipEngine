@@ -125,7 +125,7 @@ stage budget instead of burying it in prose.
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Total MTP wall | 16.496 ms/output | **15.547 ms/output** | 14.231 ms/output | **+1.316 ms/output** | Spend this row down before claiming parity movement. |
-| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Corrected resident MTP RoPE from `qk_head_dim=256` to model `rope.dimension_count=64`; tensor-stage trace now shows current-token projection/Q/K/V are close and the first large remaining jump is attention pre-gate, so compare draft KV history/context mask next. |
+| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Corrected resident MTP RoPE from `qk_head_dim=256` to model `rope.dimension_count=64`; row-aware K/V trace now shows sampled history/current rows are close, so the next semantic split is effective attention execution: visible count/mask, GQA head mapping, score scale/softmax, or FA-on math. |
 | Draft visible sampler/GPU drain | 1.151 ms/output | **2.874 ms/output** | 1.886 ms/output | **+0.988 ms/output** | Compare through draft drain; bucket names differ across engines. |
 | Draft transformer body | 0.130 ms/output | **0.111 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
 | Serial verifier probe | 6.665 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
@@ -192,6 +192,7 @@ Current source artifacts:
 | MTP hidden-state parity diagnostic | `benchmarks/results/2026-07-02-mtp-hidden-state-parity-diagnostic.json` | Diagnostic-only same-prompt hidden summary trace after hipEngine commit `6190fd08` added `--record-draft-hidden-stats` and llama.cpp commit `c0f750604` added `draft_hidden_state_trace`. The `draft_seed_input` row is close (`rms_delta` **0.00456**, first8 mean abs **0.0798**), but depth-0 `draft_next_seed` has a much larger first8 mean abs delta (**0.731**) before token selection. The next target is depth-0 draft attention/KV/rope/context state, not the `pending_h` seed handoff. |
 | Resident MTP RoPE-dimension fix diagnostic | `benchmarks/results/2026-07-02-mtp-resident-rope-dim-fix-diagnostic.json` | Diagnostic-only semantic fix; `performance_claim=false`. The GGUF metadata has `qwen35moe.rope.dimension_count=64` while resident MTP used `qk_head_dim=256` as `rotary_dim` for draft Q/K and accepted-row MTP K/V commit. Fixing that cuts the seq-position-49 depth-0 `draft_next_seed` first8 mean abs delta **0.731 -> 0.329**, but hipEngine still drafts `[65342, 18078]` while llama.cpp drafts `[8, 1411]`; token `8` is now rank 2 but still **1.391 logits** behind `65342`. |
 | llama.cpp tensor-stage parity diagnostic | `benchmarks/results/2026-07-02-mtp-llamacpp-tensor-stage-trace-diagnostic.json` | Diagnostic-only same-prompt tensor summary trace after local llama.cpp commit `687c17d26` added `LLAMA_MTP_TENSOR_TRACE=1` for selected `graph_mtp` labels. At seq position 49 / depth 0, token embed, e/h norm, projected state, post-RoPE Q/K, and V are close; the first large jump is `draft_stage_attn_pregate` (**rms 1.056 hipEngine vs 1.410 llama.cpp**, first8 MAE **0.147**). The next semantic target is draft attention history/KV rows, context length, or mask/softmax behavior. |
+| MTP attention-history row trace diagnostic | `benchmarks/results/2026-07-02-mtp-attention-history-row-trace-diagnostic.json` | Diagnostic-only same-prompt row-aware trace after hipEngine added `--record-draft-cache-rows` and llama.cpp commit `1ebf790cd` added process-row tensor tracing. At seq position 49 / depth 0, hipEngine dense K/V rows match llama.cpp at sampled positions 40, 48, and 49 (`first8_mae` **0.0118-0.0468** on reliable rows), while `draft_stage_attn_pregate` still differs (**rms 1.056 vs 1.410**). The next semantic target is effective attention execution: visible count/mask, GQA head mapping, score scale/softmax, or FA-on math. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
@@ -391,6 +392,39 @@ history: hipEngine dense MTP device-KV rows versus llama.cpp `ctx_dft` K/V rows,
 plus the effective attention length/mask at seq position 49. If those rows
 match and `draft_stage_attn_pregate` still differs, then inspect the attention
 kernel math/softmax scaling; otherwise fix the KV/history mirror first.
+
+Attention-history row follow-up artifact:
+`benchmarks/results/2026-07-02-mtp-attention-history-row-trace-diagnostic.json`.
+hipEngine now has `--record-draft-cache-rows`, which extends
+`--record-draft-stage-stats` with selected dense MTP K/V history rows.
+llama.cpp commit `1ebf790cd` adds row-indexed process/catch-up tensor tracing
+to the local HIP checkout. This is still one-prompt diagnostic evidence and
+`performance_claim=false`.
+
+At the same seq-position-49 / depth-0 divergence:
+
+| K/V row comparison | hipEngine rms | llama.cpp rms | first8 mean abs delta | reading |
+| --- | ---: | ---: | ---: | --- |
+| row 40 key | 1.870004 | 1.869944 | 0.011814 | Close; process row and single-row draft agree in llama.cpp. |
+| row 40 value | 1.124036 | 1.117155 | 0.046811 | Close using the reliable single-row draft value. Multi-row process `Vcur` remains low-confidence for non-last rows. |
+| row 48 key | 1.851114 | 1.850622 | 0.019440 | Close; previous visible row matches. |
+| row 48 value | 1.345635 | 1.346136 | 0.021270 | Close; previous visible row matches. |
+| row 49 key | 1.880685 | 1.879979 | 0.013736 | Close; current row matches. |
+| row 49 value | 1.146771 | 1.144939 | 0.018544 | Close using the reliable single-row draft value. |
+
+This pushes the active semantic target past sampled K/V generation and sampled
+cache contents. hipEngine and llama.cpp still differ at
+`draft_stage_attn_pregate` (**1.056160 vs 1.409786 rms**, first8 MAE
+**0.147055**) even though current and nearby history K/V rows are close.
+The next split must instrument effective attention execution: visible count and
+mask, GQA head mapping, score scale/softmax, and FA-on math at position 49.
+
+Two negative A/B checks are also retained in the artifact:
+
+| A/B | result | reading |
+| --- | --- | --- |
+| llama.cpp FA-on default cache vs `--cache-type-k f32 --cache-type-v f32` | No proposal or attention-row movement at the seq-position-49 divergence. | F32 KV cache storage is not the missing parity lever; FA-on casts K/V as needed inside `build_attn_mha()`. |
+| llama.cpp FA-on vs `--flash-attn off` | No-FA changes the proposal/acceptance path before this FA-on divergence and drafts `[198, 262]` at the comparable later cycle instead of `[8, 1411]`. | Flash attention changes semantics enough that the active parity target remains llama.cpp FA-on unless we explicitly change the route decision. |
 
 #### Latest route decision
 

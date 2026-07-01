@@ -699,6 +699,12 @@ def test_arg_parser_exposes_record_draft_hidden_stats_diagnostic() -> None:
     assert args.record_draft_hidden_stats is True
 
 
+def test_arg_parser_exposes_record_draft_cache_rows_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--record-draft-cache-rows", "0,1,2,48,49,48"])
+
+    assert args.record_draft_cache_rows == (0, 1, 2, 48, 49)
+
+
 def test_arg_parser_exposes_cycle_stage_timing_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-cycle-stage-timings"])
 

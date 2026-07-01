@@ -81,6 +81,25 @@ def _hip_available() -> bool:
     return True
 
 
+def _parse_nonnegative_int_csv(raw: str) -> tuple[int, ...]:
+    values: list[int] = []
+    seen: set[int] = set()
+    for part in str(raw).split(","):
+        text = part.strip()
+        if not text:
+            continue
+        try:
+            value = int(text)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("must be a comma-separated list of non-negative integers") from exc
+        if value < 0:
+            raise argparse.ArgumentTypeError("cache row indices must be non-negative")
+        if value not in seen:
+            values.append(value)
+            seen.add(value)
+    return tuple(values)
+
+
 def target_block_direct_commit_is_exact(verify_mode: str, *, start_position: int, rows: int) -> bool:
     if verify_mode in {"native", "serial-exact"}:
         return True
@@ -1163,6 +1182,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--record-draft-cache-rows",
+        type=_parse_nonnegative_int_csv,
+        default=(),
+        metavar="ROWS",
+        help=(
+            "Diagnostic only: with --record-draft-stage-stats, also summarize the requested "
+            "comma-separated dense MTP K/V history rows when they are visible in the current "
+            "draft context, for example 0,1,2,16,32,48,49."
+        ),
+    )
+    parser.add_argument(
         "--record-cycle-stage-timings",
         action="store_true",
         help=(
@@ -1478,6 +1508,8 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-chain requires --draft-p-min 0")
     if args.resident_mtp_device_chain and args.record_draft_confidence:
         parser.error("--resident-mtp-device-chain is not compatible with --record-draft-confidence")
+    if args.record_draft_cache_rows and not args.record_draft_stage_stats:
+        parser.error("--record-draft-cache-rows requires --record-draft-stage-stats")
     if args.resident_mtp_draft_sync_stage_timings and not args.resident_mtp_draft:
         parser.error("--resident-mtp-draft-sync-stage-timings requires --resident-mtp-draft")
     if args.resident_mtp_draft_sync_stage_timings and not args.record_cycle_stage_timings:
@@ -1993,6 +2025,7 @@ def main(argv: list[str] | None = None):
                             record_topk_scores=bool(args.record_draft_topk_scores),
                             record_hidden_stats=bool(args.record_draft_hidden_stats),
                             record_stage_stats=bool(args.record_draft_stage_stats),
+                            record_cache_rows=tuple(args.record_draft_cache_rows),
                             record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                     )
@@ -2013,6 +2046,7 @@ def main(argv: list[str] | None = None):
                         record_topk_scores=bool(args.record_draft_topk_scores),
                         record_hidden_stats=bool(args.record_draft_hidden_stats),
                         record_stage_stats=bool(args.record_draft_stage_stats),
+                        record_cache_rows=tuple(args.record_draft_cache_rows),
                         record_stage_timings=bool(args.record_cycle_stage_timings),
                     )
                 if args.record_draft_confidence:
@@ -3288,6 +3322,7 @@ def main(argv: list[str] | None = None):
             "record_draft_topk_scores": bool(args.record_draft_topk_scores),
             "record_draft_hidden_stats": bool(args.record_draft_hidden_stats),
             "record_draft_stage_stats": bool(args.record_draft_stage_stats),
+            "record_draft_cache_rows": list(args.record_draft_cache_rows),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "llama_compat": bool(args.llama_compat),

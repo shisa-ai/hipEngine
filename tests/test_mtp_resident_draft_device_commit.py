@@ -190,6 +190,121 @@ def test_record_hidden_stats_uses_host_chain_and_records_seed_summaries(monkeypa
     ]
 
 
+def test_record_stage_stats_passes_requested_cache_rows(monkeypatch) -> None:
+    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.runtime = None
+    runner.hidden_size = 4
+    runner.qk_head_dim = 4
+    runner.experts_used = 8
+    runner._device_chain_enabled = True
+    runner._draft_chain_cap = 16
+    runner.token_embd_f32 = np.arange(40, dtype=np.float32).reshape(10, 4)
+    runner.seed_a = DeviceBuffer(0x1000, 16)
+    runner.seed_b = DeviceBuffer(0x1100, 16)
+    runner.token_embed = DeviceBuffer(0x2000, 16)
+    runner.cos = DeviceBuffer(0x3000, 16)
+    runner.sin = DeviceBuffer(0x4000, 16)
+    runner.position_i64 = DeviceBuffer(0x5000, 8)
+    runner.context_i64 = DeviceBuffer(0x6000, 8)
+
+    summary_kwargs = []
+
+    runner._run_one = lambda *args, **kwargs: None
+    runner._read_topk = lambda top_k: [3]
+    runner._summarize_seed_buffer = lambda *args, **kwargs: {"label": kwargs["label"]}
+
+    def summarize_stage(**kwargs):
+        summary_kwargs.append(kwargs)
+        return [{"label": "stage"}]
+
+    runner._summarize_draft_stage_buffers = summarize_stage
+    runner._propose_chain_device = lambda **kwargs: (_ for _ in ()).throw(
+        AssertionError("device chain should be bypassed")
+    )
+
+    tokens, topk_rows, cache_len = runner._propose_chain_from_seed_buffer(
+        start_token=1,
+        start_position=2,
+        draft_n_max=1,
+        top_k=1,
+        rope_cos=np.ones((8, 4), dtype=np.float32),
+        rope_sin=np.zeros((8, 4), dtype=np.float32),
+        dense_key_cache=None,
+        dense_value_cache=None,
+        dense_cache_len=7,
+        draft_p_min=0.0,
+        record_stage_stats=True,
+        record_cache_rows=(0, 5),
+    )
+
+    assert tokens == [3]
+    assert topk_rows == [[3]]
+    assert cache_len == 7
+    assert summary_kwargs[0]["record_cache_rows"] == (0, 5)
+    assert runner.last_hidden_state_summaries == [{"label": "draft_seed_input"}, {"label": "stage"}]
+
+
+def test_stage_cache_row_summaries_include_requested_history_without_duplicates() -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.hidden_size = 4
+    runner.num_heads = 2
+    runner.num_kv_heads = 1
+    runner.qk_head_dim = 2
+    dummy = DeviceBuffer(0x1000, 16)
+    for name in (
+        "token_embed",
+        "e_norm",
+        "h_norm",
+        "projected",
+        "attn_normed",
+        "query",
+        "key_cur",
+        "value_cur",
+        "attn",
+        "gated",
+        "wo_out",
+        "attended",
+        "post_norm",
+        "ffn_out",
+    ):
+        setattr(runner, name, dummy)
+
+    def summarize(ptr_or_buffer, elements, *, label, depth=None, token_id=None, position=None, extra=None):
+        result = {"label": label}
+        if extra:
+            result.update(extra)
+        return result
+
+    runner._summarize_device_f32 = summarize
+
+    summaries = runner._summarize_draft_stage_buffers(
+        depth=0,
+        token_id=1103,
+        position=49,
+        dense_key_cache=DeviceBuffer(0x6000, 4096),
+        dense_value_cache=DeviceBuffer(0x7000, 4096),
+        dense_cache_len=49,
+        record_cache_rows=(0, 1, 2, 48, 49, 999),
+    )
+
+    cache_summaries = [item for item in summaries if "cache_row" in item]
+    assert [(item["label"], item["cache_row"]) for item in cache_summaries] == [
+        ("draft_stage_dense_key_current", 49),
+        ("draft_stage_dense_value_current", 49),
+        ("draft_stage_dense_key_prev", 48),
+        ("draft_stage_dense_value_prev", 48),
+        ("draft_stage_dense_key_history", 0),
+        ("draft_stage_dense_value_history", 0),
+        ("draft_stage_dense_key_history", 1),
+        ("draft_stage_dense_value_history", 1),
+        ("draft_stage_dense_key_history", 2),
+        ("draft_stage_dense_value_history", 2),
+    ]
+    assert all(item["cache_tokens"] == 50 for item in cache_summaries)
+
+
 def test_ensure_device_chain_ready_preloads_embed_table() -> None:
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     calls = []
