@@ -132571,6 +132571,88 @@ python3 -m pytest \
 
 Result: passed.
 
+## 2026-07-02 — Rejected resident draft dense-Q8 dp4a route
+
+Implemented a default-off llama-compat diagnostic for resident MTP draft dense
+Q8_0 projections:
+
+- `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A`
+- bench flag `--resident-mtp-draft-dense-q8-dp4a`
+- draft-profile flag `--dense-q8-dp4a`
+- suite route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8`
+
+The route adds float-output raw-Q8 dp4a wrappers and uses F32->q8_1 activation
+quantization for draft `eh_proj`, Q/K/V triple, attention output, shared gate/up
+dual, and shared down. This matches the verifier/llama.cpp q8_1/raw-Q8 economy
+more closely while keeping the active default and active `llama-compat` route
+unchanged unless the flag is set.
+
+Correctness / routing validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dp4a_gemv.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_mtp_draft_rocprof.py \
+  scripts/gguf_ar_mtp_suite.py tests/test_gguf_q8_0_dp4a_gemv.py \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_gguf_mtp_bench_metrics.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py -q
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  python3 -m pytest tests/test_gguf_q8_0_dp4a_gemv.py -q
+```
+
+Result: passed. The HIP gate covers the new F32-output rowtile, dual, and triple
+raw-Q8 dp4a symbols against a q8_1 oracle / quality gate.
+
+Draft-chain diagnostic:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --router-row-parallel --selected-down-x8-repack q6 \
+  --dense-q8-dp4a --record-stage-timings --sync-stage-timings \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-draftdenseq8-fine-sync.json
+```
+
+Result: attribution-only positive. Kernel time **5.983 -> 5.570 ms/cycle** vs
+the active router-row profile, and `draft_dense_shared_gemv` **0.784 -> 0.374
+ms/cycle**. Top Q6_K lm-head remained dominant at **3.691 ms/cycle**.
+
+Async validation rejected promotion:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py \
+  --scope partial --budgets 2 --cycles 5 \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8 \
+  --record-cycle-stage-timings \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-partial.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full --budgets 2 \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8 \
+  --record-cycle-stage-timings \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-full.json
+```
+
+Partial B2 was mildly positive vs same-session router-row control:
+**73.77 -> 74.42 tok/s**, `draft_initial` **2.588 -> 2.459 ms/output**, same
+acceptance and rows/output. Full-suite B2 rejected the route vs the active
+retained router-row full artifact: **64.41 -> 64.14 tok/s**, cycle
+**15.547 -> 15.612 ms/output**, `acc/output` **0.578 -> 0.573**, target
+rows/output **1.266 -> 1.282**, and target verifier drain **12.166 -> 12.324
+ms/output**. Keep the flag and suite route as diagnostic evidence only; do not
+promote standalone draft dense-Q8 dp4a.
+
 ## 2026-07-02 — llama-compat draft router row-parallel path retained
 
 Added an opt-in resident MTP draft router path that routes the F32 post-norm

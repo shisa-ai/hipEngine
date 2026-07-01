@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -123,6 +124,131 @@ def test_ensure_device_chain_ready_preloads_embed_table() -> None:
     runner.ensure_device_chain_ready()
 
     assert calls == ["ensure"]
+
+
+def test_draft_dense_q8_dp4a_helper_is_default_off(monkeypatch) -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner._draft_dense_q8_dp4a_enabled = False
+    runner.dense_q8_1 = DeviceBuffer(0x4000, 36 * 64)
+
+    monkeypatch.setattr(
+        resident_draft_mod,
+        "gguf_q4_k_quantize_f32_q8_1",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("quantize should not run")),
+    )
+    monkeypatch.setattr(
+        resident_draft_mod,
+        "gguf_q8_0_dp4a_gemv_f32_f32_out",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("dp4a should not run")),
+    )
+
+    assert not runner._try_dense_q8_dp4a_f32(
+        0x1000,
+        0x2000,
+        0x3000,
+        rows=1,
+        in_features=2048,
+        out_features=2048,
+    )
+
+
+def test_draft_dense_q8_dp4a_single_helper_quantizes_once(monkeypatch) -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner._draft_dense_q8_dp4a_enabled = True
+    runner.dense_q8_1 = DeviceBuffer(0x4000, 36 * 64)
+    runner.runtime = SimpleNamespace()
+    runner._q4_lib = object()
+    runner._q8_dp4a_lib = object()
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def quantize(*args, **kwargs) -> None:
+        calls.append(("quantize", args, kwargs))
+
+    def dp4a(*args, **kwargs) -> None:
+        calls.append(("dp4a", args, kwargs))
+
+    monkeypatch.setattr(resident_draft_mod, "gguf_q4_k_quantize_f32_q8_1", quantize)
+    monkeypatch.setattr(resident_draft_mod, "gguf_q8_0_dp4a_gemv_f32_f32_out", dp4a)
+
+    assert runner._try_dense_q8_dp4a_f32(
+        0x1000,
+        0x2000,
+        0x3000,
+        rows=1,
+        in_features=2048,
+        out_features=4096,
+    )
+
+    assert [name for name, _args, _kwargs in calls] == ["quantize", "dp4a"]
+    assert calls[0][1][:4] == (0x1000, 0x4000, 1, 2048)
+    assert calls[1][1][:6] == (0x4000, 0x2000, 0x3000, 1, 2048, 4096)
+
+
+def test_draft_dense_q8_dp4a_split_helpers_quantize_once(monkeypatch) -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner._draft_dense_q8_dp4a_enabled = True
+    runner.dense_q8_1 = DeviceBuffer(0x4000, 36 * 64)
+    runner.runtime = SimpleNamespace()
+    runner._q4_lib = object()
+    runner._q8_dp4a_lib = object()
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def quantize(*args, **kwargs) -> None:
+        calls.append(("quantize", args, kwargs))
+
+    def dual(*args, **kwargs) -> None:
+        calls.append(("dual", args, kwargs))
+
+    def triple(*args, **kwargs) -> None:
+        calls.append(("triple", args, kwargs))
+
+    monkeypatch.setattr(resident_draft_mod, "gguf_q4_k_quantize_f32_q8_1", quantize)
+    monkeypatch.setattr(resident_draft_mod, "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out", dual)
+    monkeypatch.setattr(resident_draft_mod, "gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out", triple)
+
+    assert runner._try_dense_q8_dp4a_dual_f32(
+        0x1000,
+        0x2100,
+        0x2200,
+        0x3100,
+        0x3200,
+        rows=1,
+        in_features=2048,
+        out_features_a=768,
+        out_features_b=768,
+    )
+    assert runner._try_dense_q8_dp4a_triple_f32(
+        0x1000,
+        0x2100,
+        0x2200,
+        0x2300,
+        0x3100,
+        0x3200,
+        0x3300,
+        rows=1,
+        in_features=2048,
+        out_features_a=4096,
+        out_features_b=512,
+        out_features_c=512,
+    )
+
+    assert [name for name, _args, _kwargs in calls] == ["quantize", "dual", "quantize", "triple"]
+    assert calls[0][1][:4] == (0x1000, 0x4000, 1, 2048)
+    assert calls[1][1][:9] == (0x4000, 0x2100, 0x2200, 0x3100, 0x3200, 1, 2048, 768, 768)
+    assert calls[2][1][:4] == (0x1000, 0x4000, 1, 2048)
+    assert calls[3][1][:11] == (
+        0x4000,
+        0x2100,
+        0x2200,
+        0x2300,
+        0x3100,
+        0x3200,
+        0x3300,
+        1,
+        2048,
+        4096,
+        512,
+    )
 
 
 def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:

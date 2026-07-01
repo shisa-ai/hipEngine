@@ -424,3 +424,20 @@ should be boring.
   longer needs A/B isolation. Delete the env/CLI flag and old generic-router
   fallback route after the next parity checkpoint no longer needs the direct
   control.
+
+## `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A` (diagnostic rejected)
+- Added 2026-07-02. Bench flag `--resident-mtp-draft-dense-q8-dp4a`,
+  draft-profile flag `--dense-q8-dp4a`, and suite route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8`
+  route resident draft dense Q8_0 F32 projections through F32->q8_1 plus
+  raw-Q8 dp4a float-output wrappers.
+- Purpose: test whether copying the verifier/llama.cpp q8_1/raw-Q8 dp4a economy
+  into the draft dense projections (`eh_proj`, Q/K/V, attention output, shared
+  gate/up, shared down) closes the non-Q6 draft drain gap.
+- Result: draft-chain rocprof moved the intended kernel bucket, but full-suite
+  B2 rejected the route: active router-row **64.41 tok/s / 15.547 ms/output**
+  vs draftdenseq8 **64.14 tok/s / 15.612 ms/output**, with worse acceptance and
+  target rows/output.
+- Remove when: the next parity checkpoint no longer needs this negative
+  evidence, or if a future fused dense-draft design replaces the standalone
+  quantize+dp4a calls. Do not promote the flag as-is.

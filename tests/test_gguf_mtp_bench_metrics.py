@@ -93,6 +93,14 @@ def test_dense_q8_f32_dp4a_flag_parses_default_off() -> None:
     assert args.verify_dense_q8_dp4a_f32 is True
 
 
+def test_resident_mtp_draft_dense_q8_dp4a_flag_parses_default_off() -> None:
+    args = build_arg_parser().parse_args([])
+    assert args.resident_mtp_draft_dense_q8_dp4a is False
+
+    args = build_arg_parser().parse_args(["--resident-mtp-draft-dense-q8-dp4a"])
+    assert args.resident_mtp_draft_dense_q8_dp4a is True
+
+
 def test_fused_b1_block_probe_selector_is_only_for_adaptive_b1_probe() -> None:
     kwargs = {
         "fused_b1_block_probe": True,

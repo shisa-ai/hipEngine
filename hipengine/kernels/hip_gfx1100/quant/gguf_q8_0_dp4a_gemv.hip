@@ -364,6 +364,28 @@ extern "C" int hipengine_gguf_q8_0_dp4a_gemv_bf16_bf16_out(
   return hipGetLastError();
 }
 
+extern "C" int hipengine_gguf_q8_0_dp4a_gemv_f32_f32_out(
+    const void* xq,
+    const void* qweight,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;
+  if (rows <= 0 || in_features <= 0 || out_features <= 0) return hipErrorInvalidValue;
+  if (in_features % Q8_0_BLOCK != 0) return hipErrorInvalidValue;
+  const dim3 grid(static_cast<unsigned>(out_features), static_cast<unsigned>(rows), 1);
+  const dim3 block(32);
+  hipLaunchKernelGGL((q8_0_dp4a_gemv_kernel<float>), grid, block, 0, stream,
+                     reinterpret_cast<const gguf_q8_1_block*>(xq),
+                     reinterpret_cast<const uint8_t*>(qweight),
+                     reinterpret_cast<float*>(out),
+                     rows, in_features, out_features);
+  return hipGetLastError();
+}
+
 extern "C" int hipengine_gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out(
     const void* xq,
     const void* qweight,
@@ -385,6 +407,31 @@ extern "C" int hipengine_gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out(
                      reinterpret_cast<const gguf_q8_1_block*>(xq),
                      reinterpret_cast<const uint8_t*>(qweight),
                      reinterpret_cast<uint16_t*>(out),
+                     rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_q8_0_dp4a_rowtile4_gemv_f32_f32_out(
+    const void* xq,
+    const void* qweight,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;
+  if (!xq || !qweight || !out) return hipErrorInvalidValue;
+  if (rows <= 0 || in_features <= 0 || out_features <= 0) return hipErrorInvalidValue;
+  if (in_features % Q8_0_BLOCK != 0) return hipErrorInvalidValue;
+  const dim3 grid(static_cast<unsigned>(out_features),
+                  static_cast<unsigned>((rows + 3) / 4),
+                  1);
+  const dim3 block(32);
+  hipLaunchKernelGGL((q8_0_dp4a_rowtile_gemv_kernel<float, 4>), grid, block, 0, stream,
+                     reinterpret_cast<const gguf_q8_1_block*>(xq),
+                     reinterpret_cast<const uint8_t*>(qweight),
+                     reinterpret_cast<float*>(out),
                      rows, in_features, out_features);
   return hipGetLastError();
 }
@@ -415,6 +462,36 @@ extern "C" int hipengine_gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out(
                      reinterpret_cast<const uint8_t*>(qweight_b),
                      reinterpret_cast<uint16_t*>(out_a),
                      reinterpret_cast<uint16_t*>(out_b),
+                     rows, in_features, out_features_a, out_features_b);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out(
+    const void* xq,
+    const void* qweight_a,
+    const void* qweight_b,
+    void* out_a,
+    void* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;
+  if (!xq || !qweight_a || !qweight_b || !out_a || !out_b) return hipErrorInvalidValue;
+  if (rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0) return hipErrorInvalidValue;
+  if (in_features % Q8_0_BLOCK != 0) return hipErrorInvalidValue;
+  const dim3 grid(static_cast<unsigned>(out_features_a + out_features_b),
+                  static_cast<unsigned>((rows + 3) / 4),
+                  1);
+  const dim3 block(32);
+  hipLaunchKernelGGL((q8_0_dp4a_dual_split_rowtile_gemv_kernel<float, 4>), grid, block, 0, stream,
+                     reinterpret_cast<const gguf_q8_1_block*>(xq),
+                     reinterpret_cast<const uint8_t*>(qweight_a),
+                     reinterpret_cast<const uint8_t*>(qweight_b),
+                     reinterpret_cast<float*>(out_a),
+                     reinterpret_cast<float*>(out_b),
                      rows, in_features, out_features_a, out_features_b);
   return hipGetLastError();
 }
@@ -452,6 +529,43 @@ extern "C" int hipengine_gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out
                      reinterpret_cast<uint16_t*>(out_a),
                      reinterpret_cast<uint16_t*>(out_b),
                      reinterpret_cast<uint16_t*>(out_c),
+                     rows, in_features, out_features_a, out_features_b, out_features_c);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out(
+    const void* xq,
+    const void* qweight_a,
+    const void* qweight_b,
+    const void* qweight_c,
+    void* out_a,
+    void* out_b,
+    void* out_c,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t out_features_c,
+    int64_t threads,
+    hipStream_t stream) {
+  (void)threads;
+  if (!xq || !qweight_a || !qweight_b || !qweight_c || !out_a || !out_b || !out_c) return hipErrorInvalidValue;
+  if (rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 || out_features_c <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (in_features % Q8_0_BLOCK != 0) return hipErrorInvalidValue;
+  const dim3 grid(static_cast<unsigned>(out_features_a + out_features_b + out_features_c),
+                  static_cast<unsigned>((rows + 3) / 4),
+                  1);
+  const dim3 block(32);
+  hipLaunchKernelGGL((q8_0_dp4a_triple_split_rowtile_gemv_kernel<float, 4>), grid, block, 0, stream,
+                     reinterpret_cast<const gguf_q8_1_block*>(xq),
+                     reinterpret_cast<const uint8_t*>(qweight_a),
+                     reinterpret_cast<const uint8_t*>(qweight_b),
+                     reinterpret_cast<const uint8_t*>(qweight_c),
+                     reinterpret_cast<float*>(out_a),
+                     reinterpret_cast<float*>(out_b),
+                     reinterpret_cast<float*>(out_c),
                      rows, in_features, out_features_a, out_features_b, out_features_c);
   return hipGetLastError();
 }

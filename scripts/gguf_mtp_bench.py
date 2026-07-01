@@ -1041,6 +1041,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-dense-q8-dp4a",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic llama-compat draft-path A/B: route resident draft dense Q8_0 "
+            "F32 projections through f32->q8_1 plus raw-Q8 dp4a float-output wrappers. "
+            "Default off until full-suite economics prove it closes the draft gap."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -1304,6 +1314,8 @@ def main(argv: list[str] | None = None):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
     if getattr(args, "resident_mtp_draft_router_row_parallel", False):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"] = "1"
+    if getattr(args, "resident_mtp_draft_dense_q8_dp4a", False):
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"] = "1"
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(args.resident_mtp_draft_q6_top1_stage1_threads)
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] = str(args.resident_mtp_draft_q6_top1_stage1_shape)
     try:
@@ -3121,6 +3133,10 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft_router_row_parallel": bool(args.resident_mtp_draft_router_row_parallel),
             "resident_mtp_draft_router_row_parallel_env": os.environ.get(
                 "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"
+            ),
+            "resident_mtp_draft_dense_q8_dp4a": bool(args.resident_mtp_draft_dense_q8_dp4a),
+            "resident_mtp_draft_dense_q8_dp4a_env": os.environ.get(
+                "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"
             ),
             "resident_mtp_draft_q6_top1_stage1_threads": int(args.resident_mtp_draft_q6_top1_stage1_threads),
             "resident_mtp_draft_q6_top1_stage1_threads_env": os.environ.get(

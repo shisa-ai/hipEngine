@@ -187,6 +187,7 @@ Current source artifacts:
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
+| hipEngine llama-compat rejected draft dense-Q8 dp4a check | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-draftdenseq8-fine-sync.json`, `benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-full.json` | Diagnostic only: routes resident draft dense Q8_0 F32 projections through F32->q8_1 plus raw-Q8 dp4a float-output wrappers (`--resident-mtp-draft-dense-q8-dp4a`). Draft-chain profile moved the intended dense bucket (**5.983 -> 5.570 ms/cycle kernel**, `draft_dense_shared_gemv` **0.784 -> 0.374 ms/cycle**), but full-suite B2 regressed versus the active router-row lane (**64.41 -> 64.14 tok/s**, cycle **15.547 -> 15.612 ms/output**) because acceptance/row economy worsened (`acc/output` **0.578 -> 0.573**, target rows/output **1.266 -> 1.282**) and verifier drain rose (**12.166 -> 12.324 ms/output**). Keep as evidence only. |
 | hipEngine llama-compat Q8 shared-dual A/B | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-control.json`, `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shared-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-smoke.json` | Retained exact draft-path improvement: Q8 shared gate/up launches collapse from two single raw-Q8 GEMVs to one dual F32/F32 launch per draft layer. The isolated kernel delta is small, but same-session async smoke moved **69.44 -> 70.20 tok/s** with identical acceptance; full-suite compat moved **60.96 -> 61.19 tok/s**. |
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
@@ -223,6 +224,7 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 | route | status | MTP tok/s | cycle wall | acc/output | draft acceptance | target rows/output | target verifier drain | decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow` + Q8 shared dual | retained active lane | **64.41 routerrow full** | **15.547 ms/output** | **0.578** | **0.685** | **1.266** | **12.166 ms/output** | Current comparison lane vs llama.cpp HIP B2. Row-parallel draft router logits cut the draft parent row with unchanged row economy; remaining work is still draft drain, now led by Q6_K top-1 and secondary dense/selected-MoE leaves. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8` | rejected full-suite diagnostic | 64.14 full | 15.612 ms/output | 0.573 | 0.670 | 1.282 | 12.324 ms/output | Draft-only rocprof was positive, but the full-suite route loses the active lane: `draft_initial` improves **3.055 -> 2.986 ms/output**, while target rows/output and verifier drain worsen enough to lose wall time. Do not promote; the active lane remains router-row without draft dense-Q8 dp4a. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm` + Q8 shared dual | superseded retained diagnostic | 63.63 f32ssm full | 15.735 ms/output | 0.578 | 0.685 | 1.266 | 12.158 ms/output | Prior active lane before row-parallel draft router logits. Keep as the direct control row for the retained router-row A/B. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1` + Q8 shared dual | superseded retained diagnostic | 61.31 x8top1 full | 16.331 ms/output | 0.567 | 0.655 | 1.299 | 12.662 ms/output | Prior active lane before F32 `ssm_out`; keep as the direct control row for the retained F32 verifier A/B. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-sharedq8` | rejected full-suite diagnostic | 59.63 full | 16.793 ms/output | 0.556 | 0.625 | 1.333 | 13.038 ms/output | The isolated block profile and smoke looked positive, but the full suite regressed vs its x8top1 control (**61.31 tok/s**, **16.331 ms/output**, **0.567 acc/output**, **12.662 ms/output verifier**) and is farther from the current F32 lane. Extra shared-expert q8_1/dp4a launches and changed verifier numerics do not transfer across categories; keep as evidence only. |
@@ -407,6 +409,8 @@ The current fine-grained sync-stage draft split comes from
 `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json`,
 with control artifact
 `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`.
+The rejected draft dense-Q8 dp4a profile is
+`benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-draftdenseq8-fine-sync.json`.
 It supersedes the earlier `...fine-sync-ffn.json` attribution artifact for the
 active route because router-row is now retained in the llama-compat lane.
 Do not use the all-sync or rocprof rows for headline tok/s; use them only to
@@ -429,7 +433,16 @@ Q6_K top-1, and row-parallel F32 router logits: **6.971 ms/cycle host wall**,
 calls/cycle**, and **0.987 ms/cycle host residual**. Same-session control was
 **7.569 ms/cycle host wall** and **6.461 ms/cycle kernel time**, so the
 router-row substitution saves **0.598 ms/cycle** host and **0.478 ms/cycle**
-kernel in this attribution-only profile.
+kernel in this attribution-only profile, and remains the active draft path.
+The draft dense-Q8 dp4a diagnostic
+added float-output raw-Q8 dp4a wrappers for `eh_proj`, Q/K/V, attention output,
+shared gate/up, and shared down. Its draft-only profile improved kernel time to
+**5.570 ms/cycle** and cut `draft_dense_shared_gemv` **0.784 -> 0.374 ms/cycle**,
+but it is rejected because the full-suite route regressed the active lane
+**64.41 -> 64.14 tok/s** with worse row economy. Use it as evidence that
+standalone draft dense dp4a is not enough; future dense-draft work needs to
+preserve draft acceptance/row economy or fuse quantization with surrounding
+ops instead of adding another precision-changing draft path.
 The approximate
 ms/output column divides by the active full-suite `llama-compat` row's
 **2.37 visible outputs/cycle** (237 outputs / 100 cycles), so use it as

@@ -59,6 +59,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_quantize_bf16_q8_1,
+    gguf_q4_k_quantize_f32_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
@@ -82,6 +83,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32,
     gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
+    build_gguf_q8_0_dp4a_gemv,
+    gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out,
+    gguf_q8_0_dp4a_gemv_f32_f32_out,
+    gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out,
+)
 from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     _cached_upload,
     build_mtp_nextn,
@@ -98,6 +105,9 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
 )
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_x8 import repack_gguf_q6_k_x8, repack_gguf_q6_k_x8_dscale_f32
+
+_Q8_1_BLOCK = 32
+_Q8_1_BLOCK_BYTES = 36
 
 
 def _stage_add(timings: dict[str, float] | None, name: str, ms: float) -> None:
@@ -242,10 +252,16 @@ class Qwen35GGUFResidentMTPDraftRunner:
             "compiler_version": self.compiler_version,
             "require_cached": bool(self.require_cached_build),
         }
+        self._draft_dense_q8_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A", False)
         self._mtp_lib = build_mtp_nextn(**build_kwargs)
         self._k_lib = build_gguf_k_gemv(**build_kwargs)
         self._q4_lib = build_gguf_q4_k_gemv(**build_kwargs)
         self._q6_pack8_lib = build_gguf_q6_k_pack8_gemv(**build_kwargs)
+        self._q8_dp4a_lib = (
+            build_gguf_q8_0_dp4a_gemv(**build_kwargs)
+            if self._draft_dense_q8_dp4a_enabled
+            else None
+        )
         self._cast_lib = build_cast(**build_kwargs)
         self._router_lib = build_qwen35_router(**build_kwargs)
         self._lm_head_lib = build_lm_head(**build_kwargs)
@@ -408,6 +424,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.ffn_out_bf16 = self._malloc(h * 2)
         self.head_normed_bf16 = self._malloc(h * 2)
         self.head_normed_q8_1 = self._malloc((h // 32) * 36)
+        self.dense_q8_1: DeviceBuffer | None = None
+        if self._draft_dense_q8_dp4a_enabled:
+            max_dense_in = max(h * 2, h, heads * d, inter)
+            if max_dense_in % _Q8_1_BLOCK != 0:
+                raise ValueError("draft dense-Q8 dp4a inputs must be divisible by q8_1 block size 32")
+            self.dense_q8_1 = self._malloc((max_dense_in // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES)
         self.logits = self._malloc(self.vocab * 4)
         self.q6_top1_block_values = self._malloc(self.vocab * 4)
         self.q6_top1_block_indices = self._malloc(self.vocab * 4)
@@ -433,6 +455,150 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
+
+    def _try_dense_q8_dp4a_f32(
+        self,
+        x_ptr: int,
+        qweight_ptr: int,
+        out_ptr: int,
+        *,
+        rows: int,
+        in_features: int,
+        out_features: int,
+    ) -> bool:
+        if (
+            not self._draft_dense_q8_dp4a_enabled
+            or self.dense_q8_1 is None
+            or self._q8_dp4a_lib is None
+        ):
+            return False
+        if int(rows) <= 0 or int(in_features) <= 0 or int(in_features) % _Q8_1_BLOCK != 0:
+            return False
+        required = int(rows) * (int(in_features) // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES
+        if int(self.dense_q8_1.nbytes) < required:
+            return False
+        runtime = self.runtime or get_hip_runtime()
+        gguf_q4_k_quantize_f32_q8_1(
+            x_ptr,
+            self.dense_q8_1.ptr,
+            int(rows),
+            int(in_features),
+            library=self._q4_lib,
+            runtime=runtime,
+        )
+        gguf_q8_0_dp4a_gemv_f32_f32_out(
+            self.dense_q8_1.ptr,
+            qweight_ptr,
+            out_ptr,
+            int(rows),
+            int(in_features),
+            int(out_features),
+            library=self._q8_dp4a_lib,
+            runtime=runtime,
+        )
+        return True
+
+    def _try_dense_q8_dp4a_dual_f32(
+        self,
+        x_ptr: int,
+        qweight_a_ptr: int,
+        qweight_b_ptr: int,
+        out_a_ptr: int,
+        out_b_ptr: int,
+        *,
+        rows: int,
+        in_features: int,
+        out_features_a: int,
+        out_features_b: int,
+    ) -> bool:
+        if (
+            not self._draft_dense_q8_dp4a_enabled
+            or self.dense_q8_1 is None
+            or self._q8_dp4a_lib is None
+        ):
+            return False
+        if int(rows) <= 0 or int(in_features) <= 0 or int(in_features) % _Q8_1_BLOCK != 0:
+            return False
+        required = int(rows) * (int(in_features) // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES
+        if int(self.dense_q8_1.nbytes) < required:
+            return False
+        runtime = self.runtime or get_hip_runtime()
+        gguf_q4_k_quantize_f32_q8_1(
+            x_ptr,
+            self.dense_q8_1.ptr,
+            int(rows),
+            int(in_features),
+            library=self._q4_lib,
+            runtime=runtime,
+        )
+        gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out(
+            self.dense_q8_1.ptr,
+            qweight_a_ptr,
+            qweight_b_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            int(rows),
+            int(in_features),
+            int(out_features_a),
+            int(out_features_b),
+            library=self._q8_dp4a_lib,
+            runtime=runtime,
+        )
+        return True
+
+    def _try_dense_q8_dp4a_triple_f32(
+        self,
+        x_ptr: int,
+        qweight_a_ptr: int,
+        qweight_b_ptr: int,
+        qweight_c_ptr: int,
+        out_a_ptr: int,
+        out_b_ptr: int,
+        out_c_ptr: int,
+        *,
+        rows: int,
+        in_features: int,
+        out_features_a: int,
+        out_features_b: int,
+        out_features_c: int,
+    ) -> bool:
+        if (
+            not self._draft_dense_q8_dp4a_enabled
+            or self.dense_q8_1 is None
+            or self._q8_dp4a_lib is None
+        ):
+            return False
+        if int(rows) <= 0 or int(in_features) <= 0 or int(in_features) % _Q8_1_BLOCK != 0:
+            return False
+        required = int(rows) * (int(in_features) // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES
+        if int(self.dense_q8_1.nbytes) < required:
+            return False
+        runtime = self.runtime or get_hip_runtime()
+        gguf_q4_k_quantize_f32_q8_1(
+            x_ptr,
+            self.dense_q8_1.ptr,
+            int(rows),
+            int(in_features),
+            library=self._q4_lib,
+            runtime=runtime,
+        )
+        gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out(
+            self.dense_q8_1.ptr,
+            qweight_a_ptr,
+            qweight_b_ptr,
+            qweight_c_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            out_c_ptr,
+            int(rows),
+            int(in_features),
+            int(out_features_a),
+            int(out_features_b),
+            int(out_features_c),
+            library=self._q8_dp4a_lib,
+            runtime=runtime,
+        )
+        return True
 
     def ensure_device_chain_ready(self) -> None:
         """Preload resident state needed by the device-chained draft path."""
@@ -884,16 +1050,24 @@ class Qwen35GGUFResidentMTPDraftRunner:
         runtime.memcpy(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
         if stage_marker is not None:
             stage_marker("draft_run_project_norm_concat")
-        gguf_q8_0_gemv_f32_f32_out(
+        if not self._try_dense_q8_dp4a_f32(
             self.concat.ptr,
             self.eh_proj.ptr,
             self.projected.ptr,
-            1,
-            h * 2,
-            h,
-            library=self._k_lib,
-            runtime=runtime,
-        )
+            rows=1,
+            in_features=h * 2,
+            out_features=h,
+        ):
+            gguf_q8_0_gemv_f32_f32_out(
+                self.concat.ptr,
+                self.eh_proj.ptr,
+                self.projected.ptr,
+                1,
+                h * 2,
+                h,
+                library=self._k_lib,
+                runtime=runtime,
+            )
         if stage_marker is not None:
             stage_marker("draft_run_project_eh_proj")
         mtp_rmsnorm_f32(self.projected.ptr, self.attn_norm.ptr, self.attn_normed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
@@ -914,12 +1088,23 @@ class Qwen35GGUFResidentMTPDraftRunner:
         kv_heads = self.num_kv_heads
         d = self.qk_head_dim
         self._project_current_to_attn_normed(self.seed_a)
-        gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
+        if not self._try_dense_q8_dp4a_dual_f32(
+            self.attn_normed.ptr,
+            self.wk.ptr,
+            self.wv.ptr,
+            self.key_cur.ptr,
+            self.value_cur.ptr,
+            rows=1,
+            in_features=h,
+            out_features_a=kv_heads * d,
+            out_features_b=kv_heads * d,
+        ):
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=runtime)
         copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=runtime)
         mtp_rope_f32(self.key_cur.ptr, self.cos.ptr, self.sin.ptr, self.key_cur.ptr, 1, kv_heads, d, d, d // 2, runtime=runtime)
-        gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         key_row_bytes = kv_heads * d * 4
         value_row_bytes = kv_heads * d * 4
         runtime.memcpy(
@@ -983,16 +1168,33 @@ class Qwen35GGUFResidentMTPDraftRunner:
         add_aggregate_stage("draft_run_project", t_project0)
         t_qkv0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_qkv0 if sync_stages else t_stage
-        gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wq.ptr, self.q_full.ptr, 1, h, heads * 2 * d, library=self._k_lib, runtime=runtime)
+        qkv_dp4a = self._try_dense_q8_dp4a_triple_f32(
+            self.attn_normed.ptr,
+            self.wq.ptr,
+            self.wk.ptr,
+            self.wv.ptr,
+            self.q_full.ptr,
+            self.key_cur.ptr,
+            self.value_cur.ptr,
+            rows=1,
+            in_features=h,
+            out_features_a=heads * 2 * d,
+            out_features_b=kv_heads * d,
+            out_features_c=kv_heads * d,
+        )
+        if not qkv_dp4a:
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wq.ptr, self.q_full.ptr, 1, h, heads * 2 * d, library=self._k_lib, runtime=runtime)
         mtp_split_q_gate_f32(self.q_full.ptr, self.query.ptr, self.gate.ptr, 1, heads, d, library=self._mtp_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.query.ptr, self.q_norm.ptr, self.query.ptr, heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_qkv_q_gate", t_stage)
-        gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
+        if not qkv_dp4a:
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         mtp_rope_f32(self.query.ptr, cos_ptr, sin_ptr, self.query.ptr, 1, heads, d, d, d // 2, runtime=runtime)
         mtp_rope_f32(self.key_cur.ptr, cos_ptr, sin_ptr, self.key_cur.ptr, 1, kv_heads, d, d, d // 2, runtime=runtime)
         t_stage = mark_stage("draft_run_qkv_k_rope", t_stage)
-        gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
+        if not qkv_dp4a:
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         if dense_key_cache is not None:
             if dense_value_cache is None:
                 raise ValueError("dense_value_cache is required with dense_key_cache")
@@ -1040,7 +1242,15 @@ class Qwen35GGUFResidentMTPDraftRunner:
         )
         t_stage = mark_stage("draft_run_attention_core", t_stage)
         mtp_sigmoid_gate_mul_f32(self.attn.ptr, self.gate.ptr, self.gated.ptr, heads, d, library=self._mtp_lib, runtime=runtime)
-        gguf_q8_0_gemv_f32_f32_out(self.gated.ptr, self.wo.ptr, self.wo_out.ptr, 1, heads * d, h, library=self._k_lib, runtime=runtime)
+        if not self._try_dense_q8_dp4a_f32(
+            self.gated.ptr,
+            self.wo.ptr,
+            self.wo_out.ptr,
+            rows=1,
+            in_features=heads * d,
+            out_features=h,
+        ):
+            gguf_q8_0_gemv_f32_f32_out(self.gated.ptr, self.wo.ptr, self.wo_out.ptr, 1, heads * d, h, library=self._k_lib, runtime=runtime)
         mtp_add_f32(self.projected.ptr, self.wo_out.ptr, self.attended.ptr, h, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_attention_out", t_stage)
         add_aggregate_stage("draft_run_attention", t_attention0)
@@ -1105,7 +1315,18 @@ class Qwen35GGUFResidentMTPDraftRunner:
             runtime=runtime,
         )
         t_stage = mark_stage("draft_run_ffn_selected_gate_up", t_stage)
-        if bool(getattr(self, "_q8_shared_dual_enabled", False)):
+        shared_gate_up_dp4a = self._try_dense_q8_dp4a_dual_f32(
+            self.post_norm.ptr,
+            self.shared_gate.ptr,
+            self.shared_up.ptr,
+            self.shared_gate_out.ptr,
+            self.shared_up_out.ptr,
+            rows=1,
+            in_features=h,
+            out_features_a=inter,
+            out_features_b=inter,
+        )
+        if not shared_gate_up_dp4a and bool(getattr(self, "_q8_shared_dual_enabled", False)):
             gguf_q8_0_dual_gemv_f32_f32_out(
                 self.post_norm.ptr,
                 self.shared_gate.ptr,
@@ -1118,13 +1339,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 library=self._k_lib,
                 runtime=runtime,
             )
-        else:
+        elif not shared_gate_up_dp4a:
             gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
             gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_gate_up", t_stage)
         mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_silu", t_stage)
-        gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
+        if not self._try_dense_q8_dp4a_f32(
+            self.shared_inter.ptr,
+            self.shared_down.ptr,
+            self.shared_out.ptr,
+            rows=1,
+            in_features=inter,
+            out_features=h,
+        ):
+            gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_down", t_stage)
         mtp_linear_f32(self.post_norm.ptr, self.shared_gate_vec_f32.ptr, self.shared_gate_logit.ptr, 1, h, 1, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_gate_linear", t_stage)
