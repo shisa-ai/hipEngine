@@ -125,7 +125,7 @@ stage budget instead of burying it in prose.
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Total MTP wall | 16.496 ms/output | **15.547 ms/output** | 14.231 ms/output | **+1.316 ms/output** | Spend this row down before claiming parity movement. |
-| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Corrected resident MTP RoPE from `qk_head_dim=256` to model `rope.dimension_count=64`; row-aware K/V trace now shows sampled history/current rows are close, so the next semantic split is effective attention execution: visible count/mask, GQA head mapping, score scale/softmax, or FA-on math. |
+| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Semantic row-probe now matches llama.cpp at the seq-position-49 divergence after switching initial prompt KV to `resident_write_kv_rows`; spend this as implementation cost, not a known draft-context mismatch. |
 | Draft visible sampler/GPU drain | 1.151 ms/output | **2.874 ms/output** | 1.886 ms/output | **+0.988 ms/output** | Compare through draft drain; bucket names differ across engines. |
 | Draft transformer body | 0.130 ms/output | **0.111 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
 | Serial verifier probe | 6.665 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
@@ -194,6 +194,7 @@ Current source artifacts:
 | llama.cpp tensor-stage parity diagnostic | `benchmarks/results/2026-07-02-mtp-llamacpp-tensor-stage-trace-diagnostic.json` | Diagnostic-only same-prompt tensor summary trace after local llama.cpp commit `687c17d26` added `LLAMA_MTP_TENSOR_TRACE=1` for selected `graph_mtp` labels. At seq position 49 / depth 0, token embed, e/h norm, projected state, post-RoPE Q/K, and V are close; the first large jump is `draft_stage_attn_pregate` (**rms 1.056 hipEngine vs 1.410 llama.cpp**, first8 MAE **0.147**). The next semantic target is draft attention history/KV rows, context length, or mask/softmax behavior. |
 | MTP attention-history row trace diagnostic | `benchmarks/results/2026-07-02-mtp-attention-history-row-trace-diagnostic.json` | Diagnostic-only same-prompt row-aware trace after hipEngine added `--record-draft-cache-rows` and llama.cpp commit `1ebf790cd` added process-row tensor tracing. At seq position 49 / depth 0, hipEngine dense K/V rows match llama.cpp at sampled positions 40, 48, and 49 (`first8_mae` **0.0118-0.0468** on reliable rows), while `draft_stage_attn_pregate` still differs (**rms 1.056 vs 1.410**). The next semantic target is effective attention execution: visible count/mask, GQA head mapping, score scale/softmax, or FA-on math. |
 | MTP attention-debug host recompute diagnostic | `benchmarks/results/2026-07-02-mtp-attention-debug-diagnostic.json` | Diagnostic-only same-prompt hipEngine host recomputation of resident dense attention after adding `--record-draft-attention-debug`; `performance_claim=false`. At seq position 49 / depth 0, hipEngine GPU `draft_stage_attn_pregate` matches a host recompute over its own dense K/V cache (`cpu_device_mae_mean` **4.1e-7**, max abs **9.3e-6**). The top attention row is 48 for 7 heads and 49 for 9 heads, so the previously sampled late rows cover the dominant hipEngine attention weights. Next split is llama.cpp FA-on effective attention/mask/weight distribution, not hipEngine dense-attention kernel math. |
+| Resident initial MTP KV writer diagnostic | `benchmarks/results/2026-07-02-mtp-resident-initial-kv-diagnostic.json` | Diagnostic-only semantic fix; `performance_claim=false`. The active llama-compat path now seeds initial prompt MTP KV with `resident_write_kv_rows` instead of legacy `run_draft(..., kv_write_only=True)`. At seq position 49 / depth 0, hipEngine now drafts **`[8, 1411]`**, matching llama.cpp, while the prior path drafted `[65342, 18078]`. Row 2 now matches closely on high-impact heads (`qh7` weight **0.227 vs 0.218**, `qh12` **0.408 vs 0.391**; K/V first4 max deltas `<=0.0378` on row 2). Row 0 remains a boundary-row residual, but it no longer changes this draft decision. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
@@ -4347,21 +4348,46 @@ Interpretation:
   closely between the engines.
 - This is **not** a mask visibility problem.  llama row 2 is explicitly visible
   (`mask = 0`, visible count 50).
-- The remaining semantic split is the **initial MTP prompt catch-up KV source**.
-  hipEngine currently builds prompt MTP rows from serial target hidden rows;
-  llama.cpp populates the draft context from the target prompt-processing
-  `h_nextn` rows.  Those are not numerically equivalent for early prompt row 2.
+- At the time of this diagnostic, the semantic split was the **initial MTP
+  prompt catch-up KV source**.  hipEngine's active prompt replay was still
+  feeding initial MTP device KV through the legacy writer, while llama.cpp
+  populated the draft context through `llama_decode(ctx_dft, batch)` using the
+  shifted target `h_nextn` rows.  Those were not numerically equivalent for
+  early prompt row 2.
 
-Next fix before more performance work:
+Resolution status: fixed by `resident_write_kv_rows`, not by the hidden-row tap
+alone.
 
-1. Add an all-row target `h_nextn` tap for hipEngine prompt/bulk prefill, or an
-   equivalent replay path that exactly matches llama.cpp's MTP `process()` input
-   rows.
-2. Populate the initial MTP device KV cache from that source instead of the
-   current serial hidden-row replay.
-3. Rerun the row-probe trace and require row 2, row 48, and row 49 K/V and
-   attention weights to match before treating llama-compat performance deltas as
-   meaningful.
+The all-row bulk `h_nextn`/post-output-norm tap is still required because
+llama.cpp's MTP `process()` consumes all target prompt rows.  But rerunning the
+row probe with only that tap did **not** move row 2: hipEngine still drafted
+`[65342, 18078]`, and row 2 stayed on the old K/V values.  The actual semantic
+split was that initial prompt MTP device KV still used the legacy
+`run_draft(..., kv_write_only=True)` writer, while accepted/generated rows used
+the resident writer that already matched llama.cpp on late rows.
 
-Until this is fixed, the llama-compat path mirrors the broad draft/verify shape
-but not the exact llama.cpp MTP prompt-context state.
+After switching initial prompt catch-up KV to `resident_write_kv_rows`, the
+same row-probe point now matches llama.cpp:
+
+| Field | hipEngine before | hipEngine after | llama.cpp HIP |
+| --- | ---: | ---: | ---: |
+| Initial prompt KV writer | legacy `run_draft(..., kv_write_only=True)` | `resident_write_kv_rows` | `llama_decode(ctx_dft, batch)` |
+| Drafts at token `1103`, position `49` | `[65342, 18078]` | **`[8, 1411]`** | **`[8, 1411]`** |
+| Target at that point | `[65342, 18078, 28649]` | `[65342]` after rejection | `[65342]` after rejection |
+| Row 2 qh7 weight | `2.697e-5` | **`0.227`** | **`0.218`** |
+| Row 2 qh12 weight | `0.00234` | **`0.408`** | **`0.391`** |
+| Row 2 K/V first4 max delta vs llama | bad | `<=0.0378` | reference |
+
+Artifact: `benchmarks/results/2026-07-02-mtp-resident-initial-kv-diagnostic.json`.
+
+Residual: row 0, the zero-pending prompt boundary row, still differs.  At the
+position-49 decision it is not the governing row; row 2 and rows 48/49 now match
+closely enough to produce the same draft decision.  Keep row 0 on the semantic
+debt list, but do not block perf attribution on it unless a later trace shows it
+changes acceptance.
+
+Next work: rerun the full multi-prompt llama-compat suite with resident initial
+KV enabled, refresh the standing three-lane table if the retained row changes,
+then return to the measured **+1.316 ms/output** compat gap.  With the prompt
+context now mirrored, the remaining gap can be treated as real implementation
+cost rather than a semantic mismatch.

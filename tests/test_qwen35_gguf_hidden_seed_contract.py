@@ -277,6 +277,221 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
     ]
 
 
+def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Runtime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            calls.append(("memcpy_async", int(dst), int(src), int(nbytes), int(kind), int(stream)))
+
+    class BulkScratch:
+        def for_chunk(self, start, rows, total_tokens, *, runtime, stream=0):
+            calls.append(("scratch", int(start), int(rows), int(total_tokens), runtime, int(stream)))
+            return SimpleNamespace(norm=SimpleNamespace(ptr=0x7000))
+
+    def fake_copy_host_to_device(buf, host_ptr, nbytes, *, runtime) -> None:
+        calls.append(("copy_host_to_device", int(buf.ptr), int(nbytes), runtime))
+
+    def fake_embedding(weight, token_ptr, out_ptr, **kwargs: object) -> None:
+        calls.append(
+            (
+                "embedding",
+                int(token_ptr),
+                int(out_ptr),
+                int(kwargs["rows"]),
+                int(kwargs["hidden_size"]),
+                int(kwargs["vocab_size"]),
+            )
+        )
+
+    def fake_bf16(src_ptr: int, weight_ptr: int, out_ptr: int, **kwargs: object) -> None:
+        calls.append(
+            (
+                "bf16",
+                int(src_ptr),
+                int(weight_ptr),
+                int(out_ptr),
+                int(kwargs["rows"]),
+                int(kwargs["hidden_size"]),
+            )
+        )
+
+    def fake_f32(src_ptr: int, weight_ptr: int, out_ptr: int, **kwargs: object) -> None:
+        calls.append(
+            (
+                "f32",
+                int(src_ptr),
+                int(weight_ptr),
+                int(out_ptr),
+                int(kwargs["rows"]),
+                int(kwargs["hidden_size"]),
+            )
+        )
+
+    def fake_set_decode_position_i64(position_buf, context_buf, position, **kwargs: object) -> None:
+        calls.append(("set_decode_position", int(position_buf), int(context_buf), int(position)))
+
+    monkeypatch.setattr(gguf_runner, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(gguf_runner, "launch_gguf_embedding", fake_embedding)
+    monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight", fake_bf16)
+    monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight_out_f32", fake_f32)
+    monkeypatch.setattr(gguf_runner, "set_decode_position_i64", fake_set_decode_position_i64)
+
+    runtime = Runtime()
+    output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x6000)))
+    weights = SimpleNamespace(
+        config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6, ssm_conv_kernel=2),
+        root=lambda name: output_norm if name == "output_norm" else SimpleNamespace(name=name),
+    )
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(weights=weights, hidden_size=8, vocab_size=100)
+    session.runtime = runtime
+    session.scratch = SimpleNamespace(
+        max_positions=16,
+        zero_states=lambda active_runtime: calls.append(("zero_states", active_runtime)),
+        hidden_seed_fp32=SimpleNamespace(ptr=0x9000),
+        position_host=np.zeros((1,), dtype=np.int64),
+        context_host=np.zeros((1,), dtype=np.int64),
+        position_buf=SimpleNamespace(ptr=0xA000),
+        context_buf=SimpleNamespace(ptr=0xB000),
+    )
+    session._prefill_token_buf = SimpleNamespace(ptr=0x3000)
+    session._prefill_hidden_a = SimpleNamespace(ptr=0x1000)
+    session._prefill_hidden_b = SimpleNamespace(ptr=0x2000)
+    session._bulk_prefill_scratch = BulkScratch()
+    session._runtime_state_library = None
+    session._verify_hidden_seed_buf = None
+    session._verify_hidden_seed_rows_populated = 0
+    session._verify_block_rows_capacity = 0
+    session._hidden_seed_fp32_populated = True
+
+    def fake_ensure(rows: int, *, runtime) -> None:
+        calls.append(("ensure_verify", int(rows), runtime))
+        session._verify_hidden_seed_buf = SimpleNamespace(ptr=0x8000)
+        session._verify_block_rows_capacity = int(rows)
+
+    def fake_sample_from_hidden(hidden_ptr: int, *, return_logits: bool) -> SimpleNamespace:
+        calls.append(("sample", int(hidden_ptr), bool(return_logits)))
+        return SimpleNamespace(hidden_ptr=int(hidden_ptr), return_logits=bool(return_logits), token_id=5)
+
+    session._ensure_verify_block_buffers = fake_ensure
+    session._sample_from_hidden = fake_sample_from_hidden
+
+    result = session._run_bulk_prefill_and_sample(
+        [3, 4, 7],
+        bulk_attention_mode="bulk",
+        return_logits=False,
+        capture_hidden_seed_fp32=True,
+    )
+
+    hidden_row_bytes = 8 * DType.FP32.itemsize
+    last_bf16_hidden_ptr = 0x7000 + 2 * 8 * DType.BF16.itemsize
+    assert result.hidden_ptr == last_bf16_hidden_ptr
+    assert result.return_logits is False
+    assert ("ensure_verify", 3, runtime) in calls
+    assert ("bf16", 0x1000, 0x6000, 0x7000, 3, 8) in calls
+    assert ("f32", 0x1000, 0x6000, 0x8000, 3, 8) in calls
+    assert (
+        "memcpy_async",
+        0x9000,
+        0x8000 + 2 * hidden_row_bytes,
+        hidden_row_bytes,
+        int(HipMemcpyKind.DEVICE_TO_DEVICE),
+        0,
+    ) in calls
+    assert ("set_decode_position", 0xA000, 0xB000, 3) in calls
+    assert session._verify_hidden_seed_rows_populated == 3
+    assert session._hidden_seed_fp32_populated
+    assert session._position == 3
+    assert session.scratch.position_host[0] == 3
+    assert session.scratch.context_host[0] == 4
+    assert session.fp32_hidden_seed_ptr() == 0x9000
+    assert session.fp32_verify_hidden_seed_ptr(2) == 0x8000 + 2 * hidden_row_bytes
+
+
+def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class BulkScratch:
+        def for_chunk(self, start, rows, total_tokens, *, runtime, stream=0):
+            calls.append(("scratch", int(start), int(rows), int(total_tokens), runtime, int(stream)))
+            return SimpleNamespace(norm=SimpleNamespace(ptr=0x7000 + int(start) * 0x100))
+
+    def fake_copy_host_to_device(buf, host_ptr, nbytes, *, runtime) -> None:
+        calls.append(("copy_host_to_device", int(buf.ptr), int(nbytes), runtime))
+
+    def fake_embedding(weight, token_ptr, out_ptr, **kwargs: object) -> None:
+        calls.append(("embedding", int(token_ptr), int(out_ptr), int(kwargs["rows"])))
+
+    def fake_set_decode_position_i64(position_buf, context_buf, position, **kwargs: object) -> None:
+        calls.append(("set_decode_position", int(position_buf), int(context_buf), int(position)))
+
+    monkeypatch.setattr(gguf_runner, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(gguf_runner, "launch_gguf_embedding", fake_embedding)
+    monkeypatch.setattr(gguf_runner, "set_decode_position_i64", fake_set_decode_position_i64)
+
+    runtime = object()
+    weights = SimpleNamespace(
+        config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6, ssm_conv_kernel=2),
+        root=lambda name: SimpleNamespace(name=name),
+    )
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(weights=weights, hidden_size=8, vocab_size=100)
+    session.runtime = runtime
+    session.scratch = SimpleNamespace(
+        max_positions=16,
+        zero_states=lambda active_runtime: calls.append(("zero_states", active_runtime)),
+        hidden_seed_fp32=SimpleNamespace(ptr=0x9000),
+        position_host=np.zeros((1,), dtype=np.int64),
+        context_host=np.zeros((1,), dtype=np.int64),
+        position_buf=SimpleNamespace(ptr=0xA000),
+        context_buf=SimpleNamespace(ptr=0xB000),
+    )
+    session._prefill_token_buf = SimpleNamespace(ptr=0x3000)
+    session._prefill_hidden_a = SimpleNamespace(ptr=0x1000)
+    session._prefill_hidden_b = SimpleNamespace(ptr=0x2000)
+    session._bulk_prefill_scratch = BulkScratch()
+    session._runtime_state_library = None
+    session._verify_hidden_seed_buf = None
+    session._verify_hidden_seed_rows_populated = 0
+    session._verify_block_rows_capacity = 0
+    session._hidden_seed_fp32_populated = True
+
+    def fake_run_output_norm_hidden(
+        src_ptr: int,
+        out_ptr: int,
+        *,
+        stream: int = 0,
+        capture_hidden_seed_fp32: bool = False,
+    ) -> int:
+        calls.append(("last_row_output_norm", int(src_ptr), int(out_ptr), int(stream), bool(capture_hidden_seed_fp32)))
+        session._hidden_seed_fp32_populated = bool(capture_hidden_seed_fp32)
+        return int(out_ptr)
+
+    def fake_sample_from_hidden(hidden_ptr: int, *, return_logits: bool) -> SimpleNamespace:
+        calls.append(("sample", int(hidden_ptr), bool(return_logits)))
+        return SimpleNamespace(hidden_ptr=int(hidden_ptr), return_logits=bool(return_logits), token_id=5)
+
+    session._run_output_norm_hidden = fake_run_output_norm_hidden
+    session._sample_from_hidden = fake_sample_from_hidden
+
+    result = session._run_bulk_prefill_and_sample(
+        [3, 4, 7],
+        bulk_attention_mode="bulk",
+        return_logits=False,
+        capture_hidden_seed_fp32=False,
+    )
+
+    last_src_ptr = 0x1000 + 2 * 8 * DType.BF16.itemsize
+    assert ("scratch", 2, 1, 3, runtime, 0) in calls
+    assert ("last_row_output_norm", last_src_ptr, 0x7200, 0, False) in calls
+    assert result.hidden_ptr == 0x7200
+    assert result.return_logits is False
+    assert session._verify_hidden_seed_rows_populated == 0
+    assert not session._hidden_seed_fp32_populated
+    assert session._position == 3
+
+
 def test_resident_output_norm_hidden_populates_fp32_seed_for_bulk_and_decode(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, int, int, int]] = []
 

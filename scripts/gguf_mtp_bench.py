@@ -1733,43 +1733,39 @@ def main(argv: list[str] | None = None):
             )
             return hidden_seed
 
-        def serial_prefill_with_hidden_trace() -> tuple[object, np.ndarray]:
-            """Consume the prompt serially and capture every target hidden row.
+        def bulk_prefill_with_hidden_trace() -> tuple[object, np.ndarray]:
+            """Consume the prompt with the target prefill path and capture every hidden row.
 
             llama.cpp's MTP context catch-up needs the post-output_norm hidden
-            row for every target prompt token, shifted right by one row.  The
-            resident bulk prefill only exposes the final row today, so the
-            acceptance-parity diagnostic uses the serial target path until the
-            bulk path has an all-row hidden tap.
+            row for every target prompt token, shifted right by one row.
             """
-            session.reset()
-            hidden_rows: list[np.ndarray] = []
-            hidden_ptr: int | None = None
-            for token_id in prompt:
-                hidden_ptr = session._run_token_to_final_hidden(  # noqa: SLF001 - diagnostic parity hook
-                    int(token_id),
-                    position=session.position,
-                    capture_hidden_seed_fp32=True,
-                )
-                session._position += 1  # noqa: SLF001 - mirrors Qwen35GGUFResidentSession.prefill serial path
-                hidden_rows.append(copy_pending_hidden_seed()[0].copy())
-            if hidden_ptr is None:
-                raise RuntimeError("prompt produced no hidden row")
-            return session._sample_from_hidden(hidden_ptr, return_logits=False), np.ascontiguousarray(
-                np.stack(hidden_rows, axis=0), dtype=np.float32
+            prefill_result = session.prefill(
+                prompt,
+                use_bulk=True,
+                bulk_attention_mode="bulk",
+                return_logits=False,
+                capture_hidden_seed_fp32=True,
             )
+            hidden_rows = np.empty((len(prompt), hidden_size), dtype=np.float32)
+            runtime.memcpy(
+                hidden_rows.ctypes.data,
+                session.fp32_verify_hidden_seed_ptr(0),
+                hidden_rows.nbytes,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
+            return prefill_result, np.ascontiguousarray(hidden_rows, dtype=np.float32)
 
         if args.mtp_context_replay:
             # Build llama.cpp-style draft catch-up rows.  Row 0 uses a zero
             # hidden seed and row i uses the target hidden from prompt token
             # i-1; this mirrors llama.cpp's shifted MTP ``process()`` input.
-            prefill_result, prompt_hidden_rows = serial_prefill_with_hidden_trace()
+            prefill_result, prompt_hidden_rows = bulk_prefill_with_hidden_trace()
             prev_token = int(prefill_result.token_id)
             pending_hidden_seed = copy_pending_hidden_seed()
             mtp_context_tokens, mtp_context_hidden_rows = llama_cpp_mtp_catchup_rows(
                 prompt, prompt_hidden_rows
             )
-            target_prefill_mode = "serial_prefill_hidden_rows"
+            target_prefill_mode = "bulk_prefill_hidden_rows"
             if args.mtp_device_kv_cache:
                 mtp_context_mode = (
                     "llamacpp_shifted_prompt_replay_device_seed"
@@ -1872,6 +1868,7 @@ def main(argv: list[str] | None = None):
         mtp_device_value_cache = None
         mtp_device_kv_len = 0
         mtp_device_kv_capacity = 0
+        mtp_initial_kv_writer = "none"
         if args.mtp_device_kv_cache:
             qk_head_dim = int(np.asarray(get("blk.40.attn_q_norm.weight")).shape[0])
             kv_heads = 2
@@ -1892,19 +1889,34 @@ def main(argv: list[str] | None = None):
             mtp_device_kv_buffers.extend([mtp_device_key_cache, mtp_device_value_cache])
             if len(mtp_context_tokens) > 0:
                 context_positions = np.asarray(mtp_context_positions, dtype=np.int64)
-                _ = run_draft(
-                    mtp_context_hidden_rows,
-                    token_embd_f32[np.asarray(mtp_context_tokens, dtype=np.int64)].copy(),
-                    positions=context_positions,
-                    rope_cos=_rope_cos[context_positions],
-                    rope_sin=_rope_sin[context_positions],
-                    rotary_dim=rope_dim,
-                    dense_key_cache=mtp_device_key_cache,
-                    dense_value_cache=mtp_device_value_cache,
-                    dense_cache_len=0,
-                    kv_write_only=True,
-                )
-                mtp_device_kv_len = len(mtp_context_tokens)
+                context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
+                if resident_draft is not None:
+                    mtp_device_kv_len = resident_draft.write_kv_rows(
+                        mtp_context_hidden_rows,
+                        context_tokens,
+                        positions=context_positions,
+                        rope_cos=_rope_cos,
+                        rope_sin=_rope_sin,
+                        dense_key_cache=mtp_device_key_cache,
+                        dense_value_cache=mtp_device_value_cache,
+                        dense_cache_len=0,
+                    )
+                    mtp_initial_kv_writer = "resident_write_kv_rows"
+                else:
+                    _ = run_draft(
+                        mtp_context_hidden_rows,
+                        token_embd_f32[context_tokens].copy(),
+                        positions=context_positions,
+                        rope_cos=_rope_cos[context_positions],
+                        rope_sin=_rope_sin[context_positions],
+                        rotary_dim=rope_dim,
+                        dense_key_cache=mtp_device_key_cache,
+                        dense_value_cache=mtp_device_value_cache,
+                        dense_cache_len=0,
+                        kv_write_only=True,
+                    )
+                    mtp_device_kv_len = len(mtp_context_tokens)
+                    mtp_initial_kv_writer = "legacy_run_draft_kv_write_only"
 
         for cycle in range(args.cycles):
             cycle_wall_t0 = time.perf_counter()
@@ -3409,6 +3421,7 @@ def main(argv: list[str] | None = None):
             "topk_branch_redraft": args.topk_branch_redraft,
             "topk_branch_redraft_max_branches": args.topk_branch_redraft_max_branches,
             "mtp_device_kv_cache": bool(args.mtp_device_kv_cache),
+            "mtp_initial_kv_writer": mtp_initial_kv_writer,
             "mtp_device_kv_rows": int(mtp_device_kv_len) if args.mtp_device_kv_cache else 0,
             "mtp_device_kv_capacity": int(mtp_device_kv_capacity) if args.mtp_device_kv_cache else 0,
             "engine": "hipEngine GGUF MTP",

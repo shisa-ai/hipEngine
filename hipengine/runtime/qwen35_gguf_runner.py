@@ -4530,6 +4530,12 @@ class Qwen35GGUFResidentSession:
         for token in tokens.tolist():
             if token < 0 or token >= self.runner.vocab_size:
                 raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+        hidden_seed_buf = None
+        if capture_hidden_seed_fp32:
+            self._ensure_verify_block_buffers(rows, runtime=runtime)
+            if self._verify_hidden_seed_buf is None:
+                raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
+            hidden_seed_buf = self._verify_hidden_seed_buf
         self.reset()
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
         launch_gguf_embedding(
@@ -4611,16 +4617,52 @@ class Qwen35GGUFResidentSession:
                 if expert_sidecar is not None:
                     expert_sidecar.free(runtime=runtime)
             src, dst = dst, src
-        last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-            rows - 1, 1, total_tokens=rows, runtime=runtime, stream=stream
-        )
-        last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * 2
-        self._run_output_norm_hidden(
-            last_src_ptr,
-            last_bulk_scratch.norm.ptr,
-            stream=stream,
-            capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
-        )
+        if hidden_seed_buf is not None:
+            final_scratch = self._bulk_prefill_scratch.for_chunk(
+                0, rows, total_tokens=rows, runtime=runtime, stream=stream
+            )
+            output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
+            gguf_rmsnorm_bf16_f32_weight(
+                src.ptr,
+                output_norm_weight_ptr,
+                final_scratch.norm.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            gguf_rmsnorm_bf16_f32_weight_out_f32(
+                src.ptr,
+                output_norm_weight_ptr,
+                hidden_seed_buf.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            runtime.memcpy_async(
+                self.scratch.hidden_seed_fp32.ptr,
+                hidden_seed_buf.ptr + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
+                self.runner.hidden_size * DType.FP32.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            self._verify_hidden_seed_rows_populated = rows
+            self._hidden_seed_fp32_populated = True
+            last_hidden_ptr = final_scratch.norm.ptr + (rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
+        else:
+            last_bulk_scratch = self._bulk_prefill_scratch.for_chunk(
+                rows - 1, 1, total_tokens=rows, runtime=runtime, stream=stream
+            )
+            last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
+            last_hidden_ptr = self._run_output_norm_hidden(
+                last_src_ptr,
+                last_bulk_scratch.norm.ptr,
+                stream=stream,
+                capture_hidden_seed_fp32=False,
+            )
         self._position = rows
         self.scratch.position_host[0] = rows
         self.scratch.context_host[0] = rows + 1
@@ -4632,7 +4674,6 @@ class Qwen35GGUFResidentSession:
             library=self._runtime_state_library,
             runtime=runtime,
         )
-        last_hidden_ptr = last_bulk_scratch.norm.ptr
         return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
 
     def verify_target_block(

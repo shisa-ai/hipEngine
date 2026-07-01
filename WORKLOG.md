@@ -134208,3 +134208,65 @@ python3 -m json.tool \
   benchmarks/results/2026-07-02-mtp-rowprobe-diagnostic.json \
   >/tmp/mtp-rowprobe-artifact.pretty.json
 ```
+
+## 2026-07-02 - MTP llama-compat resident initial KV semantic fix
+
+- Added all-row bulk prefill hidden capture for
+  `Qwen35GGUFResidentSession.prefill(..., capture_hidden_seed_fp32=True)`.
+  The capture path now fills `_verify_hidden_seed_buf` for every prompt row,
+  copies the final row to `scratch.hidden_seed_fp32`, and keeps normal
+  no-capture bulk prefill on the old last-row-only output norm path.
+- Switched `scripts/gguf_mtp_bench.py --mtp-context-replay --mtp-device-kv-cache`
+  initial prompt MTP KV seeding to `resident_draft.write_kv_rows` when the
+  resident draft runner is active.  The legacy
+  `run_draft(..., kv_write_only=True)` writer remains the fallback for
+  non-resident modes.  Artifacts now record `mtp_initial_kv_writer`.
+- Reran the same row-probe diagnostic with resident initial KV:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 4 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --resident-mtp-draft --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --mtp-context-replay --mtp-device-kv-cache --target-block-verify \
+  --target-block-verify-mode bulk --target-block-min-rows 2 \
+  --target-block-direct-state-commit --root-topk-accept 1 \
+  --sibling-topk-accept 1 --draft-p-min 0.0 \
+  --record-cycle-stage-timings --record-draft-topk-scores \
+  --record-draft-hidden-stats --record-draft-stage-stats \
+  --record-draft-cache-rows 0,1,2,16,32,40,48,49 \
+  --record-draft-attention-debug \
+  --output /tmp/hipengine-mtp-rowprobe-residentinit/hipengine-stage.json
+```
+
+- Result: comparable point depth 0 / token `1103` / position `49` now drafts
+  `[8, 1411]`, matching llama.cpp.  Prior hipEngine drafted
+  `[65342, 18078]`.  Row 2 now matches closely on high-impact heads:
+  qh7 weight `0.227` vs llama `0.218`, qh12 `0.408` vs `0.391`, and row-2
+  K/V first4 max deltas are `<=0.0378`.  Row 0 remains a boundary-row residual
+  but no longer changes this draft decision.
+- Added compact diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-resident-initial-kv-diagnostic.json` and
+  updated `docs/MTP-LLAMACPP-PARITY.md`.  This is not a retained performance
+  row; the 4-cycle diagnostic produced `50.59 tok/s` because cycle 3 now
+  rejects the llama-matching draft.
+- Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_mtp_bench.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py -q
+```
