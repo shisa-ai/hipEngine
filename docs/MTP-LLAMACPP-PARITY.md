@@ -12,14 +12,16 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 | config (same model, gfx1151) | AR tok/s | MTP tok/s | cycle wall / output | uplift | role |
 | --- | ---: | ---: | ---: | ---: | --- |
 | hipEngine default exact B5 | 54.95 retained / 54.55 shared-dual confirm | 60.8 suite / 60.72 shared-dual confirm | 16.496 ms | 1.114× retained / 1.113× confirm | Correctness-preserving control lane. |
-| hipEngine `llama-compat` B2 | 54.92 routerrow full | **64.41 routerrow full** | **15.547 ms** | **1.1727×** | Active llama.cpp replication lane. |
+| hipEngine `llama-compat` B2 | 54.78 resident-init full | **71.34 resident-init full** | **14.037 ms** | **1.3024×** | Active llama.cpp replication lane after resident initial-KV fix. |
 | llama.cpp HIP/ROCm B2 (dp4a) | 51.38 suite / 52.13 traced | 67.3 suite / 72.12 traced / 75.4 cli prompt | **14.231 ms traced** | ~1.31× suite / 1.383× traced / 1.47× cli | Timing target and source reference. |
 | llama.cpp **Vulkan** (dp4a) | **62.65** | **84.6 cli prompt** | n/a | ~1.35× | Backend ceiling reference, not the HIP parity target. |
 
 The working HIP target is the `llama-compat` B2 row versus the traced llama.cpp
-HIP B2 row: **15.547 - 14.231 = +1.316 ms/output**. The detailed tracker below
-keeps that gap split by stage so each optimization can be evaluated against the
-same budget instead of a single tok/s headline.
+HIP B2 row. After the resident initial-KV fix, the retained compat row is
+**14.037 ms/output vs llama.cpp's traced 14.231 ms/output**. The old
+**+1.316 ms/output** parent gap is closed on the current full-suite row; the
+remaining positive child gap is draft drain (**+0.607 ms/output**), offset by a
+faster target verifier and slightly better row economy.
 
 ### ACTIVE TRACKING — default vs llama-compat vs llama.cpp HIP
 
@@ -63,14 +65,14 @@ Required refresh shape for each retained or diagnostic parity run:
 | Active gap budget / target map | Remaining ms or rows to close and the llama.cpp source area to inspect next. | Keeps the implementation work tied to a measured llama-compat gap, not intuition. |
 | Llama.cpp source anchors | Exact llama.cpp file/function or kernel family for each live gap row. | Makes the next copy-or-retune target explicit once `llama-compat` structurally mirrors llama.cpp. |
 
-Current gap to close: the active `denseq8all-x8top1-f32ssm-routerrow` compat lane with
-default-on resident Q8 shared gate/up dual GEMV and F32 direct-state `ssm_out`
-raw-Q8 dp4a plus row-parallel draft router logits is **+1.316 ms/output** vs the traced
-llama.cpp HIP B2 row. The actionable split is
-**+0.915 ms/output** draft drain, **+0.083 ms/output** target verifier drain, and
-**+0.118 target rows/output**. Until those rows move, this document should point
-optimization work at the corresponding llama.cpp stage/kernel rather than at
-unrelated AR or host setup rows.
+Current parity state: the active `denseq8all-x8top1-f32ssm-routerrow` compat lane with
+resident initial prompt KV seeded through `resident_write_kv_rows` is **0.194 ms/output
+faster** than the traced llama.cpp HIP B2 cycle wall (**14.037 vs 14.231 ms/output**)
+on the retained full-suite row. The still-slower child bucket is draft drain
+(**+0.607 ms/output**), while target verifier drain is **1.117 ms/output faster**
+and row economy is slightly better (**1.136 vs 1.148 target rows/output**). Future
+optimization work should therefore target draft drain or rerun llama.cpp under the
+same protocol before claiming a remaining parent-wall gap.
 
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
@@ -102,7 +104,7 @@ Active comparison rules:
 Last refreshed from the full-suite artifacts
 `benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-q8shareddual-full.json`
 and
-`benchmarks/results/2026-07-02-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-routerrow-full.json`,
+`benchmarks/results/2026-07-02-ar-mtp-llama-compat-residentinit-routerrow-full.json`,
 plus the traced llama.cpp HIP B2 row in
 `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`.
 
@@ -124,14 +126,14 @@ stage budget instead of burying it in prose.
 
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Total MTP wall | 16.496 ms/output | **15.547 ms/output** | 14.231 ms/output | **+1.316 ms/output** | Spend this row down before claiming parity movement. |
-| Draft drain | 1.921 ms/output | **3.055 ms/output** | 2.140 ms/output | **+0.915 ms/output** | Semantic row-probe now matches llama.cpp at the seq-position-49 divergence after switching initial prompt KV to `resident_write_kv_rows`; spend this as implementation cost, not a known draft-context mismatch. |
-| Draft visible sampler/GPU drain | 1.151 ms/output | **2.874 ms/output** | 1.886 ms/output | **+0.988 ms/output** | Compare through draft drain; bucket names differ across engines. |
-| Draft transformer body | 0.130 ms/output | **0.111 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
+| Total MTP wall | 16.496 ms/output | **14.037 ms/output** | 14.231 ms/output | **-0.194 ms/output** | Parent wall gap is closed on the retained row; keep watching same-protocol reruns. |
+| Draft drain | 1.921 ms/output | **2.747 ms/output** | 2.140 ms/output | **+0.607 ms/output** | Remaining slower child bucket; compare draft sampler/drain against llama.cpp. |
+| Draft visible sampler/GPU drain | 1.151 ms/output | **2.586 ms/output** | 1.886 ms/output | **+0.700 ms/output** | Compare through draft drain; bucket names differ across engines. |
+| Draft transformer body | 0.130 ms/output | **0.102 ms/output** | 0.252 ms/output | compat faster | Not an active target. |
 | Serial verifier probe | 6.665 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
-| Target verifier drain | 7.883 ms/output | **12.166 ms/output** | 12.083 ms/output | **+0.083 ms/output** | F32 `ssm_out` raw-Q8 dp4a closed most of the verifier drain gap; selected-MoE GEMV and verifier lm-head remain as leaf targets. |
-| Target rows / output | 1.163 | **1.266** | 1.148 | **+0.118 rows/output** | Row economy remains a secondary gap after operation cost. |
-| Setup/snapshot/commit/accounting | 0.265 ms/output | **0.103 ms/output** | 0.188 ms/output | compat faster | Guard only; not where the missing couple of ms lives. |
+| Target verifier drain | 7.883 ms/output | **10.966 ms/output** | 12.083 ms/output | **-1.117 ms/output** | Verifier parent is now faster than the traced llama row; guard against regressions. |
+| Target rows / output | 1.163 | **1.136** | 1.148 | **-0.012 rows/output** | Resident initial KV fixed the row-economy gap on this suite. |
+| Setup/snapshot/commit/accounting | 0.265 ms/output | **0.099 ms/output** | 0.188 ms/output | compat faster | Guard only; not where the remaining draft child gap lives. |
 
 This board is intentionally redundant with the detailed ledgers below. Keep it
 short, current, and three-lane so the next optimization target is visible without
@@ -156,26 +158,28 @@ cross-lane improvement. The goal for this sprint is to spend down the
 
 | metric | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap / reading |
 | --- | ---: | ---: | ---: | --- |
-| MTP tok/s | 60.8 retained / 60.72 shared-dual confirm | **64.41 routerrow full** | 67.3 suite / 72.12 traced | **-2.89 tok/s suite / -7.71 tok/s traced**; top-line parity gap. |
-| Cycle wall / output | 16.496 ms | **15.547 ms** | 14.231 ms | **+1.316 ms/output** to close. |
-| Draft drain, `draft_initial` | 1.921 ms | **3.055 ms** | 2.140 ms | **+0.915 ms/output**; largest current high-level gap. |
-| Visible draft sampler/GPU drain | 1.151 ms | **2.874 ms** | 1.886 ms | **+0.988 ms/output**; compare through draft drain because names differ. |
+| MTP tok/s | 60.8 retained / 60.72 shared-dual confirm | **71.34 resident-init full** | 67.3 suite / 72.12 traced | **+4.04 tok/s vs suite / -0.78 tok/s vs traced**; parent cycle wall is at parity, traced tok/s is the remaining external check. |
+| Cycle wall / output | 16.496 ms | **14.037 ms** | 14.231 ms | **-0.194 ms/output**; current retained compat is faster on cycle wall. |
+| Draft drain, `draft_initial` | 1.921 ms | **2.747 ms** | 2.140 ms | **+0.607 ms/output**; remaining slower child bucket. |
+| Visible draft sampler/GPU drain | 1.151 ms | **2.586 ms** | 1.886 ms | **+0.700 ms/output**; compare through draft drain because names differ. |
 | Serial verify probe | 6.665 ms | **0.000 ms** | 0.000 ms | Closed in compat; not the replication blocker. |
-| Target verifier drain | 7.883 ms | **12.166 ms** | 12.083 ms | **+0.083 ms/output**; F32 `ssm_out` raw-Q8 dp4a closes most of the verifier parent gap. |
-| Target rows / output | 1.163 | **1.266** | 1.148 | **+0.118 rows/output**; policy/economy lever after operation cost. |
-| Accepted / output | 0.535 | **0.578** | 0.610 | -0.032; row economy remains behind llama but improved versus the prior active lane. |
+| Target verifier drain | 7.883 ms | **10.966 ms** | 12.083 ms | **-1.117 ms/output**; verifier parent now offsets the slower draft drain. |
+| Target rows / output | 1.163 | **1.136** | 1.148 | **-0.012 rows/output**; row economy is now slightly better than traced llama. |
+| Accepted / output | 0.535 | **0.621** | 0.610 | +0.011; resident initial KV moved proposal economy to parity. |
 
-The current actionable target is therefore not "MTP in general"; it is the
-specific **+1.316 ms/output** compat gap split into draft drain, verifier drain,
-and a smaller row-economy delta. The detailed tables below are the required
-breakdown for deciding which llama.cpp source path to inspect next.
+The current actionable target is therefore no longer a parent-wall gap. It is
+the remaining **+0.607 ms/output** draft-drain child gap, plus a same-protocol
+llama.cpp rerun if we need to reconcile traced tok/s with the cycle-wall ledger.
+The detailed tables below are the required breakdown for deciding which
+llama.cpp source path to inspect next.
 
 Current source artifacts:
 
 | lane | route / artifact | why it is in the table |
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-q8shareddual-full.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. Full B5 shared-dual rerun confirms prior exact economics and supplies the default-lane distribution. |
-| hipEngine llama-compat | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-routerrow-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, q6-only X8 selected-down repack (`--selected-down-x8-repack q6`), raw Q8_0 x q8_1/dp4a all-sidecar dense verifier projections (`--verify-dense-q8-dp4a-all`), default-on resident raw-Q8 shared gate/up dual F32 GEMV (`HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1`), X8-packed Q6_K lm-head top-1 sidecar (`--resident-mtp-draft-q6-top1-stage1-shape x8`), direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a (`--verify-dense-q8-dp4a-f32`), and row-parallel draft F32 router logits (`--resident-mtp-draft-router-row-parallel`). Promoted for the llama-replication lane because it is full-suite speed-positive and cuts draft drain without changing acceptance or row economy. |
+| hipEngine llama-compat | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-residentinit-routerrow-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, q6-only X8 selected-down repack (`--selected-down-x8-repack q6`), raw Q8_0 x q8_1/dp4a all-sidecar dense verifier projections (`--verify-dense-q8-dp4a-all`), default-on resident raw-Q8 shared gate/up dual F32 GEMV (`HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1`), X8-packed Q6_K lm-head top-1 sidecar (`--resident-mtp-draft-q6-top1-stage1-shape x8`), direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a (`--verify-dense-q8-dp4a-f32`), row-parallel draft F32 router logits (`--resident-mtp-draft-router-row-parallel`), and resident initial prompt MTP KV seeding. Resident initial KV moves full-suite **64.41 -> 71.34 tok/s**, cycle **15.547 -> 14.037 ms/output**, acc/output **0.578 -> 0.621**, draft acceptance **0.685 -> 0.820**, target rows/output **1.266 -> 1.136**, and verifier drain **12.166 -> 10.966 ms/output**. |
+| hipEngine llama-compat prior retained routerrow | `benchmarks/results/2026-07-02-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-routerrow-full.json` | Superseded active lane before the resident initial prompt KV writer fix. It was structurally close but still seeded prompt MTP KV through the legacy writer, producing the old **64.41 tok/s / 15.547 ms/output** full-suite row and the now-closed **+1.316 ms/output** parent gap. |
 | hipEngine llama-compat prior retained f32ssm | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-full.json` | Superseded active lane before row-parallel draft router logits. Router-row moves full-suite **63.63 -> 64.41 tok/s**, cycle **15.735 -> 15.547 ms/output**, and draft drain **3.252 -> 3.055 ms/output** with unchanged acc/output **0.578**, draft acceptance **0.685**, and target rows/output **1.266**. Draft-chain rocprof shows `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle** in the sync-stage leaf table. |
 | hipEngine llama-compat prior retained x8top1 | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-full.json` | Superseded active lane before direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a. F32 `ssm_out` moves full-suite **61.31 -> 63.63 tok/s**, cycle **16.331 -> 15.735 ms/output**, target verifier drain **12.662 -> 12.158 ms/output**, and target rows/output **1.299 -> 1.266**. |
 | hipEngine llama-compat prior retained denseq8all + Q8 shared dual | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-full.json` | Superseded active lane before X8-packed Q6_K draft lm-head top-1. Same acceptance/economy; X8 top-1 moves full-suite **61.19 -> 61.31 tok/s**, cycle **16.364 -> 16.331 ms/output**, and draft drain **3.378 -> 3.352 ms/output**. |
@@ -471,7 +475,7 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 
 | route | status | MTP tok/s | cycle wall | acc/output | draft acceptance | target rows/output | target verifier drain | decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow` + Q8 shared dual | retained active lane | **64.41 routerrow full** | **15.547 ms/output** | **0.578** | **0.685** | **1.266** | **12.166 ms/output** | Current comparison lane vs llama.cpp HIP B2. Row-parallel draft router logits cut the draft parent row with unchanged row economy; remaining work is still draft drain, now led by Q6_K top-1 and secondary dense/selected-MoE leaves. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow` + Q8 shared dual + resident initial KV | retained active lane | **71.34 resident-init full** | **14.037 ms/output** | **0.621** | **0.820** | **1.136** | **10.966 ms/output** | Current comparison lane vs llama.cpp HIP B2. Resident initial prompt MTP KV seeding fixes the proposal economy; parent cycle wall is now slightly faster than the traced llama row, with draft drain the remaining slower child bucket. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-siludown` | rejected draft-profile diagnostic | n/a | n/a | n/a | n/a | n/a | n/a | Exact chain-equivalent selected SiLU/down fusion regressed the draft parent profile before full-suite: kernel **5.973 -> 6.054 ms/cycle**, host **7.044 -> 7.206 ms/cycle**, and selected-down family **0.325 -> 0.391 ms/cycle** despite one fewer launch. Do not promote or run full-suite unless a different fused Q5 body beats the active parent profile. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8` | rejected full-suite diagnostic | 64.14 full | 15.612 ms/output | 0.573 | 0.670 | 1.282 | 12.324 ms/output | Draft-only rocprof was positive, but the full-suite route loses the active lane: `draft_initial` improves **3.055 -> 2.986 ms/output**, while target rows/output and verifier drain worsen enough to lose wall time. Do not promote; the active lane remains router-row without draft dense-Q8 dp4a. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm` + Q8 shared dual | superseded retained diagnostic | 63.63 f32ssm full | 15.735 ms/output | 0.578 | 0.685 | 1.266 | 12.158 ms/output | Prior active lane before row-parallel draft router logits. Keep as the direct control row for the retained router-row A/B. |
@@ -493,30 +497,30 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 | metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow` B2 + Q8 shared dual | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
 | --- | ---: | ---: | ---: | ---: | --- |
 | AR tok/s | 54.95 retained / 54.55 shared-dual confirm | 54.92 routerrow full | 51.38 suite / 52.13 traced | hipEngine faster | AR is not the blocker. |
-| MTP tok/s | 60.8 retained / 60.72 shared-dual confirm | **64.41 routerrow full** | 67.3 suite / 72.12 traced | **-2.89 tok/s suite / -7.71 tok/s traced** | Compat wins AR but still trails llama's MTP operation cost. |
-| uplift over own AR | 1.114x retained / 1.113x shared-dual confirm | **1.1727x routerrow full** | ~1.31x suite / 1.383x traced | **-0.14x to -0.21x** | Router-row recovers draft drain while staying in the llama-replication lane. |
-| cycle wall / output | 16.496 ms shared-dual confirm | **15.547 ms routerrow full** | 14.231 ms traced | **+1.316 ms/output** | Router-row closes about 0.188 ms/output of the prior wall gap. |
-| accepted / output | 0.535 | **0.578** | 0.610 traced | -0.032 | Acceptance/row economy improved versus the prior active lane but still trails llama. |
-| draft acceptance | 0.723 | **0.685** | 0.805 | -0.120 | Row economy remains a secondary target. |
-| target passes / output | 0.567 | **0.422** | 0.390 | +0.032 | Compat removed the B1 probe but lower acceptance still increases passes/output. |
-| target rows / output | 1.163 | **1.266** | 1.148 | +0.118 | Compat still evaluates more target rows/output; recover after remaining operation-cost work. |
+| MTP tok/s | 60.8 retained / 60.72 shared-dual confirm | **71.34 resident-init full** | 67.3 suite / 72.12 traced | **+4.04 tok/s vs suite / -0.78 tok/s vs traced** | Compat now clears the retained llama suite row; traced tok/s remains the external check. |
+| uplift over own AR | 1.114x retained / 1.113x shared-dual confirm | **1.3024x resident-init full** | ~1.31x suite / 1.383x traced | near suite / **-0.081x traced** | The resident initial-KV fix recovers the missing proposal economy. |
+| cycle wall / output | 16.496 ms shared-dual confirm | **14.037 ms resident-init full** | 14.231 ms traced | **-0.194 ms/output** | Parent wall gap is closed on the current retained row. |
+| accepted / output | 0.535 | **0.621** | 0.610 traced | +0.011 | Proposal economy is now slightly better than the traced llama row. |
+| draft acceptance | 0.723 | **0.820** | 0.805 | +0.015 | Draft acceptance is no longer behind llama. |
+| target passes / output | 0.567 | **0.379** | 0.390 | -0.011 | Compat removed the B1 probe and now has slightly better pass amortization. |
+| target rows / output | 1.163 | **1.136** | 1.148 | -0.012 | Compat now evaluates slightly fewer target rows/output. |
 
 #### Three-lane stage gap ledger
 
 | bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | current interpretation / next target |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `cycle_wall_ms_per_output` | 16.496 | **15.547** | 14.231 | **+1.316** | Total remaining traced compat gap. |
-| `draft_initial` | 1.921 | **3.055** | 2.140 | **+0.915** | Draft-side gap is still the largest high-level delta. |
-| `draft_mtp_layer_forward` | 0.130 | **0.111** | 0.252 decode subtotal | compat faster | Draft transformer work is not the problem. |
-| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.154 | **2.874** | 1.886 | **+0.988** | Names differ, but this is the visible draft GPU-drain/sampler gap. |
+| `cycle_wall_ms_per_output` | 16.496 | **14.037** | 14.231 | **-0.194** | Parent wall gap is closed on the current retained row. |
+| `draft_initial` | 1.921 | **2.747** | 2.140 | **+0.607** | Draft-side drain is the remaining slower child bucket. |
+| `draft_mtp_layer_forward` | 0.130 | **0.102** | 0.252 decode subtotal | compat faster | Draft transformer work is not the problem. |
+| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.154 | **2.586** | 1.886 | **+0.700** | Names differ, but this is the visible draft GPU-drain/sampler gap. |
 | `target_serial_verify_step` | 6.665 | **0.000** | 0.000 | 0.000 | Default-only B1 probe; compat removed it. |
-| `target_block_verify_total` | 7.883 | **12.166** | 12.083 | **+0.083** | Verifier parent gap is nearly closed; remaining leaves are selected-MoE/lm-head and row economy. |
-| `target_block_layer_total` | 6.894 | **10.688** | n/a | n/a | HipEngine verifier cost center; compare through total verifier drain. |
-| `target_block_linear_attn_layers` | 5.074 | **7.934** | n/a | n/a | Largest hipEngine verifier layer family, now partly raw-Q8 dp4a. |
-| `target_block_full_attn_layers` | 1.820 | **2.754** | n/a | n/a | Secondary hipEngine verifier layer family. |
-| `target_block_lm_head_sample` | 0.575 | **1.157** | n/a | n/a | Visible verifier-side target after layer GEMVs. |
+| `target_block_verify_total` | 7.883 | **10.966** | 12.083 | **-1.117** | Verifier parent now offsets draft drain; guard this row. |
+| `target_block_layer_total` | 6.894 | **9.624** | n/a | n/a | HipEngine verifier cost center; compare through total verifier drain. |
+| `target_block_linear_attn_layers` | 5.074 | **7.165** | n/a | n/a | Largest hipEngine verifier layer family, now partly raw-Q8 dp4a. |
+| `target_block_full_attn_layers` | 1.820 | **2.460** | n/a | n/a | Secondary hipEngine verifier layer family. |
+| `target_block_lm_head_sample` | 0.575 | **1.051** | n/a | n/a | Visible verifier-side target after layer GEMVs. |
 | `mtp_device_kv_commit` | n/a | **0.304** | n/a | n/a | Compat-only bookkeeping; too small alone, but now tracked separately from setup. |
-| `target_block_setup` + snapshot/commit/accounting | 0.265 | **0.103** | 0.188 comparable visible overhead | not the gap | Host bookkeeping is not the current limiter. |
+| `target_block_setup` + snapshot/commit/accounting | 0.265 | **0.099** | 0.188 comparable visible overhead | not the gap | Host bookkeeping is not the current limiter. |
 | llama `mtp_context_replay_append` | n/a | 0.007 | **11.348** | n/a | In llama, verifier GPU drain lands here; do not compare raw `target_block_forward`. |
 
 Rule for this table: if a bucket has no true llama.cpp analog, leave the llama
@@ -537,46 +541,46 @@ and live in the next section.
 
 | bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 analog | compat gap vs llama.cpp | action |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `cycle_wall_ms_per_output` | 16.496 | **15.547** | 14.231 | **+1.316** | Top-line gap to spend down. |
+| `cycle_wall_ms_per_output` | 16.496 | **14.037** | 14.231 | **-0.194** | Parent wall gap is closed; keep the same-protocol check visible. |
 | `accept_policy_and_seed` | 0.002 | 0.002 | 0.002 | -0.001 | Already noise-level. |
-| `draft_initial` | 1.921 | **3.055** | 2.140 | **+0.915** | Draft drain is the largest remaining rollup gap; keep splitting lm-head/sampler/device-chain drain. |
-| `draft_prepare_inputs` | 0.089 | 0.025 | n/a | n/a | hipEngine-only prep, already small. |
-| `draft_seed_upload` | 0.100 | 0.040 | n/a | n/a | Not a current target. |
-| `draft_mtp_layer_forward` | 0.130 | 0.111 | 0.252 llama draft decode subtotal | compat faster | Draft transformer body is not the gap. |
+| `draft_initial` | 1.921 | **2.747** | 2.140 | **+0.607** | Draft drain is the remaining slower child bucket; keep splitting sampler/device-chain drain. |
+| `draft_prepare_inputs` | 0.089 | 0.023 | n/a | n/a | hipEngine-only prep, already small. |
+| `draft_seed_upload` | 0.100 | 0.032 | n/a | n/a | Not a current target. |
+| `draft_mtp_layer_forward` | 0.130 | 0.102 | 0.252 llama draft decode subtotal | compat faster | Draft transformer body is not the gap. |
 | `draft_diagnostic_topk` | 0.000 | n/a | n/a | n/a | Default diagnostic-only row. |
 | `draft_device_chain_ensure_embed_table` | n/a | 0.000 | n/a | n/a | No target. |
 | `draft_device_topk_gather` | n/a | 0.000 | n/a | n/a | No target. |
-| `draft_device_chain_drain` | n/a | **2.867** | n/a | n/a | hipEngine compat draft drain bucket; compare through `draft_initial`. |
+| `draft_device_chain_drain` | n/a | **2.579** | n/a | n/a | hipEngine compat draft drain bucket; compare through `draft_initial`. |
 | `draft_topk_d2h` | n/a | 0.006 | n/a | n/a | D2H is too small to explain the gap. |
-| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.151 | **2.874** | 1.886 | **+0.988** | Visible sampler/GPU-drain target; names are not perfectly isomorphic. |
+| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.151 | **2.586** | 1.886 | **+0.700** | Visible sampler/GPU-drain target; names are not perfectly isomorphic. |
 | llama `llama_draft_decode_initial` | n/a | n/a | 0.118 | n/a | Llama native row; included in its 0.252 ms draft decode subtotal. |
 | llama `llama_draft_decode_next` | n/a | n/a | 0.134 | n/a | Llama native row; included in its 0.252 ms draft decode subtotal. |
 | llama `llama_draft_prepare_initial_batch` | n/a | n/a | 0.001 | n/a | Llama-only setup, not a gap. |
 | llama `llama_draft_prepare_next_batch` | n/a | n/a | 0.000 | n/a | Llama-only setup, not a gap. |
 | llama `llama_draft_finalize` | n/a | n/a | 0.000 | n/a | Llama-only setup, not a gap. |
 | `target_serial_verify_step` | 6.665 | **0.000** | 0.000 | 0.000 | Compat already removed the default B1 probe. |
-| `target_block_verify_total` | 7.883 | **12.166** | 12.083 | **+0.083** | Verifier parent gap is nearly closed. |
-| `target_block_setup` | 0.235 | 0.053 | n/a | n/a | Not a current target. |
+| `target_block_verify_total` | 7.883 | **10.966** | 12.083 | **-1.117** | Verifier parent now offsets draft drain; guard this row. |
+| `target_block_setup` | 0.235 | 0.046 | n/a | n/a | Not a current target. |
 | `target_block_embedding` | 0.013 | 0.023 | n/a | n/a | Not a current target. |
-| `target_block_forward` | 7.855 | 12.122 | n/a | n/a | Async-misaligned; compare through verifier total. |
-| `target_block_layer_total` | 6.894 | **10.688** | n/a | n/a | hipEngine verifier cost center. |
-| `target_block_linear_attn_layers` | 5.074 | **7.934** | n/a | n/a | Biggest hipEngine verifier family. |
-| `target_block_full_attn_layers` | 1.820 | **2.754** | n/a | n/a | Secondary verifier family. |
-| `target_block_output_norm_hidden` | 0.120 | 0.168 | n/a | n/a | Below top targets. |
-| `target_block_lm_head_sample` | 0.575 | **1.158** | n/a | n/a | Verifier-side lm-head/sample target after layer GEMVs. |
+| `target_block_forward` | 7.855 | 10.921 | n/a | n/a | Async-misaligned; compare through verifier total. |
+| `target_block_layer_total` | 6.894 | **9.624** | n/a | n/a | hipEngine verifier cost center. |
+| `target_block_linear_attn_layers` | 5.074 | **7.165** | n/a | n/a | Biggest hipEngine verifier family. |
+| `target_block_full_attn_layers` | 1.820 | **2.460** | n/a | n/a | Secondary verifier family. |
+| `target_block_output_norm_hidden` | 0.120 | 0.147 | n/a | n/a | Below top targets. |
+| `target_block_lm_head_sample` | 0.575 | **1.051** | n/a | n/a | Verifier-side lm-head/sample target after layer GEMVs. |
 | `target_block_hidden_readback` | 0.005 | 0.008 | n/a | n/a | Not a target. |
 | `target_block_acceptance_accounting` | 0.001 | 0.002 | 0.181 | -0.179 | Not a gap; llama charges more visible accounting here. |
 | `target_block_replay_or_commit` | 0.027 | 0.040 | 0.004 | +0.036 | Small. |
 | `target_block_cursor_update` | 0.001 | 0.002 | n/a | n/a | Not a target. |
 | `target_block_snapshot` | 0.060 | n/a | 0.001 | n/a | Default-only hipEngine shape; llama snapshot is tiny. |
-| `mtp_device_kv_commit` | n/a | 0.305 | n/a | n/a | Compat-only bookkeeping; not enough alone. |
+| `mtp_device_kv_commit` | n/a | 0.304 | n/a | n/a | Compat-only bookkeeping; not enough alone. |
 | `mtp_context_replay_append` / llama verifier drain | n/a | 0.007 | **11.348** | n/a | In llama, most verifier GPU drain is charged here; do not compare raw row. |
 | llama `llama_process_build_draft_batch` | n/a | n/a | 11.235 | n/a | Dominant llama verifier/process sub-row inside `mtp_context_replay_append`. |
 | llama `llama_process_decode_ctx_dft` | n/a | n/a | 0.112 | n/a | Llama draft-context process sub-row. |
 | llama `llama_process_copy_verify_h` | n/a | n/a | 0.001 | n/a | Llama-only hidden copy, not a gap. |
 | llama `llama_process_scan_batch` | n/a | n/a | 0.000 | n/a | Llama-only scan, not a gap. |
 | llama `llama_accept_update_pending_h` | n/a | n/a | 0.000 | n/a | Llama-only accept update, not a gap. |
-| setup/snapshot/commit/accounting rollup | 0.265 | 0.103 | 0.188 | -0.085 | Host/control overhead is not the current limiter. |
+| setup/snapshot/commit/accounting rollup | 0.265 | 0.099 | 0.188 | -0.089 | Host/control overhead is not the current limiter. |
 
 #### Active gap budget
 
@@ -587,32 +591,32 @@ suite row before moving the headline numbers.
 
 | target area | current hipEngine llama-compat B2 | llama.cpp HIP B2 target | budget to close | current named work |
 | --- | ---: | ---: | ---: | --- |
-| Total cycle wall | **15.547 ms/output** | 14.231 ms/output | **1.316 ms/output** | Every accepted optimization must eventually move this row. |
-| Draft drain | **3.055 ms/output** | 2.140 ms/output | **0.915 ms/output** | Row-parallel router logits lowered full-suite draft drain by **0.197 ms/output** and draft-chain host wall by **0.598 ms/cycle**. ROCTX now shows Q6_K lm-head per-call parity; treat the remaining per-output draft gap as amortization plus smaller non-Q6 leaves. |
-| Target verifier drain | **12.166 ms/output** | 12.083 ms/output | **0.083 ms/output** | F32 `ssm_out` raw-Q8 dp4a closed most of the dense singleton gap; remaining B2 verifier leaf work is selected gate/up/down and verifier lm-head, but the parent gap is now small. |
-| Target rows / output | **1.266** | 1.148 | 0.118 rows/output | Promoted active lever after the ROCTX correction: compat still evaluates more target rows than llama because draft acceptance/output-cycle economy is worse. |
+| Total cycle wall | **14.037 ms/output** | 14.231 ms/output | **-0.194 ms/output** | Parent wall gap is closed on the retained row; verify with future same-protocol llama reruns. |
+| Draft drain | **2.747 ms/output** | 2.140 ms/output | **0.607 ms/output** | Remaining slower child bucket after resident initial KV fixed proposal economy. |
+| Target verifier drain | **10.966 ms/output** | 12.083 ms/output | **-1.117 ms/output** | Verifier parent is now faster than the traced llama row; guard against regressions. |
+| Target rows / output | **1.136** | 1.148 | -0.012 rows/output | Resident initial KV fixed the row-economy gap on this suite. |
 | Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
 
-Post-ROCTX correction: the remaining `+1.316 ms/output` headline gap is mostly
-amortization, not a slow Q6_K lm-head body. Using the retained full-suite
-`llama-compat` row and the traced llama.cpp HIP B2 row:
+Post-resident-initial-KV correction: the old `+1.316 ms/output` headline gap was
+mostly semantic proposal-economy loss from seeding prompt MTP KV through the
+legacy writer. Using the retained full-suite `llama-compat` row and the traced
+llama.cpp HIP B2 row:
 
 | decomposition metric | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | reading |
 | --- | ---: | ---: | --- |
-| visible outputs / cycle | **2.370** | **2.563** | llama gets **+0.193** more visible outputs/cycle. |
-| cycle wall / output | **15.547 ms** | **14.231 ms** | The headline gap is **+1.316 ms/output**. |
-| inferred wall / cycle | **36.846 ms** | **36.477 ms** | The actual per-cycle operation-cost gap is only **+0.369 ms/cycle**. |
-| amortization share | n/a | n/a | At hipEngine's current per-cycle wall, llama's output/cycle economy would save **~1.172 ms/output**. |
-| residual cycle-cost share | n/a | n/a | The remaining non-amortization gap is only **~0.144 ms/output**. |
+| visible outputs / cycle | **2.640** | **2.563** | hipEngine now gets **+0.077** more visible outputs/cycle. |
+| cycle wall / output | **14.037 ms** | **14.231 ms** | The parent wall gap is **-0.194 ms/output**. |
+| inferred wall / cycle | **37.058 ms** | **36.477 ms** | HipEngine still spends **+0.581 ms/cycle**, but better output/cycle amortization offsets it. |
+| amortization share | n/a | n/a | At hipEngine's current per-cycle wall, llama's output/cycle economy would cost hipEngine **~0.422 ms/output**. |
+| residual cycle-cost share | n/a | n/a | The slower per-cycle draft work is now offset by verifier/economy wins at the parent wall. |
 | Q6_K lm-head dispatch | **1.789 ms/call** (`gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`) | **1.781 ms/call** (`mul_mat_vec_q<GGML_TYPE_Q6_K,ncols=1>`) | Per-call Q6 body is effectively at parity (**+0.5%** hipEngine). |
 
-The active interpretation changes accordingly: stop treating more Q6_K
-stage1-body variants as the first-order fix unless a source diff finds a
-specific missed mechanism. The bigger remaining lever is to make the
-llama-compat proposal/acceptance economy match llama.cpp so the same cycle work
-amortizes over the same number of visible outputs. Smaller non-Q6 draft leaves
-still matter, but they are now a sub-millisecond cycle-cost cleanup rather than
-the main parity gap.
+The active interpretation changes accordingly: stop treating proposal economy
+as the blocker for this route. The current retained row already matches or beats
+llama.cpp on cycle wall, verifier drain, draft acceptance, and rows/output. The
+remaining source-comparison target is draft drain, especially the visible
+sampler/GPU-drain bucket, plus a future same-protocol llama.cpp rerun to settle
+the small traced tok/s delta.
 
 Proposal trace instrumentation is now available for that next comparison.
 llama.cpp commit `ef8050cec` adds `LLAMA_MTP_TOKEN_TRACE=1` to the server MTP
@@ -643,14 +647,14 @@ with the current harness, excluding warmup task `0`.
 
 | row-economy bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat reading |
 | --- | --- | --- | --- | --- |
-| histogram source | `...b5-exact-q8shareddual-full.json` | `...denseq8all-x8top1-f32ssm-routerrow-full.json` | `...natural24-deep.jsonl`, measured rows | Full compat histogram confirms the +0.118 rows/output gap is row waste, not missing telemetry. |
-| cycles / visible outputs | 100 / 215 | 100 / 237 | 87 / 223 | Compat emits more output/cycle than exact and improved versus the prior x8top1 lane. |
+| histogram source | `...b5-exact-q8shareddual-full.json` | `...residentinit-routerrow-full.json` | `...natural24-deep.jsonl`, measured rows | Full compat histogram confirms resident initial KV fixed the row-economy gap. |
+| cycles / visible outputs | 100 / 215 | 100 / 264 | 87 / 223 | Compat now emits slightly more output/cycle than llama's traced row. |
 | `generated_draft_tokens` | `{0: 25, 1: 39, 2: 10, 3: 11, 4: 8, 5: 7}` | `{2: 100}` | `{1: 5, 2: 82}` | Compat always drafts two tokens; llama trims to one generated draft on 5 measured cycles. |
-| `accepted_draft_tokens` | `{0: 41, 1: 36, 2: 7, 3: 5, 4: 5, 5: 6}` | `{0: 17, 1: 29, 2: 54}` | `{0: 11, 1: 16, 2: 60}` | Llama has fewer zero/one-accept cycles, so row economy is still better even with the same no-probe shape. |
-| `visible_output_tokens` | `{1: 41, 2: 36, 3: 7, 4: 5, 5: 5, 6: 6}` | `{1: 17, 2: 29, 3: 54}` | `{1: 11, 2: 16, 3: 60}` | Compat's low-accept tail narrowed versus the prior x8top1 lane but remains wider than llama's. |
+| `accepted_draft_tokens` | `{0: 41, 1: 36, 2: 7, 3: 5, 4: 5, 5: 6}` | `{0: 11, 1: 14, 2: 75}` | `{0: 11, 1: 16, 2: 60}` | Compat now has more full-accept cycles than llama on the measured rows. |
+| `visible_output_tokens` | `{1: 41, 2: 36, 3: 7, 4: 5, 5: 5, 6: 6}` | `{1: 11, 2: 14, 3: 75}` | `{1: 11, 2: 16, 3: 60}` | The low-accept tail now matches or beats llama's traced distribution. |
 | `target_verify_rows_evaluated` | `{1: 34, 2: 30, 3: 10, 4: 11, 5: 8, 6: 7}` | `{3: 100}` | `{2: 5, 3: 82}` | Compat always verifies three rows; llama saves one row on five cycles. |
-| `target_verify_discarded_rows` | `{0: 83, 1: 5, 2: 7, 3: 4, 4: 1}` | `{0: 54, 1: 29, 2: 17}` | `{0: 63, 1: 15, 2: 9}` | Compat discards 63 rows/237 outputs; llama discards 33 rows/223 outputs. |
-| `target_verify_rows_minus_visible_output` | `{0: 83, 1: 5, 2: 7, 3: 4, 4: 1}` | `{0: 54, 1: 29, 2: 17}` | `{0: 63, 1: 15, 2: 9}` | The measured row-economy delta is exactly the extra discarded-row rate: 0.266 vs 0.148 rows/output. |
+| `target_verify_discarded_rows` | `{0: 83, 1: 5, 2: 7, 3: 4, 4: 1}` | `{0: 75, 1: 14, 2: 11}` | `{0: 63, 1: 15, 2: 9}` | Compat discards 36 rows/264 outputs; llama discards 33 rows/223 outputs. |
+| `target_verify_rows_minus_visible_output` | `{0: 83, 1: 5, 2: 7, 3: 4, 4: 1}` | `{0: 75, 1: 14, 2: 11}` | `{0: 63, 1: 15, 2: 9}` | The discarded-row rate is now slightly better: 0.136 vs 0.148 rows/output. |
 
 #### Llama-compat target map
 
@@ -661,10 +665,10 @@ match but the timings do not.
 
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
-| 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+1.316 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.193 outputs/cycle**, +0.118 target rows/output | ROCTX range buckets show the Q6_K lm-head dispatch is already per-call parity, while cycle wall is nearly parity. Same-prompt score tracing shows llama.cpp's first drift row is token `8` over `65342` by **0.100 logits**, while hipEngine device KV still ranks token `8` third and **1.260 logits** behind. Hidden tracing then narrows the mismatch: `draft_seed_input` is close (`rms_delta` **0.00456**), but depth-0 `draft_next_seed` drifts before sampling (first8 mean abs **0.731**). Next work is seq-position-49 draft attention/KV/rope/context parity. |
-| 3 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.915 ms/output**, but only **~+0.144 ms/output** is non-amortization at the total-cycle level | Router-row proved one non-Q6 leaf transfers: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle** and full-suite draft drain **3.252 -> 3.055 ms/output**. The X8 Q6_K top-1 dispatch is **1.789 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call**, so do not repeat Q6 body variants blindly. Remaining operation-cost work should target measured non-Q6 leaves: selected gate/up **0.466**, Q/gate QKV **0.392**, attention core **0.371**, selected down **0.353**, and shared-gate scalar linear **0.219 ms/cycle**. |
-| 4 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.083 ms/output** | Direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a moved the parent row **12.662 -> 12.158 ms/output**; router-row leaves it essentially unchanged at **12.166 ms/output**. The verifier parent is now nearly at llama.cpp's traced 12.083 ms/output, so further verifier work should be justified by full-suite movement rather than isolated leaf wins. |
+| 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **-0.194 ms/output** | Parent wall is closed on the retained row; verify with same-protocol reruns. |
+| 2 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.607 ms/output** | Remaining slower child bucket. Router-row and resident initial KV reduce full-suite draft drain **3.055 -> 2.747 ms/output**, but visible sampler/GPU drain is still above llama. |
+| 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **+0.077 outputs/cycle**, -0.012 target rows/output | Fixed. Resident initial KV changes the full-suite histogram from `{2 accepts: 54}` to `{2 accepts: 75}` out of 100 cycles. Keep proposal tracing as a regression guard. |
+| 4 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **-1.117 ms/output** | Fixed/offsetting. Further verifier work should be justified by a retained full-suite parent movement, not isolated leaf wins. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 
 #### Llama.cpp source anchors for the live gap
@@ -2131,11 +2135,10 @@ The next optimization question is therefore specific: keep the no-probe
 approximate no-probe route collapsed acceptance (`56.42 tok/s`, acc/output `0.324`).
 The true `llama-compat-device-chain-dp4a-q6top1dp4a` route with q6-only X8
 selected-down now keeps acceptance near llama's retained row (`0.583`
-acc/output) and beats its same-run AR baseline (`60.36 tok/s`, `1.101x`), but
-it remains short of llama.cpp HIP MTP. The current
-blocker is now split between draft lm-head/top-k drain and the remaining target
-linear-attention/MoE verifier sections, not an unattributed llama.cpp kernel
-bucket.
+acc/output) and beats its same-run AR baseline (`60.36 tok/s`, `1.101x`). This
+paragraph is historical: the later resident initial-KV fix moves the active
+compat row to `71.34 tok/s` and closes the parent wall gap. The remaining live
+blocker is draft drain, tracked in the top dashboard.
 
 #### Queued fixes, ordered by expected impact
 
@@ -2144,7 +2147,7 @@ bucket.
 | 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | **Implemented and rejected for promotion 2026-06-30.** It cuts B1 serial work but moves too much work into 2-row blocks; exact B5 is **60.40 tok/s**, below the retained exact **60.78** and dp4a **61.61** rows. |
 | 2 | Compat draft GPU-drain reduction | After q6top1dp4a plus q6-only X8, draft remains the largest single remaining traced gap: **3.248 ms/output** vs llama **2.140**. All-sync attribution keeps MTP lm-head at **1.253 ms/output**, improved but not closed. | Continue cutting compat `draft_initial` toward llama's **2.140 ms/output** without lowering full-suite acceptance. Remaining draft work is actual lm-head/attention/FFN cost, not D2H. |
 | 3 | Compat target block layer-time reduction | q6-only X8 trims target verify to **13.038 ms/output**, still **+0.955 ms/output** vs llama. The all-sync split shows linear-attn `attn_qkv_gate_pair` (**2.258 ms/output**) plus selected-MoE expert gate/up/down as the dominant sub-buckets. | Reduce `target_block_layer_total` / `target_block_linear_attn_layers` with acceptance unchanged and full-suite B2 moving toward llama's **12.083 ms/output** verifier trace. |
-| 4 | Confidence-gated no-probe policy | True llama-compat now proves no-probe can keep acc/output near **0.578**, but still needs operation-cost work to compete with the retained exact B5 route. | After operation-cost fixes, revisit whether a confidence gate can improve rows/output without reintroducing the B1 serial probe. |
+| 4 | Confidence-gated no-probe policy | Historical pre-resident-initial-KV note: no-probe acc/output was **0.578**. The current active compat row is **0.621** and already beats exact B5 throughput; confidence gating is now a regression-risk experiment, not a parity blocker. | Revisit only if a future same-protocol llama.cpp rerun exposes a row-economy regression. |
 | 5 | Keep llama.cpp deep instrumentation aligned | The current split proved llama's verifier drain lives in `llama_process_build_draft_batch`, not raw `target_block_forward`. Keep this patch available for A/B after every major hipEngine verifier change. | Re-run llama deep trace when upstream or local diagnostic patch changes; do not compare raw async buckets. |
 
 **Fused-B1 implementation result (2026-06-30):** added default-off
@@ -4386,8 +4389,11 @@ closely enough to produce the same draft decision.  Keep row 0 on the semantic
 debt list, but do not block perf attribution on it unless a later trace shows it
 changes acceptance.
 
-Next work: rerun the full multi-prompt llama-compat suite with resident initial
-KV enabled, refresh the standing three-lane table if the retained row changes,
-then return to the measured **+1.316 ms/output** compat gap.  With the prompt
-context now mirrored, the remaining gap can be treated as real implementation
-cost rather than a semantic mismatch.
+Full-suite follow-up: rerun completed in
+`benchmarks/results/2026-07-02-ar-mtp-llama-compat-residentinit-routerrow-full.json`.
+The retained B2 compat row moved **64.41 -> 71.34 tok/s**, cycle wall
+**15.547 -> 14.037 ms/output**, acc/output **0.578 -> 0.621**, draft acceptance
+**0.685 -> 0.820**, target rows/output **1.266 -> 1.136**, and verifier drain
+**12.166 -> 10.966 ms/output**.  The old parent-wall gap is closed on this
+suite; remaining parity work is draft-drain cleanup and same-protocol llama.cpp
+reruns, not prompt-context semantics.

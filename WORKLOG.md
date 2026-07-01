@@ -134270,3 +134270,34 @@ PYTHONPATH=. python3 -m pytest \
   tests/test_gguf_mtp_bench_metrics.py \
   tests/test_mtp_resident_draft_device_commit.py -q
 ```
+
+## 2026-07-02 - MTP llama-compat resident initial KV full-suite rerun
+
+- Committed the semantic fix as `58fcb2e7` (`fix: seed MTP prompt KV through
+  resident writer`), then reran the active full-suite llama-compat route:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-residentinit-routerrow-full.json
+```
+
+- Result: `apple_to_apple_ok=true`; AR **54.78 tok/s**; B2 MTP
+  **71.34 tok/s = 1.3024x AR**; `cycle_wall_ms_per_output`
+  **14.037**; acc/output **0.621**; draft acceptance **0.820**.
+- Versus prior active router-row full artifact
+  `2026-07-02-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-routerrow-full.json`:
+  MTP **64.41 -> 71.34 tok/s** (+10.76%), cycle wall
+  **15.547 -> 14.037 ms/output**, acc/output **0.578 -> 0.621**,
+  draft acceptance **0.685 -> 0.820**, target rows/output
+  **1.266 -> 1.136**, target verifier drain **12.166 -> 10.966 ms/output**,
+  and draft drain **3.055 -> 2.747 ms/output**.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`.  Current reading: the old **+1.316 ms/output**
+  parent gap vs llama.cpp HIP traced B2 is closed on the retained hipEngine
+  full-suite row (**14.037 vs 14.231 ms/output**).  The remaining slower child
+  bucket is draft drain (**2.747 vs 2.140 ms/output**); target verifier and row
+  economy now offset it.
