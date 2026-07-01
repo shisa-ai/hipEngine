@@ -1,0 +1,54 @@
+{
+  "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --x-rows 2 --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-t64-micro.json",
+  "correctness_vs_t16_float": {
+    "gate": {
+      "kl_max": 0.00015977165618863138,
+      "kl_mean": 7.988582809431569e-05,
+      "max_abs": 2.0,
+      "mean_abs": 0.26494473218917847,
+      "top1": 1.0
+    },
+    "silu": {
+      "kl_max": 8.231069992455727e-55,
+      "kl_mean": 5.14441874528483e-56,
+      "max_abs": 512.0,
+      "mean_abs": 8.334739685058594,
+      "top1": 1.0
+    },
+    "up": {
+      "kl_max": 0.0001597716561886315,
+      "kl_mean": 7.988582809431569e-05,
+      "max_abs": 2.0,
+      "mean_abs": 0.26494473218917847,
+      "top1": 1.0
+    }
+  },
+  "hip_arch": "gfx1151",
+  "host": "gfx1151",
+  "iters": 120,
+  "schema": "hipengine.gguf_q4_k_t16_selected_dual_dp4a_microbench.v1",
+  "selected_dp4a_threads": "64",
+  "shape": {
+    "experts": 256,
+    "in_features": 2048,
+    "out_features": 512,
+    "rows": 16,
+    "x_rows": 2
+  },
+  "speedup": {
+    "t16_dual_over_dp4a_dot": 1.6929770863010036,
+    "t16_dual_over_dp4a_quantize_plus_dot": 1.5492419460991655,
+    "t16_silu_over_dp4a_dot": 1.7058462297388588,
+    "t16_silu_over_dp4a_quantize_plus_dot": 1.6143928760089834
+  },
+  "timing_ms": {
+    "q8_1_quantize": 0.0024607928935438395,
+    "t16_dp4a_dot_prequantized": 0.040509565345322095,
+    "t16_dp4a_quantize_plus_dot": 0.04426795057952404,
+    "t16_selected_dual": 0.06858176590564351,
+    "t16_selected_dual_silu": 0.07576284115202725,
+    "t16_silu_dp4a_dot_prequantized": 0.044413640474279724,
+    "t16_silu_dp4a_quantize_plus_dot": 0.046929618110880256
+  },
+  "warmup": 30
+}

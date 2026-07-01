@@ -186,7 +186,12 @@ def main() -> None:
     kl_mean, kl_max = _softmax_kl(ref, dp4a)
 
     env_prefix = []
-    for name in ("PYTHONPATH", "HIPENGINE_HIP_ARCH", "HIPENGINE_COMPILER_VERSION_FILE"):
+    for name in (
+        "PYTHONPATH",
+        "HIPENGINE_HIP_ARCH",
+        "HIPENGINE_COMPILER_VERSION_FILE",
+        "HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS",
+    ):
         value = os.environ.get(name)
         if value:
             env_prefix.append(f"{name}={value}")
@@ -195,6 +200,7 @@ def main() -> None:
         "schema": "hipengine.gguf_q5_k_t16_selected_down_dp4a_microbench.v1",
         "host": platform.node(),
         "hip_arch": os.environ.get("HIPENGINE_HIP_ARCH"),
+        "selected_dp4a_threads": os.environ.get("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS", "64"),
         "shape": {
             "rows": args.rows,
             "experts": args.experts,

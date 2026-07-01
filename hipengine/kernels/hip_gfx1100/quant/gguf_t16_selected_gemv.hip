@@ -15,6 +15,7 @@
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 namespace {
 
@@ -187,6 +188,15 @@ __device__ inline uint32_t t16_q5_pack4(const uint8_t* __restrict__ tile, int sb
   const uint32_t q2 = static_cast<uint32_t>(t16_q5_quant(tile, sb, lane4 + 2, col));
   const uint32_t q3 = static_cast<uint32_t>(t16_q5_quant(tile, sb, lane4 + 3, col));
   return q0 | (q1 << 8) | (q2 << 16) | (q3 << 24);
+}
+
+int selected_t16_dp4a_threads() {
+  const char* env = getenv("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS");
+  if (env == nullptr || env[0] == '\0') {
+    return 64;
+  }
+  const int value = atoi(env);
+  return value == 128 ? 128 : 64;
 }
 
 __device__ inline float t16_q4_weight(const uint8_t* __restrict__ tile, int k_in_block, int col) {
@@ -993,7 +1003,7 @@ int launch_q4_dual_q8_1_dp4a_direct(const void* xq,
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
-  const dim3 block(128);
+  const dim3 block(selected_t16_dp4a_threads());
   const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv_kernel<scalar_t, fuse_silu>),
                      grid, block, 0, stream,
@@ -1050,7 +1060,7 @@ int launch_qk_q8_1_dp4a_direct(const void* xq,
     return hipErrorInvalidValue;
   }
   const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
-  const dim3 block(128);
+  const dim3 block(selected_t16_dp4a_threads());
   const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((qk_t16_selected_q8_1_dp4a_direct_gemv_kernel<scalar_t>),
                      grid, block, 0, stream,

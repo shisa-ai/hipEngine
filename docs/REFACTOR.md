@@ -184,6 +184,19 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
+## `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` (diagnostic rollback)
+- Added 2026-07-01. Host-side launch switch for the selected T16 q8_1/dp4a
+  verifier kernels used by `--verify-dp4a` / `llama-compat-device-chain-dp4a`.
+  Default is now `64`; setting the env var to `128` restores the old launch
+  shape.
+- Purpose: keep a rollback/A-B hook for the first selected-MoE scheduler change
+  that survived async/full-suite validation. Full-suite `llama-compat` B2 moved
+  **55.45 -> 58.83 tok/s** and `target_block_verify_total`
+  **14.025 -> 13.134 ms/output** on gfx1151.
+- Remove when: either the selected-MoE scheduler is replaced by a llama-style
+  `mul_mat_vec_q_moe` port or two later full-suite compat runs confirm 64 is
+  stable enough that the 128-thread rollback path is no longer useful.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with

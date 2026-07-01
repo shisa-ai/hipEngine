@@ -130414,3 +130414,85 @@ Decision: do not route rows>1 selected gate/up through fused-SiLU q8_1/dp4a in
 the current compat path. The active parity doc now records this in the
 three-lane dashboard section as a warning that all-sync sub-buckets are
 attribution aids only; async/full-suite rows are the promotion gate.
+
+Promoted the selected T16 q8_1/dp4a verifier kernels from 128 to 64 launch
+threads for the accuracy-traded `llama-compat-device-chain-dp4a` path. The
+exact/default path is unaffected because it does not enable selected dp4a.
+`HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=128` remains as a rollback diagnostic.
+
+Preflight:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx' | head -80` confirmed gfx1151 / Radeon 8060S.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` failed because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing. This change is a local
+  launch-shape tune, not a source port, but the lineage caveat is recorded.
+
+Microbench evidence, Qwen3.6 GGUF selected-MoE verifier shapes, gfx1151:
+
+- Q4 selected dual gate/up, 128-thread control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --x-rows 2 --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-t128-micro.json`
+  -> dot **0.0518 ms**, quantize+dot **0.0543 ms**, top-1 **1.0** vs T16
+  reference.
+- Q4 selected dual gate/up, 64 threads:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --x-rows 2 --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-t64-micro.json`
+  -> dot **0.0405 ms**, quantize+dot **0.0443 ms**, top-1 **1.0**.
+- Q5 selected down, 128-thread control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-t128-micro.json`
+  -> dot **0.0531 ms**, quantize+dot **0.0549 ms**, top-1 **0.9375**.
+- Q5 selected down, 64 threads:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-t64-micro.json`
+  -> dot **0.0369 ms**, quantize+dot **0.0410 ms**, top-1 **0.9375**.
+
+Async smoke:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-t64-smoke.json`
+
+Result: AR **54.91 tok/s**, B2 **67.36 tok/s**, acc/output **0.667**,
+draft acceptance **1.000**, `cycle_wall_ms_per_output` **14.867**,
+`target_block_verify_total` **11.829 ms/output**. Paircache async smoke control
+was B2 **66.66 tok/s**, cycle **15.023**, verifier **11.960 ms/output**.
+
+Full-suite retained diagnostic:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-t64-full.json`
+
+Result: AR **54.73 tok/s**, B2 **58.83 tok/s** (**1.075x** AR), acc/output
+**0.578**, draft acceptance **0.685**, `cycle_wall_ms_per_output` **17.019**,
+`target_block_verify_total` **13.134 ms/output**. Compared with paircache full
+B2 **55.45 tok/s**, cycle **18.057**, verifier **14.025**, this is +6.1% MTP
+and -6.35% verifier wall with similar acceptance.
+
+All-sync attribution under the new default:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-t64-allsync-smoke.json`
+
+Selected-MoE split, ms/output:
+
+- linear-attn gate/up **1.663** = q8_1 quantize **0.195** + GEMV **1.419** +
+  SiLU **0.188**.
+- linear-attn down **1.155** = q8_1 quantize **0.161** + GEMV **0.963**.
+- full-attn gate/up **0.583** = q8_1 quantize **0.088** + GEMV **0.475** +
+  SiLU **0.061**.
+- full-attn down **0.373** = q8_1 quantize **0.051** + GEMV **0.311**.
+
+Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/KERNELS.md`,
+`docs/REFACTOR.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+Validation before commit:
+
+- `python3 -m py_compile scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py`
+  passed.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_selected_moe_stage_timing.py`
+  -> **18 passed**.
+- `git diff --check` passed.
+- `rocprofv3 --kernel-trace` cached smoke, with
+  `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64` and a pinned
+  `/tmp/hipengine-hipcc-version.txt` compiler-version file:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-rocprof-t64 --output-file q4-t64-cached-pinned -- /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --x-rows 2 --rows 16 --iters 5 --warmup 2 --require-cached-build`
+  emitted `q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv_kernel` with
+  `Workgroup_Size_X=64`, `Grid_Size_X=2048`, `Grid_Size_Y=16`; plain dp4a
+  selected dual averaged **35.1 us** over 15 dispatches and fused-SiLU averaged
+  **39.3 us** over 15 dispatches. The smoke correctness remained top-1 **1.0**
+  vs the T16 reference.
