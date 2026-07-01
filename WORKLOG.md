@@ -134643,3 +134643,31 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   Current retained hipEngine `llama-compat` remains faster on parent wall:
   **13.464 vs 14.269 ms/output** (**-0.805 ms/output**). The only slower child
   bucket remains draft drain: **2.202 vs 2.141 ms/output** (**+0.061**).
+
+## 2026-07-02 - hipEngine llama-compat clean current-HEAD rerun
+
+- Reran the active `llama-compat` B2 full-suite row from clean current HEAD to
+  fix the provenance mismatch in the prior retained artifact. Command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-parallelattn-clean-rerun-full.json
+```
+
+- Result matches the retained lane: AR **54.81 tok/s**, B2 MTP
+  **74.39 tok/s**, speedup **1.3573x**, `cycle_wall_ms_per_output`
+  **13.463**, acc/output **0.621**, draft acceptance **0.820**, target
+  rows/output **1.136**, `draft_initial` **2.204 ms/output**,
+  `draft_topk_readback` **2.039 ms/output**, `draft_device_chain_drain`
+  **2.033 ms/output**, and `target_block_verify_total`
+  **10.929 ms/output**.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md` to point the active compat lane at the clean rerun.
+  Current reading vs llama.cpp HIP B2 rerun: parent wall remains closed
+  (**13.463 vs 14.269 ms/output**, **-0.806**), target verifier is faster
+  (**10.929 vs 12.120**, **-1.191**), and the only positive child delta is the
+  tiny draft drain (**2.204 vs 2.141**, **+0.063 ms/output**).
