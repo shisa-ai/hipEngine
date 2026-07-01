@@ -131346,3 +131346,11 @@ Validation:
 - Cached child rerun:
   `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_verifier_rocprof.py --child --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings --steps 1 --warmup 0 --require-cached --child-json /tmp/hipengine-block-verify-child-rerun.json`
   -> `block-verify steps=1 avg_host_ms=43.938`.
+
+## 2026-07-01 — MTP parity tracker table contract
+
+Clarified the active table contract in `docs/MTP-LLAMACPP-PARITY.md`: the
+standing tracker keeps hipEngine default exact, hipEngine `llama-compat`, and
+llama.cpp HIP in one table, uses a fixed compat-minus-llama gap convention, and
+keeps the current B2 timing deltas visible as the implementation target. This is
+docs-only; no benchmark or GPU validation was needed.

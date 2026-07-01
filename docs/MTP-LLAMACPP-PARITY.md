@@ -67,6 +67,14 @@ It keeps the active speed gap and the high-level stage split in one place. Use
 retained full-suite rows for headline tok/s and async cycle wall; use all-sync
 rows only in the leaf attribution table below.
 
+Gap sign convention: `compat gap / reading` is always measured from hipEngine
+`llama-compat` to llama.cpp HIP. Positive ms/rows mean compat is slower or doing
+more verifier work; negative tok/s means a throughput deficit. Keep hipEngine
+default exact in the same table so every fix shows whether it is a
+llama-replication-only change, an exact-mode regression risk, or a real
+cross-lane improvement. The goal for this sprint is to spend down the
+`llama-compat` deltas here until the B2 structure and timing match llama.cpp.
+
 | metric | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap / reading |
 | --- | ---: | ---: | ---: | --- |
 | MTP tok/s | 60.8 retained / 59.61 traced | **60.36** | 67.3 suite / 72.12 traced | **-6.94 tok/s suite / -11.76 tok/s traced**; top-line parity gap. |
