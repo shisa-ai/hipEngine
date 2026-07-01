@@ -132571,6 +132571,73 @@ python3 -m pytest \
 
 Result: passed.
 
+## 2026-07-02 — MTP hidden-state parity diagnostic
+
+Added and committed a local llama.cpp diagnostic patch:
+
+- `/home/lhl/llama.cpp/llama.cpp-hip` commit `c0f750604`
+  (`tools: add MTP hidden state trace`)
+- `LLAMA_MTP_TOKEN_TRACE=1` rows now include `draft_hidden_state_trace` with
+  `draft_seed_input` and per-depth `draft_next_seed` summaries.
+
+Reran the same prompt on hipEngine commit `6190fd08` with
+`--record-draft-hidden-stats` and llama.cpp commit `c0f750604`:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 4 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --resident-mtp-draft --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 \
+  --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 \
+  --resident-mtp-draft-router-row-parallel \
+  --mtp-context-replay --mtp-device-kv-cache \
+  --target-block-verify --target-block-verify-mode bulk \
+  --target-block-min-rows 2 --target-block-direct-state-commit \
+  --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 \
+  --record-cycle-stage-timings --record-draft-topk-scores \
+  --record-draft-hidden-stats \
+  --output /tmp/hipengine-mtp-hidden-trace/hipengine-devicekv-hidden.json
+```
+
+```bash
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16
+
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8027 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 27 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-hidden-trace/llamacpp-stage-hidden.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-hidden-trace/llamacpp-hidden.json \
+  --log-dir /tmp/hipengine-mtp-hidden-trace/logs
+```
+
+Retained compact artifact:
+`benchmarks/results/2026-07-02-mtp-hidden-state-parity-diagnostic.json`
+(`performance_claim=false`).
+
+Result at the first divergence (seq position 49):
+
+- `draft_seed_input` / pending-h is close: `rms_delta=0.00456`, first8 mean abs
+  delta `0.0798`.
+- depth-0 `draft_next_seed` has already drifted before sampling:
+  `rms_delta=0.01458`, first8 mean abs delta `0.7310`.
+
+Interpretation: the primary mismatch is not the target verifier pending-h
+handoff. It appears inside the first MTP/`ctx_dft` draft decode row: attention/KV
+row contents, rope/context position, or draft block math. Updated
+`docs/MTP-LLAMACPP-PARITY.md` with the narrowed target.
+
 ## 2026-07-02 — Rejected selected SiLU/down fusion for llama-compat draft
 
 Implemented a default-off resident draft diagnostic that fuses selected MoE
