@@ -131778,3 +131778,17 @@ economy gap is exactly visible as extra discarded-row rate: compat discards
 60/240 = **0.250 rows/output** while llama discards 33/223 = **0.148
 rows/output**. Operation cost remains first priority because draft+verifier
 drain explains about 2.06 ms/output of the 2.38 ms/output wall gap.
+
+## 2026-07-01 — MTP parity live board maintenance note
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` to make the active three-lane speed-gap
+board explicit as the required top-of-file parity tracker. The board now names
+the exact full rowhist artifacts for hipEngine default exact and
+`llama-compat`, plus the traced llama.cpp HIP B2 artifact, and records the
+required lane order: hipEngine default exact, hipEngine `llama-compat`,
+llama.cpp HIP, then compat gap / next comparison target.
+
+No benchmark rerun for this docs-only maintenance change; it preserves the
+current active gap budget from the retained artifacts: **+2.379 ms/output**
+total, with **+1.108 ms/output** draft drain, **+0.955 ms/output** verifier
+drain, and **+0.102 target rows/output** row economy.

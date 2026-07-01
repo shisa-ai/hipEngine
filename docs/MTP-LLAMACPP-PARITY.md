@@ -78,13 +78,22 @@ Dashboard contract:
 | hipEngine `llama-compat` | Active replication lane. | Should structurally match llama.cpp's B2/no-probe MTP path; every positive delta vs llama.cpp is a concrete optimization target. |
 | llama.cpp HIP | Timing target and implementation reference. | When `llama-compat` mirrors the shape but stays slower, inspect the corresponding llama.cpp stage/kernel and copy or retune the mechanism. |
 
-Canonical speed-gap table (standing active tracker; update every parity run):
+#### Live three-lane gap board (update every parity run)
 
-Preserve this table as the top-of-file board. The compat gap column is the live
-optimization budget; the final column names the next comparison target. If a new
-fine-grained bucket has no direct llama.cpp analog, leave the direct comparison
-to the detailed inventory and move the gap only through its nearest parent row
-here.
+Last refreshed from the full rowhist artifacts
+`benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-rowhist-full.json`
+and
+`benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rowhist-full.json`,
+plus the traced llama.cpp HIP B2 row in
+`benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`.
+
+Preserve this as the top-of-file board for the parity sprint. It must always
+keep the same lane order: hipEngine default exact, hipEngine `llama-compat`,
+llama.cpp HIP, then the compat gap. The compat gap column is the live
+optimization budget; the final column names the next source path or kernel
+family to compare. If a new fine-grained bucket has no direct llama.cpp analog,
+leave the direct comparison to the detailed inventory and move the gap only
+through its nearest parent row here.
 
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
