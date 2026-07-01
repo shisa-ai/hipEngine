@@ -9,11 +9,17 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 
 ### SUMMARY — full tok/s ladder + gap decomposition (read this first)
 
-| config (same model, gfx1151) | AR tok/s | MTP tok/s | uplift |
-| --- | --- | --- | --- |
-| hipEngine (HIP/ROCm, exact) | 54.95 | 60.8 (suite) | 1.114× |
-| llama.cpp HIP/ROCm (dp4a) | 51.38 | 67.3 (suite) / 75.4 (cli prompt) | ~1.31–1.47× |
-| llama.cpp **Vulkan** (dp4a) | **62.65** | **84.6 (cli prompt)** | ~1.35× |
+| config (same model, gfx1151) | AR tok/s | MTP tok/s | cycle wall / output | uplift | role |
+| --- | ---: | ---: | ---: | ---: | --- |
+| hipEngine default exact B5 | 54.95 retained / 54.55 shared-dual confirm | 60.8 suite / 60.72 shared-dual confirm | 16.496 ms | 1.114× retained / 1.113× confirm | Correctness-preserving control lane. |
+| hipEngine `llama-compat` B2 | 54.67 x8top1 full | **61.31 x8top1 full** | **16.331 ms** | **1.1216×** | Active llama.cpp replication lane. |
+| llama.cpp HIP/ROCm B2 (dp4a) | 51.38 suite / 52.13 traced | 67.3 suite / 72.12 traced / 75.4 cli prompt | **14.231 ms traced** | ~1.31× suite / 1.383× traced / 1.47× cli | Timing target and source reference. |
+| llama.cpp **Vulkan** (dp4a) | **62.65** | **84.6 cli prompt** | n/a | ~1.35× | Backend ceiling reference, not the HIP parity target. |
+
+The working HIP target is the `llama-compat` B2 row versus the traced llama.cpp
+HIP B2 row: **16.331 - 14.231 = +2.100 ms/output**. The detailed tracker below
+keeps that gap split by stage so each optimization can be evaluated against the
+same budget instead of a single tok/s headline.
 
 ### ACTIVE TRACKING — default vs llama-compat vs llama.cpp HIP
 
@@ -88,7 +94,7 @@ Active comparison rules:
 | Separate rollups from leaves. | Rollup rows decide priority; all-sync and rocprof rows identify the kernel or source path. Do not replace the rollup gap with an attribution-only number. |
 | Compare source only after structure matches. | Once `llama-compat` has the same B2/no-probe shape for a row, any remaining positive delta becomes a source-code comparison task against the named llama.cpp path or kernel family. |
 
-#### Live three-lane gap board (update every parity run)
+#### Live three-lane speed/stage gap tracker (update every parity run)
 
 Last refreshed from the full-suite artifacts
 `benchmarks/results/2026-07-01-ar-mtp-stage-timing-b5-exact-q8shareddual-full.json`
@@ -97,13 +103,13 @@ and
 plus the traced llama.cpp HIP B2 row in
 `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`.
 
-Preserve this as the top-of-file board for the parity sprint. It must always
-keep the same lane order: hipEngine default exact, hipEngine `llama-compat`,
-llama.cpp HIP, then the compat gap. The compat gap column is the live
-optimization budget; the final column names the next source path or kernel
-family to compare. If a new fine-grained bucket has no direct llama.cpp analog,
-leave the direct comparison to the detailed inventory and move the gap only
-through its nearest parent row here.
+Preserve this as the top-of-file board for the parity sprint. It is the active
+speed-gap comparison table requested for this work: hipEngine default exact,
+hipEngine `llama-compat`, llama.cpp HIP, then the `llama-compat` gap. The gap
+column is the live optimization budget; the final column names the next source
+path or kernel family to compare. If a new fine-grained bucket has no direct
+llama.cpp analog, leave the direct comparison to the detailed inventory and move
+the gap only through its nearest parent row here.
 
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |

@@ -132344,3 +132344,15 @@ does not close the parity gap: versus the traced llama.cpp HIP B2 row
 `docs/MTP-LLAMACPP-PARITY.md`, `docs/KERNELS.md`, `docs/REFACTOR.md`,
 `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` with the active
 three-lane gap table and retained artifacts.
+
+## 2026-07-01 — MTP parity active tracker clarified
+
+Docs-only follow-up to keep `docs/MTP-LLAMACPP-PARITY.md` usable as the active
+parity dashboard. Updated the top summary to include all three comparison lanes:
+hipEngine default exact B5, hipEngine `llama-compat` B2, and llama.cpp HIP B2.
+Also renamed the live board to the "three-lane speed/stage gap tracker" and made
+the update contract explicit: the working target is the active `llama-compat`
+B2 row versus traced llama.cpp HIP B2, currently **16.331 - 14.231 =
++2.100 ms/output**, split by the existing stage rows. No benchmark rerun; this
+only reorganizes the already-recorded X8 top-1 / denseq8all measurements for
+future parity work.
