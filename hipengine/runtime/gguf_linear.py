@@ -107,6 +107,12 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q8_0_t16_v1": 32,
 }
 
+# Diagnostic scheduler knob for Q8_0 T16 GEMV verifier projections. Default is
+# wrapper-local 128 threads; set the env var to 64 for the current llama-compat
+# pair-projection A/B. Kept separate from selected-MoE T16 dp4a scheduling.
+_Q8_T16_THREADS_ENV = "HIPENGINE_GGUF_Q8_T16_THREADS"
+_Q8_T16_ALLOWED_THREADS = frozenset({64, 128})
+
 
 @dataclass(frozen=True)
 class GGUFLinearDispatch:
@@ -217,6 +223,28 @@ def _resolve_use_gemv_decode(kwarg: bool | None) -> bool:
     if _gemv_decode_session_enabled is not None:
         return _gemv_decode_session_enabled
     return _env_gemv_decode_enabled()
+
+
+def _resolve_q8_t16_threads(threads: int = 0) -> int:
+    """Resolve the Q8_0 T16 GEMV launch width.
+
+    Returns ``0`` when no override is active so the wrapper keeps its default
+    128-thread launch. Explicit kwargs take precedence over the env var.
+    """
+
+    if int(threads) != 0:
+        value = int(threads)
+    else:
+        raw = os.environ.get(_Q8_T16_THREADS_ENV, "").strip()
+        if not raw:
+            return 0
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError(f"{_Q8_T16_THREADS_ENV} must be one of 64 or 128") from exc
+    if value not in _Q8_T16_ALLOWED_THREADS:
+        raise ValueError(f"{_Q8_T16_THREADS_ENV} must be one of 64 or 128")
+    return value
 
 
 def set_wmma_prefill_enabled(enabled: bool | None) -> None:
@@ -485,7 +513,11 @@ def launch_gguf_linear(
     abi, fn, quant = cached
     library = None if libraries is None else libraries.get(quant)
     kwargs = {"stream": stream, "runtime": runtime}
-    if threads:
+    if abi == "t16" and quant == "gguf_q8_0_t16_v1":
+        q8_t16_threads = _resolve_q8_t16_threads(threads)
+        if q8_t16_threads:
+            kwargs["threads"] = q8_t16_threads
+    elif threads:
         kwargs["threads"] = threads
     if library is not None:
         kwargs["library"] = library
@@ -566,6 +598,7 @@ def launch_gguf_linear_pair(
     runtime=None,
     use_wmma_prefill: bool | None = None,
     use_gemv_decode: bool | None = None,
+    threads: int = 0,
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused.
 
@@ -639,6 +672,7 @@ def launch_gguf_linear_pair(
             in_features,
             out_features,
             out_features_b,
+            threads=_resolve_q8_t16_threads(threads),
             stream=stream,
             runtime=runtime,
         )
@@ -770,6 +804,7 @@ def launch_gguf_linear_triple(
     out_features_c: int | None = None,
     stream: int = 0,
     runtime=None,
+    threads: int = 0,
 ) -> bool:
     """Launch a supported same-input triple of GGUF projections."""
 
@@ -828,6 +863,7 @@ def launch_gguf_linear_triple(
             out_features,
             out_features_b,
             out_features_c,
+            threads=_resolve_q8_t16_threads(threads),
             stream=stream,
             runtime=runtime,
         )
@@ -848,6 +884,7 @@ def launch_gguf_linear_pair_concat(
     runtime=None,
     use_wmma_prefill: bool | None = None,
     use_gemv_decode: bool | None = None,
+    threads: int = 0,
 ) -> bool:
     """Launch a supported projection pair into one concatenated output buffer.
 
@@ -894,6 +931,7 @@ def launch_gguf_linear_pair_concat(
             in_features,
             out_features,
             out_features,
+            threads=_resolve_q8_t16_threads(threads),
             stream=stream,
             runtime=runtime,
         )

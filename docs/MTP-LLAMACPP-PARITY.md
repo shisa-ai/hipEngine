@@ -46,6 +46,7 @@ Current source artifacts:
 | hipEngine llama-compat | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, and q8_1/dp4a draft Q6_K top-1 lm-head. |
 | hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-allsync-smoke.json` | Attribution-only smoke with extra sync points inside draft and selected-MoE gate/up/down. Do not use for headline tok/s. |
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
+| hipEngine llama-compat rejected Q8T16 pair t64 check | `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json` | Diagnostic only: the actual verifier `attn_qkv+attn_gate` Q8T16 pair shape is faster at the existing 128-thread launch than at 64 threads. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
 #### Three-lane speed gap
@@ -197,6 +198,28 @@ The small draft-side full-suite movement (`draft_initial`
 (`target_block_verify_total` **13.1776 -> 13.1859 ms/output**). The code was
 backed out; do not retry direct-F32 q8_1 as a standalone draft fix. If revisited,
 it needs a fused RMSNorm+q8_1 path or a broader lm-head scheduler change.
+
+**Rejected 2026-07-01 Q8T16 pair thread-count check:** the Q8T16 verifier
+`attn_qkv+attn_gate` split pair kernel now has a diagnostic
+`HIPENGINE_GGUF_Q8_T16_THREADS` launch-width override so the llama-compat lane can
+A/B the exact hot shape without changing the default. The default remains the
+existing 128-thread launch. A focused microbench at the qwen35 linear-attention
+pair shape (`in=2048`, `out=(8192,4096)`) rejected 64 threads:
+
+| rows | 64-thread pair | 128-thread pair | result |
+| ---: | ---: | ---: | --- |
+| 2 | 197.77 us | **179.26 us** | 64 is 10.3% slower. |
+| 3 | 224.80 us | **207.05 us** | 64 is 8.6% slower. |
+| 4 | 251.96 us | **237.02 us** | 64 is 6.3% slower. |
+
+`rocprofv3 --kernel-trace` on the 64-thread correctness fixture confirmed the
+new path really launched `q8_0_t16_dual_split_gemv_kernel<unsigned short,
+unsigned short>` with `Workgroup_Size_X=64`, `Grid_Size_X=768`,
+`Grid_Size_Y=3`, and `End-Start=5645 ns`. No async smoke/full-suite run is
+justified because the isolated hot pair is already slower. The Q8T16 pair gap is
+therefore not a simple 64-thread scheduler mismatch; the next comparison needs a
+different kernel body/schedule against llama.cpp's `mul_mat_vec_q`/mmvq shape, not
+just a smaller workgroup.
 
 Latest selected-MoE inner split after q6top1dp4a
 (`llama-compat-device-chain-dp4a-q6top1dp4a-allsync`, smoke, extra sync points):

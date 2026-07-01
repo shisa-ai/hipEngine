@@ -21,6 +21,10 @@ constexpr int T16_COLS = 16;
 constexpr int T16_D_BYTES = T16_COLS * 2;
 constexpr int T16_BLOCK_BYTES = T16_D_BYTES + Q8_0_BLOCK * T16_COLS;
 
+bool valid_threads(int64_t threads) {
+  return threads == 64 || threads == 128;
+}
+
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
     uint32_t u32;
@@ -388,12 +392,14 @@ int launch_single(const void* x,
                   int64_t rows,
                   int64_t in_features,
                   int64_t out_features,
+                  int64_t threads,
                   hipStream_t stream) {
   if (!x || !tiles || !out || rows <= 0 || in_features <= 0 || out_features <= 0 ||
-      (in_features % Q8_0_BLOCK) != 0 || (out_features % T16_COLS) != 0) {
+      (in_features % Q8_0_BLOCK) != 0 || (out_features % T16_COLS) != 0 ||
+      !valid_threads(threads)) {
     return hipErrorInvalidValue;
   }
-  const dim3 block(128);
+  const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((q8_0_t16_gemv_kernel<scalar_t, out_t>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles),
@@ -410,13 +416,15 @@ int launch_dual(const void* x,
                 int64_t in_features,
                 int64_t out_features_a,
                 int64_t out_features_b,
+                int64_t threads,
                 hipStream_t stream) {
   if (!x || !tiles_a || !tiles_b || !out || rows <= 0 || in_features <= 0 ||
       out_features_a <= 0 || out_features_b <= 0 || (in_features % Q8_0_BLOCK) != 0 ||
-      (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0) {
+      (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0 ||
+      !valid_threads(threads)) {
     return hipErrorInvalidValue;
   }
-  const dim3 block(128);
+  const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>((out_features_a + out_features_b) / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((q8_0_t16_dual_gemv_kernel<scalar_t, out_t>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles_a),
@@ -435,13 +443,15 @@ int launch_dual_split(const void* x,
                       int64_t in_features,
                       int64_t out_features_a,
                       int64_t out_features_b,
+                      int64_t threads,
                       hipStream_t stream) {
   if (!x || !tiles_a || !tiles_b || !out_a || !out_b || rows <= 0 || in_features <= 0 ||
       out_features_a <= 0 || out_features_b <= 0 || (in_features % Q8_0_BLOCK) != 0 ||
-      (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0) {
+      (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0 ||
+      !valid_threads(threads)) {
     return hipErrorInvalidValue;
   }
-  const dim3 block(128);
+  const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>((out_features_a + out_features_b) / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((q8_0_t16_dual_split_gemv_kernel<scalar_t, out_t>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles_a),
@@ -464,14 +474,15 @@ int launch_triple_split(const void* x,
                         int64_t out_features_a,
                         int64_t out_features_b,
                         int64_t out_features_c,
+                        int64_t threads,
                         hipStream_t stream) {
   if (!x || !tiles_a || !tiles_b || !tiles_c || !out_a || !out_b || !out_c || rows <= 0 || in_features <= 0 ||
       out_features_a <= 0 || out_features_b <= 0 || out_features_c <= 0 || (in_features % Q8_0_BLOCK) != 0 ||
       (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0 ||
-      (out_features_c % T16_COLS) != 0) {
+      (out_features_c % T16_COLS) != 0 || !valid_threads(threads)) {
     return hipErrorInvalidValue;
   }
-  const dim3 block(128);
+  const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>((out_features_a + out_features_b + out_features_c) / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((q8_0_t16_triple_split_gemv_kernel<scalar_t, out_t>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles_a),
@@ -486,74 +497,76 @@ int launch_triple_split(const void* x,
 
 extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,
-    int64_t out_features, hipStream_t stream) {
-  return launch_single<uint16_t, uint16_t>(x, tiles, out, rows, in_features, out_features, stream);
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_single<uint16_t, uint16_t>(x, tiles, out, rows, in_features, out_features, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out(
     const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,
-    int64_t out_features, hipStream_t stream) {
-  return launch_single<half_t, half_t>(x, tiles, out, rows, in_features, out_features, stream);
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_single<half_t, half_t>(x, tiles, out, rows, in_features, out_features, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_f32_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,
-    int64_t out_features, hipStream_t stream) {
-  return launch_single<float, uint16_t>(x, tiles, out, rows, in_features, out_features, stream);
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_single<float, uint16_t>(x, tiles, out, rows, in_features, out_features, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
     const void* x, const void* tiles_a, const void* tiles_b, void* out, int64_t rows,
-    int64_t in_features, int64_t out_features_a, int64_t out_features_b, hipStream_t stream) {
+    int64_t in_features, int64_t out_features_a, int64_t out_features_b, int64_t threads,
+    hipStream_t stream) {
   return launch_dual<uint16_t, uint16_t>(x, tiles_a, tiles_b, out, rows, in_features,
-                                        out_features_a, out_features_b, stream);
+                                        out_features_a, out_features_b, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_fp16_fp16_out(
     const void* x, const void* tiles_a, const void* tiles_b, void* out, int64_t rows,
-    int64_t in_features, int64_t out_features_a, int64_t out_features_b, hipStream_t stream) {
+    int64_t in_features, int64_t out_features_a, int64_t out_features_b, int64_t threads,
+    hipStream_t stream) {
   return launch_dual<half_t, half_t>(x, tiles_a, tiles_b, out, rows, in_features,
-                                    out_features_a, out_features_b, stream);
+                                    out_features_a, out_features_b, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
     const void* x, const void* tiles_a, const void* tiles_b, void* out_a, void* out_b,
     int64_t rows, int64_t in_features, int64_t out_features_a, int64_t out_features_b,
-    hipStream_t stream) {
+    int64_t threads, hipStream_t stream) {
   return launch_dual_split<uint16_t, uint16_t>(x, tiles_a, tiles_b, out_a, out_b, rows,
                                               in_features, out_features_a, out_features_b,
-                                              stream);
+                                              threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out(
     const void* x, const void* tiles_a, const void* tiles_b, void* out_a, void* out_b,
     int64_t rows, int64_t in_features, int64_t out_features_a, int64_t out_features_b,
-    hipStream_t stream) {
+    int64_t threads, hipStream_t stream) {
   return launch_dual_split<half_t, half_t>(x, tiles_a, tiles_b, out_a, out_b, rows,
                                           in_features, out_features_a, out_features_b,
-                                          stream);
+                                          threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
     const void* x, const void* tiles_a, const void* tiles_b, const void* tiles_c,
     void* out_a, void* out_b, void* out_c, int64_t rows, int64_t in_features,
     int64_t out_features_a, int64_t out_features_b, int64_t out_features_c,
-    hipStream_t stream) {
+    int64_t threads, hipStream_t stream) {
   return launch_triple_split<uint16_t, uint16_t>(x, tiles_a, tiles_b, tiles_c,
                                                 out_a, out_b, out_c, rows,
                                                 in_features, out_features_a,
                                                 out_features_b, out_features_c,
-                                                stream);
+                                                threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out(
     const void* x, const void* tiles_a, const void* tiles_b, const void* tiles_c,
     void* out_a, void* out_b, void* out_c, int64_t rows, int64_t in_features,
     int64_t out_features_a, int64_t out_features_b, int64_t out_features_c,
-    hipStream_t stream) {
+    int64_t threads, hipStream_t stream) {
   return launch_triple_split<half_t, half_t>(x, tiles_a, tiles_b, tiles_c,
                                             out_a, out_b, out_c, rows,
                                             in_features, out_features_a,
                                             out_features_b, out_features_c,
-                                            stream);
+                                            threads, stream);
 }

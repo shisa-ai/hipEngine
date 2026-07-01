@@ -130659,3 +130659,55 @@ artifacts: full-suite compat verifier layer families are
 attribution has `target_block_linear_attn_norm_qkv_gate` **2.551 ms/output** and
 `target_block_linear_attn_attn_norm` **0.327 ms/output**. Documentation/tracking
 change only; no new benchmark claim.
+
+## 2026-07-01 — Rejected Q8T16 pair 64-thread scheduler check
+
+Targeted the current llama-compat verifier hot leaf:
+`target_block_linear_attn_attn_qkv_gate_pair` (**2.224 ms/output** in the
+q6top1dp4a all-sync split). The hypothesis was that the Q8_0 T16
+`attn_qkv+attn_gate` split pair might prefer the same smaller launch width that
+helped selected-MoE T16 dp4a. Result: rejected. The existing 128-thread launch is
+faster for the exact pair shape.
+
+Implemented a diagnostic-only launch-width control:
+
+- Q8T16 GEMV C/Python wrappers now accept `threads` for single, concatenated
+  dual, split dual, and triple split launches. Valid values are `64` and `128`;
+  `0` keeps the wrapper default of `128`.
+- Runtime `launch_gguf_linear*` passes `HIPENGINE_GGUF_Q8_T16_THREADS` only for
+  `gguf_q8_0_t16_v1` dispatches. Default/unset behavior is unchanged.
+- Added `scripts/gguf_q8_0_t16_pair_microbench.py` to benchmark the real verifier
+  pair shape (`in=2048`, `out=(8192,4096)`) with cold-ish weight pools.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py hipengine/runtime/gguf_linear.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch_cache.py`
+  passed.
+- `PYTHONPATH=. pytest -q tests/test_gguf_linear_dispatch_cache.py` -> **4 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py`
+  -> **26 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-rocprof-q8t16-threads --output-file q8t16-thread64 -- pytest -q 'tests/test_gguf_q8_0_t16_gemv_decode.py::test_q8_t16_dual_split_thread_override_matches_cpu_oracle[64]'`
+  passed; trace showed `q8_0_t16_dual_split_gemv_kernel<unsigned short,unsigned short>`
+  with `Workgroup_Size_X=64`, `Grid_Size_X=768`, `Grid_Size_Y=3`,
+  `End-Start=5645 ns`.
+
+Microbench command:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q8_0_t16_pair_microbench.py --rows 2,3,4 --threads 64,128 --iters 80 --warmup 20 --json benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json`
+
+Result:
+
+| rows | 64-thread pair | 128-thread pair | conclusion |
+| ---: | ---: | ---: | --- |
+| 2 | 197.77 us | **179.26 us** | 64 is 10.3% slower. |
+| 3 | 224.80 us | **207.05 us** | 64 is 8.6% slower. |
+| 4 | 251.96 us | **237.02 us** | 64 is 6.3% slower. |
+
+No llama-compat smoke/full-suite run is justified because the isolated hot pair is
+already slower. Documented the rejection in `docs/MTP-LLAMACPP-PARITY.md`, the
+kernel catalog in `docs/KERNELS.md`, and the cleanup ledger in `docs/REFACTOR.md`.
+
+Lineage note: `python3 scripts/check_lineage.py --kind kernel --diff stat` could
+not run because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent in this
+environment (`fatal: cannot change to ... No such file or directory`). This change
+is a local diagnostic ABI/scheduler hook, not a parent-code port.

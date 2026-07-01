@@ -161,3 +161,55 @@ def test_pair_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeyp
         else:
             register(_PAIR_KEY, saved_kernel, replace=True)
         gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_q8_t16_pair_threads_env_reaches_wrapper(monkeypatch) -> None:
+    gl.clear_gguf_linear_dispatch_cache()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_THREADS", "64")
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    calls: list[dict] = []
+    saved_kernel = resolve(
+        backend=_PAIR_KEY.backend,
+        layer=_PAIR_KEY.layer,
+        quant=_PAIR_KEY.quant,
+        variant=_PAIR_KEY.variant,
+        missing="none",
+    )
+    saved_wrapper = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
+
+    def fake_registered_kernel(*args, **kwargs):
+        return None
+
+    def fake_wrapper(*args, **kwargs):
+        calls.append(dict(kwargs))
+
+    register(_PAIR_KEY, fake_registered_kernel, replace=True)
+    gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_wrapper  # type: ignore[assignment]
+    try:
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=1,
+            out_a_ptr=2,
+            out_b_ptr=3,
+            rows=2,
+            in_features=2048,
+            out_features=8192,
+            out_features_b=4096,
+            runtime="rt",
+        )
+        assert calls == [{"threads": 64, "stream": 0, "runtime": "rt"}]
+    finally:
+        gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = saved_wrapper  # type: ignore[assignment]
+        if saved_kernel is None:
+            _KERNELS.pop(_PAIR_KEY, None)
+        else:
+            register(_PAIR_KEY, saved_kernel, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_q8_t16_threads_env_rejects_invalid_value(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_THREADS", "256")
+    with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q8_T16_THREADS must be one of 64 or 128"):
+        gl._resolve_q8_t16_threads()

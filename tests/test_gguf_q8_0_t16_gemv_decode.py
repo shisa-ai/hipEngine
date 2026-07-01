@@ -62,7 +62,7 @@ def _bf16_u16_to_f32(arr: np.ndarray) -> np.ndarray:
     return (u16.astype(np.uint32) << 16).view(np.float32).reshape(u16.shape).copy()
 
 
-def _run_single(fn, x, tiles, rows, in_features, out_features, out_dtype, library):
+def _run_single(fn, x, tiles, rows, in_features, out_features, out_dtype, library, *, threads: int = 0):
     x_buf = malloc(x.nbytes)
     copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
     w_buf = malloc(tiles.nbytes)
@@ -70,7 +70,7 @@ def _run_single(fn, x, tiles, rows, in_features, out_features, out_dtype, librar
     out_arr = np.zeros((rows, out_features), dtype=out_dtype)
     out_buf = malloc(out_arr.nbytes)
     try:
-        fn(x_buf.ptr, w_buf.ptr, out_buf.ptr, rows, in_features, out_features, library=library)
+        fn(x_buf.ptr, w_buf.ptr, out_buf.ptr, rows, in_features, out_features, library=library, threads=threads)
         copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
         return out_arr
     finally:
@@ -78,7 +78,7 @@ def _run_single(fn, x, tiles, rows, in_features, out_features, out_dtype, librar
             free(b)
 
 
-def _run_dual(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, library):
+def _run_dual(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, library, *, threads: int = 0):
     x_buf = malloc(x.nbytes)
     copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
     a_buf = malloc(tiles_a.nbytes)
@@ -88,7 +88,7 @@ def _run_dual(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, lib
     out_arr = np.zeros((rows, oa + ob), dtype=out_dtype)
     out_buf = malloc(out_arr.nbytes)
     try:
-        fn(x_buf.ptr, a_buf.ptr, b_buf.ptr, out_buf.ptr, rows, in_features, oa, ob, library=library)
+        fn(x_buf.ptr, a_buf.ptr, b_buf.ptr, out_buf.ptr, rows, in_features, oa, ob, library=library, threads=threads)
         copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
         return out_arr
     finally:
@@ -96,7 +96,7 @@ def _run_dual(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, lib
             free(b)
 
 
-def _run_dual_split(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, library):
+def _run_dual_split(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtype, library, *, threads: int = 0):
     x_buf = malloc(x.nbytes)
     copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
     a_buf = malloc(tiles_a.nbytes)
@@ -119,6 +119,7 @@ def _run_dual_split(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtyp
             oa,
             ob,
             library=library,
+            threads=threads,
         )
         copy_device_to_host(host_array_ptr(out_a), a_out_buf, out_a.nbytes)
         copy_device_to_host(host_array_ptr(out_b), b_out_buf, out_b.nbytes)
@@ -128,7 +129,7 @@ def _run_dual_split(fn, x, tiles_a, tiles_b, rows, in_features, oa, ob, out_dtyp
             free(b)
 
 
-def _run_triple_split(fn, x, tiles_a, tiles_b, tiles_c, rows, in_features, oa, ob, oc, out_dtype, library):
+def _run_triple_split(fn, x, tiles_a, tiles_b, tiles_c, rows, in_features, oa, ob, oc, out_dtype, library, *, threads: int = 0):
     x_buf = malloc(x.nbytes)
     copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
     a_buf = malloc(tiles_a.nbytes)
@@ -158,6 +159,7 @@ def _run_triple_split(fn, x, tiles_a, tiles_b, tiles_c, rows, in_features, oa, o
             ob,
             oc,
             library=library,
+            threads=threads,
         )
         copy_device_to_host(host_array_ptr(out_a), a_out_buf, out_a.nbytes)
         copy_device_to_host(host_array_ptr(out_b), b_out_buf, out_b.nbytes)
@@ -213,6 +215,8 @@ def test_p9_h3c_wrappers_validate_args() -> None:
         gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(0, 0, 0, 0, 0, 1, 32, 16, 8)
     with pytest.raises(ValueError, match="multiples of 16"):
         gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(0, 0, 0, 0, 0, 0, 0, 1, 32, 16, 16, 8)
+    with pytest.raises(ValueError, match="threads must be one of 64, 128"):
+        gguf_q8_0_t16_gemv_decode_bf16_bf16_out(0, 0, 0, 1, 32, 16, threads=256)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -381,6 +385,41 @@ def test_p9_d6_dual_split_bf16_bf16_matches_cpu_oracle(
         out_features_b,
         np.uint16,
         q8_t16_library,
+    )
+
+    expected_a = gguf_quant_gemv(x_ref, qa, GGMLQuantizationType.Q8_0)
+    expected_b = gguf_quant_gemv(x_ref, qb, GGMLQuantizationType.Q8_0)
+    expected_a_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected_a))
+    expected_b_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected_b))
+    np.testing.assert_allclose(_bf16_u16_to_f32(actual_a), expected_a_bf16, **_TOL)
+    np.testing.assert_allclose(_bf16_u16_to_f32(actual_b), expected_b_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("threads", [64, 128])
+def test_q8_t16_dual_split_thread_override_matches_cpu_oracle(threads: int, q8_t16_library) -> None:
+    rows, in_features, out_features_a, out_features_b = 3, 512, 64, 128
+    rng = np.random.default_rng(5600 + threads)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+    x_ref = _bf16_u16_to_f32(x_bf16)
+
+    actual_a, actual_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+        threads=threads,
     )
 
     expected_a = gguf_quant_gemv(x_ref, qa, GGMLQuantizationType.Q8_0)
