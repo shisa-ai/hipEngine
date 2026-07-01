@@ -130496,3 +130496,85 @@ Validation before commit:
   selected dual averaged **35.1 us** over 15 dispatches and fused-SiLU averaged
   **39.3 us** over 15 dispatches. The smoke correctness remained top-1 **1.0**
   vs the T16 reference.
+
+## 2026-07-01 — llama-compat draft Q6_K q8_1/dp4a top-1
+
+Implemented an opt-in accuracy-traded resident draft lm-head path for the
+llama.cpp replication lane:
+
+- New HIP symbol:
+  `hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32`.
+- New Python wrapper:
+  `gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32`.
+- New runtime flag / bench flag:
+  `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A=1` and
+  `--resident-mtp-draft-q6-top1-dp4a`.
+- New suite routes:
+  `llama-compat-device-chain-dp4a-q6top1dp4a` and
+  `llama-compat-device-chain-dp4a-q6top1dp4a-allsync`.
+
+This keeps the exact Q6_K top-1/gather path as the default and only changes the
+explicit llama-compat diagnostic route. The new path q8_1-quantizes the BF16
+draft head input, then runs the Q6_K top-1/gather lm-head with sudot4-style
+q8_1/dp4a math to match llama.cpp's quantized matvec economy more closely.
+
+Lineage:
+
+- Re-read `docs/KERNELS.md`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` still fails
+  because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent:
+  `fatal: cannot change to ... No such file or directory`. This is a local
+  hipEngine diagnostic kernel, not a source port, but the lineage caveat is
+  recorded.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_q6_k_pack8_gemv_decode.py`
+  passed.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py`
+  -> **18 passed**. New test pins the q8_1/dp4a top-1/gather kernel against a
+  CPU q8_1/Q6_K oracle and validates the gathered embedding row.
+- `git diff --check` passed.
+- `rocprofv3 --kernel-trace` on
+  `tests/test_gguf_q6_k_pack8_gemv_decode.py::test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle`
+  emitted:
+  - `gguf_quantize_q8_1_kernel<unsigned short>`:
+    `Workgroup_Size_X=32`, fixture duration **4187 ns**.
+  - `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1_kernel`:
+    `Workgroup_Size_X=128`, fixture duration **6116 ns**.
+  - `top1_stage2_gather_kernel`: `Workgroup_Size_X=256`, fixture duration
+    **1584 ns**.
+
+Smoke:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-smoke.json`
+
+Result: AR **54.73 tok/s**, B2 **68.33 tok/s** (**1.248x** AR), acc/output
+**0.667**, draft acceptance **1.000**, `cycle_wall_ms_per_output` **14.656**.
+Against the selected-dp4a t64 smoke control, B2 moved **67.36 -> 68.33 tok/s**,
+`draft_initial` **2.709 -> 2.466 ms/output**, and `draft_topk_readback`
+**2.554 -> 2.330 ms/output**.
+
+All-sync attribution:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-allsync-smoke.json`
+
+Result: B2 **53.50 tok/s** attribution-only. `draft_run_lm_head`
+**1.471 -> 1.253 ms/output** vs the previous t64 all-sync smoke; verifier
+sub-buckets stayed effectively unchanged (`attn_qkv_gate_pair` **2.224**,
+linear-attn selected gate/up **1.676**, selected down **1.157 ms/output**).
+
+Full-suite retained diagnostic:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-full.json`
+
+Result: AR **54.74 tok/s**, B2 **59.63 tok/s** (**1.089x** AR), acc/output
+**0.578**, draft acceptance **0.685**, `cycle_wall_ms_per_output` **16.793**,
+`target_block_verify_total` **13.178 ms/output**. Compared with the selected-dp4a
+t64 full-suite row, MTP moved **58.83 -> 59.63 tok/s** (+1.36%), cycle wall
+**17.019 -> 16.793 ms/output**, `draft_initial` **3.564 -> 3.293 ms/output**,
+and `draft_topk_readback` **3.390 -> 3.114 ms/output** with unchanged
+acceptance. Verifier total is unchanged within noise (**13.134 -> 13.178**).
+
+Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/KERNELS.md`,
+`docs/REFACTOR.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.

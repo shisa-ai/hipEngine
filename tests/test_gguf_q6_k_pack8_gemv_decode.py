@@ -31,10 +31,15 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_bf16_bf16_out,
     gguf_q6_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32,
     gguf_q6_k_pack8_gemv_decode_fp16_f32_out,
     gguf_q6_k_pack8_gemv_decode_fp16_fp16_out,
     plan_gguf_q6_k_pack8_gemv_build,
     register_gguf_q6_k_pack8_gemv_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    build_gguf_q4_k_gemv,
+    gguf_q4_k_quantize_bf16_q8_1,
 )
 from hipengine.kernels.hip_gfx1100.convert.gather import build_gather, gather_f32_rows_by_i32id
 from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, topk_f32_rows_i32
@@ -69,6 +74,7 @@ def test_p9_b4b_registry_keys_resolve() -> None:
         "pack8_gemv_decode_bf16_f32_out",
         "pack8_gemv_decode_fp16_f32_out",
         "pack8_gemv_decode_bf16_top1_gather_f32",
+        "pack8_gemv_decode_q8_1_dp4a_top1_gather_f32",
     ):
         fn = resolve(backend="hip_gfx1100", layer="linear", quant="gguf_q6_k", variant=variant)
         assert fn is not None, f"missing registry entry: {variant}"
@@ -94,6 +100,70 @@ def _bf16_u16_to_f32(arr: np.ndarray) -> np.ndarray:
     return (u16.astype(np.uint32) << 16).view(np.float32).reshape(u16.shape).copy()
 
 
+def _round_away_from_zero(values: np.ndarray) -> np.ndarray:
+    return np.sign(values) * np.floor(np.abs(values) + 0.5)
+
+
+def _quantize_q8_1_cpu(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    rows, in_features = x.shape
+    blocks = in_features // 32
+    q = np.empty((rows, blocks, 32), dtype=np.int8)
+    d = np.empty((rows, blocks), dtype=np.float32)
+    for row in range(rows):
+        for block_idx in range(blocks):
+            chunk = x[row, block_idx * 32 : (block_idx + 1) * 32].astype(np.float32)
+            amax = float(np.max(np.abs(chunk)))
+            scale = 0.0 if amax == 0.0 else amax / 127.0
+            d[row, block_idx] = np.float16(scale).astype(np.float32)
+            if amax == 0.0:
+                q[row, block_idx] = 0
+            else:
+                q[row, block_idx] = np.clip(_round_away_from_zero(chunk / scale), -128, 127).astype(np.int8)
+    return q, d
+
+
+def _q6_unsigned_pack(block: np.ndarray, group32: int, lane4: int) -> np.ndarray:
+    ql = block[:128]
+    qh = block[128:192]
+    base64 = 64 if group32 >= 4 else 0
+    low_nibble = (group32 & 2) == 0
+    ql_group = group32 & 1
+    low = ql[base64 + ql_group * 32 + lane4 : base64 + ql_group * 32 + lane4 + 4].astype(np.uint8)
+    low = (low & 0x0F) if low_nibble else (low >> 4)
+    qh_base = 32 if group32 >= 4 else 0
+    high_bits = qh[qh_base + lane4 : qh_base + lane4 + 4].astype(np.uint8)
+    high = ((high_bits >> (2 * (group32 & 3))) & 0x03) << 4
+    return (low | high).astype(np.int32)
+
+
+def _q6_k_q8_1_dp4a_oracle(x_bf16_f32: np.ndarray, qweight: np.ndarray) -> np.ndarray:
+    rows, in_features = x_bf16_f32.shape
+    out_features = int(qweight.shape[0])
+    blocks_per_row = in_features // 256
+    q8, d8 = _quantize_q8_1_cpu(x_bf16_f32)
+    out = np.zeros((rows, out_features), dtype=np.float32)
+    for row in range(rows):
+        for out_col in range(out_features):
+            weight_row = qweight[out_col]
+            acc = 0.0
+            for block_idx in range(blocks_per_row):
+                block = weight_row[block_idx * 210 : (block_idx + 1) * 210]
+                d = np.frombuffer(block[208:210].tobytes(), dtype=np.float16)[0].astype(np.float32)
+                scales = block[192:208].view(np.int8).astype(np.int32)
+                for group32 in range(8):
+                    q8_index = block_idx * 8 + group32
+                    xd = float(d8[row, q8_index])
+                    for lane4 in range(0, 32, 4):
+                        scale_index = group32 * 2 + (lane4 >> 4)
+                        q6_u = _q6_unsigned_pack(block, group32, lane4)
+                        x_pack = q8[row, q8_index, lane4 : lane4 + 4].astype(np.int32)
+                        dot_u = int(np.dot(q6_u, x_pack))
+                        q8_sum = int(np.sum(x_pack))
+                        acc += xd * float(d) * float(scales[scale_index]) * float(dot_u - 32 * q8_sum)
+            out[row, out_col] = acc
+    return out
+
+
 def _run_dense(fn, x, qweight, rows, in_features, out_features, out_dtype, library):
     x_buf = malloc(x.nbytes)
     copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
@@ -117,6 +187,8 @@ def test_q6_k_top1_gather_wrapper_validates_before_gpu_load() -> None:
         gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(0, 0, 0, 0, 0, None, 1, None, 1, 256, 8, 0)
     with pytest.raises(ValueError, match="hidden_size"):
         gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(0, 0, 0, 0, 0, None, 1, 2, 1, 256, 8, 0)
+    with pytest.raises(ValueError, match="together"):
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(0, 0, 0, 0, 0, None, 1, None, 1, 256, 8, 0)
 
 
 _HALF_TOL = dict(atol=1.0e-3, rtol=1.0e-2)
@@ -321,3 +393,79 @@ def test_q6_k_bf16_top1_gather_matches_logits_topk_chain(q6_k_dense_library) -> 
     np.testing.assert_array_equal(fused_index, baseline_index)
     np.testing.assert_array_equal(fused_value, baseline_value)
     np.testing.assert_array_equal(fused_embed, baseline_embed)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> None:
+    rows, in_features, out_features, hidden = 2, 512, 1024, 24
+    rng = np.random.default_rng(20260702)
+    qweight = make_q6_k_weight(out_features, in_features)
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+    x_ref = _bf16_u16_to_f32(x_bf16)
+    embed_table = rng.normal(0.0, 0.2, size=(out_features, hidden)).astype(np.float32)
+    oracle_logits = _q6_k_q8_1_dp4a_oracle(x_ref, qweight)
+    oracle_indices = np.argmax(oracle_logits, axis=1).astype(np.int32)
+    oracle_values = oracle_logits[np.arange(rows), oracle_indices].astype(np.float32)
+    oracle_embed = embed_table[oracle_indices]
+
+    q4_lib = build_gguf_q4_k_gemv(load=True)
+    x_buf = malloc(x_bf16.nbytes)
+    xq_buf = malloc(rows * (in_features // 32) * 36)
+    w_buf = malloc(qweight.nbytes)
+    embed_table_buf = malloc(embed_table.nbytes)
+    fused_values_buf = malloc(rows * 4)
+    fused_indices_buf = malloc(rows * 4)
+    fused_embed_buf = malloc(rows * hidden * 4)
+    block_values_buf = malloc(rows * (out_features // 8) * 4)
+    block_indices_buf = malloc(rows * (out_features // 8) * 4)
+    try:
+        copy_host_to_device(x_buf, host_array_ptr(x_bf16), x_bf16.nbytes)
+        copy_host_to_device(w_buf, host_array_ptr(qweight), qweight.nbytes)
+        copy_host_to_device(embed_table_buf, host_array_ptr(embed_table), embed_table.nbytes)
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_buf.ptr,
+            xq_buf.ptr,
+            rows,
+            in_features,
+            library=q4_lib,
+        )
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+            xq_buf.ptr,
+            w_buf.ptr,
+            block_values_buf.ptr,
+            block_indices_buf.ptr,
+            fused_indices_buf.ptr,
+            fused_values_buf.ptr,
+            embed_table_buf.ptr,
+            fused_embed_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            hidden,
+            library=q6_k_dense_library,
+        )
+
+        fused_index = np.empty((rows,), dtype=np.int32)
+        fused_value = np.empty((rows,), dtype=np.float32)
+        fused_embed = np.empty((rows, hidden), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(fused_index), fused_indices_buf, fused_index.nbytes)
+        copy_device_to_host(host_array_ptr(fused_value), fused_values_buf, fused_value.nbytes)
+        copy_device_to_host(host_array_ptr(fused_embed), fused_embed_buf, fused_embed.nbytes)
+    finally:
+        for b in (
+            block_indices_buf,
+            block_values_buf,
+            fused_embed_buf,
+            fused_indices_buf,
+            fused_values_buf,
+            embed_table_buf,
+            w_buf,
+            xq_buf,
+            x_buf,
+        ):
+            free(b)
+
+    np.testing.assert_array_equal(fused_index, oracle_indices)
+    np.testing.assert_allclose(fused_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
+    np.testing.assert_array_equal(fused_embed, oracle_embed)

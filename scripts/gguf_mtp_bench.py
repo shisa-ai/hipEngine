@@ -886,6 +886,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-q6-top1-dp4a",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Accuracy-traded llama-compat diagnostic: use q8_1/dp4a for the resident "
+            "draft Q6_K lm-head top-1/gather path. Default off; exact top-1 remains "
+            "the shipped resident draft behavior."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -1107,6 +1117,9 @@ def main(argv: list[str] | None = None):
         # by qwen35_gguf_runner.
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A"] = "1"
+    if getattr(args, "resident_mtp_draft_q6_top1_dp4a", False):
+        # Must be set before constructing the resident MTP draft runner.
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:

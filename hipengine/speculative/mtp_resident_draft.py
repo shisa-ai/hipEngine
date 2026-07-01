@@ -56,12 +56,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
+    gguf_q4_k_quantize_bf16_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
     gguf_q6_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32,
 )
 from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     _cached_upload,
@@ -211,6 +213,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._gather_lib = build_gather(load=True)
         self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
         self._q6_top1_gather_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER", True)
+        self._q6_top1_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", False)
         if self.device_chain_enabled is None:
             self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
         else:
@@ -342,6 +345,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.shared_bf16 = self._malloc(h * 2)
         self.ffn_out_bf16 = self._malloc(h * 2)
         self.head_normed_bf16 = self._malloc(h * 2)
+        self.head_normed_q8_1 = self._malloc((h // 32) * 36)
         self.logits = self._malloc(self.vocab * 4)
         self.q6_top1_block_values = self._malloc((self.vocab // 8) * 4)
         self.q6_top1_block_indices = self._malloc((self.vocab // 8) * 4)
@@ -1083,22 +1087,48 @@ class Qwen35GGUFResidentMTPDraftRunner:
         mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         f32_to_bf16(next_seed.ptr, self.head_normed_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
         if top1_out_ptr is not None:
-            gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
-                self.head_normed_bf16.ptr,
-                self.shared_head.ptr,
-                self.q6_top1_block_values.ptr,
-                self.q6_top1_block_indices.ptr,
-                int(top1_out_ptr),
-                self.topk_values.ptr,
-                self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
-                int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
-                1,
-                h,
-                self.vocab,
-                h if top1_next_embed_ptr is not None else 0,
-                library=self._q6_pack8_lib,
-                runtime=runtime,
-            )
+            if bool(getattr(self, "_q6_top1_dp4a_enabled", False)):
+                gguf_q4_k_quantize_bf16_q8_1(
+                    self.head_normed_bf16.ptr,
+                    self.head_normed_q8_1.ptr,
+                    1,
+                    h,
+                    library=self._q4_lib,
+                    runtime=runtime,
+                )
+                gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+                    self.head_normed_q8_1.ptr,
+                    self.shared_head.ptr,
+                    self.q6_top1_block_values.ptr,
+                    self.q6_top1_block_indices.ptr,
+                    int(top1_out_ptr),
+                    self.topk_values.ptr,
+                    self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                    int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                    1,
+                    h,
+                    self.vocab,
+                    h if top1_next_embed_ptr is not None else 0,
+                    library=self._q6_pack8_lib,
+                    runtime=runtime,
+                )
+            else:
+                gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
+                    self.head_normed_bf16.ptr,
+                    self.shared_head.ptr,
+                    self.q6_top1_block_values.ptr,
+                    self.q6_top1_block_indices.ptr,
+                    int(top1_out_ptr),
+                    self.topk_values.ptr,
+                    self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                    int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                    1,
+                    h,
+                    self.vocab,
+                    h if top1_next_embed_ptr is not None else 0,
+                    library=self._q6_pack8_lib,
+                    runtime=runtime,
+                )
         else:
             gguf_q6_k_pack8_gemv_decode_bf16_f32_out(
                 self.head_normed_bf16.ptr,

@@ -28,7 +28,16 @@ using half_t = _Float16;
 constexpr int QK_K = 256;
 constexpr int Q6_K_BLOCK_BYTES = 210;
 constexpr int Q6_K_GROUPS16 = QK_K / 16;  // == 16
+constexpr int Q8_1_BLOCK = 32;
 constexpr int PACK8 = 8;
+
+struct gguf_q8_1_block {
+  half_t d;
+  half_t s;
+  int8_t qs[Q8_1_BLOCK];
+};
+
+static_assert(sizeof(gguf_q8_1_block) == 36, "GGUF q8_1 block layout must match GGML");
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
@@ -97,6 +106,50 @@ __device__ inline float float_to_scalar<float>(float v) {
 
 __device__ inline bool better_pair_i32(float value, int32_t index, float best_value, int32_t best_index) {
   return value > best_value || (value == best_value && index < best_index);
+}
+
+__device__ inline int q6_pack8_dp4a_u8_s8(uint32_t a, uint32_t b, int c) {
+#if defined(__HIP_DEVICE_COMPILE__)
+  return __builtin_amdgcn_sudot4(true, static_cast<int>(a), true, static_cast<int>(b), c, false);
+#else
+  const int8_t b0 = static_cast<int8_t>(b & 0xFFu);
+  const int8_t b1 = static_cast<int8_t>((b >> 8) & 0xFFu);
+  const int8_t b2 = static_cast<int8_t>((b >> 16) & 0xFFu);
+  const int8_t b3 = static_cast<int8_t>((b >> 24) & 0xFFu);
+  return c + static_cast<int>(a & 0xFFu) * static_cast<int>(b0) +
+         static_cast<int>((a >> 8) & 0xFFu) * static_cast<int>(b1) +
+         static_cast<int>((a >> 16) & 0xFFu) * static_cast<int>(b2) +
+         static_cast<int>((a >> 24) & 0xFFu) * static_cast<int>(b3);
+#endif
+}
+
+__device__ inline uint32_t q6_k_pack4_unsigned(const uint8_t* block, int group32, int lane4) {
+  const uint8_t* ql = block;
+  const uint8_t* qh = block + 128;
+  const int base64 = (group32 >= 4) ? 64 : 0;
+  const bool low_nibble = (group32 & 2) == 0;
+  const int ql_group = group32 & 1;
+  uint32_t low = *reinterpret_cast<const uint32_t*>(ql + base64 + ql_group * 32 + lane4);
+  low = low_nibble ? (low & 0x0F0F0F0Fu) : ((low >> 4) & 0x0F0F0F0Fu);
+  const int qh_base = (group32 >= 4) ? 32 : 0;
+  const uint32_t high_bits = *reinterpret_cast<const uint32_t*>(qh + qh_base + lane4);
+  const uint32_t high = ((high_bits >> (2 * (group32 & 3))) & 0x03030303u) << 4;
+  return low | high;
+}
+
+__device__ inline float q6_k_q8_1_dp4a_term(
+    const uint8_t* block,
+    int group32,
+    int lane4,
+    int scale_index,
+    uint32_t x_pack,
+    int q8_sum,
+    float xd) {
+  const int dot_u = q6_pack8_dp4a_u8_s8(q6_k_pack4_unsigned(block, group32, lane4), x_pack, 0);
+  const int dot = dot_u - 32 * q8_sum;
+  const int8_t* scales = reinterpret_cast<const int8_t*>(block + 192);
+  const float d = fp16_bytes_to_float(block + 208);
+  return xd * d * static_cast<float>(scales[scale_index]) * static_cast<float>(dot);
 }
 
 // Dense Q6_K pack8 GEMV decode.
@@ -454,6 +507,125 @@ __launch_bounds__(128, 4) __global__ void gguf_q6_k_pack8_gemv_top1_stage1_kerne
   }
 }
 
+// Accuracy-traded llama-compat top-1 variant.  The activation row is already
+// GGML q8_1-quantized, matching llama.cpp's quantized matvec economy.
+__launch_bounds__(128, 4) __global__ void gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ block_values,
+    int32_t* __restrict__ block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t out_packed,
+    int64_t q8_blocks_per_row) {
+  const int64_t out_pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+
+  const int64_t out_col = out_pack << 3;
+  if (out_col >= out_features) return;
+
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t row_bytes = blocks_per_row * Q6_K_BLOCK_BYTES;
+  const gguf_q8_1_block* __restrict__ xq_row = xq + row * q8_blocks_per_row;
+
+  const uint8_t* __restrict__ row_ptr[PACK8];
+#pragma unroll
+  for (int ch = 0; ch < PACK8; ++ch) {
+    row_ptr[ch] = qweight + (out_col + ch) * row_bytes;
+  }
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  const int64_t groups4 = in_features >> 2;
+  for (int64_t group = tid; group < groups4; group += blockDim.x) {
+    const int64_t k4 = group << 2;
+    const int64_t block_idx = k4 / QK_K;
+    const int within = static_cast<int>(k4 - block_idx * QK_K);
+    const int group32 = within >> 5;
+    const int lane4 = within & 31;
+    const int scale_index = within >> 4;
+    const int64_t q8_index = block_idx * 8 + group32;
+
+    const gguf_q8_1_block* __restrict__ xb = xq_row + q8_index;
+    const uint32_t x_pack = *reinterpret_cast<const uint32_t*>(xb->qs + lane4);
+    const int q8_sum = q6_pack8_dp4a_u8_s8(0x01010101u, x_pack, 0);
+    const float xd = static_cast<float>(xb->d);
+
+    const uint8_t* __restrict__ b0 = row_ptr[0] + block_idx * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b1 = row_ptr[1] + block_idx * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b2 = row_ptr[2] + block_idx * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b3 = row_ptr[3] + block_idx * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b4 = row_ptr[4] + block_idx * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b5 = row_ptr[5] + block_idx * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b6 = row_ptr[6] + block_idx * Q6_K_BLOCK_BYTES;
+    const uint8_t* __restrict__ b7 = row_ptr[7] + block_idx * Q6_K_BLOCK_BYTES;
+
+    acc0 += q6_k_q8_1_dp4a_term(b0, group32, lane4, scale_index, x_pack, q8_sum, xd);
+    acc1 += q6_k_q8_1_dp4a_term(b1, group32, lane4, scale_index, x_pack, q8_sum, xd);
+    acc2 += q6_k_q8_1_dp4a_term(b2, group32, lane4, scale_index, x_pack, q8_sum, xd);
+    acc3 += q6_k_q8_1_dp4a_term(b3, group32, lane4, scale_index, x_pack, q8_sum, xd);
+    acc4 += q6_k_q8_1_dp4a_term(b4, group32, lane4, scale_index, x_pack, q8_sum, xd);
+    acc5 += q6_k_q8_1_dp4a_term(b5, group32, lane4, scale_index, x_pack, q8_sum, xd);
+    acc6 += q6_k_q8_1_dp4a_term(b6, group32, lane4, scale_index, x_pack, q8_sum, xd);
+    acc7 += q6_k_q8_1_dp4a_term(b7, group32, lane4, scale_index, x_pack, q8_sum, xd);
+  }
+
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc0);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc1);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc2);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc3);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc4);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc5);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc6);
+  GGUF_Q6K_PACK8_WAVE_REDUCE(acc7);
+
+  __shared__ float xchg[4 * PACK8];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+    xchg[sub_id * PACK8 + 0] = acc0;
+    xchg[sub_id * PACK8 + 1] = acc1;
+    xchg[sub_id * PACK8 + 2] = acc2;
+    xchg[sub_id * PACK8 + 3] = acc3;
+    xchg[sub_id * PACK8 + 4] = acc4;
+    xchg[sub_id * PACK8 + 5] = acc5;
+    xchg[sub_id * PACK8 + 6] = acc6;
+    xchg[sub_id * PACK8 + 7] = acc7;
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    float r[PACK8];
+    for (int ch = 0; ch < PACK8; ++ch) {
+      r[ch] = 0.0f;
+    }
+    const int sub_groups = blockDim.x >> 5;
+    for (int g = 0; g < sub_groups; ++g) {
+      for (int ch = 0; ch < PACK8; ++ch) {
+        r[ch] += xchg[g * PACK8 + ch];
+      }
+    }
+    float best_value = -3.4028234663852886e+38F;
+    int32_t best_index = INT32_MAX;
+    for (int ch = 0; ch < PACK8; ++ch) {
+      const int64_t index64 = out_col + ch;
+      if (index64 < out_features) {
+        const int32_t index = static_cast<int32_t>(index64);
+        if (better_pair_i32(r[ch], index, best_value, best_index)) {
+          best_value = r[ch];
+          best_index = index;
+        }
+      }
+    }
+    const int64_t off = row * out_packed + out_pack;
+    block_values[off] = best_value;
+    block_indices[off] = best_index;
+  }
+}
+
 __global__ void top1_stage2_gather_kernel(
     const float* __restrict__ block_values,
     const int32_t* __restrict__ block_indices,
@@ -599,6 +771,70 @@ int launch_q6_k_pack8_gemv_top1_gather(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_gather(
+    const gguf_q8_1_block* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || block_values == nullptr ||
+      block_indices == nullptr || out_indices == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      out_features > INT32_MAX || (out_features & 7) != 0 ||
+      (in_features % QK_K) != 0 || (in_features % Q8_1_BLOCK) != 0 ||
+      hidden < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if ((embed_table == nullptr) != (next_embed == nullptr)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (embed_table != nullptr && hidden <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  hipLaunchKernelGGL(
+      gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1_kernel,
+      dim3(static_cast<unsigned int>(out_packed),
+           static_cast<unsigned int>(rows)),
+      dim3(128),
+      0,
+      stream,
+      xq, qweight, block_values, block_indices, rows, in_features, out_features, out_packed, q8_blocks_per_row);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+
+  constexpr int stage2_threads = 256;
+  const size_t stage2_smem = static_cast<size_t>(stage2_threads) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      top1_stage2_gather_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(stage2_threads),
+      stage2_smem,
+      stream,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      out_packed,
+      hidden,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_bf16_bf16_out(
@@ -665,6 +901,36 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
     hipStream_t stream) {
   return launch_q6_k_pack8_gemv_top1_gather<uint16_t>(
       x,
+      qweight,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      in_features,
+      out_features,
+      hidden,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+    const void* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_gather(
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
       qweight,
       block_values,
       block_indices,
