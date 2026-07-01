@@ -917,6 +917,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-q6-top1-stage1-shape",
+        choices=("pack8", "row"),
+        default="pack8",
+        help=(
+            "Diagnostic llama-compat scheduler A/B for the resident draft Q6_K top-1 "
+            "lm-head stage1 kernel. 'pack8' is the current hipEngine shape; 'row' "
+            "launches one output row per block with a llama.cpp-like Q6_K MMVQ body."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -1146,6 +1156,7 @@ def main(argv: list[str] | None = None):
         # Must be set before constructing the resident MTP draft runner.
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(args.resident_mtp_draft_q6_top1_stage1_threads)
+    os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] = str(args.resident_mtp_draft_q6_top1_stage1_shape)
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
@@ -2952,6 +2963,10 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft_q6_top1_stage1_threads": int(args.resident_mtp_draft_q6_top1_stage1_threads),
             "resident_mtp_draft_q6_top1_stage1_threads_env": os.environ.get(
                 "HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"
+            ),
+            "resident_mtp_draft_q6_top1_stage1_shape": str(args.resident_mtp_draft_q6_top1_stage1_shape),
+            "resident_mtp_draft_q6_top1_stage1_shape_env": os.environ.get(
+                "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"
             ),
             "selected_down_x8_repack": str(args.selected_down_x8_repack),
             "selected_down_x8_repack_env": os.environ.get("HIPENGINE_GGUF_SELECTED_X8_REPACK"),

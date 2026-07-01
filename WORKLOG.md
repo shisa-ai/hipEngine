@@ -131021,3 +131021,69 @@ not activation quantization/cast and not final reduce/gather. llama.cpp's
 two-warp Q6_K MMVQ launch shape does not transfer to hipEngine's pack8 top-1
 stage1; the next draft-side fix needs a different Q6_K stage1 body/layout or a
 broader llama-style MMVQ port.
+
+## 2026-07-01 — Q6 top-1 row-shape llama.cpp MMVQ diagnostic rejected
+
+Added a closer llama.cpp-shape diagnostic for the resident draft Q6_K top-1
+lm-head path:
+
+- `gguf_q6_k_q8_1_dp4a_top1_row_stage1_kernel` launches one output row per
+  block with two wave32 warps, matching llama.cpp RDNA3 MMVQ's `ncols_dst=1`
+  Q6_K geometry more closely than the previous t64 pack8 check.
+- The row kernel uses a llama.cpp-like signed Q6_K vector-dot body:
+  `__vsubss4(..., 0x20202020)` followed by signed dot4 against GGML q8_1
+  activation blocks.
+- New wrappers:
+  `gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32` and
+  `gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32`.
+- Bench flag `--resident-mtp-draft-q6-top1-stage1-shape {pack8,row}` and
+  routes `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row` /
+  `...-row-allsync` keep the mode default-off/diagnostic.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_q6_k_pack8_gemv_decode.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+  -> **101 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py`
+  -> **18 passed**, including row-stage and row-gather q8_1/Q6_K oracle checks.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace -d /tmp/hipengine-q6-row-rocprof -f csv -- pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py -k q8_1_dp4a_top1_gather_matches_q8_1_oracle`
+  -> **1 passed**. Trace confirmed
+  `gguf_q6_k_q8_1_dp4a_top1_row_stage1_kernel` launched with
+  `Workgroup_Size_X=32`, `Workgroup_Size_Y=2`, `Grid_Size_X=32768`, and
+  `Grid_Size_Y=4` in the fixture, along with the existing pack8 stage1 and
+  `top1_stage2_gather_kernel`.
+- `git diff --check` passed.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+
+Measurements:
+
+All-sync attribution:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`
+
+Result: B2 **52.10 tok/s**, cycle wall **19.213 ms/output**,
+`apple_to_apple_ok=true`, `acc/output=0.667`, draft acceptance **1.000**.
+The row stage1 is only slightly faster than pack8, but the larger final reduce
+dominates:
+
+| Q6 top-1 attribution | pack8 128 all-sync | row all-sync |
+| --- | ---: | ---: |
+| stage1 | **1.218 ms/output** | **1.202 ms/output** |
+| stage2/gather | **0.041 ms/output** | **0.252 ms/output** |
+| aggregate | **1.260 ms/output** | **1.454 ms/output** |
+
+Async smoke:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json`
+
+Result: B2 **66.95 tok/s**, cycle wall **14.958 ms/output**,
+`apple_to_apple_ok=true`, `acc/output=0.667`, draft acceptance **1.000**.
+Same-suite pack8 smoke remains better at **69.06 tok/s / 14.501 ms/output**.
+
+Conclusion: a mechanical llama.cpp row-scheduler copy is rejected. The tiny
+stage1 gain is erased by reducing over `vocab` candidates instead of `vocab/8`.
+The remaining draft fix needs either a Q6_K stage1 body/layout that preserves
+pack8's small final-reduce economy, or a fused row-stage/top-1 reduction that
+does not materialize one candidate per vocab row.

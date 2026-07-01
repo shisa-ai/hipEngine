@@ -33,6 +33,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
     gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_fp16_f32_out,
     gguf_q6_k_pack8_gemv_decode_fp16_fp16_out,
@@ -80,6 +82,8 @@ def test_p9_b4b_registry_keys_resolve() -> None:
         "pack8_gemv_decode_q8_1_dp4a_top1_gather_f32",
         "pack8_gemv_decode_bf16_top1_stage1_f32",
         "pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32",
+        "pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32",
+        "pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32",
         "pack8_top1_stage2_gather_f32",
     ):
         fn = resolve(backend="hip_gfx1100", layer="linear", quant="gguf_q6_k", variant=variant)
@@ -434,6 +438,16 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
     split_embed_buf = malloc(rows * hidden * 4)
     split_block_values_buf = malloc(rows * (out_features // 8) * 4)
     split_block_indices_buf = malloc(rows * (out_features // 8) * 4)
+    row_values_buf = malloc(rows * 4)
+    row_indices_buf = malloc(rows * 4)
+    row_embed_buf = malloc(rows * hidden * 4)
+    row_block_values_buf = malloc(rows * out_features * 4)
+    row_block_indices_buf = malloc(rows * out_features * 4)
+    row_split_values_buf = malloc(rows * 4)
+    row_split_indices_buf = malloc(rows * 4)
+    row_split_embed_buf = malloc(rows * hidden * 4)
+    row_split_block_values_buf = malloc(rows * out_features * 4)
+    row_split_block_indices_buf = malloc(rows * out_features * 4)
     try:
         copy_host_to_device(x_buf, host_array_ptr(x_bf16), x_bf16.nbytes)
         copy_host_to_device(w_buf, host_array_ptr(qweight), qweight.nbytes)
@@ -484,6 +498,44 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
             out_features,
             library=q6_k_dense_library,
         )
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32(
+            xq_buf.ptr,
+            w_buf.ptr,
+            row_block_values_buf.ptr,
+            row_block_indices_buf.ptr,
+            row_indices_buf.ptr,
+            row_values_buf.ptr,
+            embed_table_buf.ptr,
+            row_embed_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            hidden,
+            library=q6_k_dense_library,
+        )
+        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32(
+            xq_buf.ptr,
+            w_buf.ptr,
+            row_split_block_values_buf.ptr,
+            row_split_block_indices_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=q6_k_dense_library,
+        )
+        gguf_q6_k_pack8_top1_stage2_gather_f32(
+            row_split_block_values_buf.ptr,
+            row_split_block_indices_buf.ptr,
+            row_split_indices_buf.ptr,
+            row_split_values_buf.ptr,
+            embed_table_buf.ptr,
+            row_split_embed_buf.ptr,
+            rows,
+            out_features,
+            hidden,
+            out_features,
+            library=q6_k_dense_library,
+        )
 
         fused_index = np.empty((rows,), dtype=np.int32)
         fused_value = np.empty((rows,), dtype=np.float32)
@@ -491,14 +543,36 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
         split_index = np.empty((rows,), dtype=np.int32)
         split_value = np.empty((rows,), dtype=np.float32)
         split_embed = np.empty((rows, hidden), dtype=np.float32)
+        row_index = np.empty((rows,), dtype=np.int32)
+        row_value = np.empty((rows,), dtype=np.float32)
+        row_embed = np.empty((rows, hidden), dtype=np.float32)
+        row_split_index = np.empty((rows,), dtype=np.int32)
+        row_split_value = np.empty((rows,), dtype=np.float32)
+        row_split_embed = np.empty((rows, hidden), dtype=np.float32)
         copy_device_to_host(host_array_ptr(fused_index), fused_indices_buf, fused_index.nbytes)
         copy_device_to_host(host_array_ptr(fused_value), fused_values_buf, fused_value.nbytes)
         copy_device_to_host(host_array_ptr(fused_embed), fused_embed_buf, fused_embed.nbytes)
         copy_device_to_host(host_array_ptr(split_index), split_indices_buf, split_index.nbytes)
         copy_device_to_host(host_array_ptr(split_value), split_values_buf, split_value.nbytes)
         copy_device_to_host(host_array_ptr(split_embed), split_embed_buf, split_embed.nbytes)
+        copy_device_to_host(host_array_ptr(row_index), row_indices_buf, row_index.nbytes)
+        copy_device_to_host(host_array_ptr(row_value), row_values_buf, row_value.nbytes)
+        copy_device_to_host(host_array_ptr(row_embed), row_embed_buf, row_embed.nbytes)
+        copy_device_to_host(host_array_ptr(row_split_index), row_split_indices_buf, row_split_index.nbytes)
+        copy_device_to_host(host_array_ptr(row_split_value), row_split_values_buf, row_split_value.nbytes)
+        copy_device_to_host(host_array_ptr(row_split_embed), row_split_embed_buf, row_split_embed.nbytes)
     finally:
         for b in (
+            row_split_block_indices_buf,
+            row_split_block_values_buf,
+            row_split_embed_buf,
+            row_split_indices_buf,
+            row_split_values_buf,
+            row_block_indices_buf,
+            row_block_values_buf,
+            row_embed_buf,
+            row_indices_buf,
+            row_values_buf,
             split_block_indices_buf,
             split_block_values_buf,
             split_embed_buf,
@@ -522,3 +596,9 @@ def test_q6_k_q8_1_dp4a_top1_gather_matches_q8_1_oracle(q6_k_dense_library) -> N
     np.testing.assert_array_equal(split_index, oracle_indices)
     np.testing.assert_allclose(split_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
     np.testing.assert_array_equal(split_embed, oracle_embed)
+    np.testing.assert_array_equal(row_index, oracle_indices)
+    np.testing.assert_allclose(row_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
+    np.testing.assert_array_equal(row_embed, oracle_embed)
+    np.testing.assert_array_equal(row_split_index, oracle_indices)
+    np.testing.assert_allclose(row_split_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
+    np.testing.assert_array_equal(row_split_embed, oracle_embed)

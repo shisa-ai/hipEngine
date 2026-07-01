@@ -250,6 +250,25 @@ should be boring.
   rowtile route remains non-retainable. It is an evidence hook only; default and
   llama-compat runtime paths stay on the existing exact pair wrapper.
 
+## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
+- Added 2026-07-01. Bench flag
+  `--resident-mtp-draft-q6-top1-stage1-shape row` and suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row` /
+  `...-row-allsync` exercise a llama.cpp-shaped Q6_K draft lm-head top-1
+  stage: one output row per block, two wave32 warps, and a signed
+  `__vsubss4`/dot4 Q6_K MMVQ body. Default stays `pack8`.
+- Purpose: test whether the remaining draft-side Q6_K top-1 gap is caused by
+  hipEngine's pack8 output-row geometry rather than the vector-dot body itself.
+  Correctness passes against the q8_1/Q6_K oracle, but performance rejects the
+  route: all-sync row stage1 is only slightly faster than pack8
+  (**1.202 vs 1.218 ms/output**) while row stage2/gather grows
+  **0.041 -> 0.252 ms/output** because it reduces over `vocab` instead of
+  `vocab/8`; async smoke regresses **69.06 tok/s / 14.501 ms** to
+  **66.95 tok/s / 14.958 ms** with identical acceptance.
+- Remove when: the draft Q6_K top-1 path moves to a different retained
+  body/layout or a fused row-stage/top-1 reduce makes this row-shape diagnostic
+  obsolete. It is evidence, not a performance route.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with

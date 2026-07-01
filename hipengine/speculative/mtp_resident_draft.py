@@ -65,6 +65,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
     gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
     gguf_q6_k_pack8_top1_stage2_gather_f32,
 )
@@ -109,6 +111,13 @@ def _env_flag(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() not in {"0", "false", "off", "no", ""}
+
+
+def _env_choice(name: str, default: str, choices: set[str]) -> str:
+    raw = os.environ.get(name, default).strip().lower()
+    if raw not in choices:
+        raise ValueError(f"{name} must be one of {sorted(choices)}")
+    return raw
 
 
 def apply_moe_down_combine(
@@ -217,6 +226,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
         self._q6_top1_gather_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER", True)
         self._q6_top1_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", False)
+        self._q6_top1_stage1_shape = _env_choice("HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE", "pack8", {"pack8", "row"})
         if self.device_chain_enabled is None:
             self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
         else:
@@ -350,8 +360,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.head_normed_bf16 = self._malloc(h * 2)
         self.head_normed_q8_1 = self._malloc((h // 32) * 36)
         self.logits = self._malloc(self.vocab * 4)
-        self.q6_top1_block_values = self._malloc((self.vocab // 8) * 4)
-        self.q6_top1_block_indices = self._malloc((self.vocab // 8) * 4)
+        self.q6_top1_block_values = self._malloc(self.vocab * 4)
+        self.q6_top1_block_indices = self._malloc(self.vocab * 4)
         self.topk_values = self._malloc(64 * 4)
         self.topk_indices = self._malloc(64 * 4)
         # Device-chain (sub-win B) scratch: per-depth rope/pos/ctx precomputed
@@ -1104,19 +1114,35 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 )
                 t_stage = mark_stage("draft_run_lm_head_quant_q8_1", t_stage)
                 t_q6_top1 = t_stage
+                q6_top1_stage1_shape = str(getattr(self, "_q6_top1_stage1_shape", "pack8"))
+                q6_top1_stage2_blocks = self.vocab if q6_top1_stage1_shape == "row" else self.vocab // 8
                 if sync_stages:
-                    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
-                        self.head_normed_q8_1.ptr,
-                        self.shared_head.ptr,
-                        self.q6_top1_block_values.ptr,
-                        self.q6_top1_block_indices.ptr,
-                        1,
-                        h,
-                        self.vocab,
-                        library=self._q6_pack8_lib,
-                        runtime=runtime,
-                    )
-                    t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_stage1", t_stage)
+                    if q6_top1_stage1_shape == "row":
+                        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32(
+                            self.head_normed_q8_1.ptr,
+                            self.shared_head.ptr,
+                            self.q6_top1_block_values.ptr,
+                            self.q6_top1_block_indices.ptr,
+                            1,
+                            h,
+                            self.vocab,
+                            library=self._q6_pack8_lib,
+                            runtime=runtime,
+                        )
+                        t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_row_stage1", t_stage)
+                    else:
+                        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
+                            self.head_normed_q8_1.ptr,
+                            self.shared_head.ptr,
+                            self.q6_top1_block_values.ptr,
+                            self.q6_top1_block_indices.ptr,
+                            1,
+                            h,
+                            self.vocab,
+                            library=self._q6_pack8_lib,
+                            runtime=runtime,
+                        )
+                        t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_stage1", t_stage)
                     gguf_q6_k_pack8_top1_stage2_gather_f32(
                         self.q6_top1_block_values.ptr,
                         self.q6_top1_block_indices.ptr,
@@ -1125,36 +1151,64 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
                         int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
                         1,
-                        self.vocab // 8,
+                        q6_top1_stage2_blocks,
                         h if top1_next_embed_ptr is not None else 0,
                         self.vocab,
                         library=self._q6_pack8_lib,
                         runtime=runtime,
                     )
-                    t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_stage2_gather", t_stage)
+                    t_stage = mark_stage(
+                        "draft_run_lm_head_q6_top1_dp4a_row_stage2_gather"
+                        if q6_top1_stage1_shape == "row"
+                        else "draft_run_lm_head_q6_top1_dp4a_stage2_gather",
+                        t_stage,
+                    )
                     _stage_add(
                         stage_timings,
-                        "draft_run_lm_head_q6_top1_dp4a_gather",
+                        (
+                            "draft_run_lm_head_q6_top1_dp4a_row_gather"
+                            if q6_top1_stage1_shape == "row"
+                            else "draft_run_lm_head_q6_top1_dp4a_gather"
+                        ),
                         (time.perf_counter() - t_q6_top1) * 1000,
                     )
                 else:
-                    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
-                        self.head_normed_q8_1.ptr,
-                        self.shared_head.ptr,
-                        self.q6_top1_block_values.ptr,
-                        self.q6_top1_block_indices.ptr,
-                        int(top1_out_ptr),
-                        self.topk_values.ptr,
-                        self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
-                        int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
-                        1,
-                        h,
-                        self.vocab,
-                        h if top1_next_embed_ptr is not None else 0,
-                        library=self._q6_pack8_lib,
-                        runtime=runtime,
-                    )
-                    t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_gather", t_stage)
+                    if q6_top1_stage1_shape == "row":
+                        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32(
+                            self.head_normed_q8_1.ptr,
+                            self.shared_head.ptr,
+                            self.q6_top1_block_values.ptr,
+                            self.q6_top1_block_indices.ptr,
+                            int(top1_out_ptr),
+                            self.topk_values.ptr,
+                            self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                            int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                            1,
+                            h,
+                            self.vocab,
+                            h if top1_next_embed_ptr is not None else 0,
+                            library=self._q6_pack8_lib,
+                            runtime=runtime,
+                        )
+                        t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_row_gather", t_stage)
+                    else:
+                        gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+                            self.head_normed_q8_1.ptr,
+                            self.shared_head.ptr,
+                            self.q6_top1_block_values.ptr,
+                            self.q6_top1_block_indices.ptr,
+                            int(top1_out_ptr),
+                            self.topk_values.ptr,
+                            self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                            int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                            1,
+                            h,
+                            self.vocab,
+                            h if top1_next_embed_ptr is not None else 0,
+                            library=self._q6_pack8_lib,
+                            runtime=runtime,
+                        )
+                        t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_gather", t_stage)
             else:
                 t_q6_top1 = t_stage
                 if sync_stages:
