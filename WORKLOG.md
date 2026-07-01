@@ -134301,3 +134301,52 @@ python3 scripts/gguf_ar_mtp_suite.py \
   full-suite row (**14.037 vs 14.231 ms/output**).  The remaining slower child
   bucket is draft drain (**2.747 vs 2.140 ms/output**); target verifier and row
   economy now offset it.
+
+## 2026-07-02 - MTP draft-chain profiler aligned with resident initial KV
+
+- Updated `scripts/gguf_mtp_draft_rocprof.py` so the draft-chain diagnostic
+  seeds the target prompt with bulk prefill hidden-row capture and initializes
+  MTP prompt KV through `resident_write_kv_rows`, matching the retained
+  llama-compat path instead of the old serial hidden-trace writer.
+- Validation:
+
+```bash
+python3 -m py_compile scripts/gguf_mtp_draft_rocprof.py
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_draft_rocprof.py \
+  --child --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --steps 1 --warmup 0 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --sync-stage-timings --require-cached \
+  --child-json /tmp/gguf-mtp-draft-child-smoke.json
+
+python3 -m json.tool \
+  benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-residentinit-fine-sync.json \
+  >/tmp/draft-residentinit.pretty.json
+
+git diff --check
+```
+
+- Reran the current draft-chain attribution:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --sync-stage-timings --require-cached --skip-warmbuild \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-residentinit \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-residentinit-fine-sync.json
+```
+
+- Diagnostic result: `performance_claim=false`; host **6.940 ms/cycle**,
+  kernel **5.944 ms/cycle**, kernel share **85.7%**, **90.75** kernel
+  calls/cycle.  Top kernel families: Q6 top-1 stage1 **3.561 ms/cycle**,
+  dense/shared GEMV **0.766**, selected gate/up **0.433**, attention core
+  **0.341**, selected down **0.321**, scalar F32 router/shared-gate linear
+  **0.195**.  Fine-sync leaves: `draft_run_lm_head_q6_top1_dp4a_x8_stage1`
+  **3.596 ms/cycle**, `draft_run_ffn_selected_gate_up` **0.462**,
+  `draft_run_qkv_q_gate` **0.387**, `draft_run_attention_core` **0.368**,
+  and `draft_run_moe_selected_down` **0.350**.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` so the source artifact row and current
+  draft-chain rocprof/leaf tables point at the resident-init-aligned artifact.

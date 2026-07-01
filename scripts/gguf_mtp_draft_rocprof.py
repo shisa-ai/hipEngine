@@ -101,25 +101,28 @@ def _copy_pending_hidden_seed(session: Any) -> np.ndarray:
     return np.ascontiguousarray(hidden_seed, dtype=np.float32)
 
 
-def _serial_prefill_with_hidden_trace(session: Any, prompt_ids: list[int]) -> tuple[int, np.ndarray, np.ndarray]:
-    session.reset()
-    hidden_rows: list[np.ndarray] = []
-    hidden_ptr: int | None = None
-    for token_id in prompt_ids:
-        hidden_ptr = session._run_token_to_final_hidden(  # noqa: SLF001 - diagnostic parity hook
-            int(token_id),
-            position=session.position,
-            capture_hidden_seed_fp32=True,
-        )
-        session._position += 1  # noqa: SLF001 - mirrors Qwen35GGUFResidentSession.prefill serial path
-        hidden_rows.append(_copy_pending_hidden_seed(session)[0].copy())
-    if hidden_ptr is None:
-        raise RuntimeError("prompt produced no hidden row")
-    result = session._sample_from_hidden(hidden_ptr, return_logits=False)  # noqa: SLF001
+def _bulk_prefill_with_hidden_trace(session: Any, prompt_ids: list[int]) -> tuple[int, np.ndarray, np.ndarray]:
+    from hipengine.core.hip import HipMemcpyKind
+
+    result = session.prefill(
+        prompt_ids,
+        use_bulk=True,
+        bulk_attention_mode="bulk",
+        return_logits=False,
+        capture_hidden_seed_fp32=True,
+    )
+    hidden_size = int(session.runner.hidden_size)
+    hidden_rows = np.empty((len(prompt_ids), hidden_size), dtype=np.float32)
+    session.runtime.memcpy(
+        hidden_rows.ctypes.data,
+        session.fp32_verify_hidden_seed_ptr(0),
+        hidden_rows.nbytes,
+        HipMemcpyKind.DEVICE_TO_HOST,
+    )
     return (
         int(result.token_id),
         _copy_pending_hidden_seed(session),
-        np.ascontiguousarray(np.stack(hidden_rows, axis=0), dtype=np.float32),
+        np.ascontiguousarray(hidden_rows, dtype=np.float32),
     )
 
 
@@ -182,7 +185,7 @@ def _run_child(args: argparse.Namespace) -> int:
             require_cached_build=bool(args.require_cached),
         )
         try:
-            prev_token, pending_hidden_seed, prompt_hidden_rows = _serial_prefill_with_hidden_trace(session, prompt_ids)
+            prev_token, pending_hidden_seed, prompt_hidden_rows = _bulk_prefill_with_hidden_trace(session, prompt_ids)
             seq_position = int(session.position)
             context_tokens, context_hidden_rows = llama_cpp_mtp_catchup_rows(prompt_ids, prompt_hidden_rows)
             kv_heads = int(draft.num_kv_heads)
@@ -278,6 +281,8 @@ def _run_child(args: argparse.Namespace) -> int:
         "q6_top1_stage1_threads": int(args.q6_top1_stage1_threads),
         "q6_top1_stage1_shape": str(args.q6_top1_stage1_shape),
         "q8_shared_dual": _resident_q8_shared_dual_enabled(),
+        "target_prefill_mode": "bulk_prefill_hidden_rows",
+        "mtp_initial_kv_writer": "resident_write_kv_rows",
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
         "dense_q8_dp4a_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"),
         "selected_silu_down_fused": bool(args.selected_silu_down_fused),
@@ -410,6 +415,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         "q6_top1_stage1_threads": int(args.q6_top1_stage1_threads),
         "q6_top1_stage1_shape": str(args.q6_top1_stage1_shape),
         "q8_shared_dual": _resident_q8_shared_dual_enabled(),
+        "target_prefill_mode": "bulk_prefill_hidden_rows",
+        "mtp_initial_kv_writer": "resident_write_kv_rows",
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
         "selected_silu_down_fused": bool(args.selected_silu_down_fused),
         "router_row_parallel": bool(args.router_row_parallel),

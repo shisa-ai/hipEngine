@@ -201,7 +201,7 @@ Current source artifacts:
 | Resident initial MTP KV writer diagnostic | `benchmarks/results/2026-07-02-mtp-resident-initial-kv-diagnostic.json` | Diagnostic-only semantic fix; `performance_claim=false`. The active llama-compat path now seeds initial prompt MTP KV with `resident_write_kv_rows` instead of legacy `run_draft(..., kv_write_only=True)`. At seq position 49 / depth 0, hipEngine now drafts **`[8, 1411]`**, matching llama.cpp, while the prior path drafted `[65342, 18078]`. Row 2 now matches closely on high-impact heads (`qh7` weight **0.227 vs 0.218**, `qh12` **0.408 vs 0.391**; K/V first4 max deltas `<=0.0378` on row 2). Row 0 remains a boundary-row residual, but it no longer changes this draft decision. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
-| hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
+| hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-residentinit-fine-sync.json`; prior router-row A/B controls `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route after the profiler was aligned with resident initial prompt KV seeding. The current resident-init-aligned profile is **6.940 ms/cycle host**, **5.944 ms/cycle kernel**, **90.75 calls/cycle**. The router-row A/B remains the provenance for the prior non-Q6 leaf fix: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, host **7.569 -> 6.971 ms/cycle**, and kernel **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
 | hipEngine llama-compat rejected draft dense-Q8 dp4a check | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-draftdenseq8-fine-sync.json`, `benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-full.json` | Diagnostic only: routes resident draft dense Q8_0 F32 projections through F32->q8_1 plus raw-Q8 dp4a float-output wrappers (`--resident-mtp-draft-dense-q8-dp4a`). Draft-chain profile moved the intended dense bucket (**5.983 -> 5.570 ms/cycle kernel**, `draft_dense_shared_gemv` **0.784 -> 0.374 ms/cycle**), but full-suite B2 regressed versus the active router-row lane (**64.41 -> 64.14 tok/s**, cycle **15.547 -> 15.612 ms/output**) because acceptance/row economy worsened (`acc/output` **0.578 -> 0.573**, target rows/output **1.266 -> 1.282**) and verifier drain rose (**12.166 -> 12.324 ms/output**). Keep as evidence only. |
 | hipEngine llama-compat rejected selected SiLU/down fusion check | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-siludown-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-siludown-fine-sync.json` | Diagnostic only: adds exact BF16-equivalent `--resident-mtp-draft-selected-silu-down-fused`, fusing selected MoE `silu(gate)*up` into the Q5_K selected-down GEMV. It removes one launch but the fused Q5 body is slower: kernel time **5.973 -> 6.054 ms/cycle**, draft host wall **7.044 -> 7.206 ms/cycle**, `draft_run_moe_down_combine` **0.487 -> 0.531 ms/cycle**, and `gguf_k_selected_prefill_out` **0.325 ms/cycle** becomes `gguf_k_selected_silu_prefill_out` **0.391 ms/cycle**. No full-suite run; the parent draft profile regressed. |
 | hipEngine llama-compat Q8 shared-dual A/B | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-control.json`, `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shared-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-smoke.json` | Retained exact draft-path improvement: Q8 shared gate/up launches collapse from two single raw-Q8 GEMVs to one dual F32/F32 launch per draft layer. The isolated kernel delta is small, but same-session async smoke moved **69.44 -> 70.20 tok/s** with identical acceptance; full-suite compat moved **60.96 -> 61.19 tok/s**. |
@@ -496,7 +496,7 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 
 | metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow` B2 + Q8 shared dual | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
 | --- | ---: | ---: | ---: | ---: | --- |
-| AR tok/s | 54.95 retained / 54.55 shared-dual confirm | 54.92 routerrow full | 51.38 suite / 52.13 traced | hipEngine faster | AR is not the blocker. |
+| AR tok/s | 54.95 retained / 54.55 shared-dual confirm | 54.78 resident-init full | 51.38 suite / 52.13 traced | hipEngine faster | AR is not the blocker. |
 | MTP tok/s | 60.8 retained / 60.72 shared-dual confirm | **71.34 resident-init full** | 67.3 suite / 72.12 traced | **+4.04 tok/s vs suite / -0.78 tok/s vs traced** | Compat now clears the retained llama suite row; traced tok/s remains the external check. |
 | uplift over own AR | 1.114x retained / 1.113x shared-dual confirm | **1.3024x resident-init full** | ~1.31x suite / 1.383x traced | near suite / **-0.081x traced** | The resident initial-KV fix recovers the missing proposal economy. |
 | cycle wall / output | 16.496 ms shared-dual confirm | **14.037 ms resident-init full** | 14.231 ms traced | **-0.194 ms/output** | Parent wall gap is closed on the current retained row. |
@@ -698,8 +698,12 @@ Draft kernel-family rows come from
 for the active X8 top-1 route; the prior pack8/shared-dual control is
 `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json`.
 The current fine-grained sync-stage draft split comes from
-`benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json`,
-with control artifact
+`benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-residentinit-fine-sync.json`,
+which uses bulk target prefill hidden-row capture plus
+`resident_write_kv_rows` for initial prompt MTP KV seeding. The prior
+router-row A/B artifacts are
+`benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json`
+and control artifact
 `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`.
 The rejected draft dense-Q8 dp4a profile is
 `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-draftdenseq8-fine-sync.json`.
@@ -717,19 +721,23 @@ choose which leaf bucket should move the full-suite `draft_initial` or
 
 This table profiles the retained `llama-compat` draft shape directly:
 `scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 --q6-top1-dp4a
---selected-down-x8-repack q6 --record-stage-timings --skip-warmbuild`.
+--q6-top1-stage1-shape x8 --selected-down-x8-repack q6
+--router-row-parallel --record-stage-timings --sync-stage-timings
+--require-cached --skip-warmbuild`.
 The child runs under `rocprofv3 --kernel-trace --marker-trace` with
 `--require-cached`, and each measured ROCTX range covers only the B2 resident
 draft chain. The target step used to refresh the next seed is outside the
 marker window.
 
 Summary for the B2-shaped draft profile with default-on Q8 shared dual, X8
-Q6_K top-1, and row-parallel F32 router logits: **6.971 ms/cycle host wall**,
-**5.983 ms/cycle kernel time**, **85.8% kernel share**, **91.0 kernel
-calls/cycle**, and **0.987 ms/cycle host residual**. Same-session control was
+Q6_K top-1, row-parallel F32 router logits, and resident initial prompt KV
+seeding: **6.940 ms/cycle host wall**, **5.944 ms/cycle kernel time**,
+**85.7% kernel share**, **90.75 kernel calls/cycle**, and **0.996 ms/cycle host
+residual**. Same-session pre-resident-init router-row control was
 **7.569 ms/cycle host wall** and **6.461 ms/cycle kernel time**, so the
-router-row substitution saves **0.598 ms/cycle** host and **0.478 ms/cycle**
-kernel in this attribution-only profile, and remains the active draft path.
+router-row substitution saved **0.598 ms/cycle** host and **0.478 ms/cycle**
+kernel in that attribution-only A/B. The resident-init-aligned profiler keeps
+the active draft-path structure synchronized with the retained full-suite row.
 The draft dense-Q8 dp4a diagnostic
 added float-output raw-Q8 dp4a wrappers for `eh_proj`, Q/K/V, attention output,
 shared gate/up, and shared down. Its draft-only profile improved kernel time to
@@ -749,20 +757,20 @@ This says the active separate `silu_mul_separate_out_bf16` plus
 do not spend a full-suite run on it.
 The approximate
 ms/output column divides by the active full-suite `llama-compat` row's
-**2.37 visible outputs/cycle** (237 outputs / 100 cycles), so use it as
+**2.64 visible outputs/cycle** (264 outputs / 100 cycles), so use it as
 attribution, not as a replacement for the full-suite timing rows.
 
 | kernel-family bucket | calls/cycle | ms/cycle | approx ms/output | kernel share | next action |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` | 2.0 | **3.578** | **1.510** | **59.8%** | Largest draft kernel family, but the ROCTX llama.cpp comparison shows per-call parity: hipEngine **1.789 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call**. Treat this as an amortization/acceptance target before writing more Q6 body variants. |
-| `top1_stage2_gather` | 2.0 | 0.095 | 0.040 | 1.6% | Not the missing cost; prior stage2/gather work already made this small. |
-| `gguf_k_prefill_out` | 12.0 | 0.784 | 0.331 | 13.1% | Secondary draft dense/shared GEMV target after proposal/row-economy parity; Q8 shared gate/up dual reduced this from 16 single calls/cycle. |
-| `gguf_k_dual_prefill_out` | 2.0 | 0.034 | 0.014 | 0.6% | Q8 shared gate/up dual launch; it removes single-call traffic but is too small to close the draft gap alone. |
-| `hipengine_mtp_linear_f32` | 2.0 | 0.195 | 0.082 | 3.3% | Remaining scalar shared-gate linear only; router linear moved to `qwen35_router_logits`. |
-| `qwen35_router_logits` | 2.0 | 0.023 | 0.010 | 0.4% | New row-parallel router logits path; no longer a top draft target. |
-| `gguf_q4_k_selected_dual_prefill_out` | 2.0 | 0.438 | 0.185 | 7.3% | Selected gate/up target, but prior X8/raw attempts regressed. |
-| `hipengine_mtp_dense_attn_f32` | 2.0 | 0.345 | 0.146 | 5.8% | Attention core is visible but not first. |
-| `gguf_k_selected_prefill_out` | 2.0 | 0.324 | 0.137 | 5.4% | Selected down remains secondary. |
+| `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` | 2.0 | **3.561** | **1.349** | **59.9%** | Largest individual draft kernel family, but the ROCTX llama.cpp comparison shows per-call parity: hipEngine **1.781 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call**. Treat this as an amortization/acceptance target before writing more Q6 body variants. |
+| `top1_stage2_gather` | 2.0 | 0.091 | 0.035 | 1.5% | Not the missing cost; prior stage2/gather work already made this small. |
+| `gguf_k_prefill_out` | 12.0 | 0.766 | 0.290 | 12.9% | Secondary draft dense/shared GEMV target after proposal/row-economy parity; Q8 shared gate/up dual reduced this from 16 single calls/cycle. |
+| `gguf_k_dual_prefill_out` | 2.0 | 0.034 | 0.013 | 0.6% | Q8 shared gate/up dual launch; it removes single-call traffic but is too small to close the draft gap alone. |
+| `hipengine_mtp_linear_f32` | 2.0 | 0.195 | 0.074 | 3.3% | Remaining scalar shared-gate linear only; router linear moved to `qwen35_router_logits`. |
+| `qwen35_router_logits` | 2.0 | 0.023 | 0.009 | 0.4% | New row-parallel router logits path; no longer a top draft target. |
+| `gguf_q4_k_selected_dual_prefill_out` | 2.0 | 0.433 | 0.164 | 7.3% | Selected gate/up target, but prior X8/raw attempts regressed. |
+| `hipengine_mtp_dense_attn_f32` | 2.0 | 0.341 | 0.129 | 5.7% | Attention core is visible but not first. |
+| `gguf_k_selected_prefill_out` | 2.0 | 0.321 | 0.122 | 5.4% | Selected down remains secondary. |
 
 Fine-sync draft leaf attribution for the same active X8 route:
 `scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 --q6-top1-dp4a
@@ -777,35 +785,44 @@ parent bucket.
 
 | sync-stage leaf | ms/cycle | reading |
 | --- | ---: | --- |
-| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | **3.611** | Still the largest single draft leaf, but llama.cpp's matching Q6_K dispatch is per-call parity. Further work should first prove a proposal/acceptance or launch-amortization mismatch, not another isolated Q6 scale/layout variant. |
-| `draft_run_ffn_selected_gate_up` | **0.466** | Largest remaining non-Q6 leaf. Prior raw/X8 verifier-shaped copies regressed, so any draft fix needs a different mechanism or full-suite proof. |
-| `draft_run_qkv_q_gate` | **0.392** | Q/gate projection + split + Q norm. Candidate for a draft-specific dense-Q8/q8_1 path only if F32 output precision is handled. |
-| `draft_run_attention_core` | **0.371** | Attention core; visible but smaller than selected gate/up and Q6 top-1. |
-| `draft_run_moe_selected_down` | **0.353** | Selected Q5_K down body. |
-| `draft_run_attention_out` | 0.220 | Gate/out projection/residual after attention core. |
-| `draft_run_ffn_shared_gate_linear` | 0.219 | Scalar shared-gate linear; still uses generic `hipengine_mtp_linear_f32`. |
-| `draft_run_project_eh_proj` | 0.208 | E/H projection inside draft input project. |
-| `draft_run_ffn_shared_gate_up` | 0.060 | Shared gate/up dual launch; retained dual path keeps this small. |
-| `draft_run_ffn_router_select_only` | 0.056 | Router top-k selection alone; row-parallel logits removed the router-linear leaf. |
-| `draft_run_ffn_shared_down` | 0.051 | Shared down projection after shared SiLU. |
-| `draft_run_ffn_router_linear` | 0.048 | Fixed by row-parallel router logits; keep as a regression guard, not an active target. |
-| `draft_run_ffn_shared_silu` | 0.045 | Shared SiLU/multiply. |
-| `draft_run_moe_weighted_combine` | 0.037 | Final weighted combine leaf. |
-| `draft_run_moe_selected_silu` | 0.035 | Selected expert SiLU leaf. |
-| `draft_run_lm_head_norm` | 0.034 | Draft lm-head RMSNorm leaf. |
-| `draft_run_ffn_post_norm` | 0.034 | FFN RMSNorm leaf. |
-| `draft_run_moe_combine_cast_inputs` | 0.033 | Device-MoE combine cast/setup leaf. |
+| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | **3.596** | Still the largest single draft leaf, but llama.cpp's matching Q6_K dispatch is per-call parity. Further work should first prove a proposal/acceptance or launch-amortization mismatch, not another isolated Q6 scale/layout variant. |
+| `draft_run_ffn_selected_gate_up` | **0.462** | Largest remaining non-Q6 leaf. Prior raw/X8 verifier-shaped copies regressed, so any draft fix needs a different mechanism or full-suite proof. |
+| `draft_run_qkv_q_gate` | **0.387** | Q/gate projection + split + Q norm. Candidate for a draft-specific dense-Q8/q8_1 path only if F32 output precision is handled. |
+| `draft_run_attention_core` | **0.368** | Attention core; visible but smaller than selected gate/up and Q6 top-1. |
+| `draft_run_moe_selected_down` | **0.350** | Selected Q5_K down body. |
+| `draft_run_ffn_shared_gate_linear` | 0.222 | Scalar shared-gate linear; still uses generic `hipengine_mtp_linear_f32`. |
+| `draft_run_attention_out` | 0.216 | Gate/out projection/residual after attention core. |
+| `draft_run_project_eh_proj` | 0.203 | E/H projection inside draft input project. |
+| `draft_run_qkv_k_rope` | 0.126 | K RoPE/write sub-leaf; below the main GEMV targets. |
+| `draft_run_lm_head_q6_top1_dp4a_stage2_gather` | 0.119 | Final block-winner reduction plus optional embedding gather remains small. |
+| `draft_run_project_norm_concat` | 0.107 | Draft input norm/concat prep. |
+| `draft_prepare_inputs` | 0.090 | Input setup; not large enough to explain the parent draft gap. |
+| `draft_run_ffn_shared_down` | 0.067 | Shared down projection after shared SiLU. |
+| `draft_run_qkv_v_kvwrite` | 0.064 | V projection/write sub-leaf. |
+| `draft_run_ffn_shared_gate_up` | 0.062 | Shared gate/up dual launch; retained dual path keeps this small. |
+| `draft_run_lm_head_quant_q8_1` | 0.051 | q8_1 activation quantization is not the missing Q6 top-1 cost. |
+| `draft_run_ffn_router_linear` | 0.046 | Fixed by row-parallel router logits; keep as a regression guard, not an active target. |
+| `draft_run_moe_combine_cast_inputs` | 0.041 | Device-MoE combine cast/setup leaf. |
+| `draft_run_moe_weighted_combine` | 0.039 | Final weighted combine leaf. |
+| `draft_run_ffn_router_select_only` | 0.035 | Router top-k selection alone; row-parallel logits removed the router-linear leaf. |
+| `draft_run_ffn_post_norm` | 0.033 | FFN RMSNorm leaf. |
 | `draft_run_project_attn_norm` | 0.033 | Attention norm inside draft input projection. |
-| `draft_run_lm_head_quant_q8_1` | 0.026 | q8_1 activation quantization is not the missing Q6 top-1 cost. |
+| `draft_run_lm_head_norm` | 0.033 | Draft lm-head RMSNorm leaf. |
+| `draft_run_moe_selected_silu` | 0.031 | Selected expert SiLU leaf. |
+| `draft_seed_upload` | 0.028 | Seed upload/setup; too small to drive the draft gap. |
+| `draft_run_ffn_post_norm_cast_bf16` | 0.027 | FFN post-norm cast. |
+| `draft_run_ffn_shared_silu` | 0.024 | Shared SiLU/multiply. |
 | `draft_run_lm_head_cast_bf16` | 0.023 | Draft lm-head BF16 cast. |
+| `draft_topk_readback` | 0.020 | Readback timer inside the sync profile; parent `draft_topk_readback` remains the async rollup target. |
+| `draft_topk_d2h` | 0.018 | D2H copy is not the source of the draft drain gap. |
 | `draft_device_topk_gather` | 0.001 | Device gather is effectively gone as a target. |
 
 Continuity rollups from the same sync artifact: `draft_mtp_layer_forward`
-**6.811 ms/cycle**, `draft_run_lm_head` **3.821**,
-`draft_run_lm_head_q6_top1_dp4a_x8_gather` **3.735**,
-`draft_run_ffn_up_shared` **1.008**, `draft_run_qkv_kvwrite` **0.597**,
-`draft_run_attention` **0.592**, `draft_run_moe_down_combine` **0.459**,
-`draft_run_project` **0.318**, and `draft_run_ffn_router_select` **0.166**.
+**6.783 ms/cycle**, `draft_run_lm_head` **3.824**,
+`draft_run_lm_head_q6_top1_dp4a_x8_gather` **3.716**,
+`draft_run_ffn_up_shared` **0.982**, `draft_run_qkv_kvwrite` **0.578**,
+`draft_run_attention` **0.585**, `draft_run_moe_down_combine` **0.462**,
+`draft_run_project` **0.337**, and `draft_run_ffn_router_select` **0.143**.
 These rollups intentionally overlap the leaf rows above and are for continuity
 with older artifacts, not for summing a new total.
 
