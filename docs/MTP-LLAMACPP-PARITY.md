@@ -32,6 +32,16 @@ three-lane tables visible; do not replace them with prose-only conclusions or a
 single tok/s headline. Old "FINAL" sections further down are historical once
 they disagree with this active tracker.
 
+Required refresh shape for each retained or diagnostic parity run:
+
+| required row/table | what must change | why |
+| --- | --- | --- |
+| Source artifacts | Exact route name, flags/env, artifact path, and whether the row is retained, all-sync attribution-only, or rejected. | Prevents mixing headline speed rows with diagnostic sync-split rows. |
+| Three-lane speed gap | hipEngine default exact, hipEngine `llama-compat`, llama.cpp HIP, and the compat delta. | Keeps the top-line "how many tok/s or ms are left" visible. |
+| Three-lane stage ledger | The large buckets that have real cross-engine meaning: draft drain, verifier drain, row economy, and non-gaps. | Shows where the remaining couple of ms actually lives. |
+| Expanded bucket table | Every hipEngine cycle-stage bucket plus the closest llama.cpp analog when one exists. | Makes the next target mechanical: pick the largest positive compat delta with a valid analog. |
+| Active gap budget / target map | Remaining ms or rows to close and the llama.cpp source area to inspect next. | Keeps the implementation work tied to a measured llama-compat gap, not intuition. |
+
 Current gap to close: the retained compat lane is still **+2.356 ms/output** vs
 the traced llama.cpp HIP B2 row. The actionable split is **+1.104 ms/output**
 draft drain, **+0.940 ms/output** target verifier drain, and **+0.102 target

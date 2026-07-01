@@ -130952,3 +130952,20 @@ dp4a/gather scheduler itself. Standalone activation-quantization/cast work is
 not the gap; the previous direct-F32 q8_1 diagnostic already rejected that
 route at full-suite scale. The active full-suite compat gap remains
 **+2.356 ms/output** until an async/full-suite route moves.
+
+## 2026-07-01 — Parity tracker table contract
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` so the active parity tracker has an
+explicit required refresh shape for each retained or diagnostic run:
+
+- source artifacts with retained/diagnostic/rejected status,
+- three-lane speed gap for hipEngine default exact, hipEngine `llama-compat`,
+  and llama.cpp HIP,
+- three-lane stage ledger,
+- expanded per-bucket table,
+- active gap budget and llama.cpp target map.
+
+No benchmark rerun was needed; this is a docs/process update that preserves the
+current measured gap: `llama-compat` remains **+2.356 ms/output** behind the
+traced llama.cpp HIP B2 row, split across draft drain, verifier drain, and row
+economy.
