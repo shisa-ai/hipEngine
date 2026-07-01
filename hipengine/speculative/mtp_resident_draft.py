@@ -63,7 +63,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
     gguf_q6_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32,
+    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
+    gguf_q6_k_pack8_top1_stage2_gather_f32,
 )
 from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     _cached_upload,
@@ -1100,41 +1103,111 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     runtime=runtime,
                 )
                 t_stage = mark_stage("draft_run_lm_head_quant_q8_1", t_stage)
-                gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
-                    self.head_normed_q8_1.ptr,
-                    self.shared_head.ptr,
-                    self.q6_top1_block_values.ptr,
-                    self.q6_top1_block_indices.ptr,
-                    int(top1_out_ptr),
-                    self.topk_values.ptr,
-                    self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
-                    int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
-                    1,
-                    h,
-                    self.vocab,
-                    h if top1_next_embed_ptr is not None else 0,
-                    library=self._q6_pack8_lib,
-                    runtime=runtime,
-                )
-                t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_gather", t_stage)
+                t_q6_top1 = t_stage
+                if sync_stages:
+                    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
+                        self.head_normed_q8_1.ptr,
+                        self.shared_head.ptr,
+                        self.q6_top1_block_values.ptr,
+                        self.q6_top1_block_indices.ptr,
+                        1,
+                        h,
+                        self.vocab,
+                        library=self._q6_pack8_lib,
+                        runtime=runtime,
+                    )
+                    t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_stage1", t_stage)
+                    gguf_q6_k_pack8_top1_stage2_gather_f32(
+                        self.q6_top1_block_values.ptr,
+                        self.q6_top1_block_indices.ptr,
+                        int(top1_out_ptr),
+                        self.topk_values.ptr,
+                        self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                        int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                        1,
+                        self.vocab // 8,
+                        h if top1_next_embed_ptr is not None else 0,
+                        self.vocab,
+                        library=self._q6_pack8_lib,
+                        runtime=runtime,
+                    )
+                    t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_stage2_gather", t_stage)
+                    _stage_add(
+                        stage_timings,
+                        "draft_run_lm_head_q6_top1_dp4a_gather",
+                        (time.perf_counter() - t_q6_top1) * 1000,
+                    )
+                else:
+                    gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+                        self.head_normed_q8_1.ptr,
+                        self.shared_head.ptr,
+                        self.q6_top1_block_values.ptr,
+                        self.q6_top1_block_indices.ptr,
+                        int(top1_out_ptr),
+                        self.topk_values.ptr,
+                        self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                        int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                        1,
+                        h,
+                        self.vocab,
+                        h if top1_next_embed_ptr is not None else 0,
+                        library=self._q6_pack8_lib,
+                        runtime=runtime,
+                    )
+                    t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_gather", t_stage)
             else:
-                gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
-                    self.head_normed_bf16.ptr,
-                    self.shared_head.ptr,
-                    self.q6_top1_block_values.ptr,
-                    self.q6_top1_block_indices.ptr,
-                    int(top1_out_ptr),
-                    self.topk_values.ptr,
-                    self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
-                    int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
-                    1,
-                    h,
-                    self.vocab,
-                    h if top1_next_embed_ptr is not None else 0,
-                    library=self._q6_pack8_lib,
-                    runtime=runtime,
-                )
-                t_stage = mark_stage("draft_run_lm_head_q6_top1_bf16_gather", t_stage)
+                t_q6_top1 = t_stage
+                if sync_stages:
+                    gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32(
+                        self.head_normed_bf16.ptr,
+                        self.shared_head.ptr,
+                        self.q6_top1_block_values.ptr,
+                        self.q6_top1_block_indices.ptr,
+                        1,
+                        h,
+                        self.vocab,
+                        library=self._q6_pack8_lib,
+                        runtime=runtime,
+                    )
+                    t_stage = mark_stage("draft_run_lm_head_q6_top1_bf16_stage1", t_stage)
+                    gguf_q6_k_pack8_top1_stage2_gather_f32(
+                        self.q6_top1_block_values.ptr,
+                        self.q6_top1_block_indices.ptr,
+                        int(top1_out_ptr),
+                        self.topk_values.ptr,
+                        self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                        int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                        1,
+                        self.vocab // 8,
+                        h if top1_next_embed_ptr is not None else 0,
+                        self.vocab,
+                        library=self._q6_pack8_lib,
+                        runtime=runtime,
+                    )
+                    t_stage = mark_stage("draft_run_lm_head_q6_top1_bf16_stage2_gather", t_stage)
+                    _stage_add(
+                        stage_timings,
+                        "draft_run_lm_head_q6_top1_bf16_gather",
+                        (time.perf_counter() - t_q6_top1) * 1000,
+                    )
+                else:
+                    gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
+                        self.head_normed_bf16.ptr,
+                        self.shared_head.ptr,
+                        self.q6_top1_block_values.ptr,
+                        self.q6_top1_block_indices.ptr,
+                        int(top1_out_ptr),
+                        self.topk_values.ptr,
+                        self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                        int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                        1,
+                        h,
+                        self.vocab,
+                        h if top1_next_embed_ptr is not None else 0,
+                        library=self._q6_pack8_lib,
+                        runtime=runtime,
+                    )
+                    t_stage = mark_stage("draft_run_lm_head_q6_top1_bf16_gather", t_stage)
         else:
             gguf_q6_k_pack8_gemv_decode_bf16_f32_out(
                 self.head_normed_bf16.ptr,

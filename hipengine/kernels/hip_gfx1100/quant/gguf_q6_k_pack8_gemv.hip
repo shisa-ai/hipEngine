@@ -682,6 +682,10 @@ __global__ void top1_stage2_gather_kernel(
   }
 }
 
+__host__ inline bool valid_top1_stage1_threads(int threads) {
+  return threads == 64 || threads == 128;
+}
+
 template <typename scalar_in_t, typename scalar_out_t>
 int launch_q6_k_pack8_gemv(
     const scalar_in_t* x,
@@ -709,25 +713,49 @@ int launch_q6_k_pack8_gemv(
 }
 
 template <typename scalar_in_t>
-int launch_q6_k_pack8_gemv_top1_gather(
+int launch_q6_k_pack8_gemv_top1_stage1(
     const scalar_in_t* x,
     const uint8_t* qweight,
     float* block_values,
     int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int stage1_threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || block_values == nullptr ||
+      block_indices == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      out_features > INT32_MAX || (out_features & 7) != 0 ||
+      (in_features % QK_K) != 0 || !valid_top1_stage1_threads(stage1_threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  hipLaunchKernelGGL(
+      (gguf_q6_k_pack8_gemv_top1_stage1_kernel<scalar_in_t>),
+      dim3(static_cast<unsigned int>(out_packed),
+           static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(stage1_threads)),
+      0,
+      stream,
+      x, qweight, block_values, block_indices, rows, in_features, out_features, out_packed);
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_top1_stage2_gather(
+    const float* block_values,
+    const int32_t* block_indices,
     int32_t* out_indices,
     float* out_values,
     const float* embed_table,
     float* next_embed,
     int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
+    int64_t num_blocks,
     int64_t hidden,
+    int64_t vocab,
     hipStream_t stream) {
-  if (x == nullptr || qweight == nullptr || block_values == nullptr ||
-      block_indices == nullptr || out_indices == nullptr ||
-      rows <= 0 || in_features <= 0 || out_features <= 0 ||
-      out_features > INT32_MAX || (out_features & 7) != 0 ||
-      (in_features % QK_K) != 0 || hidden < 0) {
+  if (block_values == nullptr || block_indices == nullptr || out_indices == nullptr ||
+      rows <= 0 || num_blocks <= 0 || hidden < 0 || vocab <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   if ((embed_table == nullptr) != (next_embed == nullptr)) {
@@ -736,20 +764,6 @@ int launch_q6_k_pack8_gemv_top1_gather(
   if (embed_table != nullptr && hidden <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int64_t out_packed = out_features >> 3;
-  hipLaunchKernelGGL(
-      (gguf_q6_k_pack8_gemv_top1_stage1_kernel<scalar_in_t>),
-      dim3(static_cast<unsigned int>(out_packed),
-           static_cast<unsigned int>(rows)),
-      dim3(128),
-      0,
-      stream,
-      x, qweight, block_values, block_indices, rows, in_features, out_features, out_packed);
-  hipError_t err = hipGetLastError();
-  if (err != hipSuccess) {
-    return static_cast<int>(err);
-  }
-
   constexpr int stage2_threads = 256;
   const size_t stage2_smem = static_cast<size_t>(stage2_threads) * (sizeof(float) + sizeof(int32_t));
   hipLaunchKernelGGL(
@@ -765,9 +779,78 @@ int launch_q6_k_pack8_gemv_top1_gather(
       embed_table,
       next_embed,
       rows,
-      out_packed,
+      num_blocks,
       hidden,
-      out_features);
+      vocab);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_in_t>
+int launch_q6_k_pack8_gemv_top1_gather(
+    const scalar_in_t* x,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    int stage1_threads,
+    hipStream_t stream) {
+  if (hidden < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipError_t err = static_cast<hipError_t>(launch_q6_k_pack8_gemv_top1_stage1<scalar_in_t>(
+      x, qweight, block_values, block_indices, rows, in_features, out_features, stage1_threads, stream));
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+  return launch_top1_stage2_gather(
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      out_features >> 3,
+      hidden,
+      out_features,
+      stream);
+}
+
+int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1(
+    const gguf_q8_1_block* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int stage1_threads,
+    hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || block_values == nullptr ||
+      block_indices == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      out_features > INT32_MAX || (out_features & 7) != 0 ||
+      (in_features % QK_K) != 0 || (in_features % Q8_1_BLOCK) != 0 ||
+      !valid_top1_stage1_threads(stage1_threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  hipLaunchKernelGGL(
+      gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1_kernel,
+      dim3(static_cast<unsigned int>(out_packed),
+           static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(stage1_threads)),
+      0,
+      stream,
+      xq, qweight, block_values, block_indices, rows, in_features, out_features, out_packed, q8_blocks_per_row);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -784,44 +867,17 @@ int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_gather(
     int64_t in_features,
     int64_t out_features,
     int64_t hidden,
+    int stage1_threads,
     hipStream_t stream) {
-  if (xq == nullptr || qweight == nullptr || block_values == nullptr ||
-      block_indices == nullptr || out_indices == nullptr ||
-      rows <= 0 || in_features <= 0 || out_features <= 0 ||
-      out_features > INT32_MAX || (out_features & 7) != 0 ||
-      (in_features % QK_K) != 0 || (in_features % Q8_1_BLOCK) != 0 ||
-      hidden < 0) {
+  if (hidden < 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  if ((embed_table == nullptr) != (next_embed == nullptr)) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (embed_table != nullptr && hidden <= 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  const int64_t out_packed = out_features >> 3;
-  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
-  hipLaunchKernelGGL(
-      gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1_kernel,
-      dim3(static_cast<unsigned int>(out_packed),
-           static_cast<unsigned int>(rows)),
-      dim3(128),
-      0,
-      stream,
-      xq, qweight, block_values, block_indices, rows, in_features, out_features, out_packed, q8_blocks_per_row);
-  hipError_t err = hipGetLastError();
+  hipError_t err = static_cast<hipError_t>(launch_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1(
+      xq, qweight, block_values, block_indices, rows, in_features, out_features, stage1_threads, stream));
   if (err != hipSuccess) {
     return static_cast<int>(err);
   }
-
-  constexpr int stage2_threads = 256;
-  const size_t stage2_smem = static_cast<size_t>(stage2_threads) * (sizeof(float) + sizeof(int32_t));
-  hipLaunchKernelGGL(
-      top1_stage2_gather_kernel,
-      dim3(static_cast<unsigned int>(rows)),
-      dim3(stage2_threads),
-      stage2_smem,
-      stream,
+  return launch_top1_stage2_gather(
       block_values,
       block_indices,
       out_indices,
@@ -829,10 +885,10 @@ int launch_q6_k_pack8_gemv_q8_1_dp4a_top1_gather(
       embed_table,
       next_embed,
       rows,
-      out_packed,
+      out_features >> 3,
       hidden,
-      out_features);
-  return static_cast<int>(hipGetLastError());
+      out_features,
+      stream);
 }
 
 }  // namespace
@@ -912,6 +968,61 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
       in_features,
       out_features,
       hidden,
+      128,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32_threads(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_top1_gather<uint16_t>(
+      x,
+      qweight,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      in_features,
+      out_features,
+      hidden,
+      static_cast<int>(stage1_threads),
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_top1_stage1<uint16_t>(
+      x,
+      qweight,
+      block_values,
+      block_indices,
+      rows,
+      in_features,
+      out_features,
+      static_cast<int>(stage1_threads),
       stream);
 }
 
@@ -942,5 +1053,86 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
       in_features,
       out_features,
       hidden,
+      128,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32_threads(
+    const void* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t hidden,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_gather(
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      qweight,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      in_features,
+      out_features,
+      hidden,
+      static_cast<int>(stage1_threads),
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
+    const void* xq,
+    const uint8_t* qweight,
+    float* block_values,
+    int32_t* block_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int32_t stage1_threads,
+    hipStream_t stream) {
+  return launch_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1(
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      qweight,
+      block_values,
+      block_indices,
+      rows,
+      in_features,
+      out_features,
+      static_cast<int>(stage1_threads),
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_top1_stage2_gather_f32(
+    const float* block_values,
+    const int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    const float* embed_table,
+    float* next_embed,
+    int64_t rows,
+    int64_t num_blocks,
+    int64_t hidden,
+    int64_t vocab,
+    hipStream_t stream) {
+  return launch_top1_stage2_gather(
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      embed_table,
+      next_embed,
+      rows,
+      num_blocks,
+      hidden,
+      vocab,
       stream);
 }

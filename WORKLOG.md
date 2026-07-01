@@ -130969,3 +130969,55 @@ No benchmark rerun was needed; this is a docs/process update that preserves the
 current measured gap: `llama-compat` remains **+2.356 ms/output** behind the
 traced llama.cpp HIP B2 row, split across draft drain, verifier drain, and row
 economy.
+
+## 2026-07-01 — Q6 top-1 stage split and t64 scheduler check
+
+Added deeper instrumentation for the active draft-side gap
+(`draft_run_lm_head_q6_top1_dp4a_gather`) in the q6-X8 llama-compat route:
+
+- `gguf_q6_k_pack8_gemv_decode_{bf16,q8_1_dp4a}_top1_stage1_f32`
+  diagnostic wrappers launch only Q6 top-1 stage1.
+- `gguf_q6_k_pack8_top1_stage2_gather_f32` launches the final block-winner
+  reduce plus optional embedding gather.
+- Combined top-1 wrappers keep the existing 128-thread default but honor
+  `HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS` for diagnostic A/B.
+- `scripts/gguf_mtp_bench.py --resident-mtp-draft-q6-top1-stage1-threads
+  {64,128}` records the setting in raw workload metadata.
+- Suite routes `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64` and
+  `...-t64-allsync` force the 64-thread Q6 top-1 stage1 diagnostic.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_q6_k_pack8_gemv_decode.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+  -> **100 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py`
+  -> **18 passed**. The q8_1/dp4a fixture now also runs split stage1+stage2
+  with `stage1_threads=64` and matches the CPU q8_1/Q6_K oracle.
+- `rocprofv3 --kernel-trace` on the q8_1/dp4a top-1 fixture confirmed both
+  launch shapes: `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_stage1_kernel` with
+  `Workgroup_Size_X=128` and `Workgroup_Size_X=64`, plus
+  `top1_stage2_gather_kernel`.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` could not run
+  because the read-only parent checkout is absent:
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` does not exist.
+
+Measured attribution:
+
+| route / artifact | Q6 top-1 stage1 | stage2/gather | Q6 top-1 aggregate | cycle wall |
+| --- | ---: | ---: | ---: | ---: |
+| 128 all-sync, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | **1.218 ms/output** | 0.041 ms/output | **1.260 ms/output** | **19.252 ms/output** |
+| t64 all-sync, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json` | 1.246 ms/output | 0.040 ms/output | 1.286 ms/output | 19.335 ms/output |
+
+Same-session async smoke also rejects t64:
+
+| route / artifact | B2 tok/s | cycle wall | acceptance |
+| --- | ---: | ---: | --- |
+| 128, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-smoke.json` | **69.06** | **14.501 ms/output** | `acc/output=0.667`, draft `1.000` |
+| t64, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | 68.79 | 14.557 ms/output | `acc/output=0.667`, draft `1.000` |
+
+Conclusion: the remaining draft lm-head cost is Q6 top-1 stage1 compute/layout,
+not activation quantization/cast and not final reduce/gather. llama.cpp's
+two-warp Q6_K MMVQ launch shape does not transfer to hipEngine's pack8 top-1
+stage1; the next draft-side fix needs a different Q6_K stage1 body/layout or a
+broader llama-style MMVQ port.

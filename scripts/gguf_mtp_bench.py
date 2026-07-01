@@ -906,6 +906,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-q6-top1-stage1-threads",
+        type=int,
+        choices=(64, 128),
+        default=128,
+        help=(
+            "Diagnostic llama-compat scheduler A/B for the resident draft Q6_K top-1 "
+            "lm-head stage1 kernel. llama.cpp RDNA3 Q6_K MMVQ uses a two-warp shape; "
+            "hipEngine's current default is 128 threads."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -1134,6 +1145,7 @@ def main(argv: list[str] | None = None):
     if getattr(args, "resident_mtp_draft_q6_top1_dp4a", False):
         # Must be set before constructing the resident MTP draft runner.
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
+    os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(args.resident_mtp_draft_q6_top1_stage1_threads)
     try:
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
@@ -2937,6 +2949,10 @@ def main(argv: list[str] | None = None):
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
             "resident_mtp_draft_q6_top1_dp4a": bool(args.resident_mtp_draft_q6_top1_dp4a),
+            "resident_mtp_draft_q6_top1_stage1_threads": int(args.resident_mtp_draft_q6_top1_stage1_threads),
+            "resident_mtp_draft_q6_top1_stage1_threads_env": os.environ.get(
+                "HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"
+            ),
             "selected_down_x8_repack": str(args.selected_down_x8_repack),
             "selected_down_x8_repack_env": os.environ.get("HIPENGINE_GGUF_SELECTED_X8_REPACK"),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),

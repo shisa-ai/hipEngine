@@ -63,7 +63,8 @@ Current source artifacts:
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
 | hipEngine llama-compat | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`, artifact `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, and q6-only X8 selected-down repack (`--selected-down-x8-repack q6`). |
-| hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-lmheadsplit-allsync-smoke.json` | Attribution-only smoke with extra sync points inside draft, draft lm-head, and selected-MoE gate/up/down. Do not use for headline tok/s. |
+| hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside draft, draft lm-head, selected-MoE gate/up/down, and Q6 top-1 stage1 vs stage2/gather. Do not use for headline tok/s. |
+| hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected q5/both X8 selected-down check | `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json` | Diagnostic only: q6-only X8 selected-down is retained for the accuracy-traded compat lane; q5/both smoke regressed vs q6-only, so q5 stays on T16. |
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
 | hipEngine llama-compat rejected Q8T16 pair t64 check | `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json` | Diagnostic only: the actual verifier `attn_qkv+attn_gate` Q8T16 pair shape is faster at the existing 128-thread launch than at 64 threads. |
@@ -156,7 +157,7 @@ suite row before moving the headline numbers.
 | target area | current hipEngine llama-compat B2 | llama.cpp HIP B2 target | budget to close | current named work |
 | --- | ---: | ---: | ---: | --- |
 | Total cycle wall | **16.587 ms/output** | 14.231 ms/output | **2.356 ms/output** | Every accepted optimization must eventually move this row. |
-| Draft drain | **3.244 ms/output** | 2.140 ms/output | **1.104 ms/output** | Continue cutting MTP lm-head/sampler drain; latest all-sync split names `draft_run_lm_head_q6_top1_dp4a_gather` at **1.246 ms/output**. |
+| Draft drain | **3.244 ms/output** | 2.140 ms/output | **1.104 ms/output** | Continue cutting MTP lm-head/sampler drain; latest all-sync split names `draft_run_lm_head_q6_top1_dp4a_stage1` at **1.218 ms/output** and stage2/gather at only **0.041 ms/output**. |
 | Target verifier drain | **13.023 ms/output** | 12.083 ms/output | **0.940 ms/output** | Remaining B2 layer work is Q8T16 pair projection plus selected gate/up/down bodies. |
 | Target rows / output | **1.250** | 1.148 | 0.102 rows/output | Secondary lever after operation cost: compat still evaluates more target rows than llama. |
 | Non-gaps | AR faster; serial verify removed; setup/snapshot tiny | n/a | n/a | Do not spend time on AR, B1 probe removal, or host setup until the above rows move. |
@@ -171,14 +172,15 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+2.356 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_gather` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.104 ms/output** | Activation quantization/cast is now measured negligible; focus on the Q6_K top-1 dp4a/gather scheduler or a broader llama-style MMVQ layout only if it moves the async row. |
+| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_stage1` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.104 ms/output** | Activation quantization/cast and final reduce/gather are now measured negligible; focus on the Q6_K top-1 stage1 compute/layout or a broader llama-style MMVQ layout only if it moves the async row. |
 | 3 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.940 ms/output** | Q8T16 pair layout/schedule first, then selected-MoE gate/up/down bodies. |
 | 4 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.102 target rows/output | Revisit policy only after operation cost is closer; this is secondary today. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 
 Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8
 (`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync`, attribution-only
-smoke):
+smoke, latest artifact
+`benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json`):
 
 | verifier sub-bucket | ms/output | interpretation |
 | --- | ---: | --- |
@@ -186,10 +188,25 @@ smoke):
 | `target_block_linear_attn_attn_norm` | 0.327 | RMSNorm is not the main issue. |
 | `target_block_linear_attn_attn_qkv_gate_pair` | **2.258** | Current largest verifier target: Q8T16 `attn_qkv+attn_gate` pair projection. |
 | `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.655** | Main selected-MoE target after the down-projection t64 win. |
-| `draft_run_lm_head` | **1.271** | Aggregate draft lm-head bucket from the finer split below. |
-| `draft_run_lm_head_q6_top1_dp4a_gather` | **1.246** | The actual draft lm-head target. Norm/cast/q8_1 quantize are not the missing cost. |
-| `draft_run_lm_head_norm` + cast + q8_1 quantize | **0.024** | Measured negligible; do not spend more time on standalone activation-quantization changes. |
+| `draft_run_lm_head` | **1.291** | Aggregate draft lm-head bucket from the finer split below. |
+| `draft_run_lm_head_q6_top1_dp4a_gather` | **1.260** | Continuity aggregate for the Q6_K top-1 path. |
+| `draft_run_lm_head_q6_top1_dp4a_stage1` | **1.218** | The actual draft lm-head target: Q6_K top-1 stage1 compute/layout. |
+| `draft_run_lm_head_q6_top1_dp4a_stage2_gather` | **0.041** | Final block-winner reduction plus optional embedding gather is not the missing cost. |
+| `draft_run_lm_head_norm` + cast + q8_1 quantize | **0.030** | Measured negligible; do not spend more time on standalone activation-quantization changes. |
 | `target_block_linear_attn_ffn_moe_expert_down` | **1.145** | Improved by the 64-thread selected T16 dp4a scheduler and q6-only X8; still non-trivial. |
+
+The Q6 top-1 stage1 thread-count diagnostic is rejected. llama.cpp's RDNA3
+Q6_K MMVQ selects a two-warp single-column shape, so hipEngine added
+`--resident-mtp-draft-q6-top1-stage1-threads 64` and route
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64` to A/B the analogous
+smaller launch. On the real all-sync route, 128 threads beat 64 threads:
+stage1 **1.218 vs 1.246 ms/output**, Q6 top-1 aggregate
+**1.260 vs 1.286 ms/output**, and cycle wall **19.252 vs 19.335 ms/output**.
+Same-session async smoke also favored 128 threads:
+**69.06 tok/s / 14.501 ms** vs t64 **68.79 tok/s / 14.557 ms**, with identical
+acceptance (`acc/output=0.667`, draft acceptance `1.000`). Keep the t64 route
+as a diagnostic only; the next draft fix is not a simple workgroup-width copy
+from llama.cpp.
 
 The pair-dispatch cache is a small host-side cleanup, not the missing mechanism:
 full-suite compat B2 moved **55.410 -> 55.453 tok/s** and
