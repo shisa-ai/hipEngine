@@ -1819,7 +1819,7 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        if not launch_gguf_linear_pair(
+        pair_fused = launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
             layer.weight("attn_gate"),
             scratch.norm.ptr,
@@ -1831,7 +1831,8 @@ class Qwen35GGUFFullStackRunner:
             out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
-        ):
+        )
+        if not pair_fused:
             launch_gguf_linear(
                 layer.weight("attn_qkv"),
                 scratch.norm.ptr,
@@ -2046,6 +2047,7 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError(f"layer {layer_id} has no linear-attention state")
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
+        t_norm_qkv_gate_ms = 0.0
         gguf_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             layer.weight("attn_norm").allocation().tensor.ptr,
@@ -2056,7 +2058,14 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        if not launch_gguf_linear_pair(
+        if sync_stages:
+            runtime.device_synchronize()
+            t_now = time.perf_counter()
+            norm_ms = (t_now - t_stage) * 1000
+            t_norm_qkv_gate_ms += norm_ms
+            _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_norm", norm_ms)
+            t_stage = time.perf_counter()
+        pair_fused = launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
             layer.weight("attn_gate"),
             scratch.norm.ptr,
@@ -2068,7 +2077,8 @@ class Qwen35GGUFFullStackRunner:
             out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
-        ):
+        )
+        if not pair_fused:
             launch_gguf_linear(
                 layer.weight("attn_qkv"),
                 scratch.norm.ptr,
@@ -2089,13 +2099,15 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_norm_qkv_gate",
-            t_stage,
-        )
+        if sync_stages:
+            runtime.device_synchronize()
+            t_now = time.perf_counter()
+            qkv_gate_ms = (t_now - t_stage) * 1000
+            t_norm_qkv_gate_ms += qkv_gate_ms
+            qkv_gate_suffix = "pair" if pair_fused else "fallback"
+            _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_qkv_gate_{qkv_gate_suffix}", qkv_gate_ms)
+            _add_sync_stage_timing(stage_timings, f"{stage_prefix}_norm_qkv_gate", t_norm_qkv_gate_ms)
+            t_stage = time.perf_counter()
         if cfg.is_moe:
             # The small dense time-step projections feed the recurrent update.
             # Use the registry-dispatched GGUF linear path so qwen35moe's GGUF

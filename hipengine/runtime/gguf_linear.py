@@ -382,16 +382,18 @@ def resolve_gguf_linear_dispatch(
 # entries automatically. In production the registry is stable after import, so
 # this collapses the ~18us-per-launch dispatch-resolve chain to a dict lookup.
 _DISPATCH_RESOLVE_CACHE: dict[tuple, tuple] = {}
+_PAIR_DISPATCH_RESOLVE_CACHE: dict[tuple, str] = {}
 
 
 def clear_gguf_linear_dispatch_cache() -> None:
-    """Drop all memoized launch_gguf_linear dispatch resolutions.
+    """Drop all memoized GGUF linear dispatch resolutions.
 
     Not normally needed (the registry generation in the cache key invalidates
     stale entries automatically); exposed for tests and defensive callers.
     """
 
     _DISPATCH_RESOLVE_CACHE.clear()
+    _PAIR_DISPATCH_RESOLVE_CACHE.clear()
 
 
 def launch_gguf_linear(
@@ -584,6 +586,110 @@ def launch_gguf_linear_pair(
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     out_features_b = out_features if out_features_b is None else int(out_features_b)
+
+    cache_key = (
+        generation(),
+        weight_a.spec.layout,
+        weight_a.spec.quant_key,
+        weight_b.spec.layout,
+        weight_b.spec.quant_key,
+        rows,
+        in_features,
+        out_features,
+        out_features_b,
+        use_wmma,
+        use_gemv,
+    )
+    pair_kind = _PAIR_DISPATCH_RESOLVE_CACHE.get(cache_key)
+    if pair_kind is None:
+        pair_kind = _resolve_gguf_linear_pair_kind(
+            weight_a,
+            weight_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            out_features_b=out_features_b,
+            use_wmma=use_wmma,
+        )
+        _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    if pair_kind == "q4_raw_dual_wmma":
+        gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if pair_kind == "q8_t16_dual_split":
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if pair_kind == "q8_raw_dual":
+        gguf_q8_0_dual_gemv_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if pair_kind == "q4_pack8_dual_prefill":
+        gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("qweight").tensor.ptr,
+            weight_a.allocation("scales").tensor.ptr,
+            weight_a.allocation("mins").tensor.ptr,
+            weight_b.allocation("qweight").tensor.ptr,
+            weight_b.allocation("scales").tensor.ptr,
+            weight_b.allocation("mins").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+    return False
+
+
+def _resolve_gguf_linear_pair_kind(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    out_features_b: int,
+    use_wmma: bool,
+) -> str:
     dispatch_a = _pack8_decode_dispatch(
         resolve_gguf_linear_dispatch(weight_a, rows=rows),
         rows=rows,
@@ -606,19 +712,7 @@ def launch_gguf_linear_pair(
             and dispatch_b.key == q4_prefill_raw
             and _wmma_prefill_shape_supported("gguf_q4_k", in_features)
         ):
-            gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
-                x_ptr,
-                weight_a.allocation("raw").tensor.ptr,
-                weight_b.allocation("raw").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                rows,
-                in_features,
-                out_features,
-                stream=stream,
-                runtime=runtime,
-            )
-            return True
+            return "q4_raw_dual_wmma"
 
         # If either side would be routed to a WMMA prefill singleton that does
         # not have a dual pair path here (currently Q8_0), decline the pair
@@ -626,7 +720,7 @@ def launch_gguf_linear_pair(
         # WMMA family via launch_gguf_linear).
         for d in (dispatch_a, dispatch_b):
             if _dispatch_can_use_wmma_prefill(d, rows=rows, in_features=in_features):
-                return False
+                return "none"
     q8_t16_dual = KernelKey(
         "hip_gfx1100",
         "linear",
@@ -647,58 +741,17 @@ def launch_gguf_linear_pair(
             _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
             or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
         ):
-            return False
-        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features_b,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
+            return "none"
+        return "q8_t16_dual_split"
 
     q8_decode = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
     if rows == 1 and out_features_b == out_features and dispatch_a.key == q8_decode and dispatch_b.key == q8_decode:
-        gguf_q8_0_dual_gemv_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
+        return "q8_raw_dual"
 
     q4_prefill = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out")
     if rows > 1 and out_features_b == out_features and dispatch_a.key == q4_prefill and dispatch_b.key == q4_prefill:
-        gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("qweight").tensor.ptr,
-            weight_a.allocation("scales").tensor.ptr,
-            weight_a.allocation("mins").tensor.ptr,
-            weight_b.allocation("qweight").tensor.ptr,
-            weight_b.allocation("scales").tensor.ptr,
-            weight_b.allocation("mins").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-    return False
+        return "q4_pack8_dual_prefill"
+    return "none"
 
 
 def launch_gguf_linear_triple(

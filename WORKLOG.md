@@ -130166,3 +130166,72 @@ same current compat shape:
   `target_block_linear_attn_ffn_moe_compact_gemv` alone costs 8.977 ms/output.
   Decision: keep `HIPENGINE_GGUF_ROW_COMPACT_GEMV` default-off/rejected; current
   split selected-MoE GEMVs are faster for the llama-compat B2 verifier shape.
+
+## 2026-07-01 — llama-compat active tracking table and pair-dispatch cache
+
+Added a live default-vs-compat-vs-llama.cpp HIP tracking dashboard to
+`docs/MTP-LLAMACPP-PARITY.md`. The table keeps the current exact default row,
+the `llama-compat-device-chain-dp4a` row, and the llama.cpp HIP B2 trace side by
+side, with the current compat gap called out as **+3.826 ms/output**: draft
+**+1.573 ms/output** and target block verify **+1.942 ms/output**.
+
+Implemented a small host-side cleanup for GGUF projection pairs: `launch_gguf_linear_pair`
+now memoizes its branch decision with the same registry-generation invalidation
+policy used by `launch_gguf_linear`. This removes repeated pair dispatch resolution
+from the verifier's per-layer `attn_qkv+attn_gate` calls without changing the
+selected kernel or math. Added focused cache invalidation coverage in
+`tests/test_gguf_linear_dispatch_cache.py`.
+
+Also split the synchronized linear-attention verifier timing bucket:
+`target_block_linear_attn_norm_qkv_gate` is retained as the aggregate, with new
+sub-buckets `target_block_linear_attn_attn_norm` and
+`target_block_linear_attn_attn_qkv_gate_pair` when `--target-block-sync-stage-timings`
+is active.
+
+Validation:
+
+- `python3 -m py_compile hipengine/runtime/gguf_linear.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_linear_dispatch_cache.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_linear_dispatch_cache.py tests/test_gguf_linear_dispatch.py`
+- `git diff --check`
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo` confirms gfx1151/Radeon 8060S.
+
+Benchmarks, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+
+- Async smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-smoke.json`
+  -> AR 54.33 tok/s, B2 66.66 tok/s = 1.2269x AR, acc/output 0.667,
+  draft acceptance 1.000. Smoke only.
+- Async full suite:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-full.json`
+  -> AR 54.75 tok/s, B2 55.45 tok/s = 1.0129x AR, acc/output 0.561,
+  draft acceptance 0.640, cycle wall 18.057 ms/output,
+  `target_block_verify_total` 14.025 ms/output. Compared with the prior
+  skip-snapshot full row, this is a micro move from 55.410 -> 55.453 tok/s and
+  `target_block_verify_total` 14.044 -> 14.025 ms/output with unchanged acceptance.
+- All-sync smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-allsync-smoke.json`
+  -> AR 54.91 tok/s, B2 52.10 tok/s = 0.949x AR, acc/output 0.667,
+  draft acceptance 1.000. Diagnostic sync overhead only. Split buckets:
+  `target_block_linear_attn_norm_qkv_gate` 2.574 ms/output =
+  `attn_norm` 0.356 + `attn_qkv_gate_pair` 2.217.
+- All-sync full suite:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-allsync-full.json`
+  -> AR 54.73 tok/s, B2 44.03 tok/s = 0.8046x AR, acc/output 0.561,
+  draft acceptance 0.640. Diagnostic sync overhead only. Full-suite split buckets
+  in ms/output: `target_block_verify_total` 18.655,
+  `target_block_linear_attn_layers` 13.103, `target_block_full_attn_layers` 4.141,
+  `target_block_linear_attn_norm_qkv_gate` 3.193,
+  `target_block_linear_attn_attn_norm` 0.441,
+  `target_block_linear_attn_attn_qkv_gate_pair` 2.752,
+  `target_block_linear_attn_ffn_moe_expert_gate_up` 2.049,
+  `draft_run_lm_head` 1.916,
+  `target_block_linear_attn_ffn_moe_expert_down` 1.626.
+
+Conclusion: pair-dispatch caching is exact and slightly positive but not a gap closer.
+The main value is attribution: the previous `norm_qkv_gate` target is now known to
+be mostly the Q8T16 `attn_qkv+attn_gate` pair projection, not RMSNorm or fallback
+dispatch. Next optimization target remains target B2 layer compute, specifically
+that Q8T16 pair projection and selected-MoE gate/up/down, plus draft lm-head.

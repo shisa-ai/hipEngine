@@ -19,10 +19,13 @@ import pytest
 
 import hipengine.runtime.gguf_linear as gl
 from hipengine.kernels.registry import KernelKey, _KERNELS, register, resolve
-from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
-from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.loading.qwen35_gguf_materialize import LAYOUT_GGUF_Q8_0_T16, LAYOUT_RAW_GGUF
+from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
 
 _KEY = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
+_PAIR_KEY = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_dual_gemv_decode_bf16_bf16_out"
+)
 
 
 def _fake_weight(*, layout: str, quant_key: str):
@@ -84,4 +87,77 @@ def test_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeypatch)
             _KERNELS.pop(_KEY, None)
         else:
             register(_KEY, saved, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_pair_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeypatch) -> None:
+    gl.clear_gguf_linear_dispatch_cache()
+    calls = {"n": 0}
+    orig_resolve_dispatch = gl.resolve_gguf_linear_dispatch
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return orig_resolve_dispatch(*args, **kwargs)
+
+    monkeypatch.setattr(gl, "resolve_gguf_linear_dispatch", counting)
+
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    fired: list[str] = []
+    saved_kernel = resolve(
+        backend=_PAIR_KEY.backend,
+        layer=_PAIR_KEY.layer,
+        quant=_PAIR_KEY.quant,
+        variant=_PAIR_KEY.variant,
+        missing="none",
+    )
+    saved_wrapper = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
+
+    def fake_wrapper(*args, **kwargs):
+        fired.append("wrapper")
+
+    gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_wrapper  # type: ignore[assignment]
+    try:
+        for _ in range(2):
+            assert launch_gguf_linear_pair(
+                weight_a,
+                weight_b,
+                x_ptr=1,
+                out_a_ptr=2,
+                out_b_ptr=3,
+                rows=2,
+                in_features=2048,
+                out_features=8192,
+                out_features_b=4096,
+                runtime="rt",
+            )
+        # First pair launch resolves both weights; the second identical launch
+        # reuses the pair-kind cache and still calls the current wrapper.
+        assert calls["n"] == 2
+        assert fired == ["wrapper", "wrapper"]
+
+        def fake_registered_kernel(*args, **kwargs):
+            return None
+
+        register(_PAIR_KEY, fake_registered_kernel, replace=True)
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=1,
+            out_a_ptr=2,
+            out_b_ptr=3,
+            rows=2,
+            in_features=2048,
+            out_features=8192,
+            out_features_b=4096,
+            runtime="rt",
+        )
+        assert calls["n"] == 4
+        assert fired[-1] == "wrapper"
+    finally:
+        gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = saved_wrapper  # type: ignore[assignment]
+        if saved_kernel is None:
+            _KERNELS.pop(_PAIR_KEY, None)
+        else:
+            register(_PAIR_KEY, saved_kernel, replace=True)
         gl.clear_gguf_linear_dispatch_cache()
