@@ -26,11 +26,11 @@ gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
 no-probe B2 structure, so its delta column is the active work queue.
 
 Update rule: every future `llama-compat` run that changes the route shape or moves
-throughput must update the source-artifact row, headline gap, stage ledger, active
-gap budget, and the expanded bucket table below in the same commit. Keep the
-three-lane tables visible; do not replace them with prose-only conclusions or a
-single tok/s headline. Old "FINAL" sections further down are historical once
-they disagree with this active tracker.
+throughput must update the source-artifact row, headline gap, stage ledger,
+full-suite bucket inventory, all-sync leaf attribution, active gap budget, and
+target map below in the same commit. Keep the three-lane tables visible; do not
+replace them with prose-only conclusions or a single tok/s headline. Old "FINAL"
+sections further down are historical once they disagree with this active tracker.
 
 Required refresh shape for each retained or diagnostic parity run:
 
@@ -39,7 +39,8 @@ Required refresh shape for each retained or diagnostic parity run:
 | Source artifacts | Exact route name, flags/env, artifact path, and whether the row is retained, all-sync attribution-only, or rejected. | Prevents mixing headline speed rows with diagnostic sync-split rows. |
 | Three-lane speed gap | hipEngine default exact, hipEngine `llama-compat`, llama.cpp HIP, and the compat delta. | Keeps the top-line "how many tok/s or ms are left" visible. |
 | Three-lane stage ledger | The large buckets that have real cross-engine meaning: draft drain, verifier drain, row economy, and non-gaps. | Shows where the remaining couple of ms actually lives. |
-| Expanded bucket table | Every hipEngine cycle-stage bucket plus the closest llama.cpp analog when one exists. | Makes the next target mechanical: pick the largest positive compat delta with a valid analog. |
+| Full-suite bucket inventory | Every high-level bucket emitted by the current hipEngine full-suite artifacts plus the closest llama.cpp analog when one exists. | Makes the next target mechanical: pick the largest positive compat delta with a valid analog. |
+| All-sync leaf attribution | Fine-grained `llama-compat` split rows that explain the large full-suite buckets, with the exact attribution-only artifact named. | Prevents mixing headline speed rows with extra-sync diagnostic rows while still showing which kernel body to attack next. |
 | Active gap budget / target map | Remaining ms or rows to close and the llama.cpp source area to inspect next. | Keeps the implementation work tied to a measured llama-compat gap, not intuition. |
 
 Current gap to close: the retained compat lane is still **+2.356 ms/output** vs
@@ -63,7 +64,8 @@ Current source artifacts:
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
 | hipEngine llama-compat | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`, artifact `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, and q6-only X8 selected-down repack (`--selected-down-x8-repack q6`). |
-| hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside draft, draft lm-head, selected-MoE gate/up/down, and Q6 top-1 stage1 vs stage2/gather. Do not use for headline tok/s. |
+| hipEngine llama-compat verifier all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Attribution-only smoke with extra sync points inside verifier layer families and selected-MoE gate/up/down. Do not use for headline tok/s. |
+| hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
 | hipEngine llama-compat rejected q5/both X8 selected-down check | `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json` | Diagnostic only: q6-only X8 selected-down is retained for the accuracy-traded compat lane; q5/both smoke regressed vs q6-only, so q5 stays on T16. |
@@ -109,13 +111,16 @@ cell as `n/a` and compare it only through `target_block_verify_total` or
 `cycle_wall_ms_per_output`. Raw `target_block_forward` is async-misaligned across
 engines and is not a valid parity target by itself.
 
-#### Three-lane expanded bucket table
+#### Three-lane full-suite bucket inventory
 
 This is the current full-suite cycle-stage inventory for the two hipEngine lanes,
 plus the llama.cpp HIP B2 deep-trace analog where the bucket semantics line up.
-Rows with `n/a` in the llama column are still real hipEngine work, but they should
+It lists every high-level bucket emitted by the current hipEngine full-suite
+artifacts and the llama.cpp native buckets that explain the comparable totals.
+Rows with `n/a` in the llama column are still real hipEngine work, but they must
 roll up through `draft_initial`, `target_block_verify_total`, or total cycle wall
-before we claim parity movement.
+before we claim parity movement. Fine-grained kernel splits are attribution-only
+and live in the next section.
 
 | bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 analog | compat gap vs llama.cpp | action |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -125,11 +130,17 @@ before we claim parity movement.
 | `draft_prepare_inputs` | 0.089 | 0.025 | n/a | n/a | hipEngine-only prep, already small. |
 | `draft_seed_upload` | 0.104 | 0.042 | n/a | n/a | Not a current target. |
 | `draft_mtp_layer_forward` | 0.133 | 0.112 | 0.252 llama draft decode subtotal | compat faster | Draft transformer body is not the gap. |
+| `draft_diagnostic_topk` | 0.000 | n/a | n/a | n/a | Default diagnostic-only row. |
 | `draft_device_chain_ensure_embed_table` | n/a | 0.000 | n/a | n/a | No target. |
 | `draft_device_topk_gather` | n/a | 0.000 | n/a | n/a | No target. |
 | `draft_device_chain_drain` | n/a | **3.051** | n/a | n/a | hipEngine compat draft drain bucket; compare through `draft_initial`. |
 | `draft_topk_d2h` | n/a | 0.008 | n/a | n/a | D2H is too small to explain the gap. |
 | `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.158 | **3.060** | 1.886 | **+1.174** | Visible sampler/GPU-drain target; names are not perfectly isomorphic. |
+| llama `llama_draft_decode_initial` | n/a | n/a | 0.118 | n/a | Llama native row; included in its 0.252 ms draft decode subtotal. |
+| llama `llama_draft_decode_next` | n/a | n/a | 0.134 | n/a | Llama native row; included in its 0.252 ms draft decode subtotal. |
+| llama `llama_draft_prepare_initial_batch` | n/a | n/a | 0.001 | n/a | Llama-only setup, not a gap. |
+| llama `llama_draft_prepare_next_batch` | n/a | n/a | 0.000 | n/a | Llama-only setup, not a gap. |
+| llama `llama_draft_finalize` | n/a | n/a | 0.000 | n/a | Llama-only setup, not a gap. |
 | `target_serial_verify_step` | 6.682 | **0.000** | 0.000 | 0.000 | Compat already removed the default B1 probe. |
 | `target_block_verify_total` | 8.157 | **13.023** | 12.083 | **+0.940** | Main verifier gap. |
 | `target_block_setup` | 0.317 | 0.049 | n/a | n/a | Not a current target. |
@@ -141,12 +152,18 @@ before we claim parity movement.
 | `target_block_output_norm_hidden` | 0.123 | 0.186 | n/a | n/a | Below top targets. |
 | `target_block_lm_head_sample` | 0.573 | **1.136** | n/a | n/a | Verifier-side lm-head/sample target after layer GEMVs. |
 | `target_block_hidden_readback` | 0.005 | 0.008 | n/a | n/a | Not a target. |
-| `target_block_acceptance_accounting` | 0.001 | 0.002 | n/a | n/a | Not a target. |
+| `target_block_acceptance_accounting` | 0.001 | 0.002 | 0.181 | -0.179 | Not a gap; llama charges more visible accounting here. |
 | `target_block_replay_or_commit` | 0.029 | 0.040 | 0.004 | +0.036 | Small. |
-| `mtp_device_kv_commit` | n/a | 0.300 | n/a | n/a | Compat-only bookkeeping; not enough alone. |
 | `target_block_cursor_update` | 0.001 | 0.002 | n/a | n/a | Not a target. |
-| `target_block_snapshot` | 0.060 | n/a | n/a | n/a | Default-only shape. |
-| llama `mtp_context_replay_append` | n/a | 0.007 | **11.348** | n/a | In llama, the verifier GPU drain is charged here; do not compare raw row. |
+| `target_block_snapshot` | 0.060 | n/a | 0.001 | n/a | Default-only hipEngine shape; llama snapshot is tiny. |
+| `mtp_device_kv_commit` | n/a | 0.300 | n/a | n/a | Compat-only bookkeeping; not enough alone. |
+| `mtp_context_replay_append` / llama verifier drain | n/a | 0.007 | **11.348** | n/a | In llama, most verifier GPU drain is charged here; do not compare raw row. |
+| llama `llama_process_build_draft_batch` | n/a | n/a | 11.235 | n/a | Dominant llama verifier/process sub-row inside `mtp_context_replay_append`. |
+| llama `llama_process_decode_ctx_dft` | n/a | n/a | 0.112 | n/a | Llama draft-context process sub-row. |
+| llama `llama_process_copy_verify_h` | n/a | n/a | 0.001 | n/a | Llama-only hidden copy, not a gap. |
+| llama `llama_process_scan_batch` | n/a | n/a | 0.000 | n/a | Llama-only scan, not a gap. |
+| llama `llama_accept_update_pending_h` | n/a | n/a | 0.000 | n/a | Llama-only accept update, not a gap. |
+| setup/snapshot/commit/accounting rollup | 0.406 | 0.092 | 0.188 | -0.096 | Host/control overhead is not the current limiter. |
 
 #### Active gap budget
 
@@ -178,23 +195,27 @@ match but the timings do not.
 | 4 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.102 target rows/output | Revisit policy only after operation cost is closer; this is secondary today. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 
-Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8
-(`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync`, attribution-only
-smoke, latest artifact
-`benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json`):
+Latest verifier/draft split attribution after q6top1dp4a plus q6-only X8 uses
+two attribution-only smokes. Verifier leaf rows come from
+`benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json`;
+draft lm-head leaf rows come from
+`benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json`.
+Do not use either all-sync row for headline tok/s; use them only to choose which
+leaf bucket should move the full-suite `draft_initial` or
+`target_block_verify_total` row next.
 
-| verifier sub-bucket | ms/output | interpretation |
-| --- | ---: | --- |
-| `target_block_linear_attn_norm_qkv_gate` | 2.584 | Aggregate retained for continuity. |
-| `target_block_linear_attn_attn_norm` | 0.327 | RMSNorm is not the main issue. |
-| `target_block_linear_attn_attn_qkv_gate_pair` | **2.258** | Current largest verifier target: Q8T16 `attn_qkv+attn_gate` pair projection. |
-| `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.655** | Main selected-MoE target after the down-projection t64 win. |
-| `draft_run_lm_head` | **1.291** | Aggregate draft lm-head bucket from the finer split below. |
-| `draft_run_lm_head_q6_top1_dp4a_gather` | **1.260** | Continuity aggregate for the Q6_K top-1 path. |
-| `draft_run_lm_head_q6_top1_dp4a_stage1` | **1.218** | The actual draft lm-head target: Q6_K top-1 stage1 compute/layout. |
-| `draft_run_lm_head_q6_top1_dp4a_stage2_gather` | **0.041** | Final block-winner reduction plus optional embedding gather is not the missing cost. |
-| `draft_run_lm_head_norm` + cast + q8_1 quantize | **0.030** | Measured negligible; do not spend more time on standalone activation-quantization changes. |
-| `target_block_linear_attn_ffn_moe_expert_down` | **1.145** | Improved by the 64-thread selected T16 dp4a scheduler and q6-only X8; still non-trivial. |
+| sub-bucket | ms/output | source | interpretation |
+| --- | ---: | --- | --- |
+| `target_block_linear_attn_norm_qkv_gate` | 2.584 | verifier all-sync | Aggregate retained for continuity. |
+| `target_block_linear_attn_attn_norm` | 0.327 | verifier all-sync | RMSNorm is not the main issue. |
+| `target_block_linear_attn_attn_qkv_gate_pair` | **2.258** | verifier all-sync | Current largest verifier target: Q8T16 `attn_qkv+attn_gate` pair projection. |
+| `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.655** | verifier all-sync | Main selected-MoE target after the down-projection t64 win. |
+| `target_block_linear_attn_ffn_moe_expert_down` | **1.145** | verifier all-sync | Improved by the 64-thread selected T16 dp4a scheduler and q6-only X8; still non-trivial. |
+| `draft_run_lm_head` | **1.291** | draft top1 split | Aggregate draft lm-head bucket from the finer split below. |
+| `draft_run_lm_head_q6_top1_dp4a_gather` | **1.260** | draft top1 split | Continuity aggregate for the Q6_K top-1 path. |
+| `draft_run_lm_head_q6_top1_dp4a_stage1` | **1.218** | draft top1 split | The actual draft lm-head target: Q6_K top-1 stage1 compute/layout. |
+| `draft_run_lm_head_q6_top1_dp4a_stage2_gather` | **0.041** | draft top1 split | Final block-winner reduction plus optional embedding gather is not the missing cost. |
+| `draft_run_lm_head_norm` + cast + q8_1 quantize | **0.030** | draft top1 split | Measured negligible; do not spend more time on standalone activation-quantization changes. |
 
 The Q6 top-1 stage1 thread-count diagnostic is rejected. llama.cpp's RDNA3
 Q6_K MMVQ selects a two-warp single-column shape, so hipEngine added

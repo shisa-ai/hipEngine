@@ -131087,3 +131087,23 @@ stage1 gain is erased by reducing over `vocab` candidates instead of `vocab/8`.
 The remaining draft fix needs either a Q6_K stage1 body/layout that preserves
 pack8's small final-reduce economy, or a fused row-stage/top-1 reduction that
 does not materialize one candidate per vocab row.
+
+## 2026-07-01 — MTP parity tracker table contract tightened
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking so future
+`llama-compat` runs keep the comparison mechanical:
+
+- The active tracker now explicitly requires updating source artifacts,
+  three-lane speed gap, stage ledger, full-suite bucket inventory, all-sync leaf
+  attribution, active gap budget, and target map in the same commit.
+- Split the current x8q6 all-sync sources into verifier attribution
+  (`...x8q6-allsync-smoke.json`) and draft Q6 top-1 attribution
+  (`...x8q6-top1split128-allsync-smoke.json`) so we do not present leaf splits
+  from different diagnostic sync runs as one headline artifact.
+- Expanded the three-lane full-suite bucket table to list every current
+  hipEngine high-level full-suite bucket plus llama.cpp native buckets that roll
+  into the comparable totals. Headline gap remains **+2.356 ms/output** vs
+  llama.cpp HIP B2, split across **+1.104 ms/output** draft drain,
+  **+0.940 ms/output** verifier drain, and **+0.102 target rows/output**.
+
+Docs-only change; no GPU validation needed.
