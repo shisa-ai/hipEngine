@@ -130578,3 +130578,22 @@ acceptance. Verifier total is unchanged within noise (**13.134 -> 13.178**).
 
 Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/KERNELS.md`,
 `docs/REFACTOR.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-01 — MTP parity active tracking dashboard
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` so the active parity sprint has a single
+maintained dashboard for hipEngine default exact, hipEngine `llama-compat`, and
+llama.cpp HIP. The doc now has an explicit update rule plus an expanded
+cycle-stage bucket table sourced from the retained/default artifacts:
+
+- hipEngine default exact B5:
+  `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json`.
+- hipEngine `llama-compat-device-chain-dp4a-q6top1dp4a` B2:
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-full.json`.
+- llama.cpp HIP B2:
+  `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`.
+
+Current tracked compat gap remains **+2.562 ms/output** vs llama.cpp HIP, split
+between draft drain (**+1.153 ms/output**) and target verifier drain
+(**+1.095 ms/output**). This was a documentation/tracking change only; no new
+benchmark claim was made.

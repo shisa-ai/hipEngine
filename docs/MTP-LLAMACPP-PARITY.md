@@ -24,6 +24,11 @@ where available; the stage rows use instrumented/deep traces on the same model
 and gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
 no-probe B2 structure, so its delta column is the active work queue.
 
+Update rule: every future `llama-compat` run that changes the route shape or moves
+throughput must update the source-artifact row, headline gap, stage ledger, active
+gap budget, and the expanded bucket table below in the same commit. Old "FINAL"
+sections further down are historical once they disagree with this active tracker.
+
 Current source artifacts:
 
 | lane | route / artifact | why it is in the table |
@@ -69,6 +74,45 @@ Rule for this table: if a bucket has no true llama.cpp analog, leave the llama
 cell as `n/a` and compare it only through `target_block_verify_total` or
 `cycle_wall_ms_per_output`. Raw `target_block_forward` is async-misaligned across
 engines and is not a valid parity target by itself.
+
+#### Expanded current bucket table
+
+This is the current full-suite cycle-stage inventory for the two hipEngine lanes,
+plus the llama.cpp HIP B2 deep-trace analog where the bucket semantics line up.
+Rows with `n/a` in the llama column are still real hipEngine work, but they should
+roll up through `draft_initial`, `target_block_verify_total`, or total cycle wall
+before we claim parity movement.
+
+| bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 analog | compat gap vs llama.cpp | action |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `cycle_wall_ms_per_output` | 16.800 | **16.793** | 14.231 | **+2.562** | Top-line gap to spend down. |
+| `accept_policy_and_seed` | 0.002 | 0.002 | 0.002 | -0.001 | Already noise-level. |
+| `draft_initial` | 1.937 | **3.293** | 2.140 | **+1.153** | Draft drain gap; keep splitting lm-head/sampler/device-chain drain. |
+| `draft_prepare_inputs` | 0.089 | 0.026 | n/a | n/a | hipEngine-only prep, already small. |
+| `draft_seed_upload` | 0.104 | 0.043 | n/a | n/a | Not a current target. |
+| `draft_mtp_layer_forward` | 0.133 | 0.105 | 0.252 llama draft decode subtotal | compat faster | Draft transformer body is not the gap. |
+| `draft_device_chain_ensure_embed_table` | n/a | 0.000 | n/a | n/a | No target. |
+| `draft_device_topk_gather` | n/a | 0.000 | n/a | n/a | No target. |
+| `draft_device_chain_drain` | n/a | **3.106** | n/a | n/a | hipEngine compat draft drain bucket; compare through `draft_initial`. |
+| `draft_topk_d2h` | n/a | 0.007 | n/a | n/a | D2H is too small to explain the gap. |
+| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.158 | **3.114** | 1.886 | **+1.228** | Visible sampler/GPU-drain target; names are not perfectly isomorphic. |
+| `target_serial_verify_step` | 6.682 | **0.000** | 0.000 | 0.000 | Compat already removed the default B1 probe. |
+| `target_block_verify_total` | 8.157 | **13.178** | 12.083 | **+1.095** | Main verifier gap. |
+| `target_block_setup` | 0.317 | 0.050 | n/a | n/a | Not a current target. |
+| `target_block_embedding` | 0.013 | 0.022 | n/a | n/a | Not a current target. |
+| `target_block_forward` | 8.065 | 13.133 | n/a | n/a | Async-misaligned; compare through verifier total. |
+| `target_block_layer_total` | 7.022 | **11.669** | n/a | n/a | hipEngine verifier cost center. |
+| `target_block_linear_attn_layers` | 5.195 | **8.565** | n/a | n/a | Biggest hipEngine verifier family. |
+| `target_block_full_attn_layers` | 1.827 | **3.104** | n/a | n/a | Secondary verifier family. |
+| `target_block_output_norm_hidden` | 0.123 | 0.207 | n/a | n/a | Below top targets. |
+| `target_block_lm_head_sample` | 0.573 | **1.152** | n/a | n/a | Verifier-side lm-head/sample target after layer GEMVs. |
+| `target_block_hidden_readback` | 0.005 | 0.009 | n/a | n/a | Not a target. |
+| `target_block_acceptance_accounting` | 0.001 | 0.002 | n/a | n/a | Not a target. |
+| `target_block_replay_or_commit` | 0.029 | 0.039 | 0.004 | +0.036 | Small. |
+| `mtp_device_kv_commit` | n/a | 0.301 | n/a | n/a | Compat-only bookkeeping; not enough alone. |
+| `target_block_cursor_update` | 0.001 | 0.002 | n/a | n/a | Not a target. |
+| `target_block_snapshot` | 0.060 | n/a | n/a | n/a | Default-only shape. |
+| llama `mtp_context_replay_append` | n/a | 0.008 | **11.348** | n/a | In llama, the verifier GPU drain is charged here; do not compare raw row. |
 
 #### Active gap budget
 
