@@ -577,6 +577,29 @@ extern "C" int hipengine_qwen35_router_logits_fp16_f32w(
       stream));
 }
 
+extern "C" int hipengine_qwen35_router_logits_f32_f32w(
+    const float* hidden,
+    const float* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || num_rows <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  return static_cast<int>(launch_qwen35_router_logits(
+      hidden,
+      weight,
+      logits,
+      tokens,
+      hidden_size,
+      num_rows,
+      threads,
+      stream));
+}
+
 extern "C" int hipengine_qwen35_router_select(
     const float* logits,
     int64_t* selected,

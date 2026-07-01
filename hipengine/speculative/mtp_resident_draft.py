@@ -46,6 +46,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     build_qwen35_router,
+    qwen35_router_logits_f32_f32w,
     qwen35_router_select,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
@@ -262,6 +263,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if self._q6_top1_stage1_shape == "pack16" and self.vocab % 16 != 0:
             raise ValueError("pack16 Q6 top-1 diagnostic requires vocab divisible by 16")
         self._q8_shared_dual_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL", True)
+        self._router_row_parallel_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", False)
         if self.device_chain_enabled is None:
             self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
         else:
@@ -1047,7 +1049,29 @@ class Qwen35GGUFResidentMTPDraftRunner:
         t_stage = t_ffn0 if sync_stages else t_stage
         mtp_rmsnorm_f32(self.attended.ptr, self.post_norm_weight.ptr, self.post_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_post_norm", t_stage)
-        mtp_linear_f32(self.post_norm.ptr, self.router_weight_f32.ptr, self.router_logits.ptr, 1, h, 256, library=self._mtp_lib, runtime=runtime)
+        if self._router_row_parallel_enabled:
+            qwen35_router_logits_f32_f32w(
+                self.post_norm.ptr,
+                self.router_weight_f32.ptr,
+                self.router_logits.ptr,
+                1,
+                h,
+                256,
+                threads=256,
+                library=self._router_lib,
+                runtime=runtime,
+            )
+        else:
+            mtp_linear_f32(
+                self.post_norm.ptr,
+                self.router_weight_f32.ptr,
+                self.router_logits.ptr,
+                1,
+                h,
+                256,
+                library=self._mtp_lib,
+                runtime=runtime,
+            )
         t_stage = mark_stage("draft_run_ffn_router_linear", t_stage)
         qwen35_router_select(
             self.router_logits.ptr,

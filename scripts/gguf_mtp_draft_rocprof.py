@@ -61,6 +61,8 @@ def _apply_route_env(args: argparse.Namespace) -> None:
     os.environ.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
     if bool(args.q6_top1_dp4a):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
+    if bool(args.router_row_parallel):
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"] = "1"
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(int(args.q6_top1_stage1_threads))
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] = str(args.q6_top1_stage1_shape)
     selected_down_x8 = str(args.selected_down_x8_repack)
@@ -272,6 +274,8 @@ def _run_child(args: argparse.Namespace) -> int:
         "q6_top1_stage1_threads": int(args.q6_top1_stage1_threads),
         "q6_top1_stage1_shape": str(args.q6_top1_stage1_shape),
         "q8_shared_dual": _resident_q8_shared_dual_enabled(),
+        "router_row_parallel": bool(args.router_row_parallel),
+        "router_row_parallel_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "host_ms": host_ms,
         "avg_host_ms": sum(host_ms) / len(host_ms) if host_ms else 0.0,
@@ -343,6 +347,8 @@ def _run_parent(args: argparse.Namespace) -> int:
     ]
     if args.q6_top1_dp4a:
         child_base.append("--q6-top1-dp4a")
+    if args.router_row_parallel:
+        child_base.append("--router-row-parallel")
     if args.record_stage_timings:
         child_base.append("--record-stage-timings")
     if args.sync_stage_timings:
@@ -392,6 +398,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "q6_top1_stage1_threads": int(args.q6_top1_stage1_threads),
         "q6_top1_stage1_shape": str(args.q6_top1_stage1_shape),
         "q8_shared_dual": _resident_q8_shared_dual_enabled(),
+        "router_row_parallel": bool(args.router_row_parallel),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "steps": int(args.steps),
         "warmup": int(args.warmup),
@@ -532,6 +539,14 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=1)
     parser.add_argument("--vocab-cap", type=int, default=0)
     parser.add_argument("--q6-top1-dp4a", action="store_true")
+    parser.add_argument(
+        "--router-row-parallel",
+        action="store_true",
+        help=(
+            "Diagnostic llama-compat draft A/B: use the row-parallel F32 router "
+            "logits kernel instead of generic MTP F32 linear for router logits."
+        ),
+    )
     parser.add_argument("--q6-top1-stage1-threads", type=int, default=128)
     parser.add_argument(
         "--q6-top1-stage1-shape",

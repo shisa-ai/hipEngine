@@ -132571,6 +132571,96 @@ python3 -m pytest \
 
 Result: passed.
 
+## 2026-07-02 — llama-compat draft router row-parallel path retained
+
+Added an opt-in resident MTP draft router path that routes the F32 post-norm
+router projection through the existing row-parallel Qwen router logits kernel
+instead of the generic one-block MTP F32 linear. This is exact F32 math for the
+draft body and is enabled by
+`HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL=1`,
+`--resident-mtp-draft-router-row-parallel`, or the suite route
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow`.
+
+Lineage check was attempted before the kernel wrapper edit, but the configured
+reference checkout is missing:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: blocked by
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd: No such file or directory`.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/moe/router.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_bench.py \
+  scripts/gguf_mtp_draft_rocprof.py \
+  scripts/gguf_ar_mtp_suite.py \
+  tests/test_qwen35_router_plan.py
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_qwen35_router_plan.py::test_qwen35_router_registers_bf16_and_w4_paro \
+  tests/test_qwen35_router_plan.py::test_qwen35_router_wrappers_validate_shape_before_gpu_load \
+  tests/test_qwen35_router_plan.py::test_router_logits_f32_f32w_matches_cpu \
+  -q
+
+PYTHONPATH=. python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q
+```
+
+Result: passed.
+
+Draft-chain rocprof A/B:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --record-stage-timings \
+  --sync-stage-timings --require-cached \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --sync-stage-timings --require-cached \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json
+```
+
+Result: control **7.569 ms/cycle host**, **6.461 ms/cycle kernel**;
+router-row **6.971 ms/cycle host**, **5.983 ms/cycle kernel**.
+`draft_run_ffn_router_linear` moved **0.508 -> 0.048 ms/cycle** and the
+kernel-family bucket moved generic `hipengine_mtp_linear_f32` from
+**0.684 -> 0.195 ms/cycle**, with new `qwen35_router_logits` at only
+**0.023 ms/cycle**.
+
+Full-suite retained route:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-routerrow-full.json
+```
+
+Result: AR **54.92 tok/s**, B2 MTP **64.41 tok/s** (**1.1727x**),
+cycle **15.547 ms/output**, `draft_initial` **3.055 ms/output**,
+`target_block_verify_total` **12.166 ms/output**, acc/output **0.578**,
+draft acceptance **0.685**, target rows/output **1.266**. Prior active
+f32ssm lane was **63.63 tok/s**, cycle **15.735 ms/output**, and
+`draft_initial` **3.252 ms/output**, so router-row is retained as the active
+llama-replication lane. Remaining traced gap vs llama.cpp HIP B2 is now
+**+1.316 ms/output**: **+0.915** draft drain, **+0.083** verifier drain,
+and **+0.118 target rows/output**.
+
 ## 2026-07-02 — MTP draft FFN fine-sync split and parity dashboard refresh
 
 Extended the attribution-only `sync_stage_timings` split inside

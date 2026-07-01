@@ -11,6 +11,7 @@ from hipengine.kernels.hip_gfx1100.moe import (
     plan_qwen35_router_build,
     qwen35_router_logits_bf16,
     qwen35_router_logits_bf16_f32w,
+    qwen35_router_logits_f32_f32w,
     qwen35_router_logits_fp16,
     qwen35_router_logits_fp16_f32w,
     qwen35_router_select,
@@ -65,6 +66,10 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="fp16_hidden")
         is qwen35_router_logits_fp16_f32w
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="f32_hidden")
+        is qwen35_router_logits_f32_f32w
     )
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="w4_paro", variant="fp16_hidden")
@@ -161,6 +166,8 @@ def test_qwen35_router_wrappers_validate_shape_before_gpu_load() -> None:
         qwen35_router_logits_fp16(0, 0, 0, 0, 16, 8)
     with pytest.raises(ValueError, match="tokens must be positive"):
         qwen35_router_logits_bf16_f32w(0, 0, 0, 0, 16, 8)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        qwen35_router_logits_f32_f32w(0, 0, 0, 0, 16, 8)
     with pytest.raises(ValueError, match="threads must be one of"):
         qwen35_router_logits_fp16_f32w(0, 0, 0, 1, 16, 8, threads=32)
     with pytest.raises(ValueError, match="top_k must be <= 16"):
@@ -244,6 +251,64 @@ def test_split_shared_coop_bf16_matches_cpu_router(router_library) -> None:
     expected_routing /= np.maximum(expected_routing.sum(dtype=np.float32), np.float32(1.0e-20))
 
     np.testing.assert_allclose(logits, expected_logits, atol=2.0e-5, rtol=2.0e-5)
+    np.testing.assert_array_equal(selected, expected_selected)
+    np.testing.assert_allclose(routing, expected_routing, atol=1.0e-6, rtol=1.0e-6)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_router_logits_f32_f32w_matches_cpu(router_library) -> None:
+    rng = np.random.default_rng(20260702)
+    tokens = 2
+    hidden_size = 128
+    num_experts = 17
+    hidden = rng.normal(0.0, 0.2, size=(tokens, hidden_size)).astype(np.float32)
+    weight = rng.normal(0.0, 0.2, size=(num_experts, hidden_size)).astype(np.float32)
+    logits = np.zeros((tokens, num_experts), dtype=np.float32)
+    selected = np.zeros((tokens, 4), dtype=np.int64)
+    routing = np.zeros((tokens, 4), dtype=np.float32)
+
+    buffers = [malloc(arr.nbytes) for arr in (hidden, weight, logits, selected, routing)]
+    try:
+        for arr, buf in zip((hidden, weight, logits, selected, routing), buffers, strict=True):
+            copy_host_to_device(buf, host_array_ptr(arr), arr.nbytes)
+        qwen35_router_logits_f32_f32w(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            tokens,
+            hidden_size,
+            num_experts,
+            threads=128,
+            library=router_library,
+        )
+        qwen35_router_select(
+            buffers[2].ptr,
+            buffers[3].ptr,
+            buffers[4].ptr,
+            tokens,
+            num_experts,
+            num_experts,
+            4,
+            threads=128,
+            library=router_library,
+        )
+        copy_device_to_host(host_array_ptr(logits), buffers[2], logits.nbytes)
+        copy_device_to_host(host_array_ptr(selected), buffers[3], selected.nbytes)
+        copy_device_to_host(host_array_ptr(routing), buffers[4], routing.nbytes)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+    expected_logits = hidden @ weight.T
+    expected_selected = np.argsort(-expected_logits, axis=-1, kind="stable")[:, :4].astype(np.int64)
+    top_vals = np.take_along_axis(expected_logits, expected_selected, axis=-1)
+    expected_routing = np.exp(top_vals - top_vals[:, :1]).astype(np.float32)
+    expected_routing /= np.maximum(
+        expected_routing.sum(axis=-1, keepdims=True, dtype=np.float32),
+        np.float32(1.0e-20),
+    )
+
+    np.testing.assert_allclose(logits, expected_logits, atol=3.0e-5, rtol=3.0e-5)
     np.testing.assert_array_equal(selected, expected_selected)
     np.testing.assert_allclose(routing, expected_routing, atol=1.0e-6, rtol=1.0e-6)
 

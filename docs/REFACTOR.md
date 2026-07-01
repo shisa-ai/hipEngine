@@ -407,3 +407,20 @@ should be boring.
   Delete the route if smoke/full-suite shows the extra X8 sidecar/top-1 path does
   not move `target_block_verify_total` or if a later fused verifier sampler
   supersedes it.
+
+## `HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL`
+- Added 2026-07-02. Bench flag `--resident-mtp-draft-router-row-parallel`,
+  draft-profile flag `--router-row-parallel`, and suite route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow`
+  route the resident MTP draft F32 router projection through the row-parallel
+  `qwen35_router_logits_f32_f32w` kernel instead of the generic one-block
+  `hipengine_mtp_linear_f32` path.
+- Purpose: retained llama.cpp-replication optimization. Full-suite B2 moved
+  **63.63 -> 64.41 tok/s** and cycle **15.735 -> 15.547 ms/output** with
+  unchanged acceptance/economy. Draft-chain sync attribution moved
+  `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**.
+- Remove / promote when: make this the unconditional resident draft router
+  projection once it is either promoted beyond the llama-compat lane or no
+  longer needs A/B isolation. Delete the env/CLI flag and old generic-router
+  fallback route after the next parity checkpoint no longer needs the direct
+  control.

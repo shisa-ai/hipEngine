@@ -1031,6 +1031,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-router-row-parallel",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic llama-compat draft-path A/B: route the F32 post-norm router projection "
+            "through the row-parallel router logits kernel instead of the generic one-block "
+            "MTP F32 linear."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -1292,6 +1302,8 @@ def main(argv: list[str] | None = None):
     if getattr(args, "resident_mtp_draft_q6_top1_dp4a", False):
         # Must be set before constructing the resident MTP draft runner.
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
+    if getattr(args, "resident_mtp_draft_router_row_parallel", False):
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"] = "1"
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(args.resident_mtp_draft_q6_top1_stage1_threads)
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] = str(args.resident_mtp_draft_q6_top1_stage1_shape)
     try:
@@ -3106,6 +3118,10 @@ def main(argv: list[str] | None = None):
             "verify_lm_head_q6_top1_dp4a_env": os.environ.get("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"),
             "lm_head_q6_x8_sidecar_env": os.environ.get("HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"),
             "resident_mtp_draft_q6_top1_dp4a": bool(args.resident_mtp_draft_q6_top1_dp4a),
+            "resident_mtp_draft_router_row_parallel": bool(args.resident_mtp_draft_router_row_parallel),
+            "resident_mtp_draft_router_row_parallel_env": os.environ.get(
+                "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"
+            ),
             "resident_mtp_draft_q6_top1_stage1_threads": int(args.resident_mtp_draft_q6_top1_stage1_threads),
             "resident_mtp_draft_q6_top1_stage1_threads_env": os.environ.get(
                 "HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"

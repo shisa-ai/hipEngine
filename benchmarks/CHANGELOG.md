@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-02
+
+- [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-compat dense raw-Q8 dp4a all-sidecar + X8 Q6 top1 + F32 `ssm_out` + router-row B2 full suite: MTP `63.63 -> 64.41 tok/s` (+1.22%) and cycle wall `15.735 -> 15.547 ms/output` due to row-parallel F32 draft router logits; `draft_initial` `3.252 -> 3.055 ms/output`, with unchanged acc/output `0.578`, draft acceptance `0.685`, and target rows/output `1.266`. Retained as the active llama-replication lane, not the exact default. `benchmarks/results/2026-07-02-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-routerrow-full.json`.
+
 ## 2026-07-01
 
 - [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-compat dense raw-Q8 dp4a all-sidecar + X8 Q6 top1 + F32 `ssm_out` B2 full suite: MTP `61.31 -> 63.63 tok/s` (+3.79%) and cycle wall `16.331 -> 15.735 ms/output` due to routing direct-state F32 `ssm_out` through F32 q8_1 + raw-Q8 dp4a; `target_block_verify_total` `12.662 -> 12.158 ms/output`, with acc/output `0.567 -> 0.578`, draft acceptance `0.655 -> 0.685`, and target rows/output `1.299 -> 1.266`. Retained as the active llama-replication lane, not the exact default. `benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-full.json`.
