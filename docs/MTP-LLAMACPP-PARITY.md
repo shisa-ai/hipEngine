@@ -27,8 +27,17 @@ no-probe B2 structure, so its delta column is the active work queue.
 
 Update rule: every future `llama-compat` run that changes the route shape or moves
 throughput must update the source-artifact row, headline gap, stage ledger, active
-gap budget, and the expanded bucket table below in the same commit. Old "FINAL"
-sections further down are historical once they disagree with this active tracker.
+gap budget, and the expanded bucket table below in the same commit. Keep the
+three-lane tables visible; do not replace them with prose-only conclusions or a
+single tok/s headline. Old "FINAL" sections further down are historical once
+they disagree with this active tracker.
+
+Current gap to close: the retained compat lane is still **+2.562 ms/output** vs
+the traced llama.cpp HIP B2 row. The actionable split is **+1.153 ms/output**
+draft drain, **+1.095 ms/output** target verifier drain, and **+0.118 target
+rows/output**. Until those rows move, this document should point optimization
+work at the corresponding llama.cpp stage/kernel rather than at unrelated AR or
+host setup rows.
 
 Dashboard contract:
 
@@ -51,7 +60,7 @@ Current source artifacts:
 
 #### Three-lane speed gap
 
-| metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a` B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
+| metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a-q6top1dp4a` B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
 | --- | ---: | ---: | ---: | ---: | --- |
 | AR tok/s | 54.95 retained / 54.56 traced | 54.73 | 51.38 suite / 52.13 traced | hipEngine faster | AR is not the blocker. |
 | MTP tok/s | 60.8 retained / 59.61 traced | **59.63** | 67.3 suite / 72.12 traced | **-7.67 tok/s suite / -12.49 tok/s traced** | Compat now wins AR again, but still trails llama's operation cost. |

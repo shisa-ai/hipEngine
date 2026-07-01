@@ -130711,3 +130711,13 @@ Lineage note: `python3 scripts/check_lineage.py --kind kernel --diff stat` could
 not run because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent in this
 environment (`fatal: cannot change to ... No such file or directory`). This change
 is a local diagnostic ABI/scheduler hook, not a parent-code port.
+
+## 2026-07-01 — MTP parity dashboard gap contract tightened
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` so the active tracker keeps the
+three-lane speed/stage comparison as a required dashboard rather than collapsing
+future runs into prose-only conclusions or a single tok/s headline. The active
+section now calls out the current retained llama-compat gap directly:
+**+2.562 ms/output** vs traced llama.cpp HIP B2, split into **+1.153
+ms/output** draft drain, **+1.095 ms/output** target verifier drain, and
+**+0.118 target rows/output**. Documentation-only change; no new benchmark claim.
