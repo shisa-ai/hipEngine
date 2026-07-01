@@ -11,10 +11,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
     gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
     gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
     gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
     register_gguf_k_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import build_paro_silu, silu_mul_separate_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_quantize_bf16_q8_1,
@@ -257,8 +259,97 @@ def test_selected_pack8_dp4a_registry_and_contract() -> None:
         )
         is gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q5_k",
+            variant="selected_silu_gemv_bf16_bf16_out",
+        )
+        is gguf_q5_k_selected_silu_gemv_bf16_bf16_out
+    )
     with pytest.raises(ValueError, match="divisible"):
         gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out(1, 2, 3, 4, 1, 1, 1, 256, 10)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q5_selected_silu_down_fused_matches_unfused_chain() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import gguf_q5_k_selected_gemv_bf16_bf16_out
+
+    runtime = get_hip_runtime()
+    k_lib = build_gguf_k_gemv(load=True)
+    silu_lib = build_paro_silu(load=True)
+    x_rows = 2
+    rows = 4
+    num_experts = 3
+    in_features = 512
+    out_features = 32
+    rng = np.random.default_rng(20260702)
+    gate = _bf16_bits(rng.standard_normal((x_rows, in_features)).astype(np.float32) * 0.25)
+    up = _bf16_bits(rng.standard_normal((x_rows, in_features)).astype(np.float32) * 0.20)
+    selected = np.asarray([0, 2, 1, 2], dtype=np.int64)
+    base = make_q5_k_weight(out_features, in_features)
+    qweight = np.ascontiguousarray(
+        np.stack([np.roll(base, shift=expert + 1, axis=0) for expert in range(num_experts)], axis=0)
+    )
+    ref = np.zeros((rows, out_features), dtype=np.uint16)
+    got = np.zeros_like(ref)
+    inter = np.zeros((x_rows, in_features), dtype=np.uint16)
+    bufs = []
+    try:
+        gate_d = malloc(gate.nbytes, runtime=runtime)
+        up_d = malloc(up.nbytes, runtime=runtime)
+        selected_d = malloc(selected.nbytes, runtime=runtime)
+        qweight_d = malloc(qweight.nbytes, runtime=runtime)
+        inter_d = malloc(inter.nbytes, runtime=runtime)
+        ref_d = malloc(ref.nbytes, runtime=runtime)
+        got_d = malloc(got.nbytes, runtime=runtime)
+        bufs.extend((gate_d, up_d, selected_d, qweight_d, inter_d, ref_d, got_d))
+        copy_host_to_device(gate_d, host_array_ptr(np.ascontiguousarray(gate)), runtime=runtime)
+        copy_host_to_device(up_d, host_array_ptr(np.ascontiguousarray(up)), runtime=runtime)
+        copy_host_to_device(selected_d, host_array_ptr(np.ascontiguousarray(selected)), runtime=runtime)
+        copy_host_to_device(qweight_d, host_array_ptr(np.ascontiguousarray(qweight)), runtime=runtime)
+
+        silu_mul_separate_out_bf16(
+            gate_d.ptr, up_d.ptr, inter_d.ptr, x_rows, in_features, library=silu_lib, runtime=runtime
+        )
+        gguf_q5_k_selected_gemv_bf16_bf16_out(
+            inter_d.ptr,
+            selected_d.ptr,
+            qweight_d.ptr,
+            ref_d.ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            library=k_lib,
+            runtime=runtime,
+        )
+        gguf_q5_k_selected_silu_gemv_bf16_bf16_out(
+            gate_d.ptr,
+            up_d.ptr,
+            selected_d.ptr,
+            qweight_d.ptr,
+            got_d.ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            library=k_lib,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(ref), ref_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(got), got_d, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(got, ref)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

@@ -63,6 +63,8 @@ def _apply_route_env(args: argparse.Namespace) -> None:
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
     if bool(args.dense_q8_dp4a):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"] = "1"
+    if bool(args.selected_silu_down_fused):
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"] = "1"
     if bool(args.router_row_parallel):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"] = "1"
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(int(args.q6_top1_stage1_threads))
@@ -278,6 +280,8 @@ def _run_child(args: argparse.Namespace) -> int:
         "q8_shared_dual": _resident_q8_shared_dual_enabled(),
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
         "dense_q8_dp4a_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"),
+        "selected_silu_down_fused": bool(args.selected_silu_down_fused),
+        "selected_silu_down_fused_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"),
         "router_row_parallel": bool(args.router_row_parallel),
         "router_row_parallel_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
@@ -353,6 +357,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--q6-top1-dp4a")
     if args.dense_q8_dp4a:
         child_base.append("--dense-q8-dp4a")
+    if args.selected_silu_down_fused:
+        child_base.append("--selected-silu-down-fused")
     if args.router_row_parallel:
         child_base.append("--router-row-parallel")
     if args.record_stage_timings:
@@ -405,6 +411,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "q6_top1_stage1_shape": str(args.q6_top1_stage1_shape),
         "q8_shared_dual": _resident_q8_shared_dual_enabled(),
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
+        "selected_silu_down_fused": bool(args.selected_silu_down_fused),
         "router_row_parallel": bool(args.router_row_parallel),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "steps": int(args.steps),
@@ -552,6 +559,14 @@ def main() -> int:
         help=(
             "Diagnostic llama-compat draft A/B: route resident draft dense Q8_0 "
             "F32 projections through f32->q8_1 plus raw-Q8 dp4a float-output wrappers."
+        ),
+    )
+    parser.add_argument(
+        "--selected-silu-down-fused",
+        action="store_true",
+        help=(
+            "Diagnostic llama-compat draft A/B: fuse selected MoE SiLU(gate)*up "
+            "into the Q5_K selected-down GEMV."
         ),
     )
     parser.add_argument(

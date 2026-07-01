@@ -1051,6 +1051,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-selected-silu-down-fused",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic llama-compat draft-path A/B: fuse selected MoE SiLU(gate)*up "
+            "into the Q5_K selected-down GEMV. Default off until full-suite economics "
+            "prove the launch/intermediate saving transfers."
+        ),
+    )
+    parser.add_argument(
         "--draft-p-min",
         type=float,
         default=0.0,
@@ -1316,6 +1326,8 @@ def main(argv: list[str] | None = None):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"] = "1"
     if getattr(args, "resident_mtp_draft_dense_q8_dp4a", False):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"] = "1"
+    if getattr(args, "resident_mtp_draft_selected_silu_down_fused", False):
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"] = "1"
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(args.resident_mtp_draft_q6_top1_stage1_threads)
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] = str(args.resident_mtp_draft_q6_top1_stage1_shape)
     try:
@@ -3137,6 +3149,12 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft_dense_q8_dp4a": bool(args.resident_mtp_draft_dense_q8_dp4a),
             "resident_mtp_draft_dense_q8_dp4a_env": os.environ.get(
                 "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"
+            ),
+            "resident_mtp_draft_selected_silu_down_fused": bool(
+                args.resident_mtp_draft_selected_silu_down_fused
+            ),
+            "resident_mtp_draft_selected_silu_down_fused_env": os.environ.get(
+                "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
             ),
             "resident_mtp_draft_q6_top1_stage1_threads": int(args.resident_mtp_draft_q6_top1_stage1_threads),
             "resident_mtp_draft_q6_top1_stage1_threads_env": os.environ.get(

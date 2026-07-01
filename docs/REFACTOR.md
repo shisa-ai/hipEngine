@@ -441,3 +441,20 @@ should be boring.
 - Remove when: the next parity checkpoint no longer needs this negative
   evidence, or if a future fused dense-draft design replaces the standalone
   quantize+dp4a calls. Do not promote the flag as-is.
+
+## `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` (diagnostic rejected)
+- Added 2026-07-02. Bench flag
+  `--resident-mtp-draft-selected-silu-down-fused`, draft-profile flag
+  `--selected-silu-down-fused`, and suite routes ending in `-siludown` route
+  selected MoE `silu(gate)*up` directly into a Q5_K selected-down GEMV.
+- Purpose: test a llama.cpp-shaped fused GLU/down idea without changing row
+  economy or draft precision. The fused kernel is bit-exact versus the existing
+  BF16 chain (`silu_mul_separate_out_bf16` + `gguf_q5_k_selected_gemv_bf16_bf16_out`).
+- Result: rejected by draft-chain profile before full-suite. It removes one
+  launch, but the fused Q5 body is slower: active router-row control
+  **5.973 ms/cycle kernel / 7.044 ms/cycle host** vs fused
+  **6.054 ms/cycle kernel / 7.206 ms/cycle host**; selected-down family
+  **0.325 -> 0.391 ms/cycle**.
+- Remove when: the next parity checkpoint no longer needs this negative evidence,
+  or if a different fused Q5 selected-down body replaces it and wins the draft
+  parent profile. Do not promote the flag as-is.

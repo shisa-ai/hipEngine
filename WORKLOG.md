@@ -132571,6 +132571,78 @@ python3 -m pytest \
 
 Result: passed.
 
+## 2026-07-02 — Rejected selected SiLU/down fusion for llama-compat draft
+
+Implemented a default-off resident draft diagnostic that fuses selected MoE
+`silu(gate) * up` into the Q5_K selected-down GEMV:
+
+- env flag `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED`
+- bench flag `--resident-mtp-draft-selected-silu-down-fused`
+- draft-profile flag `--selected-silu-down-fused`
+- suite routes ending in `-siludown`
+
+The fused kernel is an exact replacement for the active BF16 chain:
+`silu_mul_separate_out_bf16` followed by
+`gguf_q5_k_selected_gemv_bf16_bf16_out`. It rounds the SiLU intermediate to BF16
+inside the GEMV before the Q5_K dot.
+
+Correctness / routing validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_mtp_draft_rocprof.py \
+  scripts/gguf_ar_mtp_suite.py tests/test_gguf_k_selected_pack8_dp4a_gemv.py
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_gguf_k_selected_pack8_dp4a_gemv.py::test_selected_pack8_dp4a_registry_and_contract \
+  tests/test_gguf_k_selected_pack8_dp4a_gemv.py::test_q5_selected_silu_down_fused_matches_unfused_chain \
+  -q
+```
+
+Result: passed; fused Q5 selected SiLU/down is bit-exact against the unfused
+chain on the HIP fixture.
+
+Draft profile A/B on the active router-row compat draft route:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --router-row-parallel --selected-down-x8-repack q6 \
+  --record-stage-timings --sync-stage-timings \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-siludown-control-fine-sync.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --router-row-parallel --selected-down-x8-repack q6 \
+  --selected-silu-down-fused --record-stage-timings --sync-stage-timings \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-siludown-fine-sync.json
+```
+
+Result: rejected before full-suite. The fused path removes one launch
+(kernel calls/step **90.75 -> 88.5**) but regresses the draft parent profile:
+kernel **5.973 -> 6.054 ms/cycle**, host **7.044 -> 7.206 ms/cycle**,
+`draft_run_moe_down_combine` **0.487 -> 0.531 ms/cycle**, and selected-down
+kernel family **0.325 -> 0.391 ms/cycle**. Do not promote or spend a full-suite
+run on this fused body; the active lane remains
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow`.
+
+Kernel-lineage precheck was attempted after the diagnostic kernel addition:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: blocked before diffing because the configured external parent checkout
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent. ROCm sanity on this host
+passes (`libamdhip64.so` loads; `rocminfo | rg "Name:|gfx"` reports `gfx1151` /
+Radeon 8060S Graphics).
+
 ## 2026-07-02 — Rejected resident draft dense-Q8 dp4a route
 
 Implemented a default-off llama-compat diagnostic for resident MTP draft dense

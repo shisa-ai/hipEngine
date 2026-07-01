@@ -54,6 +54,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_dual_gemv_f32_f32_out,
     gguf_q5_k_gemv_f32_f32_out,
     gguf_q5_k_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_f32_f32_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
@@ -169,6 +170,7 @@ def apply_moe_down_combine(
     cast_lib,
     runtime: HipRuntime | None = None,
     stage_marker=None,
+    selected_silu_down_fused: bool = False,
 ) -> None:
     """Device-resident NextN selected-MoE down + combine (no host readback).
 
@@ -184,22 +186,33 @@ def apply_moe_down_combine(
     in ``ffn_out_f32_ptr`` for the downstream RMSNorm.
     """
     runtime = runtime or get_hip_runtime()
-    # SiLU(gate) * up over all top_k experts at once (bf16 in/out).
-    silu_mul_separate_out_bf16(
-        gate_bf16_ptr, up_bf16_ptr, inter_bf16_ptr, top_k, inter,
-        library=silu_lib, runtime=runtime,
-    )
-    if stage_marker is not None:
-        stage_marker("draft_run_moe_selected_silu")
-    # Selected-down GEMV: each expert consumes its own intermediate row
-    # (x_rows == rows == top_k  =>  lanes_per_x_row == 1  =>  x_row == row).
-    gguf_q5_k_selected_gemv_bf16_bf16_out(
-        inter_bf16_ptr, selected_ptr, down_exps_ptr, down_out_bf16_ptr,
-        top_k, top_k, num_experts, inter, hidden,
-        library=k_lib, runtime=runtime,
-    )
-    if stage_marker is not None:
-        stage_marker("draft_run_moe_selected_down")
+    if selected_silu_down_fused:
+        # Exact replacement for silu_mul_separate_out_bf16 + Q5_K selected down:
+        # the fused kernel rounds SiLU(gate)*up to bf16 before the dot.
+        gguf_q5_k_selected_silu_gemv_bf16_bf16_out(
+            gate_bf16_ptr, up_bf16_ptr, selected_ptr, down_exps_ptr, down_out_bf16_ptr,
+            top_k, top_k, num_experts, inter, hidden,
+            library=k_lib, runtime=runtime,
+        )
+        if stage_marker is not None:
+            stage_marker("draft_run_moe_selected_silu_down_fused")
+    else:
+        # SiLU(gate) * up over all top_k experts at once (bf16 in/out).
+        silu_mul_separate_out_bf16(
+            gate_bf16_ptr, up_bf16_ptr, inter_bf16_ptr, top_k, inter,
+            library=silu_lib, runtime=runtime,
+        )
+        if stage_marker is not None:
+            stage_marker("draft_run_moe_selected_silu")
+        # Selected-down GEMV: each expert consumes its own intermediate row
+        # (x_rows == rows == top_k  =>  lanes_per_x_row == 1  =>  x_row == row).
+        gguf_q5_k_selected_gemv_bf16_bf16_out(
+            inter_bf16_ptr, selected_ptr, down_exps_ptr, down_out_bf16_ptr,
+            top_k, top_k, num_experts, inter, hidden,
+            library=k_lib, runtime=runtime,
+        )
+        if stage_marker is not None:
+            stage_marker("draft_run_moe_selected_down")
     # Cast the f32 residual + shared-expert output to bf16 for the combine.
     f32_to_bf16(residual_ptr, attended_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
     f32_to_bf16(shared_out_ptr, shared_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
@@ -253,6 +266,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
             "require_cached": bool(self.require_cached_build),
         }
         self._draft_dense_q8_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A", False)
+        self._selected_silu_down_fused = _env_flag(
+            "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED", False
+        )
         self._mtp_lib = build_mtp_nextn(**build_kwargs)
         self._k_lib = build_gguf_k_gemv(**build_kwargs)
         self._q4_lib = build_gguf_q4_k_gemv(**build_kwargs)
@@ -1389,6 +1405,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 cast_lib=self._cast_lib,
                 runtime=runtime,
                 stage_marker=mark_substage if sync_stages else None,
+                selected_silu_down_fused=bool(getattr(self, "_selected_silu_down_fused", False)),
             )
         else:
             # Legacy host-readback per-expert down loop + shared-gate combine.

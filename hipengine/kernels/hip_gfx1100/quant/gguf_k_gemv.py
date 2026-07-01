@@ -87,6 +87,13 @@ def _make_selected_wrapper(quant: str, symbol: str):
     return wrapper
 
 
+def _make_selected_silu_wrapper(quant: str, symbol: str):
+    def wrapper(*args, **kwargs) -> None:
+        _launch_selected_silu(quant, symbol, *args, **kwargs)
+
+    return wrapper
+
+
 def _make_dual_wrapper(quant: str, symbol: str):
     def wrapper(*args, **kwargs) -> None:
         _launch_dual(quant, symbol, *args, **kwargs)
@@ -143,6 +150,9 @@ gguf_q5_k_gemv_bf16_bf16_out = _make_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "
 gguf_q5_k_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_bf16_f32_out"))
 gguf_q5_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_gemv_bf16_bf16_out"))
+gguf_q5_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "selected_silu_gemv_bf16_bf16_out")
+)
 gguf_q5_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_pack8_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out = _make_selected_pack8_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_pack8_gemv_q8_1_dp4a_bf16_bf16_out")
@@ -165,6 +175,9 @@ gguf_q6_k_gemv_bf16_bf16_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "
 gguf_q6_k_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "pack8_gemv_bf16_f32_out"))
 gguf_q6_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "pack8_gemv_bf16_bf16_out"))
 gguf_q6_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "selected_gemv_bf16_bf16_out"))
+gguf_q6_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
+    "gguf_q6_k", _symbol("gguf_q6_k", "selected_silu_gemv_bf16_bf16_out")
+)
 gguf_q6_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "selected_pack8_gemv_bf16_bf16_out"))
 gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out = _make_selected_pack8_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "selected_pack8_gemv_q8_1_dp4a_bf16_bf16_out")
@@ -314,6 +327,56 @@ def _launch_selected(
     _check_launch(runtime, err)
 
 
+def _launch_selected_silu(
+    quant: str,
+    symbol: str,
+    gate_ptr: int,
+    up_ptr: int,
+    selected_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if x_rows <= 0:
+        raise ValueError("x_rows must be positive")
+    if rows <= 0 or rows % x_rows != 0:
+        raise ValueError("rows must be positive and divisible by x_rows")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    _validate(quant, rows, in_features, out_features, threads)
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library,
+        symbol,
+        [_VOID, _VOID, _VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _I64, _I64, _VOID],
+    )
+    err = fn(
+        gate_ptr,
+        up_ptr,
+        selected_ptr,
+        qweight_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
 def _validate(
     quant: str,
     rows: int,
@@ -381,6 +444,7 @@ _WRAPPERS = {
         "pack8_gemv_bf16_f32_out": gguf_q5_k_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q5_k_pack8_gemv_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
+        "selected_silu_gemv_bf16_bf16_out": gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
         "selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q5_k_prefill_f32_f32_out,
@@ -405,6 +469,7 @@ _WRAPPERS = {
         "pack8_gemv_bf16_f32_out": gguf_q6_k_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q6_k_pack8_gemv_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q6_k_selected_gemv_bf16_bf16_out,
+        "selected_silu_gemv_bf16_bf16_out": gguf_q6_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
         "selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out": gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q6_k_prefill_f32_f32_out,
@@ -433,6 +498,7 @@ __all__ = [
     "gguf_q5_k_gemv_bf16_fp16_out",
     "gguf_q5_k_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
+    "gguf_q5_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_prefill_f32_f32_out",
     "gguf_q5_k_prefill_f32_fp16_out",
@@ -449,6 +515,7 @@ __all__ = [
     "gguf_q6_k_gemv_bf16_fp16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",
+    "gguf_q6_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q6_k_prefill_f32_f32_out",
     "gguf_q6_k_prefill_f32_fp16_out",
