@@ -16,6 +16,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out,
     gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_f32_bf16_out,
     gguf_q8_0_t16_gemv_decode_fp16_fp16_out,
@@ -268,6 +270,8 @@ def test_p9_h3c_registry_keys_resolve() -> None:
         "t16_dual_gate_up_gemv_decode_fp16_fp16_out",
         "t16_dual_gemv_decode_bf16_bf16_out",
         "t16_dual_gemv_decode_fp16_fp16_out",
+        "t16_dual_gemv_decode_rowtile2_bf16_bf16_out",
+        "t16_dual_gemv_decode_rowtile4_bf16_bf16_out",
         "t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out",
         "t16_triple_gemv_decode_bf16_bf16_out",
         "t16_triple_gemv_decode_fp16_fp16_out",
@@ -559,6 +563,95 @@ def test_q8_t16_dual_split_q8_1_dp4a_matches_oracle_and_quality_gate(q8_t16_libr
     assert float(np.mean(kl)) <= 0.05, f"KL={float(np.mean(kl))}"
     top1 = float(np.mean(np.argmax(full_ref, axis=-1) == np.argmax(actual, axis=-1)))
     assert top1 >= 0.90, f"top1={top1}"
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "fn,rows",
+    [
+        (gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out, 3),
+        (gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out, 5),
+    ],
+)
+def test_q8_t16_dual_split_rowtile_matches_exact_pair(fn, rows: int, q8_t16_library) -> None:
+    rows, in_features, out_features_a, out_features_b = rows, 512, 64, 128
+    rng = np.random.default_rng(9100 + rows)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    actual_a, actual_b = _run_dual_split(
+        fn,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+    )
+    expected_a, expected_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q8_t16_dual_split_rowtile4_matches_exact_qwen35_attention_pair_shape(q8_t16_library) -> None:
+    rows, in_features, out_features_a, out_features_b = 3, 2048, 8192, 4096
+    rng = np.random.default_rng(9173)
+    qa = make_q8_0_weight(out_features_a, in_features)
+    qb = make_q8_0_weight(out_features_b, in_features)
+    ta = repack_gguf_q8_0_tile16(qa).tiles
+    tb = repack_gguf_q8_0_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    actual_a, actual_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+        threads=64,
+    )
+    expected_a, expected_b = _run_dual_split(
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        ta,
+        tb,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        np.uint16,
+        q8_t16_library,
+        threads=128,
+    )
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

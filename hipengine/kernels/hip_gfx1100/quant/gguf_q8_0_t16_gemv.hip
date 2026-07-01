@@ -333,6 +333,103 @@ __global__ __launch_bounds__(128, 4) void q8_0_t16_dual_split_gemv_kernel(
   }
 }
 
+template <typename scalar_t, typename out_t, int ROW_TILE>
+__global__ __launch_bounds__(128, 2) void q8_0_t16_dual_split_rowtile_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    out_t* __restrict__ out_a,
+    out_t* __restrict__ out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b) {
+  const int total_tiles_a = static_cast<int>(out_features_a / T16_COLS);
+  const int out_tile_global = static_cast<int>(blockIdx.x);
+  const bool use_b = out_tile_global >= total_tiles_a;
+  const int local_tile = use_b ? (out_tile_global - total_tiles_a) : out_tile_global;
+  const int row0 = static_cast<int>(blockIdx.y) * ROW_TILE;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / Q8_0_BLOCK;
+  const uint8_t* __restrict__ tiles = use_b ? tiles_b : tiles_a;
+  out_t* __restrict__ out = use_b ? out_b : out_a;
+  const int64_t out_features = use_b ? out_features_b : out_features_a;
+  float acc[ROW_TILE][T16_COLS];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      acc[r][col] = 0.0f;
+    }
+  }
+
+  for (int64_t k = tid; k < in_features; k += blockDim.x) {
+    const int64_t block_idx = k / Q8_0_BLOCK;
+    const int lane = static_cast<int>(k & (Q8_0_BLOCK - 1));
+    const uint8_t* __restrict__ tile =
+        tiles + (static_cast<int64_t>(local_tile) * blocks_per_row + block_idx) * T16_BLOCK_BYTES;
+    const int8_t* __restrict__ q = reinterpret_cast<const int8_t*>(tile + T16_D_BYTES + lane * T16_COLS);
+    float d[T16_COLS];
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      d[col] = fp16_bytes_to_float(tile + col * 2);
+    }
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      const int row = row0 + r;
+      if (row < rows) {
+        const scalar_t* __restrict__ x_row = x + static_cast<int64_t>(row) * in_features;
+        const float xv = scalar_to_float<scalar_t>(x_row[k]);
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          acc[r][col] += xv * (d[col] * static_cast<float>(q[col]));
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      GGUF_T16_WAVE_REDUCE(acc[r][col]);
+    }
+  }
+
+  __shared__ float xchg[4 * ROW_TILE * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        xchg[(sub_id * ROW_TILE + r) * T16_COLS + col] = acc[r][col];
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    const int sub_groups = blockDim.x >> 5;
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      const int row = row0 + r;
+      if (row < rows) {
+        out_t* __restrict__ out_row = out + static_cast<int64_t>(row) * out_features + local_tile * T16_COLS;
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          float total = 0.0f;
+          for (int g = 0; g < sub_groups; ++g) {
+            total += xchg[(g * ROW_TILE + r) * T16_COLS + col];
+          }
+          out_row[col] = float_to_scalar<out_t>(total);
+        }
+      }
+    }
+  }
+}
+
 template <typename out_t>
 __global__ __launch_bounds__(128, 4) void q8_0_t16_dual_split_q8_1_dp4a_kernel(
     const gguf_q8_1_block* __restrict__ xq,
@@ -572,6 +669,35 @@ int launch_dual_split(const void* x,
   return hipGetLastError();
 }
 
+template <typename scalar_t, typename out_t, int ROW_TILE>
+int launch_dual_split_rowtile(const void* x,
+                              const void* tiles_a,
+                              const void* tiles_b,
+                              void* out_a,
+                              void* out_b,
+                              int64_t rows,
+                              int64_t in_features,
+                              int64_t out_features_a,
+                              int64_t out_features_b,
+                              int64_t threads,
+                              hipStream_t stream) {
+  if (!x || !tiles_a || !tiles_b || !out_a || !out_b || rows <= 0 || in_features <= 0 ||
+      out_features_a <= 0 || out_features_b <= 0 || (in_features % Q8_0_BLOCK) != 0 ||
+      (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0 ||
+      !valid_threads(threads)) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>((out_features_a + out_features_b) / T16_COLS),
+                  static_cast<unsigned int>((rows + ROW_TILE - 1) / ROW_TILE));
+  hipLaunchKernelGGL((q8_0_t16_dual_split_rowtile_gemv_kernel<scalar_t, out_t, ROW_TILE>), grid, block, 0, stream,
+                     reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles_a),
+                     reinterpret_cast<const uint8_t*>(tiles_b), reinterpret_cast<out_t*>(out_a),
+                     reinterpret_cast<out_t*>(out_b), rows, in_features, out_features_a,
+                     out_features_b);
+  return hipGetLastError();
+}
+
 template <typename out_t>
 int launch_dual_split_q8_1_dp4a(const void* xq,
                                 const void* tiles_a,
@@ -686,6 +812,24 @@ extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_fp16_fp16_out(
   return launch_dual_split<half_t, half_t>(x, tiles_a, tiles_b, out_a, out_b, rows,
                                           in_features, out_features_a, out_features_b,
                                           threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out(
+    const void* x, const void* tiles_a, const void* tiles_b, void* out_a, void* out_b,
+    int64_t rows, int64_t in_features, int64_t out_features_a, int64_t out_features_b,
+    int64_t threads, hipStream_t stream) {
+  return launch_dual_split_rowtile<uint16_t, uint16_t, 2>(x, tiles_a, tiles_b, out_a, out_b,
+                                                         rows, in_features, out_features_a,
+                                                         out_features_b, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out(
+    const void* x, const void* tiles_a, const void* tiles_b, void* out_a, void* out_b,
+    int64_t rows, int64_t in_features, int64_t out_features_a, int64_t out_features_b,
+    int64_t threads, hipStream_t stream) {
+  return launch_dual_split_rowtile<uint16_t, uint16_t, 4>(x, tiles_a, tiles_b, out_a, out_b,
+                                                         rows, in_features, out_features_a,
+                                                         out_features_b, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out(

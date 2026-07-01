@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
     register_gguf_q8_0_t16_gemv_kernels,
 )
@@ -112,6 +113,10 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
 # pair-projection A/B. Kept separate from selected-MoE T16 dp4a scheduling.
 _Q8_T16_THREADS_ENV = "HIPENGINE_GGUF_Q8_T16_THREADS"
 _Q8_T16_ALLOWED_THREADS = frozenset({64, 128})
+_Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
+_Q8_T16_QWEN35_ATTN_QKV_OUT = 8192
+_Q8_T16_QWEN35_ATTN_GATE_OUT = 4096
+_Q8_T16_QWEN35_ATTN_IN = 2048
 
 
 @dataclass(frozen=True)
@@ -245,6 +250,35 @@ def _resolve_q8_t16_threads(threads: int = 0) -> int:
     if value not in _Q8_T16_ALLOWED_THREADS:
         raise ValueError(f"{_Q8_T16_THREADS_ENV} must be one of 64 or 128")
     return value
+
+
+def _q8_t16_threads_override_active(threads: int = 0) -> bool:
+    return int(threads) != 0 or bool(os.environ.get(_Q8_T16_THREADS_ENV, "").strip())
+
+
+def _resolve_use_q8_t16_pair_rowtile() -> bool:
+    raw = os.environ.get(_Q8_T16_PAIR_ROWTILE_ENV, "")
+    if not raw:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _use_q8_t16_pair_rowtile(
+    *,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    threads: int = 0,
+) -> bool:
+    return (
+        rows > 1
+        and in_features == _Q8_T16_QWEN35_ATTN_IN
+        and out_features_a == _Q8_T16_QWEN35_ATTN_QKV_OUT
+        and out_features_b == _Q8_T16_QWEN35_ATTN_GATE_OUT
+        and not _q8_t16_threads_override_active(threads)
+        and _resolve_use_q8_t16_pair_rowtile()
+    )
 
 
 def set_wmma_prefill_enabled(enabled: bool | None) -> None:
@@ -662,6 +696,28 @@ def launch_gguf_linear_pair(
         return True
 
     if pair_kind == "q8_t16_dual_split":
+        if _use_q8_t16_pair_rowtile(
+            rows=rows,
+            in_features=in_features,
+            out_features_a=out_features,
+            out_features_b=out_features_b,
+            threads=threads,
+        ):
+            gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                threads=64,
+                stream=stream,
+                runtime=runtime,
+            )
+            return True
         gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("tiles").tensor.ptr,

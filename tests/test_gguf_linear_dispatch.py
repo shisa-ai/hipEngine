@@ -569,7 +569,7 @@ def test_t16_pair_concat_fuses_q8_shared_gate_up() -> None:
 
     assert fused is True
     assert pair_calls == [
-        ((100, 14, 14, 200, 1, 2048, 512, 512), {"stream": 7, "runtime": "runtime-sentinel"})
+        ((100, 14, 14, 200, 1, 2048, 512, 512), {"threads": 0, "stream": 7, "runtime": "runtime-sentinel"})
     ]
 
 
@@ -619,8 +619,106 @@ def test_t16_pair_fuses_q8_separate_outputs() -> None:
     assert fused_equal is True
     assert fused_unequal is True
     assert pair_calls == [
-        ((100, 14, 14, 200, 300, 1, 2048, 512, 512), {"stream": 7, "runtime": "runtime-sentinel"}),
-        ((101, 14, 14, 201, 301, 1, 2048, 1536, 512), {"stream": 8, "runtime": "runtime-sentinel"}),
+        ((100, 14, 14, 200, 300, 1, 2048, 512, 512), {"threads": 0, "stream": 7, "runtime": "runtime-sentinel"}),
+        ((101, 14, 14, 201, 301, 1, 2048, 1536, 512), {"threads": 0, "stream": 8, "runtime": "runtime-sentinel"}),
+    ]
+
+
+def test_t16_pair_qwen35_rows_gt1_routes_to_rowtile4_when_opted_in(monkeypatch) -> None:
+    """The large qwen35 attn_qkv+attn_gate verifier pair can opt into rowtile4."""
+
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_THREADS", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE", "1")
+    gl.clear_gguf_linear_dispatch_cache()
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def fake_exact(*args, **kwargs):
+        calls.append(("exact", args, kwargs))
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append(("rowtile4", args, kwargs))
+
+    original_exact = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
+    original_rowtile = gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+    gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_exact  # type: ignore[assignment]
+    gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = fake_rowtile  # type: ignore[assignment]
+    try:
+        fused = launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=3,
+            in_features=2048,
+            out_features=8192,
+            out_features_b=4096,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = original_exact  # type: ignore[assignment]
+        gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = original_rowtile  # type: ignore[assignment]
+        gl.clear_gguf_linear_dispatch_cache()
+
+    assert fused is True
+    assert calls == [
+        (
+            "rowtile4",
+            (100, 14, 14, 200, 300, 3, 2048, 8192, 4096),
+            {"threads": 64, "stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_t16_pair_rowtile_opt_out_keeps_exact_wrapper(monkeypatch) -> None:
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE", "0")
+    gl.clear_gguf_linear_dispatch_cache()
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def fake_exact(*args, **kwargs):
+        calls.append(("exact", args, kwargs))
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append(("rowtile4", args, kwargs))
+
+    original_exact = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
+    original_rowtile = gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+    gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_exact  # type: ignore[assignment]
+    gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = fake_rowtile  # type: ignore[assignment]
+    try:
+        fused = launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=3,
+            in_features=2048,
+            out_features=8192,
+            out_features_b=4096,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = original_exact  # type: ignore[assignment]
+        gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = original_rowtile  # type: ignore[assignment]
+        gl.clear_gguf_linear_dispatch_cache()
+
+    assert fused is True
+    assert calls == [
+        (
+            "exact",
+            (100, 14, 14, 200, 300, 3, 2048, 8192, 4096),
+            {"threads": 0, "stream": 0, "runtime": "runtime-sentinel"},
+        )
     ]
 
 
@@ -661,7 +759,10 @@ def test_t16_triple_fuses_q8_separate_outputs() -> None:
 
     assert fused is True
     assert triple_calls == [
-        ((100, 14, 14, 14, 200, 300, 400, 1, 2048, 1024, 512, 512), {"stream": 7, "runtime": "runtime-sentinel"})
+        (
+            (100, 14, 14, 14, 200, 300, 400, 1, 2048, 1024, 512, 512),
+            {"threads": 0, "stream": 7, "runtime": "runtime-sentinel"},
+        )
     ]
 
 

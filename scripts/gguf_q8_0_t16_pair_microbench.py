@@ -53,7 +53,7 @@ def main() -> None:
     ap.add_argument(
         "--modes",
         default="exact,q8_1_dp4a,prequant_q8_1_dp4a",
-        help="Comma-separated: exact, q8_1_dp4a, prequant_q8_1_dp4a",
+        help="Comma-separated: exact, rowtile2, rowtile4, q8_1_dp4a, prequant_q8_1_dp4a",
     )
     ap.add_argument(
         "--shape",
@@ -78,7 +78,7 @@ def main() -> None:
     rows_list = _parse_csv_ints(args.rows)
     threads_list = _parse_csv_ints(args.threads)
     modes = [part.strip() for part in args.modes.split(",") if part.strip()]
-    allowed_modes = {"exact", "q8_1_dp4a", "prequant_q8_1_dp4a"}
+    allowed_modes = {"exact", "rowtile2", "rowtile4", "q8_1_dp4a", "prequant_q8_1_dp4a"}
     unknown_modes = sorted(set(modes) - allowed_modes)
     if unknown_modes:
         raise ValueError(f"unknown modes: {', '.join(unknown_modes)}")
@@ -94,6 +94,8 @@ def main() -> None:
         build_gguf_q8_0_t16_gemv,
         gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
         gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out,
+        gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out,
+        gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
     )
     from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
     from tests._gguf_synthetic_weights import make_q8_0_weight
@@ -134,8 +136,14 @@ def main() -> None:
         out_b_buf = malloc(rows * out_b * 2, runtime=rt)
         try:
             def go(i: int) -> None:
-                if mode == "exact":
-                    gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
+                if mode in {"exact", "rowtile2", "rowtile4"}:
+                    if mode == "rowtile2":
+                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out
+                    elif mode == "rowtile4":
+                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+                    else:
+                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
+                    exact_fn(
                         xb.ptr,
                         a_pool[i % pool].ptr,
                         b_pool[i % pool].ptr,
@@ -182,7 +190,13 @@ def main() -> None:
             for buf in (xb, xq_buf, out_a_buf, out_b_buf, *a_pool, *b_pool):
                 free(buf, runtime=rt)
 
-        read_bytes = matrix_total * rows
+        if mode == "rowtile2":
+            matrix_read_groups = (rows + 1) // 2
+        elif mode == "rowtile4":
+            matrix_read_groups = (rows + 3) // 4
+        else:
+            matrix_read_groups = rows
+        read_bytes = matrix_total * matrix_read_groups
         bw = read_bytes / (ms / 1000.0) / 1e9
         return {
             "mode": mode,
@@ -193,6 +207,7 @@ def main() -> None:
             "out_features_b": out_b,
             "us": round(ms * 1000.0, 2),
             "matrix_MB": round(matrix_total / 1e6, 3),
+            "matrix_read_groups": matrix_read_groups,
             "pool_copies": pool,
             "pool_MB": round(pool * matrix_total / 1e6, 1),
             "achieved_read_bw_gbs": round(bw, 1),
@@ -208,12 +223,13 @@ def main() -> None:
                 print(
                     f"mode={mode:21s} rows={rows} threads={threads:3d} in={in_f} out=({out_a},{out_b}) "
                     f"{result['us']:8.2f}us matMB={result['matrix_MB']:6.3f} "
-                    f"pool={result['pool_MB']:6.1f}MB BW={result['achieved_read_bw_gbs']:6.1f}GB/s "
+                    f"groups={result['matrix_read_groups']:2d} pool={result['pool_MB']:6.1f}MB "
+                    f"BW={result['achieved_read_bw_gbs']:6.1f}GB/s "
                     f"({result['pct_peak']:4.1f}% peak)"
                 )
 
     out = {
-        "schema": "hipengine.gguf_q8_0_t16_pair_microbench.v2",
+        "schema": "hipengine.gguf_q8_0_t16_pair_microbench.v3",
         "host": platform.node(),
         "hip_arch": os.environ.get("HIPENGINE_HIP_ARCH"),
         "peak_gbs": args.peak_gbs,

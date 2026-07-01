@@ -229,6 +229,26 @@ should be boring.
   mmvq/T16 replacement layout or row-amortized verifier kernel. This callable is
   evidence, not a performance path; do not route it into `llama-compat` runtime.
 
+## `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` (diagnostic rejected)
+- Added 2026-07-01. Default-off runtime hook for the exact Q8T16
+  `attn_qkv+attn_gate` pair rowtile diagnostic. Setting
+  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` routes the qwen35
+  `rows>1, in=2048, out=(8192,4096)` pair through
+  `gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out` at 64 threads.
+- Purpose: test whether llama.cpp-style row amortization closes the verifier
+  pair gap while preserving exact arithmetic. Correctness is bit-identical to
+  the existing exact pair, including the large qwen35 pair fixture. The isolated
+  microbench was positive (`rows=2/3/4/5/6` exact 128:
+  **179.75/207.70/236.41/265.87/298.97 us** vs rowtile4-64:
+  **154.05/170.55/191.16/254.19/271.06 us**) and same-code smoke improved
+  **66.00 -> 67.14 tok/s**, but the full-suite llama-compat row rejected it:
+  **59.63 -> 57.25 tok/s**, `target_block_verify_total`
+  **13.178 -> 13.697 ms/output**.
+- Remove when: the parity sprint moves Q8 verifier work to a true llama-style
+  layout/scheduler port, or after another full-suite row confirms this exact
+  rowtile route remains non-retainable. It is an evidence hook only; default and
+  llama-compat runtime paths stay on the existing exact pair wrapper.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with

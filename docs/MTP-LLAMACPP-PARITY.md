@@ -57,6 +57,7 @@ Current source artifacts:
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
 | hipEngine llama-compat rejected Q8T16 pair t64 check | `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json` | Diagnostic only: the actual verifier `attn_qkv+attn_gate` Q8T16 pair shape is faster at the existing 128-thread launch than at 64 threads. |
 | hipEngine llama-compat rejected Q8T16 q8_1/dp4a pair check | `benchmarks/results/2026-07-01-q8-t16-pair-q8-1-dp4a-micro.json` | Diagnostic only: applying llama.cpp-style q8_1/dp4a to the existing T16 tile layout is much slower than the exact pair because T16 stores four-K dot4 bytes strided by output column. |
+| hipEngine llama-compat rejected Q8T16 pair rowtile check | `benchmarks/results/2026-07-01-q8-t16-pair-rowtile-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-rowtilepair-full.json` | Diagnostic only: exact row-amortized rowtile4 wins the isolated pair and smoke, but full-suite compat regresses, so runtime default remains the existing pair kernel. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
 #### Three-lane speed gap
@@ -271,6 +272,47 @@ column strided by 16 bytes, so the dp4a body has to pack scattered bytes before
 every dot4. The Q8 verifier gap now points at a true llama-style layout/schedule
 port or a row-amortized verifier kernel, not q8_1/dp4a over the existing T16
 tile.
+
+**Rejected 2026-07-01 Q8T16 exact rowtile pair check:** implemented diagnostic
+exact row-amortized rowtile2/rowtile4 split-output wrappers for the actual
+`attn_qkv+attn_gate` shape. The rowtile kernels compute multiple verifier rows
+per `(out_tile16)` block and reuse the T16 weight tile across rows, matching the
+llama.cpp `mul_mat_vec_q` row-amortization idea while preserving BF16-input FP32
+accumulation and BF16 output. Correctness passed bit-for-bit vs the existing
+exact pair on the qwen35 pair shape (`rows=3`, `in=2048`, `out=(8192,4096)`),
+and a cached `rocprofv3 --kernel-trace` confirmed the runtime-intended
+`q8_0_t16_dual_split_rowtile_gemv_kernel<unsigned short, unsigned short, 4>`
+launch with `Workgroup_Size_X=64`.
+
+The isolated pair microbench is positive, and explains why this was worth a
+full-suite test:
+
+| rows | exact 128-thread pair | rowtile4 64-thread pair | isolated result |
+| ---: | ---: | ---: | --- |
+| 2 | 179.75 us | **154.05 us** | rowtile4 is 14.3% faster. |
+| 3 | 207.70 us | **170.55 us** | rowtile4 is 17.9% faster. |
+| 4 | 236.41 us | **191.16 us** | rowtile4 is 19.1% faster. |
+| 5 | 265.87 us | **254.19 us** | rowtile4 is 4.4% faster. |
+| 6 | 298.97 us | **271.06 us** | rowtile4 is 9.3% faster. |
+
+Same-code smoke also looked positive: `llama-compat-device-chain-dp4a-q6top1dp4a`
+B2 rowtile-on moved **66.00 -> 67.14 tok/s**, cycle wall
+**15.180 -> 14.925 ms/output**, and `target_block_verify_total`
+**12.285 -> 12.054 ms/output** with unchanged smoke acceptance. All-sync smoke
+confirmed the intended leaf moved:
+`target_block_linear_attn_attn_qkv_gate_pair` **2.224 -> 2.049 ms/output**.
+
+The full suite rejected the route, so it is default-off:
+
+| full-suite B2 row | MTP tok/s | cycle wall | target verify | acceptance |
+| --- | ---: | ---: | ---: | ---: |
+| retained q6top1dp4a | **59.63** | **16.793 ms/output** | **13.178 ms/output** | 0.578 acc/output, 0.685 draft |
+| rowtilepair opt-in | 57.25 | 17.488 ms/output | 13.697 ms/output | 0.556 acc/output, 0.625 draft |
+
+Conclusion: exact row-amortization over the current T16 pair layout is not a
+retainable llama-compat fix despite the isolated pair win. Keep
+`HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` only as a diagnostic A/B hook. The
+default path and `llama-compat` path stay on the existing exact pair wrapper.
 
 Latest selected-MoE inner split after q6top1dp4a
 (`llama-compat-device-chain-dp4a-q6top1dp4a-allsync`, smoke, extra sync points):

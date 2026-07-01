@@ -130780,3 +130780,66 @@ comparison points (`llama_draft_sample_topk`, `mtp_context_replay_append`,
 `mul_mat_vec_q`, and `mul_mat_vec_q_moe`) so future runs can show where the
 llama-compat lane still diverges. Documentation-only change; no new benchmark
 claim.
+
+## 2026-07-01 — Rejected Q8T16 exact rowtile pair verifier route
+
+Implemented exact row-amortized Q8T16 dual-split diagnostic wrappers:
+`gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out` and
+`gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out`. The intent was to test
+the llama.cpp `mul_mat_vec_q` row-amortization shape on the actual
+`attn_qkv+attn_gate` verifier pair (`in=2048`, `out=(8192,4096)`) while
+preserving BF16-input / FP32-accumulation / BF16-output exactness. Runtime
+routing is default-off behind `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1`; the
+retained default and llama-compat paths stay on the existing exact pair wrapper.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py hipengine/runtime/gguf_linear.py tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_gguf_linear_dispatch_cache.py scripts/gguf_q8_0_t16_pair_microbench.py`
+  passed.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py`
+  -> **30 passed**, including qwen35 large-pair rowtile4 bit equality vs the
+  exact pair.
+- `PYTHONPATH=. pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_linear_dispatch_cache.py`
+  -> **44 passed**.
+- Cached `rocprofv3 --kernel-trace` with a pinned compiler-version file confirmed
+  `q8_0_t16_dual_split_rowtile_gemv_kernel<unsigned short, unsigned short, 4>`
+  launched with `Workgroup_Size_X=64` for the qwen35 pair microbench shape.
+
+Microbench command:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q8_0_t16_pair_microbench.py --rows 1,2,3,4,5,6 --threads 64,128 --modes exact,rowtile2,rowtile4 --iters 80 --warmup 20 --json benchmarks/results/2026-07-01-q8-t16-pair-rowtile-micro.json`
+
+Best isolated rowtile4 result vs exact 128-thread pair:
+
+| rows | exact 128 | rowtile4 64 |
+| ---: | ---: | ---: |
+| 2 | 179.75 us | **154.05 us** |
+| 3 | 207.70 us | **170.55 us** |
+| 4 | 236.41 us | **191.16 us** |
+| 5 | 265.87 us | **254.19 us** |
+| 6 | 298.97 us | **271.06 us** |
+
+Same-code smoke A/B looked positive:
+`llama-compat-device-chain-dp4a-q6top1dp4a` B2 rowtile-off vs rowtile-on moved
+**66.00 -> 67.14 tok/s**, `cycle_wall_ms_per_output`
+**15.180 -> 14.925**, and `target_block_verify_total`
+**12.285 -> 12.054 ms/output** with unchanged smoke acceptance. All-sync smoke
+confirmed the intended leaf moved:
+`target_block_linear_attn_attn_qkv_gate_pair` **2.224 -> 2.049 ms/output**.
+
+Full-suite command:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-rowtilepair-full.json`
+
+Conclusion: rejected for runtime promotion. Full-suite B2 regressed vs the
+retained q6top1dp4a row: **59.63 -> 57.25 tok/s**,
+`cycle_wall_ms_per_output` **16.793 -> 17.488**, and
+`target_block_verify_total` **13.178 -> 13.697 ms/output**. Despite exact
+bit-equality and isolated pair wins, this rowtile schedule does not close the
+llama-compat gap in the real route.
+
+Lineage note: `python3 scripts/check_lineage.py --kind kernel --diff stat` still
+cannot run because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent
+(`fatal: cannot change to ... No such file or directory`). This diagnostic was
+implemented in-tree using llama.cpp HIP `mul_mat_vec_q` row-amortization as the
+schedule reference.
