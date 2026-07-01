@@ -1822,7 +1822,31 @@ class Qwen35GGUFResidentMTPDraftRunner:
         ):
             gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_down", t_stage)
-        mtp_linear_f32(self.post_norm.ptr, self.shared_gate_vec_f32.ptr, self.shared_gate_logit.ptr, 1, h, 1, library=self._mtp_lib, runtime=runtime)
+        # A one-row shared-gate dot needs parallelism across hidden columns; the
+        # generic F32 linear only parallelizes across output rows.
+        if self._router_row_parallel_enabled:
+            qwen35_router_logits_f32_f32w(
+                self.post_norm.ptr,
+                self.shared_gate_vec_f32.ptr,
+                self.shared_gate_logit.ptr,
+                1,
+                h,
+                1,
+                threads=256,
+                library=self._router_lib,
+                runtime=runtime,
+            )
+        else:
+            mtp_linear_f32(
+                self.post_norm.ptr,
+                self.shared_gate_vec_f32.ptr,
+                self.shared_gate_logit.ptr,
+                1,
+                h,
+                1,
+                library=self._mtp_lib,
+                runtime=runtime,
+            )
         t_stage = mark_stage("draft_run_ffn_shared_gate_linear", t_stage)
         add_aggregate_stage("draft_run_ffn_up_shared", t_ffn0)
 

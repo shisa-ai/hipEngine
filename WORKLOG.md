@@ -134350,3 +134350,71 @@ python3 scripts/gguf_mtp_draft_rocprof.py \
   and `draft_run_moe_selected_down` **0.350**.
 - Updated `docs/MTP-LLAMACPP-PARITY.md` so the source artifact row and current
   draft-chain rocprof/leaf tables point at the resident-init-aligned artifact.
+
+## 2026-07-02 - MTP llama-compat shared-gate scalar dot via router row kernel
+
+- Reused the existing row-parallel F32 router-logits kernel for the resident
+  draft shared-gate scalar dot when `--resident-mtp-draft-router-row-parallel`
+  is enabled. The old `mtp_linear_f32(... out_features=1 ...)` path only gave
+  one output row real work, making `draft_run_ffn_shared_gate_linear` a visible
+  draft leaf in the compat route. The fallback exact call remains unchanged when
+  router-row is disabled.
+- Validation and smoke:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_resident_draft.py
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --child --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --steps 1 --warmup 0 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --sync-stage-timings --require-cached \
+  --child-json /tmp/gguf-mtp-draft-child-sharedgate-smoke.json
+```
+
+- Child smoke passed with tokens `[[21, 22]]`; the synced
+  `draft_run_ffn_shared_gate_linear` leaf was about **0.024 ms/cycle** in the
+  smoke.
+- Reran the draft-chain attribution:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --sync-stage-timings --require-cached --skip-warmbuild \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-sharedgate \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-routerrow-sharedgate-fine-sync.json
+```
+
+- Diagnostic result: `performance_claim=false`; host **6.743 ms/cycle**,
+  kernel **5.767 ms/cycle**, kernel share **85.5%**, **90.25** kernel
+  calls/cycle. Versus the resident-init-aligned profile, host moved
+  **6.940 -> 6.743 ms/cycle**, kernel **5.944 -> 5.767 ms/cycle**, and
+  `draft_run_ffn_shared_gate_linear` **0.222 -> 0.027 ms/cycle**.
+- Reran the retained full-suite compat route:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-sharedgate-routerrow-full.json
+```
+
+- Result: `apple_to_apple_ok=true`; AR **54.76 tok/s**; B2 MTP
+  **71.84 tok/s = 1.3119x AR**; `cycle_wall_ms_per_output`
+  **13.940**; acc/output **0.621**; draft acceptance **0.820**;
+  target rows/output **1.136**.
+- Versus the prior active resident-init row: MTP **71.34 -> 71.84 tok/s**
+  (+0.70%), cycle wall **14.037 -> 13.940 ms/output**, draft drain
+  **2.747 -> 2.684 ms/output**, visible draft readback/drain
+  **2.586 -> 2.520 ms/output**, and target verifier drain
+  **10.966 -> 10.929 ms/output**, with unchanged proposal economy.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`. Current reading: the active compat parent wall is
+  **13.940 vs llama.cpp HIP traced 14.231 ms/output**; the remaining slower
+  child bucket is draft drain (**2.684 vs 2.140 ms/output**), while verifier
+  drain and row economy are ahead.
