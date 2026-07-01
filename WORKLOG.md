@@ -134105,3 +134105,106 @@ cache at the divergence row. Because depth-0 heads are dominated by rows 48/49
 and those rows already match llama.cpp closely, the next split needs llama.cpp
 FA-on effective attention instrumentation: mask keep count, row order/layout,
 GQA mapping, scale, and per-head top score/weight distribution.
+
+## 2026-07-02 - MTP llama.cpp row-probe split finds prompt catch-up row mismatch
+
+- Extended hipEngine `--record-draft-attention-debug` summaries with per-head
+  `query_first4` and `row_probes` for rows 0/1/2, the final two visible rows,
+  and the per-head top rows.  Each probe records score, weight, K first4, and V
+  first4.  Added a focused unit assertion for the new fields.
+- Built local llama.cpp HIP diagnostic instrumentation (uncommitted in the
+  external repo per its `AGENTS.md`) with matching attention row probes and
+  ubatch row metadata.  The server build passed:
+
+```bash
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16
+```
+
+- Ran the hipEngine diagnostic:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 4 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --resident-mtp-draft --verify-dp4a \
+  --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --mtp-context-replay --mtp-device-kv-cache --target-block-verify \
+  --target-block-verify-mode bulk --target-block-min-rows 2 \
+  --target-block-direct-state-commit --root-topk-accept 1 \
+  --sibling-topk-accept 1 --draft-p-min 0.0 \
+  --record-cycle-stage-timings --record-draft-topk-scores \
+  --record-draft-hidden-stats --record-draft-stage-stats \
+  --record-draft-cache-rows 0,1,2,16,32,40,48,49 \
+  --record-draft-attention-debug \
+  --output /tmp/hipengine-mtp-rowprobe/hipengine-stage.json
+```
+
+- Ran the llama.cpp diagnostic:
+
+```bash
+LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_ATTENTION_TRACE=1 PYTHONPATH=. \
+python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8042 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 27 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-rowprobe2/llamacpp-stage.jsonl \
+  --stage-token-trace \
+  --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-rowprobe2/llamacpp.json \
+  --log-dir /tmp/hipengine-mtp-rowprobe2/logs
+```
+
+Findings:
+
+- Comparable point is depth 0, input token `1103`, position `49`.
+  hipEngine drafts `[65342, 18078]`; llama.cpp drafts `[8, 1411]`.
+- hipEngine attention still matches its own dense host recompute
+  (`cpu_device_mae_mean=4.1e-7`).  llama.cpp FA also matches host dense
+  recompute closely enough (`cpu_device_mae_mean=4.81e-4`).
+- Rows 48/49 K/V first4 agree closely across engines (`<=~0.055` max abs), so
+  this is not a late-row layout or attention math issue.
+- Row 2 is the concrete mismatch.  llama.cpp metadata labels it as token `198`
+  at prompt position `2`; hipEngine's shifted prompt replay intends the same
+  row identity.  But row-2 K/V differs:
+  - kv0 hip K `[0.130057, 0.021326, 0.719520, 1.068448]`, V
+    `[-1.019979, -0.621223, 0.708425, -1.369513]`
+  - kv0 llama K `[0.047455, -0.057037, -0.009056, 0.105896]`, V
+    `[-0.107239, -0.257080, 4.664063, 1.229492]`
+  - kv1 hip K `[0.607833, 1.223730, 0.277249, 2.120688]`, V
+    `[1.245373, 5.050378, 1.246049, -1.432447]`
+  - kv1 llama K `[-0.002890, -0.013268, -0.006294, 0.018204]`, V
+    `[7.609375, 5.277344, 4.574219, -9.156250]`
+- That row changes acceptance economics: llama row 2 gets large weights at the
+  divergence (`qh7=0.218`, `qh12=0.391`), while hipEngine row 2 is near zero
+  (`qh7=2.697e-5`, `qh12=0.00234`).
+
+Interpretation: llama-compat does not yet match llama.cpp's initial MTP prompt
+context state.  hipEngine builds prompt MTP rows from serial target hidden rows;
+llama.cpp populates the draft context from target prompt-processing `h_nextn`
+rows.  Next implementation target is an all-row target `h_nextn` tap for
+hipEngine prompt/bulk prefill, then filling the initial MTP device KV from that
+source and rerunning row probes before chasing performance deltas.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/speculative/mtp_resident_draft.py \
+  tests/test_mtp_resident_draft_device_commit.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_mtp_resident_draft_device_commit.py::test_attention_debug_recomputes_dense_attention_from_device_rows -q
+
+python3 -m json.tool \
+  benchmarks/results/2026-07-02-mtp-rowprobe-diagnostic.json \
+  >/tmp/mtp-rowprobe-artifact.pretty.json
+```

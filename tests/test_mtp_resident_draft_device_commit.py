@@ -366,6 +366,13 @@ def test_attention_debug_recomputes_dense_attention_from_device_rows() -> None:
     assert summary["cpu_device_max_abs"] <= 1e-7
     assert [head["top_rows"][0] for head in summary["per_head"]] == [0, 1]
     assert [head["visible_count"] for head in summary["per_head"]] == [2, 2]
+    assert summary["per_head"][0]["query_first4"] == [1.0, 0.0]
+    row_probes = summary["per_head"][0]["row_probes"]
+    assert [probe["row"] for probe in row_probes] == [0, 1]
+    assert row_probes[0]["key_first4"] == [1.0, 0.0]
+    assert row_probes[0]["value_first4"] == [1.0, 3.0]
+    assert "score" in row_probes[0]
+    assert "weight" in row_probes[0]
 
 
 def test_ensure_device_chain_ready_preloads_embed_table() -> None:

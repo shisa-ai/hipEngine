@@ -1161,6 +1161,14 @@ class Qwen35GGUFResidentMTPDraftRunner:
             max_abs_diffs.append(max_abs)
             top_count = min(5, cache_tokens)
             top_rows = np.argsort(weights)[-top_count:][::-1]
+            probe_rows: list[int] = []
+            for row in (0, 1, 2, cache_tokens - 2, cache_tokens - 1):
+                if 0 <= row < cache_tokens and row not in probe_rows:
+                    probe_rows.append(int(row))
+            for row in top_rows:
+                row_int = int(row)
+                if row_int not in probe_rows and len(probe_rows) < 10:
+                    probe_rows.append(row_int)
             head_summaries.append(
                 {
                     "query_head": int(qh),
@@ -1168,9 +1176,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     "visible_count": int(cache_tokens),
                     "max_score": _summary_float(float(max_score)),
                     "exp_sum": _summary_float(float(exp_sum)),
+                    "query_first4": [_summary_float(float(x)) for x in query[qh, :4]],
                     "top_rows": [int(row) for row in top_rows],
                     "top_scores": [_summary_float(float(scores[row])) for row in top_rows],
                     "top_weights": [_summary_float(float(weights[row])) for row in top_rows],
+                    "row_probes": [
+                        {
+                            "row": int(row),
+                            "score": _summary_float(float(scores[row])),
+                            "weight": _summary_float(float(weights[row])),
+                            "key_first4": [_summary_float(float(x)) for x in key[row, kh, :4]],
+                            "value_first4": [_summary_float(float(x)) for x in value[row, kh, :4]],
+                        }
+                        for row in probe_rows
+                    ],
                     "cpu_out_first4": [_summary_float(float(x)) for x in cpu_out[:4]],
                     "device_out_first4": [_summary_float(float(x)) for x in device_attn[qh, :4]],
                     "cpu_device_mae": _summary_float(mean_abs),

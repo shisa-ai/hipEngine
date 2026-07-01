@@ -4287,3 +4287,81 @@ only the same-protocol B3/full-suite non-regressive pieces. Graph/C loop work,
 resident MTP draft consolidation, and rollback improvements remain on the
 roadmap after the GEMV instruction path is de-risked. These remain single-prompt
 diagnostics, not benchmark rows.
+
+## 2026-07-02 correction - prompt catch-up row parity is not solved
+
+The latest fine-grained attention traces overturn the broad "correctness parity
+is solved" statement above.  hipEngine and llama.cpp match the generated late
+rows closely, but they do **not** match the early prompt rows in the MTP draft
+KV cache.  The first concrete mismatch is prompt row 2, and that row remains
+visible and high-impact at the position-49 draft divergence.
+
+Diagnostic artifacts:
+
+- hipEngine row-probe run:
+  `/tmp/hipengine-mtp-rowprobe/hipengine-stage.json`
+- llama.cpp row-probe run:
+  `/tmp/hipengine-mtp-rowprobe2/llamacpp-stage.jsonl`
+- compact artifact:
+  `benchmarks/results/2026-07-02-mtp-rowprobe-diagnostic.json`
+
+Comparable point: depth 0, input token `1103`, position `49`.
+
+| Field | hipEngine llama-compat | llama.cpp HIP |
+| --- | ---: | ---: |
+| Drafts at this point | `[65342, 18078]` | `[8, 1411]` |
+| Cache tokens allocated | `50` | `256` |
+| Visible attention rows | `50` | `50` |
+| Host recompute vs GPU attention | `4.1e-7` mean abs | `4.8e-4` mean abs |
+| Top-row histogram | row 49: 9 heads, row 48: 7 heads | row 49: 8 heads, row 48: 7 heads, row 2: 1 head |
+| Row 48/49 K/V first4 agreement | close (`<=~0.055` max abs) | close (`<=~0.055` max abs) |
+| Row 2 K/V first4 agreement | bad | bad |
+
+Row 2 is now labeled in llama.cpp via ubatch metadata: token `198` at prompt
+position `2`.  hipEngine's shifted prompt replay intends the same row identity:
+token `198` at position `2`, paired with the target hidden row from prompt
+position `1`.
+
+Representative row-2 probes:
+
+| Head | hipEngine row-2 score / weight | llama row-2 score / weight |
+| ---: | ---: | ---: |
+| qh7 / kv0 | `8.1026 / 0.00002697` | `17.9259 / 0.2181` |
+| qh10 / kv1 | `10.3185 / 0.001087` | `15.4524 / 0.1456` |
+| qh12 / kv1 | `6.8666 / 0.002343` | `12.5809 / 0.3911` |
+| qh13 / kv1 | `3.8032 / 0.000613` | `9.8557 / 0.1965` |
+
+Representative row-2 K/V first4:
+
+| KV head | hipEngine K first4 | llama.cpp K first4 | hipEngine V first4 | llama.cpp V first4 |
+| ---: | --- | --- | --- | --- |
+| kv0 | `[0.130057, 0.021326, 0.719520, 1.068448]` | `[0.047455, -0.057037, -0.009056, 0.105896]` | `[-1.019979, -0.621223, 0.708425, -1.369513]` | `[-0.107239, -0.257080, 4.664063, 1.229492]` |
+| kv1 | `[0.607833, 1.223730, 0.277249, 2.120688]` | `[-0.002890, -0.013268, -0.006294, 0.018204]` | `[1.245373, 5.050378, 1.246049, -1.432447]` | `[7.609375, 5.277344, 4.574219, -9.156250]` |
+
+Interpretation:
+
+- This is **not** a flash-attention math bug.  llama.cpp FA matches a host dense
+  recompute closely enough at the same row, and hipEngine's dense attention
+  matches its own host recompute to `~1e-6`.
+- This is **not** a late generated-row layout problem.  Rows 48 and 49 agree
+  closely between the engines.
+- This is **not** a mask visibility problem.  llama row 2 is explicitly visible
+  (`mask = 0`, visible count 50).
+- The remaining semantic split is the **initial MTP prompt catch-up KV source**.
+  hipEngine currently builds prompt MTP rows from serial target hidden rows;
+  llama.cpp populates the draft context from the target prompt-processing
+  `h_nextn` rows.  Those are not numerically equivalent for early prompt row 2.
+
+Next fix before more performance work:
+
+1. Add an all-row target `h_nextn` tap for hipEngine prompt/bulk prefill, or an
+   equivalent replay path that exactly matches llama.cpp's MTP `process()` input
+   rows.
+2. Populate the initial MTP device KV cache from that source instead of the
+   current serial hidden-row replay.
+3. Rerun the row-probe trace and require row 2, row 48, and row 49 K/V and
+   attention weights to match before treating llama-compat performance deltas as
+   meaningful.
+
+Until this is fixed, the llama-compat path mirrors the broad draft/verify shape
+but not the exact llama.cpp MTP prompt-context state.
