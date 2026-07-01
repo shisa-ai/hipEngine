@@ -1084,8 +1084,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
             mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, library=self._mtp_lib, runtime=runtime)
 
         t_stage = mark_stage("draft_run_moe_down_combine", t_stage)
+        t_lm_head0 = time.perf_counter() if sync_stages else 0.0
         mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_lm_head_norm", t_stage)
         f32_to_bf16(next_seed.ptr, self.head_normed_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_lm_head_cast_bf16", t_stage)
         if top1_out_ptr is not None:
             if bool(getattr(self, "_q6_top1_dp4a_enabled", False)):
                 gguf_q4_k_quantize_bf16_q8_1(
@@ -1096,6 +1099,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     library=self._q4_lib,
                     runtime=runtime,
                 )
+                t_stage = mark_stage("draft_run_lm_head_quant_q8_1", t_stage)
                 gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32(
                     self.head_normed_q8_1.ptr,
                     self.shared_head.ptr,
@@ -1112,6 +1116,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     library=self._q6_pack8_lib,
                     runtime=runtime,
                 )
+                t_stage = mark_stage("draft_run_lm_head_q6_top1_dp4a_gather", t_stage)
             else:
                 gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
                     self.head_normed_bf16.ptr,
@@ -1129,6 +1134,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     library=self._q6_pack8_lib,
                     runtime=runtime,
                 )
+                t_stage = mark_stage("draft_run_lm_head_q6_top1_bf16_gather", t_stage)
         else:
             gguf_q6_k_pack8_gemv_decode_bf16_f32_out(
                 self.head_normed_bf16.ptr,
@@ -1140,7 +1146,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 library=self._q6_pack8_lib,
                 runtime=runtime,
             )
-        mark_stage("draft_run_lm_head", t_stage)
+            t_stage = mark_stage("draft_run_lm_head_q6_full_logits", t_stage)
+        if sync_stages:
+            _stage_add(stage_timings, "draft_run_lm_head", (time.perf_counter() - t_lm_head0) * 1000)
 
     def _topk_indices_into(self, out_indices_ptr: int, top_k: int) -> None:
         """Write the top-``top_k`` logit indices to a device buffer (no sync)."""

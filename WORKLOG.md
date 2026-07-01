@@ -130919,3 +130919,36 @@ Validation:
   Raw child metadata confirms the route is self-describing:
   `verify_dp4a=true`, `resident_mtp_draft_q6_top1_dp4a=true`,
   `selected_down_x8_repack="q6"`, and `selected_down_x8_repack_env="q6"`.
+
+## 2026-07-01 — Draft lm-head split for q6-X8 llama-compat
+
+Added finer all-sync stage timing inside the resident draft lm-head. The
+previous `draft_run_lm_head` bucket now stays as an aggregate, but the
+diagnostic route also records:
+
+- `draft_run_lm_head_norm`
+- `draft_run_lm_head_cast_bf16`
+- `draft_run_lm_head_quant_q8_1`
+- `draft_run_lm_head_q6_top1_dp4a_gather`
+- exact/default fallback names for BF16 top-1 gather and full-logits modes
+
+Smoke command:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-lmheadsplit-allsync-smoke.json`
+
+Result: attribution-only B2 **53.55 tok/s**, `apple_to_apple_ok=true`,
+`acc/output=0.667`, draft acceptance **1.000**. The split shows:
+
+| bucket | ms/output |
+| --- | ---: |
+| `draft_run_lm_head` | 1.271 |
+| `draft_run_lm_head_q6_top1_dp4a_gather` | **1.246** |
+| `draft_run_lm_head_quant_q8_1` | 0.008 |
+| `draft_run_lm_head_cast_bf16` | 0.006 |
+| `draft_run_lm_head_norm` | 0.010 |
+
+Conclusion: the remaining draft-side lm-head target is the Q6_K top-1
+dp4a/gather scheduler itself. Standalone activation-quantization/cast work is
+not the gap; the previous direct-F32 q8_1 diagnostic already rejected that
+route at full-suite scale. The active full-suite compat gap remains
+**+2.356 ms/output** until an async/full-suite route moves.
