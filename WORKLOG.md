@@ -132356,3 +132356,82 @@ B2 row versus traced llama.cpp HIP B2, currently **16.331 - 14.231 =
 +2.100 ms/output**, split by the existing stage rows. No benchmark rerun; this
 only reorganizes the already-recorded X8 top-1 / denseq8all measurements for
 future parity work.
+
+## 2026-07-01 — MTP llama-compat verifier lm-head Q6 top-1 diagnostic rejected
+
+Implemented a default-off verifier lm-head diagnostic for the active
+llama-compat lane:
+
+- `--verify-lm-head-q6-top1-dp4a`
+- `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1` before materialization
+- `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1` at runtime
+- suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1`
+  and `...-allsync`
+
+The path keeps the exact verifier default untouched. When enabled, target
+materialization retains an additive X8 `root.lm_head` sidecar, the verifier
+quantizes output-norm BF16 rows to q8_1, and
+`gguf_q6_k_x8_gemv_q8_1_dp4a_top1_gather_f32` writes top-1 ids directly,
+skipping full verifier logits plus argmax. Added focused tests for the
+materializer plan, parser/route exposure, and mocked runtime launch path.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/loading/qwen35_gguf_materialize.py hipengine/loading/__init__.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py \
+  tests/test_qwen35_gguf_materialize.py tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py tests/test_qwen35_gguf_verify_lm_head_top1.py
+
+python3 -m pytest \
+  tests/test_qwen35_gguf_verify_lm_head_top1.py \
+  tests/test_qwen35_gguf_materialize.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py -q
+```
+
+Result: py_compile passed; pytest passed (`..ssss...` skips are missing local
+GGUF fixtures, as expected). HIP preflight passed:
+
+```bash
+python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+rocminfo | grep -E 'Name:|gfx' | head -n 30
+```
+
+Smoke A/B on Qwen3.6-35B-A3B-UD-Q4_K_M GGUF Q4_K_M, gfx1151/Radeon 8060S,
+one-prompt smoke, B2:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-vlmheadtop1-smoke.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-vlmheadtop1-control-smoke.json
+```
+
+Result: same-session control **71.12 tok/s**, cycle **14.086 ms/output**,
+`target_block_verify_total` **11.277 ms/output**,
+`target_block_lm_head_sample` **1.058 ms/output**. Verifier top-1 route
+**65.18 tok/s**, cycle **15.363 ms/output**,
+`target_block_verify_total` **12.473 ms/output**,
+`target_block_lm_head_sample` **1.874 ms/output**. Acceptance/economy was
+identical on the smoke (`acc/output=0.667`, `draft_acceptance=1.000`,
+target rows/output `1.000`).
+
+Decision: reject before full-suite. Copying the draft-side q8_1/dp4a Q6 top-1
+mechanism into verifier sampling makes the verifier lm-head slower, not faster.
+Active parity lane remains
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1`. Updated
+`docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`; no benchmark rollup change
+because this is not retained.

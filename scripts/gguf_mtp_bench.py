@@ -735,6 +735,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--verify-lm-head-q6-top1-dp4a",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "OPT-IN accuracy-traded llama-compat diagnostic: materialize an X8 Q6_K "
+            "lm-head sidecar and sample verifier block rows through q8_1/dp4a top-1 "
+            "directly, skipping full verifier logits plus argmax. Default off."
+        ),
+    )
+    parser.add_argument(
         "--selected-down-x8-repack",
         choices=("off", "q5", "q6", "both"),
         default="off",
@@ -1226,6 +1236,11 @@ def main(argv: list[str] | None = None):
         # also enables the pair helper through qwen35_gguf_runner.
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
+    if getattr(args, "verify_lm_head_q6_top1_dp4a", False):
+        # Must be set before target materialization so root.lm_head retains the
+        # X8 Q6_K sidecar used by the verifier direct top-1 path.
+        os.environ["HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"] = "1"
+        os.environ["HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"] = "1"
     if str(getattr(args, "selected_down_x8_repack", "off")) != "off":
         # Must be set before materialization so selected-down expert tensors are
         # repacked into the X8 replacement layout.
@@ -3048,6 +3063,9 @@ def main(argv: list[str] | None = None):
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
             "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
+            "verify_lm_head_q6_top1_dp4a": bool(args.verify_lm_head_q6_top1_dp4a),
+            "verify_lm_head_q6_top1_dp4a_env": os.environ.get("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"),
+            "lm_head_q6_x8_sidecar_env": os.environ.get("HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"),
             "resident_mtp_draft_q6_top1_dp4a": bool(args.resident_mtp_draft_q6_top1_dp4a),
             "resident_mtp_draft_q6_top1_stage1_threads": int(args.resident_mtp_draft_q6_top1_stage1_threads),
             "resident_mtp_draft_q6_top1_stage1_threads_env": os.environ.get(

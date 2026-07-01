@@ -368,3 +368,20 @@ should be boring.
   B5 beats the current default and stage buckets show serial verifier cost falls
   below ~2 ms/output with no acceptance regression. Otherwise delete the flag/route
   after the parity A/B is recorded.
+
+## `--verify-lm-head-q6-top1-dp4a` / verifier lm-head X8 sidecar
+- Added 2026-07-01. Bench flag `--verify-lm-head-q6-top1-dp4a` sets
+  `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1` before materialization and
+  `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1` at runtime. Suite routes
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1`
+  and `...-allsync` exercise it on top of the active llama-compat lane.
+- Purpose: test whether the verifier-side `target_block_lm_head_sample`
+  bucket can copy the draft-side q8_1/dp4a Q6_K top-1 economy by skipping full
+  verifier logits plus argmax. This is accuracy-traded and default-off; exact
+  verifier lm-head sampling remains the shipped behavior.
+- Remove / promote when: promote only inside the llama-compat replication lane
+  if a full-suite B2 row moves total wall and `target_block_lm_head_sample`
+  toward the llama.cpp verifier target without unacceptable row-economy loss.
+  Delete the route if smoke/full-suite shows the extra X8 sidecar/top-1 path does
+  not move `target_block_verify_total` or if a later fused verifier sampler
+  supersedes it.

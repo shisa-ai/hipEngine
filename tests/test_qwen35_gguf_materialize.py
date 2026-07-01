@@ -12,6 +12,7 @@ from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DECODE_REPACK_ENV,
     HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV,
+    HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV,
     HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV,
     HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV,
     HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV,
@@ -30,6 +31,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     gguf_decode_repack_enabled,
+    gguf_lm_head_q6_x8_sidecar_enabled,
     gguf_q8_0_raw_sidecar_enabled,
     gguf_selected_down_raw_enabled,
     gguf_selected_down_raw_mode,
@@ -131,6 +133,23 @@ def test_qwen35moe_decode_repack_plan_replaces_covered_weights(monkeypatch: pyte
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
     assert layer0["ffn_gate_shexp"].quant_key == "gguf_q8_0_t16_v1"
     assert layer0["ffn_gate_inp"].layout == LAYOUT_DENSE_F32
+
+
+def test_qwen35moe_decode_repack_can_keep_lm_head_q6_x8_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    assert gguf_decode_repack_enabled() is True
+    assert gguf_lm_head_q6_x8_sidecar_enabled() is True
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    assert plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16
+    assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k_t16_v1"
+    assert plan.root_specs["lm_head"].allocation_names == ("tiles", "x8")
 
 
 def test_qwen35moe_decode_repack_can_keep_q8_attention_raw_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:

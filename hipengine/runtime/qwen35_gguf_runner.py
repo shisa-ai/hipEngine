@@ -150,6 +150,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+    build_gguf_q6_k_pack8_gemv,
+    gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
     gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out,
     gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out,
@@ -3509,6 +3513,7 @@ _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
+_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
@@ -3588,6 +3593,10 @@ def _gguf_row_compact_gemv_enabled() -> bool:
 
 def _gguf_verify_row_lm_head_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_ROW_LM_HEAD_ENV, False)
+
+
+def _gguf_verify_lm_head_q6_top1_dp4a_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV, False)
 
 
 def _gguf_moe_graph_enabled() -> bool:
@@ -3938,6 +3947,7 @@ class Qwen35GGUFResidentSession:
     _verify_lm_block_indices_i32: object | None = field(default=None, init=False)
     _verify_lm_out_indices_i32: object | None = field(default=None, init=False)
     _verify_lm_out_values: object | None = field(default=None, init=False)
+    _verify_lm_q8_1: object | None = field(default=None, init=False)
     _verify_lm_rows_capacity: int = field(default=0, init=False)
     _verify_linear_conv_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_recurrent_state_rows: tuple[object | None, ...] = field(default=(), init=False)
@@ -3965,6 +3975,7 @@ class Qwen35GGUFResidentSession:
     _lm_head_library: object | None = field(default=None, init=False)
     _dflash_commit_library: object | None = field(default=None, init=False)
     _expert_pack8_library: object | None = field(default=None, init=False)
+    _q6_pack8_library: object | None = field(default=None, init=False)
     _expert_sidecar_reader: GGUFReader | None = field(default=None, init=False)
     _expert_sidecar_model_map: object | None = field(default=None, init=False)
     _expert_sidecar_host_layers: dict[int, dict[str, GGUFExpertPackedTensor]] | None = field(default=None, init=False)
@@ -4005,6 +4016,8 @@ class Qwen35GGUFResidentSession:
         }
         self._runtime_state_library = build_runtime_state(**build_kwargs)
         self._lm_head_library = build_lm_head(**build_kwargs)
+        if _gguf_verify_lm_head_q6_top1_dp4a_enabled():
+            self._q6_pack8_library = build_gguf_q6_k_pack8_gemv(**build_kwargs)
         if self.use_expert_sidecar:
             self._expert_pack8_library = build_gguf_expert_pack8_gemv(**build_kwargs)
             setattr(self.runner, "_expert_pack8_library", self._expert_pack8_library)
@@ -5841,6 +5854,7 @@ class Qwen35GGUFResidentSession:
             self._verify_lm_out_indices_i32,
             self._verify_lm_block_indices_i32,
             self._verify_lm_block_values,
+            self._verify_lm_q8_1,
             self._verify_logits_buf,
         ):
             if buffer is not None:
@@ -5850,10 +5864,12 @@ class Qwen35GGUFResidentSession:
         if stage1_blocks <= 0 or vocab_size <= 0:
             raise RuntimeError("GGUF verifier lm-head buffers require initialized session state")
         self._verify_logits_buf = malloc(rows * vocab_size * DType.FP32.itemsize, runtime=runtime)
-        self._verify_lm_block_values = malloc(rows * stage1_blocks * DType.FP32.itemsize, runtime=runtime)
-        self._verify_lm_block_indices_i32 = malloc(rows * stage1_blocks * DType.INT32.itemsize, runtime=runtime)
+        block_capacity = max(stage1_blocks, vocab_size)
+        self._verify_lm_block_values = malloc(rows * block_capacity * DType.FP32.itemsize, runtime=runtime)
+        self._verify_lm_block_indices_i32 = malloc(rows * block_capacity * DType.INT32.itemsize, runtime=runtime)
         self._verify_lm_out_indices_i32 = malloc(rows * DType.INT32.itemsize, runtime=runtime)
         self._verify_lm_out_values = malloc(rows * DType.FP32.itemsize, runtime=runtime)
+        self._verify_lm_q8_1 = malloc(_q8_1_workspace_bytes(rows, self.runner.hidden_size), runtime=runtime)
         self._verify_lm_rows_capacity = rows
 
     def _verify_lm_head_rowtile(
@@ -5904,6 +5920,67 @@ class Qwen35GGUFResidentSession:
         )
         return True
 
+    def _verify_lm_head_q6_top1_dp4a(
+        self, hidden_ptr: int, rows: int, *, stream: int = 0, runtime=None
+    ) -> bool:
+        """Accuracy-traded verifier lm-head path matching the llama-compat top-1 class."""
+
+        if not _gguf_verify_lm_head_q6_top1_dp4a_enabled():
+            return False
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if (
+            self._verify_lm_q8_1 is None
+            or self._verify_lm_block_values is None
+            or self._verify_lm_block_indices_i32 is None
+            or self._verify_lm_out_indices_i32 is None
+            or self._verify_lm_out_values is None
+        ):
+            raise RuntimeError("GGUF verifier Q6 top-1 buffers are closed")
+        weight = self.runner.weights.root("lm_head")
+        try:
+            tiles_ptr = weight.allocation("x8").tensor.ptr
+        except Exception as exc:
+            raise RuntimeError(
+                "GGUF verifier Q6 top-1 dp4a requires "
+                "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1 before materialization"
+            ) from exc
+        runtime = runtime or (self.runtime or get_hip_runtime())
+        library = self._q6_pack8_library
+        if library is None:
+            library = build_gguf_q6_k_pack8_gemv(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+            self._q6_pack8_library = library
+        gguf_q4_k_quantize_bf16_q8_1(
+            hidden_ptr,
+            self._verify_lm_q8_1.ptr,
+            rows,
+            self.runner.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+            self._verify_lm_q8_1.ptr,
+            tiles_ptr,
+            self._verify_lm_block_values.ptr,
+            self._verify_lm_block_indices_i32.ptr,
+            self._verify_lm_out_indices_i32.ptr,
+            self._verify_lm_out_values.ptr,
+            None,
+            None,
+            rows,
+            self.runner.hidden_size,
+            self.runner.vocab_size,
+            0,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return True
+
     def _sample_target_block_rows_from_hidden(self, hidden_ptr: int, rows: int, *, stream: int = 0) -> np.ndarray:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -5918,33 +5995,35 @@ class Qwen35GGUFResidentSession:
             or self._verify_lm_out_values is None
         ):
             raise RuntimeError("GGUF verifier lm-head buffers are closed")
-        if not self._verify_lm_head_rowtile(
-            hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
-        ):
-            launch_gguf_linear(
-                self.runner.weights.root("lm_head"),
-                hidden_ptr,
+        direct_top1 = self._verify_lm_head_q6_top1_dp4a(hidden_ptr, rows, stream=stream, runtime=runtime)
+        if not direct_top1:
+            if not self._verify_lm_head_rowtile(
+                hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
+            ):
+                launch_gguf_linear(
+                    self.runner.weights.root("lm_head"),
+                    hidden_ptr,
+                    self._verify_logits_buf.ptr,
+                    rows=rows,
+                    in_features=self.runner.hidden_size,
+                    out_features=self.runner.vocab_size,
+                    output_dtype=GGUF_OUTPUT_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            argmax_f32_rows_i32(
                 self._verify_logits_buf.ptr,
-                rows=rows,
-                in_features=self.runner.hidden_size,
-                out_features=self.runner.vocab_size,
-                output_dtype=GGUF_OUTPUT_F32,
+                self._verify_lm_block_values.ptr,
+                self._verify_lm_block_indices_i32.ptr,
+                self._verify_lm_out_indices_i32.ptr,
+                self._verify_lm_out_values.ptr,
+                rows,
+                self.runner.vocab_size,
+                threads=self._lm_head_threads,
                 stream=stream,
+                library=self._lm_head_library,
                 runtime=runtime,
             )
-        argmax_f32_rows_i32(
-            self._verify_logits_buf.ptr,
-            self._verify_lm_block_values.ptr,
-            self._verify_lm_block_indices_i32.ptr,
-            self._verify_lm_out_indices_i32.ptr,
-            self._verify_lm_out_values.ptr,
-            rows,
-            self.runner.vocab_size,
-            threads=self._lm_head_threads,
-            stream=stream,
-            library=self._lm_head_library,
-            runtime=runtime,
-        )
         if stream:
             runtime.stream_synchronize(stream)
         else:
@@ -6006,6 +6085,7 @@ class Qwen35GGUFResidentSession:
             self._verify_lm_out_indices_i32,
             self._verify_lm_block_indices_i32,
             self._verify_lm_block_values,
+            self._verify_lm_q8_1,
             self._verify_logits_buf,
             self._verify_token_counter_i64,
             self._verify_token_ids_i64,
@@ -6022,6 +6102,7 @@ class Qwen35GGUFResidentSession:
         self._verify_lm_out_indices_i32 = None
         self._verify_lm_block_indices_i32 = None
         self._verify_lm_block_values = None
+        self._verify_lm_q8_1 = None
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
         self._free_verify_linear_state_row_buffers(runtime=runtime)

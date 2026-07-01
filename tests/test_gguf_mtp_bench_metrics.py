@@ -637,6 +637,12 @@ def test_arg_parser_exposes_llama_compat_diagnostic() -> None:
     assert args.llama_compat is True
 
 
+def test_arg_parser_exposes_verify_lm_head_q6_top1_dp4a_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--verify-lm-head-q6-top1-dp4a"])
+
+    assert args.verify_lm_head_q6_top1_dp4a is True
+
+
 def test_arg_parser_exposes_selected_down_x8_repack_mode() -> None:
     args = build_arg_parser().parse_args(["--selected-down-x8-repack", "q6"])
 

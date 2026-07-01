@@ -1,0 +1,270 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-07-01T22:24:55",
+  "scope": "smoke",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "af028e3a388aaee1a1b5bdf48cfd858348ae8155",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 3,
+    "budgets": [
+      2
+    ],
+    "prompt_limit": 1,
+    "ar_decode_tokens": 9,
+    "mtp_route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1",
+    "mtp_route_extra_args": [
+      "--llama-compat",
+      "--resident-mtp-device-chain",
+      "--verify-dp4a",
+      "--resident-mtp-draft-q6-top1-dp4a",
+      "--resident-mtp-draft-q6-top1-stage1-shape",
+      "x8",
+      "--selected-down-x8-repack",
+      "q6",
+      "--verify-dense-q8-dp4a-all",
+      "--verify-lm-head-q6-top1-dp4a"
+    ],
+    "mtp_route_env": {},
+    "mtp_route_default_budgets": [
+      2
+    ],
+    "record_cycle_stage_timings": true
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.992307418862474,
+    "total_output_tokens": 9,
+    "decode_ms": 163.6592538561672,
+    "prompts": 1,
+    "per_category": {
+      "code": 54.992307418862474
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 80.17103153393907,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": null,
+      "cycle_wall_ms_per_output": null,
+      "cycle_wall_over_legacy_ms_total": null,
+      "cycle_wall_over_legacy_ms_per_output": null,
+      "stage_timing_totals_ms": null,
+      "stage_timing_per_output_ms": null,
+      "stage_timing_per_cycle_ms": null,
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.4579
+    },
+    "b2": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 65.18432679075832,
+      "accepted_per_output": 0.6666666666666666,
+      "draft_acceptance": 1.0,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 6,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": 138.2703,
+      "cycle_wall_ms_per_output": 15.363366666666666,
+      "cycle_wall_over_legacy_ms_total": 0.2002999999999986,
+      "cycle_wall_over_legacy_ms_per_output": 0.0222555555555554,
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.0184,
+        "draft_device_chain_drain": 20.1655,
+        "draft_device_chain_ensure_embed_table": 0.0032,
+        "draft_device_topk_gather": 0.0036,
+        "draft_initial": 22.4235,
+        "draft_mtp_layer_forward": 1.6383,
+        "draft_prepare_inputs": 0.3177,
+        "draft_seed_upload": 0.1505,
+        "draft_topk_d2h": 0.053399999999999996,
+        "draft_topk_readback": 20.2282,
+        "mtp_context_replay_append": 0.059500000000000004,
+        "mtp_device_kv_commit": 3.3809,
+        "target_block_acceptance_accounting": 0.0182,
+        "target_block_cursor_update": 0.0213,
+        "target_block_embedding": 0.31100000000000005,
+        "target_block_forward": 110.2933,
+        "target_block_full_attn_layers": 21.2217,
+        "target_block_hidden_readback": 0.0498,
+        "target_block_layer_total": 80.9359,
+        "target_block_linear_attn_layers": 59.7143,
+        "target_block_lm_head_sample": 16.8626,
+        "target_block_output_norm_hidden": 1.1831,
+        "target_block_replay_or_commit": 1.9109,
+        "target_block_setup": 10.7048,
+        "target_block_verify_total": 112.2543
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.0020444444444444442,
+        "draft_device_chain_drain": 2.2406111111111113,
+        "draft_device_chain_ensure_embed_table": 0.00035555555555555557,
+        "draft_device_topk_gather": 0.00039999999999999996,
+        "draft_initial": 2.4915000000000003,
+        "draft_mtp_layer_forward": 0.18203333333333335,
+        "draft_prepare_inputs": 0.0353,
+        "draft_seed_upload": 0.01672222222222222,
+        "draft_topk_d2h": 0.005933333333333333,
+        "draft_topk_readback": 2.247577777777778,
+        "mtp_context_replay_append": 0.006611111111111112,
+        "mtp_device_kv_commit": 0.3756555555555556,
+        "target_block_acceptance_accounting": 0.002022222222222222,
+        "target_block_cursor_update": 0.0023666666666666667,
+        "target_block_embedding": 0.03455555555555556,
+        "target_block_forward": 12.254811111111112,
+        "target_block_full_attn_layers": 2.3579666666666665,
+        "target_block_hidden_readback": 0.005533333333333333,
+        "target_block_layer_total": 8.992877777777778,
+        "target_block_linear_attn_layers": 6.634922222222222,
+        "target_block_lm_head_sample": 1.8736222222222223,
+        "target_block_output_norm_hidden": 0.13145555555555555,
+        "target_block_replay_or_commit": 0.21232222222222222,
+        "target_block_setup": 1.1894222222222224,
+        "target_block_verify_total": 12.4727
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.0061333333333333335,
+        "draft_device_chain_drain": 6.7218333333333335,
+        "draft_device_chain_ensure_embed_table": 0.0010666666666666667,
+        "draft_device_topk_gather": 0.0012,
+        "draft_initial": 7.4745,
+        "draft_mtp_layer_forward": 0.5461,
+        "draft_prepare_inputs": 0.1059,
+        "draft_seed_upload": 0.050166666666666665,
+        "draft_topk_d2h": 0.0178,
+        "draft_topk_readback": 6.742733333333334,
+        "mtp_context_replay_append": 0.019833333333333335,
+        "mtp_device_kv_commit": 1.1269666666666667,
+        "target_block_acceptance_accounting": 0.006066666666666667,
+        "target_block_cursor_update": 0.0070999999999999995,
+        "target_block_embedding": 0.10366666666666668,
+        "target_block_forward": 36.764433333333336,
+        "target_block_full_attn_layers": 7.073899999999999,
+        "target_block_hidden_readback": 0.0166,
+        "target_block_layer_total": 26.978633333333335,
+        "target_block_linear_attn_layers": 19.904766666666667,
+        "target_block_lm_head_sample": 5.620866666666667,
+        "target_block_output_norm_hidden": 0.3943666666666667,
+        "target_block_replay_or_commit": 0.6369666666666667,
+        "target_block_setup": 3.5682666666666667,
+        "target_block_verify_total": 37.4181
+      },
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.1853
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.992307418862474,
+    "best_mtp_budget": "b2",
+    "best_mtp_vs_ar_ratio": 1.1853,
+    "mtp_beats_ar": true
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-smoke-1782912295/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-smoke-1782912295/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-vlmheadtop1-smoke.json"
+}
