@@ -130843,3 +130843,47 @@ cannot run because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent
 (`fatal: cannot change to ... No such file or directory`). This diagnostic was
 implemented in-tree using llama.cpp HIP `mul_mat_vec_q` row-amortization as the
 schedule reference.
+
+## 2026-07-01 — Active llama-compat parity tracker refreshed for q6-only X8
+
+Updated the active three-lane dashboard in
+`docs/MTP-LLAMACPP-PARITY.md` so the current compat lane is the full-suite
+q6-only X8 selected-down row, not the previous q6top1dp4a-only row. Also updated
+`benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/KERNELS.md`, and
+`docs/REFACTOR.md` to keep the retained diagnostic evidence and cleanup ledger
+consistent.
+
+Retained compat command:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_SELECTED_X8_REPACK=q6 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json`
+
+Result: `llama-compat-device-chain-dp4a-q6top1dp4a` B2 moved
+**59.625 -> 60.362 tok/s**, `cycle_wall_ms_per_output`
+**16.7928 -> 16.5868**, `target_block_verify_total`
+**13.1776 -> 13.0228 ms/output**, and `draft_initial`
+**3.2928 -> 3.2437 ms/output**. Acceptance improved slightly:
+`acc/output` **0.578 -> 0.583**, draft acceptance **0.685 -> 0.700**,
+target rows/output **1.266 -> 1.250**.
+
+Updated active gap vs llama.cpp HIP B2 deep trace:
+
+| bucket | hipEngine llama-compat q6-X8 | llama.cpp HIP B2 | remaining gap |
+| --- | ---: | ---: | ---: |
+| cycle wall / output | 16.587 ms | 14.231 ms | **+2.356 ms/output** |
+| `draft_initial` | 3.244 ms | 2.140 ms | **+1.104 ms/output** |
+| `target_block_verify_total` | 13.023 ms | 12.083 ms | **+0.940 ms/output** |
+| target rows / output | 1.250 | 1.148 | **+0.102 rows/output** |
+
+Supporting commands:
+
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --quant both --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_SELECTED_X8_REPACK=q6 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-smoke.json`
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_SELECTED_X8_REPACK=q6 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-allsync --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json`
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_SELECTED_X8_REPACK=both /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json`
+
+Decision: q6-only X8 selected-down is retained for the accuracy-traded
+llama-compat replication lane. q5/both is rejected for now because the both-X8
+smoke was slower than q6-only (**64.81 vs 69.03 tok/s**), so Q5_K selected-down
+stays on T16. This is not an exact-default promotion; it remains gated by the
+llama-compat/dp4a accuracy trade unless a future exactness/full-suite correctness
+gate proves otherwise.
