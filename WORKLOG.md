@@ -133862,3 +133862,64 @@ PYTHONPATH=. python3 -m pytest \
 ```
 
 Result: passed.
+
+## 2026-07-02 — llama.cpp MTP tensor-stage trace and first post-RoPE split
+
+Added local llama.cpp tensor-stage instrumentation:
+
+- `/home/lhl/llama.cpp/llama.cpp-hip` commit `687c17d26`
+  (`tools: add MTP tensor stage trace`)
+- New env flag: `LLAMA_MTP_TENSOR_TRACE=1`
+- Selected Qwen3.5 MoE `graph_mtp` labels are marked as graph outputs only when
+  the flag is set, summarized as shape-aware mean/rms/min/max/FNV/first8/last8
+  rows, and drained into existing `draft_hidden_state_trace` rows.
+- Added post-RoPE Q/K labels (`mtp_Qcur_rope`, `mtp_Kcur_rope`) to make the
+  comparison line up with hipEngine's `draft_stage_query_rope` and
+  `draft_stage_key_cur_rope` summaries.
+- Cleared ctx_dft process/catch-up tensors before draft tracing so process rows
+  do not get mislabeled as draft rows.
+
+Validation:
+
+```bash
+git -C /home/lhl/llama.cpp/llama.cpp-hip diff --check
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16
+```
+
+Diagnostic rerun:
+
+```bash
+LLAMA_MTP_TENSOR_TRACE=1 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8028 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 27 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-llama-tensor-trace2/llamacpp-stage.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-llama-tensor-trace2/llamacpp.json \
+  --log-dir /tmp/hipengine-mtp-llama-tensor-trace2/logs
+```
+
+Retained compact artifact:
+`benchmarks/results/2026-07-02-mtp-llamacpp-tensor-stage-trace-diagnostic.json`
+(`performance_claim=false`).
+
+Result at the same seq-position-49 divergence, comparing hipEngine post-RoPE
+cycle 3 with llama.cpp stage row 9:
+
+- Depth-0 token embedding and `nextn.enorm` match exactly.
+- `h_norm`, `eh_proj`, `attn_normed`, post-RoPE Q, post-RoPE current K, and
+  current V are close (`first8_mae` <= 0.0198).
+- The first large jump is `draft_stage_attn_pregate`: hipEngine rms **1.056160**
+  vs llama.cpp rms **1.409786**, first8 MAE **0.147055**.
+- `draft_next_seed` remains different: first8 MAE **0.328866**, and proposals
+  remain hipEngine `[65342, 18078]` vs llama.cpp `[8, 1411]`.
+
+Interpretation: after the RoPE-width fix, the remaining semantic mismatch is no
+longer current-token embedding/projection/Q/K/V. Next target is draft attention
+history: compare hipEngine dense MTP device-KV rows against llama.cpp `ctx_dft`
+K/V rows plus the effective attention length/mask at seq position 49. If those
+match, inspect attention/softmax math; otherwise fix the KV/history mirror.
