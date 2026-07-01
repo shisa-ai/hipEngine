@@ -172,6 +172,23 @@ bucket: `draft_run_lm_head` **1.471 -> 1.253 ms/output**. The remaining
 compat gap vs llama.cpp HIP is still **+2.562 ms/output**, split roughly between
 draft drain (**+1.153 ms/output**) and verifier drain (**+1.095 ms/output**).
 
+**Rejected 2026-07-01 direct-F32 q8_1 draft lm-head input check:** a dirty-tree
+diagnostic changed the compat draft Q6_K dp4a top-1 path from
+`rmsnorm_f32 -> f32_to_bf16 -> q8_1 quantize -> q6 dp4a top1` to direct
+`rmsnorm_f32 -> f32 q8_1 quantize -> q6 dp4a top1`, matching llama.cpp's
+activation-quantization shape more closely and removing one BF16 cast launch.
+The idea did not survive full-suite validation. Smoke moved only
+**68.33 -> 68.42 tok/s** and cycle wall **14.656 -> 14.639 ms/output**.
+All-sync showed no intended leaf win: `draft_run_lm_head`
+**1.253 -> 1.261 ms/output**. Full-suite B2 was neutral/slightly negative:
+**59.625 -> 59.621 tok/s**, cycle wall **16.7928 -> 16.7943 ms/output**,
+with unchanged acceptance (`acc/output` **0.578**, draft acceptance **0.685**).
+The small draft-side full-suite movement (`draft_initial`
+**3.2928 -> 3.2853 ms/output**) was offset by verifier noise
+(`target_block_verify_total` **13.1776 -> 13.1859 ms/output**). The code was
+backed out; do not retry direct-F32 q8_1 as a standalone draft fix. If revisited,
+it needs a fused RMSNorm+q8_1 path or a broader lm-head scheduler change.
+
 Latest selected-MoE inner split after q6top1dp4a
 (`llama-compat-device-chain-dp4a-q6top1dp4a-allsync`, smoke, extra sync points):
 

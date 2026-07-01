@@ -130597,3 +130597,47 @@ Current tracked compat gap remains **+2.562 ms/output** vs llama.cpp HIP, split
 between draft drain (**+1.153 ms/output**) and target verifier drain
 (**+1.095 ms/output**). This was a documentation/tracking change only; no new
 benchmark claim was made.
+
+## 2026-07-01 — Rejected direct-F32 q8_1 draft lm-head input
+
+Tested a dirty-tree llama-compat draft change that exposed
+`hipengine_gguf_q4_k_quantize_f32_q8_1` and routed
+`HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A=1` through direct
+`rmsnorm_f32 -> f32 q8_1 quantize -> q6 dp4a top1`, skipping the BF16 cast before
+q8_1 quantization. This more closely mirrors llama.cpp's activation-quantization
+shape, but it did not close the draft drain gap. The code was backed out; no
+runtime/kernel change is retained.
+
+Validation while the diagnostic code was present:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py hipengine/speculative/mtp_resident_draft.py tests/test_gguf_q6_k_pack8_gemv_decode.py`
+  passed.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py`
+  -> **19 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-rocprof-q8f32 --output-file q8f32-top1 -- pytest -q tests/test_gguf_q6_k_pack8_gemv_decode.py::test_q6_k_q8_1_dp4a_top1_gather_accepts_f32_quantized_input`
+  passed and emitted `gguf_quantize_q8_1_kernel<float>` with
+  `Workgroup_Size_X=32`, `Grid_Size_X=512`, `Grid_Size_Y=2`, duration
+  **2437 ns** on the fixture, followed by the q6 dp4a top-1 kernels.
+
+Benchmark diagnostics, all on Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151, route
+`llama-compat-device-chain-dp4a-q6top1dp4a`, t64 selected T16 dp4a:
+
+- Smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-f32q8-smoke.json`
+  produced B2 **68.42 tok/s** vs prior **68.33**, cycle wall
+  **14.639 vs 14.656 ms/output**, unchanged acceptance.
+- All-sync smoke:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-f32q8-allsync-smoke.json`
+  produced B2 **53.98 tok/s** attribution-only; `draft_run_lm_head`
+  **1.253 -> 1.261 ms/output**, so the intended leaf did not improve.
+- Full suite:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS=64 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-f32q8-full.json`
+  produced AR **54.77 tok/s**, B2 **59.621 tok/s** vs prior **59.625**,
+  cycle wall **16.7943 vs 16.7928 ms/output**, `draft_initial`
+  **3.2928 -> 3.2853 ms/output**, `target_block_verify_total`
+  **13.1776 -> 13.1859 ms/output**, unchanged acc/output **0.578** and draft
+  acceptance **0.685**.
+
+Conclusion: direct-F32 q8_1 input by itself is not a retained optimization. If
+this area is revisited, it needs a fused RMSNorm+q8_1 path or broader lm-head
+scheduler change, not just removing the standalone BF16 cast launch.
