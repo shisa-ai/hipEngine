@@ -685,6 +685,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--verify-dense-q8-dp4a-all",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "OPT-IN diagnostic: retain raw Q8_0 sidecars and route all supported rows>1 dense "
+            "Q8 verifier projections through q8_1/dp4a rowtile wrappers. Includes the pair route "
+            "from --verify-dense-q8-dp4a plus singleton and Q/K/V triple projections. Default off."
+        ),
+    )
+    parser.add_argument(
         "--selected-down-x8-repack",
         choices=("off", "q5", "q6", "both"),
         default="off",
@@ -1149,6 +1159,11 @@ def main(argv: list[str] | None = None):
         # by qwen35_gguf_runner.
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A"] = "1"
+    if getattr(args, "verify_dense_q8_dp4a_all", False):
+        # Same materialization constraint as the pair-only route. The ALL flag
+        # also enables the pair helper through qwen35_gguf_runner.
+        os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
+        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
     if str(getattr(args, "selected_down_x8_repack", "off")) != "off":
         # Must be set before materialization so selected-down expert tensors are
         # repacked into the X8 replacement layout.
@@ -1372,6 +1387,7 @@ def main(argv: list[str] | None = None):
         os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
         os.environ.get("HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"),
         os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A"),
+        os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"),
     )
     if _cache_session and _session_key in _SESSION_CACHE:
         session = _SESSION_CACHE[_session_key]
@@ -2960,6 +2976,7 @@ def main(argv: list[str] | None = None):
             "llama_compat": bool(args.llama_compat),
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
+            "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
             "resident_mtp_draft_q6_top1_dp4a": bool(args.resident_mtp_draft_q6_top1_dp4a),
             "resident_mtp_draft_q6_top1_stage1_threads": int(args.resident_mtp_draft_q6_top1_stage1_threads),
             "resident_mtp_draft_q6_top1_stage1_threads_env": os.environ.get(

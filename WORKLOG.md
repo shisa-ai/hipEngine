@@ -131439,3 +131439,71 @@ HIP B2. The board records the current retained/traced speed gap as
 `+2.356 ms/output`, split into `+1.104 ms/output` draft drain,
 `+0.940 ms/output` target verifier drain, and `+0.102 target rows/output`.
 This is docs-only structure for active tracking; no benchmark rerun was needed.
+
+## 2026-07-01 — Raw-Q8 dp4a all-sidecar verifier diagnostic rejected
+
+Added a default-off llama-compat diagnostic for raw-Q8 q8_1/dp4a verifier
+coverage beyond the existing `attn_qkv+attn_gate` pair:
+
+- `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL=1` / `--verify-dense-q8-dp4a-all`
+  broadens raw Q8_0 sidecar materialization to all dense Q8T16 tensors.
+- New wrappers:
+  `gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out` and
+  `gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out`.
+- Runtime routes supported rows>1 verifier singleton projections and full-attn
+  Q/K/V triples through the new raw-Q8 rowtile wrappers. The pair route remains
+  available through both the pair-only and all-sidecar flags.
+- Suite routes:
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all` and
+  `...-denseq8all-allsync`.
+
+Validation:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx' | head -n 40` -> gfx1151 / Radeon 8060S.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked:
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent.
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dp4a_gemv.py hipengine/loading/qwen35_gguf_materialize.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py scripts/gguf_mtp_verifier_rocprof.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_q8_0_dp4a_gemv.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_materialize.py`
+  -> pass.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_dense_q8_dp4a_routing.py`
+  -> **6 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q8_0_dp4a_gemv.py`
+  -> **4 passed**.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_materialize.py -k 'dense_q8 or q8_attention_raw_sidecar'`
+  -> **2 skipped** because the local GGUF fixture is absent.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace -d /tmp/hipengine-q8-dp4a-all-rocprof -f csv -- pytest -q tests/test_gguf_q8_0_dp4a_gemv.py -k 'single_rowtile or triple_split'`
+  -> **2 passed**; trace confirms
+  `q8_0_dp4a_rowtile_gemv_kernel<unsigned short, 4>` and
+  `q8_0_dp4a_triple_split_rowtile_gemv_kernel<unsigned short, 4>` launched.
+
+Block verifier profile:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --record-stage-timings --steps 4 --warmup 1 --skip-warmbuild --raw-root /tmp/hipengine-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-final --out benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all.json`
+
+Result vs retained `x8q6` block profile:
+
+- host wall **33.959 -> 31.133 ms/block**.
+- kernel time **26.053 -> 23.427 ms/block**.
+- dense-Q8 bucket **11.420 -> 8.902 ms/block**.
+- kernel calls/block **999 -> 1039**.
+
+Full-suite result:
+
+- retained control
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json`:
+  **60.36 tok/s**, cycle **16.587 ms/output**, `acc/output=0.583`,
+  draft acceptance **0.700**, verifier drain **13.023 ms/output**,
+  target rows/output **1.250**.
+- denseq8all
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-full.json`:
+  **60.89 tok/s**, cycle **16.446 ms/output**, `acc/output=0.567`,
+  draft acceptance **0.655**, verifier drain **12.742 ms/output**,
+  target rows/output **1.299**.
+
+Conclusion: reject for promotion. The diagnostic is speed-positive for dense-Q8
+work, but it regresses acceptance and row economy, so the retained active lane
+remains `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`. Updated
+`docs/MTP-LLAMACPP-PARITY.md` so the active three-lane tracking table stays
+visible and the rejected denseq8all row is recorded without changing the
+headline gap.

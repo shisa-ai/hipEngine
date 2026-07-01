@@ -152,6 +152,70 @@ def test_q8_0_dp4a_gemv_matches_q8_1_oracle_and_quality_gate() -> None:
     assert top1 >= 0.90, f"top1={top1}"
 
 
+def test_q8_0_dp4a_single_rowtile_matches_q8_1_oracle_and_quality_gate() -> None:
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+        build_gguf_q4_k_gemv,
+        gguf_q4_k_quantize_bf16_q8_1,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
+        build_gguf_q8_0_dp4a_gemv,
+        gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out,
+    )
+
+    rng = np.random.default_rng(20260702)
+    rows, in_features, out_features = 5, 512, 48
+    blocks = in_features // _Q8_1_BLOCK
+
+    x = rng.standard_normal((rows, in_features)).astype(np.float32)
+    x_bf16 = _bf16_round(x)
+    weight = make_q8_0_weight(out_features, in_features)
+
+    x_bits = _to_bf16_bits(x)
+    q4_lib = build_gguf_q4_k_gemv(load=True)
+    dp4a_lib = build_gguf_q8_0_dp4a_gemv(load=True)
+
+    bufs = []
+
+    def _dev(arr):
+        b = malloc(arr.nbytes); bufs.append(b)
+        copy_host_to_device(b, host_array_ptr(np.ascontiguousarray(arr)), arr.nbytes)
+        return b
+
+    try:
+        x_buf = _dev(x_bits)
+        w_buf = _dev(np.ascontiguousarray(weight, dtype=np.uint8))
+        xq_buf = malloc(rows * blocks * _Q8_1_BLOCK_BYTES); bufs.append(xq_buf)
+        out_buf = malloc(rows * out_features * 2); bufs.append(out_buf)
+
+        gguf_q4_k_quantize_bf16_q8_1(x_buf.ptr, xq_buf.ptr, rows, in_features, library=q4_lib)
+        gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out(
+            xq_buf.ptr, w_buf.ptr, out_buf.ptr, rows, in_features, out_features, library=dp4a_lib
+        )
+        out_bits = np.empty(rows * out_features, dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(out_bits), out_buf, out_bits.nbytes)
+        out_dev = (out_bits.astype(np.uint32) << 16).view(np.float32).reshape(rows, out_features)
+    finally:
+        for b in reversed(bufs):
+            free(b)
+
+    ref_q8 = _q8_0_q8_1_oracle(x_bf16, weight)
+    rel_l2 = float(np.linalg.norm(out_dev - ref_q8) / (np.linalg.norm(ref_q8) + 1e-8))
+    assert rel_l2 <= 2e-2, f"rowtile kernel vs q8_1 oracle rel_l2={rel_l2}"
+
+    ref_full = gguf_quant_gemv(x_bf16, weight, GGMLQuantizationType.Q8_0)
+    kl = _softmax_kl(ref_full, out_dev)
+    assert float(np.mean(kl)) <= 0.05, f"KL={float(np.mean(kl))}"
+    top1 = float(np.mean(np.argmax(ref_full, axis=-1) == np.argmax(out_dev, axis=-1)))
+    assert top1 >= 0.90, f"top1={top1}"
+
+
 def test_q8_0_dp4a_dual_split_rowtile_matches_q8_1_oracle_and_quality_gate() -> None:
     from hipengine.core.memory import (
         copy_device_to_host,
@@ -231,6 +295,104 @@ def test_q8_0_dp4a_dual_split_rowtile_matches_q8_1_oracle_and_quality_gate() -> 
     ref_b_full = gguf_quant_gemv(x_bf16, weight_b, GGMLQuantizationType.Q8_0)
     ref_full = np.concatenate([ref_a_full, ref_b_full], axis=1)
     out_dev = np.concatenate([out_a_dev, out_b_dev], axis=1)
+    kl = _softmax_kl(ref_full, out_dev)
+    assert float(np.mean(kl)) <= 0.05, f"KL={float(np.mean(kl))}"
+    top1 = float(np.mean(np.argmax(ref_full, axis=-1) == np.argmax(out_dev, axis=-1)))
+    assert top1 >= 0.90, f"top1={top1}"
+
+
+def test_q8_0_dp4a_triple_split_rowtile_matches_q8_1_oracle_and_quality_gate() -> None:
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+        build_gguf_q4_k_gemv,
+        gguf_q4_k_quantize_bf16_q8_1,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
+        build_gguf_q8_0_dp4a_gemv,
+        gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out,
+    )
+
+    rng = np.random.default_rng(20260703)
+    rows, in_features, out_a, out_b, out_c = 5, 512, 40, 24, 32
+    blocks = in_features // _Q8_1_BLOCK
+
+    x = rng.standard_normal((rows, in_features)).astype(np.float32)
+    x_bf16 = _bf16_round(x)
+    weight_a = make_q8_0_weight(out_a, in_features)
+    weight_b = make_q8_0_weight(out_b, in_features)
+    weight_c = make_q8_0_weight(out_c, in_features)
+
+    x_bits = _to_bf16_bits(x)
+    q4_lib = build_gguf_q4_k_gemv(load=True)
+    dp4a_lib = build_gguf_q8_0_dp4a_gemv(load=True)
+
+    bufs = []
+
+    def _dev(arr):
+        b = malloc(arr.nbytes); bufs.append(b)
+        copy_host_to_device(b, host_array_ptr(np.ascontiguousarray(arr)), arr.nbytes)
+        return b
+
+    try:
+        x_buf = _dev(x_bits)
+        wa_buf = _dev(np.ascontiguousarray(weight_a, dtype=np.uint8))
+        wb_buf = _dev(np.ascontiguousarray(weight_b, dtype=np.uint8))
+        wc_buf = _dev(np.ascontiguousarray(weight_c, dtype=np.uint8))
+        xq_buf = malloc(rows * blocks * _Q8_1_BLOCK_BYTES); bufs.append(xq_buf)
+        out_a_buf = malloc(rows * out_a * 2); bufs.append(out_a_buf)
+        out_b_buf = malloc(rows * out_b * 2); bufs.append(out_b_buf)
+        out_c_buf = malloc(rows * out_c * 2); bufs.append(out_c_buf)
+
+        gguf_q4_k_quantize_bf16_q8_1(x_buf.ptr, xq_buf.ptr, rows, in_features, library=q4_lib)
+        gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out(
+            xq_buf.ptr,
+            wa_buf.ptr,
+            wb_buf.ptr,
+            wc_buf.ptr,
+            out_a_buf.ptr,
+            out_b_buf.ptr,
+            out_c_buf.ptr,
+            rows,
+            in_features,
+            out_a,
+            out_b,
+            out_c,
+            library=dp4a_lib,
+        )
+        out_a_bits = np.empty(rows * out_a, dtype=np.uint16)
+        out_b_bits = np.empty(rows * out_b, dtype=np.uint16)
+        out_c_bits = np.empty(rows * out_c, dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(out_a_bits), out_a_buf, out_a_bits.nbytes)
+        copy_device_to_host(host_array_ptr(out_b_bits), out_b_buf, out_b_bits.nbytes)
+        copy_device_to_host(host_array_ptr(out_c_bits), out_c_buf, out_c_bits.nbytes)
+        out_a_dev = (out_a_bits.astype(np.uint32) << 16).view(np.float32).reshape(rows, out_a)
+        out_b_dev = (out_b_bits.astype(np.uint32) << 16).view(np.float32).reshape(rows, out_b)
+        out_c_dev = (out_c_bits.astype(np.uint32) << 16).view(np.float32).reshape(rows, out_c)
+    finally:
+        for b in reversed(bufs):
+            free(b)
+
+    ref_a_q8 = _q8_0_q8_1_oracle(x_bf16, weight_a)
+    ref_b_q8 = _q8_0_q8_1_oracle(x_bf16, weight_b)
+    ref_c_q8 = _q8_0_q8_1_oracle(x_bf16, weight_c)
+    rel_l2_a = float(np.linalg.norm(out_a_dev - ref_a_q8) / (np.linalg.norm(ref_a_q8) + 1e-8))
+    rel_l2_b = float(np.linalg.norm(out_b_dev - ref_b_q8) / (np.linalg.norm(ref_b_q8) + 1e-8))
+    rel_l2_c = float(np.linalg.norm(out_c_dev - ref_c_q8) / (np.linalg.norm(ref_c_q8) + 1e-8))
+    assert rel_l2_a <= 2e-2, f"triple A kernel vs q8_1 oracle rel_l2={rel_l2_a}"
+    assert rel_l2_b <= 2e-2, f"triple B kernel vs q8_1 oracle rel_l2={rel_l2_b}"
+    assert rel_l2_c <= 2e-2, f"triple C kernel vs q8_1 oracle rel_l2={rel_l2_c}"
+
+    ref_a_full = gguf_quant_gemv(x_bf16, weight_a, GGMLQuantizationType.Q8_0)
+    ref_b_full = gguf_quant_gemv(x_bf16, weight_b, GGMLQuantizationType.Q8_0)
+    ref_c_full = gguf_quant_gemv(x_bf16, weight_c, GGMLQuantizationType.Q8_0)
+    ref_full = np.concatenate([ref_a_full, ref_b_full, ref_c_full], axis=1)
+    out_dev = np.concatenate([out_a_dev, out_b_dev, out_c_dev], axis=1)
     kl = _softmax_kl(ref_full, out_dev)
     assert float(np.mean(kl)) <= 0.05, f"KL={float(np.mean(kl))}"
     top1 = float(np.mean(np.argmax(ref_full, axis=-1) == np.argmax(out_dev, axis=-1)))

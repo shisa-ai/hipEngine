@@ -58,6 +58,9 @@ def _apply_route_env(args: argparse.Namespace) -> None:
     if getattr(args, "verify_dense_q8_dp4a", False):
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A"] = "1"
+    if getattr(args, "verify_dense_q8_dp4a_all", False):
+        os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
+        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
     selected_down_x8 = str(getattr(args, "selected_down_x8_repack", "off"))
     if selected_down_x8 != "off":
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = selected_down_x8
@@ -229,6 +232,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
+        "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
         "q8_t16_rowtile_all": bool(args.q8_t16_rowtile_all),
@@ -307,6 +311,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--verify-dp4a")
     if args.verify_dense_q8_dp4a:
         child_base.append("--verify-dense-q8-dp4a")
+    if args.verify_dense_q8_dp4a_all:
+        child_base.append("--verify-dense-q8-dp4a-all")
     if str(args.selected_down_x8_repack) != "off":
         child_base.extend(["--selected-down-x8-repack", str(args.selected_down_x8_repack)])
     if args.q8_t16_pair_rowtile:
@@ -365,6 +371,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "return_logits": bool(args.return_logits),
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
+        "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
         "q8_t16_rowtile_all": bool(args.q8_t16_rowtile_all),
@@ -493,7 +500,7 @@ def _bucket(family: str) -> str:
         return "gdn_linear_attn"
     if f.startswith(("q4_k_t16_selected", "qk_t16_selected", "gguf_k_selected", "gguf_q4_k_selected")):
         return "moe_selected_gemv"
-    if f.startswith("q8_0_t16"):
+    if f.startswith(("q8_0_t16", "q8_0_dp4a")):
         return "dense_q8_0_gemv"
     if "q6_k_t16_gemv" in f or "lm_head" in f or "argmax" in f:
         return "lm_head"
@@ -601,6 +608,11 @@ def main() -> int:
         "--verify-dense-q8-dp4a",
         action="store_true",
         help="Enable the rejected dense Q8 raw-sidecar dp4a route for diagnostic profiling.",
+    )
+    parser.add_argument(
+        "--verify-dense-q8-dp4a-all",
+        action="store_true",
+        help="Enable the raw-sidecar dense Q8 dp4a-all route for diagnostic profiling.",
     )
     parser.add_argument("--selected-down-x8-repack", choices=("off", "q5", "q6", "both"), default="off")
     parser.add_argument(

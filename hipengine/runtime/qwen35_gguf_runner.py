@@ -152,6 +152,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
     gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out,
+    gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out,
+    gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_moe_ffn_fused import (
     gguf_q4_k_selected_ffn_fused_bf16_bf16_out,
@@ -1532,16 +1534,27 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         used_aotriton = use_aotriton
-        launch_gguf_linear(
+        if not _try_launch_dense_q8_single_dp4a(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
             scratch.attn_out.ptr,
+            scratch,
             rows=rows,
             in_features=self.q_width,
             out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_output"),
+                scratch.full_gated.ptr,
+                scratch.attn_out.ptr,
+                rows=rows,
+                in_features=self.q_width,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
@@ -1596,7 +1609,23 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        if not launch_gguf_linear_triple(
+        if not _try_launch_dense_q8_triple_dp4a(
+            layer.weight("attn_q"),
+            layer.weight("attn_k"),
+            layer.weight("attn_v"),
+            scratch.norm.ptr,
+            scratch.full_q.ptr,
+            scratch.full_k.ptr,
+            scratch.full_v.ptr,
+            scratch,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features_a=2 * self.q_width,
+            out_features_b=self.kv_width,
+            out_features_c=self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        ) and not launch_gguf_linear_triple(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
             layer.weight("attn_v"),
@@ -2334,16 +2363,27 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_prefill_gdn",
             t_stage,
         )
-        launch_gguf_linear(
+        if not _try_launch_dense_q8_single_dp4a(
             layer.weight("ssm_out"),
             scratch.recurrent_bf16.ptr,
             scratch.attn_out.ptr,
+            scratch,
             rows=rows,
             in_features=cfg.ssm_inner_size,
             out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("ssm_out"),
+                scratch.recurrent_bf16.ptr,
+                scratch.attn_out.ptr,
+                rows=rows,
+                in_features=cfg.ssm_inner_size,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -3466,6 +3506,7 @@ _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
+_GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
@@ -3534,7 +3575,11 @@ def _gguf_raw_selected_dp4a_enabled() -> bool:
 
 
 def _gguf_dense_q8_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_DENSE_Q8_DP4A_ENV, False)
+    return _env_flag(_GGUF_DENSE_Q8_DP4A_ENV, False) or _gguf_dense_q8_dp4a_all_enabled()
+
+
+def _gguf_dense_q8_dp4a_all_enabled() -> bool:
+    return _env_flag(_GGUF_DENSE_Q8_DP4A_ALL_ENV, False)
 
 
 def _gguf_row_compact_gemv_enabled() -> bool:
@@ -3581,6 +3626,122 @@ def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enable
     return int(workspace.ptr)
 
 
+def _dense_q8_raw_ptr(weight: Qwen35GGUFDeviceWeight) -> int | None:
+    if weight.spec.quant_key != "gguf_q8_0_t16_v1":
+        return None
+    try:
+        return int(weight.allocation("raw").tensor.ptr)
+    except KeyError:
+        return None
+
+
+def _dense_q8_workspace_ptr(scratch, rows: int, in_features: int) -> int | None:
+    try:
+        return _optional_q8_1_workspace_ptr(scratch, rows, in_features, enabled=True)
+    except ValueError:
+        return None
+
+
+def _try_launch_dense_q8_single_dp4a(
+    weight: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in raw-Q8 q8_1/dp4a singleton route for verifier-shaped dense projections."""
+
+    if not _gguf_dense_q8_dp4a_all_enabled() or int(rows) <= 1:
+        return False
+    raw = _dense_q8_raw_ptr(weight)
+    if raw is None:
+        return False
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_bf16_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _try_launch_dense_q8_triple_dp4a(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    weight_c: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    out_c_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    out_features_c: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in raw-Q8 q8_1/dp4a triple route for verifier-shaped Q/K/V projections."""
+
+    if not _gguf_dense_q8_dp4a_all_enabled() or int(rows) <= 1:
+        return False
+    raw_a = _dense_q8_raw_ptr(weight_a)
+    raw_b = _dense_q8_raw_ptr(weight_b)
+    raw_c = _dense_q8_raw_ptr(weight_c)
+    if raw_a is None or raw_b is None or raw_c is None:
+        return False
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_bf16_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw_a,
+        raw_b,
+        raw_c,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        out_features_c,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
 def _try_launch_dense_q8_pair_dp4a(
     weight_a: Qwen35GGUFDeviceWeight,
     weight_b: Qwen35GGUFDeviceWeight,
@@ -3600,17 +3761,11 @@ def _try_launch_dense_q8_pair_dp4a(
 
     if not _gguf_dense_q8_dp4a_enabled() or int(rows) <= 1:
         return False
-    if (
-        weight_a.spec.quant_key != "gguf_q8_0_t16_v1"
-        or weight_b.spec.quant_key != "gguf_q8_0_t16_v1"
-    ):
+    raw_a = _dense_q8_raw_ptr(weight_a)
+    raw_b = _dense_q8_raw_ptr(weight_b)
+    if raw_a is None or raw_b is None:
         return False
-    try:
-        raw_a = weight_a.allocation("raw").tensor.ptr
-        raw_b = weight_b.allocation("raw").tensor.ptr
-    except KeyError:
-        return False
-    q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(scratch, rows, in_features, enabled=True)
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
     if q8_1_workspace_ptr is None:
         return False
     gguf_q4_k_quantize_bf16_q8_1(

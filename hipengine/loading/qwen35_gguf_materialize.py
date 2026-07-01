@@ -49,6 +49,7 @@ HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV = "HIPENGINE_GGUF_SELECTED_X8_REPACK"
 HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV = "HIPENGINE_GGUF_SELECTED_DOWN_RAW"
 HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_X8"
 HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV = "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"
+HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 
 
 @dataclass(frozen=True)
@@ -364,9 +365,10 @@ def gguf_selected_gate_up_x8_enabled(value: bool | str | None = None) -> bool:
 def gguf_q8_0_raw_sidecar_enabled(value: bool | str | None = None) -> bool:
     """Return whether T16 dense Q8_0 residents should retain raw GGUF bytes too.
 
-    This is a default-off llama-compat diagnostic sidecar. The current consumer is
-    the dense-Q8 q8_1/dp4a verifier probe, which only needs linear-attention
-    ``attn_qkv`` and ``attn_gate`` raw bytes.
+    This is a default-off llama-compat diagnostic sidecar. The pair-only route
+    retains raw bytes only for linear-attention ``attn_qkv`` and ``attn_gate``;
+    ``HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL=1`` broadens the sidecar to every dense
+    Q8_0 T16 tensor so verifier Q/K/V and singleton projections can be tested.
     """
 
     if value is None:
@@ -375,6 +377,11 @@ def gguf_q8_0_raw_sidecar_enabled(value: bool | str | None = None) -> bool:
         raw = "1" if value else ""
     else:
         raw = str(value)
+    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
+def gguf_q8_0_raw_sidecar_all_enabled() -> bool:
+    raw = os.environ.get(HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV, "")
     return raw.strip().lower() not in {"", "0", "false", "off", "no"}
 
 
@@ -497,7 +504,9 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
         )
     if qtype == GGMLQuantizationType.Q8_0 and decode_repack and slot_path.startswith("layers.") and len(tensor.shape) == 2:
         allocation_names = ("tiles",)
-        if gguf_q8_0_raw_sidecar_enabled() and _is_linear_attention_q8_pair_tensor(slot_path, tensor):
+        if gguf_q8_0_raw_sidecar_enabled() and (
+            gguf_q8_0_raw_sidecar_all_enabled() or _is_linear_attention_q8_pair_tensor(slot_path, tensor)
+        ):
             allocation_names = ("tiles", "raw")
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
@@ -737,6 +746,7 @@ __all__ = [
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV",
     "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV",
     "HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV",
     "HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV",
@@ -760,6 +770,7 @@ __all__ = [
     "_gguf_ssm_a_to_kernel_a_log",
     "audit_qwen35_gguf_precision_contractions",
     "gguf_decode_repack_enabled",
+    "gguf_q8_0_raw_sidecar_all_enabled",
     "gguf_q8_0_raw_sidecar_enabled",
     "gguf_selected_down_raw_enabled",
     "gguf_selected_down_raw_mode",

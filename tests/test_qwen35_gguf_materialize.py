@@ -11,6 +11,7 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DECODE_REPACK_ENV,
+    HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV,
     HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV,
     HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV,
     HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV,
@@ -149,6 +150,29 @@ def test_qwen35moe_decode_repack_can_keep_q8_attention_raw_sidecar(monkeypatch: 
     assert layer0["attn_gate"].allocation_names == ("tiles", "raw")
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
     assert layer0["ffn_gate_shexp"].allocation_names == ("tiles",)
+
+
+def test_qwen35moe_decode_repack_can_keep_all_dense_q8_raw_sidecars(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    plan = plan_qwen35_gguf_materialization(model_map)
+
+    layer0 = plan.layer_specs[0]
+    assert layer0["attn_qkv"].allocation_names == ("tiles", "raw")
+    assert layer0["attn_gate"].allocation_names == ("tiles", "raw")
+    assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
+    assert layer0["ffn_gate_shexp"].allocation_names == ("tiles", "raw")
+    full_attn_layer = next(layer for layer in plan.layer_specs if "attn_q" in layer)
+    assert full_attn_layer["attn_q"].layout == LAYOUT_GGUF_Q8_0_T16
+    assert full_attn_layer["attn_q"].allocation_names == ("tiles", "raw")
+    assert full_attn_layer["attn_k"].allocation_names == ("tiles", "raw")
+    assert full_attn_layer["attn_v"].allocation_names == ("tiles", "raw")
 
 
 def test_qwen35moe_decode_repack_can_plan_selected_down_x8(monkeypatch: pytest.MonkeyPatch) -> None:
