@@ -31,6 +31,7 @@ Current source artifacts:
 | hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
 | hipEngine llama-compat | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-paircache-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, and pair-dispatch cleanup. |
 | hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-selectedsplit3-allsync-smoke.json` | Attribution-only smoke with extra sync points inside selected-MoE gate/up/down. Do not use for headline tok/s. |
+| hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
 #### Headline speed gap
@@ -120,6 +121,19 @@ new selected-MoE buckets rule out q8_1 quantization overhead as the primary
 cause; copying llama.cpp more closely means comparing its `mul_mat_vec_q_moe`
 schedule/body against these selected GEMV launches, not adding another raw-Q8
 sidecar quantize path.
+
+**Rejected 2026-07-01 fused-SiLU q8_1/dp4a selected gate/up check:** a
+microbench made the fused rows>1 selected gate/up idea look plausible:
+`t16_silu_dp4a_quantize_plus_dot` was **0.057 ms** vs split
+`t16_selected_dual_silu` **0.077 ms** at `x_rows=2`, `rows=16`. The all-sync
+smoke also looked directionally positive: `target_block_verify_total`
+**16.298 -> 15.811 ms/output** and `target_block_linear_attn_layers`
+**10.710 -> 10.366 ms/output**, mostly by removing the separate selected-MoE
+SiLU timing bucket. The async smoke rejected it: compat B2 moved
+**66.66 -> 66.30 tok/s**, `cycle_wall_ms_per_output` **15.023 -> 15.105**, and
+`target_block_verify_total` **11.960 -> 12.060 ms/output**. The runtime wiring
+was backed out. Lesson for this tracker: all-sync sub-buckets can overstate a
+launch-removal win; only the async/full-suite row updates the headline gap.
 
 **Rejected 2026-07-01 target-block WMMA prefill re-check:** on the same B2
 all-sync smoke prompt, `--target-block-wmma-prefill` regressed **52.10 -> 34.04

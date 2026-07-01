@@ -130382,3 +130382,35 @@ Decision: the selected-MoE target is the GEMV body/scheduler, not q8_1
 quantization overhead. Updated `docs/MTP-LLAMACPP-PARITY.md` active tracking to
 keep the three-lane hipEngine default / hipEngine llama-compat / llama.cpp HIP
 dashboard and add the selected-MoE split table under the full-suite gap ledger.
+
+Rejected a rows>1 fused-SiLU q8_1/dp4a selected gate/up verifier experiment for
+the `llama-compat` B2 route and backed out the uncommitted runtime wiring/test.
+Microbench evidence looked promising:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --x-rows 2 --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`
+
+Result: `t16_silu_dp4a_quantize_plus_dot` **0.057 ms** vs
+`t16_selected_dual_silu` **0.077 ms**.
+
+All-sync smoke also looked positive:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-allsync --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`
+
+Result: B2 **52.99 tok/s**, acc/output **0.667**, draft acceptance **1.000**;
+`target_block_verify_total` **16.298 -> 15.811 ms/output** and
+`target_block_linear_attn_layers` **10.710 -> 10.366 ms/output** vs the
+selectedsplit3 all-sync diagnostic.
+
+Async smoke rejected it:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json`
+
+Result: B2 **66.30 tok/s**, acc/output **0.667**, draft acceptance **1.000**.
+Compared with paircache async smoke B2 **66.66 tok/s**,
+`cycle_wall_ms_per_output` regressed **15.023 -> 15.105**, and
+`target_block_verify_total` regressed **11.960 -> 12.060 ms/output**.
+
+Decision: do not route rows>1 selected gate/up through fused-SiLU q8_1/dp4a in
+the current compat path. The active parity doc now records this in the
+three-lane dashboard section as a warning that all-sync sub-buckets are
+attribution aids only; async/full-suite rows are the promotion gate.
