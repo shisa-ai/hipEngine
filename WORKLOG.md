@@ -131582,3 +131582,12 @@ or update the retained headline gap. Updated `docs/MTP-LLAMACPP-PARITY.md`,
 `docs/REFACTOR.md`, and `docs/KERNELS.md`; future selected-MoE work should
 compare against llama.cpp `mul_mat_vec_q_moe` body/scheduler rather than
 broadening the X8 gate/up route.
+
+## 2026-07-01 — MTP parity active table contract clarified
+
+Tightened `docs/MTP-LLAMACPP-PARITY.md` so the active tracker explicitly keeps a
+standing three-lane speed-gap table in the order hipEngine default exact,
+hipEngine `llama-compat`, llama.cpp HIP, plus compat delta. No measurements
+changed. The current retained compat budget remains **+2.356 ms/output**, split
+across **+1.104 ms/output** draft drain, **+0.940 ms/output** target verifier
+drain, and **+0.102 target rows/output**.

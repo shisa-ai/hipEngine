@@ -28,18 +28,21 @@ no-probe B2 structure, so its delta column is the active work queue.
 Tracking invariant: the active question is always "where is
 `llama-compat` still slower than llama.cpp HIP, and by how much?" Keep the
 default exact lane beside it as a regression guard, but do not let exact-mode
-concerns obscure the replication lane. When the compat shape matches llama.cpp
-and a positive delta remains, the next implementation step is to inspect the
-matching llama.cpp source path and either copy the mechanism or document why its
-economics do not transfer.
+concerns obscure the replication lane. The standing table must answer that
+question at a glance: current speed, per-stage cost, compat gap size, and the
+next llama.cpp source path or kernel family to compare. When the compat shape
+matches llama.cpp and a positive delta remains, the next implementation step is
+to inspect the matching llama.cpp source path and either copy the mechanism or
+document why its economics do not transfer.
 
 Update rule: every future `llama-compat` run that changes the route shape or moves
 throughput must update the standing snapshot, source-artifact row, headline gap,
 stage ledger, full-suite bucket inventory, all-sync leaf attribution, active gap
 budget, and target map below in the same commit. Keep the three-lane tables
-visible; do not replace them with prose-only conclusions or a single tok/s
-headline. Old "FINAL" sections further down are historical once they disagree
-with this active tracker.
+visible and in the same order: hipEngine default exact, hipEngine
+`llama-compat`, llama.cpp HIP, then the compat delta. Do not replace them with
+prose-only conclusions or a single tok/s headline. Old "FINAL" sections further
+down are historical once they disagree with this active tracker.
 
 Required refresh shape for each retained or diagnostic parity run:
 
@@ -75,7 +78,13 @@ Dashboard contract:
 | hipEngine `llama-compat` | Active replication lane. | Should structurally match llama.cpp's B2/no-probe MTP path; every positive delta vs llama.cpp is a concrete optimization target. |
 | llama.cpp HIP | Timing target and implementation reference. | When `llama-compat` mirrors the shape but stays slower, inspect the corresponding llama.cpp stage/kernel and copy or retune the mechanism. |
 
-Canonical three-lane speed-gap board (update every parity run):
+Canonical speed-gap table (standing active tracker; update every parity run):
+
+Preserve this table as the top-of-file board. The compat gap column is the live
+optimization budget; the final column names the next comparison target. If a new
+fine-grained bucket has no direct llama.cpp analog, leave the direct comparison
+to the detailed inventory and move the gap only through its nearest parent row
+here.
 
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
