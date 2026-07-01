@@ -133174,3 +133174,70 @@ PYTHONPATH=. python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q
 ```
 
 Result: passed.
+
+## 2026-07-02 — llama.cpp MTP whole-run rocprof proxy
+
+Added `scripts/llamacpp_mtp_rocprof.py`, a diagnostic wrapper that starts
+`llama-server` under `rocprofv3 --kernel-trace`, sends one bounded MTP
+`/completion` request, captures `LLAMA_MTP_STAGE_TIMINGS`, and summarizes the
+surviving kernel CSV with `scripts/llamacpp_kernel_trace_summary.py`. Added
+focused tests in `tests/test_llamacpp_mtp_rocprof.py` for the server MTP flags
+and bounded completion payload. The wrapper is explicitly diagnostic:
+`performance_claim=false`, whole-process trace only, not a draft-window-only
+ROCTX split.
+
+Profile command:
+
+```bash
+PYTHONPATH=. HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_rocprof.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8021 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --token-repeat --prompt-tokens 32 --max-tokens 8 \
+  --profiler-finalize-timeout 90 \
+  --label llamacpp-hip-mtp-token32-gen8-whole-run \
+  --raw-root /tmp/hipengine-llamacpp-mtp-rocprof-token32-gen8 \
+  --out benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json
+```
+
+Result: `diagnostic_retained`; request completed and wrote stage timings plus a
+kernel CSV, but rocprof finalize did not exit before timeout, so the wrapper
+recorded `terminate_status=killed_after_finalize_timeout`. Request summary:
+`predicted_n=8`, `predicted_per_second=70.197`, `draft_n=4`,
+`draft_n_accepted=4`, `draft_acceptance=1.0`, `accepted_per_output=0.5`.
+Stage JSONL measured **2 cycles / 6 visible outputs**, `cycle_wall`
+**14.983 ms/output**, `draft_initial` **2.134 ms/output**,
+`llama_draft_sample_topk` **1.702 ms/output**,
+`target_block_verify_total` **12.834 ms/output**, and
+`mtp_context_replay_append` **9.127 ms/output**.
+
+Whole-process kernel bucket summary:
+
+| bucket | dispatches | total ms | share |
+| --- | ---: | ---: | ---: |
+| `llama_mmvq` | 1628 | 73.924 | 29.1% |
+| `other` | 3193 | 56.871 | 22.4% |
+| `llama_copy_layout` | 2253 | 51.570 | 20.3% |
+| `llama_mmvq_moe` | 612 | 40.686 | 16.0% |
+| `llama_mmvf` | 857 | 7.221 | 2.8% |
+| `llama_elementwise` | 2169 | 6.104 | 2.4% |
+| `llama_gdn` | 210 | 5.392 | 2.1% |
+| `llama_norm` | 1407 | 3.986 | 1.6% |
+| `llama_quantize_q8_1` | 2240 | 3.529 | 1.4% |
+| `llama_flash_attn` | 160 | 2.107 | 0.8% |
+| `llama_topk_argsort` | 164 | 1.341 | 0.5% |
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` with the new source artifact and a
+whole-run proxy table. Next instrumentation boundary, if needed: add ROCTX
+markers in llama.cpp around `llama_draft_sample_topk`,
+`llama_draft_decode_initial/next`, and `llama_process_*` so the kernel CSV can
+be sliced by the same stage windows as hipEngine's traces.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/llamacpp_mtp_rocprof.py tests/test_llamacpp_mtp_rocprof.py
+PYTHONPATH=. python3 -m pytest tests/test_llamacpp_mtp_rocprof.py -q
+```
+
+Result: passed.
