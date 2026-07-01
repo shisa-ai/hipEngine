@@ -90,6 +90,7 @@ Current source artifacts:
 | hipEngine default exact | `benchmarks/results/2026-06-30-ar-mtp-stage-timing-b5-exact-deep.json` plus retained exact suite row | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. |
 | hipEngine llama-compat | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6`, artifact `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-full.json` | Current no-probe B2, resident device-chain, dp4a compat lane after Q6 top-1, direct-state, pair-dispatch cleanup, 64-thread selected T16 dp4a scheduler, q8_1/dp4a draft Q6_K top-1 lm-head, and q6-only X8 selected-down repack (`--selected-down-x8-repack q6`). |
 | hipEngine llama-compat verifier all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Attribution-only smoke with extra sync points inside verifier layer families and selected-MoE gate/up/down. Do not use for headline tok/s. |
+| hipEngine llama-compat verifier block rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json` | Diagnostic-only B2-shaped `verify_target_block` kernel trace for the retained compat route (`--mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank verifier kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
@@ -231,7 +232,7 @@ match but the timings do not.
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+2.356 ms/output** | Any real win must show up here after async/full-suite validation. |
 | 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_stage1` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.104 ms/output** | Activation quantization/cast, final reduce/gather, llama launch-width, one-row MMVQ shape, and pack8 scale-hoisting are now measured/rejected. Focus on a different Q6_K body/layout or a broader fused top-1/sampler path that moves the async row. |
-| 3 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.940 ms/output** | Q8T16 pair layout/schedule first, then selected-MoE gate/up/down bodies. |
+| 3 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.940 ms/output** | Block rocprof ranks the active kernel work: dense Q8T16 projections first, selected-MoE GEMV second, verifier lm-head third. |
 | 4 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.102 target rows/output | Revisit policy only after operation cost is closer; this is secondary today. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 
@@ -258,6 +259,52 @@ leaf bucket should move the full-suite `draft_initial` or
 | `draft_run_lm_head_q6_top1_dp4a_stage1` | **1.218** | draft top1 split | The actual draft lm-head target: Q6_K top-1 stage1 compute/layout. |
 | `draft_run_lm_head_q6_top1_dp4a_stage2_gather` | **0.041** | draft top1 split | Final block-winner reduction plus optional embedding gather is not the missing cost. |
 | `draft_run_lm_head_norm` + cast + q8_1 quantize | **0.030** | draft top1 split | Measured negligible; do not spend more time on standalone activation-quantization changes. |
+
+#### Current block-verifier rocprof attribution
+
+This table profiles the retained `llama-compat` verifier shape directly:
+`scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --verify-dp4a
+--selected-down-x8-repack q6 --record-stage-timings --steps 4 --warmup 1`.
+It is diagnostic-only and does not replace the full-suite speed rows above. Its
+job is to keep the verifier target order mechanical when `llama-compat` already
+matches llama.cpp's B2/no-probe structure.
+
+Summary for the B2-shaped block profile: **33.959 ms/block host wall**,
+**26.053 ms/block kernel time**, **76.7% kernel share**, and
+**999.0 kernel calls/block**. The measured host residual is
+**7.906 ms/block**, but the dominant remaining work is still kernel time.
+
+| kernel-family bucket | calls/block | ms/block | kernel share | next action |
+| --- | ---: | ---: | ---: | --- |
+| `dense_q8_0_gemv` | 160.0 | **11.420** | **43.8%** | First verifier target: Q8T16 `mul_mat_vec_q` analogs, especially fused dual/triple/single projections. |
+| `moe_selected_gemv` | 77.0 | **6.671** | **25.6%** | Second target: compare selected gate/up/down body and scheduling against llama.cpp `mul_mat_vec_q_moe`. |
+| `lm_head` | 3.0 | **2.672** | **10.3%** | Third target after layer GEMVs; includes `q6_k_t16_gemv_rowtile`. |
+| `gdn_linear_attn` | 60.0 | 1.749 | 6.7% | Track, but smaller than dense/selected GEMV. |
+| `moe_router` | 120.0 | 1.061 | 4.1% | Guard against regressions; not first-order gap. |
+| `rmsnorm_rope` | 92.0 | 0.575 | 2.2% | Not a priority. |
+| `memcpy_fill` | 169.0 | 0.314 | 1.2% | Not enough to close the verifier gap. |
+| `moe_combine_silu` | 120.0 | 0.280 | 1.1% | Earlier fused-SiLU route regressed async smoke; keep secondary. |
+| `attn_core` | 30.0 | 0.170 | 0.7% | Not the current limiter. |
+
+Top individual kernel families in the same trace:
+
+| kernel family | calls/block | ms/block | kernel share | reading |
+| --- | ---: | ---: | ---: | --- |
+| `q8_0_t16_dual_split_gemv` | 30.0 | **6.025** | 23.1% | Biggest single verifier body; inspect llama.cpp MMVQ schedule/layout before more local tweaks. |
+| `q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv` | 40.0 | **4.043** | 15.5% | Main selected gate/up body. |
+| `q8_0_t16_gemv` | 80.0 | **3.172** | 12.2% | Dense singleton projections still large after pair fusion. |
+| `q6_k_t16_gemv_rowtile` | 1.0 | **2.646** | 10.2% | Verifier lm-head bucket. |
+| `qk_t16_selected_q8_1_dp4a_direct_gemv` | 37.0 | **2.629** | 10.1% | Selected down body; q6-only X8 helped but did not erase it. |
+| `qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop` | 30.0 | 1.574 | 6.0% | GDN recurrent work, below GEMV priorities. |
+| `q8_0_t16_triple_split_gemv` | 10.0 | **1.537** | 5.9% | Dense triple projection is still worth comparing to llama.cpp layout/scheduler. |
+
+Stage timings from the child agree with the all-sync ledger: per block,
+`target_block_layer_total` is **29.890 ms**, split into
+`target_block_linear_attn_layers` **22.077 ms** and
+`target_block_full_attn_layers` **7.812 ms**, with
+`target_block_lm_head_sample` **2.801 ms**. This confirms the current verifier
+work queue: dense Q8T16 projection kernels, selected-MoE GEMV bodies, then
+verifier lm-head.
 
 The Q6 top-1 stage1 thread-count diagnostic is rejected. llama.cpp's RDNA3
 Q6_K MMVQ selects a two-warp single-column shape, so hipEngine added

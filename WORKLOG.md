@@ -131296,3 +131296,53 @@ Validation:
   -> **1 passed**. Trace confirmed
   `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1_kernel` launched with
   `Workgroup_Size_X=128` and `Workgroup_Size_X=64` in the fixture.
+
+## 2026-07-01 — Llama-compat B2 block verifier rocprof attribution
+
+Added a `--mode block-verify` path to `scripts/gguf_mtp_verifier_rocprof.py` so
+the profiler can measure the retained llama-compat B2 verifier shape directly
+instead of only the historical serial-step fallback. The new mode calls
+`verify_target_block()` with `block_rows=3` (previous token plus two draft rows),
+supports the same dp4a/X8 route flags as the suite, optionally records verifier
+stage timings, and emits block-mode ROCTX ranges plus the child stage totals in
+the JSON artifact.
+
+Child smoke command on AMD Radeon 8060S / gfx1151:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_verifier_rocprof.py --child --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings --steps 1 --warmup 0 --require-cached --child-json /tmp/hipengine-block-verify-child.json`
+
+Result: `block-verify steps=1 avg_host_ms=44.195`; stage totals showed
+`target_block_layer_total` about **29.75 ms**, split into linear-attention
+layers about **22.23 ms**, full-attention layers about **7.52 ms**, and
+`target_block_lm_head_sample` about **3.12 ms**.
+
+Profiler command:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings --steps 4 --warmup 1 --raw-root /tmp/hipengine-gguf-mtp-verifier-rocprof-llama-compat-block-b2 --out benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json`
+
+Result artifact:
+`benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json`.
+Summary: **33.959 ms/block host wall**, **26.053 ms/block kernel time**,
+**76.7% kernel share**, **999.0 kernel calls/block**. Kernel-family buckets:
+`dense_q8_0_gemv` **11.420 ms/block** (43.8%), `moe_selected_gemv`
+**6.671 ms/block** (25.6%), `lm_head` **2.672 ms/block** (10.3%),
+`gdn_linear_attn` **1.749 ms/block** (6.7%), then router/norm/misc. Top
+families were `q8_0_t16_dual_split_gemv` **6.025 ms/block**,
+`q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv` **4.043 ms/block**,
+`q8_0_t16_gemv` **3.172 ms/block**, `q6_k_t16_gemv_rowtile`
+**2.646 ms/block**, and `qk_t16_selected_q8_1_dp4a_direct_gemv`
+**2.629 ms/block**.
+
+Updated `docs/MTP-LLAMACPP-PARITY.md` so the active tracker keeps this
+diagnostic block profile next to the three-lane speed dashboard. Conclusion:
+the llama-compat verifier gap is GPU/kernel dominated. Next fixes should target
+dense Q8T16 projection kernels first, selected-MoE GEMV bodies second, and the
+verifier lm-head third.
+
+Validation:
+
+- `python3 -m py_compile scripts/gguf_mtp_verifier_rocprof.py` -> pass.
+- `git diff --check` -> pass.
+- Cached child rerun:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_verifier_rocprof.py --child --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings --steps 1 --warmup 0 --require-cached --child-json /tmp/hipengine-block-verify-child-rerun.json`
+  -> `block-verify steps=1 avg_host_ms=43.938`.

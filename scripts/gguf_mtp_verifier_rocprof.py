@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""rocprofv3 host/GPU split for the current GGUF MTP target verifier.
+"""rocprofv3 host/GPU split for GGUF MTP target verification.
 
-The retained GGUF AR/MTP suite currently uses the ``resident-serial-fallback``
-route, which falls through to eager ``Qwen35GGUFResidentSession.step()`` target
-verification.  This diagnostic profiles that target-step shape with
-``capture_hidden_seed_fp32=True`` and, by default, ``return_logits=False`` to
-match the current ``gguf_mtp_bench.py`` call site.  This tells us whether the
-verifier gap is a host/copy/launch floor or GPU streaming wall on current code.
+By default this diagnostic profiles the historical serial target-step shape with
+``capture_hidden_seed_fp32=True`` and ``return_logits=False``.  With
+``--mode block-verify`` it profiles the B2-like verifier block used by the
+llama-compat parity lane: previous token plus draft rows, optional dp4a selected
+MoE routing, direct-state commit, and the same ROCTX/kernel-window attribution.
+This tells us whether the verifier gap is a host/copy/launch floor or GPU
+streaming wall on current code.
 
 Parent mode warm-builds outside rocprof, pins ``HIPENGINE_COMPILER_VERSION_FILE``,
 then runs child mode under ``rocprofv3 --kernel-trace --marker-trace`` with
@@ -37,7 +38,37 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPT_IDS = "760,4087,369,220,16,17,18,19"
-MARKER_PREFIX = "gguf_mtp_verify_serial_"
+SERIAL_MARKER_PREFIX = "gguf_mtp_verify_serial_"
+BLOCK_MARKER_PREFIX = "gguf_mtp_verify_block_"
+
+
+def _marker_prefix(mode: str) -> str:
+    return BLOCK_MARKER_PREFIX if mode == "block-verify" else SERIAL_MARKER_PREFIX
+
+
+def _apply_route_env(args: argparse.Namespace) -> None:
+    os.environ.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    if getattr(args, "verify_dp4a", False):
+        for flag in (
+            "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A",
+            "HIPENGINE_GGUF_T16_SELECTED_DP4A",
+            "HIPENGINE_GGUF_RAW_SELECTED_DP4A",
+        ):
+            os.environ[flag] = "1"
+    if getattr(args, "verify_dense_q8_dp4a", False):
+        os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
+        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A"] = "1"
+    selected_down_x8 = str(getattr(args, "selected_down_x8_repack", "off"))
+    if selected_down_x8 != "off":
+        os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = selected_down_x8
+
+
+def _sum_stage_timings(rows: list[dict[str, float]]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for row in rows:
+        for key, value in row.items():
+            totals[key] = totals.get(key, 0.0) + float(value)
+    return dict(sorted(totals.items()))
 
 
 def _default_roctx_sdk() -> Path:
@@ -97,7 +128,7 @@ def _parse_prompt_ids(value: str) -> list[int]:
 
 
 def _run_child(args: argparse.Namespace) -> int:
-    os.environ.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    _apply_route_env(args)
     if args.compiler_version_file:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
@@ -107,6 +138,7 @@ def _run_child(args: argparse.Namespace) -> int:
     roctx = _Roctx()
     host_ms: list[float] = []
     token_ids: list[int] = []
+    stage_timings: list[dict[str, float]] = []
     with Qwen35GGUFResidentSession(
         args.model,
         max_sequence_length=args.max_seq,
@@ -116,43 +148,94 @@ def _run_child(args: argparse.Namespace) -> int:
     ) as session:
         first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
         cur = int(first.token_id)
-        for _ in range(int(args.warmup)):
-            cur = int(
-                session.step(
+        if args.mode == "serial-step":
+            for _ in range(int(args.warmup)):
+                cur = int(
+                    session.step(
+                        cur,
+                        return_logits=bool(args.return_logits),
+                        capture_hidden_seed_fp32=True,
+                    ).token_id
+                )
+            session.runtime.device_synchronize()
+            for index in range(int(args.steps)):
+                roctx.push(f"{SERIAL_MARKER_PREFIX}{index}")
+                t0 = time.perf_counter()
+                result = session.step(
                     cur,
                     return_logits=bool(args.return_logits),
                     capture_hidden_seed_fp32=True,
-                ).token_id
-            )
-        session.runtime.device_synchronize()
-        for index in range(int(args.steps)):
-            roctx.push(f"{MARKER_PREFIX}{index}")
-            t0 = time.perf_counter()
-            result = session.step(
-                cur,
-                return_logits=bool(args.return_logits),
-                capture_hidden_seed_fp32=True,
-            )
+                )
+                session.runtime.device_synchronize()
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                roctx.pop()
+                cur = int(result.token_id)
+                host_ms.append(elapsed_ms)
+                token_ids.append(cur)
+        else:
+            block_rows = int(args.block_rows)
+            if block_rows <= 0:
+                raise ValueError("--block-rows must be positive")
+
+            def run_block(index: int | None) -> int:
+                nonlocal cur
+                start_position = int(session.position)
+                block_inputs = [int(cur)] * block_rows
+                if index is not None:
+                    roctx.push(f"{BLOCK_MARKER_PREFIX}{index}")
+                t0 = time.perf_counter()
+                result = session.verify_target_block(
+                    block_inputs,
+                    bulk_attention_mode=str(args.block_verify_mode),
+                    use_wmma_prefill=bool(args.block_wmma_prefill),
+                    capture_linear_state_rows=bool(args.direct_state_commit),
+                    record_stage_timings=bool(args.record_stage_timings),
+                    sync_stage_timings=bool(args.sync_stage_timings),
+                    defer_linear_state_commit=bool(args.direct_state_commit),
+                )
+                if args.direct_state_commit:
+                    if not result.linear_state_rows_captured:
+                        raise RuntimeError("direct-state block profile did not capture linear-state rows")
+                    session._commit_verify_linear_state_row(block_rows - 1, position=start_position + block_rows)
+                session.runtime.device_synchronize()
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                if index is not None:
+                    roctx.pop()
+                    host_ms.append(elapsed_ms)
+                    token_ids.append(int(result.token_ids[-1]))
+                    if args.record_stage_timings:
+                        stage_timings.append(dict(session.last_verify_stage_timings_ms))
+                cur = int(result.token_ids[-1])
+                return cur
+
+            for _ in range(int(args.warmup)):
+                run_block(None)
             session.runtime.device_synchronize()
-            elapsed_ms = (time.perf_counter() - t0) * 1000.0
-            roctx.pop()
-            cur = int(result.token_id)
-            host_ms.append(elapsed_ms)
-            token_ids.append(cur)
+            for index in range(int(args.steps)):
+                run_block(index)
     payload = {
         "schema": "hipengine.gguf_mtp_verifier_rocprof.child.v1",
-        "mode": "serial_step",
+        "mode": str(args.mode),
         "steps": int(args.steps),
         "warmup": int(args.warmup),
         "return_logits": bool(args.return_logits),
+        "block_rows": int(args.block_rows) if args.mode == "block-verify" else None,
+        "block_verify_mode": str(args.block_verify_mode) if args.mode == "block-verify" else None,
+        "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
+        "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
+        "verify_dp4a": bool(args.verify_dp4a),
+        "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
+        "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "host_ms": host_ms,
         "avg_host_ms": sum(host_ms) / len(host_ms) if host_ms else 0.0,
         "token_ids": token_ids,
+        "stage_timings_ms": stage_timings if stage_timings else None,
+        "stage_timing_totals_ms": _sum_stage_timings(stage_timings) if stage_timings else None,
     }
     if args.child_json:
         args.child_json.parent.mkdir(parents=True, exist_ok=True)
         args.child_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    print(f"[gguf-mtp-verifier] serial steps={args.steps} avg_host_ms={payload['avg_host_ms']:.3f}")
+    print(f"[gguf-mtp-verifier] {args.mode} steps={args.steps} avg_host_ms={payload['avg_host_ms']:.3f}")
     return 0
 
 
@@ -193,11 +276,37 @@ def _run_parent(args: argparse.Namespace) -> int:
         str(int(args.warmup)),
         "--max-seq",
         str(int(args.max_seq)),
+        "--mode",
+        str(args.mode),
+        "--block-rows",
+        str(int(args.block_rows)),
+        "--block-verify-mode",
+        str(args.block_verify_mode),
         "--compiler-version-file",
         str(cvf),
         "--child-json",
         str(child_json),
     ]
+    if args.return_logits:
+        child_base.append("--return-logits")
+    else:
+        child_base.append("--no-return-logits")
+    if args.block_wmma_prefill:
+        child_base.append("--block-wmma-prefill")
+    if args.direct_state_commit:
+        child_base.append("--direct-state-commit")
+    else:
+        child_base.append("--no-direct-state-commit")
+    if args.verify_dp4a:
+        child_base.append("--verify-dp4a")
+    if args.verify_dense_q8_dp4a:
+        child_base.append("--verify-dense-q8-dp4a")
+    if str(args.selected_down_x8_repack) != "off":
+        child_base.extend(["--selected-down-x8-repack", str(args.selected_down_x8_repack)])
+    if args.record_stage_timings:
+        child_base.append("--record-stage-timings")
+    if args.sync_stage_timings:
+        child_base.append("--sync-stage-timings")
 
     if not args.skip_warmbuild:
         print("[gguf-mtp-verifier-rocprof] warm-build pass (no profiler)...", flush=True)
@@ -223,7 +332,8 @@ def _run_parent(args: argparse.Namespace) -> int:
     kernel_csv = _single_file(trace_dir, "*_kernel_trace.csv")
     marker_csv = _single_file(trace_dir, "*_marker_api_trace.csv")
     child = json.loads(child_json.read_text(encoding="utf-8"))
-    windows = _read_marker_windows(marker_csv, MARKER_PREFIX)
+    marker_prefix = _marker_prefix(str(args.mode))
+    windows = _read_marker_windows(marker_csv, marker_prefix)
     if len(windows) != int(args.steps):
         raise SystemExit(f"expected {args.steps} marker windows, found {len(windows)}")
     kernels = _read_kernels(kernel_csv)
@@ -234,15 +344,22 @@ def _run_parent(args: argparse.Namespace) -> int:
         "date": date.today().isoformat(),
         "status": "diagnostic_retained",
         "performance_claim": False,
-        "purpose": "Current GGUF MTP resident-serial-fallback target verifier host/GPU split.",
+        "purpose": "Current GGUF MTP target verifier host/GPU split.",
         "model": str(args.model),
         "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
-        "mode": "serial_step_capture_hidden_seed_fp32",
+        "mode": str(args.mode),
+        "block_rows": int(args.block_rows) if args.mode == "block-verify" else None,
+        "block_verify_mode": str(args.block_verify_mode) if args.mode == "block-verify" else None,
+        "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
+        "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
         "return_logits": bool(args.return_logits),
+        "verify_dp4a": bool(args.verify_dp4a),
+        "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
+        "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "steps": int(args.steps),
         "warmup": int(args.warmup),
         "prompt_ids": _parse_prompt_ids(args.prompt_ids),
-        "marker_prefix": MARKER_PREFIX,
+        "marker_prefix": marker_prefix,
         "command": " ".join([Path(sys.executable).name] + sys.argv),
         "rocprof_command": " ".join(rocprof_cmd),
         "raw_root": str(raw_root),
@@ -447,6 +564,35 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=12)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--max-seq", type=int, default=512)
+    parser.add_argument(
+        "--mode",
+        choices=("serial-step", "block-verify"),
+        default="serial-step",
+        help="Profile the historical serial step verifier or the B2-like target block verifier.",
+    )
+    parser.add_argument(
+        "--block-rows",
+        type=int,
+        default=3,
+        help="Rows passed to verify_target_block in --mode block-verify; B2 uses prev+2 draft rows.",
+    )
+    parser.add_argument("--block-verify-mode", choices=("bulk", "native"), default="bulk")
+    parser.add_argument("--block-wmma-prefill", action="store_true")
+    parser.add_argument(
+        "--direct-state-commit",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Capture and commit the final block row's linear state in block-verify mode.",
+    )
+    parser.add_argument("--verify-dp4a", action="store_true", help="Enable llama-compat selected-MoE dp4a env flags.")
+    parser.add_argument(
+        "--verify-dense-q8-dp4a",
+        action="store_true",
+        help="Enable the rejected dense Q8 raw-sidecar dp4a route for diagnostic profiling.",
+    )
+    parser.add_argument("--selected-down-x8-repack", choices=("off", "q5", "q6", "both"), default="off")
+    parser.add_argument("--record-stage-timings", action="store_true")
+    parser.add_argument("--sync-stage-timings", action="store_true")
     parser.add_argument("--require-cached", action="store_true")
     parser.add_argument(
         "--return-logits",
