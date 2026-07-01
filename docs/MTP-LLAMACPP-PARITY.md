@@ -209,6 +209,9 @@ Artifacts:
   `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
   and non-stage check
   `benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full-nostage.json`
+- hipEngine fused-B1 block probe smoke after non-llama direct-state snapshot-skip
+  carryover:
+  `benchmarks/results/2026-07-01-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-snapshot-skip-smoke.json`
 - llama.cpp HIP B2 deep:
   `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json`
   and `.jsonl`
@@ -473,21 +476,31 @@ MTP draft decode shape.
 
 #### Second gap-closing fix: defer exact direct-state writes and skip unnecessary snapshots
 
-The next llama-compat cleanup targeted verifier lifecycle overhead that hipEngine
-was still paying even though the compat route already captures per-row linear states:
+The next cleanup targeted verifier lifecycle overhead that hipEngine was still
+paying even though the block verifier already captures per-row linear states:
 
 - In the direct-state block verifier, the linear-attention direct branch no longer
   runs the BF16-to-F32 QKV conversion used only by the non-direct prefill conv path.
 - `verify_target_block(..., defer_linear_state_commit=True)` no longer copies the
   final captured Conv/GDN state back into the resident state when the caller will
   immediately commit an accepted captured row or restore/replay.
-- The `llama-compat-device-chain-dp4a` block path now skips
-  `_linear_state_snapshot()` when direct commit is exact for the block
-  (`bulk` verifier with `start_position + rows < 1024`, which covers the measured
-  B2 suite). Rollback still keeps the snapshot on non-exact paths.
+- Shared block-verifier callers now skip `_linear_state_snapshot()` when direct
+  commit is exact for the block (`bulk` verifier with
+  `start_position + rows < 1024`, which covers the measured B2 suite). Rollback
+  still keeps the snapshot on non-exact paths.
 - New diagnostic flag `--target-block-sync-stage-timings` and suite route
   `llama-compat-device-chain-dp4a-allsync` add verifier-internal sync buckets for
   attribution only.
+
+This is not llama-only. The retained non-llama `can_block_verify` path already
+uses the shared snapshot policy. A follow-up carried the same policy into the
+non-llama B1 branch-safe/fused-B1 block verifier: exact direct-commit outcomes
+commit captured row 1 on strict B1 accept and row 0 on reject/root-topK branch,
+so the rollback snapshot is unnecessary there as well. Smoke validation for
+`resident-fused-b1-block-direct-cap32k-minrows2-pmin05` passed on 2026-07-01
+(`benchmarks/results/2026-07-01-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-snapshot-skip-smoke.json`);
+that route remains diagnostic and below AR/default, but it now uses the same
+direct-state waste policy.
 
 Validation:
 

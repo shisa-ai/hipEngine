@@ -130100,3 +130100,35 @@ acceptance. Remaining gap vs llama.cpp HIP B2 deep trace is now about
 **+3.84 ms/output**: draft **+1.57** and verifier **+1.96**. Next target is target
 linear-attention projection plus selected-MoE expert gate/up/down cost, with draft
 lm-head still the largest draft-side bucket.
+
+## 2026-07-01 — GGUF MTP non-llama direct-state cleanup carryover
+
+Applied the direct-state snapshot policy to the non-llama B1 branch-safe/fused-B1
+block verifier path:
+
+- The normal non-llama `can_block_verify` path already skipped
+  `_linear_state_snapshot()` when direct commit is exact (`direct_state_commit` and
+  `target_block_direct_commit_is_exact(...)`).
+- `can_b1_branch_safe_block_verify` still snapped unconditionally. It now uses the
+  same `target_block_needs_linear_state_snapshot(...)` policy and only snapshots
+  when rollback/replay can still be required. Exact direct-commit outcomes commit
+  the captured verifier row directly: row 1 on strict B1 accept, row 0 on reject
+  or root-topK branch.
+
+Validation:
+
+- `python3 -m py_compile scripts/gguf_mtp_bench.py tests/test_gguf_mtp_bench_metrics.py`
+- `PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py`
+- `git diff --check`
+- HIP check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  and `rocminfo` confirms gfx1151/Radeon 8060S.
+
+Smoke benchmark, Qwen3.6-35B-A3B-UD-Q4_K_M GGUF, gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, greedy, reasoning off,
+`--require-cached-build`:
+
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route resident-fused-b1-block-direct-cap32k-minrows2-pmin05 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-snapshot-skip-smoke.json`
+  -> AR 54.91 tok/s, B3 41.69 tok/s = 0.759x AR, acc/output 0.571,
+  draft acceptance 0.800. This is a route smoke, not a retained performance row:
+  fused B1 remains below AR/default, but the patched branch-safe direct-commit path
+  executes with `target_verify_direct_commit_rows=3` and `target_verify_replay_rows=0`.

@@ -88,6 +88,10 @@ def target_block_direct_commit_is_exact(verify_mode: str, *, start_position: int
     return False
 
 
+def target_block_needs_linear_state_snapshot(*, direct_state_commit: bool, direct_state_commit_exact_mode: bool) -> bool:
+    return not (bool(direct_state_commit) and bool(direct_state_commit_exact_mode))
+
+
 def _get_hw_info() -> dict:
     """Get GPU hardware info."""
     import subprocess
@@ -1829,13 +1833,18 @@ def main(argv: list[str] | None = None):
             if can_b1_branch_safe_block_verify:
                 t0 = time.perf_counter()
                 direct_state_commit = bool(args.target_block_direct_state_commit)
-                snapshot = session._linear_state_snapshot()
                 block_inputs = [int(verify_input_token), int(draft_tokens[0])]
                 direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
                     args.target_block_verify_mode,
                     start_position=seq_position,
                     rows=len(block_inputs),
                 )
+                snapshot = None
+                if target_block_needs_linear_state_snapshot(
+                    direct_state_commit=direct_state_commit,
+                    direct_state_commit_exact_mode=direct_state_commit_exact_mode,
+                ):
+                    snapshot = session._linear_state_snapshot()
                 try:
                     if args.target_block_verify_mode == "serial-exact":
                         block_result = session.verify_target_block_serial_exact(
@@ -1956,7 +1965,8 @@ def main(argv: list[str] | None = None):
                         # Else row 0 is the visible corrective token after a reject;
                         # row 1 was computed from an unaccepted draft and is ignored.
                 finally:
-                    session._free_linear_state_snapshot(snapshot)
+                    if snapshot is not None:
+                        session._free_linear_state_snapshot(snapshot)
                 block_verify_used = True
                 b1_branch_safe_block_verify_used = True
                 elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -1986,7 +1996,10 @@ def main(argv: list[str] | None = None):
                     rows=len(block_inputs),
                 )
                 snapshot = None
-                if not (direct_state_commit and direct_state_commit_exact_mode):
+                if target_block_needs_linear_state_snapshot(
+                    direct_state_commit=direct_state_commit,
+                    direct_state_commit_exact_mode=direct_state_commit_exact_mode,
+                ):
                     t_snapshot0 = time.perf_counter()
                     snapshot = session._linear_state_snapshot()
                     add_cycle_stage("target_block_snapshot", (time.perf_counter() - t_snapshot0) * 1000)
