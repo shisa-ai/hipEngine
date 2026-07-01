@@ -10,6 +10,7 @@ from scripts import gguf_mtp_bench as bench
 from scripts.gguf_mtp_bench import (
     draft_topk_margins_from_scores,
     draft_topk_scores_from_logits,
+    hidden_state_summary,
     _draft_top1_prob,
     _diagnostic_topk_candidate_count,
     _rope_tables,
@@ -437,6 +438,30 @@ def test_draft_topk_scores_and_margins_follow_selected_token_order() -> None:
         draft_topk_scores_from_logits(logits, [99])
 
 
+def test_hidden_state_summary_is_stable_and_compact() -> None:
+    row = np.asarray([[1.0, -2.0, 3.5, 4.0]], dtype=np.float32)
+
+    summary = hidden_state_summary(
+        row,
+        label="seed",
+        depth=2,
+        token_id=42,
+        position=9,
+    )
+
+    assert summary["label"] == "seed"
+    assert summary["depth"] == 2
+    assert summary["token_id"] == 42
+    assert summary["position"] == 9
+    assert summary["size"] == 4
+    assert summary["mean"] == pytest.approx(1.625)
+    assert summary["rms"] == pytest.approx(float(np.sqrt((1.0 + 4.0 + 12.25 + 16.0) / 4.0)))
+    assert summary["first8"] == pytest.approx([1.0, -2.0, 3.5, 4.0])
+    assert summary["last8"] == pytest.approx([1.0, -2.0, 3.5, 4.0])
+    assert isinstance(summary["sha256_16"], str)
+    assert len(summary["sha256_16"]) == 16
+
+
 def test_draft_top1_prob_matches_softmax_argmax_probability() -> None:
     logits = np.array([0.0, 2.0, 1.0], dtype=np.float32)
 
@@ -666,6 +691,12 @@ def test_arg_parser_exposes_record_draft_topk_scores_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-draft-topk-scores"])
 
     assert args.record_draft_topk_scores is True
+
+
+def test_arg_parser_exposes_record_draft_hidden_stats_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--record-draft-hidden-stats"])
+
+    assert args.record_draft_hidden_stats is True
 
 
 def test_arg_parser_exposes_cycle_stage_timing_diagnostic() -> None:

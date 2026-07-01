@@ -133672,3 +133672,34 @@ direction, but the remaining mismatch is large enough that it needs direct
 `verify_h -> pending_h -> ctx_dft` / MTP KV row comparison at seq position 49.
 
 Updated `docs/MTP-LLAMACPP-PARITY.md` with the score table and active target.
+
+## 2026-07-02 — hipEngine MTP hidden-summary trace instrumentation
+
+Added hipEngine diagnostic-only hidden-state summaries:
+
+- `scripts/gguf_mtp_bench.py --record-draft-hidden-stats`
+- raw cycle field `draft_hidden_state_trace`
+- resident draft summaries for `draft_seed_input` and per-depth
+  `draft_next_seed`
+- cycle-level `cycle_pending_hidden_seed` and verifier-selected
+  `target_pending_hidden_seed`
+
+The diagnostic flag intentionally forces the resident draft host-chain path when
+needed so per-depth seed buffers can be read back. The normal device-chain path
+is unchanged when the flag is off.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/gguf_mtp_bench.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_mtp_resident_draft_device_commit.py -q
+```
+
+Result: passed.

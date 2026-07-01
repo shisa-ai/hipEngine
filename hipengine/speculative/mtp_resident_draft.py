@@ -8,6 +8,7 @@ by the Python acceptance harness.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from dataclasses import dataclass, field
@@ -124,6 +125,42 @@ def _margins_from_scores(scores: list[float]) -> list[float]:
         return []
     top = float(scores[0])
     return [float(top - float(score)) for score in scores]
+
+
+def _summary_float(value: float) -> float:
+    return round(float(value), 8)
+
+
+def _summarize_f32_row(
+    row: np.ndarray,
+    *,
+    label: str,
+    depth: int | None = None,
+    token_id: int | None = None,
+    position: int | None = None,
+) -> dict[str, object]:
+    values = np.ascontiguousarray(np.asarray(row, dtype=np.float32).reshape(-1))
+    if values.size == 0:
+        raise ValueError("cannot summarize an empty hidden row")
+    values64 = values.astype(np.float64, copy=False)
+    result: dict[str, object] = {
+        "label": str(label),
+        "size": int(values.size),
+        "sha256_16": hashlib.sha256(values.view(np.uint8)).hexdigest()[:16],
+        "mean": _summary_float(np.mean(values64)),
+        "rms": _summary_float(np.sqrt(np.mean(values64 * values64))),
+        "min": _summary_float(np.min(values64)),
+        "max": _summary_float(np.max(values64)),
+        "first8": [_summary_float(x) for x in values[:8]],
+        "last8": [_summary_float(x) for x in values[-8:]],
+    }
+    if depth is not None:
+        result["depth"] = int(depth)
+    if token_id is not None:
+        result["token_id"] = int(token_id)
+    if position is not None:
+        result["position"] = int(position)
+    return result
 
 
 def _bf16_host_to_f32(array: np.ndarray) -> np.ndarray:
@@ -256,6 +293,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
     _buffers: list[DeviceBuffer] = field(default_factory=list, init=False)
     last_top1_probs: list[float] = field(default_factory=list, init=False)
     last_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
+    last_hidden_state_summaries: list[dict[str, object]] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -644,6 +682,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         draft_p_min: float = 0.0,
         record_top1_probs: bool = False,
         record_topk_scores: bool = False,
+        record_hidden_stats: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
@@ -672,6 +711,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             draft_p_min=draft_p_min,
             record_top1_probs=record_top1_probs,
             record_topk_scores=record_topk_scores,
+            record_hidden_stats=record_hidden_stats,
             stage_timings=stage_timings,
         )
 
@@ -691,6 +731,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         draft_p_min: float = 0.0,
         record_top1_probs: bool = False,
         record_topk_scores: bool = False,
+        record_hidden_stats: bool = False,
         record_stage_timings: bool = False,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
@@ -718,6 +759,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             draft_p_min=draft_p_min,
             record_top1_probs=record_top1_probs,
             record_topk_scores=record_topk_scores,
+            record_hidden_stats=record_hidden_stats,
             stage_timings=stage_timings,
         )
 
@@ -736,11 +778,13 @@ class Qwen35GGUFResidentMTPDraftRunner:
         draft_p_min: float,
         record_top1_probs: bool = False,
         record_topk_scores: bool = False,
+        record_hidden_stats: bool = False,
         stage_timings: dict[str, float] | None = None,
     ) -> tuple[list[int], list[list[int]], int]:
         self.last_top1_probs = []
         self.last_topk_scores = []
         self.last_topk_margins = []
+        self.last_hidden_state_summaries = []
         if draft_n_max <= 0:
             raise ValueError("draft_n_max must be positive")
         if top_k <= 0 or top_k > 64:
@@ -749,6 +793,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self._device_chain_enabled
             and draft_p_min <= 0.0
             and not bool(record_top1_probs)
+            and not bool(record_hidden_stats)
             and int(draft_n_max) <= self._draft_chain_cap
             and int(top_k) <= self.experts_used
         ):
@@ -773,6 +818,16 @@ class Qwen35GGUFResidentMTPDraftRunner:
         current_cache_len = int(dense_cache_len)
         tokens: list[int] = []
         topk_rows: list[list[int]] = []
+        if record_hidden_stats:
+            self.last_hidden_state_summaries.append(
+                self._summarize_seed_buffer(
+                    current_seed,
+                    label="draft_seed_input",
+                    depth=-1,
+                    token_id=current_token,
+                    position=current_pos,
+                )
+            )
         for depth in range(int(draft_n_max)):
             t_prepare0 = time.perf_counter() if stage_timings is not None else 0.0
             if current_token < 0 or current_token >= int(self.token_embd_f32.shape[0]):
@@ -802,6 +857,16 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_cache_len=current_cache_len,
                 stage_timings=stage_timings,
             )
+            if record_hidden_stats:
+                self.last_hidden_state_summaries.append(
+                    self._summarize_seed_buffer(
+                        next_seed,
+                        label="draft_next_seed",
+                        depth=depth,
+                        token_id=current_token,
+                        position=current_pos,
+                    )
+                )
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
             t_topk0 = time.perf_counter() if stage_timings is not None else 0.0
@@ -835,6 +900,26 @@ class Qwen35GGUFResidentMTPDraftRunner:
             current_pos += 1
             current_seed, next_seed = next_seed, current_seed
         return tokens, topk_rows, current_cache_len
+
+    def _summarize_seed_buffer(
+        self,
+        buffer: DeviceBuffer,
+        *,
+        label: str,
+        depth: int | None = None,
+        token_id: int | None = None,
+        position: int | None = None,
+    ) -> dict[str, object]:
+        runtime = self.runtime or get_hip_runtime()
+        host = np.empty((1, self.hidden_size), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(host), buffer, host.nbytes, runtime=runtime)
+        return _summarize_f32_row(
+            host[0],
+            label=label,
+            depth=depth,
+            token_id=token_id,
+            position=position,
+        )
 
     def _ensure_embed_table(self) -> None:
         """Lazily upload the vocab-capped FP32 embedding rows for device gather.

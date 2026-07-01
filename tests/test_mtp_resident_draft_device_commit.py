@@ -116,6 +116,64 @@ def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypa
     assert runner.last_top1_probs == [0.75, 0.25]
 
 
+def test_record_hidden_stats_uses_host_chain_and_records_seed_summaries(monkeypatch) -> None:
+    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.runtime = None
+    runner.hidden_size = 4
+    runner.experts_used = 8
+    runner._device_chain_enabled = True
+    runner._draft_chain_cap = 16
+    runner.token_embd_f32 = np.arange(40, dtype=np.float32).reshape(10, 4)
+    runner.seed_a = DeviceBuffer(0x1000, 16)
+    runner.seed_b = DeviceBuffer(0x1100, 16)
+    runner.token_embed = DeviceBuffer(0x2000, 16)
+    runner.cos = DeviceBuffer(0x3000, 16)
+    runner.sin = DeviceBuffer(0x4000, 16)
+    runner.position_i64 = DeviceBuffer(0x5000, 8)
+    runner.context_i64 = DeviceBuffer(0x6000, 8)
+
+    run_calls = []
+    summary_calls = []
+
+    def run_one(*args, **kwargs) -> None:
+        run_calls.append((args, kwargs))
+
+    def summarize(buffer, **kwargs):
+        summary_calls.append((buffer, kwargs))
+        return {"label": kwargs["label"], "depth": kwargs.get("depth")}
+
+    runner._run_one = run_one
+    runner._read_topk = lambda top_k: [3]
+    runner._summarize_seed_buffer = summarize
+    runner._propose_chain_device = lambda **kwargs: (_ for _ in ()).throw(AssertionError("device chain should be bypassed"))
+
+    tokens, topk_rows, cache_len = runner._propose_chain_from_seed_buffer(
+        start_token=1,
+        start_position=2,
+        draft_n_max=1,
+        top_k=1,
+        rope_cos=np.ones((8, 4), dtype=np.float32),
+        rope_sin=np.zeros((8, 4), dtype=np.float32),
+        dense_key_cache=None,
+        dense_value_cache=None,
+        dense_cache_len=7,
+        draft_p_min=0.0,
+        record_hidden_stats=True,
+    )
+
+    assert tokens == [3]
+    assert topk_rows == [[3]]
+    assert cache_len == 7
+    assert len(run_calls) == 1
+    assert [item[1]["label"] for item in summary_calls] == ["draft_seed_input", "draft_next_seed"]
+    assert runner.last_hidden_state_summaries == [
+        {"label": "draft_seed_input", "depth": -1},
+        {"label": "draft_next_seed", "depth": 0},
+    ]
+
+
 def test_ensure_device_chain_ready_preloads_embed_table() -> None:
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     calls = []

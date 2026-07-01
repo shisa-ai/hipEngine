@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import math
 import os
@@ -161,6 +162,40 @@ def draft_topk_margins_from_scores(scores: list[float]) -> list[float]:
         return []
     top = float(scores[0])
     return [float(top - float(score)) for score in scores]
+
+
+def hidden_state_summary(
+    row: "np.ndarray",
+    *,
+    label: str,
+    depth: int | None = None,
+    token_id: int | None = None,
+    position: int | None = None,
+) -> dict[str, object]:
+    """Return compact numeric diagnostics for an FP32 hidden row."""
+
+    values = np.ascontiguousarray(np.asarray(row, dtype=np.float32).reshape(-1))
+    if values.size == 0:
+        raise ValueError("cannot summarize an empty hidden row")
+    values64 = values.astype(np.float64, copy=False)
+    result: dict[str, object] = {
+        "label": str(label),
+        "size": int(values.size),
+        "sha256_16": hashlib.sha256(values.view(np.uint8)).hexdigest()[:16],
+        "mean": round(float(np.mean(values64)), 8),
+        "rms": round(float(np.sqrt(np.mean(values64 * values64))), 8),
+        "min": round(float(np.min(values64)), 8),
+        "max": round(float(np.max(values64)), 8),
+        "first8": [round(float(x), 8) for x in values[:8]],
+        "last8": [round(float(x), 8) for x in values[-8:]],
+    }
+    if depth is not None:
+        result["depth"] = int(depth)
+    if token_id is not None:
+        result["token_id"] = int(token_id)
+    if position is not None:
+        result["position"] = int(position)
+    return result
 
 
 def validate_draft_n_max(draft_n_max: int) -> int:
@@ -1110,6 +1145,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--record-draft-hidden-stats",
+        action="store_true",
+        help=(
+            "Diagnostic only: record compact FP32 hidden-row summaries for the MTP "
+            "draft seed, per-depth draft hidden outputs, and verifier-selected "
+            "pending seed. This forces resident host-chain drafting when needed."
+        ),
+    )
+    parser.add_argument(
         "--record-cycle-stage-timings",
         action="store_true",
         help=(
@@ -1890,6 +1934,17 @@ def main(argv: list[str] | None = None):
             )
             cycle_prev_token = int(prev_token)
             cycle_pending_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
+            draft_hidden_state_trace: list[dict[str, object]] = []
+            if args.record_draft_hidden_stats:
+                draft_hidden_state_trace.append(
+                    hidden_state_summary(
+                        cycle_pending_hidden_seed,
+                        label="cycle_pending_hidden_seed",
+                        depth=-1,
+                        token_id=cycle_prev_token,
+                        position=int(seq_position),
+                    )
+                )
 
             t2 = time.perf_counter()
             draft_tokens = []
@@ -1927,6 +1982,7 @@ def main(argv: list[str] | None = None):
                             draft_p_min=float(args.draft_p_min),
                             record_top1_probs=bool(args.record_draft_confidence),
                             record_topk_scores=bool(args.record_draft_topk_scores),
+                            record_hidden_stats=bool(args.record_draft_hidden_stats),
                             record_stage_timings=bool(args.record_cycle_stage_timings),
                         )
                     )
@@ -1945,6 +2001,7 @@ def main(argv: list[str] | None = None):
                         draft_p_min=float(args.draft_p_min),
                         record_top1_probs=bool(args.record_draft_confidence),
                         record_topk_scores=bool(args.record_draft_topk_scores),
+                        record_hidden_stats=bool(args.record_draft_hidden_stats),
                         record_stage_timings=bool(args.record_cycle_stage_timings),
                     )
                 if args.record_draft_confidence:
@@ -1958,6 +2015,11 @@ def main(argv: list[str] | None = None):
                         [float(value) for value in row]
                         for row in getattr(cycle_resident_draft, "last_topk_margins", [])
                     ]
+                if args.record_draft_hidden_stats:
+                    draft_hidden_state_trace.extend(
+                        dict(item)
+                        for item in getattr(cycle_resident_draft, "last_hidden_state_summaries", [])
+                    )
             elif cycle_draft_n_max > 0:
                 for draft_depth in range(cycle_draft_n_max):
                     token_embed = token_embd_f32[current_token:current_token + 1].copy()
@@ -2791,6 +2853,20 @@ def main(argv: list[str] | None = None):
             output_tokens = list(acceptance["output_tokens"])
             comparison_target_tokens = list(acceptance["comparison_target_tokens"])
             if target_hidden_seeds:
+                if args.record_draft_hidden_stats:
+                    pending_index_for_trace = int(acceptance["pending_hidden_row_index"])
+                    if 0 <= pending_index_for_trace < len(target_hidden_seeds):
+                        draft_hidden_state_trace.append(
+                            hidden_state_summary(
+                                target_hidden_seeds[pending_index_for_trace],
+                                label="target_pending_hidden_seed",
+                                depth=pending_index_for_trace,
+                                token_id=int(output_tokens[pending_index_for_trace])
+                                if pending_index_for_trace < len(output_tokens)
+                                else None,
+                                position=int(cycle_start_seq_position + pending_index_for_trace),
+                            )
+                        )
                 pending_hidden_seed = np.ascontiguousarray(
                     target_hidden_seeds[int(acceptance["pending_hidden_row_index"])],
                     dtype=np.float32,
@@ -2950,6 +3026,9 @@ def main(argv: list[str] | None = None):
                 "draft_top10_tokens": reported_draft_top10_tokens,
                 "draft_topk_scores": reported_draft_topk_scores,
                 "draft_topk_margins": reported_draft_topk_margins,
+                "draft_hidden_state_trace": draft_hidden_state_trace
+                if args.record_draft_hidden_stats
+                else [],
                 "initial_draft_tokens": draft_tokens,
                 "redraft_tokens": redraft_tokens,
                 "redraft_start_depth": redraft_start_depth,
@@ -3196,6 +3275,7 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft_sync_stage_timings": bool(args.resident_mtp_draft_sync_stage_timings),
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_draft_topk_scores": bool(args.record_draft_topk_scores),
+            "record_draft_hidden_stats": bool(args.record_draft_hidden_stats),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "llama_compat": bool(args.llama_compat),
