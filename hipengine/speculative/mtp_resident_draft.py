@@ -157,6 +157,7 @@ def apply_moe_down_combine(
     combine_lib,
     cast_lib,
     runtime: HipRuntime | None = None,
+    stage_marker=None,
 ) -> None:
     """Device-resident NextN selected-MoE down + combine (no host readback).
 
@@ -177,6 +178,8 @@ def apply_moe_down_combine(
         gate_bf16_ptr, up_bf16_ptr, inter_bf16_ptr, top_k, inter,
         library=silu_lib, runtime=runtime,
     )
+    if stage_marker is not None:
+        stage_marker("draft_run_moe_selected_silu")
     # Selected-down GEMV: each expert consumes its own intermediate row
     # (x_rows == rows == top_k  =>  lanes_per_x_row == 1  =>  x_row == row).
     gguf_q5_k_selected_gemv_bf16_bf16_out(
@@ -184,9 +187,13 @@ def apply_moe_down_combine(
         top_k, top_k, num_experts, inter, hidden,
         library=k_lib, runtime=runtime,
     )
+    if stage_marker is not None:
+        stage_marker("draft_run_moe_selected_down")
     # Cast the f32 residual + shared-expert output to bf16 for the combine.
     f32_to_bf16(residual_ptr, attended_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
     f32_to_bf16(shared_out_ptr, shared_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
+    if stage_marker is not None:
+        stage_marker("draft_run_moe_combine_cast_inputs")
     # routing-weighted expert sum + sigmoid(gate)*shared + residual, in one launch.
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
         down_out_bf16_ptr, routing_ptr, shared_bf16_ptr, shared_gate_logit_ptr,
@@ -194,6 +201,8 @@ def apply_moe_down_combine(
         library=combine_lib, runtime=runtime,
     )
     bf16_to_f32(ffn_out_bf16_ptr, ffn_out_f32_ptr, hidden, library=cast_lib, runtime=runtime)
+    if stage_marker is not None:
+        stage_marker("draft_run_moe_weighted_combine")
 
 
 @dataclass
@@ -864,13 +873,15 @@ class Qwen35GGUFResidentMTPDraftRunner:
             current_len += 1
         return current_len
 
-    def _project_current_to_attn_normed(self, hidden_seed: DeviceBuffer) -> None:
+    def _project_current_to_attn_normed(self, hidden_seed: DeviceBuffer, *, stage_marker=None) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size
         mtp_rmsnorm_f32(self.token_embed.ptr, self.enorm.ptr, self.e_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         mtp_rmsnorm_f32(hidden_seed.ptr, self.hnorm.ptr, self.h_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         runtime.memcpy(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
         runtime.memcpy(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+        if stage_marker is not None:
+            stage_marker("draft_run_project_norm_concat")
         gguf_q8_0_gemv_f32_f32_out(
             self.concat.ptr,
             self.eh_proj.ptr,
@@ -881,7 +892,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._k_lib,
             runtime=runtime,
         )
+        if stage_marker is not None:
+            stage_marker("draft_run_project_eh_proj")
         mtp_rmsnorm_f32(self.projected.ptr, self.attn_norm.ptr, self.attn_normed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        if stage_marker is not None:
+            stage_marker("draft_run_project_attn_norm")
 
     def _write_one_kv(
         self,
@@ -950,18 +965,31 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 return time.perf_counter()
             return t0
 
+        def add_aggregate_stage(name: str, t0: float) -> None:
+            if sync_stages:
+                _stage_add(stage_timings, name, (time.perf_counter() - t0) * 1000)
+
+        def mark_substage(name: str) -> None:
+            nonlocal t_stage
+            t_stage = mark_stage(name, t_stage)
+
         t_stage = time.perf_counter() if sync_stages else 0.0
         runtime.memset(self.selected_out.ptr, 0, self.selected_out.nbytes)
 
-        self._project_current_to_attn_normed(hidden_seed)
-        t_stage = mark_stage("draft_run_project", t_stage)
+        t_project0 = time.perf_counter() if sync_stages else 0.0
+        self._project_current_to_attn_normed(hidden_seed, stage_marker=mark_substage if sync_stages else None)
+        add_aggregate_stage("draft_run_project", t_project0)
+        t_qkv0 = time.perf_counter() if sync_stages else 0.0
+        t_stage = t_qkv0 if sync_stages else t_stage
         gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wq.ptr, self.q_full.ptr, 1, h, heads * 2 * d, library=self._k_lib, runtime=runtime)
         mtp_split_q_gate_f32(self.q_full.ptr, self.query.ptr, self.gate.ptr, 1, heads, d, library=self._mtp_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.query.ptr, self.q_norm.ptr, self.query.ptr, heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_qkv_q_gate", t_stage)
         gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         mtp_rope_f32(self.query.ptr, cos_ptr, sin_ptr, self.query.ptr, 1, heads, d, d, d // 2, runtime=runtime)
         mtp_rope_f32(self.key_cur.ptr, cos_ptr, sin_ptr, self.key_cur.ptr, 1, kv_heads, d, d, d // 2, runtime=runtime)
+        t_stage = mark_stage("draft_run_qkv_k_rope", t_stage)
         gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
         if dense_key_cache is not None:
             if dense_value_cache is None:
@@ -987,7 +1015,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
             key_ptr = self.key_cur.ptr
             value_ptr = self.value_cur.ptr
             cache_tokens = 1
-        t_stage = mark_stage("draft_run_qkv_kvwrite", t_stage)
+        t_stage = mark_stage("draft_run_qkv_v_kvwrite", t_stage)
+        add_aggregate_stage("draft_run_qkv_kvwrite", t_qkv0)
+        t_attention0 = time.perf_counter() if sync_stages else 0.0
+        t_stage = t_attention0 if sync_stages else t_stage
         mtp_dense_attn_f32(
             self.query.ptr,
             key_ptr,
@@ -1005,11 +1036,15 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._mtp_lib,
             runtime=runtime,
         )
+        t_stage = mark_stage("draft_run_attention_core", t_stage)
         mtp_sigmoid_gate_mul_f32(self.attn.ptr, self.gate.ptr, self.gated.ptr, heads, d, library=self._mtp_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.gated.ptr, self.wo.ptr, self.wo_out.ptr, 1, heads * d, h, library=self._k_lib, runtime=runtime)
         mtp_add_f32(self.projected.ptr, self.wo_out.ptr, self.attended.ptr, h, library=self._mtp_lib, runtime=runtime)
-        t_stage = mark_stage("draft_run_attention", t_stage)
+        t_stage = mark_stage("draft_run_attention_out", t_stage)
+        add_aggregate_stage("draft_run_attention", t_attention0)
 
+        t_ffn0 = time.perf_counter() if sync_stages else 0.0
+        t_stage = t_ffn0 if sync_stages else t_stage
         mtp_rmsnorm_f32(self.attended.ptr, self.post_norm_weight.ptr, self.post_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         mtp_linear_f32(self.post_norm.ptr, self.router_weight_f32.ptr, self.router_logits.ptr, 1, h, 256, library=self._mtp_lib, runtime=runtime)
         qwen35_router_select(
@@ -1025,6 +1060,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             runtime=runtime,
         )
         f32_to_bf16(self.post_norm.ptr, self.post_norm_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_ffn_router_select", t_stage)
         gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
             self.post_norm_bf16.ptr,
             self.selected.ptr,
@@ -1040,6 +1076,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._q4_lib,
             runtime=runtime,
         )
+        t_stage = mark_stage("draft_run_ffn_selected_gate_up", t_stage)
         if bool(getattr(self, "_q8_shared_dual_enabled", False)):
             gguf_q8_0_dual_gemv_f32_f32_out(
                 self.post_norm.ptr,
@@ -1056,11 +1093,15 @@ class Qwen35GGUFResidentMTPDraftRunner:
         else:
             gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
             gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_ffn_shared_gate_up", t_stage)
         mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, library=self._mtp_lib, runtime=runtime)
         gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
         mtp_linear_f32(self.post_norm.ptr, self.shared_gate_vec_f32.ptr, self.shared_gate_logit.ptr, 1, h, 1, library=self._mtp_lib, runtime=runtime)
-        t_stage = mark_stage("draft_run_ffn_up_shared", t_stage)
+        t_stage = mark_stage("draft_run_ffn_shared_down_gate", t_stage)
+        add_aggregate_stage("draft_run_ffn_up_shared", t_ffn0)
 
+        t_moe_down0 = time.perf_counter() if sync_stages else 0.0
+        t_stage = t_moe_down0 if sync_stages else t_stage
         if self._device_moe_enabled:
             # Device-resident selected-MoE down + combine: no host readback of
             # selected/routing, no per-expert Python loop (matches the verifier).
@@ -1088,6 +1129,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 combine_lib=self._combine_lib,
                 cast_lib=self._cast_lib,
                 runtime=runtime,
+                stage_marker=mark_substage if sync_stages else None,
             )
         else:
             # Legacy host-readback per-expert down loop + shared-gate combine.
@@ -1148,7 +1190,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
             mtp_add_f32(self.attended.ptr, self.selected_out.ptr, self.tmp.ptr, h, library=self._mtp_lib, runtime=runtime)
             mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, library=self._mtp_lib, runtime=runtime)
 
-        t_stage = mark_stage("draft_run_moe_down_combine", t_stage)
+        add_aggregate_stage("draft_run_moe_down_combine", t_moe_down0)
+        t_stage = time.perf_counter() if sync_stages else t_stage
         t_lm_head0 = time.perf_counter() if sync_stages else 0.0
         mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_lm_head_norm", t_stage)

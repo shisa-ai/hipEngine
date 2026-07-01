@@ -185,6 +185,7 @@ Current source artifacts:
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. MTP under rocprof still deadlocks at finalize, so this is a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
+| hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. Use it to split the non-Q6 draft body into project, QKV/KV-write, attention, FFN/router/shared, selected-down/combine, and lm-head leaves; do not use it for headline tok/s because it adds sync points. |
 | hipEngine llama-compat Q8 shared-dual A/B | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-control.json`, `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shared-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-smoke.json` | Retained exact draft-path improvement: Q8 shared gate/up launches collapse from two single raw-Q8 GEMVs to one dual F32/F32 launch per draft layer. The isolated kernel delta is small, but same-session async smoke moved **69.44 -> 70.20 tok/s** with identical acceptance; full-suite compat moved **60.96 -> 61.19 tok/s**. |
 | hipEngine llama-compat rejected Q6 top-1 t64 check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json` | Diagnostic only: llama.cpp's RDNA3 Q6_K MMVQ uses a two-warp single-column shape, but hipEngine's pack8 top-1 stage1 remains faster at the existing 128-thread launch on the real route. |
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
@@ -369,7 +370,7 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | traced B2 cycle wall plus suite tok/s | **+1.504 ms/output** | Any real win must show up here after async/full-suite validation. |
-| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.112 ms/output** | Draft rocprof still proves this is GPU-bound draft work: X8 Q6_K top-1 stage1 is **3.558 ms/cycle** (only **0.045 ms/cycle** faster than prior pack8), while host residual is only **0.378 ms/cycle**. T64, row-shape, scale-hoist, pack8+llama-vecdot, pack16, and now simple X8 locality are exhausted as small levers; the next draft fix must remove/fuse enough work to move async `draft_initial` or use a materially different Q6_K layout/body. |
+| 2 | Draft drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+1.112 ms/output** | Draft rocprof still proves this is GPU-bound draft work: X8 Q6_K top-1 stage1 is **3.558 ms/cycle** retained / **3.615 ms/cycle** fine-sync, while fine-sync splits the largest non-Q6 leaves as router/select **0.558**, selected gate/up **0.467**, Q/gate QKV **0.395**, attention core **0.373**, and selected down **0.353 ms/cycle**. T64, row-shape, scale-hoist, pack8+llama-vecdot, pack16, X8 dscale, and simple X8 locality are exhausted as small levers; the next draft fix must either materially change Q6 top-1 or attack the FFN/router/dense-Q8 leaves with full-suite proof. |
 | 3 | Verify row economy | `target_rows_per_output`, `target_passes_per_output`, acceptance rows | llama B2 no-probe acceptance/pass accounting | +0.118 target rows/output | Full histograms show this is extra discarded-row rate (compat 0.266 vs llama 0.148 rows/output); revisit policy after operation cost is closer. |
 | 4 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+0.075 ms/output** | Direct-state F32 `ssm_out` q8_1/raw-Q8 dp4a moved the parent row **12.662 -> 12.158 ms/output**. The verifier parent is now nearly at llama.cpp's traced 12.083 ms/output, so further verifier work should be justified by full-suite movement rather than isolated leaf wins. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
@@ -400,6 +401,8 @@ Draft kernel-family rows come from
 `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1.json`
 for the active X8 top-1 route; the prior pack8/shared-dual control is
 `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json`.
+The fine-grained sync-stage draft split comes from
+`benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-fine-sync.json`.
 Do not use the all-sync or rocprof rows for headline tok/s; use them only to
 choose which leaf bucket should move the full-suite `draft_initial` or
 `target_block_verify_total` row next.
@@ -433,6 +436,24 @@ attribution, not as a replacement for the full-suite timing rows.
 | `gguf_q4_k_selected_dual_prefill_out` | 2.0 | 0.439 | 0.190 | 6.8% | Selected gate/up target, but prior X8/raw attempts regressed. |
 | `hipengine_mtp_dense_attn_f32` | 2.0 | 0.343 | 0.149 | 5.3% | Attention core is visible but not first. |
 | `gguf_k_selected_prefill_out` | 2.0 | 0.327 | 0.142 | 5.1% | Selected down remains secondary. |
+
+Fine-sync draft leaf attribution for the same active X8 route:
+`scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 --q6-top1-dp4a
+--q6-top1-stage1-shape x8 --selected-down-x8-repack q6
+--record-stage-timings --sync-stage-timings --require-cached`. The profile is
+attribution-only because every leaf inserts a sync, but it makes the non-Q6
+draft-body target order explicit:
+
+| sync-stage leaf | ms/cycle | reading |
+| --- | ---: | --- |
+| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | **3.615** | Still the largest single draft leaf; simple scale/layout variants are now exhausted. |
+| `draft_run_ffn_router_select` | **0.558** | Largest non-Q6 leaf; mostly F32 router linear plus select/cast. |
+| `draft_run_ffn_selected_gate_up` | **0.467** | Selected Q4_K gate/up body. Prior raw/X8 verifier-shaped copies regressed, so any draft fix needs a different mechanism or full-suite proof. |
+| `draft_run_qkv_q_gate` | **0.395** | Q/gate projection + split + Q norm. Candidate for a draft-specific dense-Q8/q8_1 path only if F32 output precision is handled. |
+| `draft_run_attention_core` | **0.373** | Attention core; visible but smaller than FFN/router and Q6 top-1. |
+| `draft_run_moe_selected_down` | **0.353** | Selected Q5_K down body. |
+| `draft_run_project_eh_proj` | 0.205 | E/H projection inside draft input project. |
+| `draft_run_attention_out` | 0.219 | Gate/out projection/residual after attention core. |
 
 Pack16 diagnostic result: `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack16`
 is rejected. It halves the number of top-1 stage1 blocks, but the larger

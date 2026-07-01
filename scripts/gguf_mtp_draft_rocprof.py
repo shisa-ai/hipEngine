@@ -410,6 +410,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         args.out.write_text(json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
         print(f"[gguf-mtp-draft-rocprof] wrote {args.out}")
     _print_summary(summary)
+    _print_stage_timings(child)
     return 0
 
 
@@ -506,6 +507,17 @@ def _print_summary(summary: dict[str, Any]) -> None:
     print(f"{'family':52s} {'calls':>7s} {'ms/step':>9s} {'%kernel':>8s}")
     for row in summary["top_kernels"]:
         print(f"{row['name'][:52]:52s} {row['calls']:7d} {row['ms_per_step']:9.3f} {row['pct_kernel']:8.1f}")
+
+
+def _print_stage_timings(child: dict[str, Any]) -> None:
+    totals = child.get("stage_timing_totals_ms")
+    if not isinstance(totals, dict) or not totals:
+        return
+    steps = max(1, int(child.get("steps") or 1))
+    print("\n=== SYNC STAGE TIMINGS ===")
+    print(f"{'stage':52s} {'ms/step':>9s}")
+    for name, total_ms in sorted(totals.items(), key=lambda item: -float(item[1])):
+        print(f"{str(name)[:52]:52s} {float(total_ms) / steps:9.3f}")
 
 
 def main() -> int:

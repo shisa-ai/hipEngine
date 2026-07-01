@@ -132777,3 +132777,73 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
 ```
 
 Result: passed.
+
+## 2026-07-02 — MTP draft fine-sync leaf instrumentation
+
+Added finer `sync_stage_timings` leaf buckets inside
+`Qwen35GGUFResidentMTPDraftRunner._run_one()` for the active llama-compat draft
+path. The new attribution-only buckets split project, QKV/KV-write, attention,
+FFN/router/shared, selected-down/combine, and lm-head work. Normal async/full
+suite execution is unchanged; the extra device synchronizations only run when
+`sync_stage_timings=True`. `scripts/gguf_mtp_draft_rocprof.py` now prints the
+`stage_timing_totals_ms` table when present instead of only writing it to JSON.
+
+Profile command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --record-stage-timings \
+  --sync-stage-timings --require-cached \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-fine-sync.json
+```
+
+Result: attribution-only profile, `performance_claim=false`. Host wall
+**7.334 ms/cycle**, kernel time **6.466 ms/cycle**, **90.8 kernel
+calls/cycle**. Top kernel-family rows match the retained async draft profile:
+`gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` **3.583 ms/cycle**,
+`gguf_k_prefill_out` **0.798**, `hipengine_mtp_linear_f32` **0.680**,
+`gguf_q4_k_selected_dual_prefill_out` **0.440**,
+`hipengine_mtp_dense_attn_f32` **0.348**, and
+`gguf_k_selected_prefill_out` **0.326**.
+
+New sync-stage leaf order:
+
+| leaf | ms/cycle |
+| --- | ---: |
+| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | 3.615 |
+| `draft_run_ffn_router_select` | 0.558 |
+| `draft_run_ffn_selected_gate_up` | 0.467 |
+| `draft_run_qkv_q_gate` | 0.395 |
+| `draft_run_attention_core` | 0.373 |
+| `draft_run_moe_selected_down` | 0.353 |
+| `draft_run_project_eh_proj` | 0.205 |
+| `draft_run_attention_out` | 0.219 |
+
+Interpretation: the remaining draft gap is still GPU-side. Simple Q6 top-1
+scale/layout variants are exhausted, and the next non-Q6 work should target
+FFN/router/select, selected gate/up, Q/Gate QKV, or selected-down leaves.
+Existing raw-Q8/q8_1 dp4a verifier helpers are BF16-output wrappers; copying
+them directly into the draft body is not an exact small change because the draft
+body carries F32 intermediates.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_draft_rocprof.py
+
+python3 - <<'PY'
+import json
+from scripts.gguf_mtp_draft_rocprof import _print_stage_timings
+p = "benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-fine-sync.json"
+_print_stage_timings(json.load(open(p))["child"])
+PY
+
+PYTHONPATH=. python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q
+```
+
+Result: passed.
