@@ -56,6 +56,7 @@ Current source artifacts:
 | hipEngine llama-compat all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-allsync-smoke.json` | Attribution-only smoke with extra sync points inside draft and selected-MoE gate/up/down. Do not use for headline tok/s. |
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
 | hipEngine llama-compat rejected Q8T16 pair t64 check | `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json` | Diagnostic only: the actual verifier `attn_qkv+attn_gate` Q8T16 pair shape is faster at the existing 128-thread launch than at 64 threads. |
+| hipEngine llama-compat rejected Q8T16 q8_1/dp4a pair check | `benchmarks/results/2026-07-01-q8-t16-pair-q8-1-dp4a-micro.json` | Diagnostic only: applying llama.cpp-style q8_1/dp4a to the existing T16 tile layout is much slower than the exact pair because T16 stores four-K dot4 bytes strided by output column. |
 | llama.cpp HIP | `benchmarks/results/2026-06-30-llamacpp-mtp-stage-timing-b2-natural24-deep.json` | Instrumented llama.cpp HIP B2 trace; stage buckets are the apples-to-apples timing target. |
 
 #### Three-lane speed gap
@@ -229,6 +230,32 @@ justified because the isolated hot pair is already slower. The Q8T16 pair gap is
 therefore not a simple 64-thread scheduler mismatch; the next comparison needs a
 different kernel body/schedule against llama.cpp's `mul_mat_vec_q`/mmvq shape, not
 just a smaller workgroup.
+
+**Rejected 2026-07-01 Q8T16 q8_1/dp4a pair-body check:** implemented a
+diagnostic `gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out` wrapper that
+keeps the current Q8T16 replacement layout but consumes GGML q8_1 activation
+blocks and uses `sudot4`, matching llama.cpp's Q8_0×Q8_1 arithmetic more closely.
+Correctness passed against a q8_1 CPU oracle plus the KL/top-1 quality gate, and
+`rocprofv3` confirmed the fixture launched
+`q8_0_t16_dual_split_q8_1_dp4a_kernel<unsigned short>` with
+`Workgroup_Size_X=128`, `Grid_Size_X=1536`, `Grid_Size_Y=8`. The performance
+result is a clear rejection: on the qwen35 linear-attention pair shape
+(`in=2048`, `out=(8192,4096)`), even pre-quantized q8_1 is much slower than the
+exact T16 pair.
+
+| rows | exact 128-thread pair | q8_1 quantize + dp4a | prequantized q8_1 + dp4a | result |
+| ---: | ---: | ---: | ---: | --- |
+| 2 | **181.50 us** | 304.78 us | 303.05 us | dp4a is 1.68x slower. |
+| 3 | **207.98 us** | 448.32 us | 452.51 us | dp4a is 2.16x slower. |
+| 4 | **236.26 us** | 558.14 us | 566.29 us | dp4a is 2.36x slower. |
+
+This explains why the earlier raw-Q8 sidecar also lost: the problem is not only
+the extra quantize launch. The current T16 layout is byte-neutral and exact, but
+its `[32 K lanes, 16 cols]` payload makes four adjacent K bytes for one output
+column strided by 16 bytes, so the dp4a body has to pack scattered bytes before
+every dot4. The Q8 verifier gap now points at a true llama-style layout/schedule
+port or a row-amortized verifier kernel, not q8_1/dp4a over the existing T16
+tile.
 
 Latest selected-MoE inner split after q6top1dp4a
 (`llama-compat-device-chain-dp4a-q6top1dp4a-allsync`, smoke, extra sync points):

@@ -212,6 +212,23 @@ should be boring.
   kernel body/schedule, or when the parity sprint no longer needs this A/B hook.
   It is not a performance path and should not be promoted.
 
+## `gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out` (diagnostic rejected)
+- Added 2026-07-01. Callable T16 Q8_0 dual-split pair kernel that consumes
+  GGML q8_1 activation blocks and uses `sudot4`, intended to test whether the
+  llama.cpp Q8_0×Q8_1 arithmetic recipe transfers to the existing Q8T16
+  `attn_qkv+attn_gate` verifier pair layout.
+- Purpose: isolate the kernel-body question after the 64-thread launch-width
+  check failed. Correctness passed against a q8_1 CPU oracle plus KL/top-1 gate,
+  and `rocprofv3` confirmed `q8_0_t16_dual_split_q8_1_dp4a_kernel<unsigned short>`
+  launched with `Workgroup_Size_X=128`. Performance rejected the route: for the
+  qwen35 pair shape, rows 2/3/4 exact 128-thread pair is
+  **181.50/207.98/236.26 us**, while quantize+dp4a is
+  **304.78/448.32/558.14 us** and prequantized dp4a is
+  **303.05/452.51/566.29 us**.
+- Remove when: the parity sprint moves Q8 verifier work to a true llama-style
+  mmvq/T16 replacement layout or row-amortized verifier kernel. This callable is
+  evidence, not a performance path; do not route it into `llama-compat` runtime.
+
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with

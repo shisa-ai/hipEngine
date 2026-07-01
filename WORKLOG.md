@@ -130721,3 +130721,49 @@ section now calls out the current retained llama-compat gap directly:
 **+2.562 ms/output** vs traced llama.cpp HIP B2, split into **+1.153
 ms/output** draft drain, **+1.095 ms/output** target verifier drain, and
 **+0.118 target rows/output**. Documentation-only change; no new benchmark claim.
+
+## 2026-07-01 — Rejected Q8T16 q8_1/dp4a pair-body check
+
+Implemented a focused diagnostic for the current llama-compat verifier hot leaf
+`target_block_linear_attn_attn_qkv_gate_pair`: a callable
+`gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out` wrapper that keeps the
+existing Q8T16 tile layout but consumes GGML q8_1 activation blocks and uses the
+same RDNA3 `sudot4` arithmetic family as llama.cpp's Q8_0×Q8_1 `mul_mat_vec_q`.
+This was intended to test whether the residual Q8 pair gap is precision/body
+arithmetic rather than layout/schedule.
+
+Validation:
+
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.py tests/test_gguf_q8_0_t16_gemv_decode.py scripts/gguf_q8_0_t16_pair_microbench.py`
+  passed.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py`
+  -> **27 passed**, including the new q8_1 CPU-oracle plus KL/top-1 quality gate.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-rocprof-q8t16-dp4a --output-file q8t16-dp4a -- pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py::test_q8_t16_dual_split_q8_1_dp4a_matches_oracle_and_quality_gate`
+  passed and confirmed `q8_0_t16_dual_split_q8_1_dp4a_kernel<unsigned short>`
+  launched with `Workgroup_Size_X=128`, `Grid_Size_X=1536`, `Grid_Size_Y=8`;
+  the q8_1 quantizer also ran with `Workgroup_Size_X=32`.
+
+Microbench command:
+
+`PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q8_0_t16_pair_microbench.py --rows 2,3,4 --threads 64,128 --modes exact,q8_1_dp4a,prequant_q8_1_dp4a --iters 80 --warmup 20 --json benchmarks/results/2026-07-01-q8-t16-pair-q8-1-dp4a-micro.json`
+
+128-thread result at the qwen35 pair shape (`in=2048`, `out=(8192,4096)`):
+
+| rows | exact pair | q8_1 quantize + dp4a | prequantized q8_1 + dp4a |
+| ---: | ---: | ---: | ---: |
+| 2 | **181.50 us** | 304.78 us | 303.05 us |
+| 3 | **207.98 us** | 448.32 us | 452.51 us |
+| 4 | **236.26 us** | 558.14 us | 566.29 us |
+
+Conclusion: rejected. Even prequantized q8_1 is **1.67-2.40x slower** than the
+exact T16 pair. The existing T16 layout stores the 32 K lanes interleaved by 16
+output columns, so four adjacent K bytes for a single output column are strided
+by 16 bytes and must be packed before each dot4. The Q8 verifier gap is therefore
+not solved by applying q8_1/dp4a to the current T16 layout; next Q8 work needs a
+true llama-style mmvq/replacement layout or a row-amortized verifier schedule.
+
+Lineage note: `python3 scripts/check_lineage.py --kind kernel --diff stat` still
+cannot run because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent
+(`fatal: cannot change to ... No such file or directory`). This diagnostic was
+implemented in-tree using llama.cpp HIP source as the shape reference, not by
+copying nano-vllm code.
