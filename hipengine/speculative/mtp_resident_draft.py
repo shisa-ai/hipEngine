@@ -76,6 +76,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
     gguf_q6_k_pack8_top1_stage2_gather_f32,
+    gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32,
+    gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
 )
 from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     _cached_upload,
@@ -92,6 +94,7 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     mtp_split_q_gate_f32,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_x8 import repack_gguf_q6_k_x8
 
 
 def _stage_add(timings: dict[str, float] | None, name: str, ms: float) -> None:
@@ -243,7 +246,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._q6_top1_stage1_shape = _env_choice(
             "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE",
             "pack8",
-            {"pack8", "pack16", "pack8_llama", "pack8_scalehoist", "row"},
+            {"pack8", "pack16", "pack8_llama", "pack8_scalehoist", "row", "x8"},
         )
         if self._q6_top1_stage1_shape == "pack16" and self.vocab % 16 != 0:
             raise ValueError("pack16 Q6 top-1 diagnostic requires vocab divisible by 16")
@@ -317,6 +320,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.shared_down = self._upload("blk.40.ffn_down_shexp.weight")
         self.shared_head_norm = self._upload("blk.40.nextn.shared_head_norm.weight")
         self.shared_head = self._upload("output.weight")
+        self.shared_head_x8: DeviceBuffer | None = None
+        if self._q6_top1_stage1_shape == "x8":
+            raw_head = np.ascontiguousarray(self._get("output.weight")[: self.vocab], dtype=np.uint8)
+            packed_head = np.ascontiguousarray(repack_gguf_q6_k_x8(raw_head.reshape(1, self.vocab, -1)).tiles[0])
+            self.shared_head_x8 = self._upload(f"output.weight:q6_x8_top1:vocab{self.vocab}", packed_head)
 
     def _malloc(self, nbytes: int) -> DeviceBuffer:
         buf = malloc(int(nbytes), runtime=self.runtime)
@@ -1160,6 +1168,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 q6_top1_stage_name = {
                     "row": "draft_run_lm_head_q6_top1_dp4a_row_stage1",
                     "pack16": "draft_run_lm_head_q6_top1_dp4a_pack16_stage1",
+                    "x8": "draft_run_lm_head_q6_top1_dp4a_x8_stage1",
                     "pack8_llama": "draft_run_lm_head_q6_top1_dp4a_pack8_llama_stage1",
                     "pack8_scalehoist": "draft_run_lm_head_q6_top1_dp4a_scalehoist_stage1",
                 }.get(q6_top1_stage1_shape, "draft_run_lm_head_q6_top1_dp4a_stage1")
@@ -1171,6 +1180,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 q6_top1_gather_name = {
                     "row": "draft_run_lm_head_q6_top1_dp4a_row_gather",
                     "pack16": "draft_run_lm_head_q6_top1_dp4a_pack16_gather",
+                    "x8": "draft_run_lm_head_q6_top1_dp4a_x8_gather",
                     "pack8_llama": "draft_run_lm_head_q6_top1_dp4a_pack8_llama_gather",
                     "pack8_scalehoist": "draft_run_lm_head_q6_top1_dp4a_scalehoist_gather",
                 }.get(q6_top1_stage1_shape, "draft_run_lm_head_q6_top1_dp4a_gather")
@@ -1192,6 +1202,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_stage1_f32(
                             self.head_normed_q8_1.ptr,
                             self.shared_head.ptr,
+                            self.q6_top1_block_values.ptr,
+                            self.q6_top1_block_indices.ptr,
+                            1,
+                            h,
+                            self.vocab,
+                            library=self._q6_pack8_lib,
+                            runtime=runtime,
+                        )
+                        t_stage = mark_stage(q6_top1_stage_name, t_stage)
+                    elif q6_top1_stage1_shape == "x8":
+                        if self.shared_head_x8 is None:
+                            raise RuntimeError("X8 Q6 top-1 sidecar was not materialized")
+                        gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
+                            self.head_normed_q8_1.ptr,
+                            self.shared_head_x8.ptr,
                             self.q6_top1_block_values.ptr,
                             self.q6_top1_block_indices.ptr,
                             1,
@@ -1283,6 +1308,26 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_scalehoist_gather_f32(
                             self.head_normed_q8_1.ptr,
                             self.shared_head.ptr,
+                            self.q6_top1_block_values.ptr,
+                            self.q6_top1_block_indices.ptr,
+                            int(top1_out_ptr),
+                            self.topk_values.ptr,
+                            self._embed_table_f32.ptr if top1_next_embed_ptr is not None else None,
+                            int(top1_next_embed_ptr) if top1_next_embed_ptr is not None else None,
+                            1,
+                            h,
+                            self.vocab,
+                            h if top1_next_embed_ptr is not None else 0,
+                            library=self._q6_pack8_lib,
+                            runtime=runtime,
+                        )
+                        t_stage = mark_stage(q6_top1_gather_name, t_stage)
+                    elif q6_top1_stage1_shape == "x8":
+                        if self.shared_head_x8 is None:
+                            raise RuntimeError("X8 Q6 top-1 sidecar was not materialized")
+                        gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+                            self.head_normed_q8_1.ptr,
+                            self.shared_head_x8.ptr,
                             self.q6_top1_block_values.ptr,
                             self.q6_top1_block_indices.ptr,
                             int(top1_out_ptr),

@@ -45,6 +45,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_fp16_f32_out,
     gguf_q6_k_pack8_gemv_decode_fp16_fp16_out,
     gguf_q6_k_pack8_top1_stage2_gather_f32,
+    gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32,
+    gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_stage1_f32,
     plan_gguf_q6_k_pack8_gemv_build,
     register_gguf_q6_k_pack8_gemv_kernels,
 )
@@ -56,6 +58,7 @@ from hipengine.kernels.hip_gfx1100.convert.gather import build_gather, gather_f3
 from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, topk_f32_rows_i32
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_x8 import repack_gguf_q6_k_x8
 from tests._gguf_synthetic_weights import make_q6_k_weight
 
 
@@ -86,8 +89,10 @@ def test_p9_b4b_registry_keys_resolve() -> None:
         "pack8_gemv_decode_fp16_f32_out",
         "pack8_gemv_decode_bf16_top1_gather_f32",
         "pack8_gemv_decode_q8_1_dp4a_top1_gather_f32",
+        "x8_gemv_decode_q8_1_dp4a_top1_gather_f32",
         "pack8_gemv_decode_bf16_top1_stage1_f32",
         "pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32",
+        "x8_gemv_decode_q8_1_dp4a_top1_stage1_f32",
         "pack8_gemv_decode_q8_1_dp4a_top1_pack16_stage1_f32",
         "pack8_gemv_decode_q8_1_dp4a_top1_pack16_gather_f32",
         "pack8_gemv_decode_q8_1_dp4a_top1_row_stage1_f32",
@@ -895,6 +900,125 @@ def test_q6_k_q8_1_dp4a_pack16_top1_matches_q8_1_oracle(q6_k_dense_library) -> N
             fused_values_buf,
             embed_table_buf,
             w_buf,
+            xq_buf,
+            x_buf,
+        ):
+            free(b)
+
+    np.testing.assert_array_equal(fused_index, oracle_indices)
+    np.testing.assert_allclose(fused_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
+    np.testing.assert_array_equal(fused_embed, oracle_embed)
+    np.testing.assert_array_equal(split_index, oracle_indices)
+    np.testing.assert_allclose(split_value, oracle_values, atol=1.0e-3, rtol=1.0e-5)
+    np.testing.assert_array_equal(split_embed, oracle_embed)
+
+
+def test_q6_k_q8_1_dp4a_x8_top1_matches_q8_1_oracle(q6_k_dense_library) -> None:
+    rows, in_features, out_features, hidden = 2, 512, 1024, 16
+    rng = np.random.default_rng(20260704)
+    qweight = make_q6_k_weight(out_features, in_features)
+    tiles = np.ascontiguousarray(repack_gguf_q6_k_x8(qweight.reshape(1, out_features, -1)).tiles[0])
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+    x_ref = _bf16_u16_to_f32(x_bf16)
+    embed_table = rng.normal(0.0, 0.2, size=(out_features, hidden)).astype(np.float32)
+    oracle_logits = _q6_k_q8_1_dp4a_oracle(x_ref, qweight)
+    oracle_indices = np.argmax(oracle_logits, axis=1).astype(np.int32)
+    oracle_values = oracle_logits[np.arange(rows), oracle_indices].astype(np.float32)
+    oracle_embed = embed_table[oracle_indices]
+
+    q4_lib = build_gguf_q4_k_gemv(load=True)
+    x_buf = malloc(x_bf16.nbytes)
+    xq_buf = malloc(rows * (in_features // 32) * 36)
+    tiles_buf = malloc(tiles.nbytes)
+    embed_table_buf = malloc(embed_table.nbytes)
+    fused_values_buf = malloc(rows * 4)
+    fused_indices_buf = malloc(rows * 4)
+    fused_embed_buf = malloc(rows * hidden * 4)
+    block_values_buf = malloc(rows * (out_features // 8) * 4)
+    block_indices_buf = malloc(rows * (out_features // 8) * 4)
+    split_values_buf = malloc(rows * 4)
+    split_indices_buf = malloc(rows * 4)
+    split_embed_buf = malloc(rows * hidden * 4)
+    split_block_values_buf = malloc(rows * (out_features // 8) * 4)
+    split_block_indices_buf = malloc(rows * (out_features // 8) * 4)
+    try:
+        copy_host_to_device(x_buf, host_array_ptr(x_bf16), x_bf16.nbytes)
+        copy_host_to_device(tiles_buf, host_array_ptr(tiles), tiles.nbytes)
+        copy_host_to_device(embed_table_buf, host_array_ptr(embed_table), embed_table.nbytes)
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_buf.ptr,
+            xq_buf.ptr,
+            rows,
+            in_features,
+            library=q4_lib,
+        )
+        gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32(
+            xq_buf.ptr,
+            tiles_buf.ptr,
+            block_values_buf.ptr,
+            block_indices_buf.ptr,
+            fused_indices_buf.ptr,
+            fused_values_buf.ptr,
+            embed_table_buf.ptr,
+            fused_embed_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            hidden,
+            library=q6_k_dense_library,
+        )
+        gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_stage1_f32(
+            xq_buf.ptr,
+            tiles_buf.ptr,
+            split_block_values_buf.ptr,
+            split_block_indices_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            stage1_threads=64,
+            library=q6_k_dense_library,
+        )
+        gguf_q6_k_pack8_top1_stage2_gather_f32(
+            split_block_values_buf.ptr,
+            split_block_indices_buf.ptr,
+            split_indices_buf.ptr,
+            split_values_buf.ptr,
+            embed_table_buf.ptr,
+            split_embed_buf.ptr,
+            rows,
+            out_features // 8,
+            hidden,
+            out_features,
+            library=q6_k_dense_library,
+        )
+
+        fused_index = np.empty((rows,), dtype=np.int32)
+        fused_value = np.empty((rows,), dtype=np.float32)
+        fused_embed = np.empty((rows, hidden), dtype=np.float32)
+        split_index = np.empty((rows,), dtype=np.int32)
+        split_value = np.empty((rows,), dtype=np.float32)
+        split_embed = np.empty((rows, hidden), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(fused_index), fused_indices_buf, fused_index.nbytes)
+        copy_device_to_host(host_array_ptr(fused_value), fused_values_buf, fused_value.nbytes)
+        copy_device_to_host(host_array_ptr(fused_embed), fused_embed_buf, fused_embed.nbytes)
+        copy_device_to_host(host_array_ptr(split_index), split_indices_buf, split_index.nbytes)
+        copy_device_to_host(host_array_ptr(split_value), split_values_buf, split_value.nbytes)
+        copy_device_to_host(host_array_ptr(split_embed), split_embed_buf, split_embed.nbytes)
+    finally:
+        for b in (
+            split_block_indices_buf,
+            split_block_values_buf,
+            split_embed_buf,
+            split_indices_buf,
+            split_values_buf,
+            block_indices_buf,
+            block_values_buf,
+            fused_embed_buf,
+            fused_indices_buf,
+            fused_values_buf,
+            embed_table_buf,
+            tiles_buf,
             xq_buf,
             x_buf,
         ):

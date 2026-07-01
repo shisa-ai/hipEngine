@@ -132226,3 +132226,121 @@ headline gap, and do not repeat pack-width-only Q6 top-1 variants unless the
 body/layout changes materially. The next draft fix must either fuse/remove work
 that rolls into async `draft_initial` or use a genuinely different Q6_K
 layout/body; simple pack8 -> pack16 amortization is exhausted.
+
+## 2026-07-01 — GGUF MTP llama-compat X8 Q6 top-1 retained lane
+
+Implemented an X8-packed Q6_K draft lm-head top-1 sidecar for the
+accuracy-traded llama-compat lane. The retained pack8 top-1 stage1 reads eight
+vocab rows via row-stride jumps; the X8 sidecar stores
+`tiles[out_pack8, k_block, 8 * block_q6_K]` contiguously for
+`output.weight[:vocab]`. The route is opt-in via
+`--resident-mtp-draft-q6-top1-stage1-shape x8` and the suite route
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1`.
+The exact default path is unchanged.
+
+Implementation notes:
+
+- Added HIP exports for
+  `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` and split stage1/gather wrappers.
+- Registered Python variants
+  `x8_gemv_decode_q8_1_dp4a_top1_stage1_f32` and
+  `x8_gemv_decode_q8_1_dp4a_top1_gather_f32`.
+- Resident draft materializes the singleton X8 sidecar only for
+  `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=x8`.
+- Suite and draft-rocprof CLIs now accept `x8` as a Q6 top-1 stage1 shape.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_pack8_gemv.py \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py \
+  scripts/gguf_mtp_draft_rocprof.py \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py \
+  tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py
+
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest \
+  tests/test_gguf_q6_k_pack8_gemv_decode.py \
+  tests/test_gguf_ar_mtp_suite.py \
+  tests/test_gguf_mtp_bench_metrics.py -q
+```
+
+Result: py_compile passed; pytest passed. The q8_1/Q6_K oracle covers the X8
+top-1 path. HIP preflight was already green on this host
+(`libamdhip64.so` loads; `rocminfo` reports gfx1151 / Radeon 8060S). Kernel
+lineage check remains blocked because the read-only reference checkout
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing. Final `git diff --check`
+passed.
+
+Same-session smoke A/B on Qwen3.6-35B-A3B-UD-Q4_K_M GGUF Q4_K_M,
+gfx1151/Radeon 8060S, smoke scope, B2:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-control-smoke.json
+
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope smoke \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-smoke.json
+```
+
+Result: control **71.53 tok/s**, cycle **14.004 ms/output**,
+`draft_initial` **2.500 ms/output**, verifier **11.172 ms/output**. X8 top-1
+**71.76 tok/s**, cycle **13.961 ms/output**, `draft_initial`
+**2.492 ms/output**, verifier **11.121 ms/output**. Acceptance/economy was
+identical (`acc/output=0.667`, `draft_acceptance=1.000`).
+
+Draft rocprof:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --record-stage-timings --skip-warmbuild \
+  --out benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1.json
+```
+
+Result: `avg_host_ms=6.805`, `avg_kernel_ms=6.427`,
+`kernel_share=94.4%`, `calls/step=90.2`. The top kernel is
+`gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` at **3.558 ms/cycle**,
+**55.4%** kernel share, versus the prior retained pack8 stage1 at
+**3.603 ms/cycle**.
+
+Full suite:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-full.json
+```
+
+Result: AR **54.67 tok/s**; B2 MTP **61.31 tok/s** (`1.1216x` AR);
+`acc/output=0.567`, `draft_acceptance=0.655`, outputs **231**, accepted
+**131**. Cycle wall is **16.331 ms/output**, `draft_initial`
+**3.352 ms/output**, `draft_device_chain_drain` **3.151 ms/output**,
+`draft_topk_readback` **3.158 ms/output**, and
+`target_block_verify_total` **12.662 ms/output**.
+
+Decision: retain X8 top-1 as the active llama-compat comparison lane. It moves
+the prior denseq8all + Q8 shared-dual full-suite row **61.19 -> 61.31 tok/s**,
+cycle **16.364 -> 16.331 ms/output**, and draft drain
+**3.378 -> 3.352 ms/output** with unchanged acceptance/economy. It is small and
+does not close the parity gap: versus the traced llama.cpp HIP B2 row
+(`14.231 ms/output`), the active gap is still **+2.100 ms/output**, split into
+**+1.212 ms/output** draft drain, **+0.579 ms/output** verifier drain, and
+**+0.151 target rows/output**. Updated
+`docs/MTP-LLAMACPP-PARITY.md`, `docs/KERNELS.md`, `docs/REFACTOR.md`,
+`benchmarks/README.md`, and `benchmarks/CHANGELOG.md` with the active
+three-lane gap table and retained artifacts.

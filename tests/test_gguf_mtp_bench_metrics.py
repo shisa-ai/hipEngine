@@ -676,6 +676,10 @@ def test_arg_parser_exposes_q6_top1_stage1_shape_diagnostic() -> None:
 
     assert pack16_args.resident_mtp_draft_q6_top1_stage1_shape == "pack16"
 
+    x8_args = build_arg_parser().parse_args(["--resident-mtp-draft-q6-top1-stage1-shape", "x8"])
+
+    assert x8_args.resident_mtp_draft_q6_top1_stage1_shape == "x8"
+
 
 def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     args = build_arg_parser().parse_args(
