@@ -132571,6 +132571,89 @@ python3 -m pytest \
 
 Result: passed.
 
+## 2026-07-02 — MTP draft FFN fine-sync split and parity dashboard refresh
+
+Extended the attribution-only `sync_stage_timings` split inside
+`Qwen35GGUFResidentMTPDraftRunner._run_one()` for the active `llama-compat`
+draft path. The FFN body now separates post-norm, router linear, router select,
+BF16 cast, shared gate/up, shared SiLU, shared down, and scalar shared-gate
+linear while preserving the older aggregate rows (`draft_run_ffn_router_select`
+and `draft_run_ffn_up_shared`) for continuity. Normal async/full-suite execution
+is unchanged; the extra synchronizations only run when `sync_stage_timings=True`.
+
+Profile command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 \
+  --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --record-stage-timings \
+  --sync-stage-timings --require-cached \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-fine-sync-ffn.json
+```
+
+Result: attribution-only profile, `performance_claim=false`. Host wall
+**7.662 ms/cycle**, kernel time **6.436 ms/cycle**, and
+**91.0 kernel calls/cycle**. Top kernel-family rows:
+`draft_lm_head_q6_top1` **3.667 ms/cycle**,
+`draft_dense_shared_gemv` **0.788**,
+`draft_f32_router_gate_linear` **0.671**,
+`draft_moe_gate_up` **0.434**,
+`draft_attention_core` **0.349**, and `draft_moe_down` **0.322**.
+
+New fine-sync leaf order:
+
+| leaf | ms/cycle |
+| --- | ---: |
+| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | 3.609 |
+| `draft_run_ffn_router_linear` | 0.515 |
+| `draft_run_ffn_selected_gate_up` | 0.468 |
+| `draft_run_qkv_q_gate` | 0.404 |
+| `draft_run_attention_core` | 0.374 |
+| `draft_run_moe_selected_down` | 0.353 |
+| `draft_run_attention_out` | 0.222 |
+| `draft_run_qkv_k_rope` | 0.220 |
+| `draft_run_project_eh_proj` | 0.213 |
+| `draft_run_ffn_shared_gate_linear` | 0.209 |
+| `draft_run_ffn_shared_down` | 0.069 |
+| `draft_run_ffn_post_norm_cast_bf16` | 0.062 |
+| `draft_run_ffn_shared_gate_up` | 0.062 |
+| `draft_run_ffn_shared_silu` | 0.039 |
+| `draft_run_ffn_router_select_only` | 0.039 |
+| `draft_run_ffn_post_norm` | 0.035 |
+
+Interpretation: the active three-lane parity board remains
+hipEngine default exact B5 **16.496 ms/output**, hipEngine `llama-compat` B2
+**15.735 ms/output**, and llama.cpp HIP B2 **14.231 ms/output**. The
+`llama-compat` gap is still **+1.504 ms/output**, dominated by draft drain
+**+1.112 ms/output**. The current concrete draft targets are Q6 top-1 stage1
+first, then router linear, selected gate/up, Q/Gate QKV, attention core, and
+selected down. The parity doc now keeps the three-lane dashboard plus the full
+fine-sync leaf table so future runs can update the speed gap and target row in
+one place.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  hipengine/speculative/mtp_resident_draft.py \
+  scripts/gguf_mtp_draft_rocprof.py
+
+python3 - <<'PY'
+import json
+from scripts.gguf_mtp_draft_rocprof import _print_stage_timings
+p = "benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-fine-sync-ffn.json"
+with open(p, "r", encoding="utf-8") as f:
+    data = json.load(f)
+_print_stage_timings(data["child"])
+PY
+
+PYTHONPATH=. python3 -m pytest tests/test_gguf_ar_mtp_suite.py -q
+```
+
+Result: passed.
+
 ## 2026-07-01 — MTP llama-compat F32 ssm_out verifier dp4a retained
 
 Implemented a default-off verifier F32 activation raw-Q8 dp4a diagnostic for the

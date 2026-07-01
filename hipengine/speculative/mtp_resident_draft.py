@@ -1046,7 +1046,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
         t_ffn0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_ffn0 if sync_stages else t_stage
         mtp_rmsnorm_f32(self.attended.ptr, self.post_norm_weight.ptr, self.post_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_ffn_post_norm", t_stage)
         mtp_linear_f32(self.post_norm.ptr, self.router_weight_f32.ptr, self.router_logits.ptr, 1, h, 256, library=self._mtp_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_ffn_router_linear", t_stage)
         qwen35_router_select(
             self.router_logits.ptr,
             self.selected.ptr,
@@ -1059,8 +1061,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
             library=self._router_lib,
             runtime=runtime,
         )
+        t_stage = mark_stage("draft_run_ffn_router_select_only", t_stage)
         f32_to_bf16(self.post_norm.ptr, self.post_norm_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
-        t_stage = mark_stage("draft_run_ffn_router_select", t_stage)
+        t_stage = mark_stage("draft_run_ffn_post_norm_cast_bf16", t_stage)
+        add_aggregate_stage("draft_run_ffn_router_select", t_ffn0)
         gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
             self.post_norm_bf16.ptr,
             self.selected.ptr,
@@ -1095,9 +1099,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
             gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_gate_up", t_stage)
         mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, library=self._mtp_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_ffn_shared_silu", t_stage)
         gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
+        t_stage = mark_stage("draft_run_ffn_shared_down", t_stage)
         mtp_linear_f32(self.post_norm.ptr, self.shared_gate_vec_f32.ptr, self.shared_gate_logit.ptr, 1, h, 1, library=self._mtp_lib, runtime=runtime)
-        t_stage = mark_stage("draft_run_ffn_shared_down_gate", t_stage)
+        t_stage = mark_stage("draft_run_ffn_shared_gate_linear", t_stage)
         add_aggregate_stage("draft_run_ffn_up_shared", t_ffn0)
 
         t_moe_down0 = time.perf_counter() if sync_stages else 0.0
