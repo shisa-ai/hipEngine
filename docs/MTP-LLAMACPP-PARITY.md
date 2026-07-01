@@ -138,6 +138,7 @@ Current source artifacts:
 | hipEngine llama-compat rejected Q6 top-1 row-shape check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-smoke.json` | Diagnostic only: this copies llama.cpp's one-output-row-per-block Q6_K MMVQ shape and signed `__vsubss4`/dot4 body more closely than the t64 check, but the larger final reduce erases the tiny stage1 gain and async smoke regresses. |
 | hipEngine llama-compat rejected Q6 top-1 scalehoist check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rerun-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-smoke.json` | Diagnostic only: keeps pack8's `vocab/8` final reduce but hoists Q6_K `d*scale` values into shared memory. Same-session smoke rejected it, so no full-suite run and no headline update. |
 | hipEngine llama-compat rejected q5/both X8 selected-down check | `benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8both-smoke.json` | Diagnostic only: q6-only X8 selected-down is retained for the accuracy-traded compat lane; q5/both smoke regressed vs q6-only, so q5 stays on T16. |
+| hipEngine llama-compat rejected Q4 X8 selected gate/up check | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-control-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-control-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-allsync-smoke.json` | Diagnostic only: materializing Q4_K selected gate/up experts as X8 q8_1/dp4a replacement layout regressed same-session smoke **67.62 -> 59.08 tok/s** and target verifier drain **12.005 -> 14.117 ms/output** with identical acceptance. All-sync attributes the loss to selected gate/up GEMV, not q8_1 quantize. |
 | hipEngine llama-compat rejected Q5 T16 selected-down one-wave check | `benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-t64-rerun-micro.json`, `benchmarks/results/2026-07-01-llama-compat-b2-q5-t16-selected-down-dp4a-q5t32-micro.json`, `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-q5t32-control-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q5t32-smoke.json` | Diagnostic only: llama.cpp MoE MMVQ uses one wave/token, and Q5 selected-down improved in isolation at 32 threads, but the real compat route regressed vs the retained 64-thread/Q6-X8 lane. |
 | hipEngine llama-compat rejected fused-SiLU check | `benchmarks/results/2026-07-01-llama-compat-b2-q4-t16-selected-dual-dp4a-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-fusedsilu-smoke.json` | Diagnostic only: micro/all-sync suggested launch removal could help, but async smoke regressed the retained compat row. |
 | hipEngine llama-compat rejected Q8T16 pair t64 check | `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json` | Diagnostic only: the actual verifier `attn_qkv+attn_gate` Q8T16 pair shape is faster at the existing 128-thread launch than at 64 threads. |
@@ -158,6 +159,7 @@ the next kernel target.
 | route | status | MTP tok/s | cycle wall | acc/output | draft acceptance | target rows/output | target verifier drain | decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6` | retained active lane | **60.36** | **16.587 ms/output** | **0.583** | **0.700** | **1.250** | **13.023 ms/output** | Current comparison lane vs llama.cpp HIP B2. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup` | rejected smoke diagnostic | 59.08 smoke | 16.948 ms/output smoke | 0.667 smoke | 1.000 smoke | 1.000 smoke | 14.117 ms/output smoke | Same-session retained control was **67.62 tok/s / 14.810 ms/output / 12.005 ms verifier** with identical smoke acceptance. Q4 X8 selected gate/up is slower than retained T16 dp4a for this route. Do not run full-suite or update the headline gap. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8` | rejected diagnostic | 59.42 | 16.852 ms/output | 0.559 | 0.635 | 1.322 | 13.093 ms/output | Rowtile-pair raw-Q8 sidecar improved smoke/all-sync verifier timing, but full-suite economics regressed. Do not update the headline gap. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all` | rejected diagnostic | 60.89 | 16.446 ms/output | 0.567 | 0.655 | 1.299 | 12.742 ms/output | Broad raw-Q8 sidecar improves speed and verifier drain, but full-suite acceptance and row economy regress vs retained `x8q6`. Keep as evidence; do not replace the retained lane. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall` | rejected smoke diagnostic | 68.54 smoke | 14.614 ms/output smoke | 0.667 smoke | 1.000 smoke | 1.000 smoke | 11.790 ms/output smoke | Same-session control smoke was faster at **68.78 tok/s / 14.561 ms/output** with the same acceptance. Do not run full-suite or update the headline gap. |
@@ -674,6 +676,26 @@ new selected-MoE buckets rule out q8_1 quantization overhead as the primary
 cause; copying llama.cpp more closely means comparing its `mul_mat_vec_q_moe`
 schedule/body against these selected GEMV launches, not adding another raw-Q8
 sidecar quantize path.
+
+The Q4 X8 selected gate/up retry is now rejected on the current retained route.
+It uses the existing `HIPENGINE_GGUF_SELECTED_GATE_UP_X8=1` materializer path,
+now exposed by `--selected-gate-up-x8` and suite route
+`llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup`. Same-session async
+smoke kept acceptance identical but regressed B2 **67.62 -> 59.08 tok/s**,
+cycle wall **14.810 -> 16.948 ms/output**, and target verifier drain
+**12.005 -> 14.117 ms/output**. The all-sync split pinpoints the added cost:
+
+| selected gate/up row | retained `x8q6` all-sync | `x8q6-x8gateup` all-sync | delta |
+| --- | ---: | ---: | ---: |
+| linear-attn gate/up aggregate | **1.655 ms/output** | 3.291 ms/output | +1.637 |
+| linear-attn gate/up q8_1 quantize | 0.198 ms/output | **0.194 ms/output** | -0.004 |
+| linear-attn gate/up GEMV | **1.408 ms/output** | 3.050 ms/output | +1.641 |
+| full-attn gate/up aggregate | **0.548 ms/output** | 1.093 ms/output | +0.545 |
+| full-attn gate/up GEMV | **0.462 ms/output** | 1.015 ms/output | +0.553 |
+
+Conclusion: the Q4 X8 replacement layout is not a retainable gate/up fix for
+the B2 verifier shape. The selected-MoE work queue stays on a llama.cpp
+`mul_mat_vec_q_moe` body/scheduler comparison, not on broadening X8 gate/up.
 
 **Rejected 2026-07-01 fused-SiLU q8_1/dp4a selected gate/up check:** a
 microbench made the fused rows>1 selected gate/up idea look plausible:

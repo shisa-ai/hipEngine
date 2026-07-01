@@ -705,6 +705,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--selected-gate-up-x8",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "OPT-IN accuracy-traded llama-compat diagnostic: materialize selected gate/up "
+            "Q4_K experts with the X8 q8_1/dp4a replacement layout. Default off."
+        ),
+    )
+    parser.add_argument(
         "--llama-compat",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1168,6 +1177,10 @@ def main(argv: list[str] | None = None):
         # Must be set before materialization so selected-down expert tensors are
         # repacked into the X8 replacement layout.
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = str(args.selected_down_x8_repack)
+    if getattr(args, "selected_gate_up_x8", False):
+        # Must be set before materialization so selected gate/up expert tensors
+        # are repacked into the X8 replacement layout.
+        os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_X8"] = "1"
     if getattr(args, "resident_mtp_draft_q6_top1_dp4a", False):
         # Must be set before constructing the resident MTP draft runner.
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
@@ -2988,6 +3001,8 @@ def main(argv: list[str] | None = None):
             ),
             "selected_down_x8_repack": str(args.selected_down_x8_repack),
             "selected_down_x8_repack_env": os.environ.get("HIPENGINE_GGUF_SELECTED_X8_REPACK"),
+            "selected_gate_up_x8": bool(args.selected_gate_up_x8),
+            "selected_gate_up_x8_env": os.environ.get("HIPENGINE_GGUF_SELECTED_GATE_UP_X8"),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),
             "resident_mtp_draft_full_vocab_recovery_effective": bool(

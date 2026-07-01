@@ -631,6 +631,12 @@ def test_arg_parser_exposes_selected_down_x8_repack_mode() -> None:
     assert args.selected_down_x8_repack == "q6"
 
 
+def test_arg_parser_exposes_selected_gate_up_x8_mode() -> None:
+    args = build_arg_parser().parse_args(["--selected-gate-up-x8"])
+
+    assert args.selected_gate_up_x8 is True
+
+
 def test_arg_parser_exposes_q6_top1_stage1_thread_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--resident-mtp-draft-q6-top1-stage1-threads", "64"])
 

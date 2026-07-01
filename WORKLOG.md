@@ -131517,3 +131517,68 @@ measurement changed: retained compat gap remains **+2.356 ms/output**, split
 across **+1.104 ms/output** draft drain, **+0.940 ms/output** target verifier
 drain, and **+0.102 target rows/output**. This is docs-only tracking structure;
 no benchmark rerun was needed.
+
+## 2026-07-01 — Q4 X8 selected gate/up llama-compat diagnostic rejected
+
+Added a benchmark-facing switch for the existing Q4_K selected gate/up X8
+replacement-layout materialization path:
+
+- `scripts/gguf_mtp_bench.py --selected-gate-up-x8` sets
+  `HIPENGINE_GGUF_SELECTED_GATE_UP_X8=1` before GGUF materialization.
+- `scripts/gguf_ar_mtp_suite.py` routes:
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup` and
+  `...-x8gateup-allsync`.
+- `scripts/gguf_mtp_verifier_rocprof.py --selected-gate-up-x8` enables the same
+  route for block-verifier profiling if needed.
+
+Validation:
+
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx' | head -n 40` -> gfx1151 / Radeon 8060S.
+- `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py scripts/gguf_mtp_verifier_rocprof.py tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py`
+  -> pass.
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py::test_suite_exposes_llama_compat_routes tests/test_gguf_ar_mtp_suite.py::test_suite_llama_compat_q6top1dp4a_x8q6_x8gateup_dry_run_defaults_to_b2 tests/test_gguf_mtp_bench_metrics.py::test_arg_parser_exposes_selected_gate_up_x8_mode`
+  -> **3 passed**.
+- `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_gguf_x8_selected_gemv.py -k 'q4_x8_selected_dual_direct or registry'`
+  -> **2 passed**.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_gguf_materialize.py -k 'selected_gate_up_x8 or selected_down_x8'`
+  -> **2 skipped** because the local GGUF fixture is absent.
+- `PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py tests/test_gguf_mtp_bench_metrics.py -k 'llama_compat or selected_gate_up_x8 or selected_down_x8'`
+  -> **14 passed**.
+- Dry-run:
+  `PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup --record-cycle-stage-timings --dry-run`
+  -> command includes `--extra-arg=--selected-gate-up-x8` and B2 default budget.
+
+Same-session async smoke:
+
+- retained control
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-control-smoke.json`
+  -> B2 **67.62 tok/s**, cycle **14.810 ms/output**, verifier drain
+  **12.005 ms/output**, acceptance `0.667 acc/output`, draft acceptance `1.000`.
+- x8gateup
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-smoke.json`
+  -> B2 **59.08 tok/s**, cycle **16.948 ms/output**, verifier drain
+  **14.117 ms/output**, same acceptance (`0.667`, draft `1.000`).
+
+All-sync attribution:
+
+- retained control
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-control-allsync-smoke.json`
+  -> B2 **53.25 tok/s**, cycle **18.803 ms/output**, verifier
+  **15.916 ms/output**.
+- x8gateup
+  `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-allsync-smoke.json`
+  -> B2 **47.48 tok/s**, cycle **21.085 ms/output**, verifier
+  **18.193 ms/output**.
+- The loss is the gate/up GEMV body, not quantization:
+  linear-attn gate/up aggregate **1.655 -> 3.291 ms/output**, q8_1 quantize
+  **0.198 -> 0.194**, GEMV **1.408 -> 3.050**; full-attn gate/up aggregate
+  **0.548 -> 1.093**, GEMV **0.462 -> 1.015**.
+
+Conclusion: reject. Q4 X8 selected gate/up is slower than retained T16 dp4a for
+the current B2 verifier shape, with no acceptance benefit. Do not run full-suite
+or update the retained headline gap. Updated `docs/MTP-LLAMACPP-PARITY.md`,
+`docs/REFACTOR.md`, and `docs/KERNELS.md`; future selected-MoE work should
+compare against llama.cpp `mul_mat_vec_q_moe` body/scheduler rather than
+broadening the X8 gate/up route.
