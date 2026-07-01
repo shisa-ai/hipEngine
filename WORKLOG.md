@@ -134472,3 +134472,99 @@ python3 scripts/gguf_mtp_draft_rocprof.py \
   gap-budget note, the target map, and a GPU-event draft attribution table.
   No benchmark rollup update: this is diagnostic-only instrumentation, not a
   retained speed claim.
+
+## 2026-07-02 - MTP llama-compat parallel dense attention
+
+- Source comparison against llama.cpp ROCTX ranges showed the remaining
+  draft-drain gap was not D2H/readback and not Q6 top-1 body cost: llama.cpp's
+  `llama_draft_sample_topk` window runs `flash_attn_tile` for a tiny fraction of
+  the drain, while hipEngine still spent a visible `draft_gpu_run_attention`
+  bucket in `hipengine_mtp_dense_attn_f32`.
+- Replaced the correctness-first thread-0 `hipengine_mtp_dense_attn_f32_kernel`
+  body with a 256-thread per-head parallel reduction for score dot products,
+  softmax denominator, and value accumulation under the same API. This applies
+  to the shared resident MTP draft attention path, including llama-compat and
+  exact resident draft routes.
+- Validation:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 pytest -q tests/test_mtp_dense_attn_f32_gate.py
+git diff --check
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --child --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --steps 1 --warmup 0 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings \
+  --child-json /tmp/gguf-mtp-draft-child-attn-parallel-smoke.json
+```
+
+- Correctness gate passed. `git diff --check` passed. JSON validation passed for
+  the compat full-suite, exact full-suite, and draft rocprof artifacts. The
+  required lineage script remains blocked because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` fails before
+  producing a report. Child smoke passed with draft tokens `[[21, 22]]`;
+  one-chain event timing moved `draft_gpu_run_attention` to **0.222 ms** with
+  `draft_gpu_run_lm_head` still **3.722 ms**.
+- Reran the diagnostic draft-chain rocprof split:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings --require-cached --skip-warmbuild \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-parallelattn-gpuevents \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-routerrow-sharedgate-parallelattn-gpuevents.json
+```
+
+- Diagnostic result: `performance_claim=false`; host **6.529 ms/cycle**,
+  kernel **5.498 ms/cycle**, kernel share **84.2%**, **90.5** kernel
+  calls/cycle. Versus the prior GPU-event split, `draft_device_chain_drain`
+  moved **5.505 -> 5.258 ms/cycle**, `draft_topk_readback`
+  **6.126 -> 5.888 ms/cycle**, `draft_gpu_run_attention`
+  **0.558 -> 0.243 ms/cycle**, and the kernel-family
+  `hipengine_mtp_dense_attn_f32` **0.345 -> 0.033 ms/cycle**.
+- Reran the retained full-suite compat route:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-parallelattn-full.json
+```
+
+- Result: `apple_to_apple_ok=true`; AR **54.71 tok/s**; B2 MTP
+  **74.38 tok/s = 1.3596x AR**; `cycle_wall_ms_per_output`
+  **13.464**; acc/output **0.621**; draft acceptance **0.820**;
+  target rows/output **1.136**.
+- Versus the prior shared-gate active row: MTP **71.84 -> 74.38 tok/s**
+  (+3.54%), cycle wall **13.940 -> 13.464 ms/output**, draft drain
+  **2.684 -> 2.202 ms/output**, visible draft readback/drain
+  **2.520 -> 2.038 ms/output**, and target verifier drain stayed flat
+  (**10.929 -> 10.937 ms/output**) with unchanged proposal economy.
+- Reran the exact default full-suite control because the kernel is shared with
+  the correctness-preserving resident draft path:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json
+```
+
+- Exact default result: `apple_to_apple_ok=true`; AR **54.79 tok/s**; best B5
+  **61.98 tok/s = 1.1312x AR**; `cycle_wall_ms_per_output` **16.162**;
+  acc/output **0.535**; draft acceptance **0.723**; target rows/output
+  **1.163**. Versus the prior exact current row, MTP moves
+  **60.8 -> 61.98 tok/s**, cycle wall **16.496 -> 16.162 ms/output**, and
+  draft drain **1.921 -> 1.899 ms/output** with unchanged proposal economy.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`. Current reading: the active compat parent wall is
+  **13.464 vs llama.cpp HIP traced 14.231 ms/output**, and the remaining slower
+  child bucket is draft drain (**2.202 vs 2.140 ms/output**).

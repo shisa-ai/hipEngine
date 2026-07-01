@@ -329,46 +329,80 @@ extern "C" __global__ void hipengine_mtp_dense_attn_f32_kernel(
     vcount = 0;
   }
   extern __shared__ float shared[];
-  float* scores = shared;          // [vcount]
-  float* out_acc = shared + cache_tokens;  // [value_head_dim]
+  float* scores = shared;              // [cache_tokens]
+  float* reduction = shared + cache_tokens;  // [blockDim.x]
 
   const float* qr = query + (t * heads + qh) * qk_head_dim;
+  float* outr = out + (t * heads + qh) * value_head_dim;
+  if (vcount <= 0) {
+    for (int64_t d = static_cast<int64_t>(threadIdx.x); d < value_head_dim;
+         d += static_cast<int64_t>(blockDim.x)) {
+      outr[d] = 0.0f;
+    }
+    return;
+  }
+
+  float max_score = -INFINITY;
+  for (int64_t v = 0; v < vcount; ++v) {
+    const float* kr = key_cache + (v * kv_heads + kh) * qk_head_dim;
+    float partial = 0.0f;
+    for (int64_t d = static_cast<int64_t>(threadIdx.x); d < qk_head_dim;
+         d += static_cast<int64_t>(blockDim.x)) {
+      partial += kr[d] * qr[d];
+    }
+    reduction[threadIdx.x] = partial;
+    __syncthreads();
+    for (unsigned int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        reduction[threadIdx.x] += reduction[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      const float score = reduction[0] * scale;
+      scores[v] = score;
+      if (score > max_score) {
+        max_score = score;
+      }
+    }
+    __syncthreads();
+  }
 
   if (threadIdx.x == 0) {
-    float max_score = -INFINITY;
-    for (int64_t v = 0; v < vcount; ++v) {
-      const float* kr = key_cache + (v * kv_heads + kh) * qk_head_dim;
-      float dot = 0.0f;
-      for (int64_t d = 0; d < qk_head_dim; ++d) {
-        dot += kr[d] * qr[d];
-      }
-      float s = dot * scale;
-      scores[v] = s;
-      if (s > max_score) {
-        max_score = s;
-      }
-    }
-    float exp_sum = 0.0f;
-    for (int64_t v = 0; v < vcount; ++v) {
-      float e = __expf(scores[v] - max_score);
-      scores[v] = e;
-      exp_sum += e;
-    }
-    float inv = (exp_sum > 0.0f) ? (1.0f / exp_sum) : 0.0f;
-    for (int64_t d = 0; d < value_head_dim; ++d) {
-      float acc = 0.0f;
-      for (int64_t v = 0; v < vcount; ++v) {
-        const float* vr = value_cache + (v * kv_heads + kh) * value_head_dim;
-        acc += scores[v] * inv * vr[d];
-      }
-      out_acc[d] = acc;
-    }
+    reduction[0] = max_score;
   }
   __syncthreads();
-  float* outr = out + (t * heads + qh) * value_head_dim;
+  max_score = reduction[0];
+
+  float exp_partial = 0.0f;
+  for (int64_t v = static_cast<int64_t>(threadIdx.x); v < vcount;
+       v += static_cast<int64_t>(blockDim.x)) {
+    const float e = __expf(scores[v] - max_score);
+    scores[v] = e;
+    exp_partial += e;
+  }
+  reduction[threadIdx.x] = exp_partial;
+  __syncthreads();
+  for (unsigned int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      reduction[threadIdx.x] += reduction[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    reduction[0] = (reduction[0] > 0.0f) ? (1.0f / reduction[0]) : 0.0f;
+  }
+  __syncthreads();
+  const float inv = reduction[0];
+
   for (int64_t d = static_cast<int64_t>(threadIdx.x); d < value_head_dim;
        d += static_cast<int64_t>(blockDim.x)) {
-    outr[d] = out_acc[d];
+    float acc = 0.0f;
+    for (int64_t v = 0; v < vcount; ++v) {
+      const float* vr = value_cache + (v * kv_heads + kh) * value_head_dim;
+      acc += scores[v] * inv * vr[d];
+    }
+    outr[d] = acc;
   }
 }
 
@@ -391,14 +425,8 @@ extern "C" int hipengine_mtp_dense_attn_f32(
       value_head_dim <= 0 || cache_tokens <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int shbytes = static_cast<int>((cache_tokens + value_head_dim) * sizeof(float));
-  int block = 256;
-  if (value_head_dim < block) {
-    block = static_cast<int>(value_head_dim);
-  }
-  if (block < 1) {
-    block = 1;
-  }
+  const int block = 256;
+  const int shbytes = static_cast<int>((cache_tokens + block) * sizeof(float));
   dim3 grid(static_cast<unsigned int>(tokens), static_cast<unsigned int>(heads));
   hipLaunchKernelGGL(
       hipengine_mtp_dense_attn_f32_kernel,
