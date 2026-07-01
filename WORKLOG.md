@@ -131962,3 +131962,56 @@ bodies. The next verifier attempt should capture more of `mul_mat_vec_q` /
 `mul_mat_vec_q_moe` scheduling economy over the retained T16 layouts or reduce
 the number of GEMV calls; repeating rejected rowtile-all/raw-sidecar mechanical
 copies is not the next step.
+
+## 2026-07-01 — active llama-compat gap board and denseq8all promotion
+
+Promoted the existing dense raw-Q8 dp4a all-sidecar route as the active
+llama-replication lane in `docs/MTP-LLAMACPP-PARITY.md`. This is an
+accuracy-traded `llama-compat` lane, not the exact default path.
+
+Full-suite rowhist rerun:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_ar_mtp_suite.py --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-rowhist-full.json
+```
+
+Result on Qwen3.6-35B-A3B-UD-Q4_K_M GGUF Q4_K_M, gfx1151/Radeon 8060S,
+10-prompt full suite, B2:
+
+- `apple_to_apple_ok=true`.
+- AR **54.73 tok/s**.
+- MTP **60.96 tok/s**, **1.1137x** AR.
+- Cycle wall **16.427 ms/output**.
+- `draft_initial` **3.380 ms/output**.
+- `target_block_verify_total` **12.727 ms/output**.
+- `accepted/output` **0.567**, draft acceptance **0.655**.
+- `target_rows/output` **1.299**, target passes/output **0.433**.
+- Rowhist: generated `{2:100}`, accepted `{2:52,1:27,0:21}`,
+  visible `{3:52,2:27,1:21}`, target rows `{3:100}`, discarded
+  `{0:52,1:27,2:21}`.
+
+Comparison vs the prior active `x8q6` rowhist lane:
+
+- MTP **60.28 -> 60.96 tok/s** (+1.13%).
+- Cycle wall **16.610 -> 16.427 ms/output**.
+- Verifier drain **13.038 -> 12.727 ms/output**.
+- Dense/linear-attn verifier bucket **8.515 -> 8.242 ms/output**.
+- Draft drain regressed **3.248 -> 3.380 ms/output**.
+- Acceptance regressed **0.583 -> 0.567** and draft acceptance
+  **0.700 -> 0.655**.
+- Target rows/output regressed **1.250 -> 1.299**.
+
+Decision: retain `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all`
+as the active llama-replication lane because it is net faster and structurally
+closer to llama.cpp dense `mul_mat_vec_q` for verifier projections. Keep the
+row-economy regression visible in the active dashboard. The current gap table in
+`docs/MTP-LLAMACPP-PARITY.md` now keeps hipEngine default exact, hipEngine
+`llama-compat`, llama.cpp HIP, and the compat delta together at the top of the
+file. Active gap vs traced llama.cpp HIP B2: **+2.196 ms/output** total, split
+into **+1.240 ms/output** draft drain, **+0.644 ms/output** verifier drain, and
+**+0.151 target rows/output**.
