@@ -18,12 +18,25 @@ SCHEMA = "hipengine.llamacpp_kernel_trace_summary.v1"
 @dataclass(frozen=True)
 class KernelRow:
     name: str
+    start_ns: int
+    end_ns: int
     duration_ns: int
     vgpr: int | None
     scratch: int | None
     lds: int | None
     workgroup_size: tuple[int | None, int | None, int | None]
     grid_size: tuple[int | None, int | None, int | None]
+
+
+@dataclass(frozen=True)
+class MarkerRange:
+    name: str
+    start_ns: int
+    end_ns: int
+
+    @property
+    def duration_ns(self) -> int:
+        return max(0, self.end_ns - self.start_ns)
 
 
 def _int_or_none(value: str | None) -> int | None:
@@ -53,6 +66,8 @@ def read_kernel_trace(path: Path) -> list[KernelRow]:
             rows.append(
                 KernelRow(
                     name=name,
+                    start_ns=start,
+                    end_ns=end,
                     duration_ns=end - start,
                     vgpr=_int_or_none(row.get("VGPR_Count")),
                     scratch=_int_or_none(row.get("Scratch_Size")),
@@ -69,6 +84,25 @@ def read_kernel_trace(path: Path) -> list[KernelRow]:
                     ),
                 )
             )
+    return rows
+
+
+def read_marker_trace(path: Path) -> list[MarkerRange]:
+    rows: list[MarkerRange] = []
+    with path.open(newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            try:
+                start = int(float(row["Start_Timestamp"]))
+                end = int(float(row["End_Timestamp"]))
+            except (KeyError, ValueError):
+                continue
+            if end < start:
+                continue
+            name = (row.get("Function") or row.get("Name") or "").strip()
+            if not name:
+                continue
+            rows.append(MarkerRange(name=name, start_ns=start, end_ns=end))
     return rows
 
 
@@ -110,22 +144,131 @@ def classify_kernel(name: str) -> str:
     return "other"
 
 
-def _kernel_stats(rows: list[KernelRow], *, total_ns: int) -> dict[str, Any]:
+def _kernel_stats(rows: list[KernelRow], *, total_ns: int, include_details: bool = True) -> dict[str, Any]:
     duration_ns = sum(row.duration_ns for row in rows)
-    names = sorted({row.name for row in rows})
-    vgprs = sorted({row.vgpr for row in rows if row.vgpr is not None})
-    scratches = sorted({row.scratch for row in rows if row.scratch is not None})
-    lds_values = sorted({row.lds for row in rows if row.lds is not None})
-    return {
+    stats = {
         "total_ms": duration_ns / 1.0e6,
         "dispatches": len(rows),
         "avg_dispatch_ms": duration_ns / 1.0e6 / len(rows) if rows else 0.0,
         "share_of_total": duration_ns / total_ns if total_ns else 0.0,
-        "kernel_names": names,
-        "vgpr_values": vgprs,
-        "scratch_values": scratches,
-        "lds_values": lds_values,
     }
+    if include_details:
+        stats.update(
+            {
+                "kernel_names": sorted({row.name for row in rows}),
+                "vgpr_values": sorted({row.vgpr for row in rows if row.vgpr is not None}),
+                "scratch_values": sorted({row.scratch for row in rows if row.scratch is not None}),
+                "lds_values": sorted({row.lds for row in rows if row.lds is not None}),
+            }
+        )
+    return stats
+
+
+def _range_kernel_summary(marker: MarkerRange, rows: list[KernelRow], *, top: int) -> dict[str, Any]:
+    total_ns = sum(row.duration_ns for row in rows)
+    by_bucket: dict[str, list[KernelRow]] = defaultdict(list)
+    by_name: dict[str, list[KernelRow]] = defaultdict(list)
+    for row in rows:
+        by_bucket[classify_kernel(row.name)].append(row)
+        by_name[row.name].append(row)
+
+    buckets = [
+        {"bucket": bucket, **_kernel_stats(bucket_rows, total_ns=total_ns, include_details=False)}
+        for bucket, bucket_rows in sorted(
+            by_bucket.items(),
+            key=lambda item: sum(row.duration_ns for row in item[1]),
+            reverse=True,
+        )
+    ]
+    kernels = [
+        {"kernel": name, **_kernel_stats(name_rows, total_ns=total_ns, include_details=False)}
+        for name, name_rows in sorted(
+            by_name.items(),
+            key=lambda item: sum(row.duration_ns for row in item[1]),
+            reverse=True,
+        )
+    ][:top]
+
+    return {
+        "range": marker.name,
+        "range_start_ns": marker.start_ns,
+        "range_end_ns": marker.end_ns,
+        "range_duration_ms": marker.duration_ns / 1.0e6,
+        "kernel_ms": total_ns / 1.0e6,
+        "kernel_dispatches": len(rows),
+        "kernel_share_of_range": total_ns / marker.duration_ns if marker.duration_ns else 0.0,
+        "buckets": buckets,
+        "top_kernels": kernels,
+    }
+
+
+def _range_summaries(markers: list[MarkerRange], rows: list[KernelRow], *, top: int) -> list[dict[str, Any]]:
+    summaries = []
+    for marker in markers:
+        marker_rows = [
+            row
+            for row in rows
+            if marker.start_ns <= ((row.start_ns + row.end_ns) // 2) <= marker.end_ns
+        ]
+        summaries.append(_range_kernel_summary(marker, marker_rows, top=top))
+    return sorted(summaries, key=lambda item: item["kernel_ms"], reverse=True)
+
+
+def _range_name_summaries(markers: list[MarkerRange], rows: list[KernelRow], *, top: int) -> list[dict[str, Any]]:
+    by_name: dict[str, list[MarkerRange]] = defaultdict(list)
+    for marker in markers:
+        by_name[marker.name].append(marker)
+
+    summaries = []
+    for name, name_markers in by_name.items():
+        marker_rows: list[KernelRow] = []
+        range_ns = 0
+        for marker in name_markers:
+            range_ns += marker.duration_ns
+            marker_rows.extend(
+                row
+                for row in rows
+                if marker.start_ns <= ((row.start_ns + row.end_ns) // 2) <= marker.end_ns
+            )
+
+        total_ns = sum(row.duration_ns for row in marker_rows)
+        by_bucket: dict[str, list[KernelRow]] = defaultdict(list)
+        by_kernel: dict[str, list[KernelRow]] = defaultdict(list)
+        for row in marker_rows:
+            by_bucket[classify_kernel(row.name)].append(row)
+            by_kernel[row.name].append(row)
+
+        buckets = [
+            {"bucket": bucket, **_kernel_stats(bucket_rows, total_ns=total_ns, include_details=False)}
+            for bucket, bucket_rows in sorted(
+                by_bucket.items(),
+                key=lambda item: sum(row.duration_ns for row in item[1]),
+                reverse=True,
+            )
+        ]
+        kernels = [
+            {"kernel": kernel, **_kernel_stats(kernel_rows, total_ns=total_ns, include_details=False)}
+            for kernel, kernel_rows in sorted(
+                by_kernel.items(),
+                key=lambda item: sum(row.duration_ns for row in item[1]),
+                reverse=True,
+            )
+        ][:top]
+
+        summaries.append(
+            {
+                "range": name,
+                "range_calls": len(name_markers),
+                "range_duration_ms": range_ns / 1.0e6,
+                "kernel_ms": total_ns / 1.0e6,
+                "kernel_dispatches": len(marker_rows),
+                "kernel_share_of_range": total_ns / range_ns if range_ns else 0.0,
+                "buckets": buckets,
+                "top_kernels": kernels,
+            }
+        )
+
+    return sorted(summaries, key=lambda item: item["kernel_ms"], reverse=True)
 
 
 def build_summary(
@@ -134,8 +277,10 @@ def build_summary(
     label: str,
     command: str | None,
     top: int,
+    marker_csv: Path | None = None,
 ) -> dict[str, Any]:
     rows = read_kernel_trace(csv_path)
+    markers = read_marker_trace(marker_csv) if marker_csv is not None else []
     total_ns = sum(row.duration_ns for row in rows)
 
     by_bucket: dict[str, list[KernelRow]] = defaultdict(list)
@@ -168,25 +313,29 @@ def build_summary(
         "performance_claim": False,
         "inputs": {
             "kernel_trace_csv": str(csv_path),
+            "marker_trace_csv": str(marker_csv) if marker_csv is not None else None,
             "command": command,
         },
         "total_kernel_ms": total_ns / 1.0e6,
         "total_dispatches": len(rows),
         "buckets": buckets,
         "top_kernels": kernels,
+        "range_name_summaries": _range_name_summaries(markers, rows, top=top) if markers else [],
+        "range_summaries": _range_summaries(markers, rows, top=top) if markers else [],
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", type=Path, required=True, help="rocprofv3 *_kernel_trace.csv file")
+    parser.add_argument("--marker-csv", type=Path, default=None, help="Optional rocprofv3 *_marker_api_trace.csv file")
     parser.add_argument("--json", type=Path, required=True, help="Output summary JSON")
     parser.add_argument("--label", default="llamacpp-hip-trace")
     parser.add_argument("--command", default=None, help="Command that produced the trace")
     parser.add_argument("--top", type=int, default=20)
     args = parser.parse_args(argv)
 
-    summary = build_summary(args.csv, label=args.label, command=args.command, top=args.top)
+    summary = build_summary(args.csv, label=args.label, command=args.command, top=args.top, marker_csv=args.marker_csv)
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {args.json}")

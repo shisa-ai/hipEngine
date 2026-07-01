@@ -40,6 +40,16 @@ _CSV_COLUMNS = (
     "Grid_Size_Z",
 )
 
+_MARKER_COLUMNS = (
+    "Domain",
+    "Function",
+    "Process_Id",
+    "Thread_Id",
+    "Correlation_Id",
+    "Start_Timestamp",
+    "End_Timestamp",
+)
+
 
 def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
     with path.open("w", newline="") as fh:
@@ -47,6 +57,14 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({col: row.get(col, "") for col in _CSV_COLUMNS})
+
+
+def _write_marker_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
+    with path.open("w", newline="") as fh:
+        writer = csv_lib.DictWriter(fh, fieldnames=list(_MARKER_COLUMNS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({col: row.get(col, "") for col in _MARKER_COLUMNS})
 
 
 @pytest.mark.parametrize(
@@ -133,3 +151,69 @@ def test_build_summary_groups_buckets_and_top_kernels(tmp_path: Path) -> None:
     assert buckets["llama_copy_layout"]["total_ms"] == pytest.approx(0.25)
     assert payload["top_kernels"][0]["kernel"].startswith("void mul_mat_vec_q_moe")
     assert len(payload["top_kernels"]) == 2
+
+
+def test_build_summary_slices_kernels_by_marker_ranges(tmp_path: Path) -> None:
+    csv_path = tmp_path / "kernel.csv"
+    marker_path = tmp_path / "marker.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "Kernel_Name": "void mul_mat_vec_q_moe<(ggml_type)10, 2>(void const*)",
+                "Start_Timestamp": 0,
+                "End_Timestamp": 2_000_000,
+            },
+            {
+                "Kernel_Name": "void mul_mat_vec_q<(ggml_type)14, 1, false, false>(void const*)",
+                "Start_Timestamp": 2_200_000,
+                "End_Timestamp": 3_200_000,
+            },
+            {
+                "Kernel_Name": "quantize_q8_1(float const*, void*)",
+                "Start_Timestamp": 3_300_000,
+                "End_Timestamp": 3_700_000,
+            },
+            {
+                "Kernel_Name": "__amd_rocclr_copyBuffer",
+                "Start_Timestamp": 4_000_000,
+                "End_Timestamp": 5_000_000,
+            },
+        ],
+    )
+    _write_marker_csv(
+        marker_path,
+        [
+            {
+                "Domain": "MARKER_CORE_RANGE_API",
+                "Function": "draft_initial",
+                "Start_Timestamp": 0,
+                "End_Timestamp": 3_250_000,
+            },
+            {
+                "Domain": "MARKER_CORE_RANGE_API",
+                "Function": "llama_draft_sample_topk",
+                "Start_Timestamp": 2_100_000,
+                "End_Timestamp": 3_400_000,
+            },
+        ],
+    )
+
+    payload = SCRIPT.build_summary(csv_path, marker_csv=marker_path, label="unit", command=None, top=2)
+
+    by_name = {row["range"]: row for row in payload["range_name_summaries"]}
+    assert by_name["draft_initial"]["range_calls"] == 1
+    assert by_name["draft_initial"]["kernel_ms"] == pytest.approx(3.0)
+    assert by_name["llama_draft_sample_topk"]["kernel_ms"] == pytest.approx(1.0)
+
+    ranges = {row["range"]: row for row in payload["range_summaries"]}
+    assert ranges["draft_initial"]["kernel_ms"] == pytest.approx(3.0)
+    assert ranges["draft_initial"]["kernel_dispatches"] == 2
+    draft_buckets = {row["bucket"]: row for row in ranges["draft_initial"]["buckets"]}
+    assert draft_buckets["llama_mmvq_moe"]["total_ms"] == pytest.approx(2.0)
+    assert draft_buckets["llama_mmvq"]["total_ms"] == pytest.approx(1.0)
+
+    sample = ranges["llama_draft_sample_topk"]
+    assert sample["kernel_ms"] == pytest.approx(1.0)
+    assert sample["kernel_dispatches"] == 1
+    assert sample["buckets"][0]["bucket"] == "llama_mmvq"

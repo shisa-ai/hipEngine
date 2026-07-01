@@ -6,6 +6,9 @@ stage JSONL shows draft/verify wall buckets, but not kernel families.  This
 wrapper starts ``llama-server`` under ``rocprofv3 --kernel-trace``, sends a
 small deterministic ``/completion`` request, then summarizes any kernel CSV
 that survives profiler finalization with ``scripts/llamacpp_kernel_trace_summary``.
+With ``--roctx-ranges`` it also enables llama.cpp's local ``LLAMA_MTP_ROCTX``
+diagnostic ranges and asks rocprofv3 for marker traces, allowing kernels to be
+sliced by the same stage windows.
 
 The trace is intentionally whole-process, not a draft-window-only marker trace.
 Use it as a kernel-family proxy alongside ``LLAMA_MTP_STAGE_TIMINGS`` rather
@@ -89,16 +92,23 @@ def build_completion_payload(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def build_rocprof_command(args: argparse.Namespace, *, trace_dir: Path, server_command: list[str]) -> list[str]:
-    return [
+    cmd = [
         str(args.rocprofv3),
         "--kernel-trace",
-        "--output-format",
-        "csv",
-        "-d",
-        str(trace_dir),
-        "--",
-        *server_command,
     ]
+    if args.roctx_ranges:
+        cmd.append("--marker-trace")
+    cmd.extend(
+        [
+            "--output-format",
+            "csv",
+            "-d",
+            str(trace_dir),
+            "--",
+            *server_command,
+        ]
+    )
+    return cmd
 
 
 def wait_for_health(host: str, port: int, timeout_s: float) -> None:
@@ -149,6 +159,15 @@ def terminate_process_group(proc: subprocess.Popen[bytes], *, graceful_s: float,
 
 def find_kernel_csv(trace_dir: Path) -> Path | None:
     files = sorted(trace_dir.glob("**/*_kernel_trace.csv"))
+    if not files:
+        return None
+    if len(files) == 1:
+        return files[0]
+    return max(files, key=lambda path: path.stat().st_size)
+
+
+def find_marker_csv(trace_dir: Path) -> Path | None:
+    files = sorted(trace_dir.glob("**/*_marker_api_trace.csv"))
     if not files:
         return None
     if len(files) == 1:
@@ -225,6 +244,8 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
     rocprof_command = build_rocprof_command(args, trace_dir=trace_dir, server_command=server_command)
     env = os.environ.copy()
     env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_path)
+    if args.roctx_ranges:
+        env["LLAMA_MTP_ROCTX"] = "1"
 
     response: dict[str, Any] | None = None
     request_error: str | None = None
@@ -262,12 +283,14 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
             return_code = proc.returncode
 
     kernel_csv = find_kernel_csv(trace_dir)
+    marker_csv = find_marker_csv(trace_dir)
     kernel_summary = (
         build_kernel_summary(
             kernel_csv,
             label=str(args.label),
             command=" ".join(rocprof_command),
             top=int(args.top),
+            marker_csv=marker_csv,
         )
         if kernel_csv is not None
         else None
@@ -300,6 +323,7 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
             "top_p": float(args.top_p),
             "min_p": float(args.min_p),
             "seed": int(args.seed),
+            "roctx_ranges": bool(args.roctx_ranges),
         },
         "server_command": server_command,
         "rocprof_command": rocprof_command,
@@ -313,11 +337,12 @@ def run_profile(args: argparse.Namespace) -> dict[str, Any]:
         "stage_timings_jsonl": str(stage_path),
         "stage_timing_summary": _summarize_stage_timings(stage_path),
         "kernel_trace_csv": str(kernel_csv) if kernel_csv is not None else None,
+        "marker_trace_csv": str(marker_csv) if marker_csv is not None else None,
         "kernel_summary": kernel_summary,
         "request_summary": request_summary,
         "notes": [
             "Whole-process trace: includes model load, prompt prefill, target verify, draft, sampling, and shutdown kernels.",
-            "Use stage_timing_summary for llama.cpp MTP stage windows; use kernel_summary only as a family proxy unless ROCTX markers are added upstream.",
+            "Use stage_timing_summary for llama.cpp MTP stage windows; use kernel_summary range_summaries only when --roctx-ranges produced marker_trace_csv.",
         ],
     }
 
@@ -343,6 +368,18 @@ def _print_summary(artifact: dict[str, Any]) -> None:
                 f"{float(row['total_ms']):10.3f} "
                 f"{float(row['share_of_total']) * 100.0:7.1f}%"
             )
+        ranges = kernel.get("range_name_summaries") or kernel.get("range_summaries") or []
+        if ranges:
+            print("\n=== ROCTX RANGE KERNEL BUCKETS ===")
+            print(f"{'range':36s} {'calls':>6s} {'dispatches':>10s} {'kernel_ms':>10s} {'range_ms':>10s}")
+            for row in ranges[: int(artifact.get("top") or 20)]:
+                print(
+                    f"{row['range'][:36]:36s} "
+                    f"{int(row.get('range_calls') or 1):6d} "
+                    f"{int(row['kernel_dispatches']):10d} "
+                    f"{float(row['kernel_ms']):10.3f} "
+                    f"{float(row['range_duration_ms']):10.3f}"
+                )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -374,6 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--server-start-timeout", type=float, default=600.0)
     parser.add_argument("--request-timeout", type=float, default=900.0)
     parser.add_argument("--profiler-finalize-timeout", type=float, default=90.0)
+    parser.add_argument("--roctx-ranges", action="store_true", help="Enable llama.cpp LLAMA_MTP_ROCTX ranges and collect marker traces.")
     parser.add_argument("--hardware", default="AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)")
     parser.add_argument("--label", default="llamacpp-hip-mtp-whole-run")
     parser.add_argument("--top", type=int, default=24)

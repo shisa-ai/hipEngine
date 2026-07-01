@@ -32,6 +32,7 @@ def _args(**overrides):
         "min_p": 0.0,
         "seed": 12345,
         "rocprofv3": "rocprofv3",
+        "roctx_ranges": False,
     }
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -65,3 +66,16 @@ def test_llamacpp_mtp_rocprof_completion_payload_token_repeat() -> None:
     payload = rocprof.build_completion_payload(_args(token_repeat=True, token_id=42, prompt_tokens=4))
 
     assert payload["prompt"] == [42, 42, 42, 42]
+
+
+def test_llamacpp_mtp_rocprof_roctx_command_enables_marker_trace() -> None:
+    cmd = rocprof.build_rocprof_command(
+        _args(roctx_ranges=True),
+        trace_dir=Path("/tmp/trace"),
+        server_command=["/tmp/llama-server"],
+    )
+
+    assert "--kernel-trace" in cmd
+    assert "--marker-trace" in cmd
+    assert cmd[cmd.index("-d") + 1] == "/tmp/trace"
+    assert cmd[-1] == "/tmp/llama-server"

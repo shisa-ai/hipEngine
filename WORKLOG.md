@@ -133241,3 +133241,80 @@ PYTHONPATH=. python3 -m pytest tests/test_llamacpp_mtp_rocprof.py -q
 ```
 
 Result: passed.
+
+## 2026-07-02 — llama.cpp MTP ROCTX range buckets
+
+Extended the llama.cpp parity instrumentation from whole-process kernel-family
+proxy to stage-window kernel buckets. In `/home/lhl/llama.cpp/llama.cpp-hip`,
+committed `dd7ec418c` (`tools: add MTP ROCTX stage ranges`): it gates dynamic
+ROCTX range emission behind `LLAMA_MTP_ROCTX=1` and marks the existing MTP stage
+windows (`draft_initial`, `target_block_forward`, `mtp_context_replay_append`,
+`llama_draft_sample_topk`, `llama_process_*`, and draft decode sub-stages)
+without adding a hard ROCTX link dependency.
+
+Updated hipEngine tooling:
+
+- `scripts/llamacpp_mtp_rocprof.py --roctx-ranges` now sets
+  `LLAMA_MTP_ROCTX=1`, adds `rocprofv3 --marker-trace`, records
+  `marker_trace_csv`, and prints aggregate ROCTX range buckets.
+- `scripts/llamacpp_kernel_trace_summary.py` now reads optional
+  `*_marker_api_trace.csv`, joins kernel dispatches to marker windows by
+  timestamp, and emits both per-range and aggregate `range_name_summaries`.
+- Added tests for marker trace command construction and marker-window kernel
+  slicing.
+
+Validation:
+
+```bash
+cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 8
+
+python3 -m py_compile \
+  scripts/llamacpp_kernel_trace_summary.py scripts/llamacpp_mtp_rocprof.py \
+  tests/test_llamacpp_kernel_trace_summary.py tests/test_llamacpp_mtp_rocprof.py
+
+PYTHONPATH=. python3 -m pytest \
+  tests/test_llamacpp_kernel_trace_summary.py tests/test_llamacpp_mtp_rocprof.py -q
+```
+
+Result: passed.
+
+Profile command:
+
+```bash
+PYTHONPATH=. HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_rocprof.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8022 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --token-repeat --prompt-tokens 32 --max-tokens 8 \
+  --profiler-finalize-timeout 90 --roctx-ranges \
+  --label llamacpp-hip-mtp-token32-gen8-roctx-ranges \
+  --raw-root /tmp/hipengine-llamacpp-mtp-rocprof-token32-gen8-roctx \
+  --out benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json
+```
+
+Result: `diagnostic_retained`, `performance_claim=false`,
+`terminate_status=killed_after_finalize_timeout`. llama.cpp was clean at
+`dd7ec418c`; hipEngine was dirty because this tooling/doc unit and unrelated
+untracked benchmark artifacts were present. Request reported **72.570 tok/s**.
+Stage JSONL measured **2 cycles / 6 visible outputs**, `cycle_wall`
+**14.522 ms/output**, `draft_initial` **2.068 ms/output**, and
+`target_block_verify_total` **12.440 ms/output**.
+
+Whole-process aggregate ROCTX range buckets:
+
+| range | calls | kernel ms | range ms | top buckets |
+| --- | ---: | ---: | ---: | --- |
+| `mtp_context_replay_append` | 5 | 137.128 | 181.598 | `other` 46.249, `llama_mmvq` 36.833, `llama_mmvq_moe` 21.504, `llama_copy_layout` 14.981 |
+| `llama_process_build_draft_batch` | 5 | 135.360 | 156.705 | `other` 45.345, `llama_mmvq` 36.372, `llama_mmvq_moe` 21.447, `llama_copy_layout` 14.893 |
+| `target_block_forward` | 5 | 22.891 | 93.174 | `other` 9.355, `llama_mmvq` 4.658, `llama_copy_layout` 3.444, `llama_mmvq_moe` 2.271 |
+| `draft_initial` | 5 | 9.028 | 12.423 | `llama_mmvq` 8.315, `llama_copy_layout` 0.174, `llama_norm` 0.130, `other` 0.098 |
+| `llama_draft_sample_topk` | 4 | 8.679 | 10.211 | `llama_mmvq` 8.142, `other` 0.098, `llama_flash_attn` 0.079, `llama_norm` 0.076 |
+| `llama_process_decode_ctx_dft` | 5 | 1.756 | 24.734 | `other` 0.893, `llama_mmvq` 0.461, `llama_flash_attn` 0.090, `llama_copy_layout` 0.088 |
+
+Interpretation: the useful draft analog is now explicit. The llama.cpp
+`draft_initial` and nested `llama_draft_sample_topk` windows are dominated by
+`llama_mmvq`, so the hipEngine draft gap should keep targeting Q6/Dense
+`mul_mat_vec_q` equivalence and sampler/lm-head wiring. The
+`mtp_context_replay_append` parent rows are still whole-process and include
+warmup/prompt/server ranges; if this remains too coarse, filter marker ranges
+to measured JSONL cycles or use selected-region profiling after warmup.

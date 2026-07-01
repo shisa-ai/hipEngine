@@ -185,6 +185,7 @@ Current source artifacts:
 | hipEngine llama-compat verifier block rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json` | Diagnostic-only B2-shaped `verify_target_block` kernel trace for the retained compat route (`--mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank verifier kernel families; do not use it for headline tok/s. |
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. This remains a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | llama.cpp HIP MTP whole-run rocprof proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json` | Diagnostic-only `llama-server` MTP request under `rocprofv3 --kernel-trace`, with `LLAMA_MTP_STAGE_TIMINGS` enabled. It produces the first llama.cpp MTP kernel-family bucket split in this tracker, but it is whole-process and required `SIGKILL` after profiler finalize timeout, so use it only as a source/kernel proxy. |
+| llama.cpp HIP MTP ROCTX range proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json` | Diagnostic-only rerun after llama.cpp commit `dd7ec418c` added `LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers. The artifact includes `range_name_summaries` for stage-window kernel buckets, but it is still whole-process and includes warmup/prompt/server ranges, so do not use it as a headline timing row. |
 | hipEngine llama-compat draft lm-head all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json` | Attribution-only smoke with extra sync points inside the Q6 top-1 draft lm-head path, including stage1 vs stage2/gather. Do not use for headline tok/s. |
 | hipEngine llama-compat draft-chain rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q8shared-dual.json` | Diagnostic-only ROCTX/kernel trace for the retained B2 resident draft chain (`--q6-top1-dp4a --selected-down-x8-repack q6 --record-stage-timings`) with default-on Q8 shared dual enabled. Use it to rank draft kernel families; do not use it for headline tok/s. |
 | hipEngine llama-compat draft-chain fine sync split | `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-control-fine-sync.json`, `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8top1-routerrow-fine-sync.json` | Attribution-only ROCTX/kernel trace plus `--sync-stage-timings` for the active X8 Q6 top-1 route. The router-row A/B proves the prior largest non-Q6 leaf was real: `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**, draft host wall **7.569 -> 6.971 ms/cycle**, and kernel time **6.461 -> 5.983 ms/cycle**. Use it to target draft leaves; do not use it for headline tok/s because it adds sync points. |
@@ -697,11 +698,48 @@ draft-window-only split.
 | `llama_flash_attn` | 160 | 2.107 | 0.8% | Attention core is small at this decode shape. |
 | `llama_topk_argsort` | 164 | 1.341 | 0.5% | GPU sort itself is small; the larger draft row is the surrounding sample/lm-head path. |
 
-Next instrumentation boundary: if the whole-run proxy is too coarse for the
-remaining `+0.915 ms/output` draft gap, add ROCTX markers to llama.cpp's
-`llama_draft_sample_topk`, `llama_draft_decode_initial/next`, and
-`llama_process_*` windows so the kernel CSV can be cut by the same parent
-buckets as hipEngine's draft/verifier traces.
+The follow-up ROCTX range proxy closes that instrumentation gap enough for the
+next source comparison. llama.cpp commit `dd7ec418c` adds env-gated
+`LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers without adding a
+hard ROCTX link dependency. The refreshed wrapper command adds
+`--roctx-ranges`, which sets `LLAMA_MTP_ROCTX=1`, collects
+`rocprofv3 --marker-trace`, and joins kernel dispatches to marker windows by
+timestamp. Artifact:
+`benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json`
+(`performance_claim=false`, `status=diagnostic_retained`,
+`terminate_status=killed_after_finalize_timeout`, llama.cpp clean at
+`dd7ec418c`).
+
+Stage sanity for this profiled request: reported request throughput
+**72.57 tok/s**, stage JSONL **2 cycles / 6 visible outputs**, cycle wall
+**14.522 ms/output**, `draft_initial` **2.068 ms/output**, and
+`target_block_verify_total` **12.440 ms/output**. These are profiler-run sanity
+numbers, not replacements for the canonical traced row.
+
+Whole-process aggregate range-name buckets from the same artifact:
+
+| ROCTX range | calls | kernel ms | range ms | top kernel-family buckets |
+| --- | ---: | ---: | ---: | --- |
+| `mtp_context_replay_append` | 5 | **137.128** | 181.598 | `other` 46.249, `llama_mmvq` 36.833, `llama_mmvq_moe` 21.504, `llama_copy_layout` 14.981 |
+| `llama_process_build_draft_batch` | 5 | **135.360** | 156.705 | `other` 45.345, `llama_mmvq` 36.372, `llama_mmvq_moe` 21.447, `llama_copy_layout` 14.893 |
+| `target_block_forward` | 5 | **22.891** | 93.174 | `other` 9.355, `llama_mmvq` 4.658, `llama_copy_layout` 3.444, `llama_mmvq_moe` 2.271 |
+| `draft_initial` | 5 | **9.028** | 12.423 | `llama_mmvq` 8.315, `llama_copy_layout` 0.174, `llama_norm` 0.130, `other` 0.098 |
+| `llama_draft_sample_topk` | 4 | **8.679** | 10.211 | `llama_mmvq` 8.142, `other` 0.098, `llama_flash_attn` 0.079, `llama_norm` 0.076 |
+| `llama_process_decode_ctx_dft` | 5 | 1.756 | 24.734 | `other` 0.893, `llama_mmvq` 0.461, `llama_flash_attn` 0.090, `llama_copy_layout` 0.088 |
+| `llama_draft_decode_initial` | 2 | 0.305 | 1.084 | `llama_mmvq` 0.174, `llama_copy_layout` 0.070, `llama_norm` 0.045, `llama_quantize_q8_1` 0.016 |
+| `llama_draft_decode_next` | 2 | 0.044 | 1.076 | `llama_copy_layout` 0.034, `llama_norm` 0.009 |
+
+Reading: the draft gap comparison now has a real llama.cpp stage-window analog.
+Inside the whole-process `draft_initial` windows, llama.cpp's kernel work is
+almost entirely `llama_mmvq`, and the nested `llama_draft_sample_topk` window is
+also dominated by `llama_mmvq`. That reinforces the current hipEngine target:
+our remaining draft drain should be compared against llama.cpp's Q6/Dense
+`mul_mat_vec_q` path and sampler/lm-head wiring, not against attention,
+activation quantization, or standalone top-k sort. The `mtp_context_replay_append`
+rows are still polluted by warmup/prompt/server work because this is a
+whole-process trace; the next instrumentation refinement, if needed, is to
+filter marker ranges to the measured JSONL cycles or use selected-region
+profiling after request warmup.
 
 This makes the next verifier implementation target more precise: do not repeat
 the rejected rowtile-all or pair-only raw-sidecar experiments blindly. The
