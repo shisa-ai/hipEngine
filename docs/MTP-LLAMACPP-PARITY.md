@@ -401,6 +401,7 @@ Current source artifacts:
 | hipEngine FP32 full-attention output-to-residual slice | `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-fullattnout-denseq8-diagnostic.json` | Diagnostic-only extension; `performance_claim=false`. `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1` now also routes row-bulk full-attention `attn_output` through a BF16-input/FP32-output path when the raw Q8 sidecar is present, casts the BF16 mirror for captures/downstream consumers, and feeds the FP32 attention output directly into the FP32 residual + post-attention RMSNorm helper. Pair-12 still samples `[15495, 539, 1151]` and accepts 2. The row-1 `539 - 26126` margin worsens from the alpha/beta slice **+0.17663** to **+0.27480** (`26.22991 - 25.95511`), still opposite llama.cpp's **-0.00896**. This rules out the full-attention `attn_output` BF16 output round as the missing semantic gap. |
 | hipEngine FP32 MoE selected-sum accumulator slice | `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-denseq8-diagnostic.json` | Diagnostic-only extension; `performance_claim=false`. New flag `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1` keeps the selected-expert weighted sum in FP32 in the F32-residual MoE combine, instead of BF16-rounding that selected sum before adding residual and sigmoid-gated shared output. Pair-12 still samples `[15495, 539, 1151]` and accepts 2, but row-1 `539 - 26126` narrows from the full-attention-output slice **+0.27480** to **+0.03385** (`26.04901 - 26.01516`). This proves the selected-sum BF16 combine boundary is semantically active, but it is still not sufficient: llama.cpp remains opposite at about **-0.00896**. Combining this with `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` did not produce a pair-12 result because prior-cycle replay diverged at cycle 2 (`[40798, 1590, 1103]` vs trace `[40798, 25, 1103]`). |
 | hipEngine FP32 selected-down output slice | `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-denseq8-diagnostic.json` | Diagnostic-only extension; `performance_claim=false`. New flag `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1` requires the F32 MoE combine diagnostic and routes X8 Q5/Q6 selected-down GEMV into FP32 selected rows before the FP32 selected/shared combine. Pair-12 still samples `[15495, 539, 1151]` and accepts 2, but row-1 `539 - 26126` narrows again from **+0.03385** to **+0.00536** (`26.06115 - 26.05580`). This nearly reaches llama.cpp's tie but still stays on the wrong side; llama.cpp is about **-0.00896**, so the remaining gap is about **0.0143 logits**. |
+| hipEngine FP32 shared-down output slice | `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-shareddown-denseq8-diagnostic.json` | Diagnostic-only extension; `performance_claim=false`. New flag `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN=1` requires the F32 MoE combine and selected-down stack, routes `ffn_down_shexp` through a BF16-input/FP32-output linear path into `scratch.moe_shared_out_f32`, preserves the BF16 mirror, and combines FP32 selected rows with FP32 shared rows. The split is semantically active but regresses the active near-tie: pair-12 still samples `[15495, 539, 1151]` and accepts 2, and row-1 `539 - 26126` widens from **+0.00536** to **+0.03043** (`26.12703 - 26.09660`). Shared-down output precision alone is ruled out as the missing parity fix. |
 | hipEngine FP32 post-attention-norm consumer split | `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json` | Diagnostic-only extension adding `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` plus sub-flags for router, selected q8_1, and shared q8_1 consumers; `performance_claim=false`. Combined router+selected-q8 fails the old trace at cycle 7: row 1 flips from trace token `413` to draft token `4071`. Split margins for `413 - 4071`: control **+0.13053**, router-only **+0.08784**, selected-q8-only **-0.14458**, combined **-0.03290**. Router-only reaches pair 12 but worsens the original mismatch: `539 - 26126` becomes **+0.33520** versus control **+0.14309** and llama.cpp **-0.00896**. This rules out post-attn norm/router/input-q8 precision as the missing fix and pushes the suspect to true GGML-like F32 projection/output contracts. |
 | hipEngine FP32 post-norm shared fallback fix smoke | `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-shared-fallback-smoke.json` | Diagnostic-only forced pair-12 smoke after fixing the `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8` fallback: when shared gate/up weights support F32 activation, the fallback now bypasses BF16 pair fusion and launches F32-input singleton shared projections. The full `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` slice now reaches the pair-12 branch instead of the earlier cycle-7 failure, but still samples `[15495, 539, 1151]` and accepts 2. Row 1 ranks `539` over `26126`: logits **26.064096** vs **25.940170**, margin **+0.123926**. This fixes the diagnostic coverage bug but does not close semantic parity; remaining work is selected/shared intermediate and down-output precision, not just post-norm shared input precision. |
 | hipEngine vs llama.cpp target pre-output-norm diagnostic | `benchmarks/results/2026-07-02-mtp-target-pre-output-norm-diagnostic.json` | Superseded diagnostic-only forced pair-12 row-1 split. Its hipEngine capture is still valid, but the llama-side raw `h_nextn_pre_output_norm` trace was later shown to be label-alignment ambiguous: the corrected `verify_pre_output_norm`/`verify_layer_output_39` capture above gives **0.01015 MAE**, not the old **0.2481 MAE** outlier. Keep this artifact only as provenance for why per-layer target labels were added. |
@@ -754,10 +755,16 @@ GEMV with FP32 output and combines those FP32 selected rows directly; the same
 row moves again to **+0.00536** (`26.06115 - 26.05580`). That leaves only
 about **0.0143 logits** to llama.cpp's **-0.00896** tie-break, but it still
 samples `[15495, 539, 1151]` and accepts 2 instead of llama.cpp's
-`[15495, 26126]` / accepted 1. The next semantic split should target the
-remaining FFN/MoE output boundaries that are still BF16 in hipEngine, especially
-shared-down/shared-gated contribution precision, before revisiting broader
-post-norm input-q8 modes that perturb earlier cycles.
+`[15495, 26126]` / accepted 1.
+
+The follow-up `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN=1` split carries the
+shared-expert down projection output in FP32 as well, preserves the BF16 mirror,
+and combines FP32 selected rows with FP32 shared rows. It is semantically active
+but moves the tie the wrong way: row-1 `539 - 26126` widens to **+0.03043**
+(`26.12703 - 26.09660`). Shared-down output precision alone is therefore ruled
+out as the missing parity fix. The next semantic split should target selected
+gate/up/intermediate precision or a fuller llama.cpp-style F32 verifier FFN/MoE
+graph, not this isolated shared-down boundary.
 
 Reading: residual-boundary precision is confirmed as a real semantic lever, not
 just a bookkeeping theory. However, this slice is **not** full llama.cpp F32 graph
@@ -766,9 +773,11 @@ attention RMSNorm input precision. Attention norm outputs and selected/shared
 expert projection inputs still pass through existing BF16 scratch buffers, and
 the selected-down output split only covers the X8 selected-down leg. Shared
 expert down output, shared-gated contribution, selected gate/up/intermediate, and
-non-X8 selected-down paths still use BF16 contracts. The next port should carry
-the verifier FFN/MoE graph farther through those FP32 projection-output
-boundaries. Do not use this mode as a retained performance row.
+non-X8 selected-down paths still use BF16 contracts. The shared-down split above
+rules out isolated shared-down output precision, so the next port should carry
+the verifier FFN/MoE graph farther through selected gate/up/intermediate FP32
+contracts or a cohesive F32 verifier FFN/MoE graph. Do not use this mode as a
+retained performance row.
 
 Superseded short-trace artifact:
 `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json`.

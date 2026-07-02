@@ -62,6 +62,8 @@ from hipengine.kernels.hip_gfx1100.fused import (
     weighted_lanes_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w,
+    weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w,
     weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w,
     weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
@@ -3548,18 +3550,55 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        launch_gguf_linear(
-            layer.weight("ffn_down_shexp"),
-            scratch.moe_shared_intermediate.ptr,
-            scratch.moe_shared_out.ptr,
-            rows=1,
-            in_features=cfg.expert_shared_feed_forward_length,
-            out_features=self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        shared_down_is_f32 = False
+        if (
+            _gguf_use_f32_shared_down(scratch, f32_residual, selected_down_is_f32)
+            and _try_launch_gguf_linear_bf16_f32_output(
+                layer.weight("ffn_down_shexp"),
+                scratch.moe_shared_intermediate.ptr,
+                scratch.moe_shared_out_f32.ptr,
+                rows=1,
+                in_features=cfg.expert_shared_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        ):
+            f32_to_bf16(
+                scratch.moe_shared_out_f32.ptr,
+                scratch.moe_shared_out.ptr,
+                self.hidden_size,
+                stream=stream,
+                library=self._cast_library(),
+                runtime=runtime,
+            )
+            shared_down_is_f32 = True
+        else:
+            launch_gguf_linear(
+                layer.weight("ffn_down_shexp"),
+                scratch.moe_shared_intermediate.ptr,
+                scratch.moe_shared_out.ptr,
+                rows=1,
+                in_features=cfg.expert_shared_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
         if f32_residual:
-            if selected_down_is_f32:
+            if selected_down_is_f32 and shared_down_is_f32:
+                weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w(
+                    scratch.moe_down_out_f32.ptr,
+                    scratch.moe_routing_weights.ptr,
+                    scratch.moe_shared_out_f32.ptr,
+                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                    int(residual_f32_ptr),
+                    int(out_f32_ptr),
+                    top_k,
+                    self.hidden_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            elif selected_down_is_f32:
                 weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w(
                     scratch.moe_down_out_f32.ptr,
                     scratch.moe_routing_weights.ptr,
@@ -4199,7 +4238,30 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_shared_gate_up_silu",
             t_stage,
         )
-        if not (
+        shared_down_is_f32 = False
+        if (
+            _gguf_use_f32_shared_down(scratch, f32_residual, selected_down_is_f32)
+            and _try_launch_gguf_linear_bf16_f32_output(
+                layer.weight("ffn_down_shexp"),
+                scratch.moe_shared_intermediate.ptr,
+                scratch.moe_shared_out_f32.ptr,
+                rows=rows,
+                in_features=cfg.expert_shared_feed_forward_length,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        ):
+            f32_to_bf16(
+                scratch.moe_shared_out_f32.ptr,
+                scratch.moe_shared_out.ptr,
+                rows * self.hidden_size,
+                stream=stream,
+                library=self._cast_library(),
+                runtime=runtime,
+            )
+            shared_down_is_f32 = True
+        elif not (
             shared_q8_dp4a_enabled and _try_launch_dense_q8_single_dp4a(
                 layer.weight("ffn_down_shexp"),
                 scratch.moe_shared_intermediate.ptr,
@@ -4230,7 +4292,22 @@ class Qwen35GGUFFullStackRunner:
             t_stage,
         )
         if f32_residual:
-            if selected_down_is_f32:
+            if selected_down_is_f32 and shared_down_is_f32:
+                weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w(
+                    scratch.moe_down_out_f32.ptr,
+                    scratch.moe_routing_weights.ptr,
+                    scratch.moe_shared_out_f32.ptr,
+                    scratch.moe_shared_gate_logits.ptr,
+                    int(residual_f32_ptr),
+                    int(out_f32_ptr),
+                    rows,
+                    top_k,
+                    self.hidden_size,
+                    1,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            elif selected_down_is_f32:
                 weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w(
                     scratch.moe_down_out_f32.ptr,
                     scratch.moe_routing_weights.ptr,
@@ -4326,6 +4403,7 @@ _GGUF_VERIFY_F32_ALPHA_BETA_ENV = "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA"
 _GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
 _GGUF_VERIFY_F32_MOE_COMBINE_ENV = "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE"
 _GGUF_VERIFY_F32_SELECTED_DOWN_ENV = "HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN"
+_GGUF_VERIFY_F32_SHARED_DOWN_ENV = "HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
@@ -4447,6 +4525,10 @@ def _gguf_verify_f32_selected_down_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_SELECTED_DOWN_ENV, False)
 
 
+def _gguf_verify_f32_shared_down_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_SHARED_DOWN_ENV, False)
+
+
 def _gguf_verify_f32_post_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ENV, False)
 
@@ -4486,6 +4568,17 @@ def _gguf_use_f32_selected_down(weight: Qwen35GGUFDeviceWeight, scratch, f32_res
         and _gguf_verify_f32_selected_down_enabled()
         and _gguf_selected_down_supports_f32_output(weight)
         and getattr(scratch, "moe_down_out_f32", None) is not None
+    )
+
+
+def _gguf_use_f32_shared_down(scratch, f32_residual: bool, selected_down_is_f32: bool) -> bool:
+    return (
+        f32_residual
+        and selected_down_is_f32
+        and _gguf_verify_f32_moe_combine_enabled()
+        and _gguf_verify_f32_selected_down_enabled()
+        and _gguf_verify_f32_shared_down_enabled()
+        and getattr(scratch, "moe_shared_out_f32", None) is not None
     )
 
 
@@ -7886,6 +7979,7 @@ class _GGUFFullAttentionPrefillScratch:
     moe_shared_up: object
     moe_shared_intermediate: object
     moe_shared_out: object
+    moe_shared_out_f32: object
     key_cache: object | None
     value_cache: object | None
     block_table: object
@@ -8036,6 +8130,7 @@ class _GGUFFullAttentionPrefillScratch:
             "moe_shared_up": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_intermediate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_out": buf(hidden_bytes),
+            "moe_shared_out_f32": buf(hidden_f32_bytes),
             "key_cache": buf(cache_nbytes) if allocate_kv_cache else None,
             "value_cache": buf(cache_nbytes) if allocate_kv_cache else None,
             "block_table": buf(block_table_arr.nbytes),
@@ -8252,6 +8347,7 @@ class _FullStackScratch:
     moe_shared_up: object
     moe_shared_intermediate: object
     moe_shared_out: object
+    moe_shared_out_f32: object
     moe_shared_gate_logits: object
     moe_selected_host: np.ndarray
     moe_group_counts_zero: np.ndarray
@@ -8414,6 +8510,7 @@ class _FullStackScratch:
             "moe_shared_up": buf(moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_intermediate": buf(moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_out": buf(hidden_bytes),
+            "moe_shared_out_f32": buf(hidden_fp32_bytes),
             "moe_shared_gate_logits": buf(DType.FP32.itemsize),
         }
         moe_group_counts_zero = np.zeros((moe_experts,), dtype=np.int32)

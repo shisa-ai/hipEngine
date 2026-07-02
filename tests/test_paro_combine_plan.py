@@ -20,6 +20,8 @@ from hipengine.kernels.hip_gfx1100.fused import (
     weighted_lanes_sum_out_fp16_f32w,
     weighted_sum_out_bf16_f32w,
     weighted_sum_out_fp16_f32w,
+    weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w,
+    weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w,
     weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w,
     weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
@@ -227,6 +229,15 @@ def test_paro_combine_registers_bf16_fp16_and_w4_paro_variants() -> None:
         is weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w
     )
     assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="weighted_sum+shared_gate+residual",
+            quant="f32_selected_shared",
+            variant="out_accum",
+        )
+        is weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w
+    )
+    assert (
         resolve(backend="hip_gfx1100", layer="weighted_sum+shared_gate+residual", quant="f32", variant="batch_out")
         is weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w
     )
@@ -242,6 +253,15 @@ def test_paro_combine_registers_bf16_fp16_and_w4_paro_variants() -> None:
             variant="batch_out_accum",
         )
         is weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="weighted_sum+shared_gate+residual",
+            quant="f32_selected_shared",
+            variant="batch_out_accum",
+        )
+        is weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w
     )
 
 
@@ -297,6 +317,10 @@ def test_paro_combine_wrappers_validate_before_gpu_load() -> None:
         weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w(0, 0, 0, 0, 0, 0, 2, 0)
     with pytest.raises(ValueError, match="gate_stride must be positive"):
         weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w(0, 0, 0, 0, 0, 0, 2, 8, 16, 0)
+    with pytest.raises(ValueError, match="features must be positive"):
+        weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w(0, 0, 0, 0, 0, 0, 2, 0)
+    with pytest.raises(ValueError, match="gate_stride must be positive"):
+        weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w(0, 0, 0, 0, 0, 0, 2, 8, 16, 0)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -310,14 +334,17 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
     values_raw_f32 = rng.normal(size=(rows * top_k, features)).astype(np.float32)
     weights = rng.normal(size=(rows * top_k,)).astype(np.float32)
     shared = _bf16_bits(rng.normal(size=(rows, features)).astype(np.float32))
+    shared_raw_f32 = rng.normal(size=(rows, features)).astype(np.float32)
     gate_logits = rng.normal(size=(rows, gate_stride)).astype(np.float32)
     residual = rng.normal(size=(rows, features)).astype(np.float32)
     out_single = np.empty((features,), dtype=np.float32)
     out_single_accum = np.empty((features,), dtype=np.float32)
     out_single_f32_selected = np.empty((features,), dtype=np.float32)
+    out_single_f32_selected_shared = np.empty((features,), dtype=np.float32)
     out_batch = np.empty((rows, features), dtype=np.float32)
     out_batch_accum = np.empty((rows, features), dtype=np.float32)
     out_batch_f32_selected = np.empty((rows, features), dtype=np.float32)
+    out_batch_f32_selected_shared = np.empty((rows, features), dtype=np.float32)
 
     values_f32 = _bf16_to_f32(values).reshape(rows, top_k, features)
     values_selected_f32 = values_raw_f32.reshape(rows, top_k, features)
@@ -329,6 +356,7 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
     expected = residual + selected_rounded + gate * shared_f32
     expected_accum = residual + selected_accum + gate * shared_f32
     expected_f32_selected = residual + selected_f32_accum + gate * shared_f32
+    expected_f32_selected_shared = residual + selected_f32_accum + gate * shared_raw_f32
 
     library = build_paro_combine(load=True)
     bufs = []
@@ -337,28 +365,34 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
         values_raw_f32_d = _dev(np.ascontiguousarray(values_raw_f32))
         weights_d = _dev(np.ascontiguousarray(weights))
         shared_d = _dev(np.ascontiguousarray(shared))
+        shared_raw_f32_d = _dev(np.ascontiguousarray(shared_raw_f32))
         gate_d = _dev(np.ascontiguousarray(gate_logits))
         residual_d = _dev(np.ascontiguousarray(residual))
         out_single_d = _dev(out_single)
         out_single_accum_d = _dev(out_single_accum)
         out_single_f32_selected_d = _dev(out_single_f32_selected)
+        out_single_f32_selected_shared_d = _dev(out_single_f32_selected_shared)
         out_batch_d = _dev(out_batch)
         out_batch_accum_d = _dev(out_batch_accum)
         out_batch_f32_selected_d = _dev(out_batch_f32_selected)
+        out_batch_f32_selected_shared_d = _dev(out_batch_f32_selected_shared)
         bufs.extend(
             (
                 values_d,
                 values_raw_f32_d,
                 weights_d,
                 shared_d,
+                shared_raw_f32_d,
                 gate_d,
                 residual_d,
                 out_single_d,
                 out_single_accum_d,
                 out_single_f32_selected_d,
+                out_single_f32_selected_shared_d,
                 out_batch_d,
                 out_batch_accum_d,
                 out_batch_f32_selected_d,
+                out_batch_f32_selected_shared_d,
             )
         )
 
@@ -391,6 +425,17 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
             gate_d.ptr,
             residual_d.ptr,
             out_single_f32_selected_d.ptr,
+            top_k,
+            features,
+            library=library,
+        )
+        weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w(
+            values_raw_f32_d.ptr,
+            weights_d.ptr,
+            shared_raw_f32_d.ptr,
+            gate_d.ptr,
+            residual_d.ptr,
+            out_single_f32_selected_shared_d.ptr,
             top_k,
             features,
             library=library,
@@ -434,12 +479,30 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
             gate_stride,
             library=library,
         )
+        weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w(
+            values_raw_f32_d.ptr,
+            weights_d.ptr,
+            shared_raw_f32_d.ptr,
+            gate_d.ptr,
+            residual_d.ptr,
+            out_batch_f32_selected_shared_d.ptr,
+            rows,
+            top_k,
+            features,
+            gate_stride,
+            library=library,
+        )
         copy_device_to_host(host_array_ptr(out_single), out_single_d, out_single.nbytes)
         copy_device_to_host(host_array_ptr(out_single_accum), out_single_accum_d, out_single_accum.nbytes)
         copy_device_to_host(
             host_array_ptr(out_single_f32_selected),
             out_single_f32_selected_d,
             out_single_f32_selected.nbytes,
+        )
+        copy_device_to_host(
+            host_array_ptr(out_single_f32_selected_shared),
+            out_single_f32_selected_shared_d,
+            out_single_f32_selected_shared.nbytes,
         )
         copy_device_to_host(host_array_ptr(out_batch), out_batch_d, out_batch.nbytes)
         copy_device_to_host(host_array_ptr(out_batch_accum), out_batch_accum_d, out_batch_accum.nbytes)
@@ -448,6 +511,11 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
             out_batch_f32_selected_d,
             out_batch_f32_selected.nbytes,
         )
+        copy_device_to_host(
+            host_array_ptr(out_batch_f32_selected_shared),
+            out_batch_f32_selected_shared_d,
+            out_batch_f32_selected_shared.nbytes,
+        )
     finally:
         for buf in reversed(bufs):
             free(buf)
@@ -455,6 +523,18 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
     np.testing.assert_allclose(out_single, expected[0], rtol=1.0e-6, atol=1.0e-6)
     np.testing.assert_allclose(out_single_accum, expected_accum[0], rtol=1.0e-6, atol=1.0e-6)
     np.testing.assert_allclose(out_single_f32_selected, expected_f32_selected[0], rtol=1.0e-6, atol=1.0e-6)
+    np.testing.assert_allclose(
+        out_single_f32_selected_shared,
+        expected_f32_selected_shared[0],
+        rtol=1.0e-6,
+        atol=1.0e-6,
+    )
     np.testing.assert_allclose(out_batch, expected, rtol=1.0e-6, atol=1.0e-6)
     np.testing.assert_allclose(out_batch_accum, expected_accum, rtol=1.0e-6, atol=1.0e-6)
     np.testing.assert_allclose(out_batch_f32_selected, expected_f32_selected, rtol=1.0e-6, atol=1.0e-6)
+    np.testing.assert_allclose(
+        out_batch_f32_selected_shared,
+        expected_f32_selected_shared,
+        rtol=1.0e-6,
+        atol=1.0e-6,
+    )

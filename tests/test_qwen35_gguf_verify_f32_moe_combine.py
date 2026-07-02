@@ -57,3 +57,24 @@ def test_verify_f32_selected_down_requires_explicit_diagnostic_stack(monkeypatch
         )
         is False
     )
+
+
+def test_verify_f32_shared_down_requires_selected_down_stack(monkeypatch: pytest.MonkeyPatch) -> None:
+    scratch = SimpleNamespace(moe_shared_out_f32=SimpleNamespace(ptr=5678))
+
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN", raising=False)
+    assert qgr._gguf_use_f32_shared_down(scratch, True, True) is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN", "1")
+    assert qgr._gguf_use_f32_shared_down(scratch, True, True) is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE", "1")
+    assert qgr._gguf_use_f32_shared_down(scratch, True, True) is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN", "1")
+    assert qgr._gguf_use_f32_shared_down(scratch, True, True) is True
+    assert qgr._gguf_use_f32_shared_down(scratch, False, True) is False
+    assert qgr._gguf_use_f32_shared_down(scratch, True, False) is False
+    assert qgr._gguf_use_f32_shared_down(SimpleNamespace(), True, True) is False
