@@ -136097,3 +136097,83 @@ python3 scripts/llamacpp_mtp_compare_layer0_linear_attn.py \
   - `git -C /home/lhl/llama.cpp/llama.cpp-hip apply --check /home/lhl/hipEngine/benchmarks/results/2026-07-02-llamacpp-linear-attn-trace-allowlist.patch`
   - temp-copy patch audit: `graph_ready=True`, `context_ready=True`
   - `git diff --check`
+
+- Followed up the non-projectable llama.cpp `final_output_0` caveat with a
+  materialized contiguous pre-`ssm_out` tap. Added
+  `scripts/llamacpp_mtp_final_output_cont_trace_patch.py` plus focused tests;
+  the generated artifact pair is:
+  - `benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.patch`
+  - `benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.json`
+- The patch adds `final_output_cont_` to both llama.cpp tensor-trace allowlists,
+  emits `final_output_cont`, and routes the diagnostic temp-tree `ssm_out`
+  projection through that contiguous tensor so GGML materializes it. The patch
+  applies cleanly to `/home/lhl/llama.cpp/llama.cpp-hip` in check mode and was
+  applied only to the temp copy at
+  `/tmp/hipengine-llamacpp-linear-attn-trace.ixHJSR/llama.cpp-hip`.
+- Rebuilt the temp llama.cpp HIP server and ran the focused target trace:
+
+```bash
+TEMP_LLAMA_ROOT=$(cat /tmp/hipengine-llamacpp-linear-attn-trace-root.txt)
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 \
+LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+LLAMA_MTP_TENSOR_TRACE=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUES=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=final_output_0,final_output_cont_0,linear_attn_out_0 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin "$TEMP_LLAMA_ROOT/build/bin/llama-server" \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b-final-cont-v3 \
+  --port 8145 \
+  --ctx-size 8192 \
+  --gpu-layers 99 \
+  --draft-max 2 \
+  --mode mtp \
+  --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-final-output-cont-v3.jsonl \
+  --stage-token-trace \
+  --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-final-output-cont-v3.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-final-output-cont-v3-logs \
+  --server-start-timeout 180 \
+  --request-timeout 240
+```
+
+  Cycle 18 stayed on the active llama.cpp branch: draft `[15495, 539]`, one
+  accepted, bonus/sample `26126`. The trace now includes row-1
+  `final_output_cont_0` values with RMS **0.034016**; the old `final_output_0`
+  view is still present and remains non-semantic.
+- Extended `scripts/llamacpp_mtp_validate_final_output_projection.py` with
+  `--llamacpp-final-label` and direct `boundary_deltas`, then ran:
+
+```bash
+python3 scripts/llamacpp_mtp_validate_final_output_projection.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-final-output-cont-v3.jsonl \
+  --llamacpp-cycle 18 \
+  --row 1 \
+  --layer 0 \
+  --llamacpp-final-label final_output_cont_0 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer0-final-output-cont-reprojection-diagnostic.json
+```
+
+  Result: `projection_consistent`. hipEngine `recurrent_out -> ssm_out`
+  reconstructs hipEngine `attn_out` at **0 MAE**; llama.cpp
+  `final_output_cont_0 -> ssm_out` reconstructs llama.cpp `linear_attn_out_0`
+  at **0.000157 MAE / 0.000207 RMSE / 0.999953 cosine**. Direct hipEngine
+  `recurrent_out` vs llama.cpp `final_output_cont_0` is **0.0000176 MAE /
+  0.0000391 RMSE / 0.999999 cosine**, and hipEngine `attn_out` vs llama.cpp
+  `linear_attn_out_0` remains **0.0001595 MAE**. Layer-0 GDN/recurrent layout
+  and `ssm_out` projection are ruled out; next semantic target remains
+  accumulated layer-output/router-input precision drift.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` with the corrected contiguous tap
+  conclusion and source-artifact ledger rows.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_validate_final_output_projection.py tests/test_llamacpp_mtp_validate_final_output_projection.py scripts/llamacpp_mtp_final_output_cont_trace_patch.py tests/test_llamacpp_mtp_final_output_cont_trace_patch.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_validate_final_output_projection.py tests/test_llamacpp_mtp_final_output_cont_trace_patch.py -q` => **7 passed**
+  - `jq empty benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.json benchmarks/results/2026-07-02-mtp-target-layer0-final-output-cont-reprojection-diagnostic.json`
+  - `git -C /home/lhl/llama.cpp/llama.cpp-hip apply --check /home/lhl/hipEngine/benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.patch`

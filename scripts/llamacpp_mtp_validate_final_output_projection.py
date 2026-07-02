@@ -32,6 +32,11 @@ def main() -> None:
     parser.add_argument("--llamacpp-cycle", type=int, required=True)
     parser.add_argument("--row", type=int, default=1)
     parser.add_argument("--layer", type=int, default=0)
+    parser.add_argument(
+        "--llamacpp-final-label",
+        default=None,
+        help="Override the llama.cpp pre-ssm_out label. Defaults to final_output_{layer}.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
@@ -42,6 +47,7 @@ def main() -> None:
         llamacpp_cycle=args.llamacpp_cycle,
         row=args.row,
         layer=args.layer,
+        llamacpp_final_label=args.llamacpp_final_label,
         command=" ".join(sys.argv),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +64,7 @@ def main() -> None:
                 "llama_final_reproject_mae": artifact["reprojection_deltas"][
                     "llama_final_reproject_vs_llama_linear"
                 ]["mean_abs_diff"],
+                "llamacpp_final_label": artifact["inputs"]["llamacpp_final_label"],
                 "conclusion": artifact["conclusion"],
             },
             indent=2,
@@ -73,6 +80,7 @@ def build_projection_validation_artifact(
     llamacpp_cycle: int,
     row: int,
     layer: int,
+    llamacpp_final_label: str | None = None,
     command: str | None = None,
     project_fn: ProjectFn | None = None,
 ) -> dict[str, Any]:
@@ -84,7 +92,8 @@ def build_projection_validation_artifact(
 
     hip_recurrent = _array(hip_values, "recurrent_out", "hipEngine")
     hip_attn_out = _array(hip_values, "attn_out", "hipEngine")
-    llama_final = _array(llama_values, f"final_output_{int(layer)}", "llama.cpp")
+    final_label = llamacpp_final_label or f"final_output_{int(layer)}"
+    llama_final = _array(llama_values, final_label, "llama.cpp")
     llama_linear = _array(llama_values, f"linear_attn_out_{int(layer)}", "llama.cpp")
 
     projector = project_fn or _build_hip_ssm_out_projector(model_path, layer=layer)
@@ -108,6 +117,10 @@ def build_projection_validation_artifact(
             hip_attn_out, llama_reprojected
         ),
     }
+    boundary_deltas = {
+        "hip_recurrent_vs_llama_final": _numeric_delta(llama_final, hip_recurrent),
+        "hip_attn_out_vs_llama_linear": _numeric_delta(llama_linear, hip_attn_out),
+    }
     assessment = _assessment(reprojection_deltas)
     artifact = {
         "schema": 1,
@@ -123,6 +136,7 @@ def build_projection_validation_artifact(
             "llamacpp_cycle": int(llamacpp_cycle),
             "row": int(row),
             "layer": int(layer),
+            "llamacpp_final_label": final_label,
         },
         "hipengine": {
             "cycle": hip_artifact.get("probe", {}).get("cycle"),
@@ -142,10 +156,12 @@ def build_projection_validation_artifact(
             "accepted_token_ids": llama_cycle.get("accepted_token_ids"),
             "bonus_token_id": llama_cycle.get("bonus_token_id"),
         },
+        "boundary_deltas": boundary_deltas,
         "reprojection_deltas": reprojection_deltas,
         "samples": {
             "hip_reprojected": _sample(hip_reprojected),
             "llama_final_reprojected": _sample(llama_reprojected),
+            "llama_final_label": final_label,
             "hip_capture_attn_out": _sample(hip_attn_out),
             "llama_linear_attn_out": _sample(llama_linear),
         },

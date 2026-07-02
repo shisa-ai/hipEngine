@@ -49,7 +49,53 @@ def test_build_projection_validation_artifact_marks_unprojectable_final_output(
         ]
         == 7.5
     )
+    assert (
+        artifact["boundary_deltas"]["hip_recurrent_vs_llama_final"]["mean_abs_diff"]
+        == 2.5
+    )
     assert "final_output_trace_not_projectable" in artifact["conclusion"]
+    json.dumps(artifact)
+
+
+def test_build_projection_validation_artifact_uses_final_label_override(
+    tmp_path: Path,
+) -> None:
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(_hip_artifact()) + "\n")
+    llama_path.write_text(json.dumps(_llama_cycle()) + "\n")
+
+    def project(values: np.ndarray) -> np.ndarray:
+        if np.allclose(values, np.asarray([2.0, 2.0, 2.0, 2.0], dtype=np.float32)):
+            return np.asarray([1.25, 2.25], dtype=np.float32)
+        if np.allclose(values, np.asarray([0.0, 0.0, 0.0, 0.0], dtype=np.float32)):
+            return np.asarray([1.0, 2.0], dtype=np.float32)
+        return np.asarray([9.0, 9.0], dtype=np.float32)
+
+    artifact = build_projection_validation_artifact(
+        model_path="/models/fake.gguf",
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=0,
+        llamacpp_final_label="final_output_cont_0",
+        command="fake command",
+        project_fn=project,
+    )
+
+    assert artifact["inputs"]["llamacpp_final_label"] == "final_output_cont_0"
+    assert artifact["samples"]["llama_final_label"] == "final_output_cont_0"
+    assert (
+        artifact["reprojection_deltas"]["llama_final_reproject_vs_llama_linear"][
+            "mean_abs_diff"
+        ]
+        == 0.25
+    )
+    assert (
+        artifact["boundary_deltas"]["hip_recurrent_vs_llama_final"]["mean_abs_diff"]
+        == 2.0
+    )
     json.dumps(artifact)
 
 
@@ -87,6 +133,11 @@ def _llama_cycle() -> dict:
                 "label": "final_output_0",
                 "row_index": 1,
                 "values": [1.0, 2.0, 3.0, 4.0],
+            },
+            {
+                "label": "final_output_cont_0",
+                "row_index": 1,
+                "values": [2.0, 2.0, 2.0, 2.0],
             },
             {
                 "label": "linear_attn_out_0",
