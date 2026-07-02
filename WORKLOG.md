@@ -134993,3 +134993,66 @@ PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py \
   Active next instrumentation target: forced-prefix target score/top-k capture
   for both engines at pair 12, then source comparison of the target
   verify/sample path.
+
+## 2026-07-02 - Forced target score trace for pair-12 mismatch
+
+- Added `scripts/gguf_mtp_forced_target_probe.py`, a diagnostic-only
+  forced-prefix target verifier probe. The important replay detail is that
+  visible-token serial replay is not the active MTP verifier state: a naive
+  replay diverged at position 48. The probe now reconstructs the active prefix
+  by replaying prior trace cycles through the same block verifier/direct-row
+  commit path, then probes the requested cycle.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --top-k 20 --candidate-token 26126 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk.json
+
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact.json
+```
+
+- Added local llama.cpp diagnostic instrumentation in
+  `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp` to emit
+  `target_sample_trace` under `LLAMA_MTP_TOKEN_TRACE` (dirty external tree,
+  not a hipEngine commit), rebuilt `llama-server`, and reran the same prompt:
+
+```bash
+cmake --build build --target llama-server -j 8
+
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+- Added diagnostic-retained artifact
+  `benchmarks/results/2026-07-02-mtp-target-score-compare-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`. Result at the pair-12 row after
+  input token `15495`: hipEngine bulk samples `[15495, 539, 1151]` and ranks
+  `539` over `26126` by **0.336 logits**; hipEngine final serial-exact probing
+  on the same bulk-replayed prefix still samples `[15495, 539, 1151]` and ranks
+  `539` over `26126` by **0.118 logits**; llama.cpp samples
+  `[15495, 26126]` and ranks `26126` over `539` by **0.009 logits**.
+- No performance claim. The target trace instrumentation adds expensive
+  top-k/candidate sorting to llama.cpp acceptance accounting, so those stage
+  timings are not retained. The live semantic target is now target row-1
+  hidden/logit numerics at the forced prefix: hidden after input `15495`, output
+  norm, lm-head input, and lm-head GEMV/output ordering.

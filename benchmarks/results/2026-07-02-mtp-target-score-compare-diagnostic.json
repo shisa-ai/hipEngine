@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_score_compare_diagnostic",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T01:58:53Z",
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF",
+  "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+  "prompt_reasoning": "off",
+  "source_traces": {
+    "hipengine_active_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+    "hipengine_forced_target_bulk": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk.json",
+    "hipengine_forced_target_serial_exact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact.json",
+    "llamacpp_stage_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.jsonl",
+    "llamacpp_output": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.json"
+  },
+  "software": {
+    "hipengine_commit": "4b957b32aa2d4174ed464193cc5a4ee40b85ba5a",
+    "llamacpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "llamacpp_dirty_instrumentation": true,
+    "llamacpp_instrumentation_note": "Local server-context.cpp patch adds target_sample_trace under LLAMA_MTP_TOKEN_TRACE; not a performance run."
+  },
+  "commands": {
+    "hipengine_bulk": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --top-k 20 --candidate-token 26126 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk.json",
+    "hipengine_serial_exact": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact.json",
+    "llamacpp_rebuild": "cmake --build build --target llama-server -j 8",
+    "llamacpp_trace": "LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 120 --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.json --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-logs --server-start-timeout 180 --request-timeout 240"
+  },
+  "comparison_point": {
+    "hipengine_cycle": 12,
+    "llamacpp_event_cycle": 18,
+    "cycle_prev_token": 653,
+    "draft_tokens": [15495, 539],
+    "row": 1,
+    "row_input_token": 15495,
+    "meaning": "target sample after consuming the first accepted draft token"
+  },
+  "results": {
+    "hipengine_bulk": {
+      "sampled_tokens": [15495, 539, 1151],
+      "accepted_draft_tokens": 2,
+      "row1_top2": [
+        {"rank": 1, "token_id": 539, "logit": 26.394495010375977, "margin_from_top": 0.0, "prob": 0.5829226712148646},
+        {"rank": 2, "token_id": 26126, "logit": 26.05832290649414, "margin_from_top": 0.33617210388183594, "prob": 0.4164983226074189}
+      ]
+    },
+    "hipengine_serial_exact_final": {
+      "prefix_replay_mode": "bulk",
+      "sampled_tokens": [15495, 539, 1151],
+      "accepted_draft_tokens": 2,
+      "row1_top2": [
+        {"rank": 1, "token_id": 539, "logit": 26.202468872070312, "margin_from_top": 0.0, "prob": 0.5292018302407487},
+        {"rank": 2, "token_id": 26126, "logit": 26.084251403808594, "margin_from_top": 0.11821746826171875, "prob": 0.4701973134597651}
+      ]
+    },
+    "llamacpp_hip": {
+      "sampled_tokens": [15495, 26126],
+      "accepted_draft_tokens": 1,
+      "row1_top2": [
+        {"rank": 1, "token_id": 26126, "logit": 26.10468292236328, "margin_from_top": 0.0, "prob": 0.5019564628601074},
+        {"rank": 2, "token_id": 539, "logit": 26.095720291137695, "margin_from_top": 0.008962631225585938, "prob": 0.4974777102470398}
+      ]
+    }
+  },
+  "reading": {
+    "summary": "The pair-12 mismatch is a target row-1 logits tie-break, not draft generation and not a bulk-only verifier bug.",
+    "hipengine_bulk_margin_539_over_26126": 0.33617210388183594,
+    "hipengine_serial_exact_margin_539_over_26126": 0.11821746826171875,
+    "llamacpp_margin_26126_over_539": 0.008962631225585938,
+    "next_target": "Find the remaining target logits numerical drift on the row after input token 15495; the decision boundary is within 0.12 logits on hipEngine serial-exact and 0.009 logits on llama.cpp."
+  },
+  "validation": [
+    "python3 -m py_compile scripts/gguf_mtp_forced_target_probe.py",
+    "jq empty /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk.json",
+    "jq empty /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact.json",
+    "jq empty /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.jsonl",
+    "jq empty /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120.json"
+  ]
+}
