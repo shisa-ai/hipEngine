@@ -20,6 +20,7 @@ _SYMBOL_CHAIN_BF16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_
 _SYMBOL_CHAIN_F32_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop"
 _SYMBOL_CHAIN_FP16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
+_SYMBOL_PREFILL_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_f32_state_rows"
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
 
@@ -338,6 +339,53 @@ def qwen35_linear_attn_conv_prefill_f32(
         library=library,
         runtime=runtime,
     )
+
+
+def qwen35_linear_attn_conv_prefill_f32_state_rows(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_state_rows_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP32 prefill convolution and materialize per-row Conv states."""
+
+    _check_conv_shape(channels, kernel_size)
+    _check_positive(tokens, "tokens")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_F32_STATE_ROWS)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_states_ptr),
+        ctypes.c_void_p(conv_state_ptr),
+        ctypes.c_void_p(conv_state_rows_ptr),
+        ctypes.c_void_p(conv_weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(channels),
+        ctypes.c_int64(kernel_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_linear_attn_conv_prefill_fp16(

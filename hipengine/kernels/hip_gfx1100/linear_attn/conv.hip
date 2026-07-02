@@ -87,6 +87,7 @@ __global__ void qwen35_linear_attn_conv_decode_lowp_kernel(
 __global__ void qwen35_linear_attn_conv_prefill_kernel(
     const float* __restrict__ hidden_states,
     const float* __restrict__ conv_state,
+    float* __restrict__ conv_state_rows,
     const float* __restrict__ conv_weight,
     float* __restrict__ out,
     int64_t tokens,
@@ -112,6 +113,13 @@ __global__ void qwen35_linear_attn_conv_prefill_kernel(
       const float value2 = (
           padded2 < 3 ? conv_state[offset + padded2 + 1] : hidden_states[(padded2 - 3) * channels + channel]);
       const float value3 = hidden_states[(padded3 - 3) * channels + channel];
+      if (conv_state_rows != nullptr) {
+        const int64_t row_state = token * channels * kernel_size + offset;
+        conv_state_rows[row_state + 0] = value0;
+        conv_state_rows[row_state + 1] = value1;
+        conv_state_rows[row_state + 2] = value2;
+        conv_state_rows[row_state + 3] = value3;
+      }
       volatile float product0 = value0 * conv_weight[offset];
       volatile float product1 = value1 * conv_weight[offset + 1];
       volatile float product2 = value2 * conv_weight[offset + 2];
@@ -127,6 +135,9 @@ __global__ void qwen35_linear_attn_conv_prefill_kernel(
             padded < kernel_size - 1
                 ? conv_state[offset + padded + 1]
                 : hidden_states[(padded - (kernel_size - 1)) * channels + channel]);
+        if (conv_state_rows != nullptr) {
+          conv_state_rows[token * channels * kernel_size + offset + k] = value;
+        }
         volatile float product = value * conv_weight[offset + k];
         acc += product;
       }
@@ -708,6 +719,7 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32(
       stream,
       hidden_states,
       conv_state,
+      nullptr,
       conv_weight,
       out,
       tokens,
@@ -728,6 +740,43 @@ extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32(
       stream,
       hidden_states,
       conv_state,
+      tokens,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_conv_prefill_f32_state_rows(
+    const float* hidden_states,
+    const float* conv_state,
+    float* conv_state_rows,
+    const float* conv_weight,
+    float* out,
+    int64_t tokens,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (tokens <= 0 || !valid_conv_shape(channels, kernel_size)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (conv_state_rows == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int64_t output_size = tokens * channels;
+  const int64_t output_blocks64 = (output_size + threads - 1) / threads;
+  const int output_blocks = static_cast<int>(output_blocks64 < 65535 ? output_blocks64 : 65535);
+  hipLaunchKernelGGL(
+      qwen35_linear_attn_conv_prefill_kernel,
+      dim3(static_cast<unsigned int>(output_blocks)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      conv_state_rows,
+      conv_weight,
+      out,
       tokens,
       channels,
       kernel_size);

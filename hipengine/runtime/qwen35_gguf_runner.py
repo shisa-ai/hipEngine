@@ -97,13 +97,17 @@ from hipengine.kernels.hip_gfx1100.speculative import (
 from hipengine.kvcache import KVLiveSpans
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_chain_conv_decode_bf16_tloop,
+    qwen35_linear_attn_chain_conv_decode_f32_tloop,
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_prefill_f32,
+    qwen35_linear_attn_conv_prefill_f32_state_rows,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
+    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
@@ -212,6 +216,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
+    GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
     gemv_decode_session,
@@ -2584,53 +2589,216 @@ class Qwen35GGUFFullStackRunner:
             )
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
-            qwen35_linear_attn_chain_conv_decode_bf16_tloop(
-                scratch.linear_qkv.ptr,
-                conv_state.ptr,
-                conv_state_rows.ptr,
-                layer.weight("ssm_conv1d").allocation().tensor.ptr,
-                scratch.conv_out.ptr,
-                rows,
-                self.linear_qkv_width,
-                cfg.ssm_conv_kernel,
-                stream=stream,
-                runtime=runtime,
+            use_prefill_gdn_capture = _gguf_verify_capture_prefill_gdn_enabled()
+            use_prefill_score_capture = _gguf_verify_capture_score_prefill_enabled()
+            use_f32_chain_conv = (
+                _gguf_verify_capture_f32_chain_conv_enabled() or use_prefill_gdn_capture
             )
+            if use_prefill_gdn_capture:
+                bf16_to_f32(
+                    scratch.linear_qkv.ptr,
+                    scratch.linear_qkv_f32.ptr,
+                    rows * self.linear_qkv_width,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                qwen35_linear_attn_conv_prefill_f32_state_rows(
+                    scratch.linear_qkv_f32.ptr,
+                    conv_state.ptr,
+                    conv_state_rows.ptr,
+                    layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                    scratch.conv_out.ptr,
+                    rows,
+                    self.linear_qkv_width,
+                    cfg.ssm_conv_kernel,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            elif use_f32_chain_conv:
+                bf16_to_f32(
+                    scratch.linear_qkv.ptr,
+                    scratch.linear_qkv_f32.ptr,
+                    rows * self.linear_qkv_width,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                qwen35_linear_attn_chain_conv_decode_f32_tloop(
+                    scratch.linear_qkv_f32.ptr,
+                    conv_state.ptr,
+                    conv_state_rows.ptr,
+                    layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                    scratch.conv_out.ptr,
+                    rows,
+                    self.linear_qkv_width,
+                    cfg.ssm_conv_kernel,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            else:
+                qwen35_linear_attn_chain_conv_decode_bf16_tloop(
+                    scratch.linear_qkv.ptr,
+                    conv_state.ptr,
+                    conv_state_rows.ptr,
+                    layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                    scratch.conv_out.ptr,
+                    rows,
+                    self.linear_qkv_width,
+                    cfg.ssm_conv_kernel,
+                    stream=stream,
+                    runtime=runtime,
+                )
             t_stage = _mark_sync_stage(
                 runtime,
                 stage_timings,
                 sync_stages,
-                f"{stage_prefix}_chain_conv",
+                (
+                    f"{stage_prefix}_prefill_conv_state_rows"
+                    if use_prefill_gdn_capture
+                    else (
+                        f"{stage_prefix}_chain_conv_f32"
+                        if use_f32_chain_conv
+                        else f"{stage_prefix}_chain_conv"
+                    )
+                ),
                 t_stage,
             )
-            qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
-                scratch.conv_out.ptr,
-                scratch.linear_z.ptr,
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                recurrent_state.ptr,
-                recurrent_state_rows.ptr,
-                scratch.recurrent_out.ptr,
-                scratch.recurrent_out.ptr,
-                cfg.rms_norm_eps,
-                rows,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-            t_stage = _mark_sync_stage(
-                runtime,
-                stage_timings,
-                sync_stages,
-                f"{stage_prefix}_chain_gdn",
-                t_stage,
-            )
+            if use_prefill_gdn_capture:
+                runtime.memcpy_async(
+                    scratch.linear_recurrent_state_tmp.ptr,
+                    recurrent_state.ptr,
+                    int(recurrent_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows(
+                    scratch.conv_out.ptr,
+                    scratch.linear_z.ptr,
+                    scratch.linear_alpha.ptr,
+                    scratch.linear_beta.ptr,
+                    layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                    layer.weight("ssm_a").allocation().tensor.ptr,
+                    layer.weight("ssm_norm").allocation().tensor.ptr,
+                    scratch.linear_recurrent_state_tmp.ptr,
+                    recurrent_state_rows.ptr,
+                    scratch.recurrent_bf16.ptr,
+                    cfg.rms_norm_eps,
+                    rows,
+                    cfg.ssm_group_count,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                t_stage = _mark_sync_stage(
+                    runtime,
+                    stage_timings,
+                    sync_stages,
+                    f"{stage_prefix}_prefill_gdn_state_rows",
+                    t_stage,
+                )
+            else:
+                chain_gdn = (
+                    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16
+                    if _gguf_verify_capture_regular_chain_gdn_enabled()
+                    else qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16
+                )
+                chain_gdn(
+                    scratch.conv_out.ptr,
+                    scratch.linear_z.ptr,
+                    scratch.linear_alpha.ptr,
+                    scratch.linear_beta.ptr,
+                    layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                    layer.weight("ssm_a").allocation().tensor.ptr,
+                    layer.weight("ssm_norm").allocation().tensor.ptr,
+                    recurrent_state.ptr,
+                    recurrent_state_rows.ptr,
+                    scratch.recurrent_out.ptr,
+                    scratch.recurrent_out.ptr,
+                    cfg.rms_norm_eps,
+                    rows,
+                    cfg.ssm_group_count,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                t_stage = _mark_sync_stage(
+                    runtime,
+                    stage_timings,
+                    sync_stages,
+                    (
+                        f"{stage_prefix}_chain_gdn_regular"
+                        if _gguf_verify_capture_regular_chain_gdn_enabled()
+                        else f"{stage_prefix}_chain_gdn"
+                    ),
+                    t_stage,
+                )
+            prefill_score_ready = False
+            if use_prefill_score_capture and not use_prefill_gdn_capture:
+                runtime.memcpy_async(
+                    scratch.linear_conv_state_tmp.ptr,
+                    conv_state.ptr,
+                    int(conv_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    scratch.linear_recurrent_state_tmp.ptr,
+                    recurrent_state.ptr,
+                    int(recurrent_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                bf16_to_f32(
+                    scratch.linear_qkv.ptr,
+                    scratch.linear_qkv_f32.ptr,
+                    rows * self.linear_qkv_width,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                qwen35_linear_attn_conv_prefill_f32(
+                    scratch.linear_qkv_f32.ptr,
+                    scratch.linear_conv_state_tmp.ptr,
+                    layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                    scratch.conv_out.ptr,
+                    rows,
+                    self.linear_qkv_width,
+                    cfg.ssm_conv_kernel,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order(
+                    scratch.conv_out.ptr,
+                    scratch.linear_z.ptr,
+                    scratch.linear_alpha.ptr,
+                    scratch.linear_beta.ptr,
+                    layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                    layer.weight("ssm_a").allocation().tensor.ptr,
+                    layer.weight("ssm_norm").allocation().tensor.ptr,
+                    scratch.linear_recurrent_state_tmp.ptr,
+                    scratch.recurrent_bf16.ptr,
+                    cfg.rms_norm_eps,
+                    rows,
+                    cfg.ssm_group_count,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                prefill_score_ready = True
+                t_stage = _mark_sync_stage(
+                    runtime,
+                    stage_timings,
+                    sync_stages,
+                    f"{stage_prefix}_prefill_score",
+                    t_stage,
+                )
             if commit_final_linear_state:
                 runtime.memcpy_async(
                     conv_state.ptr,
@@ -2655,8 +2823,37 @@ class Qwen35GGUFFullStackRunner:
                 )
             attn_out_f32_ptr: int | None = None
             f32_attn_out_ready = False
+            ssm_out_input_ptr = (
+                scratch.recurrent_bf16.ptr
+                if (use_prefill_gdn_capture or prefill_score_ready)
+                else scratch.recurrent_out.ptr
+            )
+            ssm_out_activation_dtype = (
+                GGUF_ACTIVATION_BF16
+                if (use_prefill_gdn_capture or prefill_score_ready)
+                else GGUF_ACTIVATION_F32
+            )
+            if _gguf_verify_capture_bf16_gdn_out_enabled() and not use_prefill_gdn_capture:
+                f32_to_bf16(
+                    scratch.recurrent_out.ptr,
+                    scratch.recurrent_bf16.ptr,
+                    rows * cfg.ssm_inner_size,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                ssm_out_input_ptr = scratch.recurrent_bf16.ptr
+                ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
+                t_stage = _mark_sync_stage(
+                    runtime,
+                    stage_timings,
+                    sync_stages,
+                    f"{stage_prefix}_chain_gdn_out_bf16",
+                    t_stage,
+                )
             if (
                 _gguf_verify_f32_attn_out_enabled()
+                and ssm_out_activation_dtype == GGUF_ACTIVATION_F32
                 and hidden_f32_ptr is not None
                 and out_f32_ptr is not None
                 and getattr(scratch, "conv_out", None) is not None
@@ -2664,7 +2861,7 @@ class Qwen35GGUFFullStackRunner:
             ):
                 f32_attn_out_ready = _try_launch_dense_q8_single_dp4a_f32_out(
                     layer.weight("ssm_out"),
-                    scratch.recurrent_out.ptr,
+                    ssm_out_input_ptr,
                     scratch.conv_out.ptr,
                     scratch,
                     rows=rows,
@@ -2683,25 +2880,41 @@ class Qwen35GGUFFullStackRunner:
                         library=cast_library,
                         runtime=runtime,
                     )
-            if not f32_attn_out_ready and not _try_launch_dense_q8_single_dp4a_f32(
-                layer.weight("ssm_out"),
-                scratch.recurrent_out.ptr,
-                scratch.attn_out.ptr,
-                scratch,
-                rows=rows,
-                in_features=cfg.ssm_inner_size,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            ):
+            ssm_out_q8_ready = False
+            if not f32_attn_out_ready:
+                if ssm_out_activation_dtype == GGUF_ACTIVATION_F32:
+                    ssm_out_q8_ready = _try_launch_dense_q8_single_dp4a_f32(
+                        layer.weight("ssm_out"),
+                        ssm_out_input_ptr,
+                        scratch.attn_out.ptr,
+                        scratch,
+                        rows=rows,
+                        in_features=cfg.ssm_inner_size,
+                        out_features=self.hidden_size,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                else:
+                    ssm_out_q8_ready = _try_launch_dense_q8_single_dp4a(
+                        layer.weight("ssm_out"),
+                        ssm_out_input_ptr,
+                        scratch.attn_out.ptr,
+                        scratch,
+                        rows=rows,
+                        in_features=cfg.ssm_inner_size,
+                        out_features=self.hidden_size,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+            if not f32_attn_out_ready and not ssm_out_q8_ready:
                 launch_gguf_linear(
                     layer.weight("ssm_out"),
-                    scratch.recurrent_out.ptr,
+                    ssm_out_input_ptr,
                     scratch.attn_out.ptr,
                     rows=rows,
                     in_features=cfg.ssm_inner_size,
                     out_features=self.hidden_size,
-                    activation_dtype=GGUF_ACTIVATION_F32,
+                    activation_dtype=ssm_out_activation_dtype,
                     stream=stream,
                     runtime=runtime,
                 )
@@ -4463,6 +4676,11 @@ _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
 _GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8"
+_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV"
+_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN"
+_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT"
+_GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
+_GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
@@ -4602,6 +4820,26 @@ def _gguf_verify_f32_post_norm_selected_q8_enabled() -> bool:
 
 def _gguf_verify_f32_post_norm_shared_q8_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV, True)
+
+
+def _gguf_verify_capture_f32_chain_conv_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV_ENV, False)
+
+
+def _gguf_verify_capture_regular_chain_gdn_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN_ENV, False)
+
+
+def _gguf_verify_capture_bf16_gdn_out_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT_ENV, False)
+
+
+def _gguf_verify_capture_prefill_gdn_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV, False)
+
+
+def _gguf_verify_capture_score_prefill_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV, False)
 
 
 def _gguf_f32_moe_combine_out_fn():
@@ -8008,6 +8246,8 @@ class _GGUFFullAttentionPrefillScratch:
     prefill_decay: object
     recurrent_out: object
     recurrent_bf16: object
+    linear_conv_state_tmp: object
+    linear_recurrent_state_tmp: object
     gdn_cu_seqlens: object
     gdn_state_indices: object
     full_query_raw: object
@@ -8130,6 +8370,13 @@ class _GGUFFullAttentionPrefillScratch:
         linear_z_bytes = rows * cfg.ssm_inner_size * 2
         linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
+        conv_state_bytes = runner.linear_qkv_width * cfg.ssm_conv_kernel * DType.FP32.itemsize
+        recurrent_state_bytes = (
+            cfg.ssm_time_step_rank
+            * cfg.ssm_state_size
+            * runner.ssm_value_dim
+            * DType.FP32.itemsize
+        )
         prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
         cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
         block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (capacity, 1))
@@ -8160,6 +8407,8 @@ class _GGUFFullAttentionPrefillScratch:
             "prefill_decay": buf(prefill_scalar_bytes),
             "recurrent_out": buf(recurrent_f32_bytes),
             "recurrent_bf16": buf(linear_z_bytes),
+            "linear_conv_state_tmp": buf(conv_state_bytes),
+            "linear_recurrent_state_tmp": buf(recurrent_state_bytes),
             "gdn_cu_seqlens": buf(2 * DType.INT32.itemsize),
             "gdn_state_indices": buf(DType.INT64.itemsize),
             "full_query_raw": buf(q_f32_bytes),
@@ -8360,6 +8609,8 @@ class _FullStackScratch:
     conv_out: object
     recurrent_out: object
     recurrent_bf16: object
+    linear_conv_state_tmp: object
+    linear_recurrent_state_tmp: object
     layer_conv_states: tuple[object | None, ...]
     layer_recurrent_states: tuple[object | None, ...]
     conv_zero: np.ndarray
@@ -8547,6 +8798,8 @@ class _FullStackScratch:
             "conv_out": buf(runner.linear_qkv_width * 4),
             "recurrent_out": buf(cfg.ssm_inner_size * 4),
             "recurrent_bf16": buf(ssm_inner_bytes),
+            "linear_conv_state_tmp": buf(conv_zero.nbytes),
+            "linear_recurrent_state_tmp": buf(recurrent_zero.nbytes),
             "full_q": buf(q_proj_bytes),
             "full_k": buf(kv_bf16_bytes),
             "full_v": buf(kv_bf16_bytes),

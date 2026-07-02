@@ -1,0 +1,115 @@
+{
+  "schema": "hipengine.diagnostic.v1",
+  "date": "2026-07-02",
+  "performance_claim": false,
+  "hardware": "gfx1151",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "workload": {
+    "source_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json",
+    "cycle": 12,
+    "row": 1,
+    "candidate_tokens": [539, 26126],
+    "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+  },
+  "environment_common": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE": "1"
+  },
+  "forced_probe_rows": [
+    {
+      "name": "noncapture_bulk_current_cycle",
+      "extra_env": {},
+      "capture_linear_state_rows": false,
+      "sampled_tokens": [15495, 26126, 1151],
+      "accepted_draft_tokens": 1,
+      "row1_logit_539": 26.047950744628906,
+      "row1_logit_26126": 26.05097770690918,
+      "row1_margin_539_minus_26126": -0.0030269622802734375,
+      "artifact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-live-resident-env.json"
+    },
+    {
+      "name": "default_capture_direct_state",
+      "extra_env": {},
+      "capture_linear_state_rows": true,
+      "sampled_tokens": [15495, 539, 1151],
+      "accepted_draft_tokens": 2,
+      "row1_logit_539": 26.08299446105957,
+      "row1_logit_26126": 26.002958297729492,
+      "row1_margin_539_minus_26126": 0.08003616333007812,
+      "artifact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-capturelinear.json"
+    },
+    {
+      "name": "capture_bf16_gdn_out_fixed_q8",
+      "extra_env": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT": "1"
+      },
+      "capture_linear_state_rows": true,
+      "sampled_tokens": [15495, 539, 1151],
+      "accepted_draft_tokens": 2,
+      "row1_logit_539": 26.263731002807617,
+      "row1_logit_26126": 25.968475341796875,
+      "row1_margin_539_minus_26126": 0.2952556610107422,
+      "artifact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-capturelinear-bf16gdnout-fixedq8.json"
+    },
+    {
+      "name": "capture_prefill_conv_gdn_state_rows",
+      "extra_env": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"
+      },
+      "capture_linear_state_rows": true,
+      "sampled_tokens": [15495, 539, 1151],
+      "accepted_draft_tokens": 2,
+      "row1_logit_539": 26.263731002807617,
+      "row1_logit_26126": 25.968475341796875,
+      "row1_margin_539_minus_26126": 0.2952556610107422,
+      "artifact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-capturelinear-prefillconvgdn.json"
+    },
+    {
+      "name": "capture_score_prefill_commit_chain",
+      "extra_env": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL": "1"
+      },
+      "capture_linear_state_rows": true,
+      "sampled_tokens": [15495, 539, 1151],
+      "accepted_draft_tokens": 2,
+      "row1_logit_539": 26.263731002807617,
+      "row1_logit_26126": 25.968475341796875,
+      "row1_margin_539_minus_26126": 0.2952556610107422,
+      "artifact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-capturelinear-scoreprefill.json"
+    }
+  ],
+  "layer_output_diff_default_capture_vs_noncapture": {
+    "artifact_capture": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-capture-default-layeroutputs-row1.json",
+    "artifact_noncapture": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-noncapture-layeroutputs-row1.json",
+    "row": 1,
+    "selected_layers": [
+      {"layer": 0, "mae": 0.000061514, "rmse": 0.000079738, "max_abs": 0.000788212, "cosine": 0.999995649},
+      {"layer": 1, "mae": 0.000501979, "rmse": 0.000625539, "max_abs": 0.002525358, "cosine": 0.999853611},
+      {"layer": 11, "mae": 0.001094621, "rmse": 0.001349982, "max_abs": 0.004885644, "cosine": 0.999748945},
+      {"layer": 25, "mae": 0.002283566, "rmse": 0.002856008, "max_abs": 0.010510864, "cosine": 0.999548137},
+      {"layer": 31, "mae": 0.005171467, "rmse": 0.006497022, "max_abs": 0.025013164, "cosine": 0.998788357},
+      {"layer": 39, "mae": 0.007225381, "rmse": 0.009445333, "max_abs": 0.123136997, "cosine": 0.999630690}
+    ]
+  },
+  "layer0_boundary_default_capture_vs_noncapture": {
+    "artifact_capture": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-capture-default-boundary0-row1.json",
+    "artifact_noncapture": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-noncapture-boundary0-row1.json",
+    "row": 1,
+    "result": "all captured BF16 layer-boundary tensors are identical, including layer_out",
+    "interpretation": "The scored all-layer split is in the FP32 residual/hidden mirror and verifier history, not in the BF16 layer output visible to the isolated boundary tap."
+  },
+  "conclusion": [
+    "The prior non-capturing bulk side-match is prefix-local and does not become a live direct-state mode by replacing capture Conv/GDN math.",
+    "Feeding BF16 GDN output, using prefill Conv/GDN state-row diagnostics, or scoring with prefill math while committing chain rows all still accept token 539.",
+    "Default direct-state capture and non-capturing bulk are BF16-boundary-identical at isolated layer 0, but the scored FP32 residual/hidden mirror already differs at layer 0 and accumulates through the verifier.",
+    "Next target: compare and align the verifier FP32 hidden/KV history contract against llama.cpp, not just the linear-attention Conv/GDN row-state kernels."
+  ]
+}

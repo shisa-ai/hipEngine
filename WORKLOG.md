@@ -136614,3 +136614,51 @@ python3 scripts/gguf_mtp_bench.py \
   - `python3 -m pytest tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_forced_target_probe.py -q` => **98 passed**
   - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
   - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
+
+## 2026-07-02 - Direct-state capture-path diagnostics
+
+- Continued the pair-12 llama.cpp MTP semantic parity split on gfx1151. Added
+  default-off capture diagnostics in `hipengine/runtime/qwen35_gguf_runner.py`:
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV`,
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN`,
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT`,
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`, and
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL`.
+- Added diagnostic row-state wrappers for prefill-shaped kernels:
+  `qwen35_linear_attn_conv_prefill_f32_state_rows` and
+  `qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows`.
+  Also fixed the BF16 capture diagnostic routing so BF16 `ssm_out` inputs use
+  the BF16 q8_1 quantizer instead of the F32 q8_1 quantizer.
+- Forced pair-12 result summary, same model
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, same trace
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json`,
+  cycle 12, row 1:
+  - Non-capturing bulk current cycle: `[15495, 26126, 1151]`,
+    accepted `1`, row-1 `539 - 26126 = -0.00302696`.
+  - Default direct-state capture: `[15495, 539, 1151]`, accepted `2`,
+    margin `+0.0800362`.
+  - Capture + BF16 GDN output after the q8 fix: `[15495, 539, 1151]`,
+    accepted `2`, margin `+0.295256`.
+  - Capture + prefill Conv/GDN state rows: `[15495, 539, 1151]`,
+    accepted `2`, margin `+0.295256`.
+  - Capture score-prefill + chain commit: `[15495, 539, 1151]`,
+    accepted `2`, margin `+0.295256`.
+- Interpretation: the prior non-capturing side match is prefix-local and cannot
+  be made live by swapping capture Conv/GDN row-state kernels. Default capture
+  and non-capturing bulk have identical isolated BF16 layer-0 boundary tensors,
+  including `layer_out`, but the scored FP32 residual/hidden mirror already
+  differs after layer 0 (`0.0000615` MAE), then grows through layer 1
+  (`0.000502` MAE) and layer 39/pre-output (`0.007225` MAE). Next target is
+  the verifier FP32 hidden/KV history contract against llama.cpp, not Conv/GDN
+  row-state capture math alone.
+- Added compact artifact
+  `benchmarks/results/2026-07-02-mtp-capture-path-diagnostics.json`, updated
+  `docs/MTP-LLAMACPP-PARITY.md`, and added a cleanup row to `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/conv.py hipengine/kernels/hip_gfx1100/linear_attn/gdn.py hipengine/runtime/qwen35_gguf_runner.py`
+  - `jq empty benchmarks/results/2026-07-02-mtp-capture-path-diagnostics.json`
+  - `python3 -m pytest tests/test_gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_bench_metrics.py -q` => **98 passed**
+  - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
+  - `python3 scripts/check_lineage.py --kind kernel --diff stat` => blocked:
+    `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing.

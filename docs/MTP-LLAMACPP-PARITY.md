@@ -289,6 +289,29 @@ cycle 2, where non-capturing bulk scores `[40798, 1590, 1103]` and emits
 the live path still needs capture-path / F32 verifier graph parity, not a
 two-pass score-bulk/serial-replay mode.
 
+The direct capture-path split is now narrower and more useful. Artifact
+`benchmarks/results/2026-07-02-mtp-capture-path-diagnostics.json` compares the
+same forced pair-12 row with and without `capture_linear_state_rows` and adds
+default-off capture diagnostics for BF16 GDN output, prefill-shaped Conv/GDN
+row snapshots, and "score with prefill math, commit chain rows". Results:
+
+| forced pair-12 verifier path | row-state capture | sampled tokens | accepted | row-1 `539 - 26126` | reading |
+| --- | --- | --- | ---: | ---: | --- |
+| non-capturing bulk current cycle | no | `[15495, 26126, 1151]` | 1 | **-0.00303** | Prefix-local side match. |
+| default direct-state capture | yes | `[15495, 539, 1151]` | 2 | **+0.08004** | Active live mismatch. |
+| capture + BF16 GDN output | yes | `[15495, 539, 1151]` | 2 | **+0.29526** | BF16-ing the chain output is worse. |
+| capture + prefill Conv/GDN state rows | yes | `[15495, 539, 1151]` | 2 | **+0.29526** | Replacing row-state kernels is not enough. |
+| capture score-prefill + chain commit | yes | `[15495, 539, 1151]` | 2 | **+0.29526** | Scoring current rows differently is not enough once prior verifier hidden/KV history changes. |
+
+The key correction is that the active split is not a bad BF16 layer boundary in
+isolation. Default capture versus non-capturing bulk has identical raw layer-0
+boundary tensors in the isolated tap, including `layer_out`, but the scored
+FP32 residual/hidden mirror already differs after layer 0 (**0.0000615 MAE**),
+then grows through layer 1 (**0.000502 MAE**) and layer 39/pre-output
+(**0.007225 MAE**). That points the next fix at the verifier FP32 hidden/KV
+history contract used by direct-state block verification versus llama.cpp, not
+at simply copying a different Conv/GDN row-state kernel.
+
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
 the full-suite bucket inventory, then the attribution-only all-sync and
@@ -1215,7 +1238,7 @@ match but the timings do not.
 
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
-| S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, raw row-1 hidden/lm-head cross-score, pre-output/per-layer hidden checkpoints, F32 verifier-boundary probes, and capture-path vs non-capturing block verifier A/B | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h`/raw-value trace in `common/speculative.cpp`, target hidden source around `llama_decode()`, and GGML target graph tensor dtype boundaries in `src/models/qwen35moe.cpp` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. The F32 selected-SiLU intermediate slice is the first forced-prefix side match: row-1 `539 - 26126` moves to **-0.00303** vs llama.cpp about **-0.00896**. But live 32-cycle validation with capture still accepts `539`, and the corrected transactional score-bulk/serial-state replay diagnostic leaves the old prefix early at cycle 2 (`[40798, 1590]`). | The selected SwigLU/intermediate BF16 boundary is a confirmed llama.cpp parity contract, but it is not sufficient in the live direct-state path. Next work should compare/fix the linear-attention capture path so direct-state block verification can keep llama-shaped scoring without switching to the chain Conv/GDN numerics, then rerun the long proposal trace. This remains semantic parity, not a retained full-suite speed gap. |
+| S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, raw row-1 hidden/lm-head cross-score, pre-output/per-layer hidden checkpoints, F32 verifier-boundary probes, and capture-path vs non-capturing block verifier A/B | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h`/raw-value trace in `common/speculative.cpp`, target hidden source around `llama_decode()`, and GGML target graph tensor dtype boundaries in `src/models/qwen35moe.cpp` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. The F32 selected-SiLU intermediate slice is the first forced-prefix side match: row-1 `539 - 26126` moves to **-0.00303** vs llama.cpp about **-0.00896**. But live validation with capture still accepts `539`; transactional score-bulk/serial-state replay leaves the old prefix early at cycle 2 (`[40798, 1590]`); and capture Conv/GDN replacement diagnostics still accept `539`. | The selected SwigLU/intermediate BF16 boundary is a confirmed llama.cpp parity contract, but it is not sufficient in the live direct-state path. The latest capture-path diagnostic shows isolated BF16 layer-0 boundaries match while the scored FP32 residual/hidden mirror diverges from layer 0 onward, so next work should compare/fix the verifier FP32 hidden/KV history contract against llama.cpp rather than swapping Conv/GDN row-state kernels. This remains semantic parity, not a retained full-suite speed gap. |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | rerun B2 cycle wall plus suite tok/s | **-0.944 ms/output** | Parent wall is closed on the retained row; verify with same-protocol reruns. |
 | 2 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head`, `draft_gpu_decode_initial`, `draft_gpu_decode_next`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **-0.076 ms/output** | Fixed on the retained row. Draft-only dense-Q8 moves full-suite draft drain **2.204 -> 2.066 ms/output** without changing row economy; future leaf work must move the retained parent row before becoming a live parity target. |
 | 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **+0.077 outputs/cycle**, -0.012 target rows/output | Retained full-suite row economy is closed. Resident initial KV changes the full-suite histogram from `{2 accepts: 54}` to `{2 accepts: 75}` out of 100 cycles. Long-trace semantic follow-up is tracked in row S because the first real mismatch has matching draft tokens and divergent target acceptance. |
