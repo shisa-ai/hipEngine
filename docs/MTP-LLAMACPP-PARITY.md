@@ -132,6 +132,19 @@ values around the matching task, so we can decide which hipEngine prefix
 lifecycle actually mirrors llama.cpp before optimizing more row kernels.
 Evidence:
 `benchmarks/results/2026-07-03-mtp-prefix-state-fingerprint-default-vs-prefillgdn.json`.
+That comparison is now available in
+`benchmarks/results/2026-07-03-mtp-hidden-lifecycle-default-vs-prefillgdn-vs-llamacpp.json`.
+llama.cpp's own lifecycle handoff is exact: `draft_seed_input` equals
+`process_h_input[0]`, `verify_h[0]` equals `process_h_input[1]`, and
+`verify_h[1]` equals `process_h_input[2]` with zero full-vector delta. Against
+llama.cpp task 9 / cycle 18, prefill-GDN is slightly closer for the initial
+prefix seed (**0.0630 MAE** vs default **0.0668**), but default is closer at the
+decisive verifier row 1 (**0.0690** vs **0.0806**) and is the only hipEngine
+lane that matches llama.cpp's reject decision (`539 - 26126`: llama
+**-0.00896**, default **-0.00303**, prefill-GDN **+0.29526**). The active fix is
+therefore not "make the seed more prefill-GDN-like"; it is to preserve
+llama.cpp's exact hidden handoff while preventing the row-1 drift/score flip in
+the fast captured-state lifecycle.
 
 Current bonus-row target-logit split, focused on `mixed_ja_en_translate`, cycle
 3, verifier row 2 after both engines accept draft `[11, 567]`:
@@ -1082,12 +1095,19 @@ the committed verifier prefix before cycle 12 is scored. The compact artifact is
 | cycle 12 default prefix | pos 72 / prev 653 | `[15495, 26126, 1151]` | **-0.003027** | `0c31da6a556e81ff1b93e855df7e7049` | baseline | This side matches llama.cpp's reject decision for the near-tie. |
 | cycle 12 prefill-GDN prefix | pos 72 / prev 653 | `[15495, 539, 1151]` | **+0.295256** | `47f3a377a5c77b2a53b7ccec9d0794fe` | 29/30 linear layers, 10/10 full-attn KV layers | Active no-copy lifecycle flips the decision because prior prefix state changed, not because layer-35 alone is wrong. |
 
-Next action: run llama.cpp with raw values for `verify_h`, `pending_h` /
-`process_h_input`, `draft_seed_input`, and `draft_next_seed` around the matching
-task/cycle, then compare those rows to hipEngine default and prefill-GDN prefix
-hidden seeds. If llama.cpp matches prefill-GDN, the remaining work is final
-target-row scoring; if it matches default, the direct-commit lifecycle needs to
-be adjusted even though it was the speed win.
+The raw hidden lifecycle comparison is now retained as
+`benchmarks/results/2026-07-03-mtp-hidden-lifecycle-default-vs-prefillgdn-vs-llamacpp.json`.
+It uses llama.cpp task 9 / cycle 18 and hipEngine forced pair 12 with raw prefix
+and verifier-row hidden values. llama.cpp's handoff rows are bit-identical:
+`draft_seed_input == process_h_input[0]`,
+`verify_h[0] == process_h_input[1]`, and
+`verify_h[1] == process_h_input[2]` all have **0.0 MAE**. HipEngine prefill-GDN
+is closer to llama.cpp at the initial prefix seed (**0.0630 MAE** vs default
+**0.0668**) and row 0 (**0.1310** vs **0.1370**), but default is closer at the
+decisive row 1 (**0.0690** vs **0.0806**) and keeps the llama-side reject
+decision. The next implementation target is therefore the captured-state row-1
+handoff/scoring drift after the seed, not another attempt to make only the
+cycle-start seed closer.
 
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
@@ -1210,7 +1230,8 @@ Current source artifacts:
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json` plus prior retained exact suite rows | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. The shared `mtp_dense_attn_f32` parallel-attention fix moves exact B5 **60.8 -> 61.98 tok/s**, cycle **16.496 -> 16.162 ms/output**, and draft drain **1.921 -> 1.899 ms/output** with unchanged acc/output **0.535**, draft acceptance **0.723**, and target rows/output **1.163**. |
 | hipEngine llama-compat no-copy direct-commit | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`, natural24 cyclecap24 artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-full.json`, fixed-cycle artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-full.json`; all-sync attribution `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-allsync-smoke.json`; lifecycle diagnostic `benchmarks/results/2026-07-02-mtp-state-lifecycle-directcommit-partial-compare.json`; proposal comparison `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-natural24-mixed-ja-en-translate.json`; serial-exact one-prompt A/B `benchmarks/results/2026-07-02-hipengine-mtp-serialexact-natural24-mixed-ja-en-translate.json` | Active no-probe B2 llama.cpp replication lane; the suite route now records and applies `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`. Full-accept and rejected/partial blocks commit captured verifier row state instead of serial-replaying accepted prefixes. The prefill-GDN state-row kernel reads live recurrent state without the old full-state D2D copy. Natural24 cyclecap24 full suite: **71.11 tok/s**, **14.087 ms/output**, **1.295x AR**, acc/output **0.596**, draft acceptance **0.777**, target rows/output **1.171**, verifier drain **11.507 ms/output**, replay/commit **0.049 ms/output**, replay rows **0**, discarded rows **41**. Fixed-cycle provenance remains **72.23 tok/s**, **13.865 ms/output**, **1.319x AR**, acc/output **0.609**, draft acceptance **0.780**, target rows/output **1.172**. The lifecycle diagnostic intentionally diverges from serial replay at cycle 3; this is llama replication, not exact-mode safety. |
-| hipEngine llama-compat prefix-state fingerprint | `benchmarks/results/2026-07-03-mtp-prefix-state-fingerprint-default-vs-prefillgdn.json` | Diagnostic-only forced pair-12 prefix comparison for the active F32 selected-intermediate environment; `performance_claim=false`. It proves prefill-GDN captured-row prior replay changes the committed prefix immediately after the first full-accept cycle: cycle 1 already has different hidden seed, 29/30 linear-state layer fingerprints, and 10/10 full-attention KV fingerprints. By cycle 12, default prefix state samples `[15495, 26126, 1151]` with row-1 `539 - 26126 = -0.003027`, while the prefill-GDN prefix samples `[15495, 539, 1151]` with `+0.295256`. Next required source comparison is llama.cpp raw `verify_h`/pending/draft-seed rows, not another layer-0 row-state kernel rewrite. |
+| hipEngine llama-compat prefix-state fingerprint | `benchmarks/results/2026-07-03-mtp-prefix-state-fingerprint-default-vs-prefillgdn.json` | Diagnostic-only forced pair-12 prefix comparison for the active F32 selected-intermediate environment; `performance_claim=false`. It proves prefill-GDN captured-row prior replay changes the committed prefix immediately after the first full-accept cycle: cycle 1 already has different hidden seed, 29/30 linear-state layer fingerprints, and 10/10 full-attention KV fingerprints. By cycle 12, default prefix state samples `[15495, 26126, 1151]` with row-1 `539 - 26126 = -0.003027`, while the prefill-GDN prefix samples `[15495, 539, 1151]` with `+0.295256`. The raw source comparison below answers which parts of that split match llama.cpp. |
+| hipEngine vs llama.cpp hidden lifecycle comparison | `benchmarks/results/2026-07-03-mtp-hidden-lifecycle-default-vs-prefillgdn-vs-llamacpp.json` | Diagnostic-only raw hidden-vector reducer over llama.cpp task 9 / cycle 18 and hipEngine forced pair 12; `performance_claim=false`. It adds `scripts/llamacpp_mtp_compare_hidden_lifecycle.py` and raw prefix hidden output in `scripts/gguf_mtp_forced_target_probe.py`. llama.cpp's internal handoff is exact (`draft_seed_input == process_h_input[0]`, `verify_h[0] == process_h_input[1]`, `verify_h[1] == process_h_input[2]`, all **0.0 MAE**). Prefill-GDN is slightly closer at the cycle-start seed (**0.0630 MAE** vs default **0.0668**) but default is closer at decisive verifier row 1 (**0.0690** vs **0.0806**) and matches llama.cpp's row-1 reject margin. This moves the next target to captured-state row-1 drift/score parity after the seed. |
 | hipEngine llama-compat copied-state direct-commit | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json`; smoke `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-smoke.json` | Superseded active lane before the no-copy GDN capture kernel. It paid a full recurrent-state D2D copy before each captured prefill-GDN layer: **60.56 tok/s**, **16.534 ms/output**, verifier drain **14.071 ms/output**. The no-copy replacement keeps acceptance/economy identical and moves full-suite **60.56 -> 72.23 tok/s**. |
 | hipEngine llama-compat semantic-safe | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-serialstate`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-serial-state-only-partial-replay-full.json` | Semantic-safe control. Full-accept blocks still direct-commit captured state, while rejected/partial bulk blocks restore and serial-replay the accepted prefix without replay LM-head sampling. Full suite: **51.85 tok/s**, **19.308 ms/output**, **0.9472x AR**, acc/output **0.606**, draft acceptance **0.770**, target rows/output **1.331**, replay/commit **2.489 ms/output**, replay rows **38**, discarded rows **46**. |
 | hipEngine llama-compat prior serial-full replay | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directstate-prefillgdn-partialfix-full.json` | Superseded semantic-safe control. It used full serial LM-head sampling during accepted-prefix replay: **50.96 tok/s**, **19.645 ms/output**, **0.9312x AR**, verifier drain **17.222 ms/output**, replay/commit **2.775 ms/output**. The serial-state-only row keeps the same acceptance/row economy and removes only replay sampling. |

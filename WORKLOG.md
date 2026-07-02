@@ -138612,3 +138612,49 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`8 passed`), and the compact artifact
   is valid JSON.
+
+## 2026-07-03 - MTP hidden lifecycle raw comparison
+
+- Added `--raw-prefix-hidden-seed` to
+  `scripts/gguf_mtp_forced_target_probe.py` so prefix-state diagnostics can
+  include the full FP32 seed vector when needed. This stays default-off.
+- Added `scripts/llamacpp_mtp_compare_hidden_lifecycle.py` plus focused tests.
+  The reducer selects a llama.cpp MTP cycle from stage-token JSONL, compares
+  llama `draft_seed_input`, `process_h_input`, and `verify_h` rows against one
+  or more named hipEngine forced-target artifacts, and records the candidate
+  token margin from both engines.
+- Reran llama.cpp task 9 / cycle 18 with raw hidden lifecycle values:
+  `LLAMA_MTP_HIDDEN_TRACE_VALUES=1`,
+  `LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS=draft_seed_input,draft_next_seed,process_h_input,verify_h`,
+  `LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS=-1,0,1,2`,
+  output under
+  `/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-hidden-lifecycle-raw.jsonl`.
+  The matching cycle still drafts `[15495, 539]`, accepts one token, outputs
+  `[15495, 26126]`, and rejects `539`.
+- Reran hipEngine forced pair 12 default-prefix and prefill-GDN-prefix probes
+  with `--raw-prefix-hidden-seed --raw-hidden-row 0 --raw-hidden-row 1
+  --raw-hidden-row 2`. Raw outputs are under `/tmp/hipengine-mtp-proposal-trace/`.
+- Retained compact artifact:
+  `benchmarks/results/2026-07-03-mtp-hidden-lifecycle-default-vs-prefillgdn-vs-llamacpp.json`.
+  Result: llama.cpp's hidden handoff is exact:
+  `draft_seed_input == process_h_input[0]`,
+  `verify_h[0] == process_h_input[1]`, and
+  `verify_h[1] == process_h_input[2]`, all **0.0 MAE**.
+- Cross-engine readout: prefill-GDN is slightly closer to llama.cpp at the
+  cycle-start seed (**0.0630 MAE** vs default **0.0668**) and verifier row 0
+  (**0.1310** vs **0.1370**), but default is closer at the decisive row 1
+  (**0.0690** vs **0.0806**) and is the only hipEngine lane that matches the
+  llama.cpp row-1 reject decision (`539 - 26126`: llama **-0.00896**, default
+  **-0.00303**, prefill-GDN **+0.29526**).
+- Updated `docs/MTP-LLAMACPP-PARITY.md`: the active implementation target is
+  captured-state row-1 drift/score parity after the seed, not simply making the
+  cycle-start seed closer or rewriting layer-0 row-state capture again.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/gguf_mtp_forced_target_probe.py scripts/llamacpp_mtp_compare_hidden_lifecycle.py tests/test_gguf_mtp_forced_target_probe.py tests/test_llamacpp_mtp_compare_hidden_lifecycle.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_forced_target_probe.py tests/test_llamacpp_mtp_compare_hidden_lifecycle.py
+  jq empty benchmarks/results/2026-07-03-mtp-hidden-lifecycle-default-vs-prefillgdn-vs-llamacpp.json benchmarks/results/2026-07-03-mtp-prefix-state-fingerprint-default-vs-prefillgdn.json
+  git diff --check
+  ```
+  Pycompile passed, focused tests passed (`10 passed`), JSON validation passed,
+  and diff-check passed.

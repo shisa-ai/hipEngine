@@ -396,10 +396,27 @@ def _session_lifecycle_fingerprint(
     current_prev: int,
     label: str,
     include_kv: bool = False,
+    include_hidden_values: bool = False,
 ) -> dict[str, Any]:
     if session.runner is None or session.scratch is None:
         raise ProbeError("session is closed")
     hidden = _copy_current_hidden_seed(session).reshape(-1)
+    hidden_payload: dict[str, Any] = {
+        "nbytes": int(hidden.nbytes),
+        "blake2b_128": _bytes_digest(hidden.view(np.uint8)),
+        "summary": hidden_state_summary(
+            hidden,
+            label=f"{label}_hidden_seed",
+            depth=-1,
+            token_id=int(current_prev),
+            position=int(session.position),
+        ),
+    }
+    if include_hidden_values:
+        hidden_payload["values"] = [
+            float(value)
+            for value in np.ascontiguousarray(hidden, dtype=np.float32).reshape(-1)
+        ]
     linear_layers: list[dict[str, Any]] = []
     for layer_id, (conv_state, recurrent_state) in enumerate(
         zip(session.scratch.layer_conv_states, session.scratch.layer_recurrent_states, strict=True)
@@ -427,17 +444,7 @@ def _session_lifecycle_fingerprint(
         "label": str(label),
         "position": int(session.position),
         "current_prev": int(current_prev),
-        "hidden_seed": {
-            "nbytes": int(hidden.nbytes),
-            "blake2b_128": _bytes_digest(hidden.view(np.uint8)),
-            "summary": hidden_state_summary(
-                hidden,
-                label=f"{label}_hidden_seed",
-                depth=-1,
-                token_id=int(current_prev),
-                position=int(session.position),
-            ),
-        },
+        "hidden_seed": hidden_payload,
         "linear_state_layers": linear_layers,
         "kv_state": kv_state,
     }
@@ -1742,6 +1749,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "KV fingerprints after replaying prior cycles and before scoring --cycle."
         ),
     )
+    parser.add_argument(
+        "--raw-prefix-hidden-seed",
+        action="store_true",
+        help=(
+            "Diagnostic only: include full FP32 prefix hidden seed values in the "
+            "--prefix-state-fingerprint payload."
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -1911,8 +1926,9 @@ def main(argv: list[str] | None = None) -> int:
                 current_prev=current_prev,
                 label="prefix",
                 include_kv=True,
+                include_hidden_values=bool(args.raw_prefix_hidden_seed),
             )
-            if bool(args.prefix_state_fingerprint)
+            if bool(args.prefix_state_fingerprint) or bool(args.raw_prefix_hidden_seed)
             else None
         )
 
@@ -2128,6 +2144,7 @@ def main(argv: list[str] | None = None) -> int:
             "The verifier direct Q6 top-1 path is forced off so full row logits are available.",
             "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
             "prefix_state_fingerprint is emitted only for --prefix-state-fingerprint diagnostics.",
+            "prefix_state_fingerprint.hidden_seed.values is emitted only for --raw-prefix-hidden-seed diagnostics.",
             "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
             "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
             "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
