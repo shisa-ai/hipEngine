@@ -2201,6 +2201,22 @@ accepted/output deficit. The prompt row with a real local acceptance and speed
 loss is `mixed_ja_en_translate`: hipEngine accepts **13** draft tokens vs
 llama.cpp **14** and is **10.21 tok/s** slower on that prompt.
 
+Live target-score instrumentation is now available for the next semantic split:
+`scripts/gguf_mtp_bench.py --record-target-topk-scores
+--target-score-candidate-tokens ...` asks the block verifier to copy the
+already-materialized full target lm-head logits back to host and emits compact
+per-row `target_lm_head_score_rows` in the cycle JSON. The row records include
+the verifier input token, sampled target token, target top-k scores, and scores
+for draft/target plus explicit extra candidates such as the known near-tie
+tokens `668`, `8940`, `26126`, and `539`. This is diagnostic-only and not a
+timing route because it adds a full-logit D2H copy per target block. Smoke
+artifact:
+`benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json` on the
+active `llama-compat` direct-commit shape produced three target verifier rows
+with candidate scores populated, so the next `mixed_ja_en_translate` run can
+compare hipEngine's live margins directly against llama.cpp's token trace
+without forced-target replay ambiguity.
+
 #### Llama-compat target map
 
 Use this table as the short work queue when comparing a new `llama-compat` run

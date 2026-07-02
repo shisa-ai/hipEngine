@@ -138930,3 +138930,38 @@ python3 scripts/gguf_mtp_bench.py \
   remaining gap as a broad full-request accepted/output deficit; focus on lower
   draft acceptance/discarded-row mix and the known `mixed_ja_en_translate`
   semantic mismatch.
+
+## 2026-07-03 - Live target lm-head score capture for MTP verifier
+
+- Status checkpoint: tracked tree was clean after `e703fe91` except existing
+  untracked benchmark artifacts. Active `llama-compat` remains **71.52 tok/s**
+  versus llama.cpp HIP rerun **71.91 tok/s**; stage wall is closed, and the
+  next target is target verifier semantic/economy parity around near ties.
+- Added diagnostic-only target score instrumentation:
+  `Qwen35GGUFBlockVerifyResult` can now carry optional `lm_head_logits_f32`,
+  and `scripts/gguf_mtp_bench.py --record-target-topk-scores` copies the
+  block verifier's already-materialized full lm-head logits to host and emits
+  compact per-cycle `target_lm_head_score_rows`. Each row records verifier
+  input token, sampled target token, top-k scores, and scores for draft/target
+  plus explicit `--target-score-candidate-tokens`.
+- GPU smoke command on AMD Radeon 8060S / gfx1151:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt 'Translate the following sentence to Japanese: The quick brown fox jumps over the lazy dog.' --prompt-reasoning off --llama-compat --resident-mtp-device-chain --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --resident-mtp-draft-dense-q8-dp4a --resident-mtp-draft-dense-q8-dp4a-stages draft --target-block-direct-partial-replay-mode direct-commit --draft-n-max 2 --cycles 1 --max-output-tokens 3 --record-target-topk-scores --target-topk-score-count 5 --target-score-candidate-tokens 668,8940,26126,539 --output benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json
+  ```
+- Result: artifact
+  `benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json` is
+  diagnostic-only. It produced one active block-verify cycle with
+  `target_lm_head_logits_available=true` and **3** populated
+  `target_lm_head_score_rows`, including explicit candidate scores for
+  `668`, `8940`, `26126`, and `539`. The run is not a timing claim because the
+  flag adds a full-logit D2H copy per target block.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py tests/test_gguf_mtp_bench_metrics.py tests/test_qwen35_gguf_block_verify_result.py
+  PYTHONPATH=. pytest -q tests/test_qwen35_gguf_block_verify_result.py tests/test_gguf_mtp_bench_metrics.py
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json >/dev/null
+  git diff --check
+  ```
+  Pycompile passed, focused CPU tests passed (`102 passed`), HIP loaded, JSON
+  validation passed, and diff check passed.

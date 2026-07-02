@@ -14,6 +14,7 @@ from scripts.gguf_mtp_bench import (
     _draft_top1_prob,
     _diagnostic_topk_candidate_count,
     _rope_tables,
+    _target_lm_head_score_rows,
     apply_llama_compat_args,
     build_arg_parser,
     compute_speculative_metrics,
@@ -45,6 +46,61 @@ def test_default_mtp_policy_is_b1_root_top40_speed_first() -> None:
     assert args.target_graph_verify is True
     assert args.adaptive_block_after_full_accept is False
     assert args.adaptive_probe_draft_n_max == 3
+
+
+def test_target_topk_score_flags_parse_default_off() -> None:
+    args = build_arg_parser().parse_args([])
+
+    assert args.record_target_topk_scores is False
+    assert args.target_topk_score_count == 10
+    assert args.target_score_candidate_tokens == ()
+
+    args = build_arg_parser().parse_args(
+        [
+            "--record-target-topk-scores",
+            "--target-topk-score-count",
+            "3",
+            "--target-score-candidate-tokens",
+            "7,5,7",
+        ]
+    )
+
+    assert args.record_target_topk_scores is True
+    assert args.target_topk_score_count == 3
+    assert args.target_score_candidate_tokens == (7, 5)
+
+
+def test_target_lm_head_score_rows_are_compact_and_candidate_driven() -> None:
+    logits = np.asarray(
+        [
+            [0.0, 4.0, 3.0, 2.0, 1.0],
+            [5.0, 1.0, 2.0, 4.0, 3.0],
+        ],
+        dtype=np.float32,
+    )
+
+    rows = _target_lm_head_score_rows(
+        logits,
+        input_tokens=[100, 101],
+        target_tokens=[1, 0],
+        draft_tokens=[2, 3],
+        extra_candidate_tokens=(4, 2),
+        top_k=2,
+    )
+
+    assert [row["input_token"] for row in rows] == [100, 101]
+    assert [row["target_token"] for row in rows] == [1, 0]
+    assert rows[0]["top_k"] == [
+        {"rank": 1, "token": 1, "score": 4.0, "delta_vs_top1": 0.0},
+        {"rank": 2, "token": 2, "score": 3.0, "delta_vs_top1": -1.0},
+    ]
+    assert rows[0]["candidate_scores"] == [
+        {"token": 2, "score": 3.0, "delta_vs_top1": -1.0},
+        {"token": 3, "score": 2.0, "delta_vs_top1": -2.0},
+        {"token": 1, "score": 4.0, "delta_vs_top1": 0.0},
+        {"token": 0, "score": 0.0, "delta_vs_top1": -4.0},
+        {"token": 4, "score": 1.0, "delta_vs_top1": -3.0},
+    ]
 
 
 def test_mtp_policy_accepts_adaptive_production_selector_flags() -> None:
