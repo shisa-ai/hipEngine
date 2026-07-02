@@ -100,6 +100,13 @@ def _parse_nonnegative_int_csv(raw: str) -> tuple[int, ...]:
     return tuple(values)
 
 
+def _parse_nonnegative_token_csv(raw: str) -> tuple[int, ...]:
+    try:
+        return _parse_nonnegative_int_csv(raw)
+    except argparse.ArgumentTypeError as exc:
+        raise argparse.ArgumentTypeError("must be a comma-separated list of non-negative token IDs") from exc
+
+
 def target_block_direct_commit_is_exact(verify_mode: str, *, start_position: int, rows: int) -> bool:
     if verify_mode in {"native", "serial-exact"}:
         return True
@@ -723,6 +730,90 @@ def _draft_top1_prob(logits_row: np.ndarray) -> float:
     return float(exp.max() / exp.sum())
 
 
+def _score_top_k_rows(logits_row: np.ndarray, *, top_k: int) -> list[dict[str, float | int]]:
+    row = np.asarray(logits_row, dtype=np.float32).reshape(-1)
+    if row.size == 0:
+        return []
+    k = min(max(1, int(top_k)), int(row.size))
+    indices = np.argpartition(-row, k - 1)[:k]
+    order = np.lexsort((indices, -row[indices]))
+    sorted_indices = indices[order]
+    top_score = float(row[int(sorted_indices[0])])
+    return [
+        {
+            "rank": int(rank),
+            "token": int(token),
+            "score": float(row[int(token)]),
+            "delta_vs_top1": float(row[int(token)] - top_score),
+        }
+        for rank, token in enumerate(sorted_indices.tolist(), start=1)
+    ]
+
+
+def _score_candidate_rows(
+    logits_row: np.ndarray,
+    candidate_tokens: list[int] | tuple[int, ...],
+) -> list[dict[str, float | int | None]]:
+    row = np.asarray(logits_row, dtype=np.float32).reshape(-1)
+    if row.size == 0:
+        return []
+    top_token = int(np.argmax(row))
+    top_score = float(row[top_token])
+    records: list[dict[str, float | int | None]] = []
+    seen: set[int] = set()
+    for token in candidate_tokens:
+        token = int(token)
+        if token in seen:
+            continue
+        seen.add(token)
+        if token < 0 or token >= int(row.size):
+            records.append({"token": token, "score": None, "delta_vs_top1": None})
+            continue
+        records.append(
+            {
+                "token": token,
+                "score": float(row[token]),
+                "delta_vs_top1": float(row[token] - top_score),
+            }
+        )
+    return records
+
+
+def _target_lm_head_score_rows(
+    logits: np.ndarray | None,
+    *,
+    input_tokens: list[int],
+    target_tokens: list[int],
+    draft_tokens: list[int],
+    extra_candidate_tokens: tuple[int, ...] = (),
+    top_k: int = 10,
+) -> list[dict[str, object]]:
+    if logits is None:
+        return []
+    logits_arr = np.asarray(logits, dtype=np.float32)
+    if logits_arr.ndim != 2:
+        raise ValueError("target lm-head logits must be rank-2")
+    rows = min(int(logits_arr.shape[0]), len(input_tokens), len(target_tokens))
+    records: list[dict[str, object]] = []
+    for row_index in range(rows):
+        candidate_tokens: list[int] = []
+        candidate_tokens.extend(int(token) for token in draft_tokens)
+        candidate_tokens.extend(int(token) for token in target_tokens)
+        candidate_tokens.extend(int(token) for token in extra_candidate_tokens)
+        row = logits_arr[row_index]
+        records.append(
+            {
+                "row": int(row_index),
+                "position_offset": int(row_index),
+                "input_token": int(input_tokens[row_index]),
+                "target_token": int(target_tokens[row_index]),
+                "top_k": _score_top_k_rows(row, top_k=top_k),
+                "candidate_scores": _score_candidate_rows(row, candidate_tokens),
+            }
+        )
+    return records
+
+
 def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[np.ndarray, np.ndarray]:
     """Compute split-half RoPE cos/sin tables (mirrors qwen35_gguf_runner._rope_tables)."""
     positions = np.arange(max_positions, dtype=np.float32)[:, None]
@@ -1264,6 +1355,30 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--record-target-topk-scores",
+        action="store_true",
+        help=(
+            "Diagnostic only: when block verification materializes full target lm-head "
+            "logits, record compact per-row target top-k and candidate-token scores. "
+            "This adds a full-logit D2H copy per target block and is not a timing route."
+        ),
+    )
+    parser.add_argument(
+        "--target-topk-score-count",
+        type=int,
+        default=10,
+        help="Number of target lm-head top-k rows to retain with --record-target-topk-scores.",
+    )
+    parser.add_argument(
+        "--target-score-candidate-tokens",
+        type=_parse_nonnegative_token_csv,
+        default=(),
+        help=(
+            "Comma-separated extra token IDs to score in target lm-head diagnostics, "
+            "for example llama.cpp near-tie tokens that hipEngine did not sample."
+        ),
+    )
+    parser.add_argument(
         "--record-draft-hidden-stats",
         action="store_true",
         help=(
@@ -1655,6 +1770,10 @@ def main(argv: list[str] | None = None):
         parser.error("--target-block-sync-stage-timings requires --target-block-verify")
     if args.target_block_sync_stage_timings and not args.record_cycle_stage_timings:
         parser.error("--target-block-sync-stage-timings requires --record-cycle-stage-timings")
+    if args.record_target_topk_scores and not args.target_block_verify:
+        parser.error("--record-target-topk-scores requires --target-block-verify")
+    if args.target_topk_score_count < 1:
+        parser.error("--target-topk-score-count must be positive")
     if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
         parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
     if args.fused_b1_block_probe:
@@ -2363,6 +2482,8 @@ def main(argv: list[str] | None = None):
             target_block_consumed_rows: int | None = None
             target_block_direct_commit_exact: bool | None = None
             target_block_direct_state_commit_effective = False
+            target_lm_head_score_rows: list[dict[str, object]] = []
+            target_lm_head_logits_available = False
 
             def record_target_verify(
                 rows: int,
@@ -2400,6 +2521,26 @@ def main(argv: list[str] | None = None):
             def record_direct_commit(rows: int = 1) -> None:
                 nonlocal target_verify_direct_commit_rows
                 target_verify_direct_commit_rows += int(rows)
+
+            def record_target_lm_head_scores(
+                block_result,
+                block_inputs: list[int],
+                block_target_tokens: list[int],
+            ) -> None:
+                nonlocal target_lm_head_score_rows
+                nonlocal target_lm_head_logits_available
+                if not bool(args.record_target_topk_scores):
+                    return
+                rows = _target_lm_head_score_rows(
+                    getattr(block_result, "lm_head_logits_f32", None),
+                    input_tokens=[int(token) for token in block_inputs],
+                    target_tokens=[int(token) for token in block_target_tokens],
+                    draft_tokens=[int(token) for token in draft_tokens],
+                    extra_candidate_tokens=tuple(args.target_score_candidate_tokens),
+                    top_k=int(args.target_topk_score_count),
+                )
+                target_lm_head_score_rows = rows
+                target_lm_head_logits_available = bool(rows)
 
             can_b1_branch_safe_block_verify = (
                 bool(args.target_b1_branch_safe_block_verify)
@@ -2460,6 +2601,7 @@ def main(argv: list[str] | None = None):
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
+                            capture_lm_head_logits=bool(args.record_target_topk_scores),
                             record_stage_timings=bool(args.record_cycle_stage_timings),
                             sync_stage_timings=bool(args.target_block_sync_stage_timings),
                             defer_linear_state_commit=direct_state_commit,
@@ -2472,6 +2614,7 @@ def main(argv: list[str] | None = None):
                         )
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     target_block_raw_tokens = list(block_target_tokens)
+                    record_target_lm_head_scores(block_result, block_inputs, block_target_tokens)
                     if len(block_target_tokens) != 2:
                         raise RuntimeError("B1 branch-safe block verifier expected exactly two target rows")
                     target0 = int(block_target_tokens[0])
@@ -2656,6 +2799,7 @@ def main(argv: list[str] | None = None):
                             bulk_attention_mode=args.target_block_verify_mode,
                             use_wmma_prefill=bool(args.target_block_wmma_prefill),
                             capture_linear_state_rows=direct_state_commit,
+                            capture_lm_head_logits=bool(args.record_target_topk_scores),
                             record_stage_timings=bool(args.record_cycle_stage_timings),
                             sync_stage_timings=bool(args.target_block_sync_stage_timings),
                             defer_linear_state_commit=direct_state_commit,
@@ -2672,6 +2816,7 @@ def main(argv: list[str] | None = None):
                     t_account0 = time.perf_counter()
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     target_block_raw_tokens = list(block_target_tokens)
+                    record_target_lm_head_scores(block_result, block_inputs, block_target_tokens)
                     block_acceptance = llama_cpp_acceptance_from_target_samples(draft_tokens, block_target_tokens)
                     if int(block_acceptance["accepted_draft_tokens"]) == 0 and cycle_root_topk_accept > 1:
                         root_branch_acceptance = root_topk_acceptance_from_target_samples(
@@ -3420,6 +3565,8 @@ def main(argv: list[str] | None = None):
                 "target_block_direct_commit_exact": target_block_direct_commit_exact,
                 "target_block_raw_tokens": target_block_raw_tokens,
                 "target_block_consumed_rows": target_block_consumed_rows,
+                "target_lm_head_logits_available": bool(target_lm_head_logits_available),
+                "target_lm_head_score_rows": target_lm_head_score_rows,
                 "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings and block_verify_used),
                 "target_b1_branch_safe_block_verify": bool(b1_branch_safe_block_verify_used),
                 "target_graph_batched_verify": bool(batched_verify_used),
@@ -3608,6 +3755,9 @@ def main(argv: list[str] | None = None):
             ),
             "record_draft_confidence": bool(args.record_draft_confidence),
             "record_draft_topk_scores": bool(args.record_draft_topk_scores),
+            "record_target_topk_scores": bool(args.record_target_topk_scores),
+            "target_topk_score_count": int(args.target_topk_score_count),
+            "target_score_candidate_tokens": list(args.target_score_candidate_tokens),
             "record_draft_hidden_stats": bool(args.record_draft_hidden_stats),
             "record_draft_stage_stats": bool(args.record_draft_stage_stats),
             "record_draft_cache_rows": list(args.record_draft_cache_rows),

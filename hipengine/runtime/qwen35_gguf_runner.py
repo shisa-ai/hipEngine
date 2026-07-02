@@ -439,6 +439,7 @@ class Qwen35GGUFBlockVerifyResult:
     pre_output_norm_hidden: np.ndarray | None = None
     layer_output_hidden: dict[int, np.ndarray] | None = None
     layer_boundary_hidden: dict[int, dict[str, np.ndarray]] | None = None
+    lm_head_logits_f32: np.ndarray | None = None
     linear_state_rows_captured: bool = False
 
     def __post_init__(self) -> None:
@@ -480,6 +481,13 @@ class Qwen35GGUFBlockVerifyResult:
                         raise ValueError(
                             f"layer_boundary_hidden[{layer_id!r}][{name!r}] must be float32 or int64"
                         )
+        if self.lm_head_logits_f32 is not None:
+            if self.lm_head_logits_f32.ndim != 2:
+                raise ValueError("lm_head_logits_f32 must be rank-2")
+            if self.lm_head_logits_f32.shape[0] != len(self.input_token_ids):
+                raise ValueError("lm_head_logits_f32 rows must match input_token_ids length")
+            if self.lm_head_logits_f32.dtype != np.float32:
+                raise ValueError("lm_head_logits_f32 must be float32")
 
 
 @dataclass(frozen=True)
@@ -6877,6 +6885,7 @@ class Qwen35GGUFResidentSession:
         capture_pre_output_norm_hidden: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_layer_boundary_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        capture_lm_head_logits: bool = False,
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
         defer_linear_state_commit: bool = False,
@@ -6945,6 +6954,7 @@ class Qwen35GGUFResidentSession:
         runtime = self.runtime or get_hip_runtime()
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
         pre_output_norm_hidden_host = None
+        lm_head_logits_host = None
         capture_layer_ids = self._normalize_layer_output_capture(capture_layer_output_hidden)
         capture_layer_boundary_ids = self._normalize_layer_output_capture(capture_layer_boundary_hidden)
         layer_output_hidden_host: dict[int, np.ndarray] = {}
@@ -7248,6 +7258,7 @@ class Qwen35GGUFResidentSession:
                 # flag can still force it for other row counts.
                 t_sample0 = time.perf_counter() if stage_timings is not None else 0.0
                 row_lm_head = _gguf_verify_row_lm_head_enabled() or (2 <= rows <= 6)
+                direct_top1 = False
                 if row_lm_head:
                     direct_top1 = _gguf_verify_lm_head_q6_top1_dp4a_enabled()
                     token_host = self._sample_target_block_rows_from_hidden(
@@ -7275,6 +7286,19 @@ class Qwen35GGUFResidentSession:
                 runtime.device_synchronize()
                 if not row_lm_head:
                     copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
+                if (
+                    capture_lm_head_logits
+                    and row_lm_head
+                    and not direct_top1
+                    and self._verify_logits_buf is not None
+                ):
+                    lm_head_logits_host = np.empty((rows, self.runner.vocab_size), dtype=np.float32)
+                    copy_device_to_host(
+                        host_array_ptr(lm_head_logits_host),
+                        DeviceBuffer(self._verify_logits_buf.ptr, lm_head_logits_host.nbytes),
+                        lm_head_logits_host.nbytes,
+                        runtime=runtime,
+                    )
                 add_verify_stage(
                     "target_block_lm_head_sample",
                     (time.perf_counter() - t_sample0) * 1000 if stage_timings is not None else 0.0,
@@ -7333,6 +7357,9 @@ class Qwen35GGUFResidentSession:
                     }
                     for layer_id in sorted(capture_layer_boundary_ids)
                 }
+            ),
+            lm_head_logits_f32=(
+                None if lm_head_logits_host is None else np.ascontiguousarray(lm_head_logits_host, dtype=np.float32)
             ),
             linear_state_rows_captured=bool(capture_linear_state_rows),
         )

@@ -660,3 +660,18 @@ should be boring.
   hipEngine's dense-attention kernel math for the seq-position-49 divergence.
 - Remove when: llama.cpp tensor/KV parity is either achieved or superseded by a
   more complete graph-tensor trace facility. Keep it default-off until then.
+
+## `--record-target-topk-scores`
+- Added 2026-07-03. Bench flag that asks `verify_target_block()` to copy the
+  already-materialized full target lm-head logits back to host for block-verifier
+  rows and serialize compact `target_lm_head_score_rows` with top-k plus
+  candidate-token scores. `--target-score-candidate-tokens` adds explicit
+  llama.cpp near-tie tokens to the candidate list.
+- Purpose: diagnose the active llama.cpp parity miss on target verifier
+  near-ties without relying on forced-target replay. The first smoke artifact
+  `benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json` populated
+  three live target verifier rows on the active `llama-compat` direct-commit
+  shape.
+- Remove when: target hidden-to-logit parity is closed or replaced by a broader
+  cross-engine tensor trace. Keep it default-off; the extra full-logit D2H copy
+  makes it invalid for retained timing claims.
