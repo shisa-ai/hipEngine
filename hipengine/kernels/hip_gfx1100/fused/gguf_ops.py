@@ -230,6 +230,37 @@ def gguf_add_rmsnorm_f32_bf16_f32_weight(
     )
 
 
+def gguf_add_rmsnorm_f32_f32_f32_weight(
+    x_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(hidden_size, "hidden_size")
+    _check_threads(threads)
+    _launch_add_rmsnorm(
+        "hipengine_gguf_add_rmsnorm_f32_f32_f32_weight",
+        (x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_bf16_add(
     a_ptr: int,
     b_ptr: int,
@@ -516,6 +547,11 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "add_rmsnorm", "gguf_f32_weight", "f32_residual_bf16_norm_out"),
         gguf_add_rmsnorm_f32_bf16_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "add_rmsnorm", "gguf_f32_weight", "f32_residual_f32_add_bf16_norm_out"),
+        gguf_add_rmsnorm_f32_f32_f32_weight,
         replace=replace,
     )
     register(
@@ -833,6 +869,7 @@ __all__ = [
     "build_gguf_ops",
     "gguf_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",
+    "gguf_add_rmsnorm_f32_f32_f32_weight",
     "gguf_bf16_add",
     "gguf_f32_bf16_add_out_f32",
     "gguf_gate_mul_bf16",

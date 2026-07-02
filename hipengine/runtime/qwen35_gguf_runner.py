@@ -45,6 +45,7 @@ from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, build_cast, f32_t
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_add_rmsnorm_f32_bf16_f32_weight,
+    gguf_add_rmsnorm_f32_f32_f32_weight,
     gguf_bf16_add,
     gguf_f32_bf16_add_out_f32,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
@@ -163,6 +164,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
     gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out,
+    gguf_q8_0_dp4a_rowtile4_gemv_f32_f32_out,
     gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out,
     gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out,
 )
@@ -2599,7 +2601,37 @@ class Qwen35GGUFFullStackRunner:
                     f"{stage_prefix}_final_state_copy",
                     t_stage,
                 )
-            if not _try_launch_dense_q8_single_dp4a_f32(
+            attn_out_f32_ptr: int | None = None
+            f32_attn_out_ready = False
+            if (
+                _gguf_verify_f32_attn_out_enabled()
+                and hidden_f32_ptr is not None
+                and out_f32_ptr is not None
+                and getattr(scratch, "conv_out", None) is not None
+                and int(getattr(scratch.conv_out, "nbytes", 0)) >= rows * self.hidden_size * DType.FP32.itemsize
+            ):
+                f32_attn_out_ready = _try_launch_dense_q8_single_dp4a_f32_out(
+                    layer.weight("ssm_out"),
+                    scratch.recurrent_out.ptr,
+                    scratch.conv_out.ptr,
+                    scratch,
+                    rows=rows,
+                    in_features=cfg.ssm_inner_size,
+                    out_features=self.hidden_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                if f32_attn_out_ready:
+                    attn_out_f32_ptr = scratch.conv_out.ptr
+                    f32_to_bf16(
+                        int(attn_out_f32_ptr),
+                        scratch.attn_out.ptr,
+                        rows * self.hidden_size,
+                        stream=stream,
+                        library=cast_library,
+                        runtime=runtime,
+                    )
+            if not f32_attn_out_ready and not _try_launch_dense_q8_single_dp4a_f32(
                 layer.weight("ssm_out"),
                 scratch.recurrent_out.ptr,
                 scratch.attn_out.ptr,
@@ -2639,6 +2671,7 @@ class Qwen35GGUFFullStackRunner:
                 expert_sidecar=expert_sidecar,
                 hidden_f32_ptr=hidden_f32_ptr,
                 out_f32_ptr=out_f32_ptr,
+                attn_out_f32_ptr=attn_out_f32_ptr,
                 stage_timings=stage_timings,
                 sync_stage_timings=sync_stage_timings,
                 stage_prefix=f"{stage_prefix}_ffn",
@@ -2993,6 +3026,7 @@ class Qwen35GGUFFullStackRunner:
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         hidden_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
+        attn_out_f32_ptr: int | None = None,
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn",
@@ -3008,18 +3042,32 @@ class Qwen35GGUFFullStackRunner:
             if hidden_f32_ptr is None or out_f32_ptr is None:
                 raise ValueError("hidden_f32_ptr and out_f32_ptr must be provided together")
             post_attention_norm_ptr = layer.weight("post_attention_norm").allocation().tensor.ptr
-            gguf_add_rmsnorm_f32_bf16_f32_weight(
-                int(hidden_f32_ptr),
-                attn_out_ptr,
-                post_attention_norm_ptr,
-                scratch.post_norm.ptr,
-                int(out_f32_ptr),
-                rows=rows,
-                hidden_size=self.hidden_size,
-                eps=self.weights.config.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
+            if attn_out_f32_ptr is not None and _gguf_verify_f32_attn_out_enabled():
+                gguf_add_rmsnorm_f32_f32_f32_weight(
+                    int(hidden_f32_ptr),
+                    int(attn_out_f32_ptr),
+                    post_attention_norm_ptr,
+                    scratch.post_norm.ptr,
+                    int(out_f32_ptr),
+                    rows=rows,
+                    hidden_size=self.hidden_size,
+                    eps=self.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            else:
+                gguf_add_rmsnorm_f32_bf16_f32_weight(
+                    int(hidden_f32_ptr),
+                    attn_out_ptr,
+                    post_attention_norm_ptr,
+                    scratch.post_norm.ptr,
+                    int(out_f32_ptr),
+                    rows=rows,
+                    hidden_size=self.hidden_size,
+                    eps=self.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
             if _gguf_verify_f32_post_norm_enabled():
                 if not hasattr(scratch, "post_norm_f32"):
                     raise ValueError("scratch is missing post_norm_f32 for verifier F32 post-norm diagnostic")
@@ -4131,6 +4179,7 @@ _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
 _GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
+_GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
@@ -4234,6 +4283,10 @@ def _gguf_verify_f32_residual_enabled() -> bool:
 
 def _gguf_verify_f32_attention_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_ATTENTION_NORM_ENV, False)
+
+
+def _gguf_verify_f32_attn_out_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_ATTN_OUT_ENV, False)
 
 
 def _gguf_verify_f32_post_norm_enabled() -> bool:
@@ -4461,6 +4514,49 @@ def _try_launch_dense_q8_single_dp4a_f32(
         runtime=runtime,
     )
     gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _try_launch_dense_q8_single_dp4a_f32_out(
+    weight: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in raw-Q8 q8_1/dp4a singleton route for F32 verifier outputs."""
+
+    if not _gguf_dense_q8_dp4a_f32_enabled() or int(rows) <= 1:
+        return False
+    raw = _dense_q8_raw_ptr(weight)
+    if raw is None:
+        return False
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_f32_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_rowtile4_gemv_f32_f32_out(
         q8_1_workspace_ptr,
         raw,
         out_ptr,

@@ -189,6 +189,36 @@ def test_dense_q8_dp4a_f32_route_launches_f32_single_rowtile(monkeypatch: pytest
     assert calls[1][1][:6] == (400, 20, 200, 2, 2048, 4096)
 
 
+def test_dense_q8_dp4a_f32_output_route_launches_f32_single_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32", "1")
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def quantize(*args, **kwargs):
+        calls.append(("quantize_f32", args, kwargs))
+
+    def dp4a_single(*args, **kwargs):
+        calls.append(("dp4a_single_f32_out", args, kwargs))
+
+    monkeypatch.setattr(qgr, "gguf_q4_k_quantize_f32_q8_1", quantize)
+    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_rowtile4_gemv_f32_f32_out", dp4a_single)
+
+    assert qgr._try_launch_dense_q8_single_dp4a_f32_out(
+        _weight(),
+        100,
+        200,
+        SimpleNamespace(moe_q8_1=_buf(400, nbytes=2 * (2048 // 32) * 36)),
+        rows=2,
+        in_features=2048,
+        out_features=4096,
+        stream=7,
+        runtime=SimpleNamespace(),
+    )
+
+    assert [name for name, _args, _kwargs in calls] == ["quantize_f32", "dp4a_single_f32_out"]
+    assert calls[0][1][:4] == (100, 400, 2, 2048)
+    assert calls[1][1][:6] == (400, 20, 200, 2, 2048, 4096)
+
+
 def test_dense_q8_dp4a_f32_route_launches_f32_pair_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", "1")
     calls: list[tuple[str, tuple, dict]] = []

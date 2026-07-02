@@ -12,6 +12,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     build_gguf_ops,
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_add_rmsnorm_f32_bf16_f32_weight,
+    gguf_add_rmsnorm_f32_f32_f32_weight,
     gguf_bf16_add,
     gguf_f32_bf16_add_out_f32,
     gguf_gate_repeat_value_bf16,
@@ -109,7 +110,9 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
     f32_norm_out = np.empty_like(x)
     f32_norm_out_f32 = np.empty_like(x_f32)
     f32_add_norm = np.empty_like(x)
+    f32_f32_add_norm = np.empty_like(x)
     f32_residual = np.empty_like(x_f32)
+    f32_f32_residual = np.empty_like(x_f32)
     f32_add = np.empty_like(x_f32)
     bufs = []
     try:
@@ -125,9 +128,26 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
         df32_norm = malloc(f32_norm_out.nbytes, runtime=runtime)
         df32_norm_f32 = malloc(f32_norm_out_f32.nbytes, runtime=runtime)
         df32_add_norm = malloc(f32_add_norm.nbytes, runtime=runtime)
+        df32_f32_add_norm = malloc(f32_f32_add_norm.nbytes, runtime=runtime)
         df32_res = malloc(f32_residual.nbytes, runtime=runtime)
+        df32_f32_res = malloc(f32_f32_residual.nbytes, runtime=runtime)
         df32_add = malloc(f32_add.nbytes, runtime=runtime)
-        bufs.extend((dadd, dnorm, dnorm_f32, dadd_norm, dres, df32_norm, df32_norm_f32, df32_add_norm, df32_res, df32_add))
+        bufs.extend(
+            (
+                dadd,
+                dnorm,
+                dnorm_f32,
+                dadd_norm,
+                dres,
+                df32_norm,
+                df32_norm_f32,
+                df32_add_norm,
+                df32_f32_add_norm,
+                df32_res,
+                df32_f32_res,
+                df32_add,
+            )
+        )
         gguf_bf16_add(dx.ptr, dy.ptr, dadd.ptr, x.size, library=library, runtime=runtime)
         gguf_rmsnorm_bf16_f32_weight(
             dx.ptr, dw.ptr, dnorm.ptr, 1, x.shape[1], 1.0e-6, library=library, runtime=runtime
@@ -165,6 +185,18 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
             library=library,
             runtime=runtime,
         )
+        gguf_add_rmsnorm_f32_f32_f32_weight(
+            dx_f32.ptr,
+            _dev(y_f32, runtime, bufs).ptr,
+            dw.ptr,
+            df32_f32_add_norm.ptr,
+            df32_f32_res.ptr,
+            1,
+            x.shape[1],
+            1.0e-6,
+            library=library,
+            runtime=runtime,
+        )
         gguf_f32_bf16_add_out_f32(dx_f32.ptr, dy.ptr, df32_add.ptr, x.size, library=library, runtime=runtime)
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(add_out), dadd, runtime=runtime)
@@ -175,7 +207,9 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
         copy_device_to_host(host_array_ptr(f32_norm_out), df32_norm, runtime=runtime)
         copy_device_to_host(host_array_ptr(f32_norm_out_f32), df32_norm_f32, runtime=runtime)
         copy_device_to_host(host_array_ptr(f32_add_norm), df32_add_norm, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_f32_add_norm), df32_f32_add_norm, runtime=runtime)
         copy_device_to_host(host_array_ptr(f32_residual), df32_res, runtime=runtime)
+        copy_device_to_host(host_array_ptr(f32_f32_residual), df32_f32_res, runtime=runtime)
         copy_device_to_host(host_array_ptr(f32_add), df32_add, runtime=runtime)
     finally:
         for buf in reversed(bufs):
@@ -204,6 +238,11 @@ def test_gguf_ops_bf16_add_and_f32_weight_rmsnorm() -> None:
     np.testing.assert_allclose(f32_residual, expected_f32_residual, rtol=1.0e-6, atol=1.0e-6)
     np.testing.assert_allclose(
         bf16_to_float32(f32_add_norm),
+        bf16_to_float32(float_array_to_bf16_bits(_rmsnorm(expected_f32_residual, weight))),
+    )
+    np.testing.assert_allclose(f32_f32_residual, expected_f32_residual, rtol=1.0e-6, atol=1.0e-6)
+    np.testing.assert_allclose(
+        bf16_to_float32(f32_f32_add_norm),
         bf16_to_float32(float_array_to_bf16_bits(_rmsnorm(expected_f32_residual, weight))),
     )
     np.testing.assert_allclose(f32_add, expected_f32_residual, rtol=1.0e-6, atol=1.0e-6)

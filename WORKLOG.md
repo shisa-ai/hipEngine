@@ -136229,3 +136229,43 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_verify_f32_attention_norm.py`
   - `python3 -m pytest tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_verify_f32_attention_norm.py -q` => **14 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-residual-bulk-control-diagnostic.json benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json`
+
+## 2026-07-02 - Verifier FP32 linear-attention output-to-residual split
+
+- Added default-off semantic diagnostic `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1`.
+  The row-bulk linear-attention verifier path can now run `ssm_out` through the
+  dense-Q8 dp4a `f32_f32_out` kernel, cast the BF16 mirror for existing captures
+  and unsupported downstream consumers, and feed the FP32 attention output
+  directly into a new fused FP32-residual + FP32-add post-attention RMSNorm
+  helper.
+- Added `hipengine_gguf_add_rmsnorm_f32_f32_f32_weight` to the GGUF fused ops
+  family and covered it in the existing HIP `gguf_ops` numerical test. Added
+  no-GPU routing tests for the F32-output dense-Q8 helper and post-attention
+  flag gate.
+- Ran the comparable pair-12 forced target probe on top of the residual +
+  attention-norm-output diagnostic:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-denseq8-diagnostic.json
+```
+
+  Result: still no semantic parity. The row still samples
+  `[15495, 539, 1151]` and accepts 2. Row-1 `539 - 26126` margin moves only
+  **+0.181982 -> +0.176634** (`26.173075 - 25.996441`), still opposite
+  llama.cpp's about **-0.00896**. This rules out the linear-attention `ssm_out`
+  BF16 output round before residual/RMSNorm as the main missing lever.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/kernels/hip_gfx1100/fused/gguf_ops.py hipengine/kernels/hip_gfx1100/fused/__init__.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_ops.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_verify_f32_attn_out.py`
+  - `python3 -m pytest tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_verify_f32_attn_out.py -q` => **15 passed**
+  - `python3 -m pytest tests/test_gguf_ops.py::test_gguf_ops_bf16_add_and_f32_weight_rmsnorm -q` => **1 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-denseq8-diagnostic.json`
