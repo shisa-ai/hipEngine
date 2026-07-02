@@ -135377,3 +135377,26 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   `post_moe_31` / `l_out_31` is **0.00528 MAE / 0.00671 RMSE /
   0.99871 cosine**. Active next target remains accumulated residual-boundary
   precision and final output_norm sensitivity, not one bad late-layer substage.
+
+## 2026-07-02 - Target output_norm recompute split for pair-12
+
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-output-norm-recompute-diagnostic.json`
+  from the existing raw row-1 hipEngine and llama.cpp layer-checkpoint dumps.
+  This is CPU-only and not a performance claim.
+- CPU formula used the GGUF `output_norm.weight` and metadata eps
+  **1e-6**:
+  `x * output_norm.weight / sqrt(mean(x^2) + eps)`.
+- Result: output_norm is not a separate implementation mismatch. CPU
+  output_norm from hipEngine pre-output exactly reproduces hipEngine
+  `verify_h` (**0 MAE / 0 RMSE**), and CPU output_norm from llama.cpp
+  `verify_pre_output_norm` exactly reproduces llama.cpp `verify_h`
+  (**0 MAE / 0 RMSE**). The pre-output residual delta is **0.01015 MAE /
+  0.01273 RMSE / 0.99931 cosine**; applying the same CPU output_norm to both
+  rows deterministically gives **0.07789 MAE / 0.09815 RMSE / 0.99908
+  cosine**, exactly the observed final hidden delta. BF16-rounding llama's
+  pre-output row barely changes that (**0.07787 MAE**).
+- Updated `docs/MTP-LLAMACPP-PARITY.md`: active semantic target is now
+  accumulated residual-boundary precision across target layers, not lm-head
+  ordering, output_norm implementation, final BF16 cast, or one bad layer-31
+  attention/MoE substage.
