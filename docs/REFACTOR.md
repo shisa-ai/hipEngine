@@ -494,11 +494,13 @@ should be boring.
 
 ## `--target-block-direct-partial-replay-mode` (diagnostic rejected)
 - Added 2026-07-02. Bench and forced-target-probe flag with choices
-  `serial-exact` (default) and `bulk-state-only`. It only affects
+  `serial-exact` (default), `bulk-state-only`, and `native-state-only`. It only affects
   direct-state block verification when a bulk verifier block is rejected or
-  partially accepted: after snapshot restore, `bulk-state-only` replays the
+  partially accepted: after snapshot restore, the state-only modes replay the
   accepted prefix with `verify_target_block(..., advance_state_only=True)` and
-  keeps token scoring from the original full-block pass.
+  keep token scoring from the original full-block pass. `native-state-only`
+  keeps bulk scoring but uses the native row-serial-attention verifier only for
+  that state replay.
 - Purpose: test whether the semantic-safe `llama-compat` replay/commit bucket
   can skip serial accepted-prefix replay without changing state lifecycle.
 - Result: rejected by lifecycle comparator before any speed run. Artifact
@@ -506,10 +508,13 @@ should be boring.
   reports `first_mismatch` at cycle 3. The visible token still matches
   `[65342]`, but `bulk_state_only_replay` diverges from
   `serial_exact_accepted_prefix` in hidden seed plus Conv/GDN state across 61
-  fingerprints.
+  fingerprints. The active-shape native replay artifact
+  `benchmarks/results/2026-07-02-mtp-state-lifecycle-native-state-only-partial-replay-active-compare.json`
+  also fails at cycle 3 with matching visible token `[65342]` but 59
+  hidden/linear-state mismatches.
 - Remove when: a true prefix-equivalent partial commit/capture path lands, or
   when this negative evidence is no longer needed. Do not promote
-  `bulk-state-only` into any retained route.
+  either state-only replay mode into any retained route.
 
 ## `--verify-lm-head-q6-top1-dp4a` / verifier lm-head X8 sidecar
 - Added 2026-07-01. Bench flag `--verify-lm-head-q6-top1-dp4a` sets

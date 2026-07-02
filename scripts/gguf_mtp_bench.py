@@ -143,7 +143,7 @@ def target_block_state_replay_uses_serial_exact(
     if bool(replay_state_commit) or verify_mode == "serial-exact":
         return True
     if bool(direct_state_commit):
-        return direct_partial_replay_mode != "bulk-state-only"
+        return direct_partial_replay_mode not in {"bulk-state-only", "native-state-only"}
     return False
 
 
@@ -798,13 +798,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--target-block-direct-partial-replay-mode",
-        choices=("serial-exact", "bulk-state-only"),
+        choices=("serial-exact", "bulk-state-only", "native-state-only"),
         default="serial-exact",
         help=(
             "Diagnostic: when direct-state block verification rejects or partially accepts a block, "
             "restore the snapshot and replay the accepted prefix with either the serial-exact target "
-            "path (default, semantic baseline) or the bulk verifier in advance_state_only mode. "
-            "The bulk-state-only mode never uses replayed token IDs for scoring."
+            "path (default, semantic baseline), the bulk verifier in advance_state_only mode, or "
+            "the native row-serial-attention verifier in advance_state_only mode. State-only modes "
+            "never use replayed token IDs for scoring."
         ),
     )
     parser.add_argument(
@@ -2660,9 +2661,14 @@ def main(argv: list[str] | None = None):
                                 # state; the target tokens are already known from the
                                 # full-block pass (deterministic), so skip the replay's
                                 # LM-head sampling and reuse block_target_tokens.
+                                state_only_mode = (
+                                    "native"
+                                    if args.target_block_direct_partial_replay_mode == "native-state-only"
+                                    else args.target_block_verify_mode
+                                )
                                 replay_result = session.verify_target_block(
                                     block_inputs[:consumed_rows],
-                                    bulk_attention_mode=args.target_block_verify_mode,
+                                    bulk_attention_mode=state_only_mode,
                                     use_wmma_prefill=bool(args.target_block_wmma_prefill),
                                     advance_state_only=True,
                                     record_stage_timings=bool(args.record_cycle_stage_timings),

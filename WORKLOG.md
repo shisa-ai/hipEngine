@@ -136829,3 +136829,41 @@ python3 scripts/gguf_mtp_bench.py \
 - Next target: implement a real prefix-equivalent partial commit/capture path
   for direct-state bulk verifier rows; bulk `advance_state_only` replay is not a
   valid substitute for serial accepted-prefix replay.
+
+## 2026-07-02 - Direct partial native state-only replay rejected
+
+- Extended `--target-block-direct-partial-replay-mode` with
+  `native-state-only`: keep the original bulk block for token scoring, but after
+  snapshot restore replay the accepted prefix through `verify_target_block(...,
+  bulk_attention_mode="native", advance_state_only=True)`. This tested whether
+  row-serial attention plus skipped LM-head could replace serial-exact replay.
+- Validation before GPU: `python3 -m py_compile scripts/gguf_mtp_bench.py
+  scripts/gguf_mtp_forced_target_probe.py`; `PYTHONPATH=. pytest
+  tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_forced_target_probe.py
+  -q`.
+- Active-shape lifecycle comparator command:
+  ```bash
+  HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+  HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 \
+  HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+  PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py \
+    --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json \
+    --cycle 12 --target-block-verify-mode bulk --no-target-block-wmma-prefill \
+    --target-block-direct-partial-replay-mode native-state-only \
+    --state-lifecycle-compare \
+    --output benchmarks/results/2026-07-02-mtp-state-lifecycle-native-state-only-partial-replay-active-compare.json
+  ```
+- Result: rejected. `first_mismatch` occurs at cycle 3. Visible tokens still
+  match (`[65342]`), but direct source `native_state_only_replay` diverges from
+  replay source `serial_exact_accepted_prefix` in hidden seed plus Conv/GDN
+  state across 59 fingerprints. No speed run was retained because the lifecycle
+  gate failed.
+- Interpretation: changing the accepted-prefix replay scheduler is not enough.
+  The remaining fix must make the captured direct-state partial row
+  prefix-equivalent to serial, or avoid relying on bulk-row state for
+  rejected/partial verifier transactions.

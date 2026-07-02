@@ -21,12 +21,12 @@ def test_parser_exposes_direct_partial_replay_mode() -> None:
             "12",
             "--state-lifecycle-compare",
             "--target-block-direct-partial-replay-mode",
-            "bulk-state-only",
+            "native-state-only",
         ]
     )
 
     assert args.state_lifecycle_compare is True
-    assert args.target_block_direct_partial_replay_mode == "bulk-state-only"
+    assert args.target_block_direct_partial_replay_mode == "native-state-only"
 
 
 def test_capture_moe_component_arrays_emits_weighted_and_shared_gated_terms() -> None:

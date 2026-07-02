@@ -1028,14 +1028,19 @@ def _run_lifecycle_cycle(
                     replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
                     state_source = "serial_exact_replay"
                 else:
+                    state_only_mode = "native" if direct_partial_replay_mode == "native-state-only" else mode
                     replay_result = session.verify_target_block(
                         verifier_inputs[:consumed_rows],
-                        bulk_attention_mode=mode,
+                        bulk_attention_mode=state_only_mode,
                         use_wmma_prefill=bool(use_wmma_prefill),
                         advance_state_only=True,
                     )
                     replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
-                    state_source = "bulk_state_only_replay"
+                    state_source = (
+                        "native_state_only_replay"
+                        if direct_partial_replay_mode == "native-state-only"
+                        else "bulk_state_only_replay"
+                    )
         else:
             if consumed_rows < len(verifier_inputs):
                 if snapshot is None:
@@ -1336,12 +1341,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-block-wmma-prefill", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument(
         "--target-block-direct-partial-replay-mode",
-        choices=("serial-exact", "bulk-state-only"),
+        choices=("serial-exact", "bulk-state-only", "native-state-only"),
         default="serial-exact",
         help=(
             "State lifecycle diagnostic: when the direct-state candidate partially accepts or rejects a block, "
             "restore the snapshot and replay the accepted prefix through either serial-exact or the bulk "
-            "advance_state_only path. Token scoring still comes from the original full-block pass."
+            "or native advance_state_only path. Token scoring still comes from the original full-block pass."
         ),
     )
     parser.add_argument(

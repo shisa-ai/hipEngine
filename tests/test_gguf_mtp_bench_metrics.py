@@ -610,13 +610,13 @@ def test_arg_parser_exposes_target_block_direct_partial_replay_mode() -> None:
             "--target-block-verify",
             "--target-block-direct-state-commit",
             "--target-block-direct-partial-replay-mode",
-            "bulk-state-only",
+            "native-state-only",
         ]
     )
 
     assert args.target_block_verify is True
     assert args.target_block_direct_state_commit is True
-    assert args.target_block_direct_partial_replay_mode == "bulk-state-only"
+    assert args.target_block_direct_partial_replay_mode == "native-state-only"
 
 
 def test_target_block_direct_commit_exactness_policy() -> None:
@@ -669,6 +669,12 @@ def test_target_block_replay_state_policy_uses_serial_exact_state() -> None:
         direct_state_commit=True,
         verify_mode="bulk",
         direct_partial_replay_mode="bulk-state-only",
+    ) is False
+    assert target_block_state_replay_uses_serial_exact(
+        replay_state_commit=False,
+        direct_state_commit=True,
+        verify_mode="bulk",
+        direct_partial_replay_mode="native-state-only",
     ) is False
     assert target_block_state_replay_uses_serial_exact(
         replay_state_commit=True,
