@@ -194,15 +194,19 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
   existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
   The follow-up diagnostic also feeds layer-entry attention RMSNorm from FP32
   residual rows when available, but intentionally does not claim full llama.cpp
-  graph parity. `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` extends the probe by
-  materializing post-attention RMSNorm into FP32 scratch and independently
-  gating router / selected-q8 / shared-q8 consumers with
+  graph parity. `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` materializes
+  layer-entry attention RMSNorm into FP32 scratch, casts a BF16 mirror for
+  unsupported consumers, and routes dense-Q8 dp4a QKV / QKV+gate consumers from
+  the FP32 tensor when the F32 dense-Q8 diagnostic is already active.
+  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` extends the probe by materializing
+  post-attention RMSNorm into FP32 scratch and independently gating router /
+  selected-q8 / shared-q8 consumers with
   `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_{ROUTER,SELECTED_Q8,SHARED_Q8}`.
 - Purpose: test the current semantic hypothesis that accumulated BF16 verifier
   layer-boundary drift is enough to flip near-tie target decisions versus
@@ -214,7 +218,12 @@ should be boring.
   `benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json`
   reaches the old cycle-12 branch but still accepts `539`, with the wrong
   `539 - 26126` margin increasing from **+0.11822** to **+0.14309** versus
-  llama.cpp **-0.00896**. The post-norm split artifact
+  llama.cpp **-0.00896**. The attention-norm-output dense-Q8 split
+  (`benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json`,
+  control
+  `benchmarks/results/2026-07-02-mtp-target-f32-residual-bulk-control-diagnostic.json`)
+  moves the bulk pair-12 `539 - 26126` margin from **+0.31369** to
+  **+0.18198**, still opposite llama.cpp. The post-norm split artifact
   `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`
   shows the combined router+selected-q8 consumer path breaks the old trace at
   cycle 7; selected-q8 alone flips row 1 (`413 - 4071` **+0.13053 -> -0.14458**),

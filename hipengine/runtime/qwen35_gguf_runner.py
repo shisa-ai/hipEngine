@@ -1736,11 +1736,12 @@ class Qwen35GGUFFullStackRunner:
         hidden_f32_ptr: int | None,
         weight_ptr: int,
         out_ptr: int,
+        out_f32_ptr: int | None = None,
         rows: int,
         eps: float,
         stream: int,
         runtime: HipRuntime,
-    ) -> None:
+    ) -> int | None:
         if hidden_f32_ptr is None:
             gguf_rmsnorm_bf16_f32_weight(
                 hidden_ptr,
@@ -1752,6 +1753,27 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+            return None
+        if _gguf_verify_f32_attention_norm_enabled() and out_f32_ptr is not None:
+            gguf_rmsnorm_f32_f32_weight_out_f32(
+                int(hidden_f32_ptr),
+                weight_ptr,
+                int(out_f32_ptr),
+                rows=rows,
+                hidden_size=self.hidden_size,
+                eps=eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            f32_to_bf16(
+                int(out_f32_ptr),
+                out_ptr,
+                rows * self.hidden_size,
+                stream=stream,
+                library=self._cast_library(),
+                runtime=runtime,
+            )
+            return int(out_f32_ptr)
         else:
             gguf_rmsnorm_f32_f32_weight(
                 int(hidden_f32_ptr),
@@ -1763,6 +1785,7 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+            return None
 
     def _run_full_attention_decode_batch_layer_rows(
         self,
@@ -1798,17 +1821,37 @@ class Qwen35GGUFFullStackRunner:
         paged_attn_library = self._paged_attn_decode_library()
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
-        self._run_attention_norm_rows(
+        attn_norm_f32_ptr = self._run_attention_norm_rows(
             hidden_ptr=hidden_ptr,
             hidden_f32_ptr=hidden_f32_ptr,
             weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
             out_ptr=scratch.norm.ptr,
+            out_f32_ptr=(scratch.post_norm_f32.ptr if hasattr(scratch, "post_norm_f32") else None),
             rows=rows,
             eps=cfg.rms_norm_eps,
             stream=stream,
             runtime=runtime,
         )
-        if not _try_launch_dense_q8_triple_dp4a(
+        if not (
+            attn_norm_f32_ptr is not None
+            and _try_launch_dense_q8_triple_dp4a_f32(
+                layer.weight("attn_q"),
+                layer.weight("attn_k"),
+                layer.weight("attn_v"),
+                int(attn_norm_f32_ptr),
+                scratch.full_q.ptr,
+                scratch.full_k.ptr,
+                scratch.full_v.ptr,
+                scratch,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features_a=2 * self.q_width,
+                out_features_b=self.kv_width,
+                out_features_c=self.kv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+        ) and not _try_launch_dense_q8_triple_dp4a(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
             layer.weight("attn_v"),
@@ -2306,11 +2349,12 @@ class Qwen35GGUFFullStackRunner:
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
         t_norm_qkv_gate_ms = 0.0
-        self._run_attention_norm_rows(
+        attn_norm_f32_ptr = self._run_attention_norm_rows(
             hidden_ptr=hidden_ptr,
             hidden_f32_ptr=hidden_f32_ptr,
             weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
             out_ptr=scratch.norm.ptr,
+            out_f32_ptr=(scratch.post_norm_f32.ptr if hasattr(scratch, "post_norm_f32") else None),
             rows=rows,
             eps=cfg.rms_norm_eps,
             stream=stream,
@@ -2324,23 +2368,70 @@ class Qwen35GGUFFullStackRunner:
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_norm", norm_ms)
             t_stage = time.perf_counter()
         qkv_gate_route = "pair"
-        pair_fused = _try_launch_dense_q8_pair_dp4a(
-            layer.weight("attn_qkv"),
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.linear_qkv.ptr,
-            scratch.linear_z.ptr,
-            scratch,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features_a=self.linear_qkv_width,
-            out_features_b=cfg.ssm_inner_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        if pair_fused:
-            qkv_gate_route = "dense_q8_dp4a"
-        else:
+        pair_fused = False
+        if attn_norm_f32_ptr is not None:
+            pair_fused = _try_launch_dense_q8_pair_dp4a_f32(
+                layer.weight("attn_qkv"),
+                layer.weight("attn_gate"),
+                int(attn_norm_f32_ptr),
+                scratch.linear_qkv.ptr,
+                scratch.linear_z.ptr,
+                scratch,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features_a=self.linear_qkv_width,
+                out_features_b=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            if pair_fused:
+                qkv_gate_route = "dense_q8_dp4a_f32"
+            elif (
+                _gguf_linear_supports_f32_activation(layer.weight("attn_qkv"))
+                and _gguf_linear_supports_f32_activation(layer.weight("attn_gate"))
+            ):
+                launch_gguf_linear(
+                    layer.weight("attn_qkv"),
+                    int(attn_norm_f32_ptr),
+                    scratch.linear_qkv.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.linear_qkv_width,
+                    activation_dtype=GGUF_ACTIVATION_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("attn_gate"),
+                    int(attn_norm_f32_ptr),
+                    scratch.linear_z.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=cfg.ssm_inner_size,
+                    activation_dtype=GGUF_ACTIVATION_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                pair_fused = True
+                qkv_gate_route = "f32_singletons"
+        if not pair_fused:
+            pair_fused = _try_launch_dense_q8_pair_dp4a(
+                layer.weight("attn_qkv"),
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                scratch.linear_z.ptr,
+                scratch,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features_a=self.linear_qkv_width,
+                out_features_b=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            if pair_fused:
+                qkv_gate_route = "dense_q8_dp4a"
+        if not pair_fused:
             pair_fused = launch_gguf_linear_pair(
                 layer.weight("attn_qkv"),
                 layer.weight("attn_gate"),
@@ -4039,6 +4130,7 @@ _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
+_GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
@@ -4138,6 +4230,10 @@ def _gguf_verify_lm_head_q6_top1_dp4a_enabled() -> bool:
 
 def _gguf_verify_f32_residual_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_RESIDUAL_ENV, False)
+
+
+def _gguf_verify_f32_attention_norm_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_ATTENTION_NORM_ENV, False)
 
 
 def _gguf_verify_f32_post_norm_enabled() -> bool:
@@ -4408,6 +4504,63 @@ def _try_launch_dense_q8_triple_dp4a(
     if q8_1_workspace_ptr is None:
         return False
     gguf_q4_k_quantize_bf16_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw_a,
+        raw_b,
+        raw_c,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        out_features_c,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _try_launch_dense_q8_triple_dp4a_f32(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    weight_c: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    out_c_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    out_features_c: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in raw-Q8 q8_1/dp4a triple route for F32 verifier activations."""
+
+    if not _gguf_dense_q8_dp4a_f32_enabled() or int(rows) <= 1:
+        return False
+    raw_a = _dense_q8_raw_ptr(weight_a)
+    raw_b = _dense_q8_raw_ptr(weight_b)
+    raw_c = _dense_q8_raw_ptr(weight_c)
+    if raw_a is None or raw_b is None or raw_c is None:
+        return False
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_f32_q8_1(
         x_ptr,
         q8_1_workspace_ptr,
         rows,

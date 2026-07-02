@@ -136177,3 +136177,55 @@ python3 scripts/llamacpp_mtp_validate_final_output_projection.py \
   - `python3 -m pytest tests/test_llamacpp_mtp_validate_final_output_projection.py tests/test_llamacpp_mtp_final_output_cont_trace_patch.py -q` => **7 passed**
   - `jq empty benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.json benchmarks/results/2026-07-02-mtp-target-layer0-final-output-cont-reprojection-diagnostic.json`
   - `git -C /home/lhl/llama.cpp/llama.cpp-hip apply --check /home/lhl/hipEngine/benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.patch`
+
+## 2026-07-02 - Verifier FP32 attention-norm-output projection-input split
+
+- Added default-off semantic diagnostic
+  `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1`. When the verifier FP32 residual
+  stream is active and an FP32 scratch buffer is available, layer-entry
+  attention RMSNorm now materializes FP32 output, casts a BF16 mirror for
+  unsupported consumers, and routes dense-Q8 dp4a QKV / QKV+gate consumers from
+  the FP32 tensor. Normal/default paths still use the existing BF16 norm buffer.
+- Added `_try_launch_dense_q8_triple_dp4a_f32` for full-attention Q/K/V
+  verifier rows and reused the existing F32 dense-Q8 pair path for
+  linear-attention QKV/gate rows. Added no-GPU tests for the F32 triple launcher
+  and the attention-norm diagnostic helper.
+- Ran the comparable bulk pair-12 forced target A/B on the active trace:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-residual-bulk-control-diagnostic.json
+
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json
+```
+
+  Result: the new split moves in the right direction but does not close semantic
+  parity. Both rows still sample `[15495, 539, 1151]` and accept 2. The bulk
+  control row-1 margin is `539 - 26126` **+0.313690** (`26.152843 -
+  25.839153`); with FP32 attention-norm output feeding dense-Q8 projections the
+  margin drops to **+0.181982** (`26.196577 - 26.014595`). llama.cpp remains on
+  the opposite side at about **-0.00896**. The remaining suspect is projection
+  output/intermediate precision, not just attention-norm projection input.
+- A combined
+  `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1`
+  pair-12 replay failed during prior-cycle direct-state replay at cycle 2
+  (`[40798, 1590, 1103]` vs trace `[40798, 25, 1103]`), so it is not a
+  pair-12 evidence row.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_verify_f32_attention_norm.py`
+  - `python3 -m pytest tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_verify_f32_attention_norm.py -q` => **14 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-residual-bulk-control-diagnostic.json benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json`

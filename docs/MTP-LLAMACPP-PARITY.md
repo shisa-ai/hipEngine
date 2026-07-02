@@ -170,6 +170,20 @@ still reaches pair 12 and ranks `539` over `26126` by **+0.123926 logits**.
 That made the selected/shared internals testable rather than suspect by
 omission.
 
+The next F32 projection-input split is now measured. A new default-off
+`HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` diagnostic materializes layer-entry
+attention RMSNorm into FP32 scratch, keeps the BF16 mirror for unsupported
+callers, and routes dense-Q8 dp4a QKV / QKV+gate consumers from the FP32 tensor.
+On the active pair-12 bulk verifier probe this moves the row-1
+`539 - 26126` margin in the right direction, from **+0.31369** under the
+FP32-residual bulk control to **+0.18198**, but it still samples
+`[15495, 539, 1151]` and accepts 2 versus llama.cpp's `[15495, 26126]`.
+So attention-norm output + dense-Q8 projection input precision is part of the
+hidden drift budget, but it is not the missing parity fix. The remaining live
+suspects are projection/output contracts that still round through BF16 after
+the projection: selected/shared gate/up/down outputs, SwigLU intermediates,
+shared output, and the combine path versus llama.cpp's GGML F32 graph tensors.
+
 The follow-up layer-0/1 fine-MoE comparison now rules out a hidden early
 selected/shared combine cliff. Layer 0 router top-k matches llama.cpp; selected
 weighted rows are at most **0.0000764 MAE** by common expert, shared-gate logit
@@ -358,6 +372,7 @@ Current source artifacts:
 | hipEngine vs llama.cpp target output_norm recompute diagnostic | `benchmarks/results/2026-07-02-mtp-target-output-norm-recompute-diagnostic.json` | Diagnostic-only CPU recompute from the raw row-1 pre-output residuals; `performance_claim=false`. Using `output_norm.weight` and `eps=1e-6`, CPU `x * weight / sqrt(mean(x^2)+eps)` exactly reproduces hipEngine `verify_h` from hipEngine `pre_output_norm` and exactly reproduces llama.cpp `verify_h` from llama.cpp `verify_pre_output_norm` (**0 MAE** for both). The pre-output residual delta is **0.01015 MAE / 0.01273 RMSE / 0.99931 cosine**; applying the same CPU output_norm to both rows deterministically produces **0.07789 MAE / 0.09815 RMSE / 0.99908 cosine**, exactly matching the observed final hidden delta. Rounding llama.cpp pre-output to BF16 barely changes it (**0.07787 MAE**), so final output_norm and final-boundary BF16 rounding are not separate implementation suspects. |
 | hipEngine FP32 residual-boundary verifier slice | `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json` | Diagnostic-only opt-in `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`; `performance_claim=false`. The slice keeps verifier target layer residual outputs in FP32 while preserving BF16 mirrors for existing projection inputs. It proves residual precision is semantically active: replaying the old cycle-12 target trace fails earlier at cycle 2, where exact hipEngine samples `[40798, 25, 1103]` and accepts 2, while the FP32-residual slice samples `[40798, 1590, 1103]` and accepts 1. Row-1 logits flip from exact `25` rank 1 / `1590` rank 2 to FP32-residual `1590` rank 1 / `25` rank 2. Exact-vs-slice row-1 pre-output hidden moves **0.00793 MAE / 0.01048 RMSE / 0.99944 cosine** and post-output hidden moves **0.06757 MAE / 0.08528 RMSE / 0.99943 cosine**. This confirms the precision hypothesis is live, but the residual-only slice changes the cycle path before the old pair-12 accept/reject. |
 | hipEngine FP32 residual + attention-norm-input verifier slice | `benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json` | Diagnostic-only extension of `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`; `performance_claim=false`. The verifier now feeds layer-entry attention RMSNorm from FP32 residual rows when available. This reaches the old cycle-12 branch, but it still samples `[15495, 539, 1151]` and accepts 2. Row 1 ranks token `539` over `26126` with logits **26.05737** vs **25.91428**, margin **+0.14309**. That is farther from llama.cpp than the prior hipEngine serial-exact margin (**+0.11822**) and still opposite llama.cpp (**-0.00896**, `26126` over `539`). Attention-norm input precision alone is therefore not the missing parity fix; remaining suspects are BF16 projection-input/output boundaries inside attention and selected/shared FFN/MoE. |
+| hipEngine FP32 attention-norm output + dense-Q8 projection-input slice | `benchmarks/results/2026-07-02-mtp-target-f32-residual-bulk-control-diagnostic.json`, `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json` | Diagnostic-only bulk verifier A/B; `performance_claim=false`. New flag `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` materializes attention RMSNorm into FP32 scratch, casts a BF16 mirror for existing kernels, and routes dense-Q8 dp4a QKV / QKV+gate consumers from the FP32 tensor when `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32=1` is already active. Pair-12 still samples `[15495, 539, 1151]` and accepts 2, but the row-1 `539 - 26126` margin moves from the FP32-residual bulk control **+0.31369** (`26.15284 - 25.83915`) to **+0.18198** (`26.19658 - 26.01460`). This is the first projection-input F32 slice that moves toward llama.cpp, but it remains opposite llama.cpp's **-0.00896** and does not close semantic parity. |
 | hipEngine FP32 post-attention-norm consumer split | `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json` | Diagnostic-only extension adding `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` plus sub-flags for router, selected q8_1, and shared q8_1 consumers; `performance_claim=false`. Combined router+selected-q8 fails the old trace at cycle 7: row 1 flips from trace token `413` to draft token `4071`. Split margins for `413 - 4071`: control **+0.13053**, router-only **+0.08784**, selected-q8-only **-0.14458**, combined **-0.03290**. Router-only reaches pair 12 but worsens the original mismatch: `539 - 26126` becomes **+0.33520** versus control **+0.14309** and llama.cpp **-0.00896**. This rules out post-attn norm/router/input-q8 precision as the missing fix and pushes the suspect to true GGML-like F32 projection/output contracts. |
 | hipEngine FP32 post-norm shared fallback fix smoke | `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-shared-fallback-smoke.json` | Diagnostic-only forced pair-12 smoke after fixing the `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8` fallback: when shared gate/up weights support F32 activation, the fallback now bypasses BF16 pair fusion and launches F32-input singleton shared projections. The full `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` slice now reaches the pair-12 branch instead of the earlier cycle-7 failure, but still samples `[15495, 539, 1151]` and accepts 2. Row 1 ranks `539` over `26126`: logits **26.064096** vs **25.940170**, margin **+0.123926**. This fixes the diagnostic coverage bug but does not close semantic parity; remaining work is selected/shared intermediate and down-output precision, not just post-norm shared input precision. |
 | hipEngine vs llama.cpp target pre-output-norm diagnostic | `benchmarks/results/2026-07-02-mtp-target-pre-output-norm-diagnostic.json` | Superseded diagnostic-only forced pair-12 row-1 split. Its hipEngine capture is still valid, but the llama-side raw `h_nextn_pre_output_norm` trace was later shown to be label-alignment ambiguous: the corrected `verify_pre_output_norm`/`verify_layer_output_39` capture above gives **0.01015 MAE**, not the old **0.2481 MAE** outlier. Keep this artifact only as provenance for why per-layer target labels were added. |
@@ -618,15 +633,20 @@ This is a CPU-only recompute using raw `pre_output_norm` rows and GGUF
 F32 residual-boundary verifier slice:
 `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json` and
 `benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json`;
+the attention-norm-output dense-Q8 split is
+`benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json`
+with bulk control
+`benchmarks/results/2026-07-02-mtp-target-f32-residual-bulk-control-diagnostic.json`;
 the post-attention norm split is
 `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`.
 This is an opt-in verifier-only experiment:
 `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`. It converts the verifier block's token
 embeddings from BF16 to FP32 once, accumulates target layer residual outputs in
 FP32, optionally feeds layer-entry attention RMSNorm from the FP32 residual
-stream, keeps BF16 mirrors for the existing projection kernels, and runs final
-output_norm from the FP32 residual stream. It is default-off and not a speed
-claim.
+stream, can materialize attention RMSNorm output into FP32 scratch for dense-Q8
+projection-input consumers, keeps BF16 mirrors for the existing projection
+kernels, and runs final output_norm from the FP32 residual stream. It is
+default-off and not a speed claim.
 
 | FP32 residual slice check | exact current | `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` | reading |
 | --- | ---: | ---: | --- |
@@ -647,6 +667,16 @@ branch, but does not move toward llama.cpp:
 | accepted draft tokens | **2** | **2** | **1** | Acceptance mismatch remains. |
 | `539 - 26126` logit margin | **+0.11822** | **+0.14309** | **-0.00896** | Attention-norm input precision moves the wrong near-tie farther from llama.cpp. |
 | row-1 top 2 | `539` then `26126` | `539` logit **26.05737**, `26126` logit **25.91428** | `26126` then `539` | The missing parity lever is downstream or inside remaining BF16 projection boundaries, not the layer-entry norm input alone. |
+
+The attention-norm-output + dense-Q8 projection-input split is more informative:
+it moves the bulk pair-12 margin toward llama.cpp, but still not far enough:
+
+| pair-12 bulk row-1 check | FP32 residual bulk control | + FP32 attention-norm output / dense-Q8 inputs | llama.cpp HIP | reading |
+| --- | ---: | ---: | ---: | --- |
+| sampled target tokens | `[15495, 539, 1151]` | `[15495, 539, 1151]` | `[15495, 26126]` | The new slice still accepts `539`. |
+| accepted draft tokens | **2** | **2** | **1** | Acceptance mismatch remains. |
+| `539 - 26126` logit margin | **+0.31369** | **+0.18198** | **-0.00896** | Attention norm output + dense-Q8 input precision explains part of the hidden drift but not the remaining tie-break. |
+| row-1 top 2 | `539` **26.15284**, `26126` **25.83915** | `539` **26.19658**, `26126` **26.01460** | `26126` then `539` | The next split must move beyond projection inputs and audit projection outputs / intermediates. |
 
 The next split carried post-attention RMSNorm itself into an FP32 scratch buffer
 under `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1`, with independent consumers for
