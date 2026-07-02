@@ -138815,3 +138815,42 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`1 passed`), and JSON validation
   passed.
+
+## 2026-07-03 - llama-compat verifier head uses FP32 hidden rows
+
+- Status checkpoint: tracked tree was clean after `ca571bf6` except existing
+  untracked benchmark artifacts. Current active lane before this change was
+  `llama-compat` B2 natural24 cyclecap24 at **71.11 tok/s**,
+  **14.087 ms/output**, acc/output **0.596**, target rows/output **1.171**;
+  llama.cpp HIP rerun remains **71.91 tok/s** and **14.269 ms/output**.
+- Implemented the next hidden-to-logit scoring parity step: when
+  `--verify-lm-head-q6-top1-dp4a` is active, `verify_target_block` now samples
+  target rows from the FP32 post-output-norm `hidden_seed_buf` rows and
+  `_verify_lm_head_q6_top1_dp4a()` quantizes them with
+  `gguf_q4_k_quantize_f32_q8_1`. The fallback exact/rowtile lm-head path stays
+  on the BF16 `final_scratch.norm` buffer.
+- Added focused coverage in `tests/test_qwen35_gguf_verify_lm_head_top1.py` for
+  the FP32 quantizer path while preserving the default BF16 behavior.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_verify_lm_head_top1.py
+  PYTHONPATH=. pytest -q tests/test_qwen35_gguf_verify_lm_head_top1.py
+  git diff --check
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  rocminfo | grep -E 'Name:|gfx' | head -40
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --output benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json
+  python3 -m json.tool benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json >/dev/null
+  ```
+  Pycompile passed, focused tests passed (`3 passed`), diff check passed, ROCm
+  reported gfx1151, and JSON validation passed.
+- Full-suite result on AMD Radeon 8060S / gfx1151:
+  **71.52 tok/s**, **14.005 ms/output**, **1.3055x AR**, acc/output **0.596**,
+  draft acceptance **0.777**, target rows/output **1.171**, verifier drain
+  **11.436 ms/output**, replay/commit **0.044 ms/output**, replay rows **0**,
+  direct-commit rows **95**, discarded rows **41** over **240** output tokens.
+  Versus the prior BF16-head cyclecap24 row this is **71.11 -> 71.52 tok/s**
+  and **14.087 -> 14.005 ms/output** with unchanged acceptance/economy.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`. Remaining gap vs llama.cpp HIP rerun is now
+  request/economy **71.52 vs 71.91 tok/s**, not stage wall; verifier and draft
+  parent buckets are faster than the traced llama.cpp rows.

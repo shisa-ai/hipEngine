@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-03
+
+- [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-style direct-commit compat B2 natural24 cyclecap24 full suite: MTP `71.11 -> 71.52 tok/s` (+0.58%) and cycle wall `14.087 -> 14.005 ms/output` (-0.58%) by feeding the direct dp4a verifier head from FP32 post-output-norm rows instead of the BF16 output-norm scratch; acceptance/economy unchanged (`acc/output 0.596`, draft acceptance `0.777`, target rows/output `1.171`), so the remaining gap vs llama.cpp HIP rerun is request/economy `71.52 vs 71.91 tok/s`, not stage wall. `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`.
+
 ## 2026-07-02
 
 - [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-style direct-commit compat B2 focused bonus-row parity: on `mixed_ja_en_translate` cycle 3 row 2 after both engines accept `[11,567]`, llama.cpp samples `668` with `8940 - 668 = -0.0096` logits, while hipEngine bulk, serial-exact, F32-residual, and wide-F32 probes all sample `8940` with margins `+0.519`, `+0.465`, `+0.413`, and `+0.437`; remaining compat gap is target hidden/logit parity, not verifier wall time. `benchmarks/results/2026-07-02-llamacpp-mtp-token-trace-b2-natural24-mixed-ja-en-translate.jsonl`, `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-cycle3.json`, `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32res-cycle3.json`, `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32wide-cycle3.json`, `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-serialexact-cycle3.json`.
