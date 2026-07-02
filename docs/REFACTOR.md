@@ -194,7 +194,7 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
   existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
@@ -204,6 +204,9 @@ should be boring.
   layer-entry attention RMSNorm into FP32 scratch, casts a BF16 mirror for
   unsupported consumers, and routes dense-Q8 dp4a QKV / QKV+gate consumers from
   the FP32 tensor when the F32 dense-Q8 diagnostic is already active.
+  `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1` additionally routes row-bulk
+  linear-attention `ssm_alpha`/`ssm_beta` from that FP32 attention-norm tensor to
+  mirror llama.cpp's `build_layer_attn_linear` source shape.
   `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1` keeps the row-bulk linear-attention
   `ssm_out` projection output in FP32 through the post-attention residual/RMSNorm
   add while preserving the BF16 mirror for existing captures and downstream
@@ -231,7 +234,11 @@ should be boring.
   split
   `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-denseq8-diagnostic.json`
   moves that margin only **+0.18198 -> +0.17663**, so the `ssm_out` BF16 round is
-  not the main missing semantic lever. The post-norm split artifact
+  not the main missing semantic lever. The alpha/beta F32 input split
+  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-denseq8-diagnostic.json`
+  is byte-identical to the attention-output slice and leaves the row-1 margin at
+  **+0.17663**, ruling out `ssm_alpha`/`ssm_beta` projection input precision for
+  the active branch. The post-norm split artifact
   `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`
   shows the combined router+selected-q8 consumer path breaks the old trace at
   cycle 7; selected-q8 alone flips row 1 (`413 - 4071` **+0.13053 -> -0.14458**),

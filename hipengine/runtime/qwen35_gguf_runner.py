@@ -1789,6 +1789,118 @@ class Qwen35GGUFFullStackRunner:
             )
             return None
 
+    def _run_linear_attention_alpha_beta_rows(
+        self,
+        layer,
+        norm_ptr: int,
+        norm_f32_ptr: int | None,
+        scratch,
+        *,
+        rows: int,
+        stream: int,
+        runtime: HipRuntime,
+    ) -> str:
+        cfg = self.weights.config
+        if norm_f32_ptr is not None and _gguf_verify_f32_alpha_beta_enabled():
+            if _try_launch_dense_q8_pair_dp4a_f32(
+                layer.weight("ssm_alpha"),
+                layer.weight("ssm_beta"),
+                int(norm_f32_ptr),
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                scratch,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features_a=cfg.ssm_time_step_rank,
+                out_features_b=cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            ):
+                return "dense_q8_dp4a_f32"
+            if (
+                _gguf_linear_supports_f32_activation(layer.weight("ssm_alpha"))
+                and _gguf_linear_supports_f32_activation(layer.weight("ssm_beta"))
+            ):
+                launch_gguf_linear(
+                    layer.weight("ssm_alpha"),
+                    int(norm_f32_ptr),
+                    scratch.linear_alpha.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=cfg.ssm_time_step_rank,
+                    activation_dtype=GGUF_ACTIVATION_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("ssm_beta"),
+                    int(norm_f32_ptr),
+                    scratch.linear_beta.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=cfg.ssm_time_step_rank,
+                    activation_dtype=GGUF_ACTIVATION_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                return "f32_singletons"
+        if cfg.is_moe:
+            launch_gguf_linear(
+                layer.weight("ssm_alpha"),
+                norm_ptr,
+                scratch.linear_alpha.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("ssm_beta"),
+                norm_ptr,
+                scratch.linear_beta.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            )
+            return "singletons"
+        if launch_gguf_linear_pair(
+            layer.weight("ssm_alpha"),
+            layer.weight("ssm_beta"),
+            norm_ptr,
+            scratch.linear_alpha.ptr,
+            scratch.linear_beta.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.ssm_time_step_rank,
+            stream=stream,
+            runtime=runtime,
+        ):
+            return "pair"
+        launch_gguf_linear(
+            layer.weight("ssm_alpha"),
+            norm_ptr,
+            scratch.linear_alpha.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.ssm_time_step_rank,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ssm_beta"),
+            norm_ptr,
+            scratch.linear_beta.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.ssm_time_step_rank,
+            stream=stream,
+            runtime=runtime,
+        )
+        return "fallback"
+
     def _run_full_attention_decode_batch_layer_rows(
         self,
         layer_id: int,
@@ -2088,11 +2200,12 @@ class Qwen35GGUFFullStackRunner:
         recurrent_state = scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise ValueError(f"layer {layer_id} has no linear-attention state")
-        self._run_attention_norm_rows(
+        attn_norm_f32_ptr = self._run_attention_norm_rows(
             hidden_ptr=hidden_ptr,
             hidden_f32_ptr=hidden_f32_ptr,
             weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
             out_ptr=scratch.norm.ptr,
+            out_f32_ptr=(scratch.post_norm_f32.ptr if hasattr(scratch, "post_norm_f32") else None),
             rows=1,
             eps=cfg.rms_norm_eps,
             stream=stream,
@@ -2134,59 +2247,15 @@ class Qwen35GGUFFullStackRunner:
             )
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
-        if cfg.is_moe:
-            launch_gguf_linear(
-                layer.weight("ssm_alpha"),
-                scratch.norm.ptr,
-                scratch.linear_alpha.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("ssm_beta"),
-                scratch.norm.ptr,
-                scratch.linear_beta.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-        elif not launch_gguf_linear_pair(
-            layer.weight("ssm_alpha"),
-            layer.weight("ssm_beta"),
+        self._run_linear_attention_alpha_beta_rows(
+            layer,
             scratch.norm.ptr,
-            scratch.linear_alpha.ptr,
-            scratch.linear_beta.ptr,
+            attn_norm_f32_ptr,
+            scratch,
             rows=1,
-            in_features=self.hidden_size,
-            out_features=cfg.ssm_time_step_rank,
             stream=stream,
             runtime=runtime,
-        ):
-            launch_gguf_linear(
-                layer.weight("ssm_alpha"),
-                scratch.norm.ptr,
-                scratch.linear_alpha.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("ssm_beta"),
-                scratch.norm.ptr,
-                scratch.linear_beta.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
+        )
         qwen35_linear_attn_conv_decode_bf16(
             scratch.linear_qkv.ptr,
             conv_state.ptr,
@@ -2477,59 +2546,29 @@ class Qwen35GGUFFullStackRunner:
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_qkv_gate_{qkv_gate_route}", qkv_gate_ms)
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_norm_qkv_gate", t_norm_qkv_gate_ms)
             t_stage = time.perf_counter()
-        if cfg.is_moe:
-            # The small dense time-step projections feed the recurrent update.
-            # Use the registry-dispatched GGUF linear path so qwen35moe's GGUF
-            # F32 alpha/beta tensors are consumed as F32, matching llama.cpp's
-            # materialized weights while keeping the existing BF16 stream ABI.
-            launch_gguf_linear(
-                layer.weight("ssm_alpha"),
-                scratch.norm.ptr,
-                scratch.linear_alpha.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("ssm_beta"),
-                scratch.norm.ptr,
-                scratch.linear_beta.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            launch_gguf_linear(
-                layer.weight("ssm_alpha"),
-                scratch.norm.ptr,
-                scratch.linear_alpha.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("ssm_beta"),
-                scratch.norm.ptr,
-                scratch.linear_beta.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_alpha_beta",
-            t_stage,
+        alpha_beta_route = self._run_linear_attention_alpha_beta_rows(
+            layer,
+            scratch.norm.ptr,
+            attn_norm_f32_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            runtime=runtime,
         )
+        if sync_stages and stage_timings is not None:
+            runtime.device_synchronize()
+            alpha_beta_ms = (time.perf_counter() - t_stage) * 1000
+            _add_sync_stage_timing(stage_timings, f"{stage_prefix}_alpha_beta", alpha_beta_ms)
+            _add_sync_stage_timing(stage_timings, f"{stage_prefix}_alpha_beta_{alpha_beta_route}", alpha_beta_ms)
+            t_stage = time.perf_counter()
+        else:
+            t_stage = _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_alpha_beta",
+                t_stage,
+            )
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
             qwen35_linear_attn_chain_conv_decode_bf16_tloop(
@@ -4179,6 +4218,7 @@ _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
 _GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
+_GGUF_VERIFY_F32_ALPHA_BETA_ENV = "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA"
 _GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
@@ -4283,6 +4323,10 @@ def _gguf_verify_f32_residual_enabled() -> bool:
 
 def _gguf_verify_f32_attention_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_ATTENTION_NORM_ENV, False)
+
+
+def _gguf_verify_f32_alpha_beta_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_ALPHA_BETA_ENV, False)
 
 
 def _gguf_verify_f32_attn_out_enabled() -> bool:

@@ -136269,3 +136269,45 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -m pytest tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_verify_f32_attn_out.py -q` => **15 passed**
   - `python3 -m pytest tests/test_gguf_ops.py::test_gguf_ops_bf16_add_and_f32_weight_rmsnorm -q` => **1 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-denseq8-diagnostic.json`
+
+## 2026-07-02 - Verifier FP32 linear-attention alpha/beta split
+
+- Added default-off semantic diagnostic `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1`.
+  When the verifier has already materialized FP32 attention-norm output, the
+  row-bulk linear-attention path can now route `ssm_alpha`/`ssm_beta` from that
+  FP32 tensor through dense-Q8 dp4a when available, or F32-activation singleton
+  GGUF linears otherwise. The existing `target_block_linear_attn_alpha_beta`
+  sync bucket remains stable; route-specific buckets are added only under
+  sync-stage timing.
+- Source anchor checked: llama.cpp
+  `/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp` builds `beta` and
+  `alpha` from the same normalized `cur` as QKV/Z in
+  `build_layer_attn_linear`, so this is the direct next projection-input split
+  after QKV/Z and `ssm_out`.
+- Ran the comparable pair-12 forced target probe on top of the residual +
+  attention-norm-output + attention-output diagnostic:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-denseq8-diagnostic.json
+```
+
+  Result: no semantic movement. The row still samples `[15495, 539, 1151]` and
+  accepts 2. Row-1 `539 - 26126` remains **+0.176634** (`26.173075 -
+  25.996441`), byte-identical to the prior attention-output diagnostic and
+  still opposite llama.cpp's about **-0.00896**. This rules out
+  `ssm_alpha`/`ssm_beta` projection input precision for the active branch.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_verify_f32_alpha_beta.py tests/test_qwen35_gguf_verify_f32_attention_norm.py tests/test_qwen35_gguf_verify_f32_attn_out.py`
+  - `python3 -m pytest tests/test_qwen35_gguf_verify_f32_attention_norm.py tests/test_qwen35_gguf_verify_f32_attn_out.py tests/test_qwen35_gguf_verify_f32_alpha_beta.py -q` => **10 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-denseq8-diagnostic.json`
