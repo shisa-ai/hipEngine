@@ -380,6 +380,182 @@ def _probe_serial(
     )
 
 
+def _boundary_array_summaries(
+    capture: Any,
+    *,
+    row_index: int,
+    input_token: int,
+    position: int,
+) -> tuple[dict[str, Any], dict[str, list[float]]]:
+    arrays: dict[str, np.ndarray | None] = {
+        "hidden_in": capture.hidden_in_f32,
+        "attn_out": capture.attn_out_f32,
+        "attn_residual": capture.residual_f32,
+        "attn_post_norm": capture.post_norm_f32,
+        "ffn_or_moe_down": capture.ffn_or_moe_down_f32,
+        "moe_shared_out": capture.moe_shared_out_f32,
+        "post_moe_delta_from_residual": (
+            np.asarray(capture.layer_out_f32, dtype=np.float32).reshape(-1)
+            - np.asarray(capture.residual_f32, dtype=np.float32).reshape(-1)
+        ),
+        "layer_out": capture.layer_out_f32,
+    }
+    summaries: dict[str, Any] = {}
+    values: dict[str, list[float]] = {}
+    for name, array in arrays.items():
+        if array is None:
+            continue
+        row = np.ascontiguousarray(np.asarray(array, dtype=np.float32).reshape(-1), dtype=np.float32)
+        summaries[name] = hidden_state_summary(
+            row,
+            label=f"target_verify_layer_{int(capture.layer_id)}_{name}",
+            depth=int(row_index),
+            token_id=int(input_token),
+            position=int(position),
+        )
+        values[name] = [float(value) for value in row]
+    return summaries, values
+
+
+def _capture_single_layer_boundary(
+    *,
+    args: argparse.Namespace,
+    compiler_version: str | None,
+    prompt_tokens: list[int],
+    cycles_to_replay: list[dict[str, Any]],
+    initial_prev_token: int,
+    initial_prev_position: int,
+    cycle_prev_token: int,
+    cycle_start_position: int,
+    verifier_inputs: list[int],
+    target_tokens: list[int],
+    layer_id: int,
+    row_index: int,
+    max_sequence_length: int,
+    include_raw: bool,
+) -> dict[str, Any]:
+    if row_index < 0 or row_index >= len(verifier_inputs):
+        raise ProbeError(
+            f"layer boundary row {row_index} outside verifier input length {len(verifier_inputs)}"
+        )
+
+    from hipengine.runtime.prefill import PrefillConfig
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    session = Qwen35GGUFResidentSession(
+        args.model,
+        compiler_version=compiler_version,
+        require_cached_build=bool(args.require_cached_build),
+        max_sequence_length=max_sequence_length,
+        use_wmma_prefill=bool(args.use_wmma_prefill),
+        use_gemv_decode=bool(args.use_gemv_decode),
+        prefill_config=PrefillConfig(),
+    )
+    try:
+        prefill = session.prefill(
+            prompt_tokens,
+            use_bulk=True,
+            bulk_attention_mode=str(args.prefill_attention_mode),
+            return_logits=False,
+            capture_hidden_seed_fp32=True,
+        )
+        current_prev = int(prefill.token_id)
+        if current_prev != initial_prev_token:
+            raise ProbeError(
+                f"boundary prefill token {current_prev} does not match trace initial_prev_token {initial_prev_token}"
+            )
+        if int(session.position) != initial_prev_position:
+            raise ProbeError(
+                f"boundary prefill position {session.position} does not match trace {initial_prev_position}"
+            )
+        current_prev, replay_rows = _replay_prior_cycles(
+            session,
+            cycles_to_replay,
+            current_prev=current_prev,
+            mode=str(args.replay_target_block_verify_mode or args.target_block_verify_mode),
+            use_wmma_prefill=bool(args.target_block_wmma_prefill),
+        )
+        if current_prev != cycle_prev_token:
+            raise ProbeError(
+                f"boundary replay prev token {current_prev} does not match cycle prev {cycle_prev_token}"
+            )
+        if int(session.position) != cycle_start_position:
+            raise ProbeError(
+                f"boundary replay position {session.position} does not match cycle start {cycle_start_position}"
+            )
+
+        prior_row_replay: list[dict[str, Any]] = []
+        for prior_row in range(row_index):
+            prior_input = int(verifier_inputs[prior_row])
+            result = session.step(prior_input, return_logits=False)
+            sampled = int(result.token_id)
+            expected = int(target_tokens[prior_row]) if prior_row < len(target_tokens) else None
+            if expected is not None and sampled != expected:
+                raise ProbeError(
+                    f"boundary row replay mismatch at row {prior_row}: sampled {sampled}, trace {expected}"
+                )
+            prior_row_replay.append(
+                {
+                    "row": int(prior_row),
+                    "position": int(cycle_start_position + prior_row),
+                    "input_token": int(prior_input),
+                    "sampled_token": int(sampled),
+                    "trace_target_token": expected,
+                }
+            )
+        if int(session.position) != int(cycle_start_position + row_index):
+            raise ProbeError(
+                f"boundary capture position {session.position} does not match row position "
+                f"{cycle_start_position + row_index}"
+            )
+
+        input_token = int(verifier_inputs[row_index])
+        position = int(cycle_start_position + row_index)
+        capture = session.capture_attention_layer(
+            input_token,
+            position=position,
+            layer_id=int(layer_id),
+            run_preceding_layers=True,
+        )
+        summaries, values = _boundary_array_summaries(
+            capture,
+            row_index=int(row_index),
+            input_token=input_token,
+            position=position,
+        )
+        record: dict[str, Any] = {
+            "layer": int(layer_id),
+            "row": int(row_index),
+            "position": int(position),
+            "input_token": int(input_token),
+            "trace_target_token": int(target_tokens[row_index]) if row_index < len(target_tokens) else None,
+            "capture": capture.as_summary_dict(),
+            "prior_cycle_replay": replay_rows,
+            "prior_row_replay": prior_row_replay,
+            "summaries": summaries,
+            "moe_selected_experts": (
+                None
+                if capture.moe_selected_experts_i64 is None
+                else [int(value) for value in np.asarray(capture.moe_selected_experts_i64).reshape(-1)]
+            ),
+            "moe_routing_weights": (
+                None
+                if capture.moe_routing_weights_f32 is None
+                else [float(value) for value in np.asarray(capture.moe_routing_weights_f32, dtype=np.float32).reshape(-1)]
+            ),
+            "moe_shared_gate": (
+                None
+                if capture.moe_shared_gate_f32 is None
+                else [float(value) for value in np.asarray(capture.moe_shared_gate_f32, dtype=np.float32).reshape(-1)]
+            ),
+        }
+        if include_raw:
+            record["values"] = values
+        return record
+    finally:
+        session.close()
+
+
 def _run_trace_block(
     session: Any,
     verifier_inputs: list[int],
@@ -530,6 +706,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         metavar="LAYER:ROW",
         help="Diagnostic only: include full FP32 post-layer BF16 residual values for LAYER:ROW.",
     )
+    parser.add_argument(
+        "--layer-boundary-row",
+        action="append",
+        type=_parse_layer_row,
+        default=[],
+        metavar="LAYER:ROW",
+        help="Diagnostic only: include a summary of sub-boundary buffers inside one target layer for LAYER:ROW.",
+    )
+    parser.add_argument(
+        "--raw-layer-boundary-row",
+        action="append",
+        type=_parse_layer_row,
+        default=[],
+        metavar="LAYER:ROW",
+        help="Diagnostic only: include full FP32 sub-boundary buffer values inside one target layer for LAYER:ROW.",
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -587,6 +779,14 @@ def main(argv: list[str] | None = None) -> int:
     raw_layer_output_rows = {(int(layer), int(row)) for layer, row in args.raw_layer_output_row}
     layer_output_capture_rows = layer_output_rows | raw_layer_output_rows
     capture_layer_output_hidden = sorted({int(layer) for layer, _row in layer_output_capture_rows})
+    layer_boundary_rows = {(int(layer), int(row)) for layer, row in args.layer_boundary_row}
+    raw_layer_boundary_rows = {(int(layer), int(row)) for layer, row in args.raw_layer_boundary_row}
+    layer_boundary_capture_rows = sorted(layer_boundary_rows | raw_layer_boundary_rows)
+    for layer_id, row_index in layer_boundary_capture_rows:
+        if int(row_index) >= len(verifier_inputs):
+            raise ProbeError(
+                f"layer boundary row {row_index} outside verifier input length {len(verifier_inputs)}"
+            )
     route_env = _apply_trace_route_env(workload, decode_repack=args.decode_repack)
     if _env_truthy("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"):
         raise ProbeError("direct verifier top-1 path is enabled; full row logits would be unavailable")
@@ -733,6 +933,27 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         session.close()
 
+    layer_boundary_captures: list[dict[str, Any]] = []
+    for layer_id, row_index in layer_boundary_capture_rows:
+        layer_boundary_captures.append(
+            _capture_single_layer_boundary(
+                args=args,
+                compiler_version=compiler_version,
+                prompt_tokens=prompt_tokens,
+                cycles_to_replay=cycles[:cycle_index],
+                initial_prev_token=int(initial_prev_token),
+                initial_prev_position=int(initial_prev_position),
+                cycle_prev_token=int(cycle_prev_token),
+                cycle_start_position=int(cycle_start_position),
+                verifier_inputs=verifier_inputs,
+                target_tokens=target_tokens,
+                layer_id=int(layer_id),
+                row_index=int(row_index),
+                max_sequence_length=int(max_sequence_length),
+                include_raw=(int(layer_id), int(row_index)) in raw_layer_boundary_rows,
+            )
+        )
+
     artifact = {
         "schema": 1,
         "kind": "hipengine_gguf_mtp_forced_target_probe",
@@ -777,6 +998,7 @@ def main(argv: list[str] | None = None) -> int:
             "sampled_tokens": sampled_tokens,
             "accepted_draft_tokens": int(accepted_draft_tokens),
             "rows": rows,
+            "layer_boundary_captures": layer_boundary_captures,
         },
         "notes": [
             "Diagnostic only: forced-prefix target verifier score capture, not a performance run.",
@@ -789,6 +1011,9 @@ def main(argv: list[str] | None = None) -> int:
             "pre_output_norm_hidden_values is emitted only for --raw-pre-output-norm-row diagnostics.",
             "layer_output_hidden_summaries is emitted only for requested --layer-output-row or --raw-layer-output-row LAYER:ROW diagnostics.",
             "layer_output_hidden_values is emitted only for --raw-layer-output-row LAYER:ROW diagnostics.",
+            "layer_boundary_captures is emitted only for requested --layer-boundary-row or --raw-layer-boundary-row LAYER:ROW diagnostics.",
+            "Layer boundary captures run in isolated replay sessions so diagnostic sub-layer taps do not perturb the scored verifier probe.",
+            "post_moe_delta_from_residual is derived as layer_out - attn_residual and is an approximate bridge to llama.cpp post_moe/ffn residual comparisons after BF16 output rounding.",
         ],
     }
     text = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"

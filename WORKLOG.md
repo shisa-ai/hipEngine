@@ -135315,3 +135315,65 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   relative to llama.cpp's F32 target `l_out` graph tensors. Next proof/fix is a
   llama-compat F32 residual-boundary experiment or a narrower sub-boundary check
   that moves the `539` vs `26126` tie-break.
+
+## 2026-07-02 - Target layer-31 sub-boundary split for pair-12
+
+- Added diagnostic-only hipEngine forced-target sub-boundary capture flags:
+  `--layer-boundary-row LAYER:ROW` and `--raw-layer-boundary-row LAYER:ROW`.
+  The probe uses an isolated replay session for each requested boundary so the
+  sub-layer tap cannot perturb the scored verifier run. Captured buffers:
+  layer input, attention output/residual, post-attn norm, selected MoE down
+  rows, shared MoE output, derived `layer_out - residual`, final layer output,
+  selected experts, routing weights, and shared gate.
+- Rebuilt the local dirty llama.cpp diagnostic server after its graph labels
+  for `attn_norm_N`, `attn_residual_N`, `attn_post_norm_N`, `ffn_out_N`,
+  `post_moe_N`, and `l_out_N` were present:
+
+```bash
+cd /home/lhl/llama.cpp/llama.cpp-hip
+cmake --build build --target llama-server -j 8
+```
+
+- Ran the matching hipEngine and llama.cpp row-1 layer-31 raw traces:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 \
+  --candidate-token 26126 --raw-layer-boundary-row 31:1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw.json
+```
+
+```bash
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_TENSOR_TRACE_VALUES=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=attn_norm_31,attn_residual_31,attn_post_norm_31,ffn_out_31,post_moe_31,l_out_31 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-layer31-subboundary-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`. Result: no layer-31 cliff.
+  hipEngine residual vs llama `attn_residual_31` is **0.00303 MAE /
+  0.00405 RMSE / 0.99943 cosine**; post-attn norm is **0.03616 MAE /
+  0.04541 RMSE / 0.99940 cosine** at RMS ~1.30; derived
+  `layer_out - residual` vs llama `ffn_out_31` is **0.00447 MAE /
+  0.00562 RMSE / 0.99160 cosine**; final layer output vs llama
+  `post_moe_31` / `l_out_31` is **0.00528 MAE / 0.00671 RMSE /
+  0.99871 cosine**. Active next target remains accumulated residual-boundary
+  precision and final output_norm sensitivity, not one bad late-layer substage.
