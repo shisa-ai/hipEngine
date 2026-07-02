@@ -17,8 +17,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     build_gguf_x8_selected_gemv,
     gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out,
     gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
     register_gguf_x8_selected_gemv_kernels,
 )
@@ -227,7 +229,14 @@ def _tiles(quant: str, qweight: np.ndarray) -> np.ndarray:
     return repack_gguf_q5_k_x8(qweight).tiles if quant == "q5" else repack_gguf_q6_k_x8(qweight).tiles
 
 
-def _run_direct(wrapper, x_bits: np.ndarray, selected: np.ndarray, tiles: np.ndarray) -> np.ndarray:
+def _run_direct(
+    wrapper,
+    x_bits: np.ndarray,
+    selected: np.ndarray,
+    tiles: np.ndarray,
+    *,
+    out_dtype: np.dtype = np.dtype(np.uint16),
+) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
@@ -237,7 +246,7 @@ def _run_direct(wrapper, x_bits: np.ndarray, selected: np.ndarray, tiles: np.nda
     rows = int(selected.size)
     num_experts = int(tiles.shape[0])
     out_features = int(tiles.shape[1] * 8)
-    out = np.zeros((rows, out_features), dtype=np.uint16)
+    out = np.zeros((rows, out_features), dtype=out_dtype)
     bufs = []
     try:
         x_buf = malloc(x_bits.nbytes, runtime=runtime)
@@ -400,6 +409,24 @@ def test_x8_selected_registry_and_contract() -> None:
         resolve(
             backend="hip_gfx1100",
             layer="moe_linear",
+            quant="gguf_q5_k_x8_v1",
+            variant="selected_x8_q8_1_dp4a_gemv_decode_bf16_f32_out",
+        )
+        is gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q6_k_x8_v1",
+            variant="selected_x8_q8_1_dp4a_gemv_decode_bf16_f32_out",
+        )
+        is gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
             quant="gguf_q6_k_x8_v1",
             variant="selected_x8_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
         )
@@ -470,6 +497,39 @@ def test_x8_selected_direct_matches_q8_1_oracle_and_cpu_gate(quant, wrapper) -> 
     assert kl_mean <= 0.05
     assert kl_max <= 0.10
     assert _top1(exact, got) >= 0.90
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "quant,wrapper",
+    [
+        ("q5", gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out),
+        ("q6", gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out),
+    ],
+)
+def test_x8_selected_direct_f32_out_matches_q8_1_oracle_without_bf16_store(quant, wrapper) -> None:
+    rng = np.random.default_rng(20260702 + (50 if quant == "q5" else 60))
+    x_f32 = (rng.standard_normal((2, 512)).astype(np.float32) * 0.1) + 0.002
+    x_bits = _bf16_bits(x_f32)
+    qweight = _weights(quant)
+    selected = np.asarray([0, 2, 1, 3], dtype=np.int64)
+    rows = int(selected.size)
+    x_row_for_output = np.arange(rows, dtype=np.int64) // (rows // x_f32.shape[0])
+
+    got = _run_direct(wrapper, x_bits, selected, _tiles(quant, qweight), out_dtype=np.dtype(np.float32))
+    got_bf16 = _bf16_to_f32(
+        _run_direct(
+            gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
+            if quant == "q5"
+            else gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+            x_bits,
+            selected,
+            _tiles(quant, qweight),
+        )
+    )
+    q8_ref = _q8_oracle(quant, _bf16_to_f32(x_bits), x_row_for_output, selected, qweight)
+    np.testing.assert_allclose(got, q8_ref, rtol=2e-2, atol=2e-2)
+    assert float(np.max(np.abs(got - got_bf16))) > 0.0
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

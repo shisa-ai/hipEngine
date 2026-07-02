@@ -62,6 +62,8 @@ from hipengine.kernels.hip_gfx1100.fused import (
     weighted_lanes_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w,
+    weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
@@ -140,8 +142,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out,
     gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out,
     gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
     register_gguf_x8_selected_gemv_kernels,
 )
@@ -3433,8 +3437,11 @@ class Qwen35GGUFFullStackRunner:
         ):
             return
         selected_rows = top_k
+        selected_down_is_f32 = False
+        prefer_f32_selected_down = _gguf_use_f32_selected_down(down_weight, scratch, f32_residual)
         if not (
-            _env_flag(_GGUF_FUSED_MOE_FFN_ENV, False)
+            (not prefer_f32_selected_down)
+            and _env_flag(_GGUF_FUSED_MOE_FFN_ENV, False)
             and _try_run_post_attention_moe_c1_fused_ffn(
                 self,
                 layer,
@@ -3447,13 +3454,14 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         ):
-            self._run_post_attention_moe_c1_unfused_selected_ffn(
+            selected_down_is_f32 = self._run_post_attention_moe_c1_unfused_selected_ffn(
                 gate_weight,
                 up_weight,
                 down_weight,
                 scratch,
                 selected_rows=selected_rows,
                 post_norm_f32_ptr=selected_f32_ptr,
+                prefer_f32_selected_down=prefer_f32_selected_down,
                 stream=stream,
                 runtime=runtime,
             )
@@ -3551,18 +3559,32 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         if f32_residual:
-            _gguf_f32_moe_combine_out_fn()(
-                scratch.moe_down_out.ptr,
-                scratch.moe_routing_weights.ptr,
-                scratch.moe_shared_out.ptr,
-                scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                int(residual_f32_ptr),
-                int(out_f32_ptr),
-                top_k,
-                self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
+            if selected_down_is_f32:
+                weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w(
+                    scratch.moe_down_out_f32.ptr,
+                    scratch.moe_routing_weights.ptr,
+                    scratch.moe_shared_out.ptr,
+                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                    int(residual_f32_ptr),
+                    int(out_f32_ptr),
+                    top_k,
+                    self.hidden_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            else:
+                _gguf_f32_moe_combine_out_fn()(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_routing_weights.ptr,
+                    scratch.moe_shared_out.ptr,
+                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                    int(residual_f32_ptr),
+                    int(out_f32_ptr),
+                    top_k,
+                    self.hidden_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
             f32_to_bf16(
                 int(out_f32_ptr),
                 out_ptr,
@@ -3594,9 +3616,10 @@ class Qwen35GGUFFullStackRunner:
         *,
         selected_rows: int,
         post_norm_f32_ptr: int | None = None,
+        prefer_f32_selected_down: bool = False,
         stream: int,
         runtime: HipRuntime,
-    ) -> None:
+    ) -> bool:
         """Unfused selected-expert FFN: gate_up GEMV -> silu*mul -> down GEMV into
         ``scratch.moe_down_out``. Numerically-equivalent fallback for the fused B1
         megakernel (architectural invariant), and the default rows==1 path."""
@@ -3684,11 +3707,12 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        f32_selected_down = bool(prefer_f32_selected_down)
         _launch_selected_raw_gguf_moe_linear(
             down_weight,
             scratch.ffn_intermediate.ptr,
             scratch.moe_selected_experts.ptr,
-            scratch.moe_down_out.ptr,
+            scratch.moe_down_out_f32.ptr if f32_selected_down else scratch.moe_down_out.ptr,
             x_rows=selected_rows,
             rows=selected_rows,
             num_experts=cfg.expert_count,
@@ -3704,9 +3728,11 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_gemv_requires_q8_1_input(down_weight)
                 ),
             ),
+            prefer_f32_out=f32_selected_down,
             stream=stream,
             runtime=runtime,
         )
+        return f32_selected_down
 
     def _run_post_attention_moe_rows(
         self,
@@ -3990,6 +4016,7 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_expert_silu",
                 t_stage,
             )
+        selected_down_is_f32 = False
         if expert_sidecar is not None:
             _launch_selected_expert_pack8_moe_linear(
                 expert_sidecar.tensor("ffn_down_exps"),
@@ -4006,11 +4033,12 @@ class Qwen35GGUFFullStackRunner:
                 library=getattr(self, "_expert_pack8_library", None),
             )
         else:
+            selected_down_is_f32 = _gguf_use_f32_selected_down(down_weight, scratch, f32_residual)
             _launch_selected_raw_gguf_moe_linear(
                 down_weight,
                 scratch.ffn_intermediate.ptr,
                 scratch.moe_selected_experts.ptr,
-                scratch.moe_down_out.ptr,
+                scratch.moe_down_out_f32.ptr if selected_down_is_f32 else scratch.moe_down_out.ptr,
                 x_rows=selected_rows,
                 rows=selected_rows,
                 num_experts=cfg.expert_count,
@@ -4026,6 +4054,7 @@ class Qwen35GGUFFullStackRunner:
                         or _selected_gemv_requires_q8_1_input(down_weight)
                     ),
                 ),
+                prefer_f32_out=selected_down_is_f32,
                 stream=stream,
                 runtime=runtime,
                 stage_timings=stage_timings,
@@ -4201,20 +4230,36 @@ class Qwen35GGUFFullStackRunner:
             t_stage,
         )
         if f32_residual:
-            _gguf_f32_moe_combine_batch_out_fn()(
-                scratch.moe_down_out.ptr,
-                scratch.moe_routing_weights.ptr,
-                scratch.moe_shared_out.ptr,
-                scratch.moe_shared_gate_logits.ptr,
-                int(residual_f32_ptr),
-                int(out_f32_ptr),
-                rows,
-                top_k,
-                self.hidden_size,
-                1,
-                stream=stream,
-                runtime=runtime,
-            )
+            if selected_down_is_f32:
+                weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w(
+                    scratch.moe_down_out_f32.ptr,
+                    scratch.moe_routing_weights.ptr,
+                    scratch.moe_shared_out.ptr,
+                    scratch.moe_shared_gate_logits.ptr,
+                    int(residual_f32_ptr),
+                    int(out_f32_ptr),
+                    rows,
+                    top_k,
+                    self.hidden_size,
+                    1,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            else:
+                _gguf_f32_moe_combine_batch_out_fn()(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_routing_weights.ptr,
+                    scratch.moe_shared_out.ptr,
+                    scratch.moe_shared_gate_logits.ptr,
+                    int(residual_f32_ptr),
+                    int(out_f32_ptr),
+                    rows,
+                    top_k,
+                    self.hidden_size,
+                    1,
+                    stream=stream,
+                    runtime=runtime,
+                )
             f32_to_bf16(
                 int(out_f32_ptr),
                 out_ptr,
@@ -4280,6 +4325,7 @@ _GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
 _GGUF_VERIFY_F32_ALPHA_BETA_ENV = "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA"
 _GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
 _GGUF_VERIFY_F32_MOE_COMBINE_ENV = "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE"
+_GGUF_VERIFY_F32_SELECTED_DOWN_ENV = "HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
@@ -4397,6 +4443,10 @@ def _gguf_verify_f32_moe_combine_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_MOE_COMBINE_ENV, False)
 
 
+def _gguf_verify_f32_selected_down_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_SELECTED_DOWN_ENV, False)
+
+
 def _gguf_verify_f32_post_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ENV, False)
 
@@ -4423,6 +4473,20 @@ def _gguf_f32_moe_combine_batch_out_fn():
     if _gguf_verify_f32_moe_combine_enabled():
         return weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w
     return weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w
+
+
+def _gguf_selected_down_supports_f32_output(weight: Qwen35GGUFDeviceWeight) -> bool:
+    return weight.spec.quant_key in {"gguf_q5_k_x8_v1", "gguf_q6_k_x8_v1"}
+
+
+def _gguf_use_f32_selected_down(weight: Qwen35GGUFDeviceWeight, scratch, f32_residual: bool) -> bool:
+    return (
+        f32_residual
+        and _gguf_verify_f32_moe_combine_enabled()
+        and _gguf_verify_f32_selected_down_enabled()
+        and _gguf_selected_down_supports_f32_output(weight)
+        and getattr(scratch, "moe_down_out_f32", None) is not None
+    )
 
 
 def _gguf_linear_supports_f32_activation(weight: Qwen35GGUFDeviceWeight) -> bool:
@@ -7805,6 +7869,7 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_experts: object
     moe_routing_weights: object
     moe_down_out: object
+    moe_down_out_f32: object
     moe_group_counts: object
     moe_padded_counts: object
     moe_scatter_offsets: object
@@ -7954,6 +8019,7 @@ class _GGUFFullAttentionPrefillScratch:
             "moe_selected_experts": buf(rows * moe_top_k * DType.INT64.itemsize),
             "moe_routing_weights": buf(rows * moe_top_k * DType.FP32.itemsize),
             "moe_down_out": buf(moe_top_k * hidden_bytes),
+            "moe_down_out_f32": buf(moe_selected_rows_capacity * runner.hidden_size * DType.FP32.itemsize),
             "moe_group_counts": buf(moe_group_counts_zero.nbytes),
             "moe_padded_counts": buf(moe_group_counts_zero.nbytes),
             "moe_scatter_offsets": buf(moe_scatter_offsets_zero.nbytes),
@@ -8172,6 +8238,7 @@ class _FullStackScratch:
     moe_selected_experts: object
     moe_routing_weights: object
     moe_down_out: object
+    moe_down_out_f32: object
     moe_group_counts: object
     moe_padded_counts: object
     moe_scatter_offsets: object
@@ -8333,6 +8400,7 @@ class _FullStackScratch:
             "moe_selected_experts": buf(moe_top_k * DType.INT64.itemsize),
             "moe_routing_weights": buf(moe_top_k * DType.FP32.itemsize),
             "moe_down_out": buf(moe_top_k * hidden_bytes),
+            "moe_down_out_f32": buf(moe_top_k * runner.hidden_size * DType.FP32.itemsize),
             "moe_group_counts": buf(moe_experts * DType.INT32.itemsize),
             "moe_padded_counts": buf(moe_experts * DType.INT32.itemsize),
             "moe_scatter_offsets": buf(moe_experts * DType.INT32.itemsize),
@@ -10184,6 +10252,7 @@ def _launch_selected_raw_gguf_moe_linear(
     out_features: int,
     q8_1_workspace_ptr: int | None = None,
     x_f32_ptr: int | None = None,
+    prefer_f32_out: bool = False,
     stream: int,
     runtime: HipRuntime,
     stage_timings: dict[str, float] | None = None,
@@ -10237,7 +10306,11 @@ def _launch_selected_raw_gguf_moe_linear(
             f"{stage_prefix}_q8_quantize",
             t_stage,
         )
-        fn = gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
+        fn = (
+            gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out
+            if prefer_f32_out
+            else gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
+        )
         use_q8_1_input = True
     elif quant_key == "gguf_q6_k_x8_v1":
         if q8_1_workspace_ptr is None:
@@ -10258,7 +10331,11 @@ def _launch_selected_raw_gguf_moe_linear(
             f"{stage_prefix}_q8_quantize",
             t_stage,
         )
-        fn = gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
+        fn = (
+            gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out
+            if prefer_f32_out
+            else gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out
+        )
         use_q8_1_input = True
     elif (
         q8_1_workspace_ptr is not None

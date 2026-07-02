@@ -136400,3 +136400,53 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
   - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-denseq8-diagnostic.json`
+
+## 2026-07-02 - Verifier FP32 selected-down output split
+
+- Added default-off semantic diagnostic `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1`.
+  It is inert unless `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1` and the
+  F32-residual verifier path are also active. For compatible X8 Q5/Q6
+  selected-down weights, `_launch_selected_raw_gguf_moe_linear()` now can write
+  FP32 selected-down rows into `scratch.moe_down_out_f32`; the F32 selected/shared
+  combine then consumes those FP32 selected rows directly.
+- Added HIP/Python wrappers and tests for:
+  - `hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out`
+  - `hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out`
+  - `hipengine_weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w`
+  - `hipengine_weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w`
+- First forced probe attempt failed before artifacting because the new runtime
+  call passed `prefer_f32_out` before `_launch_selected_raw_gguf_moe_linear()`
+  accepted that keyword. Fixed the helper signature and reran the same command.
+- Ran the comparable pair-12 forced target probe on top of the residual +
+  attention-norm-output + attention-output + alpha/beta + F32 MoE combine stack:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-denseq8-diagnostic.json
+```
+
+  Result: semantically active, but still short of llama.cpp. Pair-12 still
+  samples `[15495, 539, 1151]` and accepts 2. Row-1 `539 - 26126` narrows from
+  the F32 MoE-combine slice **+0.033850** to **+0.005356** (`26.061153 -
+  26.055798`), but llama.cpp remains opposite at about **-0.00896**. Remaining
+  gap is only about **0.0143 logits**, so the next split should target the
+  remaining BF16 FFN/MoE output contracts, especially shared-down/shared-gated
+  contribution precision.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_x8_selected_gemv.py hipengine/kernels/hip_gfx1100/fused/paro_combine.py hipengine/kernels/hip_gfx1100/fused/__init__.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_x8_selected_gemv.py tests/test_paro_combine_plan.py tests/test_qwen35_gguf_verify_f32_moe_combine.py`
+  - `python3 -m pytest tests/test_gguf_x8_selected_gemv.py tests/test_paro_combine_plan.py tests/test_qwen35_gguf_verify_f32_moe_combine.py -q` => **15 passed**
+  - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-denseq8-diagnostic.json`

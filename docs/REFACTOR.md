@@ -194,7 +194,7 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
   existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
@@ -216,6 +216,9 @@ should be boring.
   `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1` keeps the selected-expert weighted
   sum in FP32 inside the F32-residual MoE combine instead of BF16-rounding that
   selected sum before adding residual and sigmoid-gated shared output.
+  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1` requires the F32 MoE combine
+  diagnostic and routes compatible X8 Q5/Q6 selected-down GEMV outputs into an
+  FP32 scratch buffer before combining selected rows with BF16 shared output.
   `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` extends the probe by materializing
   post-attention RMSNorm into FP32 scratch and independently gating router /
   selected-q8 / shared-q8 consumers with
@@ -252,7 +255,11 @@ should be boring.
   still samples `[15495, 539, 1151]` and accepts 2, but narrows row-1
   `539 - 26126` from **+0.27480** to **+0.03385**. That makes the combine
   selected-sum BF16 boundary semantically active, but still not sufficient to
-  match llama.cpp's **-0.00896** margin. Combining it with
+  match llama.cpp's **-0.00896** margin. The selected-down output split
+  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-denseq8-diagnostic.json`
+  keeps compatible X8 selected-down rows in FP32 and narrows the same margin to
+  **+0.00536** (`26.06115 - 26.05580`), still on the wrong side of llama.cpp by
+  about **0.0143 logits**. Combining MoE combine with
   `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` failed prior-cycle replay at cycle 2
   (`[40798, 1590, 1103]` vs trace `[40798, 25, 1103]`), so the combination is
   not a pair-12 parity result. The post-norm split artifact

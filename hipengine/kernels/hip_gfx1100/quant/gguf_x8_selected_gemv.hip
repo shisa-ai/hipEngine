@@ -677,11 +677,29 @@ extern "C" int hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
       out_features, threads, stream);
 }
 
+extern "C" int hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out(
+    const void* xq, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_x8_selected_direct<float, 5>(
+      xq, selected, tiles, out, x_rows, rows, num_experts, in_features,
+      out_features, threads, stream);
+}
+
 extern "C" int hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
     const void* xq, const void* selected, const void* tiles, void* out,
     int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
     int64_t out_features, int64_t threads, hipStream_t stream) {
   return launch_x8_selected_direct<uint16_t, 6>(
+      xq, selected, tiles, out, x_rows, rows, num_experts, in_features,
+      out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out(
+    const void* xq, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_x8_selected_direct<float, 6>(
       xq, selected, tiles, out, x_rows, rows, num_experts, in_features,
       out_features, threads, stream);
 }

@@ -18,7 +18,9 @@ _DEFAULT_THREADS = 64
 
 _Q4_DUAL_DIRECT_BF16 = "hipengine_gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q5_DIRECT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
+_Q5_DIRECT_F32 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out"
 _Q6_DIRECT_BF16 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
+_Q6_DIRECT_F32 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out"
 _Q5_COMPACT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out"
 _Q6_COMPACT_BF16 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out"
 
@@ -139,6 +141,42 @@ def gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out(
+    xq_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = _DEFAULT_THREADS,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch direct selected Q5X8 q8_1+sudot4 GEMV with FP32 output."""
+
+    _launch_direct(
+        _Q5_DIRECT_F32,
+        xq_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
     xq_ptr: int,
     selected_ptr: int,
@@ -159,6 +197,42 @@ def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
 
     _launch_direct(
         _Q6_DIRECT_BF16,
+        xq_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out(
+    xq_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = _DEFAULT_THREADS,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch direct selected Q6X8 q8_1+sudot4 GEMV with FP32 output."""
+
+    _launch_direct(
+        _Q6_DIRECT_F32,
         xq_ptr,
         selected_ptr,
         tiles_ptr,
@@ -436,21 +510,28 @@ def register_gguf_x8_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
         replace=replace,
     )
-    for quant_key, direct, compact in (
+    for quant_key, direct, direct_f32, compact in (
         (
             "gguf_q5_k_x8_v1",
             gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+            gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out,
             gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
         ),
         (
             "gguf_q6_k_x8_v1",
             gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+            gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out,
             gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out,
         ),
     ):
         register(
             KernelKey("hip_gfx1100", "moe_linear", quant_key, "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"),
             direct,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "moe_linear", quant_key, "selected_x8_q8_1_dp4a_gemv_decode_bf16_f32_out"),
+            direct_f32,
             replace=replace,
         )
         register(
@@ -472,8 +553,10 @@ __all__ = [
     "build_gguf_x8_selected_gemv",
     "gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
+    "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
     "gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
+    "gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out",
     "gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
     "plan_gguf_x8_selected_gemv_build",
     "register_gguf_x8_selected_gemv_kernels",
