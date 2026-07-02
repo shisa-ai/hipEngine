@@ -412,6 +412,33 @@ Layer-7 MoE top-k selection matches exactly:
 **0.000459 MAE**. Layer 7 is a full-attention layer and still not the copy
 target; the next semantic split moves upstream to scored layer 6.
 
+Layer-6 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer6-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer6-scored-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer6-scored-moe-taps-compare.json`.
+
+| layer-6 scored linear-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `verify_layer_output_5` vs hipEngine `hidden_in` | **0.000294** | **0.000394** | Incoming layer-5 output is still the live boundary drift. |
+| `attn_norm_6` vs hipEngine `attn_norm` | **0.00811** | **0.01078** | CPU RMSNorm mostly explains the normalized-space delta from the input drift. |
+| `z_6` vs hipEngine `linear_z` | 0.00914 | 0.01175 | Below the projection close threshold. |
+| `beta_6` vs hipEngine `ssm_beta` | 0.00837 | 0.01045 | Below the projection close threshold. |
+| `conv_output_silu_6` vs hipEngine `conv_out` | 0.000332 | 0.000755 | No conv cliff. |
+| `linear_attn_out_6` vs hipEngine `attn_out` | 0.000197 | 0.000267 | Not a linear-attention output cliff. |
+| `attn_residual_6` vs hipEngine `attn_residual` | 0.000300 | 0.000424 | Carries the incoming drift forward. |
+| `attn_post_norm_6` vs hipEngine `attn_post_norm` | **0.00872** | **0.01124** | Second RMSNorm amplifies residual-space drift before MoE. |
+| `ffn_out_6` vs hipEngine reconstructed `ffn_out` | 0.000119 | 0.000151 | MoE projection/combination remains small. |
+| `post_moe_6` / `verify_layer_output_6` vs hipEngine layer output | **0.000310** | **0.000438** | Exactly the incoming layer-7 hidden delta measured above. |
+
+Layer-6 is the first reduced linear-attention layer where stable pre-SSM labels
+show no projection/conv cliff: `z`, `beta`, convolved q/k/v, and
+`linear_attn_out` are all close. MoE only swaps ranks 1/2 among the same expert
+set, hipEngine `[42, 166, 162, 193, 126, 177, 73, 55]` vs llama.cpp
+`[42, 162, 166, 193, 126, 177, 73, 55]`, with selected weighted rows
+**0.000465 MAE**, aggregate `ffn_out` **0.000119 MAE**, and post-MoE
+**0.000310 MAE**. This points upstream again, to scored layer 5.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
