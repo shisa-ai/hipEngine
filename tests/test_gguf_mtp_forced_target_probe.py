@@ -80,6 +80,20 @@ def test_parser_exposes_prefix_state_fingerprint() -> None:
     assert args.prefix_state_fingerprint is True
 
 
+def test_parser_exposes_raw_prefix_hidden_seed() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--trace",
+            "trace.json",
+            "--cycle",
+            "12",
+            "--raw-prefix-hidden-seed",
+        ]
+    )
+
+    assert args.raw_prefix_hidden_seed is True
+
+
 def test_diagnostic_env_payload_records_f32_flags(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
