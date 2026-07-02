@@ -137843,3 +137843,47 @@ python3 scripts/gguf_mtp_bench.py \
   `[42, 162, 166, 193, 126, 177, 73, 55]`. Selected weighted rows are
   `0.000465 MAE`, aggregate `ffn_out` is `0.000119 MAE`, and post-MoE is
   `0.000310 MAE`. The semantic split moves upstream to layer 5.
+
+## 2026-07-03 - Scored layer-5 split moves semantic target to layer 4
+
+- Captured the same task-9/cycle-3/row-2 bonus branch at scored target layer 5:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 5:2 \
+    --raw-layer-output-row 5:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer5-cycle3.json
+  ```
+- Reran patched llama.cpp HIP with row-2 raw layer-5 labels at
+  `/tmp/hipengine-llamacpp-layer5-input-raw-row2-task9-cycle3.jsonl`; it stayed
+  on `[11, 567]` accepted, bonus `668`. Boundary raw values used
+  `l_out_4,l_out_5`, exported as `verify_layer_output_4` and
+  `verify_layer_output_5`.
+- Reduced
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer5-scored-linear-attn-compare.json`.
+  Result: incoming hidden vs llama.cpp `verify_layer_output_4` is
+  `0.000243 MAE / 0.000324 RMSE`; `attn_norm_5` is
+  `0.007510 / 0.009981`; `z_5` is `0.008048 / 0.010313`;
+  `beta_5` is `0.005309 / 0.006230`; `conv_output_silu_5` is
+  `0.000296 / 0.000753`; `linear_attn_out_5` is `0.000164 / 0.000214`;
+  `attn_residual_5` is `0.000262 / 0.000382`; `attn_post_norm_5` is
+  `0.008713 / 0.011193`; `ffn_out_5` is `0.000165 / 0.000209`;
+  post-MoE / `verify_layer_output_5` is `0.000294 / 0.000394`. Stable pre-SSM
+  labels show no projection/conv cliff; layer 5 is accumulated small
+  target-hidden drift.
+- Reduced the layer-5 MoE split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer5-scored-moe-taps-compare.json`.
+  Router top-k matches exactly
+  `[144, 24, 169, 11, 249, 14, 212, 158]`; selected weighted rows are
+  `0.0000400 MAE`, aggregate `ffn_out` is `0.000165 MAE`, and post-MoE is
+  `0.000294 MAE`. The semantic split moves upstream to layer 4.
