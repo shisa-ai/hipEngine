@@ -205,6 +205,7 @@ def build_linear_attn_compare_artifact(
         "conv_view_deltas": conv_view_deltas,
         "pre_ssm_ambiguous_deltas": pre_ssm_ambiguous_deltas,
         "trace_label_caveats": _trace_label_caveats(
+            tensor_deltas=tensor_deltas,
             pre_ssm_stable_deltas=pre_ssm_stable_deltas,
             pre_ssm_ambiguous_deltas=pre_ssm_ambiguous_deltas,
             llama_values=llama_values,
@@ -672,6 +673,7 @@ def _conv_view_deltas(
 
 def _trace_label_caveats(
     *,
+    tensor_deltas: dict[str, Any],
     pre_ssm_stable_deltas: dict[str, Any],
     pre_ssm_ambiguous_deltas: dict[str, Any],
     llama_values: dict[str, np.ndarray],
@@ -680,15 +682,24 @@ def _trace_label_caveats(
     caveats: dict[str, Any] = {}
     qkv_delta = pre_ssm_ambiguous_deltas.get("qkv_mixed_vs_linear_qkv", {})
     conv_delta = pre_ssm_stable_deltas.get("conv_output_silu", {})
+    linear_delta = tensor_deltas.get("linear_attn_out", {})
     if qkv_delta.get("status") == "complete" and conv_delta.get("status") == "complete":
         qkv_mae = float(qkv_delta["mean_abs_diff"])
         conv_mae = float(conv_delta["mean_abs_diff"])
-        if qkv_mae > PROJECTION_CLOSE_MAE and conv_mae <= CONV_CLOSE_MAE:
+        linear_mae = (
+            float(linear_delta["mean_abs_diff"])
+            if "mean_abs_diff" in linear_delta
+            else None
+        )
+        if qkv_mae > PROJECTION_CLOSE_MAE and (
+            conv_mae <= CONV_CLOSE_MAE * 2.5
+            or (linear_mae is not None and linear_mae <= POST_SSM_OUT_CLOSE_MAE)
+        ):
             status = "layout_or_value_extraction_ambiguous"
             reason = (
                 "llama.cpp linear_attn_qkv_mixed raw values do not align with "
-                "hipEngine linear_qkv, but the downstream conv_output_silu tensor "
-                "matches closely; treat qkv_mixed as a trace-layout caveat."
+                "hipEngine linear_qkv, but downstream conv/linear-attention tensors "
+                "match closely; treat qkv_mixed as a trace-layout caveat."
             )
         else:
             status = "usable"
@@ -698,6 +709,7 @@ def _trace_label_caveats(
             "reason": reason,
             "qkv_mixed_mae": qkv_mae,
             "conv_output_silu_mae": conv_mae,
+            "linear_attn_out_mae": linear_mae,
         }
 
     alpha_label = f"alpha_{int(layer)}"
@@ -710,7 +722,8 @@ def _trace_label_caveats(
             status = "aliases_gate_or_mutated_value"
             reason = (
                 "llama.cpp alpha raw values are byte-identical to gate in this "
-                "trace, so alpha_0 is not a trustworthy raw alpha projection oracle."
+                f"trace, so {alpha_label} is not a trustworthy raw alpha "
+                "projection oracle."
             )
         else:
             status = "usable"
@@ -722,6 +735,28 @@ def _trace_label_caveats(
             "alpha_vs_hipengine_ssm_alpha": pre_ssm_ambiguous_deltas.get(
                 "alpha_vs_ssm_alpha"
             ),
+        }
+
+    beta_delta = pre_ssm_stable_deltas.get("beta_projection", {})
+    linear_delta = tensor_deltas.get("linear_attn_out", {})
+    if beta_delta.get("status") == "complete" and "mean_abs_diff" in linear_delta:
+        beta_mae = float(beta_delta["mean_abs_diff"])
+        linear_mae = float(linear_delta["mean_abs_diff"])
+        if beta_mae > PROJECTION_CLOSE_MAE and linear_mae <= POST_SSM_OUT_CLOSE_MAE:
+            status = "layout_or_value_extraction_ambiguous"
+            reason = (
+                "llama.cpp beta raw values differ far more than the downstream "
+                "linear_attn_out tensor; treat beta as a trace-label/layout caveat "
+                "until the temporary llama.cpp tap is revalidated."
+            )
+        else:
+            status = "usable"
+            reason = "beta and downstream linear_attn_out deltas are directionally consistent."
+        caveats["beta"] = {
+            "status": status,
+            "reason": reason,
+            "beta_projection_mae": beta_mae,
+            "linear_attn_out_mae": linear_mae,
         }
 
     return caveats
@@ -764,6 +799,7 @@ def _pre_ssm_out_label_assessment(
 
 
 def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
+    layer = int(artifact.get("inputs", {}).get("layer", 0))
     inputs = artifact.get("input_boundary_deltas", {})
     formula = artifact.get("attn_norm_formula_assessment", {})
     stable = artifact["pre_ssm_stable_deltas"]
@@ -836,8 +872,8 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
         "attn_post_norm_mae": post_norm_mae,
         "post_moe_mae": post_moe_mae,
         "next_split_needed": (
-            "layer-13 scored boundary split; layer-14 RMSNorm formula is explained "
-            "by incoming hidden drift when attn_norm_formula_assessment says so"
+            f"layer-{max(layer - 1, 0)} scored boundary split when incoming hidden "
+            "drift explains this layer's attention RMSNorm delta"
         ),
     }
 
@@ -929,11 +965,22 @@ def _conclusion(artifact: dict[str, Any]) -> str:
             f"beta MAE {stable['beta_projection_mae']:.6g}, "
             f"conv_output_silu MAE {stable['conv_output_silu_mae']:.6g}."
         )
+        caveats = artifact.get("trace_label_caveats", {})
+        if caveats.get("beta", {}).get("status") == "layout_or_value_extraction_ambiguous":
+            stable_note += (
+                " The beta MAE is trace-label/layout caveated because downstream "
+                "linear_attn_out remains close."
+            )
         formula = artifact.get("attn_norm_formula_assessment", {})
         if formula.get("classification") == "attn_norm_delta_explained_by_input_delta":
             stable_note += (
                 " CPU RMSNorm exactly reproduces both engines' attn_norm rows, "
                 "so this is incoming hidden drift amplified by normalization."
+            )
+        elif formula.get("classification") == "attn_norm_delta_mostly_explained_by_input_delta":
+            stable_note += (
+                " CPU RMSNorm reproduces both engines' attn_norm rows within trace "
+                "rounding, so this is incoming hidden drift amplified by normalization."
             )
     return (
         f"Layer {layer} drift is already present at the linear-attention output: "

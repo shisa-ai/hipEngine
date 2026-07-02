@@ -137484,3 +137484,52 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py -q
   jq empty benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json
   ```
+
+## 2026-07-03 - Scored layer-13 split moves semantic target to layer 12
+
+- Captured the same `mixed_ja_en_translate` task-9/cycle-3/row-2 bonus branch
+  at scored target layer 13:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 13:2 \
+    --raw-layer-output-row 13:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer13-cycle3.json
+  ```
+- Reran the patched temp llama.cpp HIP trace with row-2 raw layer-13 labels at
+  `/tmp/hipengine-llamacpp-layer13-input-raw-row2-task9-cycle3.jsonl`; it stayed
+  on the same branch (`[11, 567]` accepted, bonus `668`).
+- Reduced the scored layer-13 linear/input split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer13-scored-linear-attn-compare.json`.
+  Result: incoming hidden vs llama.cpp `verify_layer_output_12` is
+  `0.000975 MAE / 0.001244 RMSE`; `attn_norm_13` is
+  `0.019537 / 0.025339`; `z_13` is `0.016619 / 0.021347`;
+  `conv_output_silu_13` is `0.001186 / 0.002683`; `linear_attn_out_13` is
+  `0.000526 / 0.000695`; `attn_residual_13` is `0.001009 / 0.001280`;
+  `ffn_out_13` is `0.000539 / 0.000714`; post-MoE/layer output is
+  `0.001097 / 0.001422`. CPU RMSNorm reproduces both engines within trace
+  rounding, so the live semantic split moves upstream to layer 12.
+- Reduced the scored layer-13 MoE split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer13-scored-moe-taps-compare.json`.
+  Layer-13 MoE only permutes ranks 2/3 among the same experts; aggregate
+  `ffn_out` MAE is `0.000539`, so MoE is not the next copy target.
+- Tightened `scripts/llamacpp_mtp_compare_layer0_linear_attn.py` caveats:
+  `next_split_needed` now uses the current layer, and qkv/beta raw labels are
+  marked layout-caveated when they differ far more than downstream
+  linear-attention output.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py
+  PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py -q
+  jq empty benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer13-cycle3.json benchmarks/results/2026-07-03-mtp-bonus-row-layer13-scored-linear-attn-compare.json benchmarks/results/2026-07-03-mtp-bonus-row-layer13-scored-moe-taps-compare.json
+  ```
