@@ -5052,3 +5052,41 @@ The retained B2 compat row moved **64.41 -> 75.15 tok/s**, cycle wall
 suite; draft parent is also faster than the rerun llama row, so remaining parity
 work is same-protocol llama.cpp reruns/proposal traces or profiler-leaf cleanup,
 not prompt-context semantics.
+
+## 2026-07-02 direct-state lifecycle comparator
+
+The next mismatch is no longer the initial prompt MTP K/V source.  A new
+diagnostic mode in `scripts/gguf_mtp_forced_target_probe.py`,
+`--state-lifecycle-compare`, runs two target-verifier lifecycle policies through
+the same proposal trace and hashes the post-cycle FP32 hidden seed plus every
+linear-attention Conv/GDN resident state:
+
+- `replay`: score the target block, restore on partial accept/reject, then
+  serial-replay the accepted prefix.
+- `direct`: score the target block with captured Conv/GDN rows, then commit the
+  accepted verifier row directly with `_commit_verify_linear_state_row`.
+
+Full-attention K/V is deliberately not hashed yet because reset does not zero
+unused cache tails, so byte hashes would include irrelevant capacity.
+
+Trace:
+`/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json`,
+cycle 12, `--target-block-verify-mode bulk --no-target-block-wmma-prefill`.
+
+| Diagnostic | Extra env | Cycles compared | First mismatch | Visible tokens | State mismatch | Interpretation |
+| --- | --- | ---: | --- | --- | ---: | --- |
+| Base direct capture | none beyond the active F32 selected-intermediate route | 13 | cycle 0 | replay/direct both `[12305, 198, 727]` | 59 | Direct capture is not byte-identical to replay/block state even on the first full-accept cycle. |
+| Prefill-shaped GDN capture | `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` | 13 | cycle 3 | replay/direct both `[65342]` | 61 | Cycles 0-2 become state-identical, then the first partial/reject cycle diverges. |
+
+Artifacts:
+
+- `benchmarks/results/2026-07-02-mtp-state-lifecycle-compare.json`
+- `benchmarks/results/2026-07-02-mtp-state-lifecycle-prefillgdn-compare.json`
+
+Conclusion: prefill-shaped Conv/GDN row capture fixes the full-accept state
+equality problem for the early trace, but the current direct commit is still not
+the replay/llama-style lifecycle when a block partially accepts or rejects.  The
+next semantic target is accepted-row state after partial accept/reject: either
+direct capture must become prefix-equivalent for the accepted row, or the
+llama-compat path needs a narrow prefix-equivalent commit mechanism for rejected
+blocks without falling back to full serial replay as the steady-state verifier.

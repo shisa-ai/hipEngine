@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 import shlex
@@ -26,7 +27,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.gguf_mtp_bench import GGUF_PATH, build_chat_prompt, hidden_state_summary
+from scripts.gguf_mtp_bench import (
+    GGUF_PATH,
+    build_chat_prompt,
+    hidden_state_summary,
+    target_block_direct_commit_is_exact,
+)
 
 
 class ProbeError(RuntimeError):
@@ -286,6 +292,136 @@ def _copy_current_hidden_seed(session: Any) -> np.ndarray:
         runtime=session.runtime,
     )
     return np.ascontiguousarray(hidden, dtype=np.float32)
+
+
+def _bytes_digest(data: np.ndarray) -> str:
+    raw = np.ascontiguousarray(data, dtype=np.uint8).reshape(-1)
+    return hashlib.blake2b(raw, digest_size=16).hexdigest()
+
+
+def _copy_device_bytes(session: Any, ptr: int, nbytes: int) -> np.ndarray:
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+
+    size = int(nbytes)
+    if size < 0:
+        raise ProbeError("device byte count must be non-negative")
+    host = np.empty((size,), dtype=np.uint8)
+    if size == 0:
+        return host
+    copy_device_to_host(
+        host_array_ptr(host),
+        DeviceBuffer(int(ptr), size),
+        size,
+        runtime=session.runtime,
+    )
+    return np.ascontiguousarray(host, dtype=np.uint8)
+
+
+def _device_buffer_fingerprint(session: Any, buffer: Any) -> dict[str, Any]:
+    raw = _copy_device_bytes(session, int(buffer.ptr), int(buffer.nbytes))
+    return {
+        "nbytes": int(buffer.nbytes),
+        "blake2b_128": _bytes_digest(raw),
+    }
+
+
+def _session_lifecycle_fingerprint(
+    session: Any,
+    *,
+    current_prev: int,
+    label: str,
+) -> dict[str, Any]:
+    if session.runner is None or session.scratch is None:
+        raise ProbeError("session is closed")
+    hidden = _copy_current_hidden_seed(session).reshape(-1)
+    linear_layers: list[dict[str, Any]] = []
+    for layer_id, (conv_state, recurrent_state) in enumerate(
+        zip(session.scratch.layer_conv_states, session.scratch.layer_recurrent_states, strict=True)
+    ):
+        if conv_state is None or recurrent_state is None:
+            continue
+        linear_layers.append(
+            {
+                "layer": int(layer_id),
+                "conv": _device_buffer_fingerprint(session, conv_state),
+                "recurrent": _device_buffer_fingerprint(session, recurrent_state),
+            }
+        )
+    return {
+        "label": str(label),
+        "position": int(session.position),
+        "current_prev": int(current_prev),
+        "hidden_seed": {
+            "nbytes": int(hidden.nbytes),
+            "blake2b_128": _bytes_digest(hidden.view(np.uint8)),
+            "summary": hidden_state_summary(
+                hidden,
+                label=f"{label}_hidden_seed",
+                depth=-1,
+                token_id=int(current_prev),
+                position=int(session.position),
+            ),
+        },
+        "linear_state_layers": linear_layers,
+        "kv_state": {
+            "checked": False,
+            "reason": (
+                "Full-attention KV cache tails are not zeroed on reset; "
+                "this diagnostic hashes hidden seed and linear Conv/GDN state only."
+            ),
+        },
+    }
+
+
+def _compare_lifecycle_fingerprints(
+    baseline: dict[str, Any],
+    candidate: dict[str, Any],
+) -> list[dict[str, Any]]:
+    mismatches: list[dict[str, Any]] = []
+    for field in ("position", "current_prev"):
+        if int(baseline[field]) != int(candidate[field]):
+            mismatches.append(
+                {
+                    "component": field,
+                    "baseline": int(baseline[field]),
+                    "candidate": int(candidate[field]),
+                }
+            )
+    if baseline["hidden_seed"]["blake2b_128"] != candidate["hidden_seed"]["blake2b_128"]:
+        mismatches.append(
+            {
+                "component": "hidden_seed",
+                "baseline": baseline["hidden_seed"]["blake2b_128"],
+                "candidate": candidate["hidden_seed"]["blake2b_128"],
+            }
+        )
+    base_layers = {int(row["layer"]): row for row in baseline["linear_state_layers"]}
+    cand_layers = {int(row["layer"]): row for row in candidate["linear_state_layers"]}
+    for layer_id in sorted(set(base_layers) | set(cand_layers)):
+        base_row = base_layers.get(layer_id)
+        cand_row = cand_layers.get(layer_id)
+        if base_row is None or cand_row is None:
+            mismatches.append(
+                {
+                    "component": "linear_state_layer_presence",
+                    "layer": int(layer_id),
+                    "baseline_present": base_row is not None,
+                    "candidate_present": cand_row is not None,
+                }
+            )
+            continue
+        for part in ("conv", "recurrent"):
+            if base_row[part]["blake2b_128"] != cand_row[part]["blake2b_128"]:
+                mismatches.append(
+                    {
+                        "component": f"linear_state_{part}",
+                        "layer": int(layer_id),
+                        "baseline": base_row[part]["blake2b_128"],
+                        "candidate": cand_row[part]["blake2b_128"],
+                        "nbytes": int(base_row[part]["nbytes"]),
+                    }
+                )
+    return mismatches
 
 
 def _bf16_roundtrip_f32(values: np.ndarray) -> np.ndarray:
@@ -799,6 +935,295 @@ def _run_trace_block(
     return [int(token) for token in result.token_ids]
 
 
+def _run_lifecycle_cycle(
+    session: Any,
+    cycle: dict[str, Any],
+    *,
+    current_prev: int,
+    policy: str,
+    mode: str,
+    use_wmma_prefill: bool,
+) -> tuple[int, dict[str, Any]]:
+    cycle_number = int(cycle.get("cycle", -1))
+    start_position = int(cycle["cycle_start_seq_position"])
+    if int(session.position) != start_position:
+        raise ProbeError(
+            f"{policy} lifecycle cycle {cycle_number} position {session.position} "
+            f"does not match trace {start_position}"
+        )
+    cycle_prev = int(cycle["cycle_prev_token"])
+    if int(current_prev) != cycle_prev:
+        raise ProbeError(
+            f"{policy} lifecycle cycle {cycle_number} prev {current_prev} "
+            f"does not match trace {cycle_prev}"
+        )
+    draft_tokens = [int(token) for token in cycle.get("draft_tokens", [])]
+    trace_target_tokens = [int(token) for token in cycle.get("target_tokens", [])]
+    trace_output_tokens = [int(token) for token in cycle.get("output_tokens", [])]
+    verifier_inputs = [cycle_prev] + draft_tokens
+    direct_commit_exact = target_block_direct_commit_is_exact(
+        mode,
+        start_position=start_position,
+        rows=len(verifier_inputs),
+    )
+
+    snapshot = None
+    if policy == "replay" or (policy == "direct" and not direct_commit_exact):
+        snapshot = session._linear_state_snapshot()
+    try:
+        if mode == "serial-exact":
+            block_result = session.verify_target_block_serial_exact(
+                verifier_inputs,
+                capture_linear_state_rows=(policy == "direct"),
+            )
+        else:
+            block_result = session.verify_target_block(
+                verifier_inputs,
+                bulk_attention_mode=mode,
+                use_wmma_prefill=bool(use_wmma_prefill),
+                capture_linear_state_rows=(policy == "direct"),
+                defer_linear_state_commit=(policy == "direct"),
+                record_stage_timings=False,
+            )
+        sampled_tokens = [int(token) for token in block_result.token_ids]
+        accepted = _llama_accept_count(draft_tokens, sampled_tokens[: len(draft_tokens)])
+        consumed_rows = int(accepted) + 1
+        if consumed_rows <= 0 or consumed_rows > len(verifier_inputs):
+            raise ProbeError(
+                f"{policy} lifecycle cycle {cycle_number} consumed rows {consumed_rows} "
+                f"outside verifier length {len(verifier_inputs)}"
+            )
+        replay_sampled_tokens: list[int] | None = None
+        state_source = "block"
+        if policy == "direct":
+            if not block_result.linear_state_rows_captured:
+                raise ProbeError(f"{policy} lifecycle cycle {cycle_number} did not capture linear-state rows")
+            if direct_commit_exact or consumed_rows == 1:
+                session._commit_verify_linear_state_row(
+                    consumed_rows - 1,
+                    position=start_position + consumed_rows,
+                )
+                state_source = "direct_commit"
+            else:
+                if snapshot is None:
+                    raise ProbeError(f"{policy} lifecycle cycle {cycle_number} missing serial replay snapshot")
+                session._restore_linear_state_snapshot(snapshot, position=start_position)
+                replay_result = session.verify_target_block_serial_exact(verifier_inputs[:consumed_rows])
+                replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
+                state_source = "serial_exact_replay"
+        else:
+            if consumed_rows < len(verifier_inputs):
+                if snapshot is None:
+                    raise ProbeError(f"{policy} lifecycle cycle {cycle_number} missing replay snapshot")
+                session._restore_linear_state_snapshot(snapshot, position=start_position)
+                replay_result = session.verify_target_block_serial_exact(verifier_inputs[:consumed_rows])
+                replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
+                state_source = "serial_exact_accepted_prefix"
+            else:
+                state_source = "block_full_accept"
+        visible_tokens = sampled_tokens[:consumed_rows]
+        next_prev = int(visible_tokens[-1])
+        return next_prev, {
+            "cycle": int(cycle_number),
+            "policy": str(policy),
+            "start_position": int(start_position),
+            "verifier_input_tokens": verifier_inputs,
+            "sampled_tokens": sampled_tokens,
+            "trace_target_tokens": trace_target_tokens,
+            "trace_output_tokens": trace_output_tokens,
+            "accepted_draft_tokens": int(accepted),
+            "consumed_rows": int(consumed_rows),
+            "visible_tokens": visible_tokens,
+            "state_source": state_source,
+            "direct_commit_exact": bool(direct_commit_exact),
+            "replay_sampled_tokens": replay_sampled_tokens,
+            "matches_trace_target_prefix": sampled_tokens[: len(trace_target_tokens)] == trace_target_tokens,
+            "matches_trace_visible": visible_tokens == trace_output_tokens,
+        }
+    finally:
+        if snapshot is not None:
+            session._free_linear_state_snapshot(snapshot)
+
+
+def _new_probe_session(
+    *,
+    args: argparse.Namespace,
+    compiler_version: str | None,
+    max_sequence_length: int,
+):
+    from hipengine.runtime.prefill import PrefillConfig
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    return Qwen35GGUFResidentSession(
+        args.model,
+        compiler_version=compiler_version,
+        require_cached_build=bool(args.require_cached_build),
+        max_sequence_length=max_sequence_length,
+        use_wmma_prefill=bool(args.use_wmma_prefill),
+        use_gemv_decode=bool(args.use_gemv_decode),
+        prefill_config=PrefillConfig(),
+    )
+
+
+def _prefill_probe_session(
+    session: Any,
+    *,
+    prompt_tokens: list[int],
+    prefill_attention_mode: str,
+    initial_prev_token: int,
+    initial_prev_position: int,
+) -> int:
+    prefill = session.prefill(
+        prompt_tokens,
+        use_bulk=True,
+        bulk_attention_mode=str(prefill_attention_mode),
+        return_logits=False,
+        capture_hidden_seed_fp32=True,
+    )
+    current_prev = int(prefill.token_id)
+    if current_prev != int(initial_prev_token):
+        raise ProbeError(
+            f"prefill token {current_prev} does not match trace initial_prev_token {initial_prev_token}"
+        )
+    if int(session.position) != int(initial_prev_position):
+        raise ProbeError(
+            f"prefill position {session.position} does not match trace {initial_prev_position}"
+        )
+    return current_prev
+
+
+def _run_state_lifecycle_compare(
+    *,
+    args: argparse.Namespace,
+    compiler_version: str | None,
+    prompt_tokens: list[int],
+    cycles: list[dict[str, Any]],
+    cycle_index: int,
+    initial_prev_token: int,
+    initial_prev_position: int,
+    max_sequence_length: int,
+    route_env: dict[str, str | None],
+) -> dict[str, Any]:
+    mode = str(args.target_block_verify_mode)
+    compare_cycles = cycles[: int(cycle_index) + 1]
+    first_mismatch: dict[str, Any] | None = None
+
+    def run_policy(policy: str) -> list[dict[str, Any]]:
+        session = _new_probe_session(
+            args=args,
+            compiler_version=compiler_version,
+            max_sequence_length=max_sequence_length,
+        )
+        rows: list[dict[str, Any]] = []
+        try:
+            policy_prev = _prefill_probe_session(
+                session,
+                prompt_tokens=prompt_tokens,
+                prefill_attention_mode=str(args.prefill_attention_mode),
+                initial_prev_token=int(initial_prev_token),
+                initial_prev_position=int(initial_prev_position),
+            )
+            for cycle_offset, cycle in enumerate(compare_cycles):
+                policy_prev, cycle_record = _run_lifecycle_cycle(
+                    session,
+                    cycle,
+                    current_prev=policy_prev,
+                    policy=policy,
+                    mode=mode,
+                    use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                )
+                fingerprint = _session_lifecycle_fingerprint(
+                    session,
+                    current_prev=policy_prev,
+                    label=policy,
+                )
+                rows.append(
+                    {
+                        "cycle": int(cycle.get("cycle", cycle_offset)),
+                        "cycle_offset": int(cycle_offset),
+                        "record": cycle_record,
+                        "fingerprint": fingerprint,
+                    }
+                )
+                if not bool(cycle_record["matches_trace_visible"]):
+                    break
+        finally:
+            session.close()
+        return rows
+
+    replay_rows = run_policy("replay")
+    direct_rows = run_policy("direct")
+    records: list[dict[str, Any]] = []
+    for offset in range(min(len(replay_rows), len(direct_rows))):
+        replay_row = replay_rows[offset]
+        direct_row = direct_rows[offset]
+        mismatches = _compare_lifecycle_fingerprints(
+            replay_row["fingerprint"],
+            direct_row["fingerprint"],
+        )
+        token_mismatch = (
+            replay_row["record"]["visible_tokens"]
+            != direct_row["record"]["visible_tokens"]
+        )
+        cycle_record = {
+            "cycle": int(replay_row["cycle"]),
+            "cycle_offset": int(offset),
+            "replay": replay_row["record"],
+            "direct": direct_row["record"],
+            "fingerprint_mismatches": mismatches,
+            "fingerprints": {
+                "replay": replay_row["fingerprint"],
+                "direct": direct_row["fingerprint"],
+            },
+        }
+        records.append(cycle_record)
+        if first_mismatch is None and (mismatches or token_mismatch):
+            first_mismatch = {
+                "cycle": int(replay_row["cycle"]),
+                "cycle_offset": int(offset),
+                "token_mismatch": bool(token_mismatch),
+                "replay_visible_tokens": replay_row["record"]["visible_tokens"],
+                "direct_visible_tokens": direct_row["record"]["visible_tokens"],
+                "fingerprint_mismatches": mismatches,
+            }
+        if token_mismatch:
+            break
+    return {
+        "schema": 1,
+        "kind": "hipengine_gguf_mtp_state_lifecycle_compare",
+        "status": "complete",
+        "performance_claim": False,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "repo": _repo_provenance(),
+        "model": str(args.model),
+        "source_trace": str(args.trace),
+        "command": exact_command_payload(sys.argv),
+        "route_env": route_env,
+        "comparison": {
+            "baseline_policy": "replay",
+            "candidate_policy": "direct",
+            "target_block_verify_mode": mode,
+            "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
+            "prefill_attention_mode": str(args.prefill_attention_mode),
+            "cycles_requested_through": int(args.cycle),
+            "cycles_compared": len(records),
+            "replay_policy_cycles_ran": len(replay_rows),
+            "direct_policy_cycles_ran": len(direct_rows),
+            "initial_prev_token": int(initial_prev_token),
+            "initial_prev_position": int(initial_prev_position),
+            "first_mismatch": first_mismatch,
+        },
+        "cycles": records,
+        "notes": [
+            "Diagnostic only: compares hipEngine verifier state lifecycle policies, not performance.",
+            "The replay baseline scores a block, restores on partial accept, then serial-replays the accepted prefix.",
+            "The direct candidate scores a block with captured Conv/GDN rows and commits the accepted row directly.",
+            "Fingerprints cover FP32 hidden seed plus per-linear-layer Conv/GDN resident state.",
+            "Full-attention KV buffers are not fingerprinted yet because unused cache capacity is not zeroed on reset.",
+        ],
+    }
+
+
 def _replay_prior_cycles(
     session: Any,
     cycles: list[dict[str, Any]],
@@ -953,6 +1378,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Diagnostic only: include per-layer MoE router logits/top-k for one verifier row.",
     )
+    parser.add_argument(
+        "--state-lifecycle-compare",
+        action="store_true",
+        help=(
+            "Diagnostic only: compare replay-state vs direct-state verifier lifecycle "
+            "fingerprints through --cycle and exit."
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -1048,6 +1481,27 @@ def main(argv: list[str] | None = None) -> int:
         int(cycle_start_position) + len(verifier_inputs) + 4,
         len(prompt_tokens) + len(consumed_prefix_tokens) + len(verifier_inputs) + 4,
     )
+    if bool(args.state_lifecycle_compare):
+        artifact = _run_state_lifecycle_compare(
+            args=args,
+            compiler_version=compiler_version,
+            prompt_tokens=prompt_tokens,
+            cycles=cycles,
+            cycle_index=int(cycle_index),
+            initial_prev_token=int(initial_prev_token),
+            initial_prev_position=int(initial_prev_position),
+            max_sequence_length=int(max_sequence_length),
+            route_env=route_env,
+        )
+        text = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"
+        if args.output is not None:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(text, encoding="utf-8")
+            print(args.output)
+        else:
+            print(text, end="")
+        return 0
+
     session = Qwen35GGUFResidentSession(
         args.model,
         compiler_version=compiler_version,

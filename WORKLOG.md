@@ -136662,3 +136662,58 @@ python3 scripts/gguf_mtp_bench.py \
   - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
   - `python3 scripts/check_lineage.py --kind kernel --diff stat` => blocked:
     `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing.
+
+## 2026-07-02 - Direct-state lifecycle comparator
+
+- Added `scripts/gguf_mtp_forced_target_probe.py --state-lifecycle-compare`.
+  The diagnostic runs two policies sequentially on the same proposal trace:
+  replay-state scoring with serial accepted-prefix replay on partial accept,
+  and direct-state scoring with captured Conv/GDN row commit.  It fingerprints
+  the post-cycle FP32 hidden seed plus every resident linear Conv/GDN state.
+  Full-attention K/V is intentionally not hashed because reset leaves unused
+  cache capacity non-zero.
+- Ran the active trace route on
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json`,
+  cycle 12, `--target-block-verify-mode bulk --no-target-block-wmma-prefill`.
+  Command:
+  ```bash
+  HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+  HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 \
+  python3 scripts/gguf_mtp_forced_target_probe.py \
+    --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json \
+    --cycle 12 --target-block-verify-mode bulk --no-target-block-wmma-prefill \
+    --state-lifecycle-compare \
+    --output benchmarks/results/2026-07-02-mtp-state-lifecycle-compare.json
+  ```
+  Result: 13 cycles compared, first mismatch at cycle 0 despite identical
+  visible tokens `[12305, 198, 727]`; 59 hidden/linear-state fingerprint
+  mismatches.
+- Re-ran with the prefill-shaped GDN capture diagnostic:
+  ```bash
+  HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+  HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 \
+  HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+  python3 scripts/gguf_mtp_forced_target_probe.py \
+    --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json \
+    --cycle 12 --target-block-verify-mode bulk --no-target-block-wmma-prefill \
+    --state-lifecycle-compare \
+    --output benchmarks/results/2026-07-02-mtp-state-lifecycle-prefillgdn-compare.json
+  ```
+  Result: cycles 0-2 fingerprint-match; first mismatch moves to cycle 3, a
+  partial/reject cycle where both policies emit visible `[65342]`, replay state
+  source is `serial_exact_accepted_prefix`, direct state source is
+  `direct_commit`, and 61 hidden/linear-state fingerprints diverge.
+- Interpretation: prefill-shaped Conv/GDN capture fixes early full-accept state
+  equality, but the active direct-state issue is partial-accept/reject accepted
+  row commit.  Next fix target is making direct commit prefix-equivalent after a
+  rejected block without paying permanent serial accepted-prefix replay.
