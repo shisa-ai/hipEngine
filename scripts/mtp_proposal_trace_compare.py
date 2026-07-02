@@ -151,7 +151,7 @@ def compare_rows(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow], *, 
             }
 
     return {
-        "schema": "hipengine.mtp_proposal_trace_compare.v2",
+        "schema": "hipengine.mtp_proposal_trace_compare.v3",
         "compared_rows": n,
         "hipengine_rows": len(hip_rows),
         "llamacpp_rows": len(llama_rows),
@@ -166,13 +166,14 @@ def compare_rows(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow], *, 
         "hipengine_totals": _totals(hip_rows[:n]),
         "llamacpp_totals": _totals(llama_rows[:n]),
         "output_stream": _stream_compare(hip_rows[:n], llama_rows[:n]),
+        "row_alignment": _row_alignment(hip_rows[:n], llama_rows[:n]),
         "first_divergence": first_divergence,
     }
 
 
 def _stream_compare(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow]) -> dict[str, Any]:
-    hip = _flatten_outputs(hip_rows)
-    llama = _flatten_outputs(llama_rows)
+    hip, hip_locs = _flatten_outputs_with_locations(hip_rows)
+    llama, llama_locs = _flatten_outputs_with_locations(llama_rows)
     prefix = _common_prefix_len(hip, llama)
     return {
         "hipengine_tokens": len(hip),
@@ -181,15 +182,30 @@ def _stream_compare(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow]) 
         "exact_match": hip == llama,
         "common_prefix_rate_vs_hip": (prefix / len(hip)) if hip else None,
         "common_prefix_rate_vs_llamacpp": (prefix / len(llama)) if llama else None,
-        "first_token_divergence": _first_token_divergence(hip, llama, prefix),
+        "first_token_divergence": _first_token_divergence(hip, llama, prefix, hip_locs, llama_locs),
     }
 
 
 def _flatten_outputs(rows: list[ProposalRow]) -> list[int]:
-    tokens: list[int] = []
-    for row in rows:
-        tokens.extend(row.output_token_ids)
+    tokens, _locations = _flatten_outputs_with_locations(rows)
     return tokens
+
+
+def _flatten_outputs_with_locations(rows: list[ProposalRow]) -> tuple[list[int], list[dict[str, Any]]]:
+    tokens: list[int] = []
+    locations: list[dict[str, Any]] = []
+    for row in rows:
+        for offset, token in enumerate(row.output_token_ids):
+            tokens.append(token)
+            locations.append(
+                {
+                    "row_index": row.index,
+                    "cycle": row.cycle,
+                    "offset_in_row": offset,
+                    "token": token,
+                }
+            )
+    return tokens, locations
 
 
 def _common_prefix_len(left: list[int], right: list[int]) -> int:
@@ -200,14 +216,128 @@ def _common_prefix_len(left: list[int], right: list[int]) -> int:
     return limit
 
 
-def _first_token_divergence(left: list[int], right: list[int], prefix: int) -> dict[str, Any] | None:
+def _first_token_divergence(
+    left: list[int],
+    right: list[int],
+    prefix: int,
+    left_locations: list[dict[str, Any]],
+    right_locations: list[dict[str, Any]],
+) -> dict[str, Any] | None:
     if prefix >= len(left) and prefix >= len(right):
         return None
     return {
         "token_index": prefix,
         "hipengine_token": left[prefix] if prefix < len(left) else None,
         "llamacpp_token": right[prefix] if prefix < len(right) else None,
+        "hipengine_location": left_locations[prefix] if prefix < len(left_locations) else None,
+        "llamacpp_location": right_locations[prefix] if prefix < len(right_locations) else None,
     }
+
+
+def _row_alignment(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow]) -> dict[str, Any]:
+    hip_offset = 0
+    llama_offset = 0
+    start_offset_match_rows = 0
+    output_length_match_rows = 0
+    row_output_prefix_match_rows = 0
+    first_start_offset_mismatch: dict[str, Any] | None = None
+    first_output_length_mismatch: dict[str, Any] | None = None
+    first_row_output_mismatch: dict[str, Any] | None = None
+    first_chunking_mismatch: dict[str, Any] | None = None
+    offset_samples: list[dict[str, Any]] = []
+
+    for pair_index, (hip, llama) in enumerate(zip(hip_rows, llama_rows, strict=False)):
+        hip_len = len(hip.output_token_ids)
+        llama_len = len(llama.output_token_ids)
+        hip_end = hip_offset + hip_len
+        llama_end = llama_offset + llama_len
+        row_prefix = _common_prefix_len(hip.output_token_ids, llama.output_token_ids)
+        row_output_match = hip.output_token_ids == llama.output_token_ids
+        row_prefix_match = row_prefix == min(hip_len, llama_len)
+        start_offset_match = hip_offset == llama_offset
+        output_length_match = hip_len == llama_len
+
+        start_offset_match_rows += int(start_offset_match)
+        output_length_match_rows += int(output_length_match)
+        row_output_prefix_match_rows += int(row_prefix_match)
+
+        row_summary = {
+            "pair_index": pair_index,
+            "hipengine": _row_stream_summary(hip, hip_offset, hip_end, include_tokens=True),
+            "llamacpp": _row_stream_summary(llama, llama_offset, llama_end, include_tokens=True),
+            "row_output_prefix_tokens": row_prefix,
+            "start_offsets_match": start_offset_match,
+            "output_lengths_match": output_length_match,
+            "row_output_match": row_output_match,
+            "row_output_prefix_match": row_prefix_match,
+        }
+        if len(offset_samples) < 16:
+            offset_samples.append(
+                {
+                    "pair_index": pair_index,
+                    "hipengine": _row_stream_summary(hip, hip_offset, hip_end, include_tokens=False),
+                    "llamacpp": _row_stream_summary(llama, llama_offset, llama_end, include_tokens=False),
+                    "row_output_prefix_tokens": row_prefix,
+                    "start_offsets_match": start_offset_match,
+                    "output_lengths_match": output_length_match,
+                    "row_output_match": row_output_match,
+                    "row_output_prefix_match": row_prefix_match,
+                }
+            )
+        if first_start_offset_mismatch is None and not start_offset_match:
+            first_start_offset_mismatch = row_summary
+        if first_output_length_mismatch is None and not output_length_match:
+            first_output_length_mismatch = row_summary
+        if first_row_output_mismatch is None and not row_output_match:
+            first_row_output_mismatch = row_summary
+        if (
+            first_chunking_mismatch is None
+            and not row_output_match
+            and row_prefix_match
+            and not output_length_match
+        ):
+            first_chunking_mismatch = row_summary
+
+        hip_offset = hip_end
+        llama_offset = llama_end
+
+    n = min(len(hip_rows), len(llama_rows))
+    return {
+        "rows_compared": n,
+        "start_offset_match_rows": start_offset_match_rows,
+        "output_length_match_rows": output_length_match_rows,
+        "row_output_prefix_match_rows": row_output_prefix_match_rows,
+        "start_offset_match_rate": (start_offset_match_rows / n) if n else None,
+        "output_length_match_rate": (output_length_match_rows / n) if n else None,
+        "row_output_prefix_match_rate": (row_output_prefix_match_rows / n) if n else None,
+        "first_start_offset_mismatch": first_start_offset_mismatch,
+        "first_output_length_mismatch": first_output_length_mismatch,
+        "first_row_output_mismatch": first_row_output_mismatch,
+        "first_chunking_mismatch": first_chunking_mismatch,
+        "offset_samples": offset_samples,
+    }
+
+
+def _row_stream_summary(
+    row: ProposalRow,
+    start_offset: int,
+    end_offset: int,
+    *,
+    include_tokens: bool,
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "row_index": row.index,
+        "cycle": row.cycle,
+        "stream_start": start_offset,
+        "stream_end": end_offset,
+        "output_len": len(row.output_token_ids),
+        "accepted_draft_tokens": row.accepted_draft_tokens,
+        "generated_draft_tokens": row.generated_draft_tokens,
+    }
+    if include_tokens:
+        summary["draft_token_ids"] = row.draft_token_ids
+        summary["output_token_ids"] = row.output_token_ids
+    return summary
 
 
 def _totals(rows: list[ProposalRow]) -> dict[str, Any]:

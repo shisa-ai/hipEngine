@@ -134858,3 +134858,32 @@ PYTHONPATH=. python3 scripts/mtp_draft_kernel_compare.py \
   retained artifacts. The retained full-suite conclusion remains unchanged:
   `llama-compat` B2 is **13.325 ms/output** vs llama.cpp HIP rerun
   **14.269 ms/output**.
+
+## 2026-07-02 - Proposal trace stream-alignment diagnostics
+
+- Extended `scripts/mtp_proposal_trace_compare.py` from schema v2 to v3 with
+  row-level stream offsets, compact offset samples, first chunking mismatch, and
+  row/cycle/offset locations for the first flat output-token divergence. This
+  separates "same output stream but different MTP chunking" from true stream
+  content divergence when comparing hipEngine `llama-compat` against llama.cpp.
+- Regenerated the existing one-prompt diagnostic comparison from the raw traces
+  already cited by the artifact:
+
+```bash
+PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py \
+  --hipengine /tmp/hipengine-mtp-proposal-trace/hipengine.json \
+  --llamacpp /tmp/hipengine-mtp-proposal-trace/llamacpp.json \
+  --out /tmp/hipengine-mtp-proposal-trace/compare-v3-wrapper.json
+```
+
+  Then merged the v3 `comparison` object into
+  `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json`.
+  Result: the first row/chunk mismatch is pair **3** at stream offset **9**:
+  hipEngine emits `[65342, 18078, 28649]`, llama.cpp emits `[65342]`, and the
+  row output shares a one-token prefix. The first stream-offset mismatch is pair
+  **4** (`12` vs `10`), while the first flat output-token divergence remains
+  token index **20** (hipEngine row 6/cycle 6/offset 2 token `4071` vs llama.cpp
+  row 7/cycle 13/offset 1 token `413`).
+- Updated `docs/MTP-LLAMACPP-PARITY.md` to record the sharper reading. No new
+  performance claim; this is instrumentation/provenance for future
+  same-protocol proposal traces.

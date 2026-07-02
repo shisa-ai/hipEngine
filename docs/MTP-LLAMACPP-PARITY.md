@@ -209,7 +209,7 @@ Current source artifacts:
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. This remains a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | llama.cpp HIP MTP whole-run rocprof proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json` | Diagnostic-only `llama-server` MTP request under `rocprofv3 --kernel-trace`, with `LLAMA_MTP_STAGE_TIMINGS` enabled. It produces the first llama.cpp MTP kernel-family bucket split in this tracker, but it is whole-process and required `SIGKILL` after profiler finalize timeout, so use it only as a source/kernel proxy. |
 | llama.cpp HIP MTP ROCTX range proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json` | Diagnostic-only rerun after llama.cpp commit `dd7ec418c` added `LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers. The artifact includes `range_name_summaries` for stage-window kernel buckets, but it is still whole-process and includes warmup/prompt/server ranges, so do not use it as a headline timing row. |
-| hipEngine vs llama.cpp proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json` | Diagnostic-only same-prompt token trace using hipEngine active `llama-compat` and llama.cpp HIP B2 with `LLAMA_MTP_TOKEN_TRACE=1`; `performance_claim=false`. It proves prompt and target state align for the first three measured cycles, then draft proposals diverge before any rejection. Use it to target draft-context mirror/KV row contents and row chunking. |
+| hipEngine vs llama.cpp proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json` | Diagnostic-only same-prompt token trace using hipEngine active `llama-compat` and llama.cpp HIP B2 with `LLAMA_MTP_TOKEN_TRACE=1`; `performance_claim=false`. The v3 comparison adds per-row stream offsets and token-divergence row locations. It proves prompt and target state align for the first three measured cycles, then draft proposals diverge before any rejection; the first row mismatch is a chunking/acceptance mismatch at the same stream offset, while the flat output stream stays aligned until token 20. Use it to target draft-context mirror/KV row contents and row chunking. |
 | hipEngine draft-context/logit A/B diagnostic | `benchmarks/results/2026-07-02-mtp-draft-context-logit-ab-diagnostic.json` | Diagnostic-only follow-up on the same prompt; `performance_claim=false`. It rules out hipEngine accepted-row KV commit and llama.cpp's public backend-sampling toggle as the primary cause, shows resident full-logit draft is not closer, and records cycle-3 top-k score margins with/without hipEngine MTP device KV. |
 | llama.cpp draft score trace diagnostic | `benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json` | Diagnostic-only same-prompt score trace after llama.cpp commit `0f7d32267` added `draft_sample_trace` to `LLAMA_MTP_TOKEN_TRACE` rows. At the first divergence llama.cpp ranks token `8` first and `65342` second by only **0.100 logits**, while hipEngine with device KV ranks `65342` first and token `8` third, **1.260 logits** behind. This confirms the active blocker is MTP seed/context/logit parity at seq position 49, not merely accepted-row KV commit or sampler toggles. |
 | MTP hidden-state parity diagnostic | `benchmarks/results/2026-07-02-mtp-hidden-state-parity-diagnostic.json` | Diagnostic-only same-prompt hidden summary trace after hipEngine commit `6190fd08` added `--record-draft-hidden-stats` and llama.cpp commit `c0f750604` added `draft_hidden_state_trace`. The `draft_seed_input` row is close (`rms_delta` **0.00456**, first8 mean abs **0.0798**), but depth-0 `draft_next_seed` has a much larger first8 mean abs delta (**0.731**) before token selection. The next target is depth-0 draft attention/KV/rope/context state, not the `pending_h` seed handoff. |
@@ -270,7 +270,9 @@ reasoning-off, top-1, and the same GGUF model on gfx1151.
 | accepted / output | 0.630 | 0.615 | This prompt is not the full-suite row-economy deficit; do not generalize it. |
 | draft acceptance | 0.850 | 0.842 | Same caution: one prompt only. |
 | flattened output stream prefix | 20 tokens | 20 tokens | Text remains aligned beyond the first cycle chunking mismatch. |
-| first stream token divergence | token index 20 = `4071` | token index 20 = `413` | Stream divergence occurs after the chunking divergence. |
+| first row/chunk mismatch | pair 3, stream offset 9, row output `[65342, 18078, 28649]` | pair 3, stream offset 9, row output `[65342]` | Same stream start and same first emitted token; the mismatch is proposal/acceptance chunking before it is a flat output-token mismatch. |
+| first stream-offset mismatch | pair 4 starts at offset 12 | pair 4 starts at offset 10 | Offset drift starts after llama.cpp rejects both pair-3 draft tokens and hipEngine accepts both. |
+| first stream token divergence | token index 20 = `4071`, row 6/cycle 6/offset 2 | token index 20 = `413`, row 7/cycle 13/offset 1 | Stream content diverges after the chunking divergence and after later rows re-align through a 20-token prefix. |
 
 First cycle-level divergence:
 
@@ -283,10 +285,13 @@ First cycle-level divergence:
 
 Interpretation: this is not prompt formatting and not an initial target-state
 bug. The first three measured cycles have identical drafts, accepted prefixes,
-and outputs. At the divergence, the target next token is still `65342` in both
-engines, but llama.cpp's MTP draft context proposes `[8, 1411]` while hipEngine
-proposes `[65342, 18078]`. That points at draft-context mirror state or K/V row
-contents after the shifted target-batch process, not at target verification.
+and outputs. At pair 3 both rows start at stream offset 9 and both emit `65342`
+first, but llama.cpp's MTP draft context proposes `[8, 1411]` and rejects both
+while hipEngine proposes `[65342, 18078]` and accepts both. The row offsets first
+separate at pair 4, and the flat token stream does not actually diverge until
+token index 20. That points at draft-context mirror state or K/V row contents
+after the shifted target-batch process, with acceptance/chunking separated from
+flat output-token divergence, not at target verification.
 
 Next source-level target: compare hipEngine's resident MTP device-KV update
 against llama.cpp's `common_speculative_process()` path. llama.cpp decodes the

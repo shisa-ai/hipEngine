@@ -76,11 +76,26 @@ def test_compare_proposal_traces_reports_first_divergence(tmp_path: Path) -> Non
     assert summary["llamacpp_totals"]["accepted_per_output"] == 3 / 5
     assert summary["output_stream"]["common_prefix_tokens"] == 3
     assert summary["output_stream"]["exact_match"] is False
-    assert summary["output_stream"]["first_token_divergence"] == {
-        "token_index": 3,
-        "hipengine_token": 99,
-        "llamacpp_token": 20,
+    assert summary["output_stream"]["first_token_divergence"]["token_index"] == 3
+    assert summary["output_stream"]["first_token_divergence"]["hipengine_token"] == 99
+    assert summary["output_stream"]["first_token_divergence"]["llamacpp_token"] == 20
+    assert summary["output_stream"]["first_token_divergence"]["hipengine_location"] == {
+        "row_index": 1,
+        "cycle": 1,
+        "offset_in_row": 0,
+        "token": 99,
     }
+    assert summary["output_stream"]["first_token_divergence"]["llamacpp_location"] == {
+        "row_index": 1,
+        "cycle": 1,
+        "offset_in_row": 0,
+        "token": 20,
+    }
+    assert summary["row_alignment"]["start_offset_match_rows"] == 2
+    assert summary["row_alignment"]["output_length_match_rows"] == 1
+    assert summary["row_alignment"]["first_output_length_mismatch"]["pair_index"] == 1
+    assert summary["row_alignment"]["first_row_output_mismatch"]["row_output_prefix_tokens"] == 0
+    assert summary["row_alignment"]["first_chunking_mismatch"] is None
     assert summary["first_divergence"]["pair_index"] == 1
     assert summary["first_divergence"]["hipengine"]["rejected_draft_token_id"] == 20
     assert summary["first_divergence"]["llamacpp"]["rejected_draft_token_id"] == 42
@@ -150,6 +165,11 @@ def test_compare_proposal_traces_separates_chunking_from_stream_match() -> None:
     assert summary["output_stream"]["exact_match"] is True
     assert summary["output_stream"]["common_prefix_tokens"] == 4
     assert summary["output_stream"]["first_token_divergence"] is None
+    assert summary["row_alignment"]["first_chunking_mismatch"]["pair_index"] == 0
+    assert summary["row_alignment"]["first_start_offset_mismatch"]["pair_index"] == 1
+    assert summary["row_alignment"]["first_row_output_mismatch"]["row_output_prefix_tokens"] == 1
+    assert summary["row_alignment"]["offset_samples"][0]["hipengine"]["stream_end"] == 3
+    assert summary["row_alignment"]["offset_samples"][0]["llamacpp"]["stream_end"] == 1
 
 
 def test_load_llamacpp_rows_from_wrapper_artifact(tmp_path: Path) -> None:
