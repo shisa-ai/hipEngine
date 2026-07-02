@@ -34,6 +34,12 @@ def test_build_linear_attn_compare_artifact_reports_early_attention_drift(
     assert artifact["tensor_deltas"]["attn_residual"]["mean_abs_diff"] == 1.0
     assert artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"] == 0.0
     assert artifact["tensor_deltas"]["layer_out"]["mean_abs_diff"] == 0.0
+    assert artifact["post_attn_norm_variant_deltas"]["attn_post_norm_active"][
+        "mean_abs_diff"
+    ] == 0.5
+    assert artifact["post_attn_norm_variant_assessment"]["best_metric"] == (
+        "attn_post_norm_active"
+    )
     assert artifact["input_boundary_deltas"]["hidden_in_vs_prev_layer_output"][
         "llamacpp_label"
     ] == "model.input_embed"
@@ -115,7 +121,45 @@ def test_build_linear_attn_compare_artifact_marks_final_output_layout_unresolved
     assert artifact["pre_ssm_out_label_assessment"]["status"] == (
         "unresolved_label_or_layout"
     )
+    assert artifact["pre_ssm_out_label_assessment"]["chosen_pre_ssm_metric"] == (
+        "recurrent_out_vs_final_output"
+    )
     assert "label/layout unresolved" in artifact["conclusion"]
+    json.dumps(artifact)
+
+
+def test_build_linear_attn_compare_artifact_closes_prefill_gdn_bf16_pre_ssm(
+    tmp_path: Path,
+) -> None:
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(_hip_artifact_with_prefill_gdn_bf16()) + "\n")
+    llama_path.write_text(json.dumps(_llama_cycle_with_final_output_cont()) + "\n")
+
+    artifact = build_linear_attn_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=0,
+    )
+
+    recurrent_delta = artifact["pre_ssm_out_deltas"][
+        "recurrent_bf16_vs_final_output_cont"
+    ]
+    assert recurrent_delta["status"] == "complete"
+    assert recurrent_delta["mean_abs_diff"] == 0.0
+    assert artifact["final_output_cont_summary"]["count"] == 4
+    assert artifact["pre_ssm_out_label_assessment"]["status"] == (
+        "pre_ssm_out_and_ssm_out_closed"
+    )
+    assert artifact["pre_ssm_out_label_assessment"]["chosen_pre_ssm_metric"] == (
+        "recurrent_bf16_vs_final_output_cont"
+    )
+    assert artifact["post_attn_norm_variant_assessment"]["best_metric"] == (
+        "attn_post_norm_f32_scratch"
+    )
+    assert "remaining drift is residual/post-norm amplification" in artifact["conclusion"]
     json.dumps(artifact)
 
 
@@ -366,6 +410,7 @@ def _hip_artifact_with_recurrent() -> dict:
             "attn_out": [1.0, 2.0],
             "attn_residual": [3.0, 4.0],
             "attn_post_norm": [5.0, 6.0],
+            "attn_post_norm_f32": [5.0, 6.0],
             "ffn_out_combined_from_components": [7.0, 8.0],
             "post_moe_rounded_from_components": [9.0, 10.0],
             "layer_out": [9.0, 10.0],
@@ -379,6 +424,46 @@ def _hip_artifact_with_recurrent() -> dict:
 def _llama_cycle_with_matching_ssm_out() -> dict:
     values_by_label = {
         "final_output_0": [1.0, 2.0, 3.0, 4.0],
+        "linear_attn_out_0": [1.0, 2.0],
+        "attn_residual_0": [3.0, 4.0],
+        "attn_post_norm_0": [5.0, 6.0],
+        "ffn_out_0": [7.0, 8.0],
+        "post_moe_0": [9.0, 10.0],
+    }
+    return {
+        "cycle": 18,
+        "accepted_draft_tokens": 1,
+        "accepted_token_ids": [15495],
+        "bonus_token_id": 26126,
+        "cycle_wall_ms": 215.0,
+        "draft_hidden_state_trace": [
+            {"label": label, "row_index": 1, "values": values}
+            for label, values in values_by_label.items()
+        ],
+    }
+
+
+def _hip_artifact_with_prefill_gdn_bf16() -> dict:
+    artifact = _hip_artifact()
+    values = artifact["result"]["layer_boundary_captures"][0]["values"]
+    values.update(
+        {
+            "attn_out": [1.0, 2.0],
+            "attn_residual": [3.0, 4.0],
+            "attn_post_norm": [5.0, 6.0],
+            "attn_post_norm_f32": [5.0, 6.0],
+            "ffn_out_combined_from_components": [7.0, 8.0],
+            "post_moe_rounded_from_components": [9.0, 10.0],
+            "layer_out": [9.0, 10.0],
+            "recurrent_bf16": [0.0, 1.0, 2.0, 3.0],
+        }
+    )
+    return artifact
+
+
+def _llama_cycle_with_final_output_cont() -> dict:
+    values_by_label = {
+        "final_output_cont_0": [0.0, 1.0, 2.0, 3.0],
         "linear_attn_out_0": [1.0, 2.0],
         "attn_residual_0": [3.0, 4.0],
         "attn_post_norm_0": [5.0, 6.0],

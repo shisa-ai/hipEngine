@@ -46,6 +46,15 @@ PRE_SSM_AMBIGUOUS_PAIRS: tuple[tuple[str, str, str], ...] = (
 PRE_SSM_OUT_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("recurrent_out_vs_final_output", "recurrent_out", "final_output_{layer}"),
     ("recurrent_bf16_vs_final_output", "recurrent_bf16", "final_output_{layer}"),
+    ("recurrent_out_vs_final_output_cont", "recurrent_out", "final_output_cont_{layer}"),
+    ("recurrent_bf16_vs_final_output_cont", "recurrent_bf16", "final_output_cont_{layer}"),
+)
+
+POST_ATTN_NORM_VARIANT_PAIRS: tuple[tuple[str, str, str], ...] = (
+    ("attn_post_norm_active", "attn_post_norm", "attn_post_norm_{layer}"),
+    ("attn_post_norm_bf16_mirror", "attn_post_norm_bf16", "attn_post_norm_{layer}"),
+    ("attn_post_norm_f32_scratch", "attn_post_norm_f32", "attn_post_norm_{layer}"),
+    ("attn_post_norm_router_input", "attn_post_norm_router_input", "attn_post_norm_{layer}"),
 )
 
 POST_SSM_OUT_CLOSE_MAE = 1.0e-3
@@ -105,6 +114,9 @@ def main() -> None:
                 "stable_split_status": artifact["stable_split_assessment"]["status"],
                 "pre_ssm_out_label_assessment": artifact[
                     "pre_ssm_out_label_assessment"
+                ]["status"],
+                "post_attn_norm_variant_assessment": artifact[
+                    "post_attn_norm_variant_assessment"
                 ]["status"],
                 "conclusion": artifact["conclusion"],
             },
@@ -180,6 +192,12 @@ def build_linear_attn_compare_artifact(
         llama_values=llama_values,
         layer=layer,
     )
+    post_attn_norm_variant_deltas = _optional_deltas(
+        pairs=POST_ATTN_NORM_VARIANT_PAIRS,
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+    )
 
     artifact = {
         "schema": 1,
@@ -211,6 +229,10 @@ def build_linear_attn_compare_artifact(
             layer=layer,
         ),
         "tensor_deltas": tensor_deltas,
+        "post_attn_norm_variant_deltas": post_attn_norm_variant_deltas,
+        "post_attn_norm_variant_assessment": _post_attn_norm_variant_assessment(
+            post_attn_norm_variant_deltas
+        ),
         "pre_ssm_out_deltas": pre_ssm_out_deltas,
         "pre_ssm_out_label_assessment": _pre_ssm_out_label_assessment(
             tensor_deltas=tensor_deltas,
@@ -218,6 +240,9 @@ def build_linear_attn_compare_artifact(
         ),
         "final_output_summary": _summary_for_optional_label(
             llama_values, f"final_output_{int(layer)}"
+        ),
+        "final_output_cont_summary": _summary_for_optional_label(
+            llama_values, f"final_output_cont_{int(layer)}"
         ),
     }
     artifact["stable_split_assessment"] = _stable_split_assessment(artifact)
@@ -784,33 +809,104 @@ def _pre_ssm_out_label_assessment(
     pre_ssm_out_deltas: dict[str, Any],
 ) -> dict[str, Any]:
     linear_delta = tensor_deltas["linear_attn_out"]["mean_abs_diff"]
-    recurrent = pre_ssm_out_deltas.get("recurrent_out_vs_final_output", {})
-    if recurrent.get("status") != "complete":
+    available = [
+        (name, delta)
+        for name, delta in pre_ssm_out_deltas.items()
+        if delta.get("status") == "complete"
+    ]
+    if not available:
         return {
             "status": "unavailable",
-            "reason": "hipEngine recurrent_out or llama.cpp final_output values are missing",
+            "reason": "hipEngine recurrent_out/recurrent_bf16 or llama.cpp final_output values are missing",
             "linear_attn_out_mae": float(linear_delta),
         }
 
-    recurrent_mae = float(recurrent["mean_abs_diff"])
-    if linear_delta <= POST_SSM_OUT_CLOSE_MAE and recurrent_mae >= PRE_SSM_OUT_MISMATCH_MAE:
+    priority = {
+        "recurrent_out_vs_final_output_cont": 0,
+        "recurrent_bf16_vs_final_output_cont": 1,
+        "recurrent_out_vs_final_output": 2,
+        "recurrent_bf16_vs_final_output": 3,
+    }
+    best_name, best_delta = min(
+        available,
+        key=lambda item: (
+            priority.get(item[0], 99),
+            float(item[1].get("mean_abs_diff", float("inf"))),
+        ),
+    )
+    pre_mae = float(best_delta["mean_abs_diff"])
+    result = {
+        "linear_attn_out_mae": float(linear_delta),
+        "chosen_pre_ssm_metric": best_name,
+        "chosen_pre_ssm_mae": pre_mae,
+        "chosen_hipengine_key": best_delta.get("hipengine_key"),
+        "chosen_llamacpp_label": best_delta.get("llamacpp_label"),
+    }
+    if linear_delta <= POST_SSM_OUT_CLOSE_MAE and pre_mae <= POST_SSM_OUT_CLOSE_MAE:
+        return {
+            "status": "pre_ssm_out_and_ssm_out_closed",
+            "reason": (
+                "the chosen pre-ssm output and downstream ssm_out projection both "
+                "match closely; do not chase the recurrent-GDN/ssm_out boundary for "
+                "this row"
+            ),
+            **result,
+        }
+    if linear_delta <= POST_SSM_OUT_CLOSE_MAE and pre_mae >= PRE_SSM_OUT_MISMATCH_MAE:
         return {
             "status": "unresolved_label_or_layout",
             "reason": (
-                "llama.cpp final_output differs much more than downstream "
-                "linear_attn_out; do not treat the direct final_output vs "
-                "recurrent_out comparison as semantic drift until the trace "
+                "the chosen llama.cpp final_output label differs much more than "
+                "downstream linear_attn_out; do not treat the direct final_output "
+                "comparison as semantic drift until the trace "
                 "label/layout is revalidated"
             ),
-            "linear_attn_out_mae": float(linear_delta),
-            "recurrent_out_vs_final_output_mae": recurrent_mae,
+            **result,
         }
 
     return {
         "status": "usable",
         "reason": "pre-ssm and post-ssm deltas are directionally consistent",
-        "linear_attn_out_mae": float(linear_delta),
-        "recurrent_out_vs_final_output_mae": recurrent_mae,
+        **result,
+    }
+
+
+def _post_attn_norm_variant_assessment(variant_deltas: dict[str, Any]) -> dict[str, Any]:
+    available = [
+        (name, delta)
+        for name, delta in variant_deltas.items()
+        if delta.get("status") == "complete"
+    ]
+    if not available:
+        return {
+            "status": "unavailable",
+            "reason": "no complete hipEngine post-attention norm variant matches llama.cpp attn_post_norm",
+        }
+    priority = {
+        "attn_post_norm_f32_scratch": 0,
+        "attn_post_norm_active": 1,
+        "attn_post_norm_router_input": 2,
+        "attn_post_norm_bf16_mirror": 3,
+    }
+    best_name, best_delta = min(
+        available,
+        key=lambda item: (
+            float(item[1].get("rmse", float("inf"))),
+            float(item[1].get("mean_abs_diff", float("inf"))),
+            priority.get(item[0], 99),
+        ),
+    )
+    return {
+        "status": "complete",
+        "best_metric": best_name,
+        "best_hipengine_key": best_delta.get("hipengine_key"),
+        "best_llamacpp_label": best_delta.get("llamacpp_label"),
+        "best_mean_abs_diff": float(best_delta["mean_abs_diff"]),
+        "best_rmse": float(best_delta["rmse"]),
+        "readout": (
+            "closest hipEngine post-attention norm variant to llama.cpp's "
+            "attn_post_norm label"
+        ),
     }
 
 
@@ -956,11 +1052,26 @@ def _conclusion(artifact: dict[str, Any]) -> str:
         else "attention residual unavailable in this capture"
     )
     pre_assessment = artifact.get("pre_ssm_out_label_assessment", {})
+    post_norm_variant = artifact.get("post_attn_norm_variant_assessment", {})
     pre_note = ""
     if pre_assessment.get("status") == "unresolved_label_or_layout":
         pre_note = (
             " Direct final_output vs hipEngine recurrent_out is label/layout "
             "unresolved because downstream ssm_out still matches closely."
+        )
+    elif pre_assessment.get("status") == "pre_ssm_out_and_ssm_out_closed":
+        pre_note = (
+            " The pre-ssm output and ssm_out projection are both close "
+            f"({pre_assessment['chosen_pre_ssm_metric']} MAE "
+            f"{pre_assessment['chosen_pre_ssm_mae']:.6g}); the remaining drift is "
+            "residual/post-norm amplification, not recurrent-GDN/ssm_out."
+        )
+    post_norm_note = ""
+    if post_norm_variant.get("status") == "complete":
+        post_norm_note = (
+            " Closest post-attention norm variant is "
+            f"{post_norm_variant['best_metric']} at MAE "
+            f"{post_norm_variant['best_mean_abs_diff']:.6g}."
         )
     stable_note = ""
     if stable.get("status") == "no_projection_or_conv_cliff":
@@ -1011,6 +1122,7 @@ def _conclusion(artifact: dict[str, Any]) -> str:
         "The next semantic target is the earliest complete input/pre-SSM delta above threshold."
         f"{stable_note}"
         f"{pre_note}"
+        f"{post_norm_note}"
     )
 
 
