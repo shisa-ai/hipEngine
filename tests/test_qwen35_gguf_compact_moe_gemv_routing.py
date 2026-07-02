@@ -150,6 +150,73 @@ def test_c1_f32_post_norm_routes_f32_router_and_selected_source(monkeypatch: pyt
     assert ("legacy_linear", ("ffn_down_exps", None)) in calls
 
 
+def test_c1_f32_post_norm_shared_q8_routes_shared_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_shexp"] = _FakeWeight(
+        "ffn_gate_shexp", "gguf_q8_0_t16_v1", 15, experts=1, out_features=16, in_features=256
+    )
+    layer._weights["ffn_up_shexp"] = _FakeWeight(
+        "ffn_up_shexp", "gguf_q8_0_t16_v1", 16, experts=1, out_features=16, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(
+        qgr,
+        "_launch_qwen35_router_logits_f32_hidden",
+        lambda *args, **kwargs: calls.append(("router_f32", (args[1].spec.source.name, args[3], args[5]))),
+    )
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "launch_gguf_linear_pair_concat", _fail_if_called("shared_pair_concat"))
+    monkeypatch.setattr(qgr, "launch_gguf_linear_pair", _fail_if_called("shared_pair"))
+    monkeypatch.setattr(
+        qgr,
+        "launch_gguf_linear",
+        lambda weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs: calls.append(
+            (
+                "linear",
+                (
+                    weight.spec.source.name,
+                    x_ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    kwargs.get("activation_dtype"),
+                ),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("legacy_pair", None)) or False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("legacy_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_c1(
+        0,
+        out_ptr=9000,
+        scratch=scratch,
+        stream=7,
+        post_norm_f32_ptr=1234,
+    )
+
+    assert (
+        "linear",
+        ("ffn_gate_shexp", 1234, 310, 1, 256, 16, qgr.GGUF_ACTIVATION_F32),
+    ) in calls
+    assert (
+        "linear",
+        ("ffn_up_shexp", 1234, 320, 1, 256, 16, qgr.GGUF_ACTIVATION_F32),
+    ) in calls
+    assert ("linear", ("ffn_down_shexp", 330, 340, 1, 16, 256, None)) in calls
+
+
 
 def test_compact_gemv_opt_in_routes_grouped_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_MOE_C1", "1")
@@ -374,6 +441,75 @@ def test_row_bulk_t16_direct_selected_prefill_routes_without_compact_scheduler(m
     assert "weighted_lanes" not in names
     assert ("t16_pair", (1012, 1013, 150, 150 + 4 * 256 * 2, (2, 4, 4, 256, 256))) in calls
     assert ("t16_down", (1014, 180, (4, 4, 4, 256, 256))) in calls
+    assert ("weighted_shared_batch", None) in calls
+
+
+def test_row_bulk_f32_post_norm_shared_q8_routes_shared_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_shexp"] = _FakeWeight(
+        "ffn_gate_shexp", "gguf_q8_0_t16_v1", 15, experts=1, out_features=16, in_features=256
+    )
+    layer._weights["ffn_up_shexp"] = _FakeWeight(
+        "ffn_up_shexp", "gguf_q8_0_t16_v1", 16, experts=1, out_features=16, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(
+        qgr,
+        "_launch_qwen35_router_logits_f32_hidden",
+        lambda *args, **kwargs: calls.append(("router_f32", (args[1].spec.source.name, args[3], args[5]))),
+    )
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "launch_gguf_linear_pair_concat", _fail_if_called("shared_pair_concat"))
+    monkeypatch.setattr(qgr, "launch_gguf_linear_pair", _fail_if_called("shared_pair"))
+    monkeypatch.setattr(
+        qgr,
+        "launch_gguf_linear",
+        lambda weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs: calls.append(
+            (
+                "linear",
+                (
+                    weight.spec.source.name,
+                    x_ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    kwargs.get("activation_dtype"),
+                ),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("legacy_pair", None)) or False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("legacy_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_rows(
+        0,
+        rows=2,
+        out_ptr=9000,
+        scratch=scratch,
+        stream=7,
+        post_norm_f32_ptr=1234,
+    )
+
+    assert (
+        "linear",
+        ("ffn_gate_shexp", 1234, 310, 2, 256, 16, qgr.GGUF_ACTIVATION_F32),
+    ) in calls
+    assert (
+        "linear",
+        ("ffn_up_shexp", 1234, 320, 2, 256, 16, qgr.GGUF_ACTIVATION_F32),
+    ) in calls
+    assert ("linear", ("ffn_down_shexp", 330, 340, 2, 16, 256, None)) in calls
     assert ("weighted_shared_batch", None) in calls
 
 

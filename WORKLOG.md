@@ -135773,3 +135773,40 @@ python3 scripts/llamacpp_mtp_compare_early_boundary.py \
   - `python3 -m pytest tests/test_llamacpp_mtp_compare_early_boundary.py tests/test_llamacpp_mtp_compare_router_trace.py tests/test_llamacpp_mtp_compare_target_moe_taps.py -q` => **3 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-layer0-1-boundary-cross-engine-diagnostic.json`
   - `git diff --check`
+
+## 2026-07-02 - FP32 post-norm shared fallback diagnostic fix
+
+- Fixed the `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8` diagnostic lane in
+  `hipengine/runtime/qwen35_gguf_runner.py`: shared gate/up fallback paths now
+  bypass BF16 pair/concat and launch supported F32-input singleton shared
+  projections for both c=1 and row-bulk MoE when an F32 post-norm pointer is
+  available. This closes a coverage hole where the shared dp4a path honored the
+  flag but BF16 fallback pair/concat still consumed `scratch.post_norm`.
+- Added compact MoE routing tests covering the c=1 and row-bulk shared fallback
+  routes and asserting the BF16 pair/concat launch is not used.
+- Retained diagnostic artifact:
+  `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-shared-fallback-smoke.json`.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 5 \
+  --candidate-token 26126 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-postnorm-shared-fallback-smoke.json
+```
+
+  Result: diagnostic-only (`performance_claim=false`) and now reaches the
+  pair-12 branch instead of failing at the earlier artificial cycle-7 branch,
+  but semantic parity is still not closed. It samples `[15495, 539, 1151]`,
+  accepts 2, and row 1 ranks `539` over `26126` with logits **26.064096** vs
+  **25.940170**, margin **+0.123926**. Next target remains the selected/shared
+  intermediate and down-output precision contract, not just post-norm shared
+  input precision.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py`
+  - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` => **18 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-postnorm-shared-fallback-smoke.json`
+  - `git diff --check`

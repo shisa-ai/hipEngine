@@ -209,6 +209,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_raw_ptr,
     launch_gguf_linear_triple,
+    resolve_gguf_linear_dispatch,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
@@ -3098,6 +3099,11 @@ class Qwen35GGUFFullStackRunner:
             if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_selected_q8_enabled()
             else None
         )
+        shared_f32_ptr = (
+            post_norm_f32_ptr
+            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_shared_q8_enabled()
+            else None
+        )
         router_fn = (
             _launch_qwen35_router_logits_f32_hidden
             if router_f32_ptr is not None
@@ -3187,7 +3193,28 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
 
-        if launch_gguf_linear_pair_concat(
+        if _try_launch_shared_gate_up_from_f32_post_norm(
+            layer.weight("ffn_gate_shexp"),
+            layer.weight("ffn_up_shexp"),
+            shared_f32_ptr,
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            rows=1,
+            hidden_size=self.hidden_size,
+            shared_ffn=cfg.expert_shared_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        ):
+            silu_mul_separate_out_bf16(
+                scratch.moe_shared_gate.ptr,
+                scratch.moe_shared_up.ptr,
+                scratch.moe_shared_intermediate.ptr,
+                rows=1,
+                features=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif launch_gguf_linear_pair_concat(
             layer.weight("ffn_gate_shexp"),
             layer.weight("ffn_up_shexp"),
             scratch.post_norm.ptr,
@@ -3789,6 +3816,27 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        elif _try_launch_shared_gate_up_from_f32_post_norm(
+            layer.weight("ffn_gate_shexp"),
+            layer.weight("ffn_up_shexp"),
+            shared_f32_ptr,
+            scratch.moe_shared_gate.ptr,
+            scratch.moe_shared_up.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            shared_ffn=cfg.expert_shared_feed_forward_length,
+            stream=stream,
+            runtime=runtime,
+        ):
+            silu_mul_separate_out_bf16(
+                scratch.moe_shared_gate.ptr,
+                scratch.moe_shared_up.ptr,
+                scratch.moe_shared_intermediate.ptr,
+                rows=rows,
+                features=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
         elif launch_gguf_linear_pair_concat(
             layer.weight("ffn_gate_shexp"),
             layer.weight("ffn_up_shexp"),
@@ -4078,6 +4126,59 @@ def _gguf_verify_f32_post_norm_selected_q8_enabled() -> bool:
 
 def _gguf_verify_f32_post_norm_shared_q8_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV, True)
+
+
+def _gguf_linear_supports_f32_activation(weight: Qwen35GGUFDeviceWeight) -> bool:
+    try:
+        resolve_gguf_linear_dispatch(weight, activation_dtype=GGUF_ACTIVATION_F32)
+    except ValueError:
+        return False
+    return True
+
+
+def _try_launch_shared_gate_up_from_f32_post_norm(
+    gate_weight: Qwen35GGUFDeviceWeight,
+    up_weight: Qwen35GGUFDeviceWeight,
+    post_norm_f32_ptr: int | None,
+    gate_out_ptr: int,
+    up_out_ptr: int,
+    *,
+    rows: int,
+    hidden_size: int,
+    shared_ffn: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    if post_norm_f32_ptr is None:
+        return False
+    if not (
+        _gguf_linear_supports_f32_activation(gate_weight)
+        and _gguf_linear_supports_f32_activation(up_weight)
+    ):
+        return False
+    launch_gguf_linear(
+        gate_weight,
+        int(post_norm_f32_ptr),
+        gate_out_ptr,
+        rows=rows,
+        in_features=hidden_size,
+        out_features=shared_ffn,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        stream=stream,
+        runtime=runtime,
+    )
+    launch_gguf_linear(
+        up_weight,
+        int(post_norm_f32_ptr),
+        up_out_ptr,
+        rows=rows,
+        in_features=hidden_size,
+        out_features=shared_ffn,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
 
 
 def _gguf_moe_graph_enabled() -> bool:
