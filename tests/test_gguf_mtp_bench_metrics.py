@@ -25,6 +25,7 @@ from scripts.gguf_mtp_bench import (
     should_use_fused_b1_block_probe,
     sibling_topk_acceptance_from_target_samples,
     target_block_direct_commit_is_exact,
+    target_block_direct_partial_commit_is_exact,
     target_block_needs_linear_state_snapshot,
     target_block_state_replay_uses_serial_exact,
     target_membership_in_draft_topk,
@@ -609,20 +610,31 @@ def test_target_block_direct_commit_exactness_policy() -> None:
     assert target_block_direct_commit_is_exact("bulk", start_position=8, rows=4) is True
     assert target_block_direct_commit_is_exact("bulk", start_position=1020, rows=4) is False
     assert target_block_direct_commit_is_exact("unknown", start_position=8, rows=2) is False
+    assert target_block_direct_partial_commit_is_exact("native") is True
+    assert target_block_direct_partial_commit_is_exact("serial-exact") is True
+    assert target_block_direct_partial_commit_is_exact("bulk") is False
 
 
 def test_target_block_snapshot_policy_skips_exact_direct_commit() -> None:
     assert target_block_needs_linear_state_snapshot(
         direct_state_commit=True,
         direct_state_commit_exact_mode=True,
+        direct_partial_commit_exact_mode=True,
     ) is False
     assert target_block_needs_linear_state_snapshot(
         direct_state_commit=True,
         direct_state_commit_exact_mode=False,
+        direct_partial_commit_exact_mode=True,
+    ) is True
+    assert target_block_needs_linear_state_snapshot(
+        direct_state_commit=True,
+        direct_state_commit_exact_mode=True,
+        direct_partial_commit_exact_mode=False,
     ) is True
     assert target_block_needs_linear_state_snapshot(
         direct_state_commit=False,
         direct_state_commit_exact_mode=True,
+        direct_partial_commit_exact_mode=True,
     ) is True
 
 

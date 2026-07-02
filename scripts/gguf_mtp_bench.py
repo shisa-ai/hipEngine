@@ -108,8 +108,21 @@ def target_block_direct_commit_is_exact(verify_mode: str, *, start_position: int
     return False
 
 
-def target_block_needs_linear_state_snapshot(*, direct_state_commit: bool, direct_state_commit_exact_mode: bool) -> bool:
-    return not (bool(direct_state_commit) and bool(direct_state_commit_exact_mode))
+def target_block_direct_partial_commit_is_exact(verify_mode: str) -> bool:
+    return verify_mode in {"native", "serial-exact"}
+
+
+def target_block_needs_linear_state_snapshot(
+    *,
+    direct_state_commit: bool,
+    direct_state_commit_exact_mode: bool,
+    direct_partial_commit_exact_mode: bool = True,
+) -> bool:
+    return not (
+        bool(direct_state_commit)
+        and bool(direct_state_commit_exact_mode)
+        and bool(direct_partial_commit_exact_mode)
+    )
 
 
 def target_block_state_replay_uses_serial_exact(
@@ -1433,6 +1446,8 @@ def main(argv: list[str] | None = None):
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     apply_llama_compat_args(args)
+    if getattr(args, "llama_compat", False):
+        os.environ["HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"] = "1"
     if getattr(args, "verify_dp4a", False):
         # Opt-in llama-style dp4a verify: enable the selected-expert q8_1/dp4a GEMVs.
         # Read live by the runner's _gguf_*_selected_dp4a_enabled() (os.environ).
@@ -2336,11 +2351,15 @@ def main(argv: list[str] | None = None):
                     start_position=seq_position,
                     rows=len(block_inputs),
                 )
+                direct_partial_commit_exact_mode = target_block_direct_partial_commit_is_exact(
+                    args.target_block_verify_mode
+                )
                 target_block_direct_commit_exact = bool(direct_state_commit_exact_mode)
                 snapshot = None
                 if target_block_needs_linear_state_snapshot(
                     direct_state_commit=direct_state_commit,
                     direct_state_commit_exact_mode=direct_state_commit_exact_mode,
+                    direct_partial_commit_exact_mode=direct_partial_commit_exact_mode,
                 ):
                     snapshot = session._linear_state_snapshot()
                 try:
@@ -2431,11 +2450,13 @@ def main(argv: list[str] | None = None):
                         current_device_token = int(block_target_tokens[1])
                     else:
                         record_target_verify(0, discarded_rows=1)
-                        if direct_state_commit:
+                        row0_direct_committed = False
+                        if direct_state_commit and direct_partial_commit_exact_mode:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
                             session._commit_verify_linear_state_row(0, position=seq_position + 1)
                             record_direct_commit()
+                            row0_direct_committed = True
                         else:
                             if snapshot is None:
                                 raise RuntimeError("B1 branch-safe row-0 replay requires a linear-state snapshot")
@@ -2451,7 +2472,7 @@ def main(argv: list[str] | None = None):
                         target_tokens.append(target0)
                         current_device_token = target0
                         if serial_hidden_host_required:
-                            if direct_state_commit:
+                            if row0_direct_committed:
                                 target_hidden_seeds.append(
                                     np.ascontiguousarray(block_result.hidden_seeds[0:1], dtype=np.float32)
                                 )
@@ -2515,11 +2536,15 @@ def main(argv: list[str] | None = None):
                     start_position=seq_position,
                     rows=len(block_inputs),
                 )
+                direct_partial_commit_exact_mode = target_block_direct_partial_commit_is_exact(
+                    args.target_block_verify_mode
+                )
                 target_block_direct_commit_exact = bool(direct_state_commit_exact_mode)
                 snapshot = None
                 if target_block_needs_linear_state_snapshot(
                     direct_state_commit=direct_state_commit,
                     direct_state_commit_exact_mode=direct_state_commit_exact_mode,
+                    direct_partial_commit_exact_mode=direct_partial_commit_exact_mode,
                 ):
                     t_snapshot0 = time.perf_counter()
                     snapshot = session._linear_state_snapshot()
@@ -2580,7 +2605,7 @@ def main(argv: list[str] | None = None):
                     if consumed_rows < len(block_inputs):
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
-                        if direct_state_commit and (consumed_rows == 1 or direct_state_commit_exact_mode):
+                        if direct_state_commit and direct_partial_commit_exact_mode:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
                             session._commit_verify_linear_state_row(
@@ -3486,6 +3511,7 @@ def main(argv: list[str] | None = None):
             "verify_dense_q8_dp4a_shared_env": os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"),
             "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
             "verify_dense_q8_dp4a_f32_env": os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"),
+            "verify_capture_prefill_gdn_env": os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
             "verify_lm_head_q6_top1_dp4a": bool(args.verify_lm_head_q6_top1_dp4a),
             "verify_lm_head_q6_top1_dp4a_env": os.environ.get("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"),
             "lm_head_q6_x8_sidecar_env": os.environ.get("HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"),

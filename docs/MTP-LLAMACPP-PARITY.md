@@ -5090,3 +5090,24 @@ next semantic target is accepted-row state after partial accept/reject: either
 direct capture must become prefix-equivalent for the accepted row, or the
 llama-compat path needs a narrow prefix-equivalent commit mechanism for rejected
 blocks without falling back to full serial replay as the steady-state verifier.
+
+Implementation update: `--llama-compat` now forces
+`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`, separates full-block direct commit
+from partial direct commit, and treats bulk partial/reject commits as not exact.
+The path still commits captured rows directly on full-accept blocks, but restores
+and serial-replays the accepted prefix for rejected bulk blocks.
+
+Post-fix lifecycle artifact:
+`benchmarks/results/2026-07-02-mtp-state-lifecycle-prefillgdn-partialfix-compare.json`.
+Result: 13 cycles compared, `first_mismatch: null`.  At cycle 3, replay state
+source is `serial_exact_accepted_prefix`, direct-policy state source is
+`serial_exact_replay`, both emit `[65342]`, mismatch count is 0, and
+`direct_partial_commit_exact=false`.
+
+Real bench smoke artifact:
+`benchmarks/results/2026-07-02-ar-mtp-llama-compat-directstate-prefillgdn-partialfix-smoke.json`.
+This is semantic validation, not a retained speed row.  It confirms
+`llama_compat=true`, `verify_capture_prefill_gdn_env=1`, total accepted
+`24/26`, cycle 3 draft `[8, 1411]` rejects to target `[65342]`, and the verifier
+transaction mix is 12 direct-commit rows plus 1 replay/serial row over the
+13-cycle smoke.

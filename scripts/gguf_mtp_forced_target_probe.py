@@ -32,6 +32,7 @@ from scripts.gguf_mtp_bench import (
     build_chat_prompt,
     hidden_state_summary,
     target_block_direct_commit_is_exact,
+    target_block_direct_partial_commit_is_exact,
 )
 
 
@@ -966,9 +967,13 @@ def _run_lifecycle_cycle(
         start_position=start_position,
         rows=len(verifier_inputs),
     )
+    direct_partial_commit_exact = target_block_direct_partial_commit_is_exact(mode)
 
     snapshot = None
-    if policy == "replay" or (policy == "direct" and not direct_commit_exact):
+    if policy == "replay" or (
+        policy == "direct"
+        and not (direct_commit_exact and direct_partial_commit_exact)
+    ):
         snapshot = session._linear_state_snapshot()
     try:
         if mode == "serial-exact":
@@ -998,7 +1003,10 @@ def _run_lifecycle_cycle(
         if policy == "direct":
             if not block_result.linear_state_rows_captured:
                 raise ProbeError(f"{policy} lifecycle cycle {cycle_number} did not capture linear-state rows")
-            if direct_commit_exact or consumed_rows == 1:
+            if direct_commit_exact and (
+                consumed_rows == len(verifier_inputs)
+                or direct_partial_commit_exact
+            ):
                 session._commit_verify_linear_state_row(
                     consumed_rows - 1,
                     position=start_position + consumed_rows,
@@ -1036,6 +1044,7 @@ def _run_lifecycle_cycle(
             "visible_tokens": visible_tokens,
             "state_source": state_source,
             "direct_commit_exact": bool(direct_commit_exact),
+            "direct_partial_commit_exact": bool(direct_partial_commit_exact),
             "replay_sampled_tokens": replay_sampled_tokens,
             "matches_trace_target_prefix": sampled_tokens[: len(trace_target_tokens)] == trace_target_tokens,
             "matches_trace_visible": visible_tokens == trace_output_tokens,

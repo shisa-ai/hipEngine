@@ -136717,3 +136717,55 @@ python3 scripts/gguf_mtp_bench.py \
   equality, but the active direct-state issue is partial-accept/reject accepted
   row commit.  Next fix target is making direct commit prefix-equivalent after a
   rejected block without paying permanent serial accepted-prefix replay.
+
+## 2026-07-02 - Llama-compat direct-state partial reject fix
+
+- Implemented the first semantic fix from the lifecycle comparator:
+  `--llama-compat` now forces
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`, and the block-verifier
+  transaction policy separates full-block direct commit from partial direct
+  commit.  Bulk verifier blocks keep captured direct commit on full accepts, but
+  rejected/partial bulk blocks now require a snapshot and serial accepted-prefix
+  replay because their captured row state is not prefix-equivalent.
+- Updated the B1 branch-safe reject path so hidden-seed bookkeeping follows the
+  actual state source: captured block hidden only when row 0 was directly
+  committed, otherwise the replayed resident hidden seed.
+- Post-fix lifecycle comparator command:
+  ```bash
+  HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+  HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 \
+  HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+  python3 scripts/gguf_mtp_forced_target_probe.py \
+    --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json \
+    --cycle 12 --target-block-verify-mode bulk --no-target-block-wmma-prefill \
+    --state-lifecycle-compare \
+    --output benchmarks/results/2026-07-02-mtp-state-lifecycle-prefillgdn-partialfix-compare.json
+  ```
+  Result: 13 cycles compared, `first_mismatch: null`.  At cycle 3, replay
+  state source is `serial_exact_accepted_prefix`, direct-policy state source is
+  `serial_exact_replay`, both emit `[65342]`, mismatch count is 0, and
+  `direct_partial_commit_exact=false`.
+- Real bench smoke command:
+  ```bash
+  python3 scripts/gguf_mtp_bench.py \
+    --cycles 13 --draft-n-max 2 \
+    --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+    --prompt-reasoning off --llama-compat --resident-mtp-device-chain \
+    --verify-dp4a --resident-mtp-draft-q6-top1-dp4a \
+    --resident-mtp-draft-q6-top1-stage1-shape x8 \
+    --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+    --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+    --resident-mtp-draft-dense-q8-dp4a \
+    --resident-mtp-draft-dense-q8-dp4a-stages draft \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directstate-prefillgdn-partialfix-smoke.json
+  ```
+  Result: semantic smoke only, not a retained speed row.  It confirms
+  `llama_compat=true`, `verify_capture_prefill_gdn_env=1`, accepted `24/26`,
+  cycle 3 draft `[8, 1411]` rejects to target `[65342]`, and the transaction
+  mix is 12 direct-commit rows plus 1 replay/serial row over 13 cycles.
