@@ -19,6 +19,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Iterable, Sequence
 
 import numpy as np
@@ -40,6 +41,27 @@ from scripts.gguf_mtp_bench import (
 
 class ProbeError(RuntimeError):
     pass
+
+
+DIAGNOSTIC_ENV_KEYS = (
+    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL",
+    "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM",
+    "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA",
+    "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT",
+    "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE",
+    "HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN",
+    "HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE",
+    "HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL",
+)
 
 
 def _hip_available() -> bool:
@@ -438,9 +460,9 @@ def _bf16_roundtrip_f32(values: np.ndarray) -> np.ndarray:
 def _capture_moe_component_arrays(capture: Any) -> dict[str, np.ndarray]:
     if (
         not bool(getattr(capture, "is_moe", False))
-        or capture.moe_routing_weights_f32 is None
-        or capture.moe_shared_out_f32 is None
-        or capture.moe_shared_gate_f32 is None
+        or getattr(capture, "moe_routing_weights_f32", None) is None
+        or getattr(capture, "moe_shared_out_f32", None) is None
+        or getattr(capture, "moe_shared_gate_f32", None) is None
     ):
         return {}
     hidden_size = int(capture.hidden_size)
@@ -459,15 +481,18 @@ def _capture_moe_component_arrays(capture: Any) -> dict[str, np.ndarray]:
     gate = np.float32(1.0 / (1.0 + np.exp(np.float32(-gate_logit))))
     shared_gated = np.ascontiguousarray(gate * shared, dtype=np.float32)
     ffn_out = np.ascontiguousarray(selected_bf16 + gate * shared, dtype=np.float32)
-    residual = np.ascontiguousarray(capture.residual_f32, dtype=np.float32).reshape(hidden_size)
-    return {
+    arrays = {
         "moe_selected_down_weighted": weighted_rows,
         "moe_selected_weighted_sum_f32": selected_acc,
         "moe_selected_weighted_bf16": selected_bf16,
         "moe_shared_gated": shared_gated,
         "ffn_out_combined_from_components": ffn_out,
-        "post_moe_rounded_from_components": _bf16_roundtrip_f32(residual + ffn_out),
     }
+    residual = getattr(capture, "residual_f32", None)
+    if residual is not None:
+        residual_row = np.ascontiguousarray(residual, dtype=np.float32).reshape(hidden_size)
+        arrays["post_moe_rounded_from_components"] = _bf16_roundtrip_f32(residual_row + ffn_out)
+    return arrays
 
 
 def _probe_bulk_or_native(
@@ -479,7 +504,15 @@ def _probe_bulk_or_native(
     capture_linear_state_rows: bool,
     capture_pre_output_norm_hidden: bool,
     capture_layer_output_hidden: list[int],
-) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None, dict[int, np.ndarray] | None]:
+    capture_layer_boundary_hidden: list[int],
+) -> tuple[
+    list[int],
+    np.ndarray,
+    np.ndarray,
+    np.ndarray | None,
+    dict[int, np.ndarray] | None,
+    dict[int, dict[str, np.ndarray]] | None,
+]:
     result = session.verify_target_block(
         verifier_inputs,
         bulk_attention_mode=mode,
@@ -488,6 +521,7 @@ def _probe_bulk_or_native(
         defer_linear_state_commit=bool(capture_linear_state_rows),
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         capture_layer_output_hidden=capture_layer_output_hidden,
+        capture_layer_boundary_hidden=capture_layer_boundary_hidden,
         record_stage_timings=False,
     )
     return (
@@ -505,6 +539,17 @@ def _probe_bulk_or_native(
             else {
                 int(layer_id): np.ascontiguousarray(hidden, dtype=np.float32)
                 for layer_id, hidden in result.layer_output_hidden.items()
+            }
+        ),
+        (
+            None
+            if result.layer_boundary_hidden is None
+            else {
+                int(layer_id): {
+                    str(name): np.ascontiguousarray(array, dtype=array.dtype)
+                    for name, array in arrays.items()
+                }
+                for layer_id, arrays in result.layer_boundary_hidden.items()
             }
         ),
     )
@@ -583,19 +628,26 @@ def _boundary_array_summaries(
         "recurrent_out": getattr(capture, "recurrent_out_f32", None),
         "recurrent_bf16": getattr(capture, "recurrent_bf16_f32", None),
         "attn_out": capture.attn_out_f32,
-        "attn_residual": capture.residual_f32,
+        "attn_residual": getattr(capture, "residual_f32", None),
         "attn_post_norm": capture.post_norm_f32,
-        "attn_post_norm_bf16": capture.post_norm_f32,
+        "attn_post_norm_bf16": getattr(capture, "post_norm_bf16_f32", capture.post_norm_f32),
+        "attn_post_norm_f32": getattr(capture, "post_norm_exact_f32", None),
         "attn_post_norm_router_input": getattr(capture, "post_norm_router_input_f32", None),
         "moe_router_logits": getattr(capture, "moe_router_logits_f32", None),
         "moe_selected_swiglu": getattr(capture, "moe_selected_intermediate_f32", None),
-        "ffn_or_moe_down": capture.ffn_or_moe_down_f32,
+        "moe_selected_swiglu_f32_scratch": getattr(capture, "moe_selected_intermediate_exact_f32", None),
+        "ffn_or_moe_down": getattr(capture, "ffn_or_moe_down_f32", None),
+        "ffn_or_moe_down_f32_scratch": getattr(capture, "ffn_or_moe_down_exact_f32", None),
         "moe_shared_intermediate": getattr(capture, "moe_shared_intermediate_f32", None),
-        "moe_shared_out": capture.moe_shared_out_f32,
-        "post_moe_delta_from_residual": (
+        "moe_shared_out": getattr(capture, "moe_shared_out_f32", None),
+        "moe_shared_out_f32_scratch": getattr(capture, "moe_shared_out_exact_f32", None),
+        "post_moe_delta_from_residual": None
+        if getattr(capture, "residual_f32", None) is None
+        else (
             np.asarray(capture.layer_out_f32, dtype=np.float32).reshape(-1)
             - np.asarray(capture.residual_f32, dtype=np.float32).reshape(-1)
         ),
+        "layer_out_bf16": getattr(capture, "layer_out_bf16_f32", None),
         "layer_out": capture.layer_out_f32,
     }
     arrays.update(_capture_moe_component_arrays(capture))
@@ -614,6 +666,159 @@ def _boundary_array_summaries(
         )
         values[name] = [float(value) for value in row]
     return summaries, values
+
+
+def _row_from_capture_arrays(
+    arrays: dict[str, np.ndarray],
+    name: str,
+    row_index: int,
+    *,
+    fallback: str | None = None,
+) -> np.ndarray | None:
+    source_name = name if name in arrays else fallback
+    if source_name is None or source_name not in arrays:
+        return None
+    array = np.asarray(arrays[source_name])
+    if array.ndim == 0:
+        return np.ascontiguousarray(array.reshape(1))
+    if int(row_index) < 0 or int(row_index) >= int(array.shape[0]):
+        raise ProbeError(f"scored layer-boundary row {row_index} outside captured {source_name} rows")
+    return np.ascontiguousarray(array[int(row_index)])
+
+
+def _scored_boundary_row_capture(
+    *,
+    layer_id: int,
+    layer_type: str,
+    arrays: dict[str, np.ndarray],
+    row_index: int,
+) -> Any:
+    hidden_in = _row_from_capture_arrays(arrays, "hidden_in", row_index)
+    attn_norm = _row_from_capture_arrays(arrays, "attn_norm", row_index)
+    attn_out = _row_from_capture_arrays(arrays, "attn_out", row_index)
+    post_norm_bf16 = _row_from_capture_arrays(arrays, "attn_post_norm_bf16", row_index, fallback="attn_post_norm")
+    post_norm = _row_from_capture_arrays(arrays, "attn_post_norm_f32", row_index)
+    if post_norm is None:
+        post_norm = post_norm_bf16
+    layer_out = _row_from_capture_arrays(arrays, "layer_out", row_index)
+    if hidden_in is None or attn_norm is None or attn_out is None or post_norm is None or layer_out is None:
+        raise ProbeError("scored layer-boundary capture is missing required hidden/attention arrays")
+    hidden_size = int(np.asarray(hidden_in).reshape(-1).shape[0])
+    is_moe = "moe_router_logits" in arrays
+    top_k = 1
+    if is_moe and "moe_routing_weights" in arrays:
+        weights = np.asarray(arrays["moe_routing_weights"])
+        top_k = int(weights.shape[1]) if weights.ndim >= 2 else int(weights.reshape(-1).shape[0])
+    selected_swiglu_exact = _row_from_capture_arrays(arrays, "moe_selected_swiglu_f32_scratch", row_index)
+    selected_swiglu_bf16 = _row_from_capture_arrays(arrays, "moe_selected_swiglu", row_index)
+    selected_down_exact = _row_from_capture_arrays(arrays, "ffn_or_moe_down_f32_scratch", row_index)
+    selected_down_bf16 = _row_from_capture_arrays(arrays, "ffn_or_moe_down", row_index)
+    shared_out_exact = _row_from_capture_arrays(arrays, "moe_shared_out_f32_scratch", row_index)
+    shared_out_bf16 = _row_from_capture_arrays(arrays, "moe_shared_out", row_index)
+    return SimpleNamespace(
+        layer_id=int(layer_id),
+        layer_type=str(layer_type),
+        hidden_size=hidden_size,
+        is_moe=bool(is_moe),
+        top_k=top_k,
+        hidden_in_f32=hidden_in,
+        attn_norm_f32=attn_norm,
+        linear_qkv_f32=_row_from_capture_arrays(arrays, "linear_qkv", row_index),
+        linear_z_f32=_row_from_capture_arrays(arrays, "linear_z", row_index),
+        ssm_alpha_f32=_row_from_capture_arrays(arrays, "ssm_alpha", row_index),
+        ssm_beta_f32=_row_from_capture_arrays(arrays, "ssm_beta", row_index),
+        conv_out_f32=_row_from_capture_arrays(arrays, "conv_out", row_index),
+        recurrent_out_f32=_row_from_capture_arrays(arrays, "recurrent_out", row_index),
+        recurrent_bf16_f32=_row_from_capture_arrays(arrays, "recurrent_bf16", row_index),
+        attn_out_f32=attn_out,
+        residual_f32=_row_from_capture_arrays(arrays, "attn_residual", row_index),
+        post_norm_f32=post_norm,
+        post_norm_bf16_f32=post_norm_bf16,
+        post_norm_exact_f32=_row_from_capture_arrays(arrays, "attn_post_norm_f32", row_index),
+        post_norm_router_input_f32=post_norm,
+        moe_router_logits_f32=_row_from_capture_arrays(arrays, "moe_router_logits", row_index),
+        moe_selected_intermediate_f32=(
+            selected_swiglu_exact if selected_swiglu_exact is not None else selected_swiglu_bf16
+        ),
+        moe_selected_intermediate_exact_f32=selected_swiglu_exact,
+        ffn_or_moe_down_f32=(selected_down_exact if selected_down_exact is not None else selected_down_bf16),
+        ffn_or_moe_down_exact_f32=selected_down_exact,
+        moe_shared_intermediate_f32=_row_from_capture_arrays(arrays, "moe_shared_intermediate", row_index),
+        moe_shared_out_f32=(shared_out_exact if shared_out_exact is not None else shared_out_bf16),
+        moe_shared_out_exact_f32=shared_out_exact,
+        moe_routing_weights_f32=_row_from_capture_arrays(arrays, "moe_routing_weights", row_index),
+        moe_shared_gate_f32=_row_from_capture_arrays(arrays, "moe_shared_gate", row_index),
+        moe_selected_experts_i64=_row_from_capture_arrays(arrays, "moe_selected_experts", row_index),
+        layer_out_f32=layer_out,
+        layer_out_bf16_f32=_row_from_capture_arrays(arrays, "layer_out_bf16", row_index),
+    )
+
+
+def _scored_boundary_capture_record(
+    *,
+    layer_id: int,
+    row_index: int,
+    arrays: dict[str, np.ndarray],
+    input_token: int,
+    position: int,
+    target_tokens: list[int],
+    include_raw: bool,
+) -> dict[str, Any]:
+    layer_type_id = _row_from_capture_arrays(arrays, "layer_type_id", row_index)
+    layer_type = "linear_attention"
+    if layer_type_id is not None and int(np.asarray(layer_type_id).reshape(-1)[0]) == 1:
+        layer_type = "full_attention"
+    capture = _scored_boundary_row_capture(
+        layer_id=int(layer_id),
+        layer_type=layer_type,
+        arrays=arrays,
+        row_index=int(row_index),
+    )
+    summaries, values = _boundary_array_summaries(
+        capture,
+        row_index=int(row_index),
+        input_token=int(input_token),
+        position=int(position),
+    )
+    record = {
+        "layer": int(layer_id),
+        "row": int(row_index),
+        "position": int(position),
+        "input_token": int(input_token),
+        "trace_target_token": int(target_tokens[row_index]) if row_index < len(target_tokens) else None,
+        "capture_source": "scored_target_block",
+        "capture": {
+            "layer_id": int(layer_id),
+            "layer_type": layer_type,
+            "hidden_size": int(capture.hidden_size),
+            "is_moe": bool(capture.is_moe),
+            "top_k": int(capture.top_k),
+            "has_attn_residual": capture.residual_f32 is not None,
+            "array_shapes": {
+                str(name): list(np.asarray(array).shape)
+                for name, array in sorted(arrays.items())
+            },
+        },
+        "summaries": summaries,
+        "selected_experts": (
+            None
+            if capture.moe_selected_experts_i64 is None
+            else [int(value) for value in np.asarray(capture.moe_selected_experts_i64).reshape(-1)]
+        ),
+        "routing_weights": (
+            None
+            if capture.moe_routing_weights_f32 is None
+            else [float(value) for value in np.asarray(capture.moe_routing_weights_f32, dtype=np.float32).reshape(-1)]
+        ),
+        "shared_gate": (
+            None
+            if capture.moe_shared_gate_f32 is None
+            else [float(value) for value in np.asarray(capture.moe_shared_gate_f32, dtype=np.float32).reshape(-1)]
+        ),
+    }
+    if include_raw:
+        record["values"] = values
+    return record
 
 
 def _capture_single_layer_boundary(
@@ -1343,6 +1548,10 @@ def exact_command_payload(argv: Sequence[object]) -> dict[str, Any]:
     return {"argv": argv_strings, "command": shlex.join(argv_strings)}
 
 
+def diagnostic_env_payload() -> dict[str, str]:
+    return {key: os.environ[key] for key in DIAGNOSTIC_ENV_KEYS if key in os.environ}
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=Path(GGUF_PATH))
@@ -1433,6 +1642,29 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Diagnostic only: include full FP32 sub-boundary buffer values inside one target layer for LAYER:ROW.",
     )
     parser.add_argument(
+        "--scored-layer-boundary-row",
+        action="append",
+        type=_parse_layer_row,
+        default=[],
+        metavar="LAYER:ROW",
+        help=(
+            "Diagnostic only: include sub-boundary buffers from the actual scored bulk/native "
+            "target verifier pass for LAYER:ROW. Unlike --layer-boundary-row, this does not "
+            "run an isolated single-row replay."
+        ),
+    )
+    parser.add_argument(
+        "--raw-scored-layer-boundary-row",
+        action="append",
+        type=_parse_layer_row,
+        default=[],
+        metavar="LAYER:ROW",
+        help=(
+            "Diagnostic only: include full FP32 sub-boundary buffer values from the actual "
+            "scored bulk/native target verifier pass for LAYER:ROW."
+        ),
+    )
+    parser.add_argument(
         "--router-trace-row",
         action="append",
         type=int,
@@ -1512,6 +1744,19 @@ def main(argv: list[str] | None = None) -> int:
             raise ProbeError(
                 f"layer boundary row {row_index} outside verifier input length {len(verifier_inputs)}"
             )
+    scored_layer_boundary_rows = {(int(layer), int(row)) for layer, row in args.scored_layer_boundary_row}
+    raw_scored_layer_boundary_rows = {(int(layer), int(row)) for layer, row in args.raw_scored_layer_boundary_row}
+    scored_layer_boundary_capture_rows = sorted(scored_layer_boundary_rows | raw_scored_layer_boundary_rows)
+    for layer_id, row_index in scored_layer_boundary_capture_rows:
+        if int(row_index) >= len(verifier_inputs):
+            raise ProbeError(
+                f"scored layer boundary row {row_index} outside verifier input length {len(verifier_inputs)}"
+            )
+    if scored_layer_boundary_capture_rows and args.target_block_verify_mode == "serial-exact":
+        raise ProbeError("--scored-layer-boundary-row requires bulk or native target-block verify mode")
+    capture_scored_layer_boundary_hidden = sorted(
+        {int(layer) for layer, _row in scored_layer_boundary_capture_rows}
+    )
     router_trace_rows = sorted({int(row) for row in args.router_trace_row})
     for row_index in router_trace_rows:
         if int(row_index) < 0 or int(row_index) >= len(verifier_inputs):
@@ -1605,8 +1850,16 @@ def main(argv: list[str] | None = None) -> int:
                 capture_pre_output_norm_hidden=bool(pre_output_norm_capture_rows),
                 capture_layer_output_hidden=capture_layer_output_hidden,
             )
+            scored_layer_boundary_hidden = None
         else:
-            sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden, layer_output_hidden = _probe_bulk_or_native(
+            (
+                sampled_tokens,
+                logits,
+                hidden_seeds,
+                pre_output_norm_hidden,
+                layer_output_hidden,
+                scored_layer_boundary_hidden,
+            ) = _probe_bulk_or_native(
                 session,
                 verifier_inputs,
                 mode=str(args.target_block_verify_mode),
@@ -1614,6 +1867,7 @@ def main(argv: list[str] | None = None) -> int:
                 capture_linear_state_rows=bool(args.capture_linear_state_rows),
                 capture_pre_output_norm_hidden=bool(pre_output_norm_capture_rows),
                 capture_layer_output_hidden=capture_layer_output_hidden,
+                capture_layer_boundary_hidden=capture_scored_layer_boundary_hidden,
             )
         accepted_draft_tokens = _llama_accept_count(draft_tokens, sampled_tokens[: len(draft_tokens)])
         rows: list[dict[str, Any]] = []
@@ -1683,6 +1937,24 @@ def main(argv: list[str] | None = None) -> int:
                 if layer_values:
                     row_record["layer_output_hidden_values"] = layer_values
             rows.append(row_record)
+        scored_layer_boundary_captures: list[dict[str, Any]] = []
+        for layer_id, row_index in scored_layer_boundary_capture_rows:
+            if scored_layer_boundary_hidden is None:
+                raise ProbeError("scored layer boundary rows were requested but not captured")
+            arrays = scored_layer_boundary_hidden.get(int(layer_id))
+            if arrays is None:
+                raise ProbeError(f"scored layer {layer_id} boundary rows were requested but not captured")
+            scored_layer_boundary_captures.append(
+                _scored_boundary_capture_record(
+                    layer_id=int(layer_id),
+                    row_index=int(row_index),
+                    arrays=arrays,
+                    input_token=int(verifier_inputs[row_index]),
+                    position=int(cycle_start_position + row_index),
+                    target_tokens=target_tokens,
+                    include_raw=(int(layer_id), int(row_index)) in raw_scored_layer_boundary_rows,
+                )
+            )
     finally:
         session.close()
 
@@ -1736,6 +2008,7 @@ def main(argv: list[str] | None = None) -> int:
         "source_trace": str(args.trace),
         "command": exact_command_payload(sys.argv),
         "route_env": route_env,
+        "diagnostic_env": diagnostic_env_payload(),
         "probe": {
             "cycle": int(args.cycle),
             "cycle_index": int(cycle_index),
@@ -1759,6 +2032,7 @@ def main(argv: list[str] | None = None) -> int:
             "replay_target_block_verify_mode": str(args.replay_target_block_verify_mode or args.target_block_verify_mode),
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
             "capture_linear_state_rows": bool(args.capture_linear_state_rows),
+            "capture_scored_layer_boundary_hidden": capture_scored_layer_boundary_hidden,
             "prior_cycle_replay": replay_rows,
             "cycle_pending_hidden_seed_summary": hidden_state_summary(
                 cycle_pending_hidden_seed,
@@ -1770,6 +2044,7 @@ def main(argv: list[str] | None = None) -> int:
             "sampled_tokens": sampled_tokens,
             "accepted_draft_tokens": int(accepted_draft_tokens),
             "rows": rows,
+            "scored_layer_boundary_captures": scored_layer_boundary_captures,
             "layer_boundary_captures": layer_boundary_captures,
             "router_trace_captures": router_trace_captures,
         },
@@ -1786,6 +2061,8 @@ def main(argv: list[str] | None = None) -> int:
             "layer_output_hidden_values is emitted only for --raw-layer-output-row LAYER:ROW diagnostics.",
             "layer_boundary_captures is emitted only for requested --layer-boundary-row or --raw-layer-boundary-row LAYER:ROW diagnostics.",
             "Layer boundary captures run in isolated replay sessions so diagnostic sub-layer taps do not perturb the scored verifier probe.",
+            "scored_layer_boundary_captures is emitted only for requested --scored-layer-boundary-row or --raw-scored-layer-boundary-row LAYER:ROW diagnostics.",
+            "Scored layer boundary captures copy tensors from the actual bulk/native target verifier pass that scored the rows; they are diagnostic host copies and not performance evidence.",
             "Layer boundary captures include attn_norm and, for MoE layers, router logits, selected SwigLU/down/weighted sums, shared intermediate/out/gated contribution, host-reconstructed ffn_out_combined_from_components, and post_moe_rounded_from_components.",
             "router_trace_captures is emitted only for requested --router-trace-row ROW diagnostics and runs one isolated row replay through all layers, capturing per-layer router logits/top-k without perturbing the scored verifier probe.",
             "post_moe_delta_from_residual is derived as layer_out - attn_residual and is an approximate bridge to llama.cpp post_moe/ffn residual comparisons after BF16 output rounding.",

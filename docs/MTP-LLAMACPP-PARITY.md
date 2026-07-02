@@ -176,6 +176,27 @@ MoE router/projection precision around layer 14, not the outer MTP economics
 loop, row scheduling, direct commit, output-norm-only behavior, or LM-head
 top-k.
 
+New live-path instrumentation (2026-07-03) closes one diagnostic ambiguity:
+`scripts/gguf_mtp_forced_target_probe.py` can now emit
+`--scored-layer-boundary-row` / `--raw-scored-layer-boundary-row` captures from
+the actual bulk/native verifier pass that scored the target rows, rather than
+only from isolated single-row layer replay. The artifact
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json`
+was collected on the same bonus row with direct-state linear-row capture and
+`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`; it records the active diagnostic
+env separately from route-derived flags. The compact scored-vs-llama comparison
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-moe-taps-compare.json`
+confirms the live scored path has the same material top-k mismatch
+(hipEngine `[61, 68, 7, 60, 249, 37, 178, 175]` vs llama.cpp
+`[61, 68, 7, 60, 249, 37, 178, 32]`). Scored-path router MAE is **0.02175**
+(isolated replay was **0.02493**), `ffn_out` MAE is **0.00228**, and
+post-MoE/layer-output MAE is **0.00253**. The small scored-vs-isolated numeric
+shift proves the new capture is observing the live verifier path, but it does
+not change the target: layer-14 router-input/logit precision near the cutoff is
+still the first material semantic gap. Future live-path bisection should prefer
+the scored capture block, and use isolated captures only for narrower
+single-layer experiments.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35

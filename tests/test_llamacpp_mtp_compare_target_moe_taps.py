@@ -59,6 +59,36 @@ def test_build_moe_tap_compare_artifact_falls_back_to_post_moe_layer_output(
     )
 
 
+def test_build_moe_tap_compare_artifact_can_use_scored_capture(
+    tmp_path: Path,
+) -> None:
+    hip = _hip_artifact()
+    scored = dict(hip["result"]["layer_boundary_captures"][0])
+    scored["capture_source"] = "scored_target_block"
+    scored["selected_experts"] = scored.pop("moe_selected_experts")
+    scored["routing_weights"] = scored.pop("moe_routing_weights")
+    scored["shared_gate"] = scored.pop("moe_shared_gate")
+    hip["result"]["scored_layer_boundary_captures"] = [scored]
+    hip["result"]["layer_boundary_captures"] = []
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(hip) + "\n")
+    llama_path.write_text(json.dumps(_llama_cycle()) + "\n")
+
+    artifact = build_moe_tap_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=31,
+        hipengine_capture_source="scored",
+    )
+
+    assert artifact["inputs"]["hipengine_capture_source"] == "scored_target_block"
+    assert artifact["hipengine"]["capture_source"] == "scored_target_block"
+    assert artifact["router"]["topk_match"] is True
+
+
 def _hip_artifact() -> dict:
     return {
         "model": "/models/fake.gguf",

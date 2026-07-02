@@ -437,6 +437,7 @@ class Qwen35GGUFBlockVerifyResult:
     start_position: int
     pre_output_norm_hidden: np.ndarray | None = None
     layer_output_hidden: dict[int, np.ndarray] | None = None
+    layer_boundary_hidden: dict[int, dict[str, np.ndarray]] | None = None
     linear_state_rows_captured: bool = False
 
     def __post_init__(self) -> None:
@@ -463,6 +464,21 @@ class Qwen35GGUFBlockVerifyResult:
                     raise ValueError("layer_output_hidden rows must match hidden_seeds")
                 if hidden.dtype != np.float32:
                     raise ValueError("layer_output_hidden values must be float32")
+        if self.layer_boundary_hidden is not None:
+            for layer_id, arrays in self.layer_boundary_hidden.items():
+                if int(layer_id) < 0:
+                    raise ValueError("layer_boundary_hidden keys must be non-negative layer IDs")
+                if not isinstance(arrays, dict):
+                    raise ValueError("layer_boundary_hidden values must be dictionaries")
+                for name, array in arrays.items():
+                    if array.shape[0] != len(self.input_token_ids):
+                        raise ValueError(
+                            f"layer_boundary_hidden[{layer_id!r}][{name!r}] rows must match input_token_ids"
+                        )
+                    if array.dtype not in (np.float32, np.int64):
+                        raise ValueError(
+                            f"layer_boundary_hidden[{layer_id!r}][{name!r}] must be float32 or int64"
+                        )
 
 
 @dataclass(frozen=True)
@@ -5771,6 +5787,208 @@ class Qwen35GGUFResidentSession:
             normalized.add(value)
         return normalized
 
+    def _capture_verify_layer_boundary_rows(
+        self,
+        layer_id: int,
+        layer_type: str,
+        *,
+        hidden_in_ptr: int,
+        hidden_in_f32_ptr: int | None,
+        layer_out_ptr: int,
+        layer_out_f32_ptr: int | None,
+        scratch,
+        rows: int,
+        runtime: HipRuntime,
+    ) -> dict[str, np.ndarray]:
+        """Copy scored bulk-verifier layer internals for parity diagnostics.
+
+        This is deliberately host-copy heavy and opt-in.  It captures the
+        tensors produced by the same bulk/direct-state verifier pass that scored
+        the block, unlike the isolated single-row layer probes.
+        """
+
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        cfg = self.runner.weights.config
+        hidden_size = int(self.runner.hidden_size)
+        row_count = int(rows)
+        if row_count <= 0:
+            raise ValueError("rows must be positive")
+
+        def copy_bf16(name: str, ptr: int, shape: tuple[int, ...]) -> tuple[str, np.ndarray]:
+            elements = int(np.prod(shape))
+            return name, _copy_bf16_ptr_to_host_f32(int(ptr), elements, runtime=runtime).reshape(shape)
+
+        def copy_f32(name: str, ptr: int, shape: tuple[int, ...]) -> tuple[str, np.ndarray]:
+            elements = int(np.prod(shape))
+            return name, _copy_f32_ptr_to_host(int(ptr), elements, runtime=runtime).reshape(shape)
+
+        def copy_i64(name: str, ptr: int, shape: tuple[int, ...]) -> tuple[str, np.ndarray]:
+            elements = int(np.prod(shape))
+            return name, _copy_i64_ptr_to_host(int(ptr), elements, runtime=runtime).reshape(shape)
+
+        arrays: dict[str, np.ndarray] = {}
+        if hidden_in_f32_ptr is not None:
+            key, value = copy_f32("hidden_in", hidden_in_f32_ptr, (row_count, hidden_size))
+        else:
+            key, value = copy_bf16("hidden_in", hidden_in_ptr, (row_count, hidden_size))
+        arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+        key, value = copy_bf16("attn_norm", int(scratch.norm.ptr), (row_count, hidden_size))
+        arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+
+        if str(layer_type) == LINEAR_ATTENTION:
+            key, value = copy_bf16(
+                "linear_qkv",
+                int(scratch.linear_qkv.ptr),
+                (row_count, int(self.runner.linear_qkv_width)),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            key, value = copy_bf16("linear_z", int(scratch.linear_z.ptr), (row_count, int(cfg.ssm_inner_size)))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            key, value = copy_bf16(
+                "ssm_alpha",
+                int(scratch.linear_alpha.ptr),
+                (row_count, int(cfg.ssm_time_step_rank)),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            key, value = copy_bf16(
+                "ssm_beta",
+                int(scratch.linear_beta.ptr),
+                (row_count, int(cfg.ssm_time_step_rank)),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if not _gguf_verify_f32_attn_out_enabled():
+                key, value = copy_f32(
+                    "conv_out",
+                    int(scratch.conv_out.ptr),
+                    (row_count, int(self.runner.linear_qkv_width)),
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if not (
+                _gguf_verify_capture_prefill_gdn_enabled()
+                or _gguf_verify_capture_score_prefill_enabled()
+                or _gguf_verify_capture_bf16_gdn_out_enabled()
+            ):
+                key, value = copy_f32(
+                    "recurrent_out",
+                    int(scratch.recurrent_out.ptr),
+                    (row_count, int(cfg.ssm_inner_size)),
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if (
+                _gguf_verify_capture_prefill_gdn_enabled()
+                or _gguf_verify_capture_score_prefill_enabled()
+                or _gguf_verify_capture_bf16_gdn_out_enabled()
+            ):
+                key, value = copy_bf16(
+                    "recurrent_bf16",
+                    int(scratch.recurrent_bf16.ptr),
+                    (row_count, int(cfg.ssm_inner_size)),
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+
+        key, value = copy_bf16("attn_out", int(scratch.attn_out.ptr), (row_count, hidden_size))
+        arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+        if layer_out_f32_ptr is None:
+            key, value = copy_bf16("attn_residual", int(scratch.residual.ptr), (row_count, hidden_size))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+        key, value = copy_bf16("attn_post_norm_bf16", int(scratch.post_norm.ptr), (row_count, hidden_size))
+        arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+        arrays["attn_post_norm"] = arrays["attn_post_norm_bf16"]
+        if (
+            layer_out_f32_ptr is not None
+            and hasattr(scratch, "post_norm_f32")
+            and _gguf_verify_f32_post_norm_enabled()
+        ):
+            key, value = copy_f32("attn_post_norm_f32", int(scratch.post_norm_f32.ptr), (row_count, hidden_size))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+
+        if cfg.is_moe:
+            top_k = int(cfg.expert_used_count)
+            expert_count = int(cfg.expert_count)
+            key, value = copy_f32(
+                "moe_router_logits",
+                int(scratch.moe_router_logits.ptr),
+                (row_count, expert_count),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if hasattr(scratch, "moe_shared_gate_logits"):
+                key, value = copy_f32(
+                    "moe_shared_gate",
+                    int(scratch.moe_shared_gate_logits.ptr),
+                    (row_count, 1),
+                )
+            else:
+                shared_gate_ptr = int(scratch.moe_router_logits.ptr) + expert_count * DType.FP32.itemsize
+                key, value = copy_f32("moe_shared_gate", shared_gate_ptr, (row_count, 1))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            key, value = copy_i64(
+                "moe_selected_experts",
+                int(scratch.moe_selected_experts.ptr),
+                (row_count, top_k),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.int64)
+            key, value = copy_f32(
+                "moe_routing_weights",
+                int(scratch.moe_routing_weights.ptr),
+                (row_count, top_k),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            selected_shape = (row_count, top_k, int(cfg.expert_feed_forward_length))
+            key, value = copy_bf16("moe_selected_swiglu", int(scratch.ffn_intermediate.ptr), selected_shape)
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if (
+                _gguf_verify_f32_selected_intermediate_enabled()
+                and getattr(scratch, "ffn_intermediate_f32", None) is not None
+            ):
+                key, value = copy_f32(
+                    "moe_selected_swiglu_f32_scratch",
+                    int(scratch.ffn_intermediate_f32.ptr),
+                    selected_shape,
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            down_shape = (row_count, top_k, hidden_size)
+            key, value = copy_bf16("ffn_or_moe_down", int(scratch.moe_down_out.ptr), down_shape)
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if (
+                _gguf_verify_f32_selected_down_enabled()
+                and _gguf_verify_f32_moe_combine_enabled()
+                and getattr(scratch, "moe_down_out_f32", None) is not None
+            ):
+                key, value = copy_f32("ffn_or_moe_down_f32_scratch", int(scratch.moe_down_out_f32.ptr), down_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            key, value = copy_bf16(
+                "moe_shared_intermediate",
+                int(scratch.moe_shared_intermediate.ptr),
+                (row_count, int(cfg.expert_shared_feed_forward_length)),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            key, value = copy_bf16("moe_shared_out", int(scratch.moe_shared_out.ptr), (row_count, hidden_size))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if (
+                _gguf_verify_f32_shared_down_enabled()
+                and _gguf_verify_f32_selected_down_enabled()
+                and _gguf_verify_f32_moe_combine_enabled()
+                and getattr(scratch, "moe_shared_out_f32", None) is not None
+            ):
+                key, value = copy_f32(
+                    "moe_shared_out_f32_scratch",
+                    int(scratch.moe_shared_out_f32.ptr),
+                    (row_count, hidden_size),
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+
+        if layer_out_f32_ptr is not None:
+            key, value = copy_f32("layer_out", layer_out_f32_ptr, (row_count, hidden_size))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            key, value = copy_bf16("layer_out_bf16", layer_out_ptr, (row_count, hidden_size))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+        else:
+            key, value = copy_bf16("layer_out", layer_out_ptr, (row_count, hidden_size))
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+        arrays["layer_type_id"] = np.full((row_count, 1), 0 if str(layer_type) == LINEAR_ATTENTION else 1, dtype=np.int64)
+        return arrays
+
     def hidden_seed_contract(self, *, rows: int = 1) -> Qwen35GGUFHiddenSeedContract:
         """Return the current GGUF MTP hidden-seed contract for this session.
 
@@ -6265,6 +6483,7 @@ class Qwen35GGUFResidentSession:
         capture_linear_state_rows: bool = False,
         capture_pre_output_norm_hidden: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        capture_layer_boundary_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
         defer_linear_state_commit: bool = False,
@@ -6334,7 +6553,9 @@ class Qwen35GGUFResidentSession:
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
         pre_output_norm_hidden_host = None
         capture_layer_ids = self._normalize_layer_output_capture(capture_layer_output_hidden)
+        capture_layer_boundary_ids = self._normalize_layer_output_capture(capture_layer_boundary_hidden)
         layer_output_hidden_host: dict[int, np.ndarray] = {}
+        layer_boundary_hidden_host: dict[int, dict[str, np.ndarray]] = {}
         t_setup0 = time.perf_counter() if stage_timings is not None else 0.0
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
@@ -6498,6 +6719,18 @@ class Qwen35GGUFResidentSession:
                             else:
                                 add_verify_stage("target_block_other_layers", layer_ms)
                             add_verify_stage("target_block_layer_total", layer_ms)
+                    if layer_id in capture_layer_boundary_ids:
+                        layer_boundary_hidden_host[int(layer_id)] = self._capture_verify_layer_boundary_rows(
+                            int(layer_id),
+                            str(layer_type),
+                            hidden_in_ptr=src_chunk_ptr,
+                            hidden_in_f32_ptr=src_f32_chunk_ptr,
+                            layer_out_ptr=dst_chunk_ptr,
+                            layer_out_f32_ptr=dst_f32_chunk_ptr,
+                            scratch=bulk_scratch,
+                            rows=rows,
+                            runtime=runtime,
+                        )
                     src, dst = dst, src
                     if use_f32_residual:
                         src_f32, dst_f32 = dst_f32, src_f32
@@ -6683,6 +6916,17 @@ class Qwen35GGUFResidentSession:
                 else {
                     int(layer_id): np.ascontiguousarray(layer_output_hidden_host[int(layer_id)], dtype=np.float32)
                     for layer_id in sorted(capture_layer_ids)
+                }
+            ),
+            layer_boundary_hidden=(
+                None
+                if not capture_layer_boundary_ids
+                else {
+                    int(layer_id): {
+                        str(name): np.ascontiguousarray(value, dtype=value.dtype)
+                        for name, value in sorted(layer_boundary_hidden_host[int(layer_id)].items())
+                    }
+                    for layer_id in sorted(capture_layer_boundary_ids)
                 }
             ),
             linear_state_rows_captured=bool(capture_linear_state_rows),
