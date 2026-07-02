@@ -138068,3 +138068,52 @@ python3 scripts/gguf_mtp_bench.py \
   `0.010227 MAE`, selected weighted rows are `0.0000152 MAE`, aggregate
   `ffn_out` is `0.0000583 MAE`, and post-MoE is `0.0000980 MAE`. The semantic
   split moves upstream to layer 0.
+
+## 2026-07-03 - Scored layer-0 split closes layer-body search
+
+- Captured the same task-9/cycle-3/row-2 bonus branch at scored target layer 0:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 0:2 \
+    --raw-layer-output-row 0:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json
+  ```
+- Reran patched llama.cpp HIP with row-2 raw layer-0 labels at
+  `/tmp/hipengine-llamacpp-layer0-input-raw-row2-task9-cycle3.jsonl`; task 9
+  cycle 3 stayed on draft `[11, 567]`, accepted both, and sampled bonus `668`.
+  hipEngine on the same scored branch still sampled `[11, 567, 8940]`.
+- Reduced
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-linear-attn-compare.json`.
+  Result: llama.cpp has no target `verify_layer_output_-1`, and
+  `process_h_input` is context-only draft input, so the pre-layer-0 target
+  hidden still needs explicit instrumentation. The first complete layer-0
+  tensors are already close: `attn_norm_0` is `0.001155 MAE / 0.002069 RMSE`,
+  `z_0` is `0.004850 / 0.006250`, `beta_0` is `0.001775 / 0.002735`,
+  `conv_output_silu_0` is `0.000118 / 0.000865`, `linear_attn_out_0` is
+  `0.0000353 / 0.0000619`, `attn_residual_0` is
+  `0.0000374 / 0.0000504`, `attn_post_norm_0` is
+  `0.001934 / 0.002645`, `ffn_out_0` is `0.0000386 / 0.0000494`, and
+  post-MoE / `verify_layer_output_0` is `0.0000547 / 0.0000813`.
+- Reduced the layer-0 MoE split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-moe-taps-compare.json`.
+  Router top-k matches exactly `[57, 6, 56, 66, 127, 110, 106, 157]`; router
+  logits are `0.004420 MAE`, routing weights are `0.000279 MAE`, selected
+  weighted rows are `0.0000108 MAE`, aggregate `ffn_out` is `0.0000386 MAE`,
+  and post-MoE is `0.0000547 MAE`.
+- Interpretation: layer 0 also has no projection/conv/linear-attention/MoE copy
+  target. The live token flip is a sensitive LM-head tie: llama.cpp ranks bonus
+  token `668` over `8940` by only `0.00961` logits (`25.54584` vs `25.53623`),
+  while hipEngine ranks `8940` over `668` by `0.51934` logits (`25.84120` vs
+  `25.32186`). Next semantic target is target-row input/pre-layer-0 hidden
+  construction and final hidden/LM-head amplification, not a middle-layer body.
