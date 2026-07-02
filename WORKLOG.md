@@ -135881,3 +135881,57 @@ python3 scripts/llamacpp_mtp_compare_target_moe_taps.py \
   - `python3 -m pytest tests/test_llamacpp_mtp_compare_target_moe_taps.py -q` => **2 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-layer0-fine-moe-cross-engine-diagnostic.json benchmarks/results/2026-07-02-mtp-target-layer1-fine-moe-cross-engine-diagnostic.json`
   - `git diff --check`
+
+## 2026-07-02 - Target layer0 linear-attention cross-engine diagnostic
+
+- Added `scripts/llamacpp_mtp_compare_layer0_linear_attn.py` to compare hipEngine
+  forced-target raw layer-boundary values against llama.cpp raw tensor traces for
+  `linear_attn_out_0`, `attn_residual_0`, `attn_post_norm_0`, `ffn_out_0`, and
+  `post_moe_0`.
+- The llama.cpp HIP reference tree remains local-dirty instrumentation only:
+  `/home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp` exports F32/F16/BF16
+  debug tensor rows through `llama_mtp_debug_tensor_get_f32()`, and
+  `/home/lhl/llama.cpp/llama.cpp-hip/src/llama-graph.cpp` was locally extended
+  to allowlist target labels including `linear_attn_out`, `attn_residual`,
+  `attn_post_norm`, `ffn_out`, and `post_moe`. Do not treat that external tree
+  as an upstream performance artifact.
+
+```bash
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_TENSOR_TRACE_VALUES=1 LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=final_output_0,linear_attn_out_0,attn_residual_0,attn_post_norm_0,ffn_out_0,post_moe_0 PYTHONPATH=. \
+python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8145 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+```bash
+python3 scripts/llamacpp_mtp_compare_layer0_linear_attn.py \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.jsonl \
+  --llamacpp-cycle 18 --row 1 --layer 0 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json
+```
+
+  Result: layer-0 drift is already present at the linear-attention output, before
+  FFN/MoE combine. `linear_attn_out` is **0.0001595 MAE / 0.0002100 RMSE /
+  0.999952 cosine**, `attn_residual` is **0.0001630 MAE / 0.0002197 RMSE /
+  0.999962 cosine**, `attn_post_norm` scales that to **0.005668 MAE** at
+  post-norm RMS ~0.64, `ffn_out` is only **0.0001256 MAE**, and post-MoE/layer
+  output is the known **0.0002027 MAE**. The active semantic target is now the
+  layer-0 linear-attention/GDN output contract, not selected/shared MoE combine.
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py -q` => **1 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json`
+  - `git diff --check`
