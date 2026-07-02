@@ -136,6 +136,16 @@ direct-commit shortcut. Evidence:
 `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-natural24-mixed-ja-en-translate.json`
 and
 `benchmarks/results/2026-07-02-hipengine-mtp-serialexact-natural24-mixed-ja-en-translate.json`.
+Economy denominator correction:
+`benchmarks/results/2026-07-03-mtp-economy-denominator-reconcile.json`
+shows the apparent accepted/output deficit is a denominator mismatch. The
+request-level llama.cpp summary is **136/240 = 0.5667** accepted/output, while
+the stage-timing "measured excluding first task" bucket is **136/223 = 0.6099**.
+hipEngine is **143/240 = 0.5958**, so there is no full-request acceptance
+deficit. The remaining request-level gap is **71.52 vs 71.91 tok/s** with lower
+hipEngine draft acceptance (**0.777 vs 0.805**) and prompt-level variance; the
+largest per-prompt speed delta is still `mixed_ja_en_translate` (**-10.21
+tok/s**) where the known bonus-token semantic mismatch occurs.
 The latest prefix-state fingerprint diagnostic makes the status sharper: the
 stage-wall improvement work is no longer the active blocker, and the current
 progress is semantic/economy attribution. The prefill-GDN captured-row lifecycle
@@ -1303,7 +1313,7 @@ cross-lane improvement. The goal for this sprint is to spend down the
 | Target verifier drain | 7.728 ms | **11.436 ms** | 12.120 ms | **-0.684 ms/output**; no longer a llama.cpp speed gap. |
 | Replay / commit | 0.019 ms | **0.044 ms** | 0.004 ms | **+0.040 ms/output**; small residual, not P0. |
 | Target rows / output | 1.163 | **1.171** | 1.148 | **+0.023 rows/output**; 0 replay rows and 41 discarded rows over 240 outputs. |
-| Accepted / output | 0.535 | **0.596** | 0.610 | **-0.014**; remaining compatibility delta is acceptance/row economy. |
+| Accepted / output | 0.535 | **0.596** | 0.567 request / 0.610 stage-measured | Full-request hipEngine is **+0.029** accepted/output; the **-0.014** reading uses llama.cpp's 223-token stage denominator, not its 240-token request denominator. |
 
 The current retained HIP stage-wall target is therefore closed for the
 llama-replication lane, but the request-level headline is not: corrected
@@ -1314,10 +1324,12 @@ replication lane. The measured verifier-head top-1 route is rejected for speed
 (**66.45 tok/s / 15.072 ms/output**) because it raises
 `target_block_lm_head_sample` from **1.068** to **2.118 ms/output** without
 changing acceptance or row economy. Further work is now target
-semantic/economy cleanup: reduce the remaining acceptance/row-economy delta,
-explain the full-accept bonus-token divergence, keep the no-copy capture path
-under all-sync/rocprof watch, and decide whether the exact semantic lane can
-share any of this machinery without direct-commit state divergence.
+semantic/economy cleanup with the corrected denominator: preserve the
+request-level acceptance advantage, improve draft acceptance/row-discard mix
+where it is genuinely worse, explain the full-accept bonus-token divergence,
+keep the no-copy capture path under all-sync/rocprof watch, and decide whether
+the exact semantic lane can share any of this machinery without direct-commit
+state divergence.
 The explicit bulk state-only replay shortcut is not valid: artifact
 `benchmarks/results/2026-07-02-mtp-state-lifecycle-bulk-state-only-partial-replay-compare.json`
 reports `first_mismatch` at cycle 3, replay source
@@ -2176,6 +2188,19 @@ with the current harness, excluding warmup task `0`.
 | `target_verify_discarded_rows` | `{0: 83, 1: 5, 2: 7, 3: 4, 4: 1}` | `{0: 72, 1: 9, 2: 16}` | `{0: 63, 1: 15, 2: 9}` | Compat discards 41 rows/240 outputs; llama discards 33 rows/223 outputs. |
 | `target_verify_rows_minus_visible_output` | `{0: 83, 1: 5, 2: 7, 3: 4, 4: 1}` | `{0: 72, 1: 9, 2: 16}` | `{0: 63, 1: 15, 2: 9}` | The residual row-economy gap is discarded block rows plus the natural24 tail, not serial replay. |
 
+Request-level economy reconciliation:
+`benchmarks/results/2026-07-03-mtp-economy-denominator-reconcile.json` compares
+the retained hipEngine full-suite row, the llama.cpp request rows, and the
+llama.cpp stage rows in one artifact. It confirms that the stage histogram above
+is useful for row-cost attribution, but its accepted/output denominator is not
+the llama.cpp request denominator: request-level hipEngine is **143/240 =
+0.5958**, request-level llama.cpp is **136/240 = 0.5667**, and the stage-measured
+llama.cpp row is **136/223 = 0.6099**. The remaining request tok/s gap
+(**-0.3909 tok/s**) is therefore not explained by a full-request
+accepted/output deficit. The prompt row with a real local acceptance and speed
+loss is `mixed_ja_en_translate`: hipEngine accepts **13** draft tokens vs
+llama.cpp **14** and is **10.21 tok/s** slower on that prompt.
+
 #### Llama-compat target map
 
 Use this table as the short work queue when comparing a new `llama-compat` run
@@ -2188,7 +2213,7 @@ match but the timings do not.
 | S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, raw row-1 hidden/lm-head cross-score, pre-output/per-layer hidden checkpoints, F32 verifier-boundary probes, and `scripts/gguf_mtp_compare_forced_target_paths.py` capture-path vs non-capturing block-verifier reducer outputs | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h`/raw-value trace in `common/speculative.cpp`, target hidden source around `llama_decode()`, and GGML target graph tensor dtype boundaries in `src/models/qwen35moe.cpp` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. The F32 selected-SiLU intermediate slice is the first forced-prefix side match: row-1 `539 - 26126` moves to **-0.00303** vs llama.cpp about **-0.00896**. Live active prefill-GDN/no-copy capture still accepts `539`; it is layer-0 exact vs noncapture, first crosses the 1e-3 hidden-output threshold at layer 23 (**0.001022 MAE**), and moves the margin **+0.298283** to **+0.29526**. Cross-engine layer outputs at 22-24 are about **0.0019 MAE** for both hip paths vs llama.cpp, with layer 23 largest. Layer22-24 llama.cpp sub-boundary tracing is now done and shows capture/noncapture have nearly the same raw residual/FFN/post-MoE profile vs llama.cpp. | The selected SwigLU/intermediate BF16 boundary is a confirmed llama.cpp parity contract, but it is not sufficient in the live direct-state path. Active no-copy row-state capture is layer-0 exact, and layer22-24 sub-boundaries do not expose a capture-only expert-selection or selected-FFN bug. A useful patch should now move the active prefill-GDN reducer margin toward negative and reduce the capture-vs-noncapture hidden-drift ladder without transactional serial replay; the next source comparison is hidden/KV history ordering and final target-score accumulation, not raw selected-MoE labels that cancel inside both hip paths. |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | rerun B2 cycle wall plus suite tok/s | **-0.264 ms/output stage**, **-0.39 tok/s request** | Stage wall is closed; request-level throughput still trails. |
 | 2 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, verifier rocprof kernel-family rows | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **-0.684 ms/output** | No longer a speed gap after no-copy GDN capture; keep as a regression guard. The actual verifier-head route worsens this bucket to **12.501 ms/output**. |
-| 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.089 outputs/cycle**, +0.023 target rows/output | Main remaining economics delta: hipEngine is faster per cycle but produces fewer visible tokens/cycle under natural24. |
+| 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | Request tok/s **-0.3909**, full-request accepted/output **+0.029**, draft acceptance **-0.0276**, stage target rows/output **+0.0229** | Do not chase a broad accepted/output deficit; it is a denominator artifact. Focus on lower draft acceptance / discarded-row mix and the `mixed_ja_en_translate` semantic mismatch where hipEngine loses one accepted draft and **10.21 tok/s**. |
 | 4 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head`, `draft_gpu_decode_initial`, `draft_gpu_decode_next`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **-0.040 ms/output** | Parent draft drain is closed. |
 | 5 | Replay / commit | `target_block_replay_or_commit`, `target_verify_replay_rows`, `target_verify_direct_commit_rows`, lifecycle comparator state hashes | llama partial accept/checkpoint/update path in `common_speculative_process()` and `common_speculative_accept()` | **+0.040 ms/output replay/commit** | Small residual for the llama-replication lane. The semantic-safe serial-state control remains separate. |
 | 6 | Non-targets | AR tok/s, `target_serial_verify_step`, draft parent drain | n/a | n/a | Keep as regression guards, not active gap work. |

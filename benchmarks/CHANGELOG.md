@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-03
 
+- [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-style direct-commit compat B2 natural24 cyclecap24 economy reconciliation: request-level accepted/output is hipEngine `143/240 = 0.596` vs llama.cpp `136/240 = 0.567`; the prior llama `0.610` comparison uses the stage-measured denominator `136/223`, so there is no broad full-request acceptance deficit. Remaining request gap is `71.52 vs 71.91 tok/s`, lower hipEngine draft acceptance `0.777 vs 0.805`, and `mixed_ja_en_translate` as the worst prompt delta (`-10.21 tok/s`, one fewer accepted draft). `benchmarks/results/2026-07-03-mtp-economy-denominator-reconcile.json`.
 - [correction / rejected diagnostic] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-style direct-commit compat B2 natural24 cyclecap24 full suite: the retained `71.52 tok/s / 14.005 ms/output` artifact did not enable `--verify-lm-head-q6-top1-dp4a` despite the `f32head` filename, so it is a refreshed active-route rerun, not FP32 verifier-head evidence. The actual current-shape verifier-head route regresses to `66.45 tok/s / 15.072 ms/output` with unchanged acceptance/economy and `target_block_lm_head_sample 1.068 -> 2.118 ms/output`; do not retain it as a speed path. `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`, `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-vlmheadtop1-full.json`.
 
 ## 2026-07-02
