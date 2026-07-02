@@ -2782,11 +2782,15 @@ class Qwen35GGUFFullStackRunner:
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
             use_prefill_gdn_capture = _gguf_verify_capture_prefill_gdn_enabled()
+            use_prefill_gdn_chain_conv = (
+                use_prefill_gdn_capture
+                and _gguf_verify_capture_prefill_gdn_chain_conv_enabled()
+            )
             use_prefill_score_capture = _gguf_verify_capture_score_prefill_enabled()
             use_f32_chain_conv = (
                 _gguf_verify_capture_f32_chain_conv_enabled() or use_prefill_gdn_capture
             )
-            if use_prefill_gdn_capture:
+            if use_prefill_gdn_capture and not use_prefill_gdn_chain_conv:
                 if not linear_qkv_f32_ready:
                     bf16_to_f32(
                         scratch.linear_qkv.ptr,
@@ -2851,9 +2855,11 @@ class Qwen35GGUFFullStackRunner:
                 sync_stages,
                 (
                     f"{stage_prefix}_prefill_conv_state_rows"
-                    if use_prefill_gdn_capture
+                    if use_prefill_gdn_capture and not use_prefill_gdn_chain_conv
                     else (
-                        f"{stage_prefix}_chain_conv_f32"
+                        f"{stage_prefix}_prefill_gdn_chain_conv_f32"
+                        if use_prefill_gdn_chain_conv
+                        else f"{stage_prefix}_chain_conv_f32"
                         if use_f32_chain_conv
                         else f"{stage_prefix}_chain_conv"
                     )
@@ -4875,6 +4881,7 @@ _GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHA
 _GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN"
 _GGUF_VERIFY_CAPTURE_BF16_GDN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT"
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
+_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV"
 _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _GGUF_TOKEN_EMBEDDING_TENSOR = "token_embd.weight"
@@ -5040,6 +5047,10 @@ def _gguf_verify_capture_bf16_gdn_out_enabled() -> bool:
 
 def _gguf_verify_capture_prefill_gdn_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV, False)
+
+
+def _gguf_verify_capture_prefill_gdn_chain_conv_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV_ENV, False)
 
 
 def _gguf_verify_capture_score_prefill_enabled() -> bool:

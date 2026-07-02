@@ -138728,3 +138728,48 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`12 passed`), and all three JSON
   artifacts are valid.
+
+## 2026-07-03 - MTP selected raw prefix-state and chain-Conv hybrid diagnostic
+
+- Extended `scripts/gguf_mtp_forced_target_probe.py` with selected raw prefix
+  state dumps:
+  `--raw-prefix-linear-state-layer` emits base64 FP32 Conv/GDN state rows for a
+  selected linear-attention layer, and `--raw-prefix-kv-state-layer` emits
+  base64 BF16 live full-attention KV ranges for a selected full-attention layer.
+  Raw dumps are default-off and layer-scoped; they imply numeric dtype for the
+  selected buffers without requiring `--prefix-state-numeric-summary`.
+- Extended `scripts/gguf_mtp_compare_prefix_state_summaries.py` to decode
+  selected raw payloads and compute true pairwise MAE/RMSE/max/cosine while
+  keeping the retained reducer artifact compact. Added focused tests for the
+  raw payload and pairwise reducer path.
+- Reran forced pair-12 default-prefix and prefill-GDN-prefix probes with raw
+  selected state for linear layers **33/26/18/32/30** and full-attention layers
+  **15/11/27/31/35**. Raw JSON stayed under `/tmp/hipengine-mtp-proposal-trace/`
+  at about **16 MiB** per input; retained compact artifact:
+  `benchmarks/results/2026-07-03-mtp-prefix-state-rawselected-default-vs-prefillgdn.json`.
+- Result: selected Conv-state drift is much larger than selected recurrent-state
+  drift. Conv MAE ranks layer **26 0.02723**, **30 0.02611**, **33 0.02408**,
+  **32 0.02260**, **18 0.01956**; corresponding recurrent-state MAEs are only
+  **4.8e-05..7.6e-05**. Selected full-attention key-cache MAEs are
+  **0.01018..0.01591**. Row-1 margin remains default reject
+  (`539 - 26126 = -0.003027`) vs prefill-GDN accept (`+0.295256`).
+- Added default-off diagnostic env
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV=1` to test a hybrid:
+  fast prefill-GDN recurrent row capture plus the F32 chain Conv state-row
+  kernel. Forced pair-12 result is negative:
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-prefix-prefillgdn-chainconv.json`
+  still accepts `539` with `539 - 26126 = +0.295256`.
+- Retained compact negative artifact:
+  `benchmarks/results/2026-07-03-mtp-prefix-state-summary-prefillgdn-vs-chainconv.json`.
+  It shows prefill-GDN and prefill-GDN+chain-Conv are byte-identical at cycle 12
+  (**0/60** linear-state and **0/20** KV changes). The selected Conv-state drift
+  is therefore a downstream symptom of earlier hidden/input history divergence,
+  not a causal Conv row-kernel copy target.
+- Validation so far:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_forced_target_probe.py scripts/gguf_mtp_compare_prefix_state_summaries.py tests/test_gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_compare_prefix_state_summaries.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_compare_prefix_state_summaries.py
+  jq empty benchmarks/results/2026-07-03-mtp-prefix-state-rawselected-default-vs-prefillgdn.json benchmarks/results/2026-07-03-mtp-prefix-state-summary-prefillgdn-vs-chainconv.json /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-prefix-prefillgdn-chainconv.json
+  ```
+  Pycompile passed, focused tests passed (`15 passed`), JSON validation passed,
+  and `git diff --check` passed.
