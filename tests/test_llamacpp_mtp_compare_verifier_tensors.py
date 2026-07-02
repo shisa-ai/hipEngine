@@ -64,6 +64,18 @@ def test_compare_verifier_tensors_writes_compact_artifact(tmp_path: Path) -> Non
                 "position": 75,
                 "values": [6.0, 5.0, 4.0],
             },
+            {
+                "label": "attn_post_norm_0",
+                "token_id": 567,
+                "position": 75,
+                "values": [1.0, 2.0, 3.0],
+            },
+            {
+                "label": "ffn_moe_logits_0",
+                "token_id": 567,
+                "position": 75,
+                "values": [10.0, 20.0],
+            },
         ],
     }
     llama_jsonl.write_text(json.dumps(llama_record) + "\n", encoding="utf-8")
@@ -92,6 +104,16 @@ def test_compare_verifier_tensors_writes_compact_artifact(tmp_path: Path) -> Non
                             "layer_output_hidden_values": {"0": [1.0, 2.5, 3.0]},
                         },
                     ],
+                    "scored_layer_boundary_captures": [
+                        {
+                            "layer": 0,
+                            "row": 2,
+                            "values": {
+                                "attn_post_norm": [1.0, 3.0, 3.0],
+                                "moe_router_logits": [9.0, 22.0],
+                            },
+                        }
+                    ],
                 },
             }
         )
@@ -117,6 +139,12 @@ def test_compare_verifier_tensors_writes_compact_artifact(tmp_path: Path) -> Non
             "2",
             "--layers",
             "0",
+            "--boundary-layers",
+            "0",
+            "--boundary-source",
+            "scored",
+            "--boundary-pairs",
+            "attn_post_norm=attn_post_norm_{layer},moe_router_logits=ffn_moe_logits_{layer}",
             "--candidate-tokens",
             "8940,668",
             "--output",
@@ -130,15 +158,26 @@ def test_compare_verifier_tensors_writes_compact_artifact(tmp_path: Path) -> Non
     assert artifact["schema"] == "llamacpp_mtp_verifier_tensor_compare.v1"
     assert artifact["performance_claim"] is False
     assert artifact["inputs"]["token_id"] == 567
-    assert artifact["available_llamacpp_value_labels"] == [
+    assert artifact["available_llamacpp_value_labels"] == sorted([
         "llama_stage_h_nextn_1",
         "llama_stage_h_nextn_2",
+        "attn_post_norm_0",
+        "ffn_moe_logits_0",
         "verify_h",
         "verify_layer_output_0",
         "verify_pre_output_norm",
-    ]
+    ])
     assert artifact["token_margin"]["llamacpp"]["8940_minus_668"] == -0.25
     assert artifact["token_margin"]["hipengine"]["8940_minus_668"] == 1.0
     assert artifact["comparisons"][0]["name"] == "verify_layer_output_0"
     assert artifact["comparisons"][0]["delta"]["mean_abs_diff"] == 1.0 / 6.0
+    assert artifact["boundary_comparisons"][0]["name"] == "attn_post_norm"
+    assert artifact["boundary_comparisons"][0]["delta"]["mean_abs_diff"] == 1.0 / 3.0
+    assert artifact["boundary_comparisons"][1]["name"] == "moe_router_logits"
+    assert artifact["boundary_comparisons"][1]["delta"]["mean_abs_diff"] == 1.5
+    assert artifact["summary"]["largest_boundary_mean_abs_diff"] == {
+        "layer": 0,
+        "name": "moe_router_logits",
+        "mean_abs_diff": 1.5,
+    }
     assert artifact["summary"]["first_layer_mean_abs_diff_ge_1e-3"]["name"] == "verify_layer_output_0"

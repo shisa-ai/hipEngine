@@ -1035,10 +1035,26 @@ The largest active capture-vs-noncapture sub-boundary deltas in this window are
 post-attn norm / router input, router logits, and selected MoE SwigLU/down:
 layer 22 post-attn norm **0.012459 MAE**, layer 23 post-attn norm
 **0.012981**, router logits **0.008348**, selected SwigLU **0.007505**, and
-layer 24 router logits **0.017107**. The next instrumentation target is a
-llama.cpp sub-boundary trace for those tensors around layer 23, then a
-source-level contract check for dtype, residual accumulation, hidden reuse, and
-KV/history ordering in the target verifier graph.
+layer 24 router logits **0.017107**.
+
+The corresponding llama.cpp sub-boundary trace now exists. The retained compact
+cross-engine reducers are
+`benchmarks/results/2026-07-03-mtp-capture-prefillgdn-vs-llamacpp-layer22-24-subboundary-compare.json`
+and
+`benchmarks/results/2026-07-03-mtp-noncapture-vs-llamacpp-layer22-24-subboundary-compare.json`.
+They compare the same row/layers for attn norm, derived post-attention residual,
+post-attn norm, router logits, selected MoE, shared expert, reconstructed FFN
+output, and final `post_moe`/layer output. The important result is negative:
+capture and noncapture have nearly the same cross-engine sub-boundary profile.
+For layer 23, capture vs llama.cpp has derived residual **0.154562 MAE**,
+FFN out **0.154545**, post-attn norm **0.026442**, but final `post_moe` only
+**0.001994**; noncapture is essentially the same (**0.155768** residual,
+**0.155727** FFN out, **0.026246** post-attn norm, **0.001975** final
+`post_moe`). This rules out a capture-only expert-selection or selected-FFN
+sub-boundary bug in layers 22-24. The active next target is the small
+capture-vs-noncapture hidden drift that accumulates after layer 1 and flips the
+near-tie at the final target score, not the large raw MoE/FFN labels that cancel
+inside both hip paths.
 
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
@@ -2004,7 +2020,7 @@ match but the timings do not.
 
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
-| S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, raw row-1 hidden/lm-head cross-score, pre-output/per-layer hidden checkpoints, F32 verifier-boundary probes, and `scripts/gguf_mtp_compare_forced_target_paths.py` capture-path vs non-capturing block-verifier reducer outputs | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h`/raw-value trace in `common/speculative.cpp`, target hidden source around `llama_decode()`, and GGML target graph tensor dtype boundaries in `src/models/qwen35moe.cpp` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. The F32 selected-SiLU intermediate slice is the first forced-prefix side match: row-1 `539 - 26126` moves to **-0.00303** vs llama.cpp about **-0.00896**. Live active prefill-GDN/no-copy capture still accepts `539`; it is layer-0 exact vs noncapture, first crosses the 1e-3 hidden-output threshold at layer 23 (**0.001022 MAE**), and moves the margin **+0.298283** to **+0.29526**. Cross-engine layer outputs at 22-24 are about **0.0019 MAE** for both hip paths vs llama.cpp, with layer 23 largest. | The selected SwigLU/intermediate BF16 boundary is a confirmed llama.cpp parity contract, but it is not sufficient in the live direct-state path. Active no-copy row-state capture is layer-0 exact, and the next copy target is the llama.cpp layer-23 sub-boundary tensor contract: post-attn norm/router input, router logits, selected SwigLU/down, final residual accumulation, and hidden/KV history ordering. A useful patch should move the active prefill-GDN reducer margin toward negative and reduce the hidden-drift ladder without transactional serial replay. |
+| S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, raw row-1 hidden/lm-head cross-score, pre-output/per-layer hidden checkpoints, F32 verifier-boundary probes, and `scripts/gguf_mtp_compare_forced_target_paths.py` capture-path vs non-capturing block-verifier reducer outputs | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h`/raw-value trace in `common/speculative.cpp`, target hidden source around `llama_decode()`, and GGML target graph tensor dtype boundaries in `src/models/qwen35moe.cpp` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. The F32 selected-SiLU intermediate slice is the first forced-prefix side match: row-1 `539 - 26126` moves to **-0.00303** vs llama.cpp about **-0.00896**. Live active prefill-GDN/no-copy capture still accepts `539`; it is layer-0 exact vs noncapture, first crosses the 1e-3 hidden-output threshold at layer 23 (**0.001022 MAE**), and moves the margin **+0.298283** to **+0.29526**. Cross-engine layer outputs at 22-24 are about **0.0019 MAE** for both hip paths vs llama.cpp, with layer 23 largest. Layer22-24 llama.cpp sub-boundary tracing is now done and shows capture/noncapture have nearly the same raw residual/FFN/post-MoE profile vs llama.cpp. | The selected SwigLU/intermediate BF16 boundary is a confirmed llama.cpp parity contract, but it is not sufficient in the live direct-state path. Active no-copy row-state capture is layer-0 exact, and layer22-24 sub-boundaries do not expose a capture-only expert-selection or selected-FFN bug. A useful patch should now move the active prefill-GDN reducer margin toward negative and reduce the capture-vs-noncapture hidden-drift ladder without transactional serial replay; the next source comparison is hidden/KV history ordering and final target-score accumulation, not raw selected-MoE labels that cancel inside both hip paths. |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | rerun B2 cycle wall plus suite tok/s | **-0.182 ms/output stage**, **-0.80 tok/s request** | Stage wall is closed; request-level throughput still trails. |
 | 2 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, verifier rocprof kernel-family rows | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **-0.613 ms/output** | No longer a speed gap after no-copy GDN capture; keep as a regression guard. |
 | 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.089 outputs/cycle**, +0.023 target rows/output | Main remaining economics delta: hipEngine is faster per cycle but produces fewer visible tokens/cycle under natural24. |
