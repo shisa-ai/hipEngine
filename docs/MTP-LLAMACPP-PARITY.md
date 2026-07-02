@@ -2028,6 +2028,53 @@ match but the timings do not.
 | 5 | Replay / commit | `target_block_replay_or_commit`, `target_verify_replay_rows`, `target_verify_direct_commit_rows`, lifecycle comparator state hashes | llama partial accept/checkpoint/update path in `common_speculative_process()` and `common_speculative_accept()` | **+0.045 ms/output replay/commit** | Small residual for the llama-replication lane. The semantic-safe serial-state control remains separate. |
 | 6 | Non-targets | AR tok/s, `target_serial_verify_step`, draft parent drain | n/a | n/a | Keep as regression guards, not active gap work. |
 
+#### 2026-07-03 full-attention capture split
+
+Retained compact artifacts:
+
+- `benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-fullattn31-35-39-boundary-compare.json`
+- `benchmarks/results/2026-07-03-mtp-noncapture-vs-llamacpp-fullattn31-35-39-subboundary-compare.json`
+- `benchmarks/results/2026-07-03-mtp-capture-prefillgdn-vs-llamacpp-fullattn31-35-39-subboundary-compare.json`
+
+Forced pair: hipEngine cycle 12 row 1 maps to llama.cpp task 9 / cycle 18,
+draft `[15495, 539]`.  The measured throughput gap is no longer the live
+bottleneck for this lane: noncapture and llama.cpp agree on the near-tie target
+decision, while active prefill-GDN/no-copy capture flips it.
+
+| path | sampled token | `539 - 26126` margin | interpretation |
+| --- | ---: | ---: | --- |
+| hipEngine noncapture F32 selected-intermediate | `26126` | **-0.003027** | Same side as llama.cpp; rejects draft token `539`. |
+| hipEngine active prefill-GDN/no-copy capture | `539` | **+0.295256** | Wrong side; accepts draft token `539`. |
+| llama.cpp HIP | `26126` | **-0.008963** | Reference side for this pair. |
+
+Full-attention scored-boundary ladder, mean absolute delta:
+
+| layer | cap vs noncap hidden in | cap vs noncap attn out | cap vs noncap post-attn norm | cap vs noncap attn residual | cap vs noncap FFN out | cap vs noncap layer out | noncap vs llama layer out | cap vs llama layer out |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 31 | 0.001516 | 0.000421 | 0.018186 | 0.002690 | 0.002008 | 0.001676 | 0.005588 | 0.005604 |
+| 35 | 0.002249 | 0.000891 | 0.020058 | 0.006337 | 0.000806 | 0.006418 | 0.006520 | 0.008735 |
+| 39 | 0.007230 | 0.001413 | 0.030264 | 0.007032 | 0.002441 | 0.007415 | 0.009060 | 0.010481 |
+
+Layer 35 is the first large amplification point after the earlier layer-23
+1e-3 threshold crossing: the active capture path enters layer 35 at
+`0.002249` hidden MAE vs noncapture and exits at `0.006418`.  By layer 39 the
+input drift is already `0.007230` and the output drift is `0.007415`.
+Selected-MoE internals can look large, especially layer-39 selected SwigLU
+(`0.129213` MAE), but the weighted selected sum is only `0.000869` and the
+final layer output remains in the `0.0074` band.  This matches the layer22-24
+negative result: raw residual/FFN labels can be large or noisy, but the
+remaining user-visible mismatch is the active captured-row hidden/state ladder
+and final target-score tie, not a standalone selected-expert label.
+
+Current status: yes, the project is still improving, but the improvement target
+has moved.  The `llama-compat` stage wall is effectively closed; the active
+work is semantic parity for captured verifier row state.  A useful patch should
+move the active capture margin back toward the noncapture/llama side without
+returning to transactional serial replay.  The next splits should target
+full-attention captured-row materialization and hidden/KV history ordering
+around layers 35/39, plus final LM-head score accumulation for the near-tie
+tokens `539` and `26126`.
+
 #### Llama.cpp source anchors for the live gap
 
 This table is not a new measurement. It pins each live `llama-compat` budget row

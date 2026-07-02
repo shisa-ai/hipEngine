@@ -138538,3 +138538,39 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   JSON validation passed, py_compile passed, and the focused tests passed
   (`8 passed`).
+
+## 2026-07-03 - MTP full-attention capture split status
+
+- Verified the new llama.cpp full-attention raw-value trace for task 9 /
+  cycle 18 contains the requested row-1 labels for layers 31, 35, and 39
+  (`attn_norm`, `attn_output`, `attn_residual`, `attn_post_norm`, `ffn_out`,
+  `post_moe`, and `verify_layer_output`).
+- Ran matching hipEngine forced pair-12 probes for the active F32
+  selected-intermediate verifier environment, both noncapture and active
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` no-copy capture. Raw outputs:
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-fullattn31-35-39-noncapture.json`
+  and
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32selectedintermediate-fullattn31-35-39-capture-prefillgdn.json`.
+- Reduced to compact retained artifacts:
+  `benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-fullattn31-35-39-boundary-compare.json`,
+  `benchmarks/results/2026-07-03-mtp-noncapture-vs-llamacpp-fullattn31-35-39-subboundary-compare.json`,
+  and
+  `benchmarks/results/2026-07-03-mtp-capture-prefillgdn-vs-llamacpp-fullattn31-35-39-subboundary-compare.json`.
+- Result: noncapture and llama.cpp agree on the forced near-tie decision
+  (`26126` over `539`; hipEngine noncapture margin **-0.003027**, llama.cpp
+  **-0.008963**). Active prefill-GDN/no-copy capture flips the pair to `539`
+  with margin **+0.295256**, so the remaining gap is semantic captured-row
+  state, not raw speed.
+- Full-attention capture-vs-noncapture layer-output MAE is layer31
+  **0.001676**, layer35 **0.006418**, and layer39 **0.007415**. Layer35 is the
+  first large amplification point after the earlier layer23 threshold crossing:
+  hidden input enters layer35 at **0.002249** MAE and exits at **0.006418**.
+  By layer39, hidden input is already **0.007230** MAE. Cross-engine layer-output
+  MAE is similar for noncapture/capture at layer31 (**0.005588** /
+  **0.005604**) but capture is worse at layer35 (**0.008735** vs **0.006520**)
+  and layer39 (**0.010481** vs **0.009060**).
+- Interpretation: the live `llama-compat` speed gap is effectively closed for
+  the measured stage wall; the active improvement target is semantic parity of
+  the captured verifier row state. Next useful split is full-attention
+  captured-row materialization / hidden-KV history ordering around layers 35
+  and 39, plus final LM-head score accumulation for tokens `539` and `26126`.
