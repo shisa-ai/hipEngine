@@ -7249,9 +7249,11 @@ class Qwen35GGUFResidentSession:
                 t_sample0 = time.perf_counter() if stage_timings is not None else 0.0
                 row_lm_head = _gguf_verify_row_lm_head_enabled() or (2 <= rows <= 6)
                 if row_lm_head:
+                    direct_top1 = _gguf_verify_lm_head_q6_top1_dp4a_enabled()
                     token_host = self._sample_target_block_rows_from_hidden(
-                        final_scratch.norm.ptr,
+                        hidden_seed_buf.ptr if direct_top1 else final_scratch.norm.ptr,
                         rows,
+                        activation_dtype=GGUF_ACTIVATION_F32 if direct_top1 else GGUF_ACTIVATION_BF16,
                         stream=stream,
                     )
                 else:
@@ -8660,7 +8662,13 @@ class Qwen35GGUFResidentSession:
         return True
 
     def _verify_lm_head_q6_top1_dp4a(
-        self, hidden_ptr: int, rows: int, *, stream: int = 0, runtime=None
+        self,
+        hidden_ptr: int,
+        rows: int,
+        *,
+        activation_dtype: str = GGUF_ACTIVATION_BF16,
+        stream: int = 0,
+        runtime=None,
     ) -> bool:
         """Accuracy-traded verifier lm-head path matching the llama-compat top-1 class."""
 
@@ -8693,14 +8701,26 @@ class Qwen35GGUFResidentSession:
                 require_cached=self.require_cached_build,
             )
             self._q6_pack8_library = library
-        gguf_q4_k_quantize_bf16_q8_1(
-            hidden_ptr,
-            self._verify_lm_q8_1.ptr,
-            rows,
-            self.runner.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        if activation_dtype == GGUF_ACTIVATION_F32:
+            gguf_q4_k_quantize_f32_q8_1(
+                hidden_ptr,
+                self._verify_lm_q8_1.ptr,
+                rows,
+                self.runner.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif activation_dtype == GGUF_ACTIVATION_BF16:
+            gguf_q4_k_quantize_bf16_q8_1(
+                hidden_ptr,
+                self._verify_lm_q8_1.ptr,
+                rows,
+                self.runner.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            raise ValueError(f"unsupported verifier lm-head activation dtype: {activation_dtype!r}")
         gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32(
             self._verify_lm_q8_1.ptr,
             tiles_ptr,
@@ -8720,7 +8740,14 @@ class Qwen35GGUFResidentSession:
         )
         return True
 
-    def _sample_target_block_rows_from_hidden(self, hidden_ptr: int, rows: int, *, stream: int = 0) -> np.ndarray:
+    def _sample_target_block_rows_from_hidden(
+        self,
+        hidden_ptr: int,
+        rows: int,
+        *,
+        activation_dtype: str = GGUF_ACTIVATION_BF16,
+        stream: int = 0,
+    ) -> np.ndarray:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
@@ -8734,8 +8761,19 @@ class Qwen35GGUFResidentSession:
             or self._verify_lm_out_values is None
         ):
             raise RuntimeError("GGUF verifier lm-head buffers are closed")
-        direct_top1 = self._verify_lm_head_q6_top1_dp4a(hidden_ptr, rows, stream=stream, runtime=runtime)
+        direct_top1 = self._verify_lm_head_q6_top1_dp4a(
+            hidden_ptr,
+            rows,
+            activation_dtype=activation_dtype,
+            stream=stream,
+            runtime=runtime,
+        )
         if not direct_top1:
+            if activation_dtype != GGUF_ACTIVATION_BF16:
+                raise ValueError(
+                    "non-dp4a verifier lm-head fallback expects BF16 hidden rows, "
+                    f"got {activation_dtype!r}"
+                )
             if not self._verify_lm_head_rowtile(
                 hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
             ):
