@@ -308,19 +308,24 @@ def _capture_moe_component_arrays(capture: Any) -> dict[str, np.ndarray]:
     top_k = int(capture.top_k)
     down = np.ascontiguousarray(capture.ffn_or_moe_down_f32, dtype=np.float32).reshape(top_k, hidden_size)
     weights = np.ascontiguousarray(capture.moe_routing_weights_f32, dtype=np.float32).reshape(top_k)
+    weighted_rows = np.ascontiguousarray(down * weights.reshape(top_k, 1), dtype=np.float32)
     selected_acc = np.zeros((hidden_size,), dtype=np.float32)
     for index in range(top_k):
-        selected_acc = np.float32(selected_acc + down[index] * weights[index])
+        selected_acc = np.float32(selected_acc + weighted_rows[index])
     # The fused combine kernel preserves the old two-kernel contract: selected
     # expert sum rounds to BF16 before adding the shared expert and residual.
     selected_bf16 = _bf16_roundtrip_f32(selected_acc)
     shared = np.ascontiguousarray(capture.moe_shared_out_f32, dtype=np.float32).reshape(hidden_size)
     gate_logit = float(np.asarray(capture.moe_shared_gate_f32, dtype=np.float32).reshape(-1)[0])
     gate = np.float32(1.0 / (1.0 + np.exp(np.float32(-gate_logit))))
+    shared_gated = np.ascontiguousarray(gate * shared, dtype=np.float32)
     ffn_out = np.ascontiguousarray(selected_bf16 + gate * shared, dtype=np.float32)
     residual = np.ascontiguousarray(capture.residual_f32, dtype=np.float32).reshape(hidden_size)
     return {
+        "moe_selected_down_weighted": weighted_rows,
+        "moe_selected_weighted_sum_f32": selected_acc,
         "moe_selected_weighted_bf16": selected_bf16,
+        "moe_shared_gated": shared_gated,
         "ffn_out_combined_from_components": ffn_out,
         "post_moe_rounded_from_components": _bf16_roundtrip_f32(residual + ffn_out),
     }
@@ -431,7 +436,10 @@ def _boundary_array_summaries(
         "attn_out": capture.attn_out_f32,
         "attn_residual": capture.residual_f32,
         "attn_post_norm": capture.post_norm_f32,
+        "moe_router_logits": getattr(capture, "moe_router_logits_f32", None),
+        "moe_selected_swiglu": getattr(capture, "moe_selected_intermediate_f32", None),
         "ffn_or_moe_down": capture.ffn_or_moe_down_f32,
+        "moe_shared_intermediate": getattr(capture, "moe_shared_intermediate_f32", None),
         "moe_shared_out": capture.moe_shared_out_f32,
         "post_moe_delta_from_residual": (
             np.asarray(capture.layer_out_f32, dtype=np.float32).reshape(-1)
@@ -1053,7 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
             "layer_output_hidden_values is emitted only for --raw-layer-output-row LAYER:ROW diagnostics.",
             "layer_boundary_captures is emitted only for requested --layer-boundary-row or --raw-layer-boundary-row LAYER:ROW diagnostics.",
             "Layer boundary captures run in isolated replay sessions so diagnostic sub-layer taps do not perturb the scored verifier probe.",
-            "Layer boundary captures include attn_norm and, for MoE layers, host-reconstructed ffn_out_combined_from_components plus post_moe_rounded_from_components.",
+            "Layer boundary captures include attn_norm and, for MoE layers, router logits, selected SwigLU/down/weighted sums, shared intermediate/out/gated contribution, host-reconstructed ffn_out_combined_from_components, and post_moe_rounded_from_components.",
             "post_moe_delta_from_residual is derived as layer_out - attn_residual and is an approximate bridge to llama.cpp post_moe/ffn residual comparisons after BF16 output rounding.",
         ],
     }

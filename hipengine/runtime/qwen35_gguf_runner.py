@@ -518,6 +518,9 @@ class Qwen35GGUFLinearAttentionLayerCapture:
     residual_f32: np.ndarray
     ffn_or_moe_down_f32: np.ndarray
     layer_out_f32: np.ndarray
+    moe_router_logits_f32: np.ndarray | None = None
+    moe_selected_intermediate_f32: np.ndarray | None = None
+    moe_shared_intermediate_f32: np.ndarray | None = None
     moe_shared_out_f32: np.ndarray | None = None
     moe_routing_weights_f32: np.ndarray | None = None
     moe_shared_gate_f32: np.ndarray | None = None
@@ -525,8 +528,20 @@ class Qwen35GGUFLinearAttentionLayerCapture:
 
     def as_summary_dict(self) -> dict[str, object]:
         optional_finite = True
+        if self.moe_router_logits_f32 is not None:
+            optional_finite = bool(np.all(np.isfinite(self.moe_router_logits_f32)))
+        if self.moe_selected_intermediate_f32 is not None:
+            optional_finite = optional_finite and bool(
+                np.all(np.isfinite(self.moe_selected_intermediate_f32))
+            )
+        if self.moe_shared_intermediate_f32 is not None:
+            optional_finite = optional_finite and bool(
+                np.all(np.isfinite(self.moe_shared_intermediate_f32))
+            )
         if self.moe_shared_out_f32 is not None:
-            optional_finite = bool(np.all(np.isfinite(self.moe_shared_out_f32)))
+            optional_finite = optional_finite and bool(
+                np.all(np.isfinite(self.moe_shared_out_f32))
+            )
         if self.moe_routing_weights_f32 is not None:
             optional_finite = optional_finite and bool(
                 np.all(np.isfinite(self.moe_routing_weights_f32))
@@ -550,6 +565,21 @@ class Qwen35GGUFLinearAttentionLayerCapture:
             "post_norm_shape": list(self.post_norm_f32.shape),
             "residual_shape": list(self.residual_f32.shape),
             "ffn_or_moe_down_shape": list(self.ffn_or_moe_down_f32.shape),
+            "moe_router_logits_shape": (
+                None
+                if self.moe_router_logits_f32 is None
+                else list(self.moe_router_logits_f32.shape)
+            ),
+            "moe_selected_intermediate_shape": (
+                None
+                if self.moe_selected_intermediate_f32 is None
+                else list(self.moe_selected_intermediate_f32.shape)
+            ),
+            "moe_shared_intermediate_shape": (
+                None
+                if self.moe_shared_intermediate_f32 is None
+                else list(self.moe_shared_intermediate_f32.shape)
+            ),
             "moe_shared_out_shape": (
                 None
                 if self.moe_shared_out_f32 is None
@@ -5951,7 +5981,25 @@ class Qwen35GGUFResidentSession:
         moe_routing_weights = None
         moe_shared_gate = None
         moe_selected_experts = None
+        moe_router_logits = None
+        moe_selected_intermediate = None
+        moe_shared_intermediate = None
         if cfg.is_moe:
+            moe_router_logits = _copy_f32_ptr_to_host(
+                int(self.scratch.moe_router_logits.ptr),
+                int(cfg.expert_count),
+                runtime=runtime,
+            )
+            moe_selected_intermediate = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.ffn_intermediate.ptr),
+                top_k * int(cfg.expert_feed_forward_length),
+                runtime=runtime,
+            )
+            moe_shared_intermediate = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.moe_shared_intermediate.ptr),
+                int(cfg.expert_shared_feed_forward_length),
+                runtime=runtime,
+            )
             moe_shared_out = _copy_bf16_ptr_to_host_f32(
                 int(self.scratch.moe_shared_out.ptr), hidden_size, runtime=runtime
             )
@@ -5997,6 +6045,9 @@ class Qwen35GGUFResidentSession:
             layer_out_f32=_copy_bf16_ptr_to_host_f32(
                 target_dst_ptr, hidden_size, runtime=runtime
             ),
+            moe_router_logits_f32=moe_router_logits,
+            moe_selected_intermediate_f32=moe_selected_intermediate,
+            moe_shared_intermediate_f32=moe_shared_intermediate,
             moe_shared_out_f32=moe_shared_out,
             moe_routing_weights_f32=moe_routing_weights,
             moe_shared_gate_f32=moe_shared_gate,

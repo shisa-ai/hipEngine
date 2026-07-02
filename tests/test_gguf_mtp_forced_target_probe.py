@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import numpy as np
+
+from scripts.gguf_mtp_forced_target_probe import (
+    _bf16_roundtrip_f32,
+    _boundary_array_summaries,
+    _capture_moe_component_arrays,
+)
+
+
+def test_capture_moe_component_arrays_emits_weighted_and_shared_gated_terms() -> None:
+    capture = _fake_moe_capture()
+
+    arrays = _capture_moe_component_arrays(capture)
+
+    expected_weighted_rows = np.asarray(
+        [[0.25, 0.5, 0.75, 1.0], [-1.5, 1.5, 0.0, 0.75]], dtype=np.float32
+    )
+    expected_selected_sum = np.asarray([-1.25, 2.0, 0.75, 1.75], dtype=np.float32)
+    expected_selected_bf16 = _bf16_roundtrip_f32(expected_selected_sum)
+    expected_gate = np.float32(1.0 / (1.0 + np.exp(np.float32(-0.25))))
+    expected_shared_gated = np.asarray([0.5, -0.25, 0.0, 1.0], dtype=np.float32) * expected_gate
+
+    np.testing.assert_allclose(arrays["moe_selected_down_weighted"], expected_weighted_rows)
+    np.testing.assert_allclose(arrays["moe_selected_weighted_sum_f32"], expected_selected_sum)
+    np.testing.assert_allclose(arrays["moe_selected_weighted_bf16"], expected_selected_bf16)
+    np.testing.assert_allclose(arrays["moe_shared_gated"], expected_shared_gated)
+    np.testing.assert_allclose(
+        arrays["ffn_out_combined_from_components"],
+        expected_selected_bf16 + expected_shared_gated,
+    )
+
+
+def test_boundary_array_summaries_include_fine_grained_moe_taps() -> None:
+    capture = _fake_moe_capture()
+
+    summaries, values = _boundary_array_summaries(
+        capture,
+        row_index=1,
+        input_token=15495,
+        position=123,
+    )
+
+    for name in (
+        "moe_router_logits",
+        "moe_selected_swiglu",
+        "moe_selected_down_weighted",
+        "moe_selected_weighted_sum_f32",
+        "moe_shared_intermediate",
+        "moe_shared_gated",
+        "ffn_out_combined_from_components",
+        "post_moe_rounded_from_components",
+    ):
+        assert name in summaries
+        assert name in values
+        assert summaries[name]["depth"] == 1
+        assert summaries[name]["token_id"] == 15495
+        assert summaries[name]["position"] == 123
+
+
+def _fake_moe_capture() -> SimpleNamespace:
+    hidden = np.asarray([1.0, -1.0, 0.5, 2.0], dtype=np.float32)
+    return SimpleNamespace(
+        layer_id=31,
+        hidden_size=4,
+        is_moe=True,
+        top_k=2,
+        hidden_in_f32=hidden,
+        attn_norm_f32=hidden + 1.0,
+        attn_out_f32=np.asarray([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+        residual_f32=hidden + 0.25,
+        post_norm_f32=hidden - 0.25,
+        moe_router_logits_f32=np.asarray([0.5, 0.25, -0.5, 0.0], dtype=np.float32),
+        moe_selected_intermediate_f32=np.asarray(
+            [[0.1, 0.2], [0.3, 0.4]], dtype=np.float32
+        ),
+        ffn_or_moe_down_f32=np.asarray(
+            [[1.0, 2.0, 3.0, 4.0], [-2.0, 2.0, 0.0, 1.0]], dtype=np.float32
+        ),
+        moe_routing_weights_f32=np.asarray([0.25, 0.75], dtype=np.float32),
+        moe_shared_intermediate_f32=np.asarray([0.6, -0.4], dtype=np.float32),
+        moe_shared_out_f32=np.asarray([0.5, -0.25, 0.0, 1.0], dtype=np.float32),
+        moe_shared_gate_f32=np.asarray([0.25], dtype=np.float32),
+        layer_out_f32=hidden + 0.5,
+    )

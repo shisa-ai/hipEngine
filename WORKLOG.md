@@ -135580,3 +135580,46 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -m pytest tests/test_qwen35_decode_state.py -q` => **65 passed**
   - `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_ops.py tests/test_paro_combine_plan.py -q` => **9 passed**
   - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q` => **6 passed**
+
+## 2026-07-02 - Target layer-31 fine MoE tap diagnostic
+
+- Extended the forced-target layer-boundary capture with durable MoE internals:
+  router logits, selected SwigLU/intermediate, selected down weighted rows,
+  selected weighted sum before/after the BF16 combine boundary, shared
+  intermediate/out, shared-gated contribution, reconstructed `ffn_out`, and
+  rounded post-MoE. This is diagnostic capture only; no generation or verifier
+  math path changed.
+- Replayed the active pair-12 target mismatch:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 \
+  --candidate-token 26126 --layer-boundary-row 31:1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-fine-moe-taps.json
+```
+
+  Result remains the same semantic mismatch: sampled tokens
+  `[15495, 539, 1151]`; row 1 ranks token `539` over `26126` by
+  **+0.118217** logits. Layer 31 selects experts
+  `[221, 95, 240, 60, 88, 19, 212, 59]`; selected weighted sum RMS is
+  **0.039687**, shared-gated RMS is **0.015372** from shared-gate logit
+  **-2.042253** / sigmoid **0.114838**, reconstructed `ffn_out` RMS is
+  **0.042586**, and `post_moe_rounded_from_components` hashes exactly equal
+  `layer_out` (`73c355f4e86f4bf8`). The next cross-engine split is extending
+  llama.cpp target tensor tracing to the matching `build_moe_ffn()` /
+  `build_layer_ffn()` labels (`ffn_moe_logits`, `ffn_moe_weights_norm`,
+  `ffn_moe_swiglu`, `ffn_moe_down`, `ffn_moe_weighted`, `ffn_moe_out`,
+  `ffn_shexp`, `shared_expert_gate`, `ffn_shexp_gated`).
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-taps-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_forced_target_probe.py`
+  - `python3 -m pytest tests/test_gguf_mtp_forced_target_probe.py -q` => **2 passed**
+  - `python3 -m pytest tests/test_gguf_mtp_forced_target_probe.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_gguf_layer_capture_summary.py tests/test_gguf_layer_capture_diff.py -q` => **23 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-taps-diagnostic.json`
+  - `git diff --check`
