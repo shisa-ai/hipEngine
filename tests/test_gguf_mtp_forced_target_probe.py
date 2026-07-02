@@ -8,6 +8,8 @@ from scripts.gguf_mtp_forced_target_probe import (
     _bf16_roundtrip_f32,
     _boundary_array_summaries,
     _capture_moe_component_arrays,
+    _f32_from_bf16_raw,
+    _numeric_summary_from_raw,
     _scored_boundary_capture_record,
     build_arg_parser,
     diagnostic_env_payload,
@@ -92,6 +94,46 @@ def test_parser_exposes_raw_prefix_hidden_seed() -> None:
     )
 
     assert args.raw_prefix_hidden_seed is True
+
+
+def test_parser_exposes_prefix_state_numeric_summary() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--trace",
+            "trace.json",
+            "--cycle",
+            "12",
+            "--prefix-state-numeric-summary",
+        ]
+    )
+
+    assert args.prefix_state_numeric_summary is True
+
+
+def test_prefix_state_numeric_summary_decodes_fp32_and_bf16() -> None:
+    fp32_values = np.asarray([1.0, -2.0, 0.5], dtype=np.float32)
+    fp32_summary = _numeric_summary_from_raw(
+        fp32_values.view(np.uint8),
+        dtype="fp32",
+        label="fp32_state",
+    )
+
+    assert fp32_summary["label"] == "fp32_state"
+    assert fp32_summary["size"] == 3
+    assert fp32_summary["first8"][:3] == [1.0, -2.0, 0.5]
+
+    bf16_words = np.asarray([0x3F80, 0xC000, 0x3F00], dtype=np.uint16)
+    bf16_values = _f32_from_bf16_raw(bf16_words.view(np.uint8))
+    bf16_summary = _numeric_summary_from_raw(
+        bf16_words.view(np.uint8),
+        dtype="bf16",
+        label="bf16_state",
+    )
+
+    np.testing.assert_allclose(bf16_values, np.asarray([1.0, -2.0, 0.5], dtype=np.float32))
+    assert bf16_summary["label"] == "bf16_state"
+    assert bf16_summary["size"] == 3
+    assert bf16_summary["first8"][:3] == [1.0, -2.0, 0.5]
 
 
 def test_diagnostic_env_payload_records_f32_flags(monkeypatch) -> None:

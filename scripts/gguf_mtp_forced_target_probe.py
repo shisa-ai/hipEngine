@@ -342,23 +342,69 @@ def _copy_device_bytes(session: Any, ptr: int, nbytes: int) -> np.ndarray:
     return np.ascontiguousarray(host, dtype=np.uint8)
 
 
-def _device_buffer_fingerprint(session: Any, buffer: Any) -> dict[str, Any]:
+def _f32_from_bf16_raw(raw: np.ndarray) -> np.ndarray:
+    words = np.ascontiguousarray(raw, dtype=np.uint8).view(np.uint16).astype(np.uint32)
+    return np.ascontiguousarray((words << np.uint32(16)).view(np.float32), dtype=np.float32)
+
+
+def _numeric_summary_from_raw(raw: np.ndarray, *, dtype: str, label: str) -> dict[str, Any]:
+    if dtype == "fp32":
+        if int(raw.size) % np.dtype(np.float32).itemsize != 0:
+            raise ProbeError(f"{label} byte count is not FP32-aligned")
+        values = np.ascontiguousarray(raw, dtype=np.uint8).view(np.float32)
+    elif dtype == "bf16":
+        if int(raw.size) % np.dtype(np.uint16).itemsize != 0:
+            raise ProbeError(f"{label} byte count is not BF16-aligned")
+        values = _f32_from_bf16_raw(raw)
+    else:
+        raise ProbeError(f"unsupported numeric summary dtype {dtype!r}")
+    return hidden_state_summary(values, label=label)
+
+
+def _device_buffer_fingerprint(
+    session: Any,
+    buffer: Any,
+    *,
+    numeric_dtype: str | None = None,
+    label: str | None = None,
+) -> dict[str, Any]:
     raw = _copy_device_bytes(session, int(buffer.ptr), int(buffer.nbytes))
-    return {
+    result: dict[str, Any] = {
         "nbytes": int(buffer.nbytes),
         "blake2b_128": _bytes_digest(raw),
     }
+    if numeric_dtype is not None:
+        result["numeric_summary"] = _numeric_summary_from_raw(
+            raw,
+            dtype=str(numeric_dtype),
+            label=str(label or "device_buffer"),
+        )
+    return result
 
 
-def _device_range_fingerprint(session: Any, ptr: int, nbytes: int) -> dict[str, Any]:
+def _device_range_fingerprint(
+    session: Any,
+    ptr: int,
+    nbytes: int,
+    *,
+    numeric_dtype: str | None = None,
+    label: str | None = None,
+) -> dict[str, Any]:
     raw = _copy_device_bytes(session, int(ptr), int(nbytes))
-    return {
+    result: dict[str, Any] = {
         "nbytes": int(nbytes),
         "blake2b_128": _bytes_digest(raw),
     }
+    if numeric_dtype is not None:
+        result["numeric_summary"] = _numeric_summary_from_raw(
+            raw,
+            dtype=str(numeric_dtype),
+            label=str(label or "device_range"),
+        )
+    return result
 
 
-def _session_live_kv_fingerprint(session: Any) -> dict[str, Any]:
+def _session_live_kv_fingerprint(session: Any, *, include_numeric_summary: bool = False) -> dict[str, Any]:
     from hipengine.runtime.qwen35_gguf_runner import DType
 
     if session.runner is None or session.runner.weights is None or session.scratch is None:
@@ -377,8 +423,20 @@ def _session_live_kv_fingerprint(session: Any) -> dict[str, Any]:
         layers.append(
             {
                 "layer": int(layer_id),
-                "key": _device_range_fingerprint(session, int(key_cache.ptr), max_live_nbytes),
-                "value": _device_range_fingerprint(session, int(value_cache.ptr), max_live_nbytes),
+                "key": _device_range_fingerprint(
+                    session,
+                    int(key_cache.ptr),
+                    max_live_nbytes,
+                    numeric_dtype="bf16" if include_numeric_summary else None,
+                    label=f"full_attn_{layer_id}_key_live_bf16",
+                ),
+                "value": _device_range_fingerprint(
+                    session,
+                    int(value_cache.ptr),
+                    max_live_nbytes,
+                    numeric_dtype="bf16" if include_numeric_summary else None,
+                    label=f"full_attn_{layer_id}_value_live_bf16",
+                ),
             }
         )
     return {
@@ -397,6 +455,7 @@ def _session_lifecycle_fingerprint(
     label: str,
     include_kv: bool = False,
     include_hidden_values: bool = False,
+    include_state_numeric_summary: bool = False,
 ) -> dict[str, Any]:
     if session.runner is None or session.scratch is None:
         raise ProbeError("session is closed")
@@ -426,12 +485,25 @@ def _session_lifecycle_fingerprint(
         linear_layers.append(
             {
                 "layer": int(layer_id),
-                "conv": _device_buffer_fingerprint(session, conv_state),
-                "recurrent": _device_buffer_fingerprint(session, recurrent_state),
+                "conv": _device_buffer_fingerprint(
+                    session,
+                    conv_state,
+                    numeric_dtype="fp32" if include_state_numeric_summary else None,
+                    label=f"linear_{layer_id}_conv_state_fp32",
+                ),
+                "recurrent": _device_buffer_fingerprint(
+                    session,
+                    recurrent_state,
+                    numeric_dtype="fp32" if include_state_numeric_summary else None,
+                    label=f"linear_{layer_id}_recurrent_state_fp32",
+                ),
             }
         )
     if include_kv:
-        kv_state = _session_live_kv_fingerprint(session)
+        kv_state = _session_live_kv_fingerprint(
+            session,
+            include_numeric_summary=bool(include_state_numeric_summary),
+        )
     else:
         kv_state = {
             "checked": False,
@@ -1757,6 +1829,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "--prefix-state-fingerprint payload."
         ),
     )
+    parser.add_argument(
+        "--prefix-state-numeric-summary",
+        action="store_true",
+        help=(
+            "Diagnostic only: include compact numeric summaries for prefix linear "
+            "state buffers and live full-attention KV ranges in the "
+            "--prefix-state-fingerprint payload."
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -1927,8 +2008,10 @@ def main(argv: list[str] | None = None) -> int:
                 label="prefix",
                 include_kv=True,
                 include_hidden_values=bool(args.raw_prefix_hidden_seed),
+                include_state_numeric_summary=bool(args.prefix_state_numeric_summary),
             )
             if bool(args.prefix_state_fingerprint) or bool(args.raw_prefix_hidden_seed)
+            or bool(args.prefix_state_numeric_summary)
             else None
         )
 
@@ -2145,6 +2228,7 @@ def main(argv: list[str] | None = None) -> int:
             "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
             "prefix_state_fingerprint is emitted only for --prefix-state-fingerprint diagnostics.",
             "prefix_state_fingerprint.hidden_seed.values is emitted only for --raw-prefix-hidden-seed diagnostics.",
+            "prefix_state_fingerprint linear/KV numeric summaries are emitted only for --prefix-state-numeric-summary diagnostics.",
             "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
             "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
             "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
