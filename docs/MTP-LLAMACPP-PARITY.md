@@ -2230,6 +2230,24 @@ has `8940 - 668 = -0.00961`, for a **+0.52895 logit** hip-minus-llama margin
 gap. This rules out a target argmax/vocab-label bug for this row; the mismatch
 is target hidden/score drift amplified at the final lm-head.
 
+Live hidden-seed follow-up:
+`benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-hidden-scores-live.json`
+adds `target_hidden_seed_rows` beside the live target-score rows, and
+`benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-hidden-score-compare-live-vs-llamacpp.json`
+preserves the selected hipEngine row in the reducer output. This is still
+diagnostic-only, not a timing claim. For task 9 / cycle 3 / row 2, hipEngine's
+scored hidden seed for input token `567` has `sha256_16 =
+b5ad63cdd8c205e6`, mean **-0.02255636**, RMS **2.58293229**, position **75**,
+and first8 `[0.47027054, 2.82138753, -0.15778151, 0.49233231, 5.39549446,
+-3.17500472, 0.38539246, 3.24579096]`. The matching llama.cpp tensor trace's
+`verify_h` row has mean **-0.02630296**, RMS **2.58591292**, position **75**,
+and first8 `[0.45559129, 2.80407262, 0.01650394, 0.59033644, 5.51924992,
+-3.06079221, 0.56728262, 3.08224630]`. The sampled-token and margin result is
+unchanged: hipEngine still samples `8940`, llama.cpp samples `668`, and the
+`8940 - 668` gap is **+0.52895 logits** hip-minus-llama. The next split should
+be a raw hidden-vector comparator for this exact live row, then a final
+hidden-to-logit contract check against llama.cpp's output norm / lm-head path.
+
 The same live diagnostic with the current F32 selected-FFN stack
 (`HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`,
 `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1`,

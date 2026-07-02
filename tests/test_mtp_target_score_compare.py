@@ -22,6 +22,15 @@ def test_target_score_compare_reports_pair_margin_flip() -> None:
                         "candidate_scores": [],
                     }
                 ],
+                "target_hidden_seed_rows": [
+                    {
+                        "row": 2,
+                        "input_token": 567,
+                        "target_token": 8940,
+                        "hidden_available": True,
+                        "summary": {"sha256_16": "abcd", "rms": 1.25},
+                    }
+                ],
             }
         ]
     }
@@ -57,6 +66,7 @@ def test_target_score_compare_reports_pair_margin_flip() -> None:
 
     assert result["performance_claim"] is False
     assert result["hip"]["sampled_token"] == 8940
+    assert result["hip"]["hidden_seed_row"]["summary"]["sha256_16"] == "abcd"
     assert result["llama"]["sampled_token"] == 668
     assert result["pair_margin"] == {
         "token_a": 8940,

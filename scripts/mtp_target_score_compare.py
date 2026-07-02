@@ -56,6 +56,16 @@ def _find_hip_score_row(artifact: dict[str, Any], *, cycle: int, row: int) -> tu
     raise ValueError(f"hip cycle {cycle} does not contain target score row {row}")
 
 
+def _find_hip_hidden_row(cycle_row: dict[str, Any], *, row: int) -> dict[str, Any] | None:
+    rows = cycle_row.get("target_hidden_seed_rows")
+    if not isinstance(rows, list):
+        return None
+    for hidden_row in rows:
+        if isinstance(hidden_row, dict) and int(hidden_row.get("row", -1)) == int(row):
+            return hidden_row
+    return None
+
+
 def _find_llama_cycle(
     rows: list[dict[str, Any]],
     *,
@@ -233,6 +243,7 @@ def build_comparison(
             "target_tokens": [int(token) for token in hip_cycle.get("target_tokens", [])],
             "sampled_token": int(hip_score_row.get("target_token")),
             "input_token": int(hip_score_row.get("input_token")),
+            "hidden_seed_row": _find_hip_hidden_row(hip_cycle, row=row),
         },
         "llama": {
             "sampled_token_ids": [int(token) for token in llama_cycle.get("sampled_token_ids", [])],

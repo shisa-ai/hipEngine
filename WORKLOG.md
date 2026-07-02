@@ -139014,3 +139014,42 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-score-compare-f32selectedintermediate-vs-llamacpp.json >/dev/null
   ```
   Focused reducer test passed and all four JSON artifacts validate.
+
+## 2026-07-03 - live target hidden-seed summaries for score rows
+
+- Extended `scripts/gguf_mtp_bench.py --record-target-topk-scores` to emit
+  compact `target_hidden_seed_rows` aligned to each `target_lm_head_score_rows`
+  entry. The rows carry `hidden_state_summary()` output only; this remains a
+  diagnostic path because the parent flag still performs a full target-lm-head
+  D2H copy per block.
+- Extended `scripts/mtp_target_score_compare.py` to preserve the selected
+  hipEngine hidden-seed row in compare outputs and added focused tests for both
+  the bench helper and reducer.
+- GPU diagnostic command on AMD Radeon 8060S / gfx1151:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt $'Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n来週のリリースでは、ログ出力の形式変更、キャッシュの無効化オプション、そしてAPIレスポンスの後方互換性を重点的に確認したいです。' --prompt-reasoning off --llama-compat --resident-mtp-device-chain --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --resident-mtp-draft-dense-q8-dp4a --resident-mtp-draft-dense-q8-dp4a-stages draft --target-block-direct-partial-replay-mode direct-commit --draft-n-max 2 --cycles 24 --max-output-tokens 24 --record-target-topk-scores --target-topk-score-count 8 --target-score-candidate-tokens 668,8940,26126,539,11,567 --record-cycle-stage-timings --output benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-hidden-scores-live.json
+  ```
+- Reducer command:
+  ```bash
+  python3 scripts/mtp_target_score_compare.py --hip benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-hidden-scores-live.json --llamacpp-jsonl benchmarks/results/2026-07-02-llamacpp-mtp-token-trace-b2-natural24-mixed-ja-en-translate.jsonl --task-id 9 --cycle 3 --row 2 --candidate-tokens 668,8940,3019,1318,1144,1220,28663,60445,26126,539 --pair 8940,668 --out benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-hidden-score-compare-live-vs-llamacpp.json
+  ```
+- Result: same live rank flip, now tied to the exact scored hidden row. At task
+  9 / cycle 3 / row 2, hipEngine samples `8940`, llama.cpp samples `668`, and
+  the `8940 - 668` margin gap remains **+0.52895 logits** hip-minus-llama. The
+  hipEngine hidden summary for input `567`, position `75`, has `sha256_16`
+  `b5ad63cdd8c205e6`, mean **-0.02255636**, RMS **2.58293229**, and first8
+  `[0.47027054, 2.82138753, -0.15778151, 0.49233231, 5.39549446,
+  -3.17500472, 0.38539246, 3.24579096]`. Existing llama.cpp tensor trace
+  `verify_h` row 2 at the same position has mean **-0.02630296**, RMS
+  **2.58591292**, and first8 `[0.45559129, 2.80407262, 0.01650394,
+  0.59033644, 5.51924992, -3.06079221, 0.56728262, 3.08224630]`.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/gguf_mtp_bench.py scripts/mtp_target_score_compare.py tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_target_score_compare.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_mtp_target_score_compare.py
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-hidden-scores-live.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-hidden-score-compare-live-vs-llamacpp.json >/dev/null
+  git diff --check
+  ```
+  Pycompile passed, focused tests passed (`102 passed`), both JSON artifacts
+  validate, and diff check passed.
