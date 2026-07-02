@@ -268,6 +268,24 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--verify-dense-q8-dp4a-f32",
     ]
     assert suite.MTP_ROUTES[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly"
+    ] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+        "--resident-mtp-draft-q6-top1-dp4a",
+        "--resident-mtp-draft-q6-top1-stage1-shape",
+        "x8",
+        "--selected-down-x8-repack",
+        "q6",
+        "--verify-dense-q8-dp4a-all",
+        "--verify-dense-q8-dp4a-f32",
+        "--resident-mtp-draft-router-row-parallel",
+        "--resident-mtp-draft-dense-q8-dp4a",
+        "--resident-mtp-draft-dense-q8-dp4a-stages",
+        "draft",
+    ]
+    assert suite.MTP_ROUTES[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm"
     ] == [
         "--llama-compat",
@@ -473,6 +491,9 @@ def test_suite_exposes_llama_compat_routes() -> None:
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm"
+    ] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly"
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm"

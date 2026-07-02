@@ -134751,3 +134751,93 @@ PYTHONPATH=. python3 scripts/mtp_draft_kernel_compare.py \
   kernels (**1.932 vs 0.778 ms/cycle**, **+1.154 ms/cycle**). Treat that as
   secondary leaf-ranking evidence only until it moves the retained full-suite
   `draft_initial` row.
+
+## 2026-07-02 - Retained llama-compat draft-only dense-Q8 dp4a selector
+
+- Added a stage selector for resident draft dense-Q8 dp4a:
+  `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES` plus
+  `--resident-mtp-draft-dense-q8-dp4a-stages` and profiler
+  `--dense-q8-dp4a-stages`. The legacy boolean keeps all-stage behavior, while
+  `draft` limits dp4a to draft forward leaves (`project`, `qkv`, `attn_out`,
+  `shared_gate_up`, `shared_down`) and avoids initial prompt KV seeding.
+- Added named suite route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly`
+  so artifacts carry `--resident-mtp-draft-dense-q8-dp4a-stages draft` in
+  `shared_config.mtp_route_extra_args`.
+- Validation before benchmark:
+
+```bash
+python3 -m py_compile hipengine/speculative/mtp_resident_draft.py scripts/gguf_mtp_draft_rocprof.py scripts/gguf_mtp_bench.py scripts/gguf_ar_mtp_suite.py
+PYTHONPATH=. python3 -m pytest \
+  tests/test_mtp_resident_draft_device_commit.py::test_draft_dense_q8_dp4a_helper_is_default_off \
+  tests/test_mtp_resident_draft_device_commit.py::test_draft_dense_q8_dp4a_single_helper_quantizes_once \
+  tests/test_mtp_resident_draft_device_commit.py::test_draft_dense_q8_dp4a_split_helpers_quantize_once \
+  tests/test_mtp_resident_draft_device_commit.py::test_draft_dense_q8_dp4a_stage_selector \
+  tests/test_gguf_mtp_bench_metrics.py::test_resident_mtp_draft_dense_q8_dp4a_flag_parses_default_off \
+  tests/test_gguf_ar_mtp_suite.py::test_suite_exposes_llama_compat_routes -q
+git diff --check
+```
+
+- Directional partial:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope partial --budgets 2 \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-draftonly-partial.json
+```
+
+  Result: AR **55.03 tok/s**, B2 **78.82 tok/s = 1.4323x AR**,
+  acc/output **0.643**, draft acceptance **0.900**, cycle
+  **12.708 ms/output**.
+
+- Retained full-suite command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full --budgets 2 \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly \
+  --record-cycle-stage-timings --require-cached-build \
+  --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-draftonly-full.json
+```
+
+  Result: AR **54.79 tok/s**, B2 **75.15 tok/s = 1.3716x AR**,
+  acc/output **0.621**, draft acceptance **0.820**, target rows/output
+  **1.136**, cycle **13.325 ms/output**. Versus the prior active compat row
+  (`2026-07-02-ar-mtp-llama-compat-parallelattn-clean-rerun-full.json`), this
+  is **74.39 -> 75.15 tok/s**, cycle **13.463 -> 13.325 ms/output**,
+  `draft_initial` **2.204 -> 2.066 ms/output**, unchanged acceptance/economy.
+  Versus llama.cpp HIP rerun (`2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`),
+  hipEngine compat is now faster on parent wall (**13.325 vs 14.269
+  ms/output**) and draft parent (**2.066 vs 2.141 ms/output**).
+
+- Refreshed matching draft-chain profile and comparison:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings --require-cached --skip-warmbuild \
+  --dense-q8-dp4a --dense-q8-dp4a-stages draft \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-denseq8-draftonly-gpuevents \
+  --out benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-draftdenseq8-draftonly-gpuevents.json
+
+PYTHONPATH=. python3 scripts/mtp_draft_kernel_compare.py \
+  --hipengine-draft-rocprof benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-draftdenseq8-draftonly-gpuevents.json \
+  --hipengine-full-suite benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-draftonly-full.json \
+  --llamacpp-rocprof benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json \
+  --llamacpp-stage benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json \
+  --out benchmarks/results/2026-07-02-mtp-draft-kernel-compare-draftdenseq8-draftonly.json
+```
+
+  Result: draft profile **6.145 ms/cycle host**, **5.055 ms/cycle kernel**,
+  `draft_dense_shared_gemv` **0.379 ms/cycle**, Q6 top-1 unchanged at parity.
+  Cross-engine compare: Q6 top-1 delta **+0.005 ms/call**, retained
+  `draft_initial` delta **-0.076 ms/output**, total cycle delta **-0.944
+  ms/output**, non-Q6 ROCTX proxy residual **+0.705 ms/cycle**.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`,
+  `benchmarks/CHANGELOG.md`, and `docs/REFACTOR.md`. The selector is
+  accuracy-traded llama-compat only; do not enable all-stage dense-Q8 dp4a or
+  promote to exact default without a new full-suite row proving unchanged
+  acceptance/economy and exact-mode correctness.

@@ -1,0 +1,412 @@
+{
+  "schema": "hipengine.mtp_draft_kernel_compare.v1",
+  "date": "2026-07-02",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "label": "active-llama-compat-draft-kernel-compare",
+  "inputs": {
+    "hipengine_draft_rocprof": "benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-draftdenseq8-draftonly-gpuevents.json",
+    "hipengine_full_suite": "benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-draftonly-full.json",
+    "llamacpp_rocprof": "benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json",
+    "llamacpp_stage": "benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json"
+  },
+  "hipengine": {
+    "artifact": "/tmp/hipengine-gguf-mtp-draft-rocprof-denseq8-draftonly-gpuevents",
+    "steps": 4,
+    "avg_host_ms_per_cycle": 6.14464160753414,
+    "avg_kernel_ms_per_cycle": 5.054612,
+    "kernel_calls_per_cycle": 96.5,
+    "full_suite_context": {
+      "artifact_outputs": 264,
+      "artifact_cycles": 100,
+      "visible_outputs_per_cycle": 2.64,
+      "mtp_tok_s": 75.15286776511313,
+      "cycle_wall_ms_per_output": 13.325322727272729,
+      "draft_initial_ms_per_output": 2.065712878787879,
+      "draft_topk_readback_ms_per_output": 1.8897651515151515,
+      "draft_device_chain_drain_ms_per_output": 1.8828041666666666
+    },
+    "stage_ms_per_cycle": {
+      "draft_device_chain_drain": 4.863764741457999,
+      "draft_topk_readback": 5.500540253706276,
+      "draft_topk_d2h": 0.07498840568587184,
+      "draft_gpu_run_lm_head": 3.715590238571167,
+      "draft_gpu_decode_initial": 2.683882742887363,
+      "draft_gpu_decode_next": 2.635754988878034,
+      "draft_gpu_run_attention": 0.15690699964761734,
+      "draft_gpu_run_qkv_kvwrite": 0.24863500148057938,
+      "draft_gpu_run_ffn_selected_gate_up": 0.45176999643445015,
+      "draft_gpu_run_moe_down_combine": 0.3820117451250553
+    },
+    "top_buckets": [
+      {
+        "name": "draft_lm_head_q6_top1",
+        "calls": 16,
+        "total_ms": 14.673107000000002,
+        "pct_kernel": 72.5728651378187,
+        "ms_per_step": 3.6682767500000004,
+        "us_per_call": 917.0691875000001
+      },
+      {
+        "name": "draft_moe_gate_up",
+        "calls": 8,
+        "total_ms": 1.7647240000000002,
+        "pct_kernel": 8.72828616716773,
+        "ms_per_step": 0.44118100000000005,
+        "us_per_call": 220.59050000000002
+      },
+      {
+        "name": "draft_dense_shared_gemv",
+        "calls": 40,
+        "total_ms": 1.5170520000000005,
+        "pct_kernel": 7.503305891728192,
+        "ms_per_step": 0.37926300000000013,
+        "us_per_call": 37.92630000000001
+      },
+      {
+        "name": "draft_moe_down",
+        "calls": 8,
+        "total_ms": 1.320017,
+        "pct_kernel": 6.528775106773775,
+        "ms_per_step": 0.33000425,
+        "us_per_call": 165.002125
+      },
+      {
+        "name": "draft_norm_cast_quant_rope",
+        "calls": 120,
+        "total_ms": 0.36733899999999997,
+        "pct_kernel": 1.8168506306715528,
+        "ms_per_step": 0.09183474999999999,
+        "us_per_call": 3.061158333333333
+      },
+      {
+        "name": "draft_moe_router",
+        "calls": 24,
+        "total_ms": 0.15707900000000002,
+        "pct_kernel": 0.7769092860144361,
+        "ms_per_step": 0.039269750000000006,
+        "us_per_call": 6.5449583333333345
+      },
+      {
+        "name": "draft_attention_core",
+        "calls": 16,
+        "total_ms": 0.15680600000000003,
+        "pct_kernel": 0.7755590340069626,
+        "ms_per_step": 0.03920150000000001,
+        "us_per_call": 9.800375000000003
+      },
+      {
+        "name": "memcpy_fill",
+        "calls": 73,
+        "total_ms": 0.13312400000000002,
+        "pct_kernel": 0.6584283818421672,
+        "ms_per_step": 0.033281000000000005,
+        "us_per_call": 1.8236164383561646
+      }
+    ],
+    "q6_top1_stage1": {
+      "name": "gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1",
+      "calls": 8,
+      "total_ms": 14.284966,
+      "pct_kernel": 70.65312827176449,
+      "ms_per_step": 3.5712415,
+      "us_per_call": 1785.62075
+    },
+    "top_kernels": [
+      {
+        "name": "gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1",
+        "calls": 8,
+        "total_ms": 14.284966,
+        "pct_kernel": 70.65312827176449,
+        "ms_per_step": 3.5712415,
+        "us_per_call": 1785.62075
+      },
+      {
+        "name": "gguf_q4_k_selected_dual_prefill_out",
+        "calls": 8,
+        "total_ms": 1.7647240000000002,
+        "pct_kernel": 8.72828616716773,
+        "ms_per_step": 0.44118100000000005,
+        "us_per_call": 220.59050000000002
+      },
+      {
+        "name": "gguf_k_selected_prefill_out",
+        "calls": 8,
+        "total_ms": 1.320017,
+        "pct_kernel": 6.528775106773775,
+        "ms_per_step": 0.33000425,
+        "us_per_call": 165.002125
+      },
+      {
+        "name": "q8_0_dp4a_gemv",
+        "calls": 24,
+        "total_ms": 0.714934,
+        "pct_kernel": 3.536047870736666,
+        "ms_per_step": 0.1787335,
+        "us_per_call": 29.788916666666665
+      },
+      {
+        "name": "q8_0_dp4a_triple_split_rowtile_gemv",
+        "calls": 8,
+        "total_ms": 0.70367,
+        "pct_kernel": 3.480336373988745,
+        "ms_per_step": 0.1759175,
+        "us_per_call": 87.95875000000001
+      },
+      {
+        "name": "top1_stage2_gather",
+        "calls": 8,
+        "total_ms": 0.38814099999999996,
+        "pct_kernel": 1.9197368660542093,
+        "ms_per_step": 0.09703524999999999,
+        "us_per_call": 48.517624999999995
+      },
+      {
+        "name": "hipengine_mtp_rmsnorm_f32",
+        "calls": 56,
+        "total_ms": 0.269702,
+        "pct_kernel": 1.3339401718668022,
+        "ms_per_step": 0.0674255,
+        "us_per_call": 4.816107142857143
+      },
+      {
+        "name": "hipengine_mtp_dense_attn_f32",
+        "calls": 8,
+        "total_ms": 0.145104,
+        "pct_kernel": 0.717681198873425,
+        "ms_per_step": 0.036276,
+        "us_per_call": 18.138
+      },
+      {
+        "name": "__amd_rocclr_copyBuffer",
+        "calls": 65,
+        "total_ms": 0.11777000000000003,
+        "pct_kernel": 0.58248783487239,
+        "ms_per_step": 0.029442500000000007,
+        "us_per_call": 1.8118461538461543
+      },
+      {
+        "name": "qwen35_router_logits",
+        "calls": 16,
+        "total_ms": 0.107954,
+        "pct_kernel": 0.5339381143399334,
+        "ms_per_step": 0.0269885,
+        "us_per_call": 6.747125
+      },
+      {
+        "name": "q8_0_dp4a_dual_split_rowtile_gemv",
+        "calls": 8,
+        "total_ms": 0.098448,
+        "pct_kernel": 0.48692164700277685,
+        "ms_per_step": 0.024612,
+        "us_per_call": 12.306
+      },
+      {
+        "name": "gguf_quantize_q8_1",
+        "calls": 48,
+        "total_ms": 0.067249,
+        "pct_kernel": 0.3326120778409896,
+        "ms_per_step": 0.01681225,
+        "us_per_call": 1.4010208333333336
+      }
+    ]
+  },
+  "llamacpp": {
+    "artifact": "/tmp/hipengine-llamacpp-mtp-rocprof-token32-gen8-roctx",
+    "range_calls": 4,
+    "range_duration_ms_total": 10.21109,
+    "range_duration_ms_per_call": 2.5527725,
+    "kernel_ms_total": 8.679474,
+    "kernel_ms_per_call": 2.1698685,
+    "kernel_dispatches_total": 171,
+    "roctx_stage_context": {
+      "cycles": 2,
+      "total_output_tokens": 6,
+      "visible_outputs_per_cycle": 3.0,
+      "cycle_wall_ms_per_output": 14.522,
+      "draft_initial_ms_per_output": 2.068166666666667,
+      "llama_draft_sample_topk_ms_per_output": 1.702,
+      "target_block_verify_total_ms_per_output": 12.440000000000003
+    },
+    "top_buckets": [
+      {
+        "bucket": "llama_mmvq",
+        "total_ms": 8.141749,
+        "dispatches": 37,
+        "avg_dispatch_ms": 0.2200472702702703,
+        "share_of_total": 0.9380463608739423
+      },
+      {
+        "bucket": "other",
+        "total_ms": 0.097642,
+        "dispatches": 16,
+        "avg_dispatch_ms": 0.006102625,
+        "share_of_total": 0.011249760066105388
+      },
+      {
+        "bucket": "llama_flash_attn",
+        "total_ms": 0.079134,
+        "dispatches": 8,
+        "avg_dispatch_ms": 0.00989175,
+        "share_of_total": 0.009117372780885109
+      },
+      {
+        "bucket": "llama_norm",
+        "total_ms": 0.075728,
+        "dispatches": 20,
+        "avg_dispatch_ms": 0.0037864,
+        "share_of_total": 0.008724952687225056
+      },
+      {
+        "bucket": "llama_mmvf",
+        "total_ms": 0.072171,
+        "dispatches": 8,
+        "avg_dispatch_ms": 0.009021375,
+        "share_of_total": 0.008315135225936503
+      },
+      {
+        "bucket": "llama_copy_layout",
+        "total_ms": 0.070156,
+        "dispatches": 22,
+        "avg_dispatch_ms": 0.0031889090909090908,
+        "share_of_total": 0.008082978300297921
+      },
+      {
+        "bucket": "llama_quantize_q8_1",
+        "total_ms": 0.063202,
+        "dispatches": 36,
+        "avg_dispatch_ms": 0.001755611111111111,
+        "share_of_total": 0.007281777674545716
+      },
+      {
+        "bucket": "llama_rope",
+        "total_ms": 0.04624,
+        "dispatches": 8,
+        "avg_dispatch_ms": 0.00578,
+        "share_of_total": 0.00532751178239603
+      }
+    ],
+    "q6_top1_kernel": {
+      "kernel": "void mul_mat_vec_q<(ggml_type)14, 1, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+      "total_ms": 7.122608,
+      "dispatches": 4,
+      "avg_dispatch_ms": 1.780652,
+      "share_of_total": 0.8206266877462851
+    },
+    "top_kernels": [
+      {
+        "kernel": "void mul_mat_vec_q<(ggml_type)14, 1, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+        "total_ms": 7.122608,
+        "dispatches": 4,
+        "avg_dispatch_ms": 1.780652,
+        "share_of_total": 0.8206266877462851
+      },
+      {
+        "kernel": "void mul_mat_vec_q<(ggml_type)8, 1, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+        "total_ms": 0.437914,
+        "dispatches": 17,
+        "avg_dispatch_ms": 0.02575964705882353,
+        "share_of_total": 0.0504539791236197
+      },
+      {
+        "kernel": "void mul_mat_vec_q<(ggml_type)8, 1, true, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+        "total_ms": 0.236994,
+        "dispatches": 8,
+        "avg_dispatch_ms": 0.02962425,
+        "share_of_total": 0.027305110885751833
+      },
+      {
+        "kernel": "void mul_mat_vec_q<(ggml_type)12, 1, true, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+        "total_ms": 0.208131,
+        "dispatches": 4,
+        "avg_dispatch_ms": 0.05203275,
+        "share_of_total": 0.023979678952895073
+      },
+      {
+        "kernel": "void mul_mat_vec_q<(ggml_type)13, 1, false, false>(void const*, void const*, int const*, ggml_cuda_mm_fusion_args_device, float*, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, HIP_vector_type<unsigned int, 3u>, unsigned int, unsigned int, unsigned int, unsigned int)",
+        "total_ms": 0.136102,
+        "dispatches": 4,
+        "avg_dispatch_ms": 0.0340255,
+        "share_of_total": 0.01568090416539067
+      },
+      {
+        "kernel": "void mul_mat_vec_f<__hip_bfloat16, float, 1, 256, false, false>(__hip_bfloat16 const*, float const*, int const*, ggml_cuda_mm_fusion_args_device, float*, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int)",
+        "total_ms": 0.072171,
+        "dispatches": 8,
+        "avg_dispatch_ms": 0.009021375,
+        "share_of_total": 0.008315135225936503
+      },
+      {
+        "kernel": "quantize_q8_1(float const*, void*, long, long, long, long, long, unsigned int, HIP_vector_type<unsigned int, 3u>)",
+        "total_ms": 0.063202,
+        "dispatches": 36,
+        "avg_dispatch_ms": 0.001755611111111111,
+        "share_of_total": 0.007281777674545716
+      },
+      {
+        "kernel": "void flash_attn_tile<256, 256, 1, 8, false>(char const*, char const*, char const*, char const*, char const*, int const*, float*, HIP_vector_type<float, 2u>*, float, float, float, float, unsigned int, float, int, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)",
+        "total_ms": 0.05938,
+        "dispatches": 4,
+        "avg_dispatch_ms": 0.014845,
+        "share_of_total": 0.006841428409140923
+      },
+      {
+        "kernel": "pad_f32(float const*, unsigned long, unsigned long, unsigned long, unsigned long, float*, int, int, int, int, int, int, int, int, int, int, int, int, bool)",
+        "total_ms": 0.049637,
+        "dispatches": 4,
+        "avg_dispatch_ms": 0.01240925,
+        "share_of_total": 0.005718894946859683
+      },
+      {
+        "kernel": "void rope_multi<true, false, float>(float const*, float*, int, int, int, int, int, int, int, int, int, int, int const*, float, float, float, rope_corr_dims, float, float const*, mrope_sections, bool)",
+        "total_ms": 0.04624,
+        "dispatches": 8,
+        "avg_dispatch_ms": 0.00578,
+        "share_of_total": 0.00532751178239603
+      },
+      {
+        "kernel": "void rms_norm_f32<1024, true, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+        "total_ms": 0.04507,
+        "dispatches": 12,
+        "avg_dispatch_ms": 0.0037558333333333332,
+        "share_of_total": 0.0051927109868639505
+      },
+      {
+        "kernel": "void rms_norm_f32<256, true, false>(float const*, float*, int, long, long, long, float, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, float const*, long, long, long, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>)",
+        "total_ms": 0.030658,
+        "dispatches": 8,
+        "avg_dispatch_ms": 0.00383225,
+        "share_of_total": 0.003532241700361105
+      }
+    ]
+  },
+  "llamacpp_retained_stage_context": {
+    "cycles": 87,
+    "total_output_tokens": 223,
+    "visible_outputs_per_cycle": 2.5632183908045976,
+    "cycle_wall_ms_per_output": 14.26921524663677,
+    "draft_initial_ms_per_output": 2.1414439461883417,
+    "llama_draft_sample_topk_ms_per_output": 1.888399103139014,
+    "target_block_verify_total_ms_per_output": 12.119959641255607
+  },
+  "comparison": {
+    "q6_top1_ms_per_call_delta_hip_minus_llama": 0.004968750000000188,
+    "q6_top1_reading": "per-call parity",
+    "roctx_proxy_draft_initial_delta_ms_per_output": -0.0024537878787880274,
+    "retained_full_suite_draft_initial_delta_ms_per_output": -0.07573106740046276,
+    "retained_full_suite_visible_sampler_delta_ms_per_output": 0.0013660483761375186,
+    "retained_full_suite_cycle_delta_ms_per_output": -0.9438925193640415,
+    "roctx_kernel_ms_per_cycle": {
+      "hipengine_total_kernel_ms_per_cycle": 5.054612,
+      "hipengine_q6_top1_ms_per_cycle": 3.5712415,
+      "hipengine_non_q6_kernel_ms_per_cycle": 1.4833704999999995,
+      "llamacpp_sample_range_ms_per_cycle": 5.105545,
+      "llamacpp_sample_kernel_ms_per_cycle": 4.339737,
+      "llamacpp_q6_top1_ms_per_cycle": 3.561304,
+      "llamacpp_non_q6_sample_kernel_ms_per_cycle": 0.7784330000000006,
+      "non_q6_kernel_delta_hip_minus_llama_ms_per_cycle": 0.7049374999999989,
+      "reading": "diagnostic ROCTX proxy only; Q6 is normalized at parity, so any profiler residual is secondary non-Q6 draft work and must move a retained full-suite draft row before becoming a live target"
+    },
+    "interpretation": "The dominant Q6_K top-1 draft lm-head dispatch is at per-call parity; the remaining retained draft-drain delta should be treated as small rollup/accounting variance or a non-Q6 secondary-leaf target unless a future same-protocol rerun reopens the parent wall gap."
+  }
+}

@@ -405,6 +405,7 @@ def test_draft_dense_q8_dp4a_helper_is_default_off(monkeypatch) -> None:
         0x1000,
         0x2000,
         0x3000,
+        stage="project",
         rows=1,
         in_features=2048,
         out_features=2048,
@@ -433,6 +434,7 @@ def test_draft_dense_q8_dp4a_single_helper_quantizes_once(monkeypatch) -> None:
         0x1000,
         0x2000,
         0x3000,
+        stage="project",
         rows=1,
         in_features=2048,
         out_features=4096,
@@ -471,6 +473,7 @@ def test_draft_dense_q8_dp4a_split_helpers_quantize_once(monkeypatch) -> None:
         0x2200,
         0x3100,
         0x3200,
+        stage="shared_gate_up",
         rows=1,
         in_features=2048,
         out_features_a=768,
@@ -484,6 +487,7 @@ def test_draft_dense_q8_dp4a_split_helpers_quantize_once(monkeypatch) -> None:
         0x3100,
         0x3200,
         0x3300,
+        stage="qkv",
         rows=1,
         in_features=2048,
         out_features_a=4096,
@@ -508,6 +512,41 @@ def test_draft_dense_q8_dp4a_split_helpers_quantize_once(monkeypatch) -> None:
         4096,
         512,
     )
+
+
+def test_draft_dense_q8_dp4a_stage_selector(monkeypatch) -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner._draft_dense_q8_dp4a_enabled = True
+    runner._draft_dense_q8_dp4a_stages = frozenset({"shared_down"})
+    runner.dense_q8_1 = DeviceBuffer(0x4000, 36 * 64)
+    runner.runtime = SimpleNamespace()
+    runner._q4_lib = object()
+    runner._q8_dp4a_lib = object()
+    calls: list[str] = []
+
+    monkeypatch.setattr(resident_draft_mod, "gguf_q4_k_quantize_f32_q8_1", lambda *args, **kwargs: calls.append("quantize"))
+    monkeypatch.setattr(resident_draft_mod, "gguf_q8_0_dp4a_gemv_f32_f32_out", lambda *args, **kwargs: calls.append("dp4a"))
+
+    assert not runner._try_dense_q8_dp4a_f32(
+        0x1000,
+        0x2000,
+        0x3000,
+        stage="project",
+        rows=1,
+        in_features=2048,
+        out_features=4096,
+    )
+    assert runner._try_dense_q8_dp4a_f32(
+        0x1000,
+        0x2000,
+        0x3000,
+        stage="shared_down",
+        rows=1,
+        in_features=2048,
+        out_features=4096,
+    )
+
+    assert calls == ["quantize", "dp4a"]
 
 
 def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:

@@ -63,6 +63,9 @@ def _apply_route_env(args: argparse.Namespace) -> None:
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
     if bool(args.dense_q8_dp4a):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"] = "1"
+    dense_q8_dp4a_stages = str(getattr(args, "dense_q8_dp4a_stages", "")).strip()
+    if dense_q8_dp4a_stages:
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES"] = dense_q8_dp4a_stages
     if bool(args.selected_silu_down_fused):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"] = "1"
     if bool(args.router_row_parallel):
@@ -286,6 +289,8 @@ def _run_child(args: argparse.Namespace) -> int:
         "mtp_initial_kv_writer": "resident_write_kv_rows",
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
         "dense_q8_dp4a_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"),
+        "dense_q8_dp4a_stages": str(args.dense_q8_dp4a_stages),
+        "dense_q8_dp4a_stages_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES"),
         "selected_silu_down_fused": bool(args.selected_silu_down_fused),
         "selected_silu_down_fused_env": os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"),
         "router_row_parallel": bool(args.router_row_parallel),
@@ -364,6 +369,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--q6-top1-dp4a")
     if args.dense_q8_dp4a:
         child_base.append("--dense-q8-dp4a")
+    if str(args.dense_q8_dp4a_stages).strip():
+        child_base.extend(["--dense-q8-dp4a-stages", str(args.dense_q8_dp4a_stages)])
     if args.selected_silu_down_fused:
         child_base.append("--selected-silu-down-fused")
     if args.router_row_parallel:
@@ -571,6 +578,15 @@ def main() -> int:
         help=(
             "Diagnostic llama-compat draft A/B: route resident draft dense Q8_0 "
             "F32 projections through f32->q8_1 plus raw-Q8 dp4a float-output wrappers."
+        ),
+    )
+    parser.add_argument(
+        "--dense-q8-dp4a-stages",
+        default="",
+        help=(
+            "Comma-separated diagnostic stage selector for --dense-q8-dp4a. "
+            "Choices: all, draft, init, project, qkv, attn_out, shared_gate_up, "
+            "shared_down, init_project, init_kv. Empty keeps the legacy all-stage behavior."
         ),
     )
     parser.add_argument(

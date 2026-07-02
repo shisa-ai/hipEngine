@@ -1128,6 +1128,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resident-mtp-draft-dense-q8-dp4a-stages",
+        default="",
+        help=(
+            "Comma-separated diagnostic stage selector for --resident-mtp-draft-dense-q8-dp4a. "
+            "Choices: all, draft, init, project, qkv, attn_out, shared_gate_up, shared_down, "
+            "init_project, init_kv. Empty keeps the legacy all-stage behavior."
+        ),
+    )
+    parser.add_argument(
         "--resident-mtp-draft-selected-silu-down-fused",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1459,6 +1468,9 @@ def main(argv: list[str] | None = None):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"] = "1"
     if getattr(args, "resident_mtp_draft_dense_q8_dp4a", False):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"] = "1"
+    resident_dense_q8_stages = str(getattr(args, "resident_mtp_draft_dense_q8_dp4a_stages", "")).strip()
+    if resident_dense_q8_stages:
+        os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES"] = resident_dense_q8_stages
     if getattr(args, "resident_mtp_draft_selected_silu_down_fused", False):
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"] = "1"
     os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"] = str(args.resident_mtp_draft_q6_top1_stage1_threads)
@@ -3395,6 +3407,10 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft_dense_q8_dp4a": bool(args.resident_mtp_draft_dense_q8_dp4a),
             "resident_mtp_draft_dense_q8_dp4a_env": os.environ.get(
                 "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A"
+            ),
+            "resident_mtp_draft_dense_q8_dp4a_stages": str(args.resident_mtp_draft_dense_q8_dp4a_stages),
+            "resident_mtp_draft_dense_q8_dp4a_stages_env": os.environ.get(
+                "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES"
             ),
             "resident_mtp_draft_selected_silu_down_fused": bool(
                 args.resident_mtp_draft_selected_silu_down_fused

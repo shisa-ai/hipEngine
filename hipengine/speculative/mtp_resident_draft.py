@@ -110,6 +110,12 @@ from hipengine.quant.gguf_x8 import repack_gguf_q6_k_x8, repack_gguf_q6_k_x8_dsc
 
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
+_DRAFT_DENSE_Q8_DP4A_STAGES_ENV = "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES"
+_DRAFT_DENSE_Q8_DP4A_DRAFT_STAGES = frozenset(
+    {"project", "qkv", "attn_out", "shared_gate_up", "shared_down"}
+)
+_DRAFT_DENSE_Q8_DP4A_INIT_STAGES = frozenset({"init_project", "init_kv"})
+_DRAFT_DENSE_Q8_DP4A_ALL_STAGES = _DRAFT_DENSE_Q8_DP4A_DRAFT_STAGES | _DRAFT_DENSE_Q8_DP4A_INIT_STAGES
 
 
 def _stage_add(timings: dict[str, float] | None, name: str, ms: float) -> None:
@@ -250,6 +256,31 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "off", "no", ""}
 
 
+def _parse_draft_dense_q8_dp4a_stages(*, enabled: bool) -> frozenset[str]:
+    raw = os.environ.get(_DRAFT_DENSE_Q8_DP4A_STAGES_ENV)
+    if raw is None or raw.strip() == "":
+        return _DRAFT_DENSE_Q8_DP4A_ALL_STAGES if enabled else frozenset()
+    stages: set[str] = set()
+    for part in raw.split(","):
+        token = part.strip().lower().replace("-", "_")
+        if not token:
+            continue
+        if token in {"0", "false", "off", "no", "none"}:
+            return frozenset()
+        if token == "all":
+            stages.update(_DRAFT_DENSE_Q8_DP4A_ALL_STAGES)
+        elif token == "draft":
+            stages.update(_DRAFT_DENSE_Q8_DP4A_DRAFT_STAGES)
+        elif token == "init":
+            stages.update(_DRAFT_DENSE_Q8_DP4A_INIT_STAGES)
+        elif token in _DRAFT_DENSE_Q8_DP4A_ALL_STAGES:
+            stages.add(token)
+        else:
+            choices = ", ".join(sorted(_DRAFT_DENSE_Q8_DP4A_ALL_STAGES | {"all", "draft", "init"}))
+            raise ValueError(f"{_DRAFT_DENSE_Q8_DP4A_STAGES_ENV} contains unknown stage {part!r}; choices: {choices}")
+    return frozenset(stages)
+
+
 def _env_choice(name: str, default: str, choices: set[str]) -> str:
     raw = os.environ.get(name, default).strip().lower()
     if raw not in choices:
@@ -380,7 +411,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
             "compiler_version": self.compiler_version,
             "require_cached": bool(self.require_cached_build),
         }
-        self._draft_dense_q8_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A", False)
+        draft_dense_q8_dp4a_requested = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A", False)
+        self._draft_dense_q8_dp4a_stages = _parse_draft_dense_q8_dp4a_stages(
+            enabled=draft_dense_q8_dp4a_requested
+        )
+        self._draft_dense_q8_dp4a_enabled = bool(self._draft_dense_q8_dp4a_stages)
         self._selected_silu_down_fused = _env_flag(
             "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED", False
         )
@@ -575,6 +610,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.ctx_all = self._malloc(cap * 8)
         self.topk_all = self._malloc(cap * top_k * 4)
 
+    def _draft_dense_q8_dp4a_stage_enabled(self, stage: str) -> bool:
+        if not bool(getattr(self, "_draft_dense_q8_dp4a_enabled", False)):
+            return False
+        stages = getattr(self, "_draft_dense_q8_dp4a_stages", None)
+        return stages is None or str(stage) in stages
+
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
         for buf in reversed(self._buffers):
@@ -593,12 +634,14 @@ class Qwen35GGUFResidentMTPDraftRunner:
         qweight_ptr: int,
         out_ptr: int,
         *,
+        stage: str,
         rows: int,
         in_features: int,
         out_features: int,
     ) -> bool:
         if (
             not self._draft_dense_q8_dp4a_enabled
+            or not self._draft_dense_q8_dp4a_stage_enabled(stage)
             or self.dense_q8_1 is None
             or self._q8_dp4a_lib is None
         ):
@@ -637,6 +680,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         out_a_ptr: int,
         out_b_ptr: int,
         *,
+        stage: str,
         rows: int,
         in_features: int,
         out_features_a: int,
@@ -644,6 +688,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
     ) -> bool:
         if (
             not self._draft_dense_q8_dp4a_enabled
+            or not self._draft_dense_q8_dp4a_stage_enabled(stage)
             or self.dense_q8_1 is None
             or self._q8_dp4a_lib is None
         ):
@@ -687,6 +732,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         out_b_ptr: int,
         out_c_ptr: int,
         *,
+        stage: str,
         rows: int,
         in_features: int,
         out_features_a: int,
@@ -695,6 +741,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
     ) -> bool:
         if (
             not self._draft_dense_q8_dp4a_enabled
+            or not self._draft_dense_q8_dp4a_stage_enabled(stage)
             or self.dense_q8_1 is None
             or self._q8_dp4a_lib is None
         ):
@@ -1564,7 +1611,13 @@ class Qwen35GGUFResidentMTPDraftRunner:
             current_len += 1
         return current_len
 
-    def _project_current_to_attn_normed(self, hidden_seed: DeviceBuffer, *, stage_marker=None) -> None:
+    def _project_current_to_attn_normed(
+        self,
+        hidden_seed: DeviceBuffer,
+        *,
+        dense_q8_stage: str = "project",
+        stage_marker=None,
+    ) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size
         mtp_rmsnorm_f32(self.token_embed.ptr, self.enorm.ptr, self.e_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
@@ -1577,6 +1630,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.concat.ptr,
             self.eh_proj.ptr,
             self.projected.ptr,
+            stage=dense_q8_stage,
             rows=1,
             in_features=h * 2,
             out_features=h,
@@ -1610,13 +1664,14 @@ class Qwen35GGUFResidentMTPDraftRunner:
         h = self.hidden_size
         kv_heads = self.num_kv_heads
         d = self.qk_head_dim
-        self._project_current_to_attn_normed(self.seed_a)
+        self._project_current_to_attn_normed(self.seed_a, dense_q8_stage="init_project")
         if not self._try_dense_q8_dp4a_dual_f32(
             self.attn_normed.ptr,
             self.wk.ptr,
             self.wv.ptr,
             self.key_cur.ptr,
             self.value_cur.ptr,
+            stage="init_kv",
             rows=1,
             in_features=h,
             out_features_a=kv_heads * d,
@@ -1716,6 +1771,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.q_full.ptr,
             self.key_cur.ptr,
             self.value_cur.ptr,
+            stage="qkv",
             rows=1,
             in_features=h,
             out_features_a=heads * 2 * d,
@@ -1810,6 +1866,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.gated.ptr,
             self.wo.ptr,
             self.wo_out.ptr,
+            stage="attn_out",
             rows=1,
             in_features=heads * d,
             out_features=h,
@@ -1891,6 +1948,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.shared_up.ptr,
             self.shared_gate_out.ptr,
             self.shared_up_out.ptr,
+            stage="shared_gate_up",
             rows=1,
             in_features=h,
             out_features_a=inter,
@@ -1919,6 +1977,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.shared_inter.ptr,
             self.shared_down.ptr,
             self.shared_out.ptr,
+            stage="shared_down",
             rows=1,
             in_features=inter,
             out_features=h,
