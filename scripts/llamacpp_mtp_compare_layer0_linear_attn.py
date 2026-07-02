@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare hipEngine layer-0 linear attention taps against llama.cpp traces."""
+"""Compare hipEngine linear-attention taps against llama.cpp traces."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 
 DEFAULT_OUTPUT = Path(
-    "benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json"
+    "benchmarks/results/2026-07-02-mtp-target-linear-attn-cross-engine-diagnostic.json"
 )
 
 TENSOR_PAIRS: tuple[tuple[str, str, str], ...] = (
@@ -51,8 +51,20 @@ def main() -> None:
     parser.add_argument("--hipengine-raw", type=Path, required=True)
     parser.add_argument("--llamacpp-jsonl", type=Path, required=True)
     parser.add_argument("--llamacpp-cycle", type=int, required=True)
+    parser.add_argument(
+        "--llamacpp-task-id",
+        type=int,
+        default=None,
+        help="Optional task_id filter for unfiltered multi-task llama.cpp JSONL traces.",
+    )
     parser.add_argument("--row", type=int, default=1)
     parser.add_argument("--layer", type=int, default=0)
+    parser.add_argument(
+        "--hipengine-capture-source",
+        choices=("auto", "isolated", "scored"),
+        default="auto",
+        help="Which hipEngine layer-boundary capture block to compare.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
@@ -60,8 +72,10 @@ def main() -> None:
         hipengine_raw_path=args.hipengine_raw,
         llamacpp_jsonl_path=args.llamacpp_jsonl,
         llamacpp_cycle=args.llamacpp_cycle,
+        llamacpp_task_id=args.llamacpp_task_id,
         row=args.row,
         layer=args.layer,
+        hipengine_capture_source=args.hipengine_capture_source,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2) + "\n")
@@ -98,13 +112,29 @@ def build_linear_attn_compare_artifact(
     llamacpp_cycle: int,
     row: int,
     layer: int,
+    llamacpp_task_id: int | None = None,
+    hipengine_capture_source: str = "auto",
 ) -> dict[str, Any]:
     hip_artifact = json.loads(hipengine_raw_path.read_text())
-    hip_capture = _hip_capture(hip_artifact, layer=layer, row=row)
+    hip_capture = _hip_capture(
+        hip_artifact,
+        layer=layer,
+        row=row,
+        capture_source=hipengine_capture_source,
+    )
     hip_values = _hip_values(hip_capture)
-    llama_cycle = _llamacpp_cycle(llamacpp_jsonl_path, cycle=llamacpp_cycle)
+    llama_cycle = _llamacpp_cycle(
+        llamacpp_jsonl_path,
+        cycle=llamacpp_cycle,
+        task_id=llamacpp_task_id,
+    )
     llama_values, duplicates = _llamacpp_row_values(llama_cycle, row=row)
 
+    input_boundary_deltas = _input_boundary_deltas(
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+    )
     tensor_deltas = {
         name: _numeric_delta(
             _array_label(llama_values, llama_label.format(layer=layer), "llama.cpp"),
@@ -138,7 +168,7 @@ def build_linear_attn_compare_artifact(
 
     artifact = {
         "schema": 1,
-        "kind": "mtp_target_layer0_linear_attn_cross_engine_compare",
+        "kind": "mtp_target_linear_attn_cross_engine_compare",
         "status": "complete",
         "performance_claim": False,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -146,11 +176,14 @@ def build_linear_attn_compare_artifact(
             "hipengine_raw": str(hipengine_raw_path),
             "llamacpp_jsonl": str(llamacpp_jsonl_path),
             "llamacpp_cycle": int(llamacpp_cycle),
+            "llamacpp_task_id": int(llamacpp_task_id) if llamacpp_task_id is not None else None,
             "row": int(row),
             "layer": int(layer),
+            "hipengine_capture_source": hip_capture.get("capture_source", "isolated_layer_replay"),
         },
         "hipengine": _hip_metadata(hip_artifact, hip_capture),
         "llamacpp": _llamacpp_metadata(llama_cycle, duplicates),
+        "input_boundary_deltas": input_boundary_deltas,
         "pre_ssm_stable_deltas": pre_ssm_stable_deltas,
         "conv_view_deltas": conv_view_deltas,
         "pre_ssm_ambiguous_deltas": pre_ssm_ambiguous_deltas,
@@ -175,12 +208,34 @@ def build_linear_attn_compare_artifact(
     return artifact
 
 
-def _hip_capture(artifact: dict[str, Any], *, layer: int, row: int) -> dict[str, Any]:
-    captures = artifact.get("result", {}).get("layer_boundary_captures", [])
-    for capture in captures:
-        if int(capture.get("layer", -1)) == layer and int(capture.get("row", -1)) == row:
-            return capture
-    raise ValueError(f"hipEngine artifact has no layer_boundary_capture for layer={layer} row={row}")
+def _hip_capture(
+    artifact: dict[str, Any],
+    *,
+    layer: int,
+    row: int,
+    capture_source: str = "auto",
+) -> dict[str, Any]:
+    if capture_source not in {"auto", "isolated", "scored"}:
+        raise ValueError("capture_source must be auto, isolated, or scored")
+    if capture_source == "scored":
+        source_keys = [("scored_layer_boundary_captures", "scored_target_block")]
+    elif capture_source == "isolated":
+        source_keys = [("layer_boundary_captures", "isolated_layer_replay")]
+    else:
+        source_keys = [
+            ("scored_layer_boundary_captures", "scored_target_block"),
+            ("layer_boundary_captures", "isolated_layer_replay"),
+        ]
+    result = artifact.get("result", {})
+    for key, source_name in source_keys:
+        captures = result.get(key, [])
+        for capture in captures:
+            if int(capture.get("layer", -1)) == layer and int(capture.get("row", -1)) == row:
+                capture = dict(capture)
+                capture.setdefault("capture_source", source_name)
+                return capture
+    searched = ", ".join(key for key, _source in source_keys)
+    raise ValueError(f"hipEngine artifact has no {searched} capture for layer={layer} row={row}")
 
 
 def _hip_values(capture: dict[str, Any]) -> dict[str, np.ndarray]:
@@ -190,15 +245,20 @@ def _hip_values(capture: dict[str, Any]) -> dict[str, np.ndarray]:
     return {key: np.asarray(value, dtype=np.float32).reshape(-1) for key, value in values.items()}
 
 
-def _llamacpp_cycle(path: Path, *, cycle: int) -> dict[str, Any]:
+def _llamacpp_cycle(path: Path, *, cycle: int, task_id: int | None = None) -> dict[str, Any]:
     with path.open() as handle:
         for line in handle:
             if not line.strip():
                 continue
             record = json.loads(line)
+            if int(record.get("cycle", -1)) != cycle:
+                continue
+            if task_id is not None and int(record.get("task_id", -1)) != task_id:
+                continue
             if int(record.get("cycle", -1)) == cycle:
                 return record
-    raise ValueError(f"llama.cpp JSONL has no cycle={cycle}")
+    suffix = "" if task_id is None else f" task_id={task_id}"
+    raise ValueError(f"llama.cpp JSONL has no cycle={cycle}{suffix}")
 
 
 def _llamacpp_row_values(
@@ -306,6 +366,44 @@ def _optional_deltas(
             "hipengine_key": hip_key,
             "llamacpp_label": formatted_label,
             **_numeric_delta(llama_values[formatted_label], hip_values[hip_key]),
+        }
+    return deltas
+
+
+def _input_boundary_deltas(
+    *,
+    hip_values: dict[str, np.ndarray],
+    llama_values: dict[str, np.ndarray],
+    layer: int,
+) -> dict[str, Any]:
+    prev_layer = int(layer) - 1
+    pairs: tuple[tuple[str, str, str], ...] = (
+        ("hidden_in_vs_process_h_input", "hidden_in", "process_h_input"),
+        ("hidden_in_vs_prev_layer_output", "hidden_in", f"verify_layer_output_{prev_layer}"),
+        ("attn_norm_input", "attn_norm", f"attn_norm_{int(layer)}"),
+    )
+    deltas: dict[str, Any] = {}
+    for name, hip_key, llama_label in pairs:
+        if hip_key not in hip_values or llama_label not in llama_values:
+            deltas[name] = {
+                "status": "missing",
+                "hipengine_key": hip_key,
+                "llamacpp_label": llama_label,
+                "missing": [
+                    owner
+                    for owner, present in (
+                        ("hipEngine", hip_key in hip_values),
+                        ("llama.cpp", llama_label in llama_values),
+                    )
+                    if not present
+                ],
+            }
+            continue
+        deltas[name] = {
+            "status": "complete",
+            "hipengine_key": hip_key,
+            "llamacpp_label": llama_label,
+            **_numeric_delta(llama_values[llama_label], hip_values[hip_key]),
         }
     return deltas
 
@@ -466,6 +564,7 @@ def _pre_ssm_out_label_assessment(
 
 
 def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
+    inputs = artifact.get("input_boundary_deltas", {})
     stable = artifact["pre_ssm_stable_deltas"]
     conv_views = artifact["conv_view_deltas"]
     tensor = artifact["tensor_deltas"]
@@ -487,6 +586,9 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
     linear_mae = float(tensor["linear_attn_out"]["mean_abs_diff"])
     post_norm_mae = float(tensor["attn_post_norm"]["mean_abs_diff"])
     post_moe_mae = float(tensor["post_moe"]["mean_abs_diff"])
+    hidden_process_mae = _maybe_mae(inputs.get("hidden_in_vs_process_h_input", {}))
+    hidden_prev_mae = _maybe_mae(inputs.get("hidden_in_vs_prev_layer_output", {}))
+    attn_norm_input_mae = _maybe_mae(inputs.get("attn_norm_input", {}))
 
     if (
         z_mae <= PROJECTION_CLOSE_MAE
@@ -497,13 +599,24 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
     ):
         status = "no_projection_or_conv_cliff"
         reason = (
-            "z, beta, convolved q/k/v, and ssm_out output all match closely; "
+            "z, beta, and convolved q/k/v all match closely; "
             "the active semantic blocker is accumulated small target-hidden drift, "
-            "not a large layer-0 projection or conv layout bug."
+            "not a large projection or conv layout bug in this layer."
         )
     else:
         status = "pre_ssm_drift_present"
-        reason = "at least one stable pre-ssm label exceeds the close-match threshold."
+        if attn_norm_input_mae is not None and attn_norm_input_mae > PROJECTION_CLOSE_MAE:
+            reason = (
+                "layer projection input already exceeds the close-match threshold; "
+                "fix the incoming hidden/RMSNorm boundary before retuning projection kernels."
+            )
+        elif hidden_prev_mae is not None and hidden_prev_mae > PROJECTION_CLOSE_MAE:
+            reason = (
+                "incoming hidden state already exceeds the close-match threshold before "
+                "layer attention normalization."
+            )
+        else:
+            reason = "at least one stable pre-ssm label exceeds the close-match threshold."
 
     return {
         "status": status,
@@ -512,14 +625,23 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
         "beta_projection_mae": beta_mae,
         "conv_output_silu_mae": conv_mae,
         "max_conv_qkv_view_mae": max(qkv_view_maes) if qkv_view_maes else None,
+        "hidden_in_vs_process_h_input_mae": hidden_process_mae,
+        "hidden_in_vs_prev_layer_output_mae": hidden_prev_mae,
+        "attn_norm_input_mae": attn_norm_input_mae,
         "linear_attn_out_mae": linear_mae,
         "attn_post_norm_mae": post_norm_mae,
         "post_moe_mae": post_moe_mae,
         "next_split_needed": (
-            "a projectable llama.cpp post-GDN/pre-ssm_out tensor value dump, "
-            "because current final_output values are label/layout unresolved"
+            "layer input/RMSNorm comparison if input drift is already present; "
+            "otherwise projection and conv/GDN arithmetic"
         ),
     }
+
+
+def _maybe_mae(delta: dict[str, Any]) -> float | None:
+    if delta.get("status") != "complete":
+        return None
+    return float(delta["mean_abs_diff"])
 
 
 def _summary_for_optional_label(values: dict[str, np.ndarray], label: str) -> dict[str, Any] | None:
@@ -547,11 +669,13 @@ def _hip_metadata(artifact: dict[str, Any], capture: dict[str, Any]) -> dict[str
         "position": capture.get("position"),
         "input_token": capture.get("input_token"),
         "trace_target_token": capture.get("trace_target_token"),
+        "capture_source": capture.get("capture_source", "isolated_layer_replay"),
     }
 
 
 def _llamacpp_metadata(cycle_record: dict[str, Any], duplicates: dict[str, Any]) -> dict[str, Any]:
     return {
+        "task_id": cycle_record.get("task_id"),
         "cycle": cycle_record.get("cycle"),
         "accepted_draft_tokens": cycle_record.get("accepted_draft_tokens"),
         "accepted_token_ids": cycle_record.get("accepted_token_ids"),
@@ -564,6 +688,7 @@ def _llamacpp_metadata(cycle_record: dict[str, Any], duplicates: dict[str, Any])
 def _conclusion(artifact: dict[str, Any]) -> str:
     deltas = artifact["tensor_deltas"]
     stable = artifact.get("stable_split_assessment", {})
+    layer = int(artifact["inputs"]["layer"])
     linear = deltas["linear_attn_out"]["mean_abs_diff"]
     residual = deltas["attn_residual"]["mean_abs_diff"]
     ffn = deltas["ffn_out"]["mean_abs_diff"]
@@ -583,12 +708,28 @@ def _conclusion(artifact: dict[str, Any]) -> str:
             f"{stable['beta_projection_mae']:.6g}, conv_output_silu MAE "
             f"{stable['conv_output_silu_mae']:.6g}."
         )
+    elif stable.get("status") == "pre_ssm_drift_present":
+        input_bits = []
+        if stable.get("hidden_in_vs_prev_layer_output_mae") is not None:
+            input_bits.append(
+                f"hidden_in-vs-prev-layer MAE {stable['hidden_in_vs_prev_layer_output_mae']:.6g}"
+            )
+        if stable.get("attn_norm_input_mae") is not None:
+            input_bits.append(f"attn_norm MAE {stable['attn_norm_input_mae']:.6g}")
+        input_prefix = ", ".join(input_bits)
+        if input_prefix:
+            input_prefix += ", "
+        stable_note = (
+            " Stable pre-ssm labels already drift: "
+            f"{input_prefix}z MAE {stable['z_projection_mae']:.6g}, "
+            f"beta MAE {stable['beta_projection_mae']:.6g}, "
+            f"conv_output_silu MAE {stable['conv_output_silu_mae']:.6g}."
+        )
     return (
-        "Layer-0 drift is already present at the linear-attention output: "
+        f"Layer {layer} drift is already present at the linear-attention output: "
         f"linear_attn_out MAE {linear:.6g}, attention residual MAE {residual:.6g}, "
         f"ffn_out MAE {ffn:.6g}, post_moe MAE {post:.6g}. "
-        "The next semantic target is a valid projectable llama.cpp post-GDN/pre-ssm_out "
-        "tap to separate recurrent/GDN drift from ssm_out projection drift."
+        "The next semantic target is the earliest complete input/pre-SSM delta above threshold."
         f"{stable_note}"
         f"{pre_note}"
     )
