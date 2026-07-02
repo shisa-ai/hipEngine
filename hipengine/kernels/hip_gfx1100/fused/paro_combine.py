@@ -52,9 +52,11 @@ _SYMBOL_WEIGHTED_SUM_FP16 = "hipengine_weighted_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL = "hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL_FP16 = "hipengine_weighted_sum_shared_gate_combine_residual_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL_F32 = "hipengine_weighted_sum_shared_gate_combine_residual_out_f32_f32w"
+_SYMBOL_WEIGHTED_SHARED_RESIDUAL_F32_ACCUM = "hipengine_weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL_BATCH = "hipengine_weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL_BATCH_FP16 = "hipengine_weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL_BATCH_F32 = "hipengine_weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w"
+_SYMBOL_WEIGHTED_SHARED_RESIDUAL_BATCH_F32_ACCUM = "hipengine_weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w"
 _SYMBOL_SHARED_COMBINE = "hipengine_shared_gate_combine_out_bf16"
 _SYMBOL_SHARED_COMBINE_FP16 = "hipengine_shared_gate_combine_out_fp16"
 _SYMBOL_SHARED_RESIDUAL = "hipengine_shared_gate_combine_residual_out_bf16"
@@ -397,6 +399,55 @@ def weighted_sum_shared_gate_combine_residual_out_f32_f32w(
     _check_launch(runtime, err)
 
 
+def weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w(
+    values_ptr: int,
+    weights_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 selected/shared MoE combine into FP32 rows without selected-sum rounding."""
+
+    _check_matrix_shape(rows, features, threads)
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_WEIGHTED_SHARED_RESIDUAL_F32_ACCUM)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(values_ptr),
+        ctypes.c_void_p(weights_ptr),
+        ctypes.c_void_p(shared_ptr),
+        ctypes.c_void_p(gate_logits_ptr),
+        ctypes.c_void_p(residual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
     values_ptr: int,
     weights_ptr: int,
@@ -481,6 +532,64 @@ def weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w(
     library = library or build_paro_combine(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_WEIGHTED_SHARED_RESIDUAL_BATCH_F32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(values_ptr),
+        ctypes.c_void_p(weights_ptr),
+        ctypes.c_void_p(shared_ptr),
+        ctypes.c_void_p(gate_logits_ptr),
+        ctypes.c_void_p(residual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(rows_per_token),
+        ctypes.c_int64(features),
+        ctypes.c_int64(gate_stride),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w(
+    values_ptr: int,
+    weights_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    rows_per_token: int,
+    features: int,
+    gate_stride: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch batched BF16 selected/shared MoE combine into FP32 rows without selected-sum rounding."""
+
+    _check_positive(tokens, "tokens")
+    _check_positive(rows_per_token, "rows_per_token")
+    _check_vector_shape(features, threads)
+    _check_positive(gate_stride, "gate_stride")
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_WEIGHTED_SHARED_RESIDUAL_BATCH_F32_ACCUM)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -777,6 +886,11 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "weighted_sum+shared_gate+residual", quant, "out_f32_accum"),
+            weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "weighted_sum+shared_gate+residual", quant, "batch_out"),
             weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
             replace=replace,
@@ -789,6 +903,11 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "weighted_sum+shared_gate+residual", quant, "batch_out_f32"),
             weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "weighted_sum+shared_gate+residual", quant, "batch_out_f32_accum"),
+            weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w,
             replace=replace,
         )
         register(
@@ -842,8 +961,18 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "weighted_sum+shared_gate+residual", "f32", "out_accum"),
+        weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "weighted_sum+shared_gate+residual", "f32", "batch_out"),
         weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "weighted_sum+shared_gate+residual", "f32", "batch_out_accum"),
+        weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w,
         replace=replace,
     )
     register(

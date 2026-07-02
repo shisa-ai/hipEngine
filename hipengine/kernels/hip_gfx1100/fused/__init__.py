@@ -34,9 +34,11 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_out_bf16_f32w,
     weighted_sum_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w,
     weighted_sum_shared_gate_combine_residual_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_out_fp16_f32w,
 )
@@ -97,9 +99,11 @@ __all__ = [
     "weighted_sum_out_bf16_f32w",
     "weighted_sum_out_fp16_f32w",
     "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w",
+    "weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w",
     "weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w",
     "weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w",
     "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
+    "weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w",
     "weighted_sum_shared_gate_combine_residual_out_f32_f32w",
     "weighted_sum_shared_gate_combine_residual_out_fp16_f32w",
 ]

@@ -194,7 +194,7 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
   existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
@@ -213,6 +213,9 @@ should be boring.
   kernels. It also keeps row-bulk full-attention `attn_output` in FP32 through
   the same residual/RMSNorm helper when a raw Q8 sidecar BF16-input/F32-output
   path is available.
+  `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1` keeps the selected-expert weighted
+  sum in FP32 inside the F32-residual MoE combine instead of BF16-rounding that
+  selected sum before adding residual and sigmoid-gated shared output.
   `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` extends the probe by materializing
   post-attention RMSNorm into FP32 scratch and independently gating router /
   selected-q8 / shared-q8 consumers with
@@ -244,7 +247,15 @@ should be boring.
   `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-fullattnout-denseq8-diagnostic.json`
   still samples `[15495, 539, 1151]`, accepts 2, and worsens row-1
   `539 - 26126` to **+0.27480**, so full-attention `attn_output` BF16 output
-  rounding is ruled out as well. The post-norm split artifact
+  rounding is ruled out as well. The MoE selected-sum accumulator split
+  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-denseq8-diagnostic.json`
+  still samples `[15495, 539, 1151]` and accepts 2, but narrows row-1
+  `539 - 26126` from **+0.27480** to **+0.03385**. That makes the combine
+  selected-sum BF16 boundary semantically active, but still not sufficient to
+  match llama.cpp's **-0.00896** margin. Combining it with
+  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` failed prior-cycle replay at cycle 2
+  (`[40798, 1590, 1103]` vs trace `[40798, 25, 1103]`), so the combination is
+  not a pair-12 parity result. The post-norm split artifact
   `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`
   shows the combined router+selected-q8 consumer path breaks the old trace at
   cycle 7; selected-q8 alone flips row 1 (`413 - 4071` **+0.13053 -> -0.14458**),

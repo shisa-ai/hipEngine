@@ -62,10 +62,12 @@ from hipengine.kernels.hip_gfx1100.fused import (
     weighted_lanes_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
-    weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
-    weighted_sum_shared_gate_combine_residual_out_f32_f32w,
+    weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w,
+    weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w,
+    weighted_sum_shared_gate_combine_residual_out_f32_f32w,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
@@ -3549,7 +3551,7 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         if f32_residual:
-            weighted_sum_shared_gate_combine_residual_out_f32_f32w(
+            _gguf_f32_moe_combine_out_fn()(
                 scratch.moe_down_out.ptr,
                 scratch.moe_routing_weights.ptr,
                 scratch.moe_shared_out.ptr,
@@ -4199,7 +4201,7 @@ class Qwen35GGUFFullStackRunner:
             t_stage,
         )
         if f32_residual:
-            weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w(
+            _gguf_f32_moe_combine_batch_out_fn()(
                 scratch.moe_down_out.ptr,
                 scratch.moe_routing_weights.ptr,
                 scratch.moe_shared_out.ptr,
@@ -4277,6 +4279,7 @@ _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
 _GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
 _GGUF_VERIFY_F32_ALPHA_BETA_ENV = "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA"
 _GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
+_GGUF_VERIFY_F32_MOE_COMBINE_ENV = "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
 _GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
@@ -4390,6 +4393,10 @@ def _gguf_verify_f32_attn_out_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_ATTN_OUT_ENV, False)
 
 
+def _gguf_verify_f32_moe_combine_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_MOE_COMBINE_ENV, False)
+
+
 def _gguf_verify_f32_post_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ENV, False)
 
@@ -4404,6 +4411,18 @@ def _gguf_verify_f32_post_norm_selected_q8_enabled() -> bool:
 
 def _gguf_verify_f32_post_norm_shared_q8_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV, True)
+
+
+def _gguf_f32_moe_combine_out_fn():
+    if _gguf_verify_f32_moe_combine_enabled():
+        return weighted_sum_shared_gate_combine_residual_out_f32_accum_f32w
+    return weighted_sum_shared_gate_combine_residual_out_f32_f32w
+
+
+def _gguf_f32_moe_combine_batch_out_fn():
+    if _gguf_verify_f32_moe_combine_enabled():
+        return weighted_sum_shared_gate_combine_residual_batch_out_f32_accum_f32w
+    return weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w
 
 
 def _gguf_linear_supports_f32_activation(weight: Qwen35GGUFDeviceWeight) -> bool:

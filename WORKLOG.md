@@ -136351,3 +136351,52 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
   - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-fullattnout-denseq8-diagnostic.json`
+
+## 2026-07-02 - Verifier FP32 MoE combine accumulator split
+
+- Added default-off semantic diagnostic `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1`.
+  In the F32-residual MoE combine path it selects new BF16 selected/shared input
+  kernels that keep the selected-expert weighted sum in FP32 before adding the
+  FP32 residual and sigmoid-gated shared output. The default F32 combine still
+  BF16-rounds the selected weighted sum, and the shipped non-F32 verifier path is
+  unchanged.
+- Added singleton and row-bulk HIP wrappers/registry variants:
+  `out_f32_accum`, `batch_out_f32_accum`, `out_accum`, and `batch_out_accum`.
+  The low-level GPU test now asserts both contracts: existing F32 combine with
+  selected-sum BF16 rounding, and accumulator combine without that selected-sum
+  round.
+- Ran the comparable pair-12 forced target probe on top of the residual +
+  attention-norm-output + attention-output + alpha/beta diagnostic stack:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-denseq8-diagnostic.json
+```
+
+  Result: semantically active but not sufficient. Pair-12 still samples
+  `[15495, 539, 1151]` and accepts 2. Row-1 `539 - 26126` narrows from the prior
+  full-attention-output slice **+0.274796** to **+0.033850** (`26.049006 -
+  26.015156`), still opposite llama.cpp's about **-0.00896**. The selected-sum
+  BF16 combine boundary is therefore a real contributor, but the remaining
+  near-tie drift is elsewhere.
+- Tried the obvious combined post-norm probe by adding
+  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` to the same stack. It did not produce a
+  pair-12 artifact because prior-cycle replay diverged at cycle 2:
+  sampled `[40798, 1590, 1103]`, trace `[40798, 25, 1103]`.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/kernels/hip_gfx1100/fused/paro_combine.py hipengine/kernels/hip_gfx1100/fused/__init__.py hipengine/runtime/qwen35_gguf_runner.py tests/test_paro_combine_plan.py tests/test_qwen35_gguf_verify_f32_moe_combine.py`
+  - `python3 -m pytest tests/test_paro_combine_plan.py tests/test_qwen35_gguf_verify_f32_moe_combine.py -q` => **6 passed**
+  - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-denseq8-diagnostic.json`
