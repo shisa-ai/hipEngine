@@ -138290,3 +138290,59 @@ python3 scripts/gguf_mtp_bench.py \
   is therefore expected: the raw-Q8 F32-output wrapper cannot cover dense-F32
   alpha/beta. Next split should add or reuse a dense-F32 F32-input/F32-output
   projection path for `ssm_alpha`/`ssm_beta`, then rerun the same row.
+
+## 2026-07-03 - MTP dense-F32 alpha/beta projection diagnostic
+
+- Added `hipengine_dense_gemv_out_f32`, registered as
+  `KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out")`, and
+  wired GGUF dispatch for `(LAYOUT_DENSE_F32, activation=f32, output=f32)`.
+  The default-off `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1` path now
+  routes dense-F32 row-bulk linear-attention `ssm_alpha`/`ssm_beta` projections
+  into FP32 scratch before casting BF16 mirrors for existing downstream kernels.
+- Fixed the caller guard that widened BF16 alpha/beta mirrors back into
+  `linear_alpha_f32`/`linear_beta_f32` for every route except the raw-Q8 dp4a
+  F32-output route. The first dense-F32 artifact without the guard fix still
+  showed BF16-rounded alpha/beta samples; the retained artifact is the
+  `densef32ab-keepf32` rerun below.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/runtime/gguf_linear.py hipengine/kernels/hip_gfx1100/linear/dense_gemv.py
+  PYTHONPATH=. pytest -q tests/test_dense_gemv_plan.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_verify_f32_alpha_beta.py tests/test_qwen35_gguf_verify_f32_linear_projections.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py
+  ```
+  Py_compile passed and the focused suite passed (`70 passed`).
+- Kernel-trace smoke, after prebuilding the `HIPENGINE_HIP_ARCH=gfx1151`
+  `dense_gemv` cache with `scratchpad/_bv_compiler_version.txt`:
+  `rocprofv3 --kernel-trace` recorded `dense_gemv_out_kernel<float>` with
+  `End_Timestamp - Start_Timestamp = 3772 ns`.
+- Ran the focused task-9 / cycle-3 / row-2 forced-target probe:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING=1 HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 0:2 \
+    --raw-layer-output-row 0:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-cycle3.json
+  ```
+- Reduced against the existing llama.cpp row:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-linear-attn-compare.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-moe-taps-compare.json`.
+  Result: `beta_0` vs `ssm_beta` moved `0.001754 -> 0.0000000740 MAE`, while
+  `z_0` remains `0.0000000841 MAE` and `conv_output_silu_0` remains
+  `0.00000000283 MAE`. `linear_attn_out_0` remains `0.0000285 MAE`,
+  `attn_post_norm_0` remains `0.001603 MAE`, and post-MoE/layer output remains
+  `0.0000488 MAE`.
+- Token result: still not the llama.cpp bonus. Row 2 samples `8940`; `8940` is
+  rank 1 at `25.67706`, while `668` is rank 3 at `25.31575`, **0.36131**
+  behind. Layer-0 projection/conv hypotheses are now closed; next split is the
+  post-projection linear-attention output path (`linear_attn_out` /
+  recurrent-GDN / `ssm_out`) and then residual/post-norm amplification.

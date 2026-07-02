@@ -655,29 +655,49 @@ consumers and captures.
 | `attn_post_norm_0` vs `attn_post_norm` | 0.001667 | **0.001607** | Residual-space norm drift remains. |
 | `post_moe_0` / layer output | 0.0000493 | **0.0000493** | Essentially unchanged. |
 
+Dense-F32 alpha/beta F32-output rerun:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-moe-taps-compare.json`.
+This is diagnostic-only (`performance_claim=false`). It adds the missing
+registry-dispatched dense-F32 F32-input/F32-output GEMV route for
+`ssm_alpha`/`ssm_beta` and fixes the capture guard that was overwriting the new
+F32 scratch with BF16-widened mirrors.
+
+| layer-0 dense-F32 alpha/beta F32-output diagnostic, row 2 | prior F32 projection-output MAE | dense-F32 alpha/beta MAE | readout |
+| --- | ---: | ---: | --- |
+| pre-layer-0 target hidden vs `model.input_embed` | **0.0** | **0.0** | Input construction remains exact. |
+| `attn_norm_0` vs `attn_norm_f32_scratch` | **0.0** | **0.0** | F32 norm scratch remains exact. |
+| `z_0` vs `linear_z` | 0.0000000841 | **0.0000000841** | Q8 `attn_gate` projection remains closed. |
+| `beta_0` vs `ssm_beta` | 0.001754 | **0.0000000740** | Dense-F32 `ssm_beta` projection is now effectively closed. |
+| `conv_output_silu_0` vs `conv_out` | 0.00000000283 | **0.00000000283** | Conv/GDN input remains effectively closed. |
+| `linear_attn_out_0` vs `attn_out` | 0.0000284 | **0.0000285** | Unchanged: remaining drift is after the projection/conv inputs. |
+| `attn_post_norm_0` vs `attn_post_norm` | 0.001607 | **0.001603** | Residual-space norm drift remains. |
+| `post_moe_0` / layer output | 0.0000493 | **0.0000488** | Essentially unchanged. |
+
 The live branch still samples hipEngine bonus `8940`, not llama.cpp bonus `668`.
-The scored block remains `[11, 567, 8940]`. This closes the
-target-input/RMSNorm-scratch and Q8 `attn_qkv`/`attn_gate` projection-output
-hypotheses, but not the token flip. The next semantic target is a dense-F32
-projection-output path for `ssm_alpha`/`ssm_beta` (`blk.0.ssm_alpha.weight` and
-`blk.0.ssm_beta.weight` are GGML type 0 / F32, while `attn_qkv`/`attn_gate` are
-GGML type 8 / Q8_0), followed by the later residual/LM-head amplification path.
+The scored block remains `[11, 567, 8940]`; row 2 scores `8940=25.67706`
+rank 1 and `668=25.31575` rank 3, so `668` is still **0.36131** behind. This
+now closes the target-input/RMSNorm-scratch, Q8 `attn_qkv`/`attn_gate`, dense-F32
+`ssm_beta`, and conv-input hypotheses for layer 0. The next semantic target is
+inside the post-projection linear-attention output path (`linear_attn_out` /
+recurrent-GDN / `ssm_out`) and then the residual/post-norm amplification path.
 
 Layer-0 MoE top-k selection matches exactly:
 `[57, 6, 56, 66, 127, 110, 106, 157]`. Router logits differ by
-**0.00442 MAE / 0.00528 RMSE**, routing weights by **0.000279 MAE**,
-selected weighted rows by **0.0000108 MAE**, aggregate `ffn_out` by
-**0.0000386 MAE**, and post-MoE by **0.0000547 MAE**. Layer 0 also has no
-projection/conv/MoE copy target.
+**0.00389 MAE / 0.00464 RMSE**, aggregate `ffn_out` by **0.0000394 MAE**, and
+post-MoE by **0.0000488 MAE**. Layer 0 now has no projection/conv/MoE copy
+target.
 
-The live token mismatch remains a sensitive LM-head near-tie, not a layer body
-cliff. On the same task-9/cycle-3/row-2 branch, llama.cpp samples bonus `668`
-with logits `668=25.54584`, `8940=25.53623` (only **0.00961** apart), while
-hipEngine samples `8940` with logits `8940=25.84120`, `668=25.32186`
-(**0.51934** apart). The next instrumentation target is therefore the exact
-target-row input/pre-layer-0 hidden construction and the final hidden/LM-head
-amplification path, not copying a different layer-0 attention or MoE
-implementation.
+The live token mismatch remains a sensitive LM-head near-tie after accumulated
+hidden drift, not a layer body cliff. On the same task-9/cycle-3/row-2 branch,
+llama.cpp samples bonus `668` with logits `668=25.54584`, `8940=25.53623`
+(only **0.00961** apart), while hipEngine samples `8940` with logits
+`8940=25.67706`, `668=25.31575` (**0.36131** apart). The next instrumentation
+target is therefore the post-projection linear-attention output path and final
+hidden/LM-head amplification path, not copying a different layer-0 attention or
+MoE implementation.
 
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
@@ -1090,7 +1110,8 @@ Current source artifacts:
 | hipEngine scored layer-13 MoE cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-bonus-row-layer13-scored-moe-taps-compare.json` | Diagnostic-only companion to the scored layer-13 split. Layer-13 MoE is not the next copy target: router top-k only permutes ranks 2/3 among the same experts (`172` and `239`), with no hip-only or llama-only expert. Common-expert selected rows stay close, aggregate `ffn_out` is **0.000539 MAE**, and post-MoE is **0.001097 MAE**, matching the layer-13 output/incoming layer-14 hidden delta. |
 | hipEngine scored layer-12 input/linear-attention cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer12-cycle3.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer12-scored-linear-attn-compare.json` | Diagnostic-only `mixed_ja_en_translate` task 9 / cycle 3 / row 2 split; `performance_claim=false`. Same scored bulk/native verifier path, now capturing layer 12. Result: incoming hidden vs llama.cpp `verify_layer_output_11` is **0.000996 MAE / 0.001264 RMSE**, `attn_norm_12` is **0.01826 / 0.02342**, `z_12` is **0.01290 / 0.01663**, `conv_output_silu_12` is **0.000803 / 0.00175**, `linear_attn_out_12` is **0.000607 / 0.000778**, attention residual is **0.000956 / 0.00120**, `ffn_out_12` is **0.000445 / 0.000592**, and post-MoE/layer output is **0.000975 / 0.001244**. CPU RMSNorm exactly reproduces both engines, so the split moves upstream to layer 11. qkv/beta raw taps remain trace-label/layout caveated. |
 | hipEngine scored layer-12 MoE cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-bonus-row-layer12-scored-moe-taps-compare.json` | Diagnostic-only companion to the scored layer-12 split. Added `--llamacpp-task-id` to `scripts/llamacpp_mtp_compare_target_moe_taps.py` because the multi-task llama.cpp JSONL otherwise selected task 0 cycle 3. Correct task-9 result: only a rank 5/6 swap among the same experts (`71` and `194`), no hip-only or llama-only experts, aggregate `ffn_out` **0.000445 MAE**, and post-MoE **0.000975 MAE**. |
-| hipEngine scored layer-0 input/linear-attention/MoE cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-linear-attn-compare.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-moe-taps-compare.json` | Diagnostic-only `mixed_ja_en_translate` task 9 / cycle 3 / row 2 split; `performance_claim=false`. This closes the scored layer-body walk: there is no `verify_layer_output_-1` target hidden label in llama.cpp, and `process_h_input` is context-only draft input, but the first complete layer-0 tensors are already close. `attn_norm_0` is **0.00115 MAE / 0.00207 RMSE**, `conv_output_silu_0` is **0.000118 / 0.000865**, `linear_attn_out_0` is **0.0000353 / 0.0000619**, `ffn_out_0` is **0.0000386 / 0.0000494**, and post-MoE/layer output is **0.0000547 / 0.0000813**. Layer-0 MoE top-k matches exactly (`[57, 6, 56, 66, 127, 110, 106, 157]`). The final token flip is a sensitive LM-head near-tie: llama.cpp ranks `668` over `8940` by **0.00961** logits, while hipEngine ranks `8940` over `668` by **0.51934**. Next target: target-row input/pre-layer-0 hidden construction and final hidden/LM-head amplification, not a layer-0 attention/MoE copy target. |
+| hipEngine scored layer-0 input/linear-attention/MoE cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-linear-attn-compare.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-moe-taps-compare.json` | Superseded diagnostic-only `mixed_ja_en_translate` task 9 / cycle 3 / row 2 split; `performance_claim=false`. This first scored layer-body walk showed there was no large layer-0 attention/MoE copy target: `attn_norm_0` **0.00115 MAE**, `conv_output_silu_0` **0.000118**, `linear_attn_out_0` **0.0000353**, `ffn_out_0` **0.0000386**, and post-MoE/layer output **0.0000547**; layer-0 MoE top-k matched exactly. Later F32 token/projection diagnostics below supersede the stale input-hidden next-target note from this row. |
+| hipEngine scored layer-0 dense-F32 alpha/beta F32-output diagnostic | `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-cycle3.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-linear-attn-compare.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-moe-taps-compare.json` | Diagnostic-only follow-up; `performance_claim=false`. Adds the dense-F32 F32-input/F32-output `ssm_alpha`/`ssm_beta` projection route and fixes the F32 scratch overwrite guard. Layer-0 target input and `attn_norm_f32_scratch` are exact, `z_0` is **8.41e-08 MAE**, `beta_0` closes **0.001754 -> 7.40e-08 MAE**, and `conv_output_silu_0` is **2.83e-09 MAE**. The row still samples `8940`: `8940=25.67706` rank 1, `668=25.31575` rank 3 (**0.36131** behind). Next target: post-projection `linear_attn_out` / recurrent-GDN / `ssm_out`, then residual/post-norm and LM-head amplification. |
 | llama.cpp `model.input_embed` layer-0 target-input trace | `benchmarks/results/2026-07-03-llamacpp-model-input-embed-trace-patch.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-inputembed-linear-attn-compare.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-inputembed-moe-taps-compare.json` | Diagnostic-only refinement of the scored layer-0 split; `performance_claim=false`. The llama.cpp patch adds `model.input_embed` to both target tensor-trace allowlists. Result: hipEngine `hidden_in` vs llama.cpp `model.input_embed` is essentially aligned (**0.00000643 MAE / 0.0000103 RMSE / 0.999999 cosine**). The first complete semantic split is attention RMSNorm output: llama.cpp `attn_norm_0` exactly matches F32 RMSNorm over `model.input_embed`, while hipEngine's captured `attn_norm` exactly matches the BF16 mirror. |
 | hipEngine layer-0 F32 residual + F32 attention-norm scored diagnostic | `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32res-attnnorm-cycle3.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32res-attnnorm-linear-attn-compare.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32res-attnnorm-moe-taps-compare.json` | Diagnostic-only follow-up; `performance_claim=false`. `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` alone is inert without `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`; the capture now emits `attn_norm_f32_scratch` to separate the actual F32 scratch from the BF16 mirror. With both flags, `attn_norm_f32_scratch` vs llama.cpp `attn_norm_0` is **0.000729 MAE / 0.00116 RMSE**, `z_0` improves **0.004850 -> 0.003687 MAE**, `linear_attn_out_0` improves **0.0000353 -> 0.0000314 MAE**, and post-MoE improves **0.0000547 -> 0.0000495 MAE**. The branch still samples bonus `8940`, so this is a small measured semantic improvement, not the remaining parity fix. |
 | hipEngine validation of llama.cpp `final_output_0` tap | `benchmarks/results/2026-07-02-mtp-target-layer0-final-output-reprojection-diagnostic.json` | Superseded diagnostic-only model-backed projection check; `performance_claim=false`. The helper loads only hipEngine's layer-0 `ssm_out` weight with decode repack enabled, reprojects hipEngine `recurrent_out`, and reprojects traced llama.cpp `final_output_0`. Result: hipEngine `recurrent_out -> ssm_out` exactly reconstructs the captured hipEngine `attn_out` (**0 MAE**), but traced llama.cpp `final_output_0 -> ssm_out` is **0.2977 MAE / 0.3772 RMSE / -0.0302 cosine** from llama.cpp `linear_attn_out_0`. Keep this only as proof that the old `final_output_0` label was not a projectable semantic pre-`ssm_out` oracle; the corrected contiguous tap below supersedes it. |

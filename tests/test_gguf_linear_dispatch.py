@@ -98,6 +98,11 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     assert resolve_gguf_linear_dispatch(f32).key == KernelKey(
         "hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"
     )
+    assert resolve_gguf_linear_dispatch(
+        f32,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+    ).key == KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out")
     q8_t16 = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     assert resolve_gguf_linear_dispatch(q8_t16).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"
@@ -181,6 +186,36 @@ def test_launch_gguf_linear_calls_registry_kernel_with_expected_abi(
     args, kwargs = calls[0]
     assert args == expected_args
     assert kwargs == {"stream": 7, "runtime": "runtime-sentinel", "threads": 128}
+
+
+def test_launch_gguf_linear_dense_f32_activation_f32_output_calls_registry_kernel() -> None:
+    weight = _fake_weight(layout=LAYOUT_DENSE_F32, quant_key="f32")
+    key = KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out")
+    original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    calls = []
+
+    def fake_kernel(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_kernel, replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=2,
+            in_features=1024,
+            out_features=4,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            threads=128,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [((100, 10, 200, 2, 1024, 4), {"stream": 7, "runtime": "runtime-sentinel", "threads": 128})]
 
 
 def test_gguf_linear_dispatch_rejects_unsupported_dtype() -> None:

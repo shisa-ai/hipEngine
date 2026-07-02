@@ -668,6 +668,33 @@ extern "C" int hipengine_dense_gemv_out_fp16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_dense_gemv_out_f32(
+    const float* x,
+    const float* weight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_out_kernel<float>),
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dense_dual_gemv_out_bf16(
     const uint16_t* x,
     const uint16_t* weight_a,

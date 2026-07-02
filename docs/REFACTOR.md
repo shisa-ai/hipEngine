@@ -217,9 +217,9 @@ should be boring.
 	  compatible row-bulk linear-attention Q8 `attn_qkv`/`attn_gate` projections
 	  into FP32 scratch through the raw-Q8 dp4a F32-output dual wrapper, casts BF16
 	  mirrors for existing downstream kernels, and emits explicit BF16 mirror
-	  capture keys. It also allocates/populates F32 scratch for `ssm_alpha` and
-	  `ssm_beta`, currently by widening the BF16 mirror unless a later dense-F32
-	  projection-output kernel is added.
+	  capture keys. It also routes dense-F32 `ssm_alpha`/`ssm_beta` through the
+	  registry-dispatched F32-input/F32-output dense GEMV route when available,
+	  while preserving BF16 mirrors for existing downstream consumers.
 	  `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1` additionally routes row-bulk
 	  linear-attention `ssm_alpha`/`ssm_beta` from that FP32 attention-norm tensor to
   mirror llama.cpp's `build_layer_attn_linear` source shape.
