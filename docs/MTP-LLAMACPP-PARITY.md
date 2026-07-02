@@ -490,6 +490,29 @@ aggregate `ffn_out` is **0.000112 MAE**, and post-MoE is **0.000243 MAE**.
 Layer 4 again has no linear-attention or MoE copy target; the next semantic
 split moves upstream to scored layer 3.
 
+Layer-3 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer3-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer3-scored-full-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer3-scored-moe-taps-compare.json`.
+
+| layer-3 scored full-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `verify_layer_output_2` vs hipEngine `hidden_in` | **0.000152** | **0.000224** | Incoming layer-2 output is already the remaining boundary drift. |
+| `attn_norm_3` vs hipEngine `attn_norm` | **0.00528** | **0.00804** | CPU RMSNorm reproduces both engines; normalized drift is input-driven. |
+| `attn_output_3` vs hipEngine `attn_out` | 0.000104 | 0.000135 | No full-attention output cliff. |
+| `attn_residual_3` vs hipEngine `attn_residual` | 0.000181 | 0.000265 | Carries the incoming drift forward. |
+| `attn_post_norm_3` vs hipEngine `attn_post_norm` | **0.00693** | **0.00879** | Second RMSNorm amplifies residual-space drift before MoE. |
+| `ffn_out_3` vs hipEngine reconstructed `ffn_out` | 0.000101 | 0.000127 | MoE projection/combination remains small. |
+| `post_moe_3` / `verify_layer_output_3` vs hipEngine layer output | **0.000204** | **0.000297** | Exactly the incoming layer-4 hidden delta measured above. |
+
+Layer-3 MoE top-k selection matches exactly:
+`[70, 202, 171, 90, 19, 220, 206, 6]`. Router logits differ by
+**0.00689 MAE / 0.00857 RMSE**, selected weighted rows are **0.0000265 MAE**,
+aggregate `ffn_out` is **0.000101 MAE**, and post-MoE is **0.000204 MAE**.
+Layer 3 is not the copy target; the next semantic split moves upstream to
+scored layer 2.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
