@@ -41,6 +41,12 @@ def main() -> None:
     parser.add_argument("--hipengine-raw", type=Path, required=True)
     parser.add_argument("--llamacpp-jsonl", type=Path, required=True)
     parser.add_argument("--llamacpp-cycle", type=int, required=True)
+    parser.add_argument(
+        "--llamacpp-task-id",
+        type=int,
+        default=None,
+        help="Optional task_id filter for unfiltered multi-task llama.cpp JSONL traces.",
+    )
     parser.add_argument("--row", type=int, default=1)
     parser.add_argument("--layer", type=int, default=31)
     parser.add_argument(
@@ -56,6 +62,7 @@ def main() -> None:
         hipengine_raw_path=args.hipengine_raw,
         llamacpp_jsonl_path=args.llamacpp_jsonl,
         llamacpp_cycle=args.llamacpp_cycle,
+        llamacpp_task_id=args.llamacpp_task_id,
         row=args.row,
         layer=args.layer,
         hipengine_capture_source=args.hipengine_capture_source,
@@ -85,6 +92,7 @@ def build_moe_tap_compare_artifact(
     llamacpp_cycle: int,
     row: int,
     layer: int,
+    llamacpp_task_id: int | None = None,
     hipengine_capture_source: str = "auto",
 ) -> dict[str, Any]:
     hip_artifact = json.loads(hipengine_raw_path.read_text())
@@ -95,7 +103,11 @@ def build_moe_tap_compare_artifact(
         capture_source=hipengine_capture_source,
     )
     hip_values = _hip_values(hip_capture)
-    llama_cycle = _llamacpp_cycle(llamacpp_jsonl_path, cycle=llamacpp_cycle)
+    llama_cycle = _llamacpp_cycle(
+        llamacpp_jsonl_path,
+        cycle=llamacpp_cycle,
+        task_id=llamacpp_task_id,
+    )
     llama_values, duplicates = _llamacpp_row_values(llama_cycle, row=row)
 
     hip_router = _array(hip_values, "moe_router_logits", "hipEngine")
@@ -170,6 +182,7 @@ def build_moe_tap_compare_artifact(
             "hipengine_raw": str(hipengine_raw_path),
             "llamacpp_jsonl": str(llamacpp_jsonl_path),
             "llamacpp_cycle": int(llamacpp_cycle),
+            "llamacpp_task_id": llamacpp_task_id,
             "row": int(row),
             "layer": int(layer),
             "hipengine_capture_source": hip_capture.get("capture_source", "isolated_layer_replay"),
@@ -240,15 +253,19 @@ def _hip_values(capture: dict[str, Any]) -> dict[str, np.ndarray]:
     }
 
 
-def _llamacpp_cycle(path: Path, *, cycle: int) -> dict[str, Any]:
+def _llamacpp_cycle(path: Path, *, cycle: int, task_id: int | None = None) -> dict[str, Any]:
     with path.open() as handle:
         for line in handle:
             if not line.strip():
                 continue
             record = json.loads(line)
-            if int(record.get("cycle", -1)) == cycle:
-                return record
-    raise ValueError(f"llama.cpp JSONL has no cycle={cycle}")
+            if int(record.get("cycle", -1)) != cycle:
+                continue
+            if task_id is not None and int(record.get("task_id", -1)) != task_id:
+                continue
+            return record
+    suffix = "" if task_id is None else f" task_id={task_id}"
+    raise ValueError(f"llama.cpp JSONL has no cycle={cycle}{suffix}")
 
 
 def _llamacpp_row_values(
@@ -490,6 +507,7 @@ def _hip_metadata(artifact: dict[str, Any], capture: dict[str, Any]) -> dict[str
 
 def _llamacpp_metadata(cycle_record: dict[str, Any], duplicates: dict[str, Any]) -> dict[str, Any]:
     return {
+        "task_id": cycle_record.get("task_id"),
         "cycle": cycle_record.get("cycle"),
         "accepted_draft_tokens": cycle_record.get("accepted_draft_tokens"),
         "accepted_token_ids": cycle_record.get("accepted_token_ids"),

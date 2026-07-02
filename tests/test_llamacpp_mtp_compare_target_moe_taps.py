@@ -89,6 +89,35 @@ def test_build_moe_tap_compare_artifact_can_use_scored_capture(
     assert artifact["router"]["topk_match"] is True
 
 
+def test_build_moe_tap_compare_artifact_filters_llamacpp_task_id(
+    tmp_path: Path,
+) -> None:
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(_hip_artifact()) + "\n")
+    decoy = _llama_cycle()
+    decoy["task_id"] = 0
+    for trace in decoy["draft_hidden_state_trace"]:
+        if trace.get("row_index") == 1 and "values" in trace:
+            trace["values"] = [100.0 for _ in trace["values"]]
+    target = _llama_cycle()
+    target["task_id"] = 9
+    llama_path.write_text(json.dumps(decoy) + "\n" + json.dumps(target) + "\n")
+
+    artifact = build_moe_tap_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        llamacpp_task_id=9,
+        row=1,
+        layer=31,
+    )
+
+    assert artifact["inputs"]["llamacpp_task_id"] == 9
+    assert artifact["llamacpp"]["task_id"] == 9
+    assert artifact["router"]["topk_match"] is True
+
+
 def _hip_artifact() -> dict:
     return {
         "model": "/models/fake.gguf",
