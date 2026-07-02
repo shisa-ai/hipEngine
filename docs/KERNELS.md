@@ -399,13 +399,14 @@ The stable source-lineage port set at the current hipEngine catalog baseline is 
   - `qwen35_linear_attn_conv_prefill_state_kernel`
   - `qwen35_linear_attn_conv_prefill_segments_kernel`
   - `qwen35_linear_attn_conv_prefill_segments_state_kernel`
-- `linear_attn/gdn.hip` (10):
+- `linear_attn/gdn.hip` (11):
   - `qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel`
   - `qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel`
   - `qwen35_gdn_tree_rmsnorm_gate_finalize_kernel`
   - `qwen35_gdn_prefill_recurrent_kernel`
   - `qwen35_gdn_prefill_recurrent_k2_kernel`
   - `qwen35_gdn_prefill_recurrent_k2_segments_kernel`
+  - `qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel` no-copy state-row instantiation for verifier capture
   - `qwen35_linear_attn_prefill_prepare_kernel`
   - `qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel`
   - `qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel`

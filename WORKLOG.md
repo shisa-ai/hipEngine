@@ -137004,3 +137004,102 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` so the active tracking
   tables show hipEngine default exact, hipEngine llama-compat directcommit, and
   llama.cpp HIP side by side.
+
+## 2026-07-02 - Llama-compat no-copy GDN verifier capture closes HIP speed gap
+
+- Investigated the copied-state verifier-capture hotspot from
+  `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-allsync-smoke.json`.
+  The copied-state all-sync row had B2 **48.59 tok/s** and
+  `target_block_linear_attn_prefill_gdn_state_rows` **2.913 ms/output**. Root
+  cause: `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` copied the full resident
+  recurrent state into `scratch.linear_recurrent_state_tmp` before every
+  captured prefill-GDN layer because the existing decode-order GDN kernel
+  mutated its state pointer in place.
+- Added
+  `qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy`.
+  The new wrapper launches a non-mutating template instantiation: token 0 reads
+  the live recurrent state, later tokens read the previous captured
+  `recurrent_state_rows`, and the live state is not modified. Existing mutating
+  wrappers keep the original template instantiation and volatile state reads.
+  The llama-compat prefill-GDN capture path now uses the no-copy wrapper and no
+  longer performs the full recurrent-state D2D copy.
+- Environment check: `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so');
+  print('hip OK')"` passed, and `rocminfo` reported gfx1151. `python3
+  scripts/check_lineage.py --kind kernel --diff stat` could not complete because
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent on this host; this is a
+  hipEngine-local kernel specialization, not a reference port.
+- Correctness / narrow validation:
+  - `python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/gdn.py
+    hipengine/runtime/qwen35_gguf_runner.py
+    tests/test_qwen35_gguf_gdn_prefill_correctness.py
+    tests/test_qwen35_gguf_rocprof_summary.py scripts/gguf_ar_mtp_suite.py
+    tests/test_gguf_ar_mtp_suite.py`
+  - `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. pytest
+    tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_state_rows_no_copy_matches_mutating_capture
+    -q`
+  - `HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. pytest
+    tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_paths_match_cpu_oracle_small_shape
+    tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_chain_matches_decode_order_within_drift_budget
+    -q`
+  - `PYTHONPATH=. pytest tests/test_qwen35_gguf_rocprof_summary.py -q`
+  - `PYTHONPATH=. pytest
+    tests/test_gguf_ar_mtp_suite.py::test_suite_exposes_llama_compat_routes -q`
+- Profiler smoke:
+  ```bash
+  python3 - <<'PY'
+  from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+  build_qwen35_linear_attn_gdn(load=True)
+  print('gdn build OK')
+  PY
+  rm -rf /tmp/hipengine-gdn-nocopy-rocprof && mkdir -p /tmp/hipengine-gdn-nocopy-rocprof
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. rocprofv3 --kernel-trace \
+    --output-format csv \
+    --output-file /tmp/hipengine-gdn-nocopy-rocprof/trace \
+    -- pytest tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_state_rows_no_copy_matches_mutating_capture -q
+  ```
+  `trace_kernel_trace.csv` shows both template instantiations:
+  `qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short,
+  true>` and
+  `qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<unsigned short,
+  false>`; the no-copy synthetic dispatch duration was **103,723 ns**.
+- Attribution smoke command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope smoke \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-allsync \
+    --budgets 2 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-allsync-smoke.json
+  ```
+- Attribution result: AR **54.90 tok/s**, B2 **55.19 tok/s** (**1.005x AR**),
+  acc/output **0.667**, draft acceptance **1.000**. Extra sync barriers make this
+  attribution-only, but the target GDN leaf moves
+  `target_block_linear_attn_prefill_gdn_state_rows` **2.913 -> 0.785
+  ms/output**, and `target_block_verify_total` **18.213 -> 15.744 ms/output**
+  versus the copied-state all-sync control.
+- Retained full-suite command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope full \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
+    --budgets 2 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-full.json
+  ```
+- Retained full-suite result: AR **54.76 tok/s**, B2 **72.23 tok/s**
+  (**1.319x AR**), cycle wall **13.865 ms/output**, acc/output **0.609**, draft
+  acceptance **0.780**, target rows/output **1.172**, verifier drain
+  **11.405 ms/output**, target forward **11.352 ms/output**, linear-attn layers
+  **7.446 ms/output**, full-attn layers **2.584 ms/output**, lm-head/sample
+  **1.071 ms/output**, replay/commit **0.048 ms/output**, **0** replay rows,
+  **100** direct-commit rows, and **44** discarded rows. Versus the copied-state
+  directcommit full row, this is **60.56 -> 72.23 tok/s**, cycle
+  **16.534 -> 13.865 ms/output**, and verifier drain **14.071 -> 11.405
+  ms/output** with unchanged acceptance/economy. Versus the llama.cpp HIP B2
+  rerun artifact `benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`,
+  the retained HIP speed target is closed: **13.865 vs 14.269 ms/output** and
+  **72.23 vs 71.91 tok/s**.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/KERNELS.md`,
+  `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` so the active tracker,
+  kernel catalog, and benchmark rollup promote the no-copy directcommit row and
+  retain the copied-state row as superseded provenance.

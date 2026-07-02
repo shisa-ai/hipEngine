@@ -107,7 +107,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
-    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
@@ -2665,14 +2665,7 @@ class Qwen35GGUFFullStackRunner:
                 t_stage,
             )
             if use_prefill_gdn_capture:
-                runtime.memcpy_async(
-                    scratch.linear_recurrent_state_tmp.ptr,
-                    recurrent_state.ptr,
-                    int(recurrent_state.nbytes),
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
-                )
-                qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows(
+                qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy(
                     scratch.conv_out.ptr,
                     scratch.linear_z.ptr,
                     scratch.linear_alpha.ptr,
@@ -2680,7 +2673,7 @@ class Qwen35GGUFFullStackRunner:
                     layer.weight("ssm_dt_bias").allocation().tensor.ptr,
                     layer.weight("ssm_a").allocation().tensor.ptr,
                     layer.weight("ssm_norm").allocation().tensor.ptr,
-                    scratch.linear_recurrent_state_tmp.ptr,
+                    recurrent_state.ptr,
                     recurrent_state_rows.ptr,
                     scratch.recurrent_bf16.ptr,
                     cfg.rms_norm_eps,

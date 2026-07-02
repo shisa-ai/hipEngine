@@ -12,24 +12,29 @@ scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 G
 | config (same model, gfx1151) | AR tok/s | MTP tok/s | cycle wall / output | uplift | role |
 | --- | ---: | ---: | ---: | ---: | --- |
 | hipEngine default exact B5 | 54.79 parallel-attn full | 61.98 parallel-attn full | 16.162 ms | 1.1312× | Correctness-preserving control lane after the shared attention fix. |
-| hipEngine `llama-compat` B2, llama-style direct partial commit | 54.78 directcommit full | **60.56 directcommit full** | **16.534 ms** | **1.1055×** | Active llama.cpp replication lane. Rejected/partial bulk blocks commit the captured verifier row, matching llama.cpp's normal MTP accept path; not serial-prefix-equivalent. |
+| hipEngine `llama-compat` B2, no-copy verifier capture + llama-style direct partial commit | 54.76 no-copy full | **72.23 no-copy full** | **13.865 ms** | **1.319×** | Active llama.cpp replication lane. Rejected/partial bulk blocks commit the captured verifier row, matching llama.cpp's normal MTP accept path; not serial-prefix-equivalent. |
+| hipEngine `llama-compat` B2, copied verifier capture + llama-style direct partial commit | 54.78 directcommit full | 60.56 directcommit full | 16.534 ms | 1.1055× | Superseded by the no-copy GDN state-row capture. It paid a full recurrent-state D2D copy before every captured GDN prefill layer. |
 | hipEngine `llama-compat` B2, semantic-safe direct state + serial state-only partial replay | 54.74 serial-state full | 51.85 serial-state full | 19.308 ms | 0.9472× | Exact semantic control. Rejected/partial bulk blocks restore and serial-replay state, but skip replay LM-head sampling. |
 | hipEngine `llama-compat` B2, unsafe direct-state diagnostic | 54.79 draft-dense-Q8 draft-only full | 75.15 draft-dense-Q8 draft-only full | 13.325 ms | 1.3716× | Superseded: this row direct-committed rejected/partial bulk-block state that the lifecycle comparator proved is not prefix-equivalent. |
 | llama.cpp HIP/ROCm B2 (dp4a) | 51.38 suite / 52.13 traced / 51.98 rerun | 67.3 suite / 72.12 traced / 71.91 rerun / 75.4 cli prompt | **14.269 ms rerun** | ~1.31× suite / 1.383× traced/rerun / 1.47× cli | Timing target and source reference. |
 | llama.cpp **Vulkan** (dp4a) | **62.65** | **84.6 cli prompt** | n/a | ~1.35× | Backend ceiling reference, not the HIP parity target. |
 
-The working HIP target is now the llama-style direct-commit `llama-compat` B2
-row versus the rerun llama.cpp HIP B2 row. The implementation intentionally
+The working HIP target is now the no-copy llama-style direct-commit
+`llama-compat` B2 row versus the rerun llama.cpp HIP B2 row. The implementation intentionally
 splits contracts: default/exact and the `serialstate` control preserve
 serial-prefix state equivalence, while the active llama replication lane commits
 the captured verifier row on rejected/partial blocks just like llama.cpp's
 `common_speculative_accept()` path updates `pending_h` from `verify_h`. This
-moves the active compat row to **16.534 ms/output vs llama.cpp's rerun
-14.269 ms/output**. The active gap is therefore **+2.265 ms/output**. The replay
-bucket is no longer the gap: `target_block_replay_or_commit` is
-**0.043 ms/output**, `target_verify_replay_rows=0`, and the remaining exposed
-budget is mainly target verifier forward (**14.071 vs 12.120 ms/output**) plus a
-small row-economy delta (**1.172 vs 1.148 target rows/output**).
+moves the active compat row to **13.865 ms/output vs llama.cpp's rerun
+14.269 ms/output**. The active HIP gap is therefore closed on the retained B2
+natural-suite timing target: hipEngine is **0.405 ms/output faster** and
+**72.23 vs 71.91 tok/s** on the rerun comparison, while acceptance/output is
+effectively identical (**0.609 vs 0.610**). The key fix was removing the
+per-layer recurrent-state D2D copy in the prefill-GDN verifier capture path.
+Replay is still not the gap: `target_block_replay_or_commit` is
+**0.048 ms/output**, `target_verify_replay_rows=0`, and the remaining exposed
+cleanup is row economy (**1.172 vs 1.148 target rows/output**) plus exact-mode
+semantics, not a llama.cpp speed deficit.
 
 ### ACTIVE TRACKING — default vs llama-compat vs llama.cpp HIP
 
@@ -78,23 +83,23 @@ Current parity state: the active
 lane now uses llama-style direct-state transactions: prefill-shaped GDN capture
 for all block commits, including rejected or partial bulk blocks. That
 full-suite row is
-`benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json`.
-It is **2.265 ms/output slower** than the rerun llama.cpp HIP B2 cycle wall
-(**16.534 vs 14.269 ms/output**) and beats true AR (**60.56 tok/s,
-1.1055x AR**). The active llama.cpp timing target remains
+`benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-full.json`.
+It is **0.405 ms/output faster** than the rerun llama.cpp HIP B2 cycle wall
+(**13.865 vs 14.269 ms/output**) and beats true AR (**72.23 tok/s,
+1.319x AR**). The active llama.cpp timing target remains
 `benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`;
 it was collected with local llama.cpp instrumentation patches, so treat it as a
 stage target rather than a clean upstream performance claim. The semantic-safe
 `serialstate` control remains
 `benchmarks/results/2026-07-02-ar-mtp-llama-compat-serial-state-only-partial-replay-full.json`
 at **51.85 tok/s / 19.308 ms/output** and is the row to use when the question is
-serial-prefix equivalence rather than llama.cpp replication. Direct commit moves
-the active replication lane **51.85 -> 60.56 tok/s**, cycle **19.308 -> 16.534
-ms/output**, verifier drain **16.891 -> 14.071 ms/output**, replay/commit
-**2.489 -> 0.043 ms/output**, and replay rows **38 -> 0**. The immediate
-implementation target is therefore no longer partial replay; it is the remaining
-target verifier forward gap, especially the row-bulk linear/full attention and
-lm-head verifier bodies. A tempting exact-mode shortcut remains rejected:
+serial-prefix equivalence rather than llama.cpp replication. Direct commit plus
+no-copy GDN state-row capture moves the active replication lane **51.85 -> 72.23
+tok/s**, cycle **19.308 -> 13.865 ms/output**, verifier drain **16.891 -> 11.405
+ms/output**, replay/commit **2.489 -> 0.048 ms/output**, and replay rows **38 ->
+0**. The immediate speed target has therefore shifted: partial replay and
+verifier drain no longer explain a llama.cpp HIP deficit. A tempting exact-mode
+shortcut remains rejected:
 `--target-block-direct-partial-replay-mode bulk-state-only` still emitted the
 same visible cycle-3 token `[65342]`, but the lifecycle comparator found
 `first_mismatch` at cycle 3 with hidden seed plus Conv/GDN state mismatches
@@ -366,7 +371,7 @@ Active comparison rules:
 Last refreshed from the full-suite artifacts
 `benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json`
 and
-`benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json`,
+`benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-full.json`,
 plus the rerun llama.cpp HIP B2 row in
 `benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`.
 
@@ -388,15 +393,15 @@ stage budget instead of burying it in prose.
 
 | stage / bucket | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap | target / next comparison |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Total MTP wall | 16.162 ms/output | **16.534 ms/output** | 14.269 ms/output | **+2.265 ms/output** | Active gap after adopting llama-style captured-row partial commit. |
-| Draft drain | 1.899 ms/output | **2.146 ms/output** | 2.141 ms/output | **+0.005 ms/output** | Draft parent remains effectively at parity; not the live gap. |
-| Draft visible sampler/GPU drain | 1.129 ms/output | **1.943 ms/output** | 1.888 ms/output | **+0.055 ms/output** | Small residual; compare through draft drain because bucket names differ across engines. |
-| Draft transformer body | 0.141 ms/output | **0.123 ms/output** | 0.250 ms/output | compat faster | Not an active target. |
+| Total MTP wall | 16.162 ms/output | **13.865 ms/output** | 14.269 ms/output | **-0.405 ms/output** | Retained B2 natural-suite timing target is closed; compat is now slightly faster than the rerun llama.cpp HIP row. |
+| Draft drain | 1.899 ms/output | **2.142 ms/output** | 2.141 ms/output | **+0.000 ms/output** | Draft parent is at parity. |
+| Draft visible sampler/GPU drain | 1.129 ms/output | **1.948 ms/output** | 1.888 ms/output | **+0.059 ms/output** | Small residual; compare through draft drain because bucket names differ across engines. |
+| Draft transformer body | 0.141 ms/output | **0.119 ms/output** | 0.250 ms/output | compat faster | Not an active target. |
 | Serial verifier probe | 6.508 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
-| Target verifier drain | 7.728 ms/output | **14.071 ms/output** | 12.120 ms/output | **+1.951 ms/output** | Dominant live gap; compare row-bulk target kernels to llama.cpp verifier graph. |
+| Target verifier drain | 7.728 ms/output | **11.405 ms/output** | 12.120 ms/output | **-0.715 ms/output** | No longer a llama.cpp speed gap after no-copy GDN state-row capture. |
 | Target rows / output | 1.163 | **1.172** | 1.148 | **+0.024 rows/output** | Row economy is now close: 0 replay rows and 44 discarded rows over 256 outputs. |
-| Replay / commit | 0.019 ms/output | **0.043 ms/output** | 0.004 ms/output | **+0.039 ms/output** | Replay gap closed for the llama-replication lane; serial-state remains the exact control. |
-| Setup/snapshot/commit/accounting | 0.125 ms/output | **0.098 ms/output** | 0.188 ms/output | compat faster | No longer an active target after direct partial commit removes snapshots/replay. |
+| Replay / commit | 0.019 ms/output | **0.048 ms/output** | 0.004 ms/output | **+0.044 ms/output** | Small residual; serial-state remains the exact control. |
+| Setup/snapshot/commit/accounting | 0.125 ms/output | **0.049 ms/output** | 0.188 ms/output | compat faster | No longer an active target after direct partial commit removes snapshots/replay. |
 
 This board is intentionally redundant with the detailed ledgers below. Keep it
 short, current, and three-lane so the next optimization target is visible without
@@ -421,22 +426,24 @@ cross-lane improvement. The goal for this sprint is to spend down the
 
 | metric | hipEngine default exact B5 | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | compat gap / reading |
 | --- | ---: | ---: | ---: | --- |
-| MTP tok/s | 61.98 parallel-attn full | **60.56 directcommit full** | 67.3 suite / 72.12 traced / 71.91 rerun | **-6.74 tok/s vs suite / -11.56 tok/s vs traced / -11.35 tok/s vs rerun**; active compat still behind llama.cpp. |
-| Cycle wall / output | 16.162 ms | **16.534 ms** | 14.269 ms | **+2.265 ms/output**; current compat gap after direct partial commit. |
-| Draft drain, `draft_initial` | 1.899 ms | **2.146 ms** | 2.141 ms | **+0.005 ms/output**; draft parent remains effectively at parity. |
-| Visible draft sampler/GPU drain | 1.129 ms | **1.943 ms** | 1.888 ms | **+0.055 ms/output**; small compared with target verifier. |
+| MTP tok/s | 61.98 parallel-attn full | **72.23 no-copy directcommit full** | 67.3 suite / 72.12 traced / 71.91 rerun | **+4.93 tok/s vs suite / +0.11 tok/s vs traced / +0.32 tok/s vs rerun**; retained HIP parity target is closed. |
+| Cycle wall / output | 16.162 ms | **13.865 ms** | 14.269 ms | **-0.405 ms/output**; compat is slightly faster than the rerun target. |
+| Draft drain, `draft_initial` | 1.899 ms | **2.142 ms** | 2.141 ms | **+0.000 ms/output**; draft parent remains effectively at parity. |
+| Visible draft sampler/GPU drain | 1.129 ms | **1.948 ms** | 1.888 ms | **+0.059 ms/output**; small compared with total wall. |
 | Serial verify probe | 6.508 ms | **0.000 ms** | 0.000 ms | Closed in compat; not the replication blocker. |
-| Target verifier drain | 7.728 ms | **14.071 ms** | 12.120 ms | **+1.951 ms/output**; dominant live gap. |
-| Replay / commit | 0.019 ms | **0.043 ms** | 0.004 ms | **+0.039 ms/output**; closed enough to stop treating replay as P0. |
+| Target verifier drain | 7.728 ms | **11.405 ms** | 12.120 ms | **-0.715 ms/output**; no longer a llama.cpp speed gap. |
+| Replay / commit | 0.019 ms | **0.048 ms** | 0.004 ms | **+0.044 ms/output**; small residual, not P0. |
 | Target rows / output | 1.163 | **1.172** | 1.148 | **+0.024 rows/output**; 0 replay rows and 44 discarded rows over 256 outputs. |
 | Accepted / output | 0.535 | **0.609** | 0.610 | -0.001; acceptance is now effectively llama-parity. |
 
-The current actionable target is therefore the row-bulk target verifier forward
-path. Draft wall is still at parity, accepted/output is effectively llama-parity,
+The current retained HIP target is therefore closed for the llama-replication
+lane. Draft wall is still at parity, accepted/output is effectively llama-parity,
 and direct partial commit has removed serial accepted-prefix replay from the
-replication lane. The next fixes should compare hipEngine's `target_block_forward`
-children (`target_block_linear_attn_layers`, `target_block_full_attn_layers`,
-`target_block_lm_head_sample`) against llama.cpp's verifier graph kernels.
+replication lane. Further work is now cleanup or margin-building rather than
+closing a measured llama.cpp HIP deficit: reduce the remaining row-economy delta,
+keep the no-copy capture path under all-sync/rocprof watch, and decide whether
+the exact semantic lane can share any of this machinery without direct-commit
+state divergence.
 The explicit bulk state-only replay shortcut is not valid: artifact
 `benchmarks/results/2026-07-02-mtp-state-lifecycle-bulk-state-only-partial-replay-compare.json`
 reports `first_mismatch` at cycle 3, replay source
@@ -452,7 +459,8 @@ Current source artifacts:
 | lane | route / artifact | why it is in the table |
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json` plus prior retained exact suite rows | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. The shared `mtp_dense_attn_f32` parallel-attention fix moves exact B5 **60.8 -> 61.98 tok/s**, cycle **16.496 -> 16.162 ms/output**, and draft drain **1.921 -> 1.899 ms/output** with unchanged acc/output **0.535**, draft acceptance **0.723**, and target rows/output **1.163**. |
-| hipEngine llama-compat direct-commit | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json`; smoke `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-smoke.json`; lifecycle diagnostic `benchmarks/results/2026-07-02-mtp-state-lifecycle-directcommit-partial-compare.json` | Active no-probe B2 llama.cpp replication lane with `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`; full-accept and rejected/partial blocks commit captured verifier row state instead of serial-replaying accepted prefixes. Full suite: **60.56 tok/s**, **16.534 ms/output**, **1.1055x AR**, acc/output **0.609**, draft acceptance **0.780**, target rows/output **1.172**, verifier drain **14.071 ms/output**, replay/commit **0.043 ms/output**, replay rows **0**, discarded rows **44**. The lifecycle diagnostic intentionally diverges from serial replay at cycle 3; this is llama replication, not exact-mode safety. |
+| hipEngine llama-compat no-copy direct-commit | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-full.json`; all-sync attribution `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-allsync-smoke.json`; lifecycle diagnostic `benchmarks/results/2026-07-02-mtp-state-lifecycle-directcommit-partial-compare.json` | Active no-probe B2 llama.cpp replication lane with `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`; full-accept and rejected/partial blocks commit captured verifier row state instead of serial-replaying accepted prefixes. The prefill-GDN state-row kernel now reads the live recurrent state without the old full-state D2D copy. Full suite: **72.23 tok/s**, **13.865 ms/output**, **1.319x AR**, acc/output **0.609**, draft acceptance **0.780**, target rows/output **1.172**, verifier drain **11.405 ms/output**, replay/commit **0.048 ms/output**, replay rows **0**, discarded rows **44**. The lifecycle diagnostic intentionally diverges from serial replay at cycle 3; this is llama replication, not exact-mode safety. |
+| hipEngine llama-compat copied-state direct-commit | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json`; smoke `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-smoke.json` | Superseded active lane before the no-copy GDN capture kernel. It paid a full recurrent-state D2D copy before each captured prefill-GDN layer: **60.56 tok/s**, **16.534 ms/output**, verifier drain **14.071 ms/output**. The no-copy replacement keeps acceptance/economy identical and moves full-suite **60.56 -> 72.23 tok/s**. |
 | hipEngine llama-compat semantic-safe | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-serialstate`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-serial-state-only-partial-replay-full.json` | Semantic-safe control. Full-accept blocks still direct-commit captured state, while rejected/partial bulk blocks restore and serial-replay the accepted prefix without replay LM-head sampling. Full suite: **51.85 tok/s**, **19.308 ms/output**, **0.9472x AR**, acc/output **0.606**, draft acceptance **0.770**, target rows/output **1.331**, replay/commit **2.489 ms/output**, replay rows **38**, discarded rows **46**. |
 | hipEngine llama-compat prior serial-full replay | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directstate-prefillgdn-partialfix-full.json` | Superseded semantic-safe control. It used full serial LM-head sampling during accepted-prefix replay: **50.96 tok/s**, **19.645 ms/output**, **0.9312x AR**, verifier drain **17.222 ms/output**, replay/commit **2.775 ms/output**. The serial-state-only row keeps the same acceptance/row economy and removes only replay sampling. |
 | hipEngine llama-compat bulk state-only partial replay | `benchmarks/results/2026-07-02-mtp-state-lifecycle-bulk-state-only-partial-replay-compare.json` | Rejected diagnostic, not a speed row. It tests replacing serial accepted-prefix replay after direct-state partial/reject blocks with bulk `advance_state_only` replay. The first partial/reject at cycle 3 has matching visible token `[65342]`, but hidden seed plus Conv/GDN fingerprints diverge across 61 entries, so this shortcut cannot replace the semantic-safe serial replay bucket. |
@@ -467,7 +475,8 @@ Current source artifacts:
 | hipEngine llama-compat prior retained denseq8all + Q8 shared dual | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-q8shareddual-full.json` | Superseded active lane before X8-packed Q6_K draft lm-head top-1. Same acceptance/economy; X8 top-1 moves full-suite **61.19 -> 61.31 tok/s**, cycle **16.364 -> 16.331 ms/output**, and draft drain **3.378 -> 3.352 ms/output**. |
 | hipEngine llama-compat prior retained x8q6 | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rowhist-full.json` | Superseded active lane. Better acceptance/row economy than `denseq8all`, but slower wall and farther from llama.cpp's dense MMVQ mechanism. |
 | hipEngine llama-compat row-hist smoke | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rowhist-smoke.json` | Historical instrumentation-only smoke that proved `cycle_histograms` flow through suite output before the full retained rerun above. Do not use for headline tok/s. |
-| hipEngine llama-compat verifier all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Attribution-only smoke with extra sync points inside verifier layer families and selected-MoE gate/up/down. Do not use for headline tok/s. |
+| hipEngine llama-compat no-copy verifier all-sync split | `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-allsync-smoke.json`; prior copied-state control `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-allsync-smoke.json` | Attribution-only smoke with extra sync points inside verifier layer families and selected-MoE gate/up/down. The copied-state GDN leaf `target_block_linear_attn_prefill_gdn_state_rows` drops **2.913 -> 0.785 ms/output** after removing the full recurrent-state D2D copy. Do not use for headline tok/s. |
+| hipEngine llama-compat prior verifier all-sync split | `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync-smoke.json` | Historical attribution-only smoke before directcommit/no-copy capture. Do not use for headline tok/s. |
 | hipEngine llama-compat verifier block rocprof split | `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2.json` | Diagnostic-only B2-shaped `verify_target_block` kernel trace for the retained compat route (`--mode block-verify --verify-dp4a --selected-down-x8-repack q6 --record-stage-timings`). Use it to rank verifier kernel families; do not use it for headline tok/s. |
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. This remains a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | llama.cpp HIP MTP whole-run rocprof proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json` | Diagnostic-only `llama-server` MTP request under `rocprofv3 --kernel-trace`, with `LLAMA_MTP_STAGE_TIMINGS` enabled. It produces the first llama.cpp MTP kernel-family bucket split in this tracker, but it is whole-process and required `SIGKILL` after profiler finalize timeout, so use it only as a source/kernel proxy. |
@@ -1082,7 +1091,8 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 
 | route | status | MTP tok/s | cycle wall | acc/output | draft acceptance | target rows/output | target verifier drain | decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit` + prefill-GDN capture + llama-style direct partial commit | **active llama-replication lane** | **60.56 full** | **16.534 ms/output** | **0.609** | **0.780** | **1.172** | **14.071 ms/output** | Current comparison lane vs llama.cpp HIP B2. Rejected/partial bulk blocks commit the captured verifier row, matching llama.cpp's normal MTP accept lifecycle rather than serial-prefix replay. This closes the replay gap: replay/commit is **0.043 ms/output**, with **0** replay rows, **100** direct-commit rows, and **44** discarded rows. The remaining gap is target verifier forward. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit` + no-copy prefill-GDN capture + llama-style direct partial commit | **active llama-replication lane** | **72.23 full** | **13.865 ms/output** | **0.609** | **0.780** | **1.172** | **11.405 ms/output** | Current comparison lane vs llama.cpp HIP B2. Rejected/partial bulk blocks commit the captured verifier row, matching llama.cpp's normal MTP accept lifecycle rather than serial-prefix replay. The no-copy GDN state-row kernel removes the old per-layer recurrent-state D2D copy. Full-suite timing is now slightly faster than the llama.cpp rerun; replay/commit is **0.048 ms/output**, with **0** replay rows, **100** direct-commit rows, and **44** discarded rows. |
+| `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit` + copied prefill-GDN capture + llama-style direct partial commit | superseded copied-state lane | 60.56 full | 16.534 ms/output | 0.609 | 0.780 | 1.172 | 14.071 ms/output | Prior active lane before no-copy GDN capture. The all-sync attribution showed `target_block_linear_attn_prefill_gdn_state_rows` at **2.913 ms/output**; no-copy drops that leaf to **0.785 ms/output** and moves the retained full suite **60.56 -> 72.23 tok/s**. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-serialstate` + prefill-GDN capture + reject-safe serial state-only replay | semantic-safe control | 51.85 full | 19.308 ms/output | 0.606 | 0.770 | 1.331 | 16.891 ms/output | Exact-state control. Rejected/partial bulk blocks restore and serial-replay the accepted prefix, but replay now advances exact state only and skips LM-head sampling. Lifecycle comparator stays clean; replay/commit is **2.489 ms/output**, with **38** replay rows and **46** discarded rows. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly` + prefill-GDN capture + full serial partial replay | superseded semantic-safe control | 50.96 full | 19.645 ms/output | 0.606 | 0.770 | 1.331 | 17.222 ms/output | Prior safe lane before replay LM-head removal. It remains useful as an A/B control: serial state-only replay moves **50.96 -> 51.85 tok/s**, cycle **19.645 -> 19.308 ms/output**, and replay/commit **2.775 -> 2.489 ms/output** with unchanged acceptance/economy. |
 | `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly` | superseded unsafe direct-state diagnostic | 75.15 full | 13.325 ms/output | 0.621 | 0.820 | 1.136 | 10.933 ms/output | Not retained as a valid semantic lane. The lifecycle comparator proved rejected/partial direct commit diverges from serial accepted-prefix replay; this row remains only as the cost of the now-unsafe shortcut. |
@@ -1109,10 +1119,10 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 
 | metric | hipEngine default exact B5 | hipEngine `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit` B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | active reading |
 | --- | ---: | ---: | ---: | ---: | --- |
-| AR tok/s | 54.79 parallel-attn full | 54.78 directcommit full | 51.38 suite / 52.13 traced / 51.98 rerun | hipEngine faster | AR is not the blocker. |
-| MTP tok/s | 61.98 parallel-attn full | **60.56 directcommit full** | 67.3 suite / 72.12 traced / 71.91 rerun | **-6.74 tok/s vs suite / -11.56 tok/s vs traced / -11.35 tok/s vs rerun** | Active compat is still behind llama.cpp. |
-| uplift over own AR | 1.1312x parallel-attn full | **1.1055x directcommit full** | ~1.31x suite / 1.383x traced/rerun | below llama | The replication lane now beats AR but has not matched llama economics. |
-| cycle wall / output | 16.162 ms parallel-attn full | **16.534 ms directcommit full** | 14.269 ms rerun | **+2.265 ms/output** | Parent wall gap after direct partial commit. |
+| AR tok/s | 54.79 parallel-attn full | 54.76 no-copy full | 51.38 suite / 52.13 traced / 51.98 rerun | hipEngine faster | AR is not the blocker. |
+| MTP tok/s | 61.98 parallel-attn full | **72.23 no-copy full** | 67.3 suite / 72.12 traced / 71.91 rerun | **+4.93 tok/s vs suite / +0.11 tok/s vs traced / +0.32 tok/s vs rerun** | Retained HIP B2 parity target is closed. |
+| uplift over own AR | 1.1312x parallel-attn full | **1.319x no-copy full** | ~1.31x suite / 1.383x traced/rerun | near llama | The replication lane now matches the llama.cpp MTP economics on the retained HIP protocol. |
+| cycle wall / output | 16.162 ms parallel-attn full | **13.865 ms no-copy full** | 14.269 ms rerun | **-0.405 ms/output** | Compat is slightly faster than the rerun timing target. |
 | accepted / output | 0.535 | **0.609** | 0.610 rerun | -0.001 | Acceptance is effectively llama-parity. |
 | draft acceptance | 0.723 | **0.780** | 0.805 | -0.025 | Slightly lower than llama, but not the dominant wall gap. |
 | target passes / output | 0.567 | **0.391** | 0.390 | +0.001 | Pass economy is now parity-level. |
@@ -1122,19 +1132,19 @@ tracker. Smoke and all-sync rows can only name the next kernel target.
 
 | bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 | compat gap vs llama.cpp | current interpretation / next target |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `cycle_wall_ms_per_output` | 16.162 | **16.534** | 14.269 | **+2.265** | Parent wall gap after adopting llama-style partial direct commit. |
-| `draft_initial` | 1.899 | **2.146** | 2.141 | **+0.005** | Draft parent is effectively at parity. |
-| `draft_mtp_layer_forward` | 0.141 | **0.123** | 0.250 decode subtotal | compat faster | Draft transformer work is not the problem. |
-| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.129 | **1.943** | 1.888 | **+0.055** | Small residual; not the current blocker. |
+| `cycle_wall_ms_per_output` | 16.162 | **13.865** | 14.269 | **-0.405** | Retained HIP B2 timing target is closed after no-copy GDN capture. |
+| `draft_initial` | 1.899 | **2.142** | 2.141 | **+0.000** | Draft parent is effectively at parity. |
+| `draft_mtp_layer_forward` | 0.141 | **0.119** | 0.250 decode subtotal | compat faster | Draft transformer work is not the problem. |
+| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.129 | **1.948** | 1.888 | **+0.059** | Small residual; not a wall gap. |
 | `target_serial_verify_step` | 6.508 | **0.000** | 0.000 | 0.000 | Default-only B1 probe; compat removed it. |
-| `target_block_verify_total` | 7.728 | **14.071** | 12.120 | **+1.951** | Dominant live gap. |
-| `target_block_layer_total` | 6.874 | **12.696** | n/a | n/a | HipEngine verifier cost center. |
-| `target_block_linear_attn_layers` | 5.055 | **9.269** | n/a | n/a | Largest hipEngine verifier layer family. |
-| `target_block_full_attn_layers` | 1.819 | **3.427** | n/a | n/a | Secondary verifier layer family. |
-| `target_block_lm_head_sample` | 0.579 | **1.070** | n/a | n/a | Visible verifier-side target after layer GEMVs. |
-| `target_block_replay_or_commit` | 0.019 | **0.043** | 0.004 | **+0.039** | Closed enough for the replication lane; not P0. |
+| `target_block_verify_total` | 7.728 | **11.405** | 12.120 | **-0.715** | No longer a llama.cpp speed gap. |
+| `target_block_layer_total` | 6.874 | **10.029** | n/a | n/a | HipEngine verifier cost center; compare through verifier total. |
+| `target_block_linear_attn_layers` | 5.055 | **7.446** | n/a | n/a | Largest hipEngine verifier layer family. |
+| `target_block_full_attn_layers` | 1.819 | **2.584** | n/a | n/a | Secondary verifier layer family. |
+| `target_block_lm_head_sample` | 0.579 | **1.071** | n/a | n/a | Visible verifier-side target after layer GEMVs. |
+| `target_block_replay_or_commit` | 0.019 | **0.048** | 0.004 | **+0.044** | Small residual for the replication lane; not P0. |
 | `mtp_device_kv_commit` | n/a | n/a | n/a | n/a | Not emitted as a separate current directcommit bucket. |
-| `target_block_setup` + commit/accounting | 0.125 | **0.098** | 0.188 comparable visible overhead | compat faster | No longer a gap after direct partial commit removes serial replay. |
+| `target_block_setup` + commit/accounting | 0.125 | **0.049** | 0.188 comparable visible overhead | compat faster | No longer a gap after direct partial commit removes serial replay. |
 | llama `mtp_context_replay_append` | n/a | 0.008 | **11.348** | n/a | In llama, verifier GPU drain lands here; do not compare raw `target_block_forward`. |
 
 Rule for this table: if a bucket has no true llama.cpp analog, leave the llama
@@ -1155,36 +1165,36 @@ and live in the next section.
 
 | bucket | hipEngine default exact B5 | hipEngine llama-compat B2 | llama.cpp HIP B2 analog | compat gap vs llama.cpp | action |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `cycle_wall_ms_per_output` | 16.162 | **16.534** | 14.269 | **+2.265** | Active parent-wall gap after llama-style direct partial commit. |
+| `cycle_wall_ms_per_output` | 16.162 | **13.865** | 14.269 | **-0.405** | Retained HIP B2 target is closed after no-copy GDN capture. |
 | `accept_policy_and_seed` | 0.002 | 0.002 | 0.002 | -0.001 | Already noise-level. |
-| `draft_initial` | 1.899 | **2.146** | 2.141 | **+0.005** | Draft parent is still effectively at parity. |
+| `draft_initial` | 1.899 | **2.142** | 2.141 | **+0.000** | Draft parent is still effectively at parity. |
 | `draft_prepare_inputs` | 0.086 | 0.026 | n/a | n/a | hipEngine-only prep, already small. |
 | `draft_seed_upload` | 0.102 | 0.048 | n/a | n/a | Not a current target. |
-| `draft_mtp_layer_forward` | 0.141 | 0.123 | 0.250 llama draft decode subtotal | compat faster | Draft transformer body is not the gap. |
+| `draft_mtp_layer_forward` | 0.141 | 0.119 | 0.250 llama draft decode subtotal | compat faster | Draft transformer body is not the gap. |
 | `draft_diagnostic_topk` | 0.000 | n/a | n/a | n/a | Default diagnostic-only row. |
 | `draft_device_chain_ensure_embed_table` | n/a | 0.000 | n/a | n/a | No target. |
 | `draft_device_topk_gather` | n/a | 0.000 | n/a | n/a | No target. |
-| `draft_device_chain_drain` | n/a | **1.937** | n/a | n/a | hipEngine compat draft drain bucket; compare through `draft_initial`. |
+| `draft_device_chain_drain` | n/a | **1.941** | n/a | n/a | hipEngine compat draft drain bucket; compare through `draft_initial`. |
 | `draft_topk_d2h` | n/a | 0.007 | n/a | n/a | D2H is too small to explain the gap. |
-| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.129 | **1.943** | 1.888 | **+0.055** | Small residual; names are not perfectly isomorphic. |
+| `draft_topk_readback` / llama `llama_draft_sample_topk` | 1.129 | **1.948** | 1.888 | **+0.059** | Small residual; names are not perfectly isomorphic. |
 | llama `llama_draft_decode_initial` | n/a | n/a | 0.118 | n/a | Llama native row; included in its 0.250 ms draft decode subtotal. |
 | llama `llama_draft_decode_next` | n/a | n/a | 0.132 | n/a | Llama native row; included in its 0.250 ms draft decode subtotal. |
 | llama `llama_draft_prepare_initial_batch` | n/a | n/a | 0.001 | n/a | Llama-only setup, not a gap. |
 | llama `llama_draft_prepare_next_batch` | n/a | n/a | 0.000 | n/a | Llama-only setup, not a gap. |
 | llama `llama_draft_finalize` | n/a | n/a | 0.000 | n/a | Llama-only setup, not a gap. |
 | `target_serial_verify_step` | 6.508 | **0.000** | 0.000 | 0.000 | Compat already removed the default B1 probe. |
-| `target_block_verify_total` | 7.728 | **14.071** | 12.120 | **+1.951** | Dominant live gap. |
-| `target_block_setup` | 0.101 | 0.053 | n/a | n/a | Not a gap. |
+| `target_block_verify_total` | 7.728 | **11.405** | 12.120 | **-0.715** | No longer a llama.cpp speed gap. |
+| `target_block_setup` | 0.101 | 0.046 | n/a | n/a | Not a gap. |
 | `target_block_embedding` | 0.013 | 0.023 | n/a | n/a | Not a current target. |
-| `target_block_forward` | 7.706 | 14.023 | n/a | n/a | Async-misaligned; compare through verifier total. |
-| `target_block_layer_total` | 6.874 | **12.696** | n/a | n/a | hipEngine verifier cost center. |
-| `target_block_linear_attn_layers` | 5.055 | **9.269** | n/a | n/a | Biggest hipEngine verifier family. |
-| `target_block_full_attn_layers` | 1.819 | **3.427** | n/a | n/a | Secondary verifier family. |
+| `target_block_forward` | 7.706 | 11.352 | n/a | n/a | Async-misaligned; compare through verifier total. |
+| `target_block_layer_total` | 6.874 | **10.029** | n/a | n/a | hipEngine verifier cost center. |
+| `target_block_linear_attn_layers` | 5.055 | **7.446** | n/a | n/a | Biggest hipEngine verifier family. |
+| `target_block_full_attn_layers` | 1.819 | **2.584** | n/a | n/a | Secondary verifier family. |
 | `target_block_output_norm_hidden` | 0.123 | 0.149 | n/a | n/a | Below top targets. |
-| `target_block_lm_head_sample` | 0.579 | **1.070** | n/a | n/a | Verifier-side lm-head/sample target after layer GEMVs. |
+| `target_block_lm_head_sample` | 0.579 | **1.071** | n/a | n/a | Verifier-side lm-head/sample target after layer GEMVs. |
 | `target_block_hidden_readback` | 0.005 | 0.007 | n/a | n/a | Not a target. |
 | `target_block_acceptance_accounting` | 0.001 | 0.002 | 0.188 | -0.186 | Not a gap; llama charges more visible accounting here. |
-| `target_block_replay_or_commit` | 0.019 | **0.043** | 0.004 | **+0.039** | Closed enough for the replication lane. |
+| `target_block_replay_or_commit` | 0.019 | **0.048** | 0.004 | **+0.044** | Small residual for the replication lane. |
 | `target_block_cursor_update` | 0.001 | 0.002 | n/a | n/a | Not a target. |
 | `target_block_snapshot` | n/a | n/a | 0.001 | n/a | Directcommit no longer emits a nonzero snapshot bucket. |
 | `mtp_device_kv_commit` | n/a | n/a | n/a | n/a | Not emitted as a separate current directcommit bucket. |
@@ -1194,7 +1204,7 @@ and live in the next section.
 | llama `llama_process_copy_verify_h` | n/a | n/a | 0.001 | n/a | Llama-only hidden copy, not a gap. |
 | llama `llama_process_scan_batch` | n/a | n/a | 0.000 | n/a | Llama-only scan, not a gap. |
 | llama `llama_accept_update_pending_h` | n/a | n/a | 0.000 | n/a | Llama-only accept update, not a gap. |
-| setup/commit/accounting rollup | 0.125 | **0.098** | 0.188 | compat faster | Replay/control overhead is no longer the live gap. |
+| setup/commit/accounting rollup | 0.125 | **0.049** | 0.188 | compat faster | Replay/control overhead is no longer a gap. |
 
 #### Active gap budget
 
@@ -1205,12 +1215,12 @@ suite row before moving the headline numbers.
 
 | target area | current hipEngine llama-compat B2 | llama.cpp HIP B2 target | budget to close | current named work |
 | --- | ---: | ---: | ---: | --- |
-| Total cycle wall | **16.534 ms/output** | 14.269 ms/output | **+2.265 ms/output** | Still open after direct partial commit. |
-| Draft drain | **2.146 ms/output** | 2.141 ms/output | **+0.005 ms/output** | Draft parent remains at parity; D2H remains tiny. |
-| Target verifier drain | **14.071 ms/output** | 12.120 ms/output | **+1.951 ms/output** | Dominant live gap after the replay fix. |
-| Replay / commit | **0.043 ms/output** | 0.004 ms/output | **+0.039 ms/output** | Closed enough for the replication lane; keep as a regression guard. |
+| Total cycle wall | **13.865 ms/output** | 14.269 ms/output | **-0.405 ms/output** | Closed after no-copy GDN capture. |
+| Draft drain | **2.142 ms/output** | 2.141 ms/output | **+0.000 ms/output** | Draft parent remains at parity; D2H remains tiny. |
+| Target verifier drain | **11.405 ms/output** | 12.120 ms/output | **-0.715 ms/output** | No longer a llama.cpp speed gap. |
+| Replay / commit | **0.048 ms/output** | 0.004 ms/output | **+0.044 ms/output** | Small residual; keep as a regression guard. |
 | Target rows / output | **1.172** | 1.148 | +0.024 rows/output | Compat pays 44 discarded rows over 256 outputs and no replay rows. |
-| Non-gaps | AR faster; serial verify removed; draft parent near parity; replay gap closed | n/a | n/a | Spend time on verifier forward, not AR, B1 probe removal, draft, or serial replay. |
+| Non-gaps | AR faster; serial verify removed; draft parent near parity; verifier drain faster than llama.cpp | n/a | n/a | Retained HIP speed parity is closed; spend time only on margin, row economy, or exact semantics. |
 
 Post-directcommit correction: the old `75.15 tok/s / 13.325 ms/output` row was an
 unsafe direct-state shortcut, but the active replication lane now intentionally
@@ -1221,10 +1231,10 @@ llama.cpp HIP B2 row:
 | decomposition metric | hipEngine `llama-compat` B2 | llama.cpp HIP B2 | reading |
 | --- | ---: | ---: | --- |
 | visible outputs / cycle | **2.560** | **2.563** | hipEngine gets only **0.003 fewer** visible outputs/cycle. |
-| cycle wall / output | **16.534 ms** | **14.269 ms** | The parent wall gap is **+2.265 ms/output**. |
-| inferred wall / cycle | **42.328 ms** | **36.575 ms** | HipEngine spends **+5.753 ms/cycle** with near-identical output/cycle amortization. |
-| amortization share | n/a | n/a | At hipEngine's current per-cycle wall, llama's output/cycle economy would save only **~0.02 ms/output**; the gap is cycle cost, not acceptance. |
-| residual cycle-cost share | n/a | n/a | The live cycle-cost residual is target verifier forward time, especially linear/full-attention layer work plus verifier lm-head/sample. |
+| cycle wall / output | **13.865 ms** | **14.269 ms** | HipEngine is **0.405 ms/output faster** on the retained rerun target. |
+| inferred wall / cycle | **35.494 ms** | **36.575 ms** | HipEngine spends **1.081 ms/cycle less** with near-identical output/cycle amortization. |
+| amortization share | n/a | n/a | Llama's tiny output/cycle advantage would save only **~0.02 ms/output** at hipEngine's current cycle cost. |
+| residual cycle-cost share | n/a | n/a | The previous cycle-cost residual was the copied recurrent-state GDN capture; no-copy capture removes it. |
 | Q6_K lm-head dispatch | **1.786 ms/call** (`gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`) | **1.781 ms/call** (`mul_mat_vec_q<GGML_TYPE_Q6_K,ncols=1>`) | Per-call Q6 body is effectively at parity (**+0.005 ms/call** in `benchmarks/results/2026-07-02-mtp-draft-kernel-compare-draftdenseq8-draftonly.json`). |
 
 The active interpretation changes accordingly: the semantic-safe control still
@@ -1285,11 +1295,11 @@ match but the timings do not.
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
 | S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, raw row-1 hidden/lm-head cross-score, pre-output/per-layer hidden checkpoints, F32 verifier-boundary probes, and capture-path vs non-capturing block verifier A/B | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h`/raw-value trace in `common/speculative.cpp`, target hidden source around `llama_decode()`, and GGML target graph tensor dtype boundaries in `src/models/qwen35moe.cpp` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. The F32 selected-SiLU intermediate slice is the first forced-prefix side match: row-1 `539 - 26126` moves to **-0.00303** vs llama.cpp about **-0.00896**. But live validation with capture still accepts `539`; transactional score-bulk/serial-state replay leaves the old prefix early at cycle 2 (`[40798, 1590]`); and capture Conv/GDN replacement diagnostics still accept `539`. | The selected SwigLU/intermediate BF16 boundary is a confirmed llama.cpp parity contract, but it is not sufficient in the live direct-state path. The latest capture-path diagnostic shows isolated BF16 layer-0 boundaries match while the scored FP32 residual/hidden mirror diverges from layer 0 onward, so next work should compare/fix the verifier FP32 hidden/KV history contract against llama.cpp rather than swapping Conv/GDN row-state kernels. This remains semantic parity, not a retained full-suite speed gap. |
-| 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | rerun B2 cycle wall plus suite tok/s | **+2.265 ms/output** | Active parent-wall gap. |
-| 2 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, verifier rocprof kernel-family rows | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **+1.951 ms/output** | Dominant live gap; compare row-bulk verifier kernels against llama.cpp. |
-| 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.003 outputs/cycle**, +0.024 target rows/output | Row/pass economy is close; keep as a regression guard while reducing verifier forward time. |
-| 4 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head`, `draft_gpu_decode_initial`, `draft_gpu_decode_next`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.005 ms/output** | Parent draft drain is effectively closed. |
-| 5 | Replay / commit | `target_block_replay_or_commit`, `target_verify_replay_rows`, `target_verify_direct_commit_rows`, lifecycle comparator state hashes | llama partial accept/checkpoint/update path in `common_speculative_process()` and `common_speculative_accept()` | **+0.039 ms/output replay/commit** | Closed for the llama-replication lane. The semantic-safe serial-state control remains separate. |
+| 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | rerun B2 cycle wall plus suite tok/s | **-0.405 ms/output** | Closed on the retained HIP B2 target. |
+| 2 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample`, verifier rocprof kernel-family rows | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **-0.715 ms/output** | No longer a speed gap after no-copy GDN capture; keep as a regression guard. |
+| 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **-0.003 outputs/cycle**, +0.024 target rows/output | Row/pass economy is close; this is the main remaining economics delta, not a wall gap. |
+| 4 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head`, `draft_gpu_decode_initial`, `draft_gpu_decode_next`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **+0.000 ms/output** | Parent draft drain is closed. |
+| 5 | Replay / commit | `target_block_replay_or_commit`, `target_verify_replay_rows`, `target_verify_direct_commit_rows`, lifecycle comparator state hashes | llama partial accept/checkpoint/update path in `common_speculative_process()` and `common_speculative_accept()` | **+0.044 ms/output replay/commit** | Small residual for the llama-replication lane. The semantic-safe serial-state control remains separate. |
 | 6 | Non-targets | AR tok/s, `target_serial_verify_step`, draft parent drain | n/a | n/a | Keep as regression guards, not active gap work. |
 
 #### Llama.cpp source anchors for the live gap
@@ -1523,18 +1533,25 @@ or a materially different fusion that moves async `draft_initial`.
 
 #### Current all-sync leaf attribution
 
+Attribution-only artifact:
+`benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-allsync-smoke.json`.
+Do not use this row for headline tok/s: extra sync barriers slow the diagnostic
+run. Its purpose is to rank leaf kernels inside the retained no-copy full-suite
+lane.
+
 | sub-bucket | ms/output | source | interpretation |
 | --- | ---: | --- | --- |
-| `target_block_linear_attn_norm_qkv_gate` | 2.584 | verifier all-sync | Aggregate retained for continuity. |
-| `target_block_linear_attn_attn_norm` | 0.327 | verifier all-sync | RMSNorm is not the main issue. |
-| `target_block_linear_attn_attn_qkv_gate_pair` | **2.258** | verifier all-sync | Current largest verifier target: Q8T16 `attn_qkv+attn_gate` pair projection. |
-| `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.655** | verifier all-sync | Main selected-MoE target after the down-projection t64 win. |
-| `target_block_linear_attn_ffn_moe_expert_down` | **1.145** | verifier all-sync | Improved by the 64-thread selected T16 dp4a scheduler and q6-only X8; still non-trivial. |
-| `draft_run_lm_head` | **1.291** | draft top1 split | Aggregate draft lm-head bucket from the finer split below. |
-| `draft_run_lm_head_q6_top1_dp4a_gather` | **1.260** | draft top1 split | Continuity aggregate for the Q6_K top-1 path. |
-| `draft_run_lm_head_q6_top1_dp4a_stage1` | **1.218** | draft top1 split | The actual draft lm-head target: Q6_K top-1 stage1 compute/layout. |
-| `draft_run_lm_head_q6_top1_dp4a_stage2_gather` | **0.041** | draft top1 split | Final block-winner reduction plus optional embedding gather is not the missing cost. |
-| `draft_run_lm_head_norm` + cast + q8_1 quantize | **0.030** | draft top1 split | Measured negligible; do not spend more time on standalone activation-quantization changes. |
+| `target_block_linear_attn_norm_qkv_gate` | 2.049 | no-copy verifier all-sync | Aggregate retained for continuity. |
+| `target_block_linear_attn_attn_qkv_gate_dense_q8_dp4a` | **1.661** | no-copy verifier all-sync | Largest linear-attention dense projection leaf after the GDN copy fix. |
+| `target_block_linear_attn_ffn_moe_expert_gate_up` | **1.677** | no-copy verifier all-sync | Main selected-MoE leaf. |
+| `target_block_linear_attn_ffn_moe_expert_down` | **1.194** | no-copy verifier all-sync | Still non-trivial but no longer part of a llama.cpp wall deficit. |
+| `target_block_linear_attn_prefill_gdn_state_rows` | **0.785** | no-copy verifier all-sync | Closed copy bottleneck: prior copied-state all-sync was **2.913 ms/output**. |
+| `target_block_full_attn_layers` | **3.091** | no-copy verifier all-sync | Secondary verifier layer family; compare only through retained verifier total. |
+| `target_block_lm_head_sample` | **1.028** | no-copy verifier all-sync | Verifier-side lm-head/sample cost. |
+| `draft_run_lm_head` | **1.309** | no-copy all-sync | Aggregate draft lm-head bucket from the finer split. |
+| `draft_run_lm_head_q6_top1_dp4a_x8_stage1` | **1.245** | no-copy all-sync | Draft Q6_K top-1 stage1 compute/layout. |
+| `draft_run_lm_head_q6_top1_dp4a_x8_gather` | **1.285** | no-copy all-sync | Stage1 plus final gather aggregate. |
+| `draft_run_lm_head_q6_top1_dp4a_stage2_gather` | **0.040** | no-copy all-sync | Final block-winner reduction plus optional embedding gather is not material. |
 
 #### Current block-verifier rocprof attribution
 
@@ -1660,7 +1677,7 @@ draft-window-only split.
 | stage rows / visible outputs | 2 cycles / 6 outputs | Stage JSONL records MTP cycles, not the full request denominator. |
 | stage accepted / drafts | 4 / 4 | This prompt hit 100% draft acceptance across the two measured cycles. |
 | stage cycle wall | 14.983 ms/output | Same order as the retained traced llama.cpp stage row; useful for sanity only. |
-| `draft_initial` | 2.134 ms/output | Matches the live target row where hipEngine compat is still behind llama.cpp. |
+| `draft_initial` | 2.134 ms/output | Matches the llama.cpp target row used for the compatibility comparison. |
 | `llama_draft_sample_topk` | 1.702 ms/output | The llama.cpp draft sampler/lm-head path remains the closest analog for hipEngine's Q6 top-1 draft drain. |
 | `target_block_verify_total` | 12.834 ms/output | Whole-run profiled request is slightly slower than the retained traced row; do not replace the dashboard value. |
 | `mtp_context_replay_append` | 9.127 ms/output | llama.cpp process/replay batch construction plus target decode parent. |
@@ -2835,9 +2852,9 @@ MTP attention fix moves it again to `74.39 tok/s` on the clean current-HEAD
 rerun, and the draft-only dense-Q8 selector moved the unsafe direct-state row to
   `75.15 tok/s`. The later direct-state lifecycle comparator supersedes that
 performance row as an exact-state claim. The active llama-replication compat
-lane is now the directcommit row: **60.56 tok/s** / **16.534 ms/output**, with
-zero replay rows and a remaining **+1.951 ms/output** target-verifier-drain gap
-vs the llama.cpp HIP rerun. The serial state-only row remains the exact
+lane is now the no-copy directcommit row: **72.23 tok/s** / **13.865 ms/output**,
+with zero replay rows and no remaining retained HIP speed gap vs the llama.cpp
+HIP rerun. The serial state-only row remains the exact
 semantic-safe control at **51.85 tok/s** / **19.308 ms/output**.
 
 #### Queued fixes, ordered by expected impact
@@ -5232,7 +5249,7 @@ PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
   --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json
 ```
 
-Result: AR **54.78 tok/s**, active replication B2 **60.56 tok/s**
+Historical copied-state result: AR **54.78 tok/s**, active replication B2 **60.56 tok/s**
 (**1.1055x AR**), cycle wall **16.534 ms/output**, acc/output **0.609**,
 draft acceptance **0.780**, target rows/output **1.172**, verifier drain
 **14.071 ms/output**, and replay/commit **0.043 ms/output**.  The corresponding
@@ -5240,5 +5257,5 @@ lifecycle diagnostic
 `benchmarks/results/2026-07-02-mtp-state-lifecycle-directcommit-partial-compare.json`
 diverges from serial replay at cycle 3 while emitting the same visible token
 `[65342]`; that divergence is expected for the llama-replication lane. The live
-gap vs llama.cpp HIP B2 rerun is **+2.265 ms/output** total, mostly
-**+1.951 ms/output** in target verifier drain.
+no-copy follow-up supersedes this row with **72.23 tok/s** and **13.865
+ms/output**, closing the retained llama.cpp HIP B2 speed target.

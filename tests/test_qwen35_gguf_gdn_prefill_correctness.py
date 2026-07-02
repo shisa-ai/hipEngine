@@ -58,6 +58,8 @@ from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
@@ -379,6 +381,66 @@ def _run_decode_order_bf16(
             buf.free()
 
 
+def _run_decode_order_state_rows(
+    inputs: _GDNInputs, rms_norm_eps: float, *, no_copy: bool
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    conv_out = _to_device(inputs.conv_out_f32)
+    gate = _to_device(inputs.gate_u16)
+    a = _to_device(inputs.a_u16)
+    b = _to_device(inputs.b_u16)
+    dt_bias = _to_device(inputs.dt_bias_f32)
+    a_log = _to_device(inputs.a_log_f32)
+    norm_weight = _to_device(inputs.norm_weight_f32)
+    state = _to_device(inputs.init_state_f32)
+    out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    state_shape = (inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim)
+    rows_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim)
+    out = _Buf(int(np.prod(out_shape)) * np.dtype(np.uint16).itemsize)
+    state_rows = _Buf(int(np.prod(rows_shape)) * np.dtype(np.float32).itemsize)
+    try:
+        fn = (
+            qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy
+            if no_copy
+            else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows
+        )
+        fn(
+            conv_out.ptr,
+            gate.ptr,
+            a.ptr,
+            b.ptr,
+            dt_bias.ptr,
+            a_log.ptr,
+            norm_weight.ptr,
+            state.ptr,
+            state_rows.ptr,
+            out.ptr,
+            rms_norm_eps,
+            inputs.tokens,
+            inputs.num_k_heads,
+            inputs.num_v_heads,
+            inputs.head_k_dim,
+            inputs.head_v_dim,
+        )
+        out_u16 = _from_device(out, out_shape, np.uint16)
+        state_f32 = _from_device(state, state_shape, np.float32)
+        rows_f32 = _from_device(state_rows, rows_shape, np.float32)
+        return _bf16_u16_to_f32(out_u16), state_f32, rows_f32
+    finally:
+        for buf in (
+            conv_out,
+            gate,
+            a,
+            b,
+            dt_bias,
+            a_log,
+            norm_weight,
+            state,
+            out,
+            state_rows,
+        ):
+            buf.free()
+
+
 def _run_chain(
     inputs: _GDNInputs, rms_norm_eps: float, *, use_segments: bool
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -582,6 +644,36 @@ def _assert_output_close(
     # post-RMS magnitude) and ~10% relative for the tiniest values.
     assert max_diff < 5.0e-2, f"{label}: output max|delta|={max_diff:g}"
     assert rel < 1.5e-1, f"{label}: output max_rel={rel:g}"
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_gdn_prefill_state_rows_no_copy_matches_mutating_capture() -> None:
+    inputs = _GDNInputs(
+        tokens=8,
+        num_k_heads=1,
+        num_v_heads=2,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=11,
+    )
+    mut_out, mut_final_state, mut_rows = _run_decode_order_state_rows(
+        inputs, _RMS_EPS, no_copy=False
+    )
+    no_copy_out, no_copy_state, no_copy_rows = _run_decode_order_state_rows(
+        inputs, _RMS_EPS, no_copy=True
+    )
+    _assert_output_close(no_copy_out, mut_out, label="no-copy vs mutating output")
+    _assert_state_close(
+        no_copy_rows.reshape(mut_rows.shape),
+        mut_rows,
+        label="no-copy vs mutating state rows",
+    )
+    _assert_state_close(
+        mut_final_state,
+        mut_rows[-1],
+        label="mutating final state vs captured final row",
+    )
+    np.testing.assert_array_equal(no_copy_state, inputs.init_state_f32)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
