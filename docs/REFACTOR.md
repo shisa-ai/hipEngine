@@ -197,17 +197,22 @@ should be boring.
 ## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
-  existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers,
-  but intentionally does not claim full llama.cpp graph parity: attention-side
-  RMSNorm inputs and selected/shared expert projection inputs still consume the
-  BF16 mirror.
+  existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
+  The follow-up diagnostic also feeds layer-entry attention RMSNorm from FP32
+  residual rows when available, but intentionally does not claim full llama.cpp
+  graph parity: attention norm outputs and selected/shared expert projection
+  inputs still consume BF16 scratch mirrors.
 - Purpose: test the current semantic hypothesis that accumulated BF16 verifier
   layer-boundary drift is enough to flip near-tie target decisions versus
   llama.cpp's F32 target `l_out` graph tensors. The diagnostic artifact
   `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json`
   confirms the lever is active: the old cycle-12 trace cannot replay unchanged
   because cycle 2 flips from exact `[40798, 25, 1103]` / accepted 2 to
-  FP32-residual `[40798, 1590, 1103]` / accepted 1.
+  FP32-residual `[40798, 1590, 1103]` / accepted 1. The follow-up artifact
+  `benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json`
+  reaches the old cycle-12 branch but still accepts `539`, with the wrong
+  `539 - 26126` margin increasing from **+0.11822** to **+0.14309** versus
+  llama.cpp **-0.00896**.
 - Remove when: either a fuller F32 verifier graph path supersedes this partial
   residual-boundary slice, or parity work decides llama.cpp's F32 graph
   semantics are not the target. Do not promote this flag as a speed path.

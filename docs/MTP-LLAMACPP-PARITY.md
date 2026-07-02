@@ -115,12 +115,16 @@ lm-head ordering or output_norm implementation. The live implementation
 hypothesis is that hipEngine's BF16 verifier layer boundaries do not exactly
 match llama.cpp's F32 target `l_out` graph tensors. The first opt-in
 `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` slice confirms residual-boundary
-precision is active, but it flips an earlier hipEngine cycle-2 near-tie
-(`25` vs `1590`) instead of proving the llama.cpp cycle-12 decision. It is not
-full llama.cpp F32 graph parity because attention norms and selected/shared MoE
-projection inputs still consume BF16 mirrors. The next semantic port is the
-fuller F32 verifier graph boundary, or a same-cycle llama.cpp comparison against
-the new FP32-residual path, not a retained speed optimization.
+precision is active, but the residual-only version flips an earlier hipEngine
+cycle-2 near-tie (`25` vs `1590`) instead of proving the llama.cpp cycle-12
+decision. Extending the same diagnostic to feed layer-entry attention RMSNorm
+from FP32 residual rows reaches the old cycle-12 branch, but still samples
+`[15495, 539, 1151]` and increases the wrong row-1 `539` over `26126` margin to
+**+0.143 logits** versus llama.cpp's **-0.009**. That rules out attention-norm
+input precision alone. It is still not full llama.cpp F32 graph parity because
+attention norm outputs plus selected/shared MoE projection inputs continue
+through BF16 scratch boundaries. The next semantic port is the fuller F32
+verifier FFN/MoE projection graph boundary, not a retained speed optimization.
 
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
@@ -247,7 +251,8 @@ Current source artifacts:
 | hipEngine vs llama.cpp target layer checkpoint diagnostic | `benchmarks/results/2026-07-02-mtp-target-layer-checkpoints-diagnostic.json` | Diagnostic-only forced pair-12 row-1 per-layer split; `performance_claim=false`. hipEngine now emits post-layer BF16 residual rows through `--layer-output-row LAYER:ROW` / `--raw-layer-output-row LAYER:ROW`; local llama.cpp dirty instrumentation traces target graph `l_out` tensors as `verify_layer_output_N`. Corrected row alignment shows no single large layer cliff: full-vector MAE is **0.000535** after layer 1, **0.00269** after layer 28, **0.00539** after layer 32, and **0.01015** after layer 39/pre-output_norm, with cosine still **0.99931** pre-output_norm. Final `verify_h` remains **0.07789 MAE / 0.09815 RMSE / 0.99908 cosine**, enough to flip the `539` vs `26126` near-tie. The active hypothesis is accumulated BF16 verifier-boundary drift in hipEngine versus llama.cpp's F32 `l_out` graph tensors. |
 | hipEngine vs llama.cpp target layer-31 sub-boundary diagnostic | `benchmarks/results/2026-07-02-mtp-target-layer31-subboundary-diagnostic.json` | Diagnostic-only forced pair-12 / llama cycle-18 row-1 split; `performance_claim=false`. hipEngine now emits `--layer-boundary-row LAYER:ROW` / `--raw-layer-boundary-row LAYER:ROW` snapshots from an isolated replay session, covering layer input, `attn_norm`, attention output/residual, post-attn norm, selected MoE down rows, shared MoE output, reconstructed combined MoE `ffn_out`, rounded post-MoE, and layer output. Local llama.cpp dirty instrumentation traces target `attn_norm_31`, `attn_residual_31`, `attn_post_norm_31`, `ffn_out_31`, `post_moe_31`, and `l_out_31`. Result: no layer-31 cliff. hipEngine `attn_norm` vs llama `attn_norm_31` is **0.01623 MAE / 0.02082 RMSE / 0.99969 cosine**; residual vs llama `attn_residual_31` is **0.00303 MAE / 0.00405 RMSE / 0.99943 cosine**; post-attn norm is **0.03616 MAE / 0.04541 RMSE / 0.99940 cosine** at RMS ~1.30; reconstructed MoE `ffn_out` vs llama `ffn_out_31` is **0.00446 MAE / 0.00562 RMSE / 0.99161 cosine**; reconstructed rounded post-MoE exactly equals hip layer output (**0 MAE**) and hip layer output vs llama `post_moe_31`/`l_out_31` is **0.00528 MAE / 0.00671 RMSE / 0.99871 cosine**. This keeps the semantic blocker on accumulated residual-boundary/final-output-norm precision drift, not one bad late-layer substage. |
 | hipEngine vs llama.cpp target output_norm recompute diagnostic | `benchmarks/results/2026-07-02-mtp-target-output-norm-recompute-diagnostic.json` | Diagnostic-only CPU recompute from the raw row-1 pre-output residuals; `performance_claim=false`. Using `output_norm.weight` and `eps=1e-6`, CPU `x * weight / sqrt(mean(x^2)+eps)` exactly reproduces hipEngine `verify_h` from hipEngine `pre_output_norm` and exactly reproduces llama.cpp `verify_h` from llama.cpp `verify_pre_output_norm` (**0 MAE** for both). The pre-output residual delta is **0.01015 MAE / 0.01273 RMSE / 0.99931 cosine**; applying the same CPU output_norm to both rows deterministically produces **0.07789 MAE / 0.09815 RMSE / 0.99908 cosine**, exactly matching the observed final hidden delta. Rounding llama.cpp pre-output to BF16 barely changes it (**0.07787 MAE**), so final output_norm and final-boundary BF16 rounding are not separate implementation suspects. |
-| hipEngine FP32 residual-boundary verifier slice | `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json` | Diagnostic-only opt-in `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`; `performance_claim=false`. The slice keeps verifier target layer residual outputs in FP32 while preserving BF16 mirrors for existing projection inputs. It proves residual precision is semantically active: replaying the old cycle-12 target trace fails earlier at cycle 2, where exact hipEngine samples `[40798, 25, 1103]` and accepts 2, while the FP32-residual slice samples `[40798, 1590, 1103]` and accepts 1. Row-1 logits flip from exact `25` rank 1 / `1590` rank 2 to FP32-residual `1590` rank 1 / `25` rank 2. Exact-vs-slice row-1 pre-output hidden moves **0.00793 MAE / 0.01048 RMSE / 0.99944 cosine** and post-output hidden moves **0.06757 MAE / 0.08528 RMSE / 0.99943 cosine**. This confirms the precision hypothesis is live, but the slice is not full llama.cpp F32 graph parity: attention norms and selected/shared expert projection inputs still consume BF16 mirrors, and the changed cycle path means the old cycle-12 llama accept/reject cannot be evaluated directly from the old trace. |
+| hipEngine FP32 residual-boundary verifier slice | `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json` | Diagnostic-only opt-in `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`; `performance_claim=false`. The slice keeps verifier target layer residual outputs in FP32 while preserving BF16 mirrors for existing projection inputs. It proves residual precision is semantically active: replaying the old cycle-12 target trace fails earlier at cycle 2, where exact hipEngine samples `[40798, 25, 1103]` and accepts 2, while the FP32-residual slice samples `[40798, 1590, 1103]` and accepts 1. Row-1 logits flip from exact `25` rank 1 / `1590` rank 2 to FP32-residual `1590` rank 1 / `25` rank 2. Exact-vs-slice row-1 pre-output hidden moves **0.00793 MAE / 0.01048 RMSE / 0.99944 cosine** and post-output hidden moves **0.06757 MAE / 0.08528 RMSE / 0.99943 cosine**. This confirms the precision hypothesis is live, but the residual-only slice changes the cycle path before the old pair-12 accept/reject. |
+| hipEngine FP32 residual + attention-norm-input verifier slice | `benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json` | Diagnostic-only extension of `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`; `performance_claim=false`. The verifier now feeds layer-entry attention RMSNorm from FP32 residual rows when available. This reaches the old cycle-12 branch, but it still samples `[15495, 539, 1151]` and accepts 2. Row 1 ranks token `539` over `26126` with logits **26.05737** vs **25.91428**, margin **+0.14309**. That is farther from llama.cpp than the prior hipEngine serial-exact margin (**+0.11822**) and still opposite llama.cpp (**-0.00896**, `26126` over `539`). Attention-norm input precision alone is therefore not the missing parity fix; remaining suspects are BF16 projection-input/output boundaries inside attention and selected/shared FFN/MoE. |
 | hipEngine vs llama.cpp target pre-output-norm diagnostic | `benchmarks/results/2026-07-02-mtp-target-pre-output-norm-diagnostic.json` | Superseded diagnostic-only forced pair-12 row-1 split. Its hipEngine capture is still valid, but the llama-side raw `h_nextn_pre_output_norm` trace was later shown to be label-alignment ambiguous: the corrected `verify_pre_output_norm`/`verify_layer_output_39` capture above gives **0.01015 MAE**, not the old **0.2481 MAE** outlier. Keep this artifact only as provenance for why per-layer target labels were added. |
 | hipEngine vs llama.cpp raw target hidden + lm-head diagnostic | `benchmarks/results/2026-07-02-mtp-target-hidden-raw-lmhead-diagnostic.json` | Diagnostic-only raw row-1 split at the active pair-12 mismatch; `performance_claim=false`. The hipEngine probe emits full FP32 hidden values for row 1 via `--raw-hidden-row 1`; local llama.cpp emits raw `verify_h` row-1 values with `LLAMA_MTP_HIDDEN_TRACE_VALUES=1`, `LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS=verify_h`, and `LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS=1`. Dequantizing only `output.weight` rows `539` and `26126` and dotting them with the raw hidden vectors reproduces the observed ranking: hipEngine serial CPU margin `539-26126` **+0.1235** vs observed **+0.1182**, llama CPU margin **-0.0019** vs observed **-0.0090**. The mismatch is therefore target hidden production drift, not lm-head implementation ordering. |
 | hipEngine vs llama.cpp forced target hidden diagnostic | `benchmarks/results/2026-07-02-mtp-target-hidden-compare-diagnostic.json` | Diagnostic-only direct hidden-row comparison at the active pair-12 mismatch; `performance_claim=false`. The hipEngine probe now records the cycle-start pending seed and target verifier hidden rows; local llama.cpp instrumentation now emits `verify_h` rows from `common/speculative.cpp`. This corrects the earlier row alignment: llama `process_h_input` is shifted by one row, while `verify_h` is the direct target. Pending seed matches structurally but not bit-for-bit (first8 MAE **0.0909**, last8 MAE **0.0953**). Direct row-1 `verify_h` hidden deltas are small but nonzero: hipEngine bulk vs llama first8 MAE **0.0773**, last8 MAE **0.0609**; hipEngine serial-exact vs llama first8 MAE **0.0785**, last8 MAE **0.0391**. The row-1 logits still flip: hipEngine serial-exact ranks `539` over `26126` by **0.1182**, llama.cpp ranks `26126` over `539` by **0.0090**. |
@@ -476,11 +481,13 @@ This is a CPU-only recompute using raw `pre_output_norm` rows and GGUF
 | CPU norm(hip pre-output) vs CPU norm(BF16-rounded llama pre-output) | **0.07787 MAE / 0.09823 RMSE / 0.99908 cosine** | A final BF16 boundary cast alone does not explain the difference. |
 
 F32 residual-boundary verifier slice:
-`benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json`.
+`benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json` and
+`benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json`.
 This is an opt-in verifier-only experiment:
 `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`. It converts the verifier block's token
 embeddings from BF16 to FP32 once, accumulates target layer residual outputs in
-FP32, keeps BF16 mirrors for the existing projection kernels, and runs final
+FP32, optionally feeds layer-entry attention RMSNorm from the FP32 residual
+stream, keeps BF16 mirrors for the existing projection kernels, and runs final
 output_norm from the FP32 residual stream. It is default-off and not a speed
 claim.
 
@@ -494,15 +501,25 @@ claim.
 | exact vs FP32-residual pre-output hidden | n/a | **0.00793 MAE / 0.01048 RMSE / 0.99944 cosine** | Residual-boundary precision alone moves the pre-output row by the same order as the hip-vs-llama layer-39 delta. |
 | exact vs FP32-residual post-output hidden | n/a | **0.06757 MAE / 0.08528 RMSE / 0.99943 cosine** | Final output_norm again amplifies a small residual-stream movement into logit-visible hidden drift. |
 
+The stronger FP32-residual + attention-norm-input slice reaches the old pair-12
+branch, but does not move toward llama.cpp:
+
+| pair-12 row-1 check | prior hipEngine serial-exact | FP32 residual + attn-norm-input | llama.cpp HIP | reading |
+| --- | ---: | ---: | ---: | --- |
+| sampled target tokens | `[15495, 539, 1151]` | `[15495, 539, 1151]` | `[15495, 26126]` | The extended slice still accepts `539`. |
+| accepted draft tokens | **2** | **2** | **1** | Acceptance mismatch remains. |
+| `539 - 26126` logit margin | **+0.11822** | **+0.14309** | **-0.00896** | Attention-norm input precision moves the wrong near-tie farther from llama.cpp. |
+| row-1 top 2 | `539` then `26126` | `539` logit **26.05737**, `26126` logit **25.91428** | `26126` then `539` | The missing parity lever is downstream or inside remaining BF16 projection boundaries, not the layer-entry norm input alone. |
+
 Reading: residual-boundary precision is confirmed as a real semantic lever, not
 just a bookkeeping theory. However, this slice is **not** full llama.cpp F32 graph
-parity. Attention-side RMSNorm inputs still come from the BF16 mirror, selected
-expert and shared-expert projection outputs still use the existing BF16
-contraction before the FP32 residual add, and compact MoE shortcuts are disabled
-because they only write BF16 layer outputs. The next port should either carry
-the verifier layer graph farther through FP32 projection/norm boundaries or
-collect a llama.cpp comparison against the new FP32-residual cycle path. Do not
-use this mode as a retained performance row.
+parity. The extended version rules out one specific suspect: layer-entry
+attention RMSNorm input precision. Attention norm outputs and selected/shared
+expert projection inputs still pass through existing BF16 scratch buffers, and
+compact MoE shortcuts are disabled because they only write BF16 layer outputs.
+The next port should carry the verifier FFN/MoE graph farther through FP32
+projection-input/output boundaries. Do not use this mode as a retained
+performance row.
 
 Superseded short-trace artifact:
 `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json`.

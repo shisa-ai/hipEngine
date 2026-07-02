@@ -1596,6 +1596,41 @@ class Qwen35GGUFFullStackRunner:
         )
         return used_aotriton
 
+    def _run_attention_norm_rows(
+        self,
+        *,
+        hidden_ptr: int,
+        hidden_f32_ptr: int | None,
+        weight_ptr: int,
+        out_ptr: int,
+        rows: int,
+        eps: float,
+        stream: int,
+        runtime: HipRuntime,
+    ) -> None:
+        if hidden_f32_ptr is None:
+            gguf_rmsnorm_bf16_f32_weight(
+                hidden_ptr,
+                weight_ptr,
+                out_ptr,
+                rows=rows,
+                hidden_size=self.hidden_size,
+                eps=eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            gguf_rmsnorm_f32_f32_weight(
+                int(hidden_f32_ptr),
+                weight_ptr,
+                out_ptr,
+                rows=rows,
+                hidden_size=self.hidden_size,
+                eps=eps,
+                stream=stream,
+                runtime=runtime,
+            )
+
     def _run_full_attention_decode_batch_layer_rows(
         self,
         layer_id: int,
@@ -1630,12 +1665,12 @@ class Qwen35GGUFFullStackRunner:
         paged_attn_library = self._paged_attn_decode_library()
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
-        gguf_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            layer.weight("attn_norm").allocation().tensor.ptr,
-            scratch.norm.ptr,
+        self._run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+            out_ptr=scratch.norm.ptr,
             rows=rows,
-            hidden_size=self.hidden_size,
             eps=cfg.rms_norm_eps,
             stream=stream,
             runtime=runtime,
@@ -1864,6 +1899,7 @@ class Qwen35GGUFFullStackRunner:
         attn_out_ptr: int,
         scratch,
         *,
+        hidden_f32_ptr: int | None = None,
         stream: int = 0,
     ) -> None:
         assert self.weights is not None
@@ -1874,12 +1910,12 @@ class Qwen35GGUFFullStackRunner:
         recurrent_state = scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise ValueError(f"layer {layer_id} has no linear-attention state")
-        gguf_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            layer.weight("attn_norm").allocation().tensor.ptr,
-            scratch.norm.ptr,
+        self._run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+            out_ptr=scratch.norm.ptr,
             rows=1,
-            hidden_size=self.hidden_size,
             eps=cfg.rms_norm_eps,
             stream=stream,
             runtime=runtime,
@@ -2043,13 +2079,22 @@ class Qwen35GGUFFullStackRunner:
         if start_position < 0:
             raise ValueError("start_position must be non-negative")
         row_nbytes = self.hidden_size * DType.BF16.itemsize
+        row_f32_nbytes = self.hidden_size * DType.FP32.itemsize
         runtime = self.runtime or get_hip_runtime()
         for row in range(rows):
             position = start_position + row
             hidden_row = hidden_ptr + row * row_nbytes
+            hidden_f32_row = None if hidden_f32_ptr is None else int(hidden_f32_ptr) + row * row_f32_nbytes
             attn_row = scratch.attn_out.ptr + row * row_nbytes
             if layer_type == LINEAR_ATTENTION:
-                self._run_linear_attention_attn_only(layer_id, hidden_row, attn_row, decode_scratch, stream=stream)
+                self._run_linear_attention_attn_only(
+                    layer_id,
+                    hidden_row,
+                    attn_row,
+                    decode_scratch,
+                    hidden_f32_ptr=hidden_f32_row,
+                    stream=stream,
+                )
                 if linear_state_rows is not None:
                     conv_state = decode_scratch.layer_conv_states[layer_id]
                     recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
@@ -2078,6 +2123,7 @@ class Qwen35GGUFFullStackRunner:
                     attn_row,
                     decode_scratch,
                     position=position,
+                    hidden_f32_ptr=hidden_f32_row,
                     stream=stream,
                 )
             else:
@@ -2127,12 +2173,12 @@ class Qwen35GGUFFullStackRunner:
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
         t_norm_qkv_gate_ms = 0.0
-        gguf_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            layer.weight("attn_norm").allocation().tensor.ptr,
-            scratch.norm.ptr,
+        self._run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+            out_ptr=scratch.norm.ptr,
             rows=rows,
-            hidden_size=self.hidden_size,
             eps=cfg.rms_norm_eps,
             stream=stream,
             runtime=runtime,
@@ -2497,6 +2543,7 @@ class Qwen35GGUFFullStackRunner:
         scratch,
         *,
         position: int,
+        hidden_f32_ptr: int | None = None,
         stream: int = 0,
         attention_max_context_len: int | None = None,
     ) -> None:
@@ -2508,12 +2555,12 @@ class Qwen35GGUFFullStackRunner:
         kv_write_library = self._paged_kv_write_library()
         if int(scratch.position_host[0]) != int(position):
             scratch.set_full_attention_position(position, runtime)
-        gguf_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            layer.weight("attn_norm").allocation().tensor.ptr,
-            scratch.norm.ptr,
+        self._run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+            out_ptr=scratch.norm.ptr,
             rows=1,
-            hidden_size=self.hidden_size,
             eps=cfg.rms_norm_eps,
             stream=stream,
             runtime=runtime,

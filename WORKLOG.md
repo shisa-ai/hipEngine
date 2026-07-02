@@ -135502,3 +135502,40 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 scripts/check_lineage.py --kind kernel --diff stat` could not run
     because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent in this
     environment; no lineage configuration was changed.
+
+## 2026-07-02 - Verifier FP32 residual plus attention-norm diagnostic
+
+- Extended the default-off `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` diagnostic so
+  verifier layer-entry attention RMSNorm consumes FP32 residual rows when
+  available. Normal/non-diagnostic paths still pass `hidden_f32_ptr=None` and
+  use the original BF16-input norm path.
+- Replayed the old pair-12 forced target probe:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 \
+  --candidate-token 26126 --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32residual-attnnorm.json
+```
+
+  Result: the stronger slice reaches cycle 12, but still samples
+  `[15495, 539, 1151]` and accepts 2. Row 1 keeps token `539` rank 1 / logit
+  **26.05737** and token `26126` rank 2 / logit **25.91428**, so the
+  `539 - 26126` margin is **+0.14309**. That is farther from llama.cpp than
+  prior hipEngine serial-exact **+0.11822** and still opposite llama.cpp
+  **-0.00896**. Attention-norm input precision alone is not the missing parity
+  fix; next suspect is the remaining BF16 projection-input/output boundary in
+  the verifier FFN/MoE graph.
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json`
+  and refreshed `docs/MTP-LLAMACPP-PARITY.md` plus `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py`
+  - `git diff --check`
+  - `python3 -m pytest tests/test_qwen35_decode_state.py -q` => **65 passed**
+  - `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_ops.py tests/test_paro_combine_plan.py -q` => **9 passed**
+  - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q` => **21 passed**
