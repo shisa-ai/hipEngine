@@ -87,6 +87,8 @@ def test_boundary_array_summaries_include_fine_grained_moe_taps() -> None:
         "conv_out",
         "recurrent_out",
         "recurrent_bf16",
+        "attn_post_norm",
+        "attn_post_norm_bf16",
         "moe_router_logits",
         "moe_selected_swiglu",
         "moe_selected_down_weighted",

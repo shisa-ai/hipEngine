@@ -585,6 +585,8 @@ def _boundary_array_summaries(
         "attn_out": capture.attn_out_f32,
         "attn_residual": capture.residual_f32,
         "attn_post_norm": capture.post_norm_f32,
+        "attn_post_norm_bf16": capture.post_norm_f32,
+        "attn_post_norm_router_input": getattr(capture, "post_norm_router_input_f32", None),
         "moe_router_logits": getattr(capture, "moe_router_logits_f32", None),
         "moe_selected_swiglu": getattr(capture, "moe_selected_intermediate_f32", None),
         "ffn_or_moe_down": capture.ffn_or_moe_down_f32,

@@ -685,8 +685,14 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
     def fake_copy_bf16(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
         calls.append(("copy_bf16", ptr, elements, runtime))
         payloads = {
+            90: np.asarray([0.9, 0.91, 0.92, 0.93], dtype=np.float32),
             100: np.asarray([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
             1000: np.asarray([1.0, 1.1, 1.2, 1.3], dtype=np.float32),
+            1050: np.asarray([1.5, 1.6, 1.7, 1.8, 1.9], dtype=np.float32),
+            1060: np.asarray([1.91, 1.92, 1.93, 1.94], dtype=np.float32),
+            1070: np.asarray([1.95, 1.96], dtype=np.float32),
+            1080: np.asarray([1.97, 1.98], dtype=np.float32),
+            1090: np.asarray([1.99, 2.0, 2.01, 2.02], dtype=np.float32),
             1100: np.asarray([2.0, 2.1, 2.2, 2.3], dtype=np.float32),
             1200: np.asarray([3.0, 3.1, 3.2, 3.3], dtype=np.float32),
             1300: np.asarray(
@@ -706,6 +712,8 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
                 ],
                 dtype=np.float32,
             ),
+            1350: np.asarray([4.0, 4.1, 4.2, 4.3, 4.4, 4.5], dtype=np.float32),
+            1360: np.asarray([4.6, 4.7], dtype=np.float32),
             1400: np.asarray([5.0, 5.1, 5.2, 5.3], dtype=np.float32),
             200: np.asarray([6.0, 6.1, 6.2, 6.3], dtype=np.float32),
         }
@@ -714,7 +722,10 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
     def fake_copy_f32(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
         calls.append(("copy_f32", ptr, elements, runtime))
         payloads = {
+            1500: np.asarray([0.4, 0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+            1510: np.asarray([0.9, 1.0, 1.1, 1.2], dtype=np.float32),
             1600: np.asarray([0.1, 0.2, 0.3], dtype=np.float32),
+            1700: np.asarray([0.9, 0.8, 0.7, 0.6], dtype=np.float32),
             1716: np.asarray([-0.25], dtype=np.float32),
         }
         return payloads[int(ptr)]
@@ -740,18 +751,33 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         is_moe=True,
         expert_used_count=3,
         expert_count=4,
+        expert_feed_forward_length=2,
+        expert_shared_feed_forward_length=2,
+        ssm_inner_size=4,
+        ssm_time_step_rank=2,
     )
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(config=cfg),
         hidden_size=4,
+        linear_qkv_width=5,
         _run_linear_attention_layer=fake_full_layer,
     )
     session.scratch = SimpleNamespace(
+        norm=SimpleNamespace(ptr=90),
         attn_out=SimpleNamespace(ptr=1000),
+        linear_qkv=SimpleNamespace(ptr=1050),
+        linear_z=SimpleNamespace(ptr=1060),
+        linear_alpha=SimpleNamespace(ptr=1070),
+        linear_beta=SimpleNamespace(ptr=1080),
+        recurrent_bf16=SimpleNamespace(ptr=1090),
         post_norm=SimpleNamespace(ptr=1100),
         residual=SimpleNamespace(ptr=1200),
         moe_down_out=SimpleNamespace(ptr=1300),
+        ffn_intermediate=SimpleNamespace(ptr=1350),
+        moe_shared_intermediate=SimpleNamespace(ptr=1360),
         moe_shared_out=SimpleNamespace(ptr=1400),
+        conv_out=SimpleNamespace(ptr=1500),
+        recurrent_out=SimpleNamespace(ptr=1510),
         moe_routing_weights=SimpleNamespace(ptr=1600),
         moe_router_logits=SimpleNamespace(ptr=1700),
         moe_selected_experts=SimpleNamespace(ptr=1800),
@@ -761,7 +787,8 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
     capture = session.capture_linear_attention_layer(17, position=3, layer_id=0)
 
     assert not session._hidden_seed_fp32_populated
-    assert capture.as_summary_dict() == {
+    summary = capture.as_summary_dict()
+    expected_summary_items = {
         "layer_id": 0,
         "layer_type": gguf_runner.LINEAR_ATTENTION,
         "token_id": 17,
@@ -771,17 +798,31 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         "top_k": 3,
         "preceding_layer_count": 0,
         "hidden_in_shape": [4],
+        "attn_norm_shape": [4],
         "attn_out_shape": [4],
         "post_norm_shape": [4],
+        "post_norm_source": "bf16_scratch.post_norm",
         "residual_shape": [4],
         "ffn_or_moe_down_shape": [12],
+        "moe_router_logits_shape": [4],
+        "moe_selected_intermediate_shape": [6],
+        "moe_shared_intermediate_shape": [2],
         "moe_shared_out_shape": [4],
         "moe_routing_weights_shape": [3],
         "moe_shared_gate_shape": [1],
         "moe_selected_experts_shape": [3],
+        "linear_qkv_shape": [5],
+        "linear_z_shape": [4],
+        "ssm_alpha_shape": [2],
+        "ssm_beta_shape": [2],
+        "conv_out_shape": [5],
+        "recurrent_out_shape": [4],
+        "recurrent_bf16_shape": [4],
         "layer_out_shape": [4],
         "finite": True,
     }
+    for key, value in expected_summary_items.items():
+        assert summary[key] == value
     np.testing.assert_allclose(capture.layer_out_f32, [6.0, 6.1, 6.2, 6.3])
     np.testing.assert_allclose(capture.moe_routing_weights_f32, [0.1, 0.2, 0.3])
     np.testing.assert_array_equal(capture.moe_selected_experts_i64, [7, 8, 9])
@@ -790,11 +831,22 @@ def test_linear_attention_layer_capture_runs_full_layer_and_copies_post_ffn_buff
         ("token", 17, 0),
         ("layer", 0, 100, 200, 0),
         ("device_synchronize",),
+        ("copy_bf16", 1050, 5, runtime),
+        ("copy_bf16", 1060, 4, runtime),
+        ("copy_bf16", 1070, 2, runtime),
+        ("copy_bf16", 1080, 2, runtime),
+        ("copy_f32", 1500, 5, runtime),
+        ("copy_f32", 1510, 4, runtime),
+        ("copy_bf16", 1090, 4, runtime),
+        ("copy_f32", 1700, 4, runtime),
+        ("copy_bf16", 1350, 6, runtime),
+        ("copy_bf16", 1360, 2, runtime),
         ("copy_bf16", 1400, 4, runtime),
         ("copy_f32", 1600, 3, runtime),
         ("copy_f32", 1716, 1, runtime),
         ("copy_i64", 1800, 3, runtime),
         ("copy_bf16", 100, 4, runtime),
+        ("copy_bf16", 90, 4, runtime),
         ("copy_bf16", 1000, 4, runtime),
         ("copy_bf16", 1100, 4, runtime),
         ("copy_bf16", 1200, 4, runtime),
@@ -832,6 +884,7 @@ def test_attention_layer_capture_runs_full_attention_layer_for_full_type(
     def fake_copy_bf16(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
         calls.append(("copy_bf16", ptr, elements, runtime))
         payloads = {
+            90: np.asarray([0.9, 0.91, 0.92, 0.93], dtype=np.float32),
             100: np.asarray([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
             200: np.asarray([6.0, 6.1, 6.2, 6.3], dtype=np.float32),
             1000: np.asarray([1.0, 1.1, 1.2, 1.3], dtype=np.float32),
@@ -862,6 +915,7 @@ def test_attention_layer_capture_runs_full_attention_layer_for_full_type(
         _run_full_attention_layer=fake_full_attention_layer,
     )
     session.scratch = SimpleNamespace(
+        norm=SimpleNamespace(ptr=90),
         attn_out=SimpleNamespace(ptr=1000),
         post_norm=SimpleNamespace(ptr=1100),
         residual=SimpleNamespace(ptr=1200),
@@ -878,6 +932,7 @@ def test_attention_layer_capture_runs_full_attention_layer_for_full_type(
         ("full_layer", 0, 100, 200, 3, 0),
         ("device_synchronize",),
         ("copy_bf16", 100, 4, runtime),
+        ("copy_bf16", 90, 4, runtime),
         ("copy_bf16", 1000, 4, runtime),
         ("copy_bf16", 1100, 4, runtime),
         ("copy_bf16", 1200, 4, runtime),
@@ -924,6 +979,7 @@ def test_attention_layer_capture_can_run_preceding_layers(
     def fake_copy_bf16(ptr: int, elements: int, *, runtime: object) -> np.ndarray:
         calls.append(("copy_bf16", ptr, elements, runtime))
         payloads = {
+            90: np.asarray([0.9, 0.91, 0.92, 0.93], dtype=np.float32),
             100: np.asarray([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
             200: np.asarray([6.0, 6.1, 6.2, 6.3], dtype=np.float32),
             1000: np.asarray([1.0, 1.1, 1.2, 1.3], dtype=np.float32),
@@ -955,6 +1011,7 @@ def test_attention_layer_capture_can_run_preceding_layers(
         _run_full_attention_layer=fake_full_attention_layer,
     )
     session.scratch = SimpleNamespace(
+        norm=SimpleNamespace(ptr=90),
         attn_out=SimpleNamespace(ptr=1000),
         post_norm=SimpleNamespace(ptr=1100),
         residual=SimpleNamespace(ptr=1200),
@@ -978,6 +1035,7 @@ def test_attention_layer_capture_can_run_preceding_layers(
         ("full_layer", 1, 200, 100, 3, 0),
         ("device_synchronize",),
         ("copy_bf16", 200, 4, runtime),
+        ("copy_bf16", 90, 4, runtime),
         ("copy_bf16", 1000, 4, runtime),
         ("copy_bf16", 1100, 4, runtime),
         ("copy_bf16", 1200, 4, runtime),

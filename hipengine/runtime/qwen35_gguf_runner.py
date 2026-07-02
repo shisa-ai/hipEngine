@@ -551,6 +551,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
     conv_out_f32: np.ndarray | None = None
     recurrent_out_f32: np.ndarray | None = None
     recurrent_bf16_f32: np.ndarray | None = None
+    post_norm_source: str = "bf16_scratch.post_norm"
 
     def as_summary_dict(self) -> dict[str, object]:
         optional_finite = True
@@ -585,6 +586,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
             "attn_norm_shape": list(self.attn_norm_f32.shape),
             "attn_out_shape": list(self.attn_out_f32.shape),
             "post_norm_shape": list(self.post_norm_f32.shape),
+            "post_norm_source": str(self.post_norm_source),
             "residual_shape": list(self.residual_f32.shape),
             "ffn_or_moe_down_shape": list(self.ffn_or_moe_down_f32.shape),
             "moe_router_logits_shape": (
@@ -7179,6 +7181,7 @@ class Qwen35GGUFResidentSession:
             post_norm_f32=_copy_bf16_ptr_to_host_f32(
                 int(self.scratch.post_norm.ptr), hidden_size, runtime=runtime
             ),
+            post_norm_source="bf16_scratch.post_norm",
             residual_f32=_copy_bf16_ptr_to_host_f32(
                 int(self.scratch.residual.ptr), hidden_size, runtime=runtime
             ),

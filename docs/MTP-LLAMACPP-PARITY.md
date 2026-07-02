@@ -175,6 +175,18 @@ post-MoE MAE**. Attention output itself is smaller
 MoE router/projection precision around layer 14, not the outer MTP economics
 loop, row scheduling, direct commit, output-norm-only behavior, or LM-head
 top-k.
+
+Important correction for the next implementation pass: this GGUF advertises
+`general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
+calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
+`sigmoid(logit) + ffn_exp_probs_b.bias` selection path does **not** apply to this
+model. The observed layer-14 expert swap is therefore not a missing router-bias
+mechanism; softmax-over-all-experts followed by selected-weight renormalization
+is equivalent to hipEngine's softmax over the selected raw logits. The live gap
+is accumulated router-input/logit precision near the top-k cutoff. New boundary
+captures keep the legacy `attn_post_norm` field for compatibility but also emit
+`attn_post_norm_bf16` so future comparisons do not confuse the BF16 scratch
+capture with the verifier's optional F32 residual diagnostics.
 A tempting exact-mode
 shortcut remains rejected:
 `--target-block-direct-partial-replay-mode bulk-state-only` still emitted the

@@ -137315,3 +137315,35 @@ python3 scripts/gguf_mtp_bench.py \
   ```bash
   jq empty benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-10-20.json benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-12-14.json benchmarks/results/2026-07-02-mtp-bonus-row-layer13-linear-attn-compare.json benchmarks/results/2026-07-02-mtp-bonus-row-layer13-moe-taps-compare.json benchmarks/results/2026-07-02-mtp-bonus-row-layer14-linear-attn-compare.json benchmarks/results/2026-07-02-mtp-bonus-row-layer14-moe-taps-compare.json
   ```
+
+## 2026-07-02 - qwen35moe router-path correction and capture labeling
+
+- Re-checked the active model metadata and current llama.cpp source before
+  implementing the tempting Step35 router-bias path. The target GGUF reports
+  `general.architecture = qwen35moe` for
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`; current llama.cpp
+  `src/models/qwen35moe.cpp` calls `build_moe_ffn(..., exp_probs_b=nullptr,
+  gating=SOFTMAX)` for both AR and MTP. Therefore the Step35
+  `sigmoid(logit) + ffn_exp_probs_b.bias` selection path does not apply to this
+  parity target. The layer-14 expert swap remains an accumulated
+  router-input/logit precision issue near the top-k cutoff, not a missing
+  selection-bias mechanism.
+- Added explicit capture labeling so future forced-target boundary artifacts do
+  not confuse the legacy `attn_post_norm` array with verifier-F32 diagnostics:
+  `Qwen35GGUFLinearAttentionLayerCapture.as_summary_dict()` now reports
+  `post_norm_source="bf16_scratch.post_norm"`, and
+  `scripts/gguf_mtp_forced_target_probe.py` emits `attn_post_norm_bf16` as an
+  alias while keeping `attn_post_norm` backward-compatible.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` with the qwen35moe-vs-Step35 correction.
+- Lineage check blocker: `python3 scripts/check_lineage.py --kind kernel --diff
+  stat` failed because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is not present
+  in this workspace. llama.cpp source was read directly from
+  `/home/lhl/llama.cpp/llama.cpp-hip`.
+- Validation:
+  ```bash
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  rocminfo | grep -E 'Name:|gfx'
+  python3 -m py_compile scripts/gguf_mtp_forced_target_probe.py hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_hidden_seed_contract.py
+  PYTHONPATH=. pytest tests/test_gguf_mtp_forced_target_probe.py -q
+  PYTHONPATH=. pytest tests/test_qwen35_gguf_hidden_seed_contract.py -q
+  ```
