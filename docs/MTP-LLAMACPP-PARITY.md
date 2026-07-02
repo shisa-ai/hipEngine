@@ -131,13 +131,29 @@ Current bonus-row target-logit split, focused on `mixed_ja_en_translate`, cycle
 | hipEngine bulk + wide F32 verifier-boundary flags | **8940** | **25.798450** | 25.361250 | **+0.437201** | `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32wide-cycle3.json` |
 | hipEngine serial-exact verifier | **8940** | **25.754116** | 25.289141 | **+0.464975** | `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-serialexact-cycle3.json` |
 
-The available hipEngine F32 verifier-boundary diagnostics reduce the wrong
-margin slightly but do not reproduce llama.cpp's near-tie or sampled token. The
-next parity step is therefore not another speed bucket: capture llama.cpp
-`LLAMA_MTP_TENSOR_TRACE` rows for this exact cycle/row, compare
-`process_h_input -> verify_h` plus pre-output/layer-boundary taps against
-hipEngine's forced-target `--layer-boundary-row` captures, and then copy the
-specific target graph boundary that explains the hidden/logit drift.
+Layer-split tensor comparison for the same row is now compacted in
+`benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-split.json`
+from a llama.cpp `LLAMA_MTP_TENSOR_TRACE` midpoint capture and matching
+hipEngine forced-target raw layer-output capture:
+
+| target boundary, row 2 | MAE | RMSE | max abs | cosine | readout |
+| --- | ---: | ---: | ---: | ---: | --- |
+| layer 0 output | 0.0000547 | 0.0000813 | 0.00189 | 0.999990 | Close; early embedding/layer-0 path is not the divergence. |
+| layer 1 output | 0.0000980 | 0.000143 | 0.00310 | 0.999980 | Still close. |
+| layer 5 output | 0.000294 | 0.000394 | 0.00497 | 0.999943 | Small drift only. |
+| layer 10 output | 0.000693 | 0.000898 | 0.00594 | 0.999844 | Still below the 1e-3 MAE split threshold. |
+| layer 20 output | **0.00375** | **0.00474** | 0.0194 | 0.997873 | First measured layer above 1e-3 MAE. |
+| layer 30 output | 0.00598 | 0.00751 | 0.0255 | 0.998522 | Drift continues to accumulate. |
+| layer 39 / pre-output_norm | **0.01227** | **0.01561** | 0.0792 | 0.998601 | Final residual drift before output norm. |
+| `verify_h` vs hipEngine target hidden seed | **0.10931** | **0.13915** | 0.534 | 0.998551 | Output norm amplifies the late residual drift into the row used for sampling/commit. |
+
+This rules out the first two verifier layers, row-bulk scheduling, direct
+commit, output-norm-only error, and LM-head top-k as the primary cause of the
+bonus-token mismatch. The next parity step is to split the target graph between
+layers 10 and 20, then copy or retune the specific llama.cpp GGML/HIP mechanism
+that keeps the mid-layer residual closer. The likely surface is the mid/late
+layer body precision and accumulation path (attention/MoE/shared expert output
+and residual combine), not the outer MTP economics loop.
 A tempting exact-mode
 shortcut remains rejected:
 `--target-block-direct-partial-replay-mode bulk-state-only` still emitted the

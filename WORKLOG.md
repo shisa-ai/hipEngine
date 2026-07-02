@@ -137227,3 +137227,57 @@ python3 scripts/gguf_mtp_bench.py \
   prefix, not verifier wall time. Next step is a llama.cpp `LLAMA_MTP_TENSOR_TRACE`
   capture for this exact cycle/row plus hipEngine `--layer-boundary-row` taps to
   locate the first target graph boundary that explains the hidden/logit drift.
+
+## 2026-07-02 - Bonus-row verifier tensor layer split
+
+- Added `scripts/llamacpp_mtp_compare_verifier_tensors.py`, a compact diagnostic
+  reducer for llama.cpp `LLAMA_MTP_TENSOR_TRACE` JSONL plus hipEngine
+  forced-target raw row captures. It emits one compact JSON artifact with
+  token-margin and tensor MAE/RMSE/max/cosine rows instead of retaining the raw
+  38 MB llama.cpp trace.
+- Captured a midpoint llama.cpp HIP tensor trace for `mixed_ja_en_translate`,
+  task 9, cycle 3, verifier row 2, input token `567`, position `75`, labels
+  `l_out_0,1,5,10,20,30,39`, `h_nextn_pre_output_norm`, `h_nextn`, plus
+  `process_h_input`/`verify_h`.
+- Captured the matching hipEngine bulk forced-target raw layer outputs:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-hidden-row 2 \
+    --raw-pre-output-norm-row 2 \
+    --raw-layer-output-row 0:2 \
+    --raw-layer-output-row 1:2 \
+    --raw-layer-output-row 5:2 \
+    --raw-layer-output-row 10:2 \
+    --raw-layer-output-row 20:2 \
+    --raw-layer-output-row 30:2 \
+    --raw-layer-output-row 39:2 \
+    --output benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-raw-layer-split-cycle3.json
+  ```
+- Compact compare artifact:
+  `benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-split.json`.
+  Token margin remains llama.cpp **8940-668 = -0.009613** vs hipEngine
+  **+0.519341**. Tensor drift is tiny through layer 10
+  (`0.000693 MAE / 0.000898 RMSE`), first crosses `1e-3` MAE at layer 20
+  (`0.003753 / 0.004737`), reaches layer 39/pre-output_norm
+  `0.012266 / 0.015606`, then output norm amplifies `verify_h` vs hipEngine
+  target hidden seed to `0.109306 / 0.139149`.
+- Conclusion: the first measured divergence bucket is the target graph between
+  layers 10 and 20, not row scheduling, direct commit, output-norm-only error, or
+  LM-head/top-k. Next parity target is a finer split inside the layer 10-20
+  region, then copy/retune the matching llama.cpp GGML/HIP attention/MoE/shared
+  expert accumulation and residual-combine mechanism.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_compare_verifier_tensors.py
+  PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_verifier_tensors.py -q
+  jq empty benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-split.json benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-raw-layer-split-cycle3.json benchmarks/results/2026-07-02-llamacpp-mtp-token-tensor-trace-b2-natural24-mixed-ja-en-translate-layer-split.json
+  ```
