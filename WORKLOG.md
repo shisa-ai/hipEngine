@@ -138492,3 +138492,49 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   JSON validation passed, `git diff --check` passed, py_compile passed, and the
   focused reducer suite passed (`2 passed`).
+
+## 2026-07-03 - MTP layer22-24 llama.cpp sub-boundary split
+
+- Extended `scripts/llamacpp_mtp_compare_verifier_tensors.py` with optional
+  `--boundary-layers`, `--boundary-source`, and explicit
+  `--boundary-pairs hip_key=llamacpp_label_{layer}` mappings. Added test
+  coverage for scored boundary comparisons in
+  `tests/test_llamacpp_mtp_compare_verifier_tensors.py`.
+- Added a derived forced-target probe tap,
+  `attn_residual_from_layer_minus_ffn`, computed from captured `layer_out_f32`
+  minus reconstructed `ffn_out_combined_from_components`. I first tried copying
+  `scratch.residual` in the F32 residual capture branch, but the resulting
+  **0.367 MAE** residual-vs-llama value was stale/misleading while final
+  `layer_out` stayed **~0.002 MAE**; reverted that runtime copy and kept the
+  derived probe-only residual instead.
+- Reran llama.cpp for the same task 9 / cycle 18 forced pair with raw
+  sub-boundary labels for layers 22-24:
+  `attn_norm`, `attn_residual`, `attn_post_norm`, `ffn_moe_logits`,
+  `ffn_moe_weights_norm`, `ffn_moe_swiglu`, `ffn_moe_down`,
+  `ffn_moe_weighted`, `ffn_moe_out`, `ffn_shexp`, `shared_expert_gate`,
+  `shared_expert_gate_sigmoid`, `ffn_shexp_gated`, `ffn_out`, `post_moe`, and
+  `l_out`. Raw output stayed under `/tmp/hipengine-mtp-proposal-trace/`.
+- Reran the hipEngine noncapture and active prefill-GDN forced probes for
+  layers 22-24 and regenerated compact outputs. Retained compact artifacts:
+  `benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-prefillgdn-boundary-l22-l24-compare.json`,
+  `benchmarks/results/2026-07-03-mtp-capture-prefillgdn-vs-llamacpp-layer22-24-subboundary-compare.json`,
+  and
+  `benchmarks/results/2026-07-03-mtp-noncapture-vs-llamacpp-layer22-24-subboundary-compare.json`.
+- Result: the llama.cpp sub-boundary split is a useful negative result. Capture
+  and noncapture have almost the same cross-engine layer23 profile: capture has
+  derived residual **0.154562 MAE**, FFN out **0.154545**, post-attn norm
+  **0.026442**, final `post_moe` **0.001994**; noncapture has derived residual
+  **0.155768**, FFN out **0.155727**, post-attn norm **0.026246**, final
+  `post_moe` **0.001975**. The large raw residual/FFN labels cancel inside both
+  hip paths and do not explain the capture-only margin flip. The active next
+  target remains the capture-vs-noncapture hidden drift ladder / final target
+  score accumulation, not expert selection or selected-FFN sub-boundaries in
+  layers 22-24.
+- Validation:
+  ```bash
+  jq empty benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-prefillgdn-boundary-l22-l24-compare.json benchmarks/results/2026-07-03-mtp-capture-prefillgdn-vs-llamacpp-layer22-24-subboundary-compare.json benchmarks/results/2026-07-03-mtp-noncapture-vs-llamacpp-layer22-24-subboundary-compare.json
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_forced_target_probe.py scripts/llamacpp_mtp_compare_verifier_tensors.py tests/test_llamacpp_mtp_compare_verifier_tensors.py tests/test_gguf_mtp_forced_target_probe.py
+  PYTHONPATH=. pytest -q tests/test_llamacpp_mtp_compare_verifier_tensors.py tests/test_gguf_mtp_forced_target_probe.py
+  ```
+  JSON validation passed, py_compile passed, and the focused tests passed
+  (`8 passed`).

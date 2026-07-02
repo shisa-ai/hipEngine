@@ -488,6 +488,13 @@ def _capture_moe_component_arrays(capture: Any) -> dict[str, np.ndarray]:
         "moe_shared_gated": shared_gated,
         "ffn_out_combined_from_components": ffn_out,
     }
+    layer_out = getattr(capture, "layer_out_f32", None)
+    if layer_out is not None:
+        layer_out_row = np.ascontiguousarray(layer_out, dtype=np.float32).reshape(hidden_size)
+        arrays["attn_residual_from_layer_minus_ffn"] = np.ascontiguousarray(
+            layer_out_row - ffn_out,
+            dtype=np.float32,
+        )
     residual = getattr(capture, "residual_f32", None)
     if residual is not None:
         residual_row = np.ascontiguousarray(residual, dtype=np.float32).reshape(hidden_size)

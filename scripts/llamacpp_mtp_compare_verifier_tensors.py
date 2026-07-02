@@ -26,6 +26,27 @@ def _parse_int_list(value: str) -> list[int]:
     return [int(part.strip()) for part in value.split(",") if part.strip()]
 
 
+def _parse_boundary_pairs(value: str | None) -> list[tuple[str, str, str]]:
+    if value is None or not value.strip():
+        return []
+    pairs: list[tuple[str, str, str]] = []
+    for raw_part in value.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise SystemExit(
+                "--boundary-pairs entries must be hip_key=llamacpp_label_pattern"
+            )
+        hip_key, llama_pattern = [piece.strip() for piece in part.split("=", 1)]
+        if not hip_key or not llama_pattern:
+            raise SystemExit(
+                "--boundary-pairs entries must be hip_key=llamacpp_label_pattern"
+            )
+        pairs.append((hip_key, hip_key, llama_pattern))
+    return pairs
+
+
 def _find_llama_record(
     path: Path,
     *,
@@ -105,6 +126,44 @@ def _hip_row(artifact: dict[str, Any], *, row_index: int) -> dict[str, Any]:
     raise SystemExit(f"hipEngine artifact has no row {row_index}")
 
 
+def _hip_boundary_capture(
+    artifact: dict[str, Any],
+    *,
+    layer: int,
+    row_index: int,
+    source: str,
+) -> dict[str, Any]:
+    result = artifact.get("result")
+    if not isinstance(result, dict):
+        raise SystemExit("hipEngine artifact is missing result object")
+    if source == "scored":
+        source_keys = ["scored_layer_boundary_captures"]
+    elif source == "isolated":
+        source_keys = ["layer_boundary_captures"]
+    elif source == "auto":
+        source_keys = ["scored_layer_boundary_captures", "layer_boundary_captures"]
+    else:
+        raise SystemExit("--boundary-source must be auto, scored, or isolated")
+    for source_key in source_keys:
+        captures = result.get(source_key, [])
+        if not isinstance(captures, list):
+            continue
+        for capture in captures:
+            if int(capture.get("layer", -1)) == int(layer) and int(capture.get("row", -1)) == int(row_index):
+                values = capture.get("values")
+                if not isinstance(values, dict):
+                    raise SystemExit(
+                        f"hipEngine {source_key} layer={layer} row={row_index} has no values object"
+                    )
+                capture = dict(capture)
+                capture["_source_key"] = source_key
+                return capture
+    searched = ", ".join(source_keys)
+    raise SystemExit(
+        f"hipEngine artifact has no {searched} capture for layer={layer} row={row_index}"
+    )
+
+
 def _as_f32(values: list[float], *, label: str) -> np.ndarray:
     array = np.asarray(values, dtype=np.float32).reshape(-1)
     if array.size == 0:
@@ -172,8 +231,12 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
     if len(candidate_tokens) != 2:
         raise SystemExit("--candidate-tokens must contain exactly two comma-separated token IDs")
     layers = _parse_int_list(args.layers)
-    if not layers:
-        raise SystemExit("--layers must contain at least one layer ID")
+    boundary_layers = _parse_int_list(args.boundary_layers or "")
+    boundary_pairs = _parse_boundary_pairs(args.boundary_pairs)
+    if not layers and not boundary_layers:
+        raise SystemExit("--layers or --boundary-layers must contain at least one layer ID")
+    if boundary_layers and not boundary_pairs:
+        raise SystemExit("--boundary-pairs is required when --boundary-layers is set")
 
     llama_record = _find_llama_record(
         args.llamacpp_jsonl,
@@ -235,6 +298,37 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             }
         )
 
+    boundary_comparisons: list[dict[str, Any]] = []
+    for layer_id in boundary_layers:
+        hip_capture = _hip_boundary_capture(
+            hip_artifact,
+            layer=layer_id,
+            row_index=int(args.row),
+            source=args.boundary_source,
+        )
+        hip_values = hip_capture["values"]
+        for name, hip_key, llama_pattern in boundary_pairs:
+            llama_label = llama_pattern.format(layer=layer_id)
+            if llama_label not in llama_values:
+                raise SystemExit(f"llama.cpp trace missing {llama_label}")
+            if hip_key not in hip_values:
+                raise SystemExit(
+                    f"hipEngine boundary capture layer={layer_id} row={args.row} missing {hip_key}"
+                )
+            boundary_comparisons.append(
+                {
+                    "name": name,
+                    "llamacpp_label": llama_label,
+                    "hipengine_label": hip_key,
+                    "layer": int(layer_id),
+                    "row": int(args.row),
+                    "token_id": token_id,
+                    "position": position,
+                    "hipengine_source": hip_capture["_source_key"],
+                    "delta": _delta(llama_values[llama_label], hip_values[hip_key]),
+                }
+            )
+
     layer_comparisons = [row for row in comparisons if row["name"].startswith("verify_layer_output_")]
     first_mae_ge_1e3 = next(
         (
@@ -264,6 +358,12 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "token_id": token_id,
             "position": position,
             "layers": layers,
+            "boundary_layers": boundary_layers,
+            "boundary_source": args.boundary_source,
+            "boundary_pairs": [
+                {"name": name, "hipengine": hip_key, "llamacpp": llama_pattern}
+                for name, hip_key, llama_pattern in boundary_pairs
+            ],
         },
         "llamacpp_cycle": {
             "task_id": llama_record.get("task_id"),
@@ -287,6 +387,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "available_llamacpp_value_labels": sorted(llama_values),
         "comparisons": comparisons,
+        "boundary_comparisons": boundary_comparisons,
         "summary": {
             "first_layer_mean_abs_diff_ge_1e-3": first_mae_ge_1e3,
             "largest_layer_mean_abs_diff": max(
@@ -313,6 +414,18 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 None,
             ),
+            "largest_boundary_mean_abs_diff": max(
+                (
+                    {
+                        "layer": row["layer"],
+                        "name": row["name"],
+                        "mean_abs_diff": row["delta"]["mean_abs_diff"],
+                    }
+                    for row in boundary_comparisons
+                ),
+                key=lambda item: float(item["mean_abs_diff"]),
+                default=None,
+            ),
         },
     }
 
@@ -327,7 +440,26 @@ def main() -> int:
     parser.add_argument("--row", type=int, required=True)
     parser.add_argument("--token-id", type=int)
     parser.add_argument("--position", type=int)
-    parser.add_argument("--layers", required=True, help="Comma-separated layer IDs to compare.")
+    parser.add_argument("--layers", default="", help="Comma-separated layer-output IDs to compare.")
+    parser.add_argument(
+        "--boundary-layers",
+        default="",
+        help="Comma-separated layer IDs whose boundary tensors should be compared.",
+    )
+    parser.add_argument(
+        "--boundary-source",
+        choices=("auto", "scored", "isolated"),
+        default="auto",
+        help="Which hipEngine boundary capture list to use for --boundary-layers.",
+    )
+    parser.add_argument(
+        "--boundary-pairs",
+        default="",
+        help=(
+            "Comma-separated hip_key=llamacpp_label_pattern mappings. "
+            "The pattern may include {layer}."
+        ),
+    )
     parser.add_argument(
         "--candidate-tokens",
         required=True,
