@@ -135623,3 +135623,46 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -m pytest tests/test_gguf_mtp_forced_target_probe.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_gguf_layer_capture_summary.py tests/test_gguf_layer_capture_diff.py -q` => **23 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-taps-diagnostic.json`
   - `git diff --check`
+
+## 2026-07-02 - Target layer-31 fine MoE cross-engine comparison
+
+- Added `scripts/llamacpp_mtp_compare_target_moe_taps.py`, a diagnostic helper
+  that compares hipEngine forced-target raw MoE taps with local llama.cpp dirty
+  tensor traces for one layer/row. It aligns router logits and routing weights,
+  checks duplicate llama.cpp value labels, compares llama-vs-hip tensors, and
+  separately reports selected-MoE segment deltas rankwise and by common expert
+  id. This is instrumentation only; no runtime math path changed.
+- Ran the comparison against hipEngine pair-12 row 1 and llama.cpp cycle-18 row
+  1:
+
+```bash
+python3 scripts/llamacpp_mtp_compare_target_moe_taps.py \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-fine-moe-taps-raw.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-finemoe.jsonl \
+  --llamacpp-cycle 18 --row 1 --layer 31 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-cross-engine-diagnostic.json
+```
+
+  Result: layer 31's first local semantic split is router top-k selection, not a
+  hidden selected/shared combine rule. Router logits are extremely close
+  (**0.0160 MAE / 0.0205 RMSE / 0.999995 cosine**) but the cutoff is near-tied:
+  hipEngine selects `[221, 95, 240, 60, 88, 19, 212, 59]`, while llama.cpp
+  selects `[221, 95, 240, 60, 19, 88, 212, 75]`. Ranks 4/5 swap and rank 7 is
+  hip-only expert `59` vs llama-only expert `75`. For the seven common experts,
+  selected weighted rows are <= **0.00179 MAE** when aligned by expert id; the
+  shared-gate logit differs by **0.00356**; aggregate `ffn_out` is
+  **0.00446 MAE / 0.00562 RMSE / 0.99161 cosine**; post-MoE/layer output is
+  **0.00528 MAE / 0.00671 RMSE / 0.99871 cosine**. llama.cpp duplicate raw
+  value labels for `ffn_moe_out_31` and `ffn_out_31` were bit-identical in this
+  trace (`max_abs_vs_first=0`).
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-cross-engine-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`. Current semantic conclusion: keep
+  chasing accumulated target hidden/router-input F32/BF16 boundary parity before
+  layer 31; do not spend effort copying a separate selected-MoE combine rule for
+  this mismatch.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_compare_target_moe_taps.py tests/test_llamacpp_mtp_compare_target_moe_taps.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_compare_target_moe_taps.py tests/test_gguf_mtp_forced_target_probe.py -q` => **3 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-cross-engine-diagnostic.json`
+  - `git diff --check`
