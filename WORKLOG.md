@@ -137281,3 +137281,37 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_verifier_tensors.py -q
   jq empty benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-split.json benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-raw-layer-split-cycle3.json benchmarks/results/2026-07-02-llamacpp-mtp-token-tensor-trace-b2-natural24-mixed-ja-en-translate-layer-split.json
   ```
+
+## 2026-07-02 - Bonus-row layer 13/14 boundary split
+
+- Refined the bonus-row tensor split with llama.cpp/hipEngine layer-output
+  captures for layers 10/12/14/16/18/20, then 12/13/14. Compact artifacts:
+  `benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-10-20.json`
+  and
+  `benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-12-14.json`.
+- Result on `mixed_ja_en_translate`, task 9, cycle 3, row 2, input token `567`,
+  position `75`: layer 12 output is still just under the split threshold
+  (`0.000975 MAE / 0.001244 RMSE`), layer 13 is the first measured layer above
+  `1e-3` MAE (`0.001097 / 0.001422`), and layer 14 is the first larger jump
+  (`0.002532 / 0.003193`).
+- Captured raw hipEngine layer-boundary taps for layers 13 and 14 and compared
+  them against filtered one-record llama.cpp `LLAMA_MTP_TENSOR_TRACE` JSONL rows.
+  Compact artifacts:
+  - `benchmarks/results/2026-07-02-mtp-bonus-row-layer13-linear-attn-compare.json`
+  - `benchmarks/results/2026-07-02-mtp-bonus-row-layer13-moe-taps-compare.json`
+  - `benchmarks/results/2026-07-02-mtp-bonus-row-layer14-linear-attn-compare.json`
+  - `benchmarks/results/2026-07-02-mtp-bonus-row-layer14-moe-taps-compare.json`
+- Layer 13 conclusion: small router/ranking drift, not a missing expert. All 8
+  experts are common, ranks 2-4 are permuted, router MAE is `0.013569`, and
+  aggregate `ffn_out/post_moe` MAE remains `0.000445 / 0.000943`.
+- Layer 14 conclusion: first material expert-set difference. hipEngine selects
+  expert `175` at rank 7 while llama.cpp selects expert `32`; router MAE is
+  `0.024925`, routing-weight MAE is `0.001050`, shared-gate sigmoid delta is
+  `0.000541`, and aggregate `ffn_out/post_moe` MAE jumps to
+  `0.002265 / 0.002451`. Attention output/residual deltas are smaller
+  (`0.000612 / 0.000962`), so the next target is llama.cpp-compatible MoE
+  router/projection precision around layer 14.
+- Validation:
+  ```bash
+  jq empty benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-10-20.json benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-12-14.json benchmarks/results/2026-07-02-mtp-bonus-row-layer13-linear-attn-compare.json benchmarks/results/2026-07-02-mtp-bonus-row-layer13-moe-taps-compare.json benchmarks/results/2026-07-02-mtp-bonus-row-layer14-linear-attn-compare.json benchmarks/results/2026-07-02-mtp-bonus-row-layer14-moe-taps-compare.json
+  ```

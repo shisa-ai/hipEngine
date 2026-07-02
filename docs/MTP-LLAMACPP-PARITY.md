@@ -142,18 +142,39 @@ hipEngine forced-target raw layer-output capture:
 | layer 1 output | 0.0000980 | 0.000143 | 0.00310 | 0.999980 | Still close. |
 | layer 5 output | 0.000294 | 0.000394 | 0.00497 | 0.999943 | Small drift only. |
 | layer 10 output | 0.000693 | 0.000898 | 0.00594 | 0.999844 | Still below the 1e-3 MAE split threshold. |
-| layer 20 output | **0.00375** | **0.00474** | 0.0194 | 0.997873 | First measured layer above 1e-3 MAE. |
+| layer 20 output | **0.00375** | **0.00474** | 0.0194 | 0.997873 | Coarse split crossed 1e-3 here; refined split below moves the first crossing to layer 13. |
 | layer 30 output | 0.00598 | 0.00751 | 0.0255 | 0.998522 | Drift continues to accumulate. |
 | layer 39 / pre-output_norm | **0.01227** | **0.01561** | 0.0792 | 0.998601 | Final residual drift before output norm. |
 | `verify_h` vs hipEngine target hidden seed | **0.10931** | **0.13915** | 0.534 | 0.998551 | Output norm amplifies the late residual drift into the row used for sampling/commit. |
 
-This rules out the first two verifier layers, row-bulk scheduling, direct
-commit, output-norm-only error, and LM-head top-k as the primary cause of the
-bonus-token mismatch. The next parity step is to split the target graph between
-layers 10 and 20, then copy or retune the specific llama.cpp GGML/HIP mechanism
-that keeps the mid-layer residual closer. The likely surface is the mid/late
-layer body precision and accumulation path (attention/MoE/shared expert output
-and residual combine), not the outer MTP economics loop.
+Refined split artifacts:
+`benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-10-20.json`
+and
+`benchmarks/results/2026-07-02-mtp-bonus-row-verifier-tensor-compare-layer-12-14.json`.
+
+| refined target boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| layer 12 output | 0.000975 | 0.00124 | Still effectively below the split threshold. |
+| layer 13 output | **0.00110** | **0.00142** | First measured layer above 1e-3 MAE. |
+| layer 14 output | **0.00253** | **0.00319** | First larger jump. |
+
+Layer-boundary follow-up:
+`benchmarks/results/2026-07-02-mtp-bonus-row-layer13-linear-attn-compare.json`,
+`benchmarks/results/2026-07-02-mtp-bonus-row-layer13-moe-taps-compare.json`,
+`benchmarks/results/2026-07-02-mtp-bonus-row-layer14-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-02-mtp-bonus-row-layer14-moe-taps-compare.json`.
+Layer 13 is a small router/ranking drift: all 8 selected experts are common,
+but ranks 2-4 are permuted; router MAE is **0.01357** and post-MoE MAE is
+**0.000943**. Layer 14 is the first material expert-set difference: router top-k
+rank 7 differs (**hipEngine expert 175 vs llama.cpp expert 32**), router MAE is
+**0.02493**, and the MoE path jumps to **0.00227 ffn_out MAE / 0.00245
+post-MoE MAE**. Attention output itself is smaller
+(layer 14 linear-attn output **0.000612 MAE**, attention residual
+**0.000962 MAE**), so the current copy/retune target is the llama.cpp-compatible
+MoE router/projection precision around layer 14, not the outer MTP economics
+loop, row scheduling, direct commit, output-norm-only behavior, or LM-head
+top-k.
 A tempting exact-mode
 shortcut remains rejected:
 `--target-block-direct-partial-replay-mode bulk-state-only` still emitted the
