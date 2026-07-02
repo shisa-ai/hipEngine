@@ -136769,3 +136769,25 @@ python3 scripts/gguf_mtp_bench.py \
   `llama_compat=true`, `verify_capture_prefill_gdn_env=1`, accepted `24/26`,
   cycle 3 draft `[8, 1411]` rejects to target `[65342]`, and the transaction
   mix is 12 direct-commit rows plus 1 replay/serial row over 13 cycles.
+
+## 2026-07-02 - Llama-compat semantic-safe full-suite rerun
+
+- Ran the same-protocol full suite after the direct-state partial/reject fix:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope full \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly \
+    --budgets 2 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directstate-prefillgdn-partialfix-full.json
+  ```
+- Result: true AR **54.73 tok/s**; semantic-safe llama-compat B2 **50.96
+  tok/s**, **0.9312x AR**, cycle wall **19.645 ms/output**, acc/output
+  **0.606**, draft acceptance **0.770**, target rows/output **1.331**.
+  Verifier drain is **17.222 ms/output** and replay/commit is **2.775
+  ms/output** with **38** replay rows and **46** discarded rows.
+- Interpretation: the prior **75.15 tok/s / 13.325 ms/output** row is
+  superseded as unsafe direct-state evidence. The safe path exposes the real
+  remaining compat gap: rejected/partial bulk blocks need a prefix-equivalent
+  partial commit path that preserves the clean lifecycle comparator without
+  paying serial accepted-prefix replay.
