@@ -2217,6 +2217,37 @@ with candidate scores populated, so the next `mixed_ja_en_translate` run can
 compare hipEngine's live margins directly against llama.cpp's token trace
 without forced-target replay ambiguity.
 
+Focused live comparison:
+`benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-scores-live.json`
+and reducer output
+`benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-score-compare-live-vs-llamacpp.json`
+select `mixed_ja_en_translate` task 9 / cycle 3 / row 2, after both engines
+accept draft `[11, 567]`. The live hipEngine verifier samples `8940`; llama.cpp
+samples `668`. The target top-8 token set is identical across engines
+(`668`, `8940`, `3019`, `1318`, `1144`, `1220`, `28663`, `60445`), but the
+near-tie order is wrong: hipEngine has `8940 - 668 = +0.51934` while llama.cpp
+has `8940 - 668 = -0.00961`, for a **+0.52895 logit** hip-minus-llama margin
+gap. This rules out a target argmax/vocab-label bug for this row; the mismatch
+is target hidden/score drift amplified at the final lm-head.
+
+The same live diagnostic with the current F32 selected-FFN stack
+(`HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`,
+`HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1`,
+`HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1`,
+`HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1`,
+`HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1`,
+`HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1`, and
+`HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1`) is
+`benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-scores-f32selectedintermediate-live.json`
+with reducer output
+`benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-score-compare-f32selectedintermediate-vs-llamacpp.json`.
+It is directionally closer but still wrong: hipEngine still samples `8940`, and
+`8940 - 668` only moves **+0.51934 -> +0.48450**. Acceptance/economy on the
+focused prompt remains unchanged (**13/20** accepted drafts, **24** output
+tokens). Therefore F32 selected-intermediate is a confirmed parity lever but not
+the live direct-commit fix; keep the active target on reducing the final target
+hidden/score drift rather than copying a different argmax or MoE top-k rule.
+
 #### Llama-compat target map
 
 Use this table as the short work queue when comparing a new `llama-compat` run

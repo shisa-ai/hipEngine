@@ -138965,3 +138965,52 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused CPU tests passed (`102 passed`), HIP loaded, JSON
   validation passed, and diff check passed.
+
+## 2026-07-03 - mixed_ja_en live target-score comparison vs llama.cpp
+
+- Ran the new live target-score capture on the active direct-commit
+  `llama-compat` path for `mixed_ja_en_translate`:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt $'Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n来週のリリースでは、ログ出力の形式変更、キャッシュの無効化オプション、そしてAPIレスポンスの後方互換性を重点的に確認したいです。' --prompt-reasoning off --llama-compat --resident-mtp-device-chain --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --resident-mtp-draft-dense-q8-dp4a --resident-mtp-draft-dense-q8-dp4a-stages draft --target-block-direct-partial-replay-mode direct-commit --draft-n-max 2 --cycles 24 --max-output-tokens 24 --record-target-topk-scores --target-topk-score-count 8 --target-score-candidate-tokens 668,8940,26126,539,11,567 --record-cycle-stage-timings --output benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-scores-live.json
+  ```
+- Added `scripts/mtp_target_score_compare.py`, a reducer that joins hipEngine
+  `target_lm_head_score_rows` with llama.cpp `target_sample_trace` rows and
+  emits per-token score/rank deltas plus a focused pair margin. Focused tests
+  cover the `8940`/`668` rank-flip case.
+- Reducer command:
+  ```bash
+  python3 scripts/mtp_target_score_compare.py --hip benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-scores-live.json --llamacpp-jsonl benchmarks/results/2026-07-02-llamacpp-mtp-token-trace-b2-natural24-mixed-ja-en-translate.jsonl --task-id 9 --cycle 3 --row 2 --candidate-tokens 668,8940,3019,1318,1144,1220,28663,60445,26126,539 --pair 8940,668 --out benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-score-compare-live-vs-llamacpp.json
+  ```
+- Result: the known mismatch is now proven on the live scoring path, not just a
+  forced replay. At task 9 / cycle 3 / row 2, both engines accepted draft
+  `[11, 567]`. hipEngine sampled `8940`; llama.cpp sampled `668`. The top-8
+  token set is identical across engines (`668`, `8940`, `3019`, `1318`, `1144`,
+  `1220`, `28663`, `60445`), so this is not a target argmax/vocab-label bug.
+  The focused margin is hipEngine `8940 - 668 = +0.51934`, llama.cpp
+  `8940 - 668 = -0.00961`, gap **+0.52895 logits**.
+- Ran a live diagnostic with the current F32 selected-FFN stack:
+  `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`,
+  `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1`,
+  `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1`,
+  `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1`,
+  `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1`,
+  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1`, and
+  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1`.
+  Artifact:
+  `benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-scores-f32selectedintermediate-live.json`.
+  Reducer output:
+  `benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-score-compare-f32selectedintermediate-vs-llamacpp.json`.
+  It moves the margin only **+0.51934 -> +0.48450** and still samples `8940`,
+  with unchanged focused prompt economy (**13/20** accepted drafts, **24**
+  output tokens). F32 selected-intermediate remains a real forced-pair parity
+  lever, but it is not sufficient for the live direct-commit path.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/mtp_target_score_compare.py tests/test_mtp_target_score_compare.py
+  PYTHONPATH=. pytest -q tests/test_mtp_target_score_compare.py
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-scores-live.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-scores-f32selectedintermediate-live.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-score-compare-live-vs-llamacpp.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-mixed-ja-en-target-score-compare-f32selectedintermediate-vs-llamacpp.json >/dev/null
+  ```
+  Focused reducer test passed and all four JSON artifacts validate.
