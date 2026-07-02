@@ -8,7 +8,25 @@ from scripts.gguf_mtp_forced_target_probe import (
     _bf16_roundtrip_f32,
     _boundary_array_summaries,
     _capture_moe_component_arrays,
+    build_arg_parser,
 )
+
+
+def test_parser_exposes_direct_partial_replay_mode() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--trace",
+            "trace.json",
+            "--cycle",
+            "12",
+            "--state-lifecycle-compare",
+            "--target-block-direct-partial-replay-mode",
+            "bulk-state-only",
+        ]
+    )
+
+    assert args.state_lifecycle_compare is True
+    assert args.target_block_direct_partial_replay_mode == "bulk-state-only"
 
 
 def test_capture_moe_component_arrays_emits_weighted_and_shared_gated_terms() -> None:

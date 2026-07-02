@@ -33,6 +33,7 @@ from scripts.gguf_mtp_bench import (
     hidden_state_summary,
     target_block_direct_commit_is_exact,
     target_block_direct_partial_commit_is_exact,
+    target_block_state_replay_uses_serial_exact,
 )
 
 
@@ -944,6 +945,7 @@ def _run_lifecycle_cycle(
     policy: str,
     mode: str,
     use_wmma_prefill: bool,
+    direct_partial_replay_mode: str = "serial-exact",
 ) -> tuple[int, dict[str, Any]]:
     cycle_number = int(cycle.get("cycle", -1))
     start_position = int(cycle["cycle_start_seq_position"])
@@ -1016,9 +1018,24 @@ def _run_lifecycle_cycle(
                 if snapshot is None:
                     raise ProbeError(f"{policy} lifecycle cycle {cycle_number} missing serial replay snapshot")
                 session._restore_linear_state_snapshot(snapshot, position=start_position)
-                replay_result = session.verify_target_block_serial_exact(verifier_inputs[:consumed_rows])
-                replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
-                state_source = "serial_exact_replay"
+                if target_block_state_replay_uses_serial_exact(
+                    replay_state_commit=False,
+                    direct_state_commit=True,
+                    verify_mode=mode,
+                    direct_partial_replay_mode=direct_partial_replay_mode,
+                ):
+                    replay_result = session.verify_target_block_serial_exact(verifier_inputs[:consumed_rows])
+                    replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
+                    state_source = "serial_exact_replay"
+                else:
+                    replay_result = session.verify_target_block(
+                        verifier_inputs[:consumed_rows],
+                        bulk_attention_mode=mode,
+                        use_wmma_prefill=bool(use_wmma_prefill),
+                        advance_state_only=True,
+                    )
+                    replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
+                    state_source = "bulk_state_only_replay"
         else:
             if consumed_rows < len(verifier_inputs):
                 if snapshot is None:
@@ -1045,6 +1062,7 @@ def _run_lifecycle_cycle(
             "state_source": state_source,
             "direct_commit_exact": bool(direct_commit_exact),
             "direct_partial_commit_exact": bool(direct_partial_commit_exact),
+            "direct_partial_replay_mode": str(direct_partial_replay_mode),
             "replay_sampled_tokens": replay_sampled_tokens,
             "matches_trace_target_prefix": sampled_tokens[: len(trace_target_tokens)] == trace_target_tokens,
             "matches_trace_visible": visible_tokens == trace_output_tokens,
@@ -1140,6 +1158,7 @@ def _run_state_lifecycle_compare(
                     policy=policy,
                     mode=mode,
                     use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                    direct_partial_replay_mode=str(args.target_block_direct_partial_replay_mode),
                 )
                 fingerprint = _session_lifecycle_fingerprint(
                     session,
@@ -1213,6 +1232,7 @@ def _run_state_lifecycle_compare(
             "candidate_policy": "direct",
             "target_block_verify_mode": mode,
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
+            "target_block_direct_partial_replay_mode": str(args.target_block_direct_partial_replay_mode),
             "prefill_attention_mode": str(args.prefill_attention_mode),
             "cycles_requested_through": int(args.cycle),
             "cycles_compared": len(records),
@@ -1226,7 +1246,7 @@ def _run_state_lifecycle_compare(
         "notes": [
             "Diagnostic only: compares hipEngine verifier state lifecycle policies, not performance.",
             "The replay baseline scores a block, restores on partial accept, then serial-replays the accepted prefix.",
-            "The direct candidate scores a block with captured Conv/GDN rows and commits the accepted row directly.",
+            "The direct candidate scores a block with captured Conv/GDN rows; full accepts commit captured rows, while partial/reject blocks use target_block_direct_partial_replay_mode.",
             "Fingerprints cover FP32 hidden seed plus per-linear-layer Conv/GDN resident state.",
             "Full-attention KV buffers are not fingerprinted yet because unused cache capacity is not zeroed on reset.",
         ],
@@ -1314,6 +1334,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-block-verify-mode", choices=("bulk", "native", "serial-exact"), default="bulk")
     parser.add_argument("--replay-target-block-verify-mode", choices=("bulk", "native", "serial-exact"), default=None)
     parser.add_argument("--target-block-wmma-prefill", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--target-block-direct-partial-replay-mode",
+        choices=("serial-exact", "bulk-state-only"),
+        default="serial-exact",
+        help=(
+            "State lifecycle diagnostic: when the direct-state candidate partially accepts or rejects a block, "
+            "restore the snapshot and replay the accepted prefix through either serial-exact or the bulk "
+            "advance_state_only path. Token scoring still comes from the original full-block pass."
+        ),
+    )
     parser.add_argument(
         "--capture-linear-state-rows",
         action=argparse.BooleanOptionalAction,

@@ -86,6 +86,13 @@ direct-commit policy diverged from serial accepted-prefix replay on
 rejected/partial blocks. The immediate implementation target is a
 prefix-equivalent partial-commit mechanism that preserves the lifecycle
 comparator while avoiding the current **2.775 ms/output** serial replay bucket.
+A tempting shortcut was rejected on 2026-07-02:
+`--target-block-direct-partial-replay-mode bulk-state-only` still emitted the
+same visible cycle-3 token `[65342]`, but the lifecycle comparator found
+`first_mismatch` at cycle 3 with hidden seed plus Conv/GDN state mismatches
+across 61 fingerprints. So the next fix must be a real prefix-equivalent partial
+commit/capture path, not just `verify_target_block(..., advance_state_only=True)`
+after snapshot restore.
 
 Historical semantic target before the lifecycle fix was the long proposal
 trace's pair-12 target accept/reject mismatch:
@@ -373,7 +380,7 @@ stage budget instead of burying it in prose.
 | Serial verifier probe | 6.508 ms/output | **0.000 ms/output** | 0.000 ms/output | 0.000 | Removed in compat; keep default as the exact-mode guard. |
 | Target verifier drain | 7.728 ms/output | **17.222 ms/output** | 12.120 ms/output | **+5.102 ms/output** | Dominant live gap; rejected/partial bulk blocks now pay accepted-prefix replay. |
 | Target rows / output | 1.163 | **1.331** | 1.148 | **+0.183 rows/output** | Semantic-safe compat evaluates 38 replay rows and discards 46 rows over 254 outputs. |
-| Replay / commit | 0.019 ms/output | **2.775 ms/output** | 0.004 ms/output | **+2.771 ms/output** | First fix target: prefix-equivalent partial commit without unsafe direct state. |
+| Replay / commit | 0.019 ms/output | **2.775 ms/output** | 0.004 ms/output | **+2.771 ms/output** | First fix target: prefix-equivalent partial commit without unsafe direct state; bulk state-only accepted-prefix replay is rejected by lifecycle state mismatch. |
 | Setup/snapshot/commit/accounting | 0.125 ms/output | **3.096 ms/output** | 0.188 ms/output | compat slower | This rollup is now dominated by serial replay, not host bookkeeping. |
 
 This board is intentionally redundant with the detailed ledgers below. Keep it
@@ -414,6 +421,11 @@ transaction path. Draft wall is still at parity, but safe rejected/partial block
 pay serial accepted-prefix replay and re-evaluate extra target rows. The first
 fix should preserve the clean lifecycle comparator while replacing
 `target_block_replay_or_commit` with a prefix-equivalent partial-commit path.
+The explicit bulk state-only replay shortcut is not valid: artifact
+`benchmarks/results/2026-07-02-mtp-state-lifecycle-bulk-state-only-partial-replay-compare.json`
+reports `first_mismatch` at cycle 3, replay source
+`serial_exact_accepted_prefix`, direct source `bulk_state_only_replay`, matching
+visible token `[65342]`, and 61 hidden/linear-state fingerprint mismatches.
 
 Current source artifacts:
 
@@ -421,6 +433,7 @@ Current source artifacts:
 | --- | --- | --- |
 | hipEngine default exact | `benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json` plus prior retained exact suite rows | Shipped correctness-preserving MTP lane; useful as a control, not the llama replication target. The shared `mtp_dense_attn_f32` parallel-attention fix moves exact B5 **60.8 -> 61.98 tok/s**, cycle **16.496 -> 16.162 ms/output**, and draft drain **1.921 -> 1.899 ms/output** with unchanged acc/output **0.535**, draft acceptance **0.723**, and target rows/output **1.163**. |
 | hipEngine llama-compat semantic-safe | route `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly`, artifact `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directstate-prefillgdn-partialfix-full.json` | Current no-probe B2 compat lane with `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`; full-accept blocks still direct-commit captured state, while rejected/partial bulk blocks restore and serial-replay the accepted prefix. Full suite: **50.96 tok/s**, **19.645 ms/output**, **0.9312x AR**, acc/output **0.606**, draft acceptance **0.770**, target rows/output **1.331**, replay/commit **2.775 ms/output**, replay rows **38**, discarded rows **46**. |
+| hipEngine llama-compat bulk state-only partial replay | `benchmarks/results/2026-07-02-mtp-state-lifecycle-bulk-state-only-partial-replay-compare.json` | Rejected diagnostic, not a speed row. It tests replacing serial accepted-prefix replay after direct-state partial/reject blocks with bulk `advance_state_only` replay. The first partial/reject at cycle 3 has matching visible token `[65342]`, but hidden seed plus Conv/GDN fingerprints diverge across 61 entries, so this shortcut cannot replace the semantic-safe serial replay bucket. |
 | hipEngine llama-compat unsafe direct-state | `benchmarks/results/2026-07-02-ar-mtp-llama-compat-draftdenseq8-draftonly-full.json` | Superseded performance diagnostic. It moved full-suite **74.39 -> 75.15 tok/s** and cycle **13.463 -> 13.325 ms/output**, but direct-committed rejected/partial bulk-block state that the lifecycle comparator later proved is not prefix-equivalent to serial accepted-prefix replay. Do not use as the active compat row. |
 | hipEngine llama-compat prior retained parallel-attn | `benchmarks/results/2026-07-02-ar-mtp-llama-compat-parallelattn-clean-rerun-full.json` | Superseded active lane before limiting dense-Q8 dp4a to draft forward leaves. The parallel-attention clean rerun moved full-suite **71.84 -> 74.39 tok/s**, cycle **13.940 -> 13.463 ms/output**, and draft drain **2.684 -> 2.204 ms/output** with unchanged acc/output **0.621**, draft acceptance **0.820**, and target rows/output **1.136**. |
 | hipEngine llama-compat prior retained shared-gate | `benchmarks/results/2026-07-02-ar-mtp-llama-compat-sharedgate-routerrow-full.json` | Superseded active lane before parallelizing `hipengine_mtp_dense_attn_f32`. The shared-gate scalar-dot fix moved full-suite **71.34 -> 71.84 tok/s**, cycle **14.037 -> 13.940 ms/output**, and draft drain **2.747 -> 2.684 ms/output** with unchanged acc/output **0.621**, draft acceptance **0.820**, and target rows/output **1.136**. |

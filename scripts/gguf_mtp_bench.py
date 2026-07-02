@@ -126,7 +126,11 @@ def target_block_needs_linear_state_snapshot(
 
 
 def target_block_state_replay_uses_serial_exact(
-    *, replay_state_commit: bool, direct_state_commit: bool, verify_mode: str
+    *,
+    replay_state_commit: bool,
+    direct_state_commit: bool,
+    verify_mode: str,
+    direct_partial_replay_mode: str = "serial-exact",
 ) -> bool:
     """Return whether accepted-prefix replay must use token-serial target state.
 
@@ -136,7 +140,11 @@ def target_block_state_replay_uses_serial_exact(
     linear-state capture kernels.
     """
 
-    return bool(replay_state_commit) or bool(direct_state_commit) or verify_mode == "serial-exact"
+    if bool(replay_state_commit) or verify_mode == "serial-exact":
+        return True
+    if bool(direct_state_commit):
+        return direct_partial_replay_mode != "bulk-state-only"
+    return False
 
 
 def _get_hw_info() -> dict:
@@ -786,6 +794,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "non-capturing block path, then restore and replay the accepted prefix through "
             "serial-exact state after every block. This preserves non-capturing block token "
             "semantics when linear-state capture would select a different verifier kernel path."
+        ),
+    )
+    parser.add_argument(
+        "--target-block-direct-partial-replay-mode",
+        choices=("serial-exact", "bulk-state-only"),
+        default="serial-exact",
+        help=(
+            "Diagnostic: when direct-state block verification rejects or partially accepts a block, "
+            "restore the snapshot and replay the accepted prefix with either the serial-exact target "
+            "path (default, semantic baseline) or the bulk verifier in advance_state_only mode. "
+            "The bulk-state-only mode never uses replayed token IDs for scoring."
         ),
     )
     parser.add_argument(
@@ -2626,6 +2645,7 @@ def main(argv: list[str] | None = None):
                                 replay_state_commit=replay_state_commit,
                                 direct_state_commit=direct_state_commit,
                                 verify_mode=args.target_block_verify_mode,
+                                direct_partial_replay_mode=args.target_block_direct_partial_replay_mode,
                             ):
                                 replay_result = session.verify_target_block_serial_exact(
                                     block_inputs[:consumed_rows],
@@ -2645,6 +2665,8 @@ def main(argv: list[str] | None = None):
                                     bulk_attention_mode=args.target_block_verify_mode,
                                     use_wmma_prefill=bool(args.target_block_wmma_prefill),
                                     advance_state_only=True,
+                                    record_stage_timings=bool(args.record_cycle_stage_timings),
+                                    sync_stage_timings=bool(args.target_block_sync_stage_timings),
                                 )
                                 record_target_verify(
                                     consumed_rows,
@@ -3307,6 +3329,9 @@ def main(argv: list[str] | None = None):
                     target_block_direct_state_commit_effective and block_verify_used
                 ),
                 "target_block_replay_state_commit": bool(args.target_block_replay_state_commit and block_verify_used),
+                "target_block_direct_partial_replay_mode": (
+                    str(args.target_block_direct_partial_replay_mode) if block_verify_used else None
+                ),
                 "target_block_direct_commit_exact": target_block_direct_commit_exact,
                 "target_block_raw_tokens": target_block_raw_tokens,
                 "target_block_consumed_rows": target_block_consumed_rows,
@@ -3563,6 +3588,7 @@ def main(argv: list[str] | None = None):
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
             "target_block_direct_state_commit": bool(args.target_block_direct_state_commit),
             "target_block_replay_state_commit": bool(args.target_block_replay_state_commit),
+            "target_block_direct_partial_replay_mode": str(args.target_block_direct_partial_replay_mode),
             "target_b1_branch_safe_block_verify": bool(args.target_b1_branch_safe_block_verify),
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
             "target_graph_context_cap": int(target_graph_context_cap),

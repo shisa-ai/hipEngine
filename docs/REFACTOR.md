@@ -492,6 +492,25 @@ should be boring.
   below ~2 ms/output with no acceptance regression. Otherwise delete the flag/route
   after the parity A/B is recorded.
 
+## `--target-block-direct-partial-replay-mode` (diagnostic rejected)
+- Added 2026-07-02. Bench and forced-target-probe flag with choices
+  `serial-exact` (default) and `bulk-state-only`. It only affects
+  direct-state block verification when a bulk verifier block is rejected or
+  partially accepted: after snapshot restore, `bulk-state-only` replays the
+  accepted prefix with `verify_target_block(..., advance_state_only=True)` and
+  keeps token scoring from the original full-block pass.
+- Purpose: test whether the semantic-safe `llama-compat` replay/commit bucket
+  can skip serial accepted-prefix replay without changing state lifecycle.
+- Result: rejected by lifecycle comparator before any speed run. Artifact
+  `benchmarks/results/2026-07-02-mtp-state-lifecycle-bulk-state-only-partial-replay-compare.json`
+  reports `first_mismatch` at cycle 3. The visible token still matches
+  `[65342]`, but `bulk_state_only_replay` diverges from
+  `serial_exact_accepted_prefix` in hidden seed plus Conv/GDN state across 61
+  fingerprints.
+- Remove when: a true prefix-equivalent partial commit/capture path lands, or
+  when this negative evidence is no longer needed. Do not promote
+  `bulk-state-only` into any retained route.
+
 ## `--verify-lm-head-q6-top1-dp4a` / verifier lm-head X8 sidecar
 - Added 2026-07-01. Bench flag `--verify-lm-head-q6-top1-dp4a` sets
   `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1` before materialization and
