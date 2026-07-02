@@ -138773,3 +138773,45 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`15 passed`), JSON validation passed,
   and `git diff --check` passed.
+
+## 2026-07-03 - MTP hidden lifecycle ladder vs llama.cpp
+
+- Used the existing raw llama.cpp hidden lifecycle JSONL
+  `/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-hidden-lifecycle-raw.jsonl`.
+  It already contains raw `draft_seed_input`, `process_h_input`, and `verify_h`
+  values for task 9 cycles 7/9/13/17/18, matching hipEngine cycles
+  1/3/7/11/12 by seed position and draft tokens.
+- Reran hipEngine forced-target probes for cycles **1**, **3**, **7**, and
+  **11** in both default-prefix and prefill-GDN-prefix modes with
+  `--raw-prefix-hidden-seed --raw-hidden-row 0 --raw-hidden-row 1
+  --raw-hidden-row 2`. Raw outputs stay under
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle*-prefix-*-rawhidden.json`.
+- Produced compact comparison artifacts:
+  `benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle1-default-vs-prefillgdn-vs-llamacpp.json`,
+  `benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle3-default-vs-prefillgdn-vs-llamacpp.json`,
+  `benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle7-default-vs-prefillgdn-vs-llamacpp.json`,
+  and
+  `benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle11-default-vs-prefillgdn-vs-llamacpp.json`.
+- Added `scripts/llamacpp_mtp_hidden_lifecycle_ladder.py` plus focused test
+  coverage to aggregate per-cycle lifecycle comparisons into a compact ladder.
+  Retained aggregate:
+  `benchmarks/results/2026-07-03-mtp-hidden-lifecycle-ladder-default-vs-prefillgdn-vs-llamacpp.json`.
+- Result: across hip cycles **1/3/7/11/12**, prefill-GDN is closer to llama.cpp
+  on prefix hidden in **5/5** cycles and closer on the decisive verifier row in
+  **3/5**, but default is closer on the decisive token margin in **4/5** cycles
+  and is the only lane that matches the cycle-12 reject. The critical readout is
+  cycle 12: prefill-GDN prefix hidden is closer (**0.06304 MAE** vs default
+  **0.06679**), but default is closer on row-1 hidden (**0.06902** vs
+  **0.08056**) and token-margin error (**0.00594** vs **0.30422**).
+- Conclusion: the acceptance/economy gap is not solved by making the resident
+  prefix hidden seed simply closer to llama.cpp. The next useful source-copy
+  target is final hidden-to-logit scoring around near ties: output norm dtype,
+  LM-head quant/dequant, and score accumulation/buffering.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_hidden_lifecycle_ladder.py tests/test_llamacpp_mtp_hidden_lifecycle_ladder.py
+  PYTHONPATH=. pytest -q tests/test_llamacpp_mtp_hidden_lifecycle_ladder.py
+  jq empty benchmarks/results/2026-07-03-mtp-hidden-lifecycle-ladder-default-vs-prefillgdn-vs-llamacpp.json benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle1-default-vs-prefillgdn-vs-llamacpp.json benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle3-default-vs-prefillgdn-vs-llamacpp.json benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle7-default-vs-prefillgdn-vs-llamacpp.json benchmarks/results/2026-07-03-mtp-hidden-lifecycle-cycle11-default-vs-prefillgdn-vs-llamacpp.json
+  ```
+  Pycompile passed, focused tests passed (`1 passed`), and JSON validation
+  passed.
