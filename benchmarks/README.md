@@ -1,15 +1,13 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-03 (llama.cpp replication lane FP32 verifier-head input:
+Last updated: 2026-07-03 (llama.cpp replication lane verifier-head attribution correction:
 the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`
 B2 full-suite row now matches llama.cpp's normal MTP accept lifecycle and
 server token-cap behavior by
 committing the captured verifier row for rejected/partial blocks instead of
 serial-replaying the accepted prefix, removing the old per-layer recurrent-state
-D2D copy in prefill-GDN state-row capture, feeding the direct dp4a verifier head
-from FP32 post-output-norm rows instead of the BF16 output-norm scratch, and
-using `--cycles 24
+D2D copy in prefill-GDN state-row capture, and using `--cycles 24
 --max-output-tokens 24` so every prompt reaches the 24-token cap:
 **71.52 tok/s**, **14.005 ms/output**, **1.3055× AR**, acc/output **0.596**,
 draft acceptance **0.777**, target rows/output **1.171**, verifier drain
@@ -19,6 +17,12 @@ Versus the llama.cpp HIP B2 same-protocol diagnostic rerun cycle **14.269
 ms/output**, the active compat lane is **0.264 ms/output faster** at the stage
 level but still trails llama.cpp request throughput (**71.52 vs 71.91 tok/s**);
 the remaining delta is target semantic/proposal economy, not verifier wall time.
+The `f32head` artifact filename is misleading: that retained row did not enable
+`--verify-lm-head-q6-top1-dp4a`. The measured current-shape verifier-head route
+does enable the flag and is rejected at **66.45 tok/s**, **15.072 ms/output**,
+with unchanged acc/output **0.596**, draft acceptance **0.777**, and target
+rows/output **1.171**; `target_block_lm_head_sample` rises from **1.068** to
+**2.118 ms/output**.
 The fixed-cycle provenance row for the same route remains **72.23 tok/s /
 13.865 ms/output**. The serial-state row
 remains the semantic-safe exact control at **51.85 tok/s / 19.308 ms/output**.)
@@ -29,8 +33,11 @@ probes all sample **8940** with `8940` ahead by **0.413-0.519 logits**.
 Current exact default fastest row also uses the shared parallel attention
 kernel, **AR 54.79 tok/s; best MTP B5 61.98 tok/s = 1.1312× AR**; exact cycle
 wall moved **16.496 -> 16.162 ms/output** with unchanged acc/output **0.535**.
-New FP32-head natural24 cyclecap24 compat artifact
+Refreshed natural24 cyclecap24 compat artifact (filename contains `f32head`, but
+the route did not enable verifier-head top-1)
 `results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`;
+rejected current-shape verifier-head diagnostic
+`results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-vlmheadtop1-full.json`;
 prior BF16-head natural24 cyclecap24 compat artifact
 `results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-full.json`;
 superseded 10-cycle natural24 diagnostic
