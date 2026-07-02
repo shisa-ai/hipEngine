@@ -1,8 +1,8 @@
 # GGUF MTP llama.cpp Parity Trace and Roadmap
 
-## 2026-06-30 — DUAL-ENGINE PER-STAGE ATTRIBUTION (active goal): where the MTP gap actually is
+## 2026-06-30 / 2026-07-03 - DUAL-ENGINE PER-STAGE ATTRIBUTION (speed goal closed): where the MTP gap actually is
 
-New goal: stand up clean per-stage profiling for BOTH engines on the same model
+Original goal: stand up clean per-stage profiling for BOTH engines on the same model
 (Qwen3.6-35B-A3B-UD-Q4_K_M, gfx1151) and attribute the MTP tok/s gap to specific
 stages/kernels. Full write access to `~/llama.cpp` granted; HIP and Vulkan both in
 scope. Builds: llama.cpp HIP+Vulkan at `6e9007ae6` (master, clean). Model 21.1 GiB.
@@ -56,25 +56,61 @@ acc/output **0.596**, draft acceptance **0.777**, and target rows/output
 **1.171**. Do not attribute the retained 71.52 tok/s row to the verifier-head
 path.
 
-### ACTIVE TRACKING — default vs llama-compat vs llama.cpp HIP
+### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 
-This is the canonical dashboard for the current parity sprint. Keep this section
-as a three-lane comparison: hipEngine default exact, hipEngine `llama-compat`,
-and llama.cpp HIP. Update it after each retained or diagnostic MTP run that
-changes any lane. The headline speed row uses retained full-suite numbers where
-available; the stage rows use instrumented/deep traces on the same model and
-gfx1151 host. `llama-compat` is the route that should mirror llama.cpp's
-no-probe B2 structure, so its delta column is the active work queue.
+Decision: close the speed-gap sprint. The current `llama-compat` replication
+lane is **14.005 ms/output** at the stage-wall level versus llama.cpp HIP
+**14.269 ms/output**, so the measured stage wall is already slightly faster
+than the reference. The request-throughput headline still differs by only
+**0.39 tok/s** (**71.52 vs 71.91 tok/s**, about **0.5%**) and is now explained
+by semantic/proposal economy rather than an exposed verifier or draft wall-time
+bucket.
 
-Tracking invariant: the active question is always "where is
+Do not keep the single-token target-logit chase as a P0 speed task. The live
+`mixed_ja_en_translate` mismatch at task 9 / cycle 3 / row 2 has the same top-8
+token set in both engines, but hipEngine samples `8940` while llama.cpp samples
+`668`. The focused margin is hipEngine `8940 - 668 = +0.51934`, llama.cpp
+`8940 - 668 = -0.00961`, gap **+0.52895 logits**. The broad F32 verifier stack
+only moves the live margin to **+0.48450** and does not flip the token. That
+remains useful parity evidence, but it is no longer a speed-gap blocker.
+
+Portability audit: every known llama-compat optimization that is exact-safe and
+non-regressive has either been promoted to the exact/default lane or is tracked
+with a concrete reason it is not promotable.
+
+| compat finding | exact/default handling | reason |
+| --- | --- | --- |
+| Shared parallel `mtp_dense_attn_f32` draft attention | **Promoted** to the exact default route. Exact B5 moved **60.8 -> 61.98 tok/s**, cycle **16.496 -> 16.162 ms/output**, draft drain **1.921 -> 1.899 ms/output** with unchanged acceptance. | Bit-exact and full-suite non-regressive. |
+| Q8 shared-dual draft shared gate/up | **Default-on** for the exact resident draft path as well as `llama-compat`; opt-out cleanup remains in `docs/REFACTOR.md`. | Bit-exact versus two single GEMVs and validated by focused tests. |
+| Earlier exact-route wins: Q6_K rowtile verifier lm-head, minrows2, `p_min=0.5`, cap32k/B1-probe | **Already default** in the exact suite route. | These are exact-mode economics wins and are represented by the current **61.98 tok/s** default row. |
+| Llama-style direct partial commit plus no-copy prefill-GDN captured-row commit | **Compat-only**; exact analysis uses the default exact route or the `serialstate` control. | This intentionally follows llama.cpp's normal accept lifecycle and is not serial-prefix-equivalent on rejected/partial bulk blocks. It is the right replication lane, not an exact-default promotion. |
+| dp4a verifier, dense raw-Q8 dp4a sidecars, draft dense-Q8 dp4a, q8_1 Q6 top-1, selected-down X8, F32 `ssm_out` route | **Compat-only / default-off globally.** | Accuracy-traded or route-contract-specific mechanisms; no exact/non-regressive replacement has been proven. |
+| Resident device-chain/no-probe draft shape | **Not promoted** to exact default. | Bit-exact pieces exist, but full-suite exact evidence did not produce a retained speed win and the no-probe llama.cpp economy does not transfer to the exact default lane. |
+| Verifier-head top-1 dp4a, shared-Q8 verifier, selected gate/up X8/raw, Q5/T32, fused selected down/SiLU diagnostics | **Rejected or retained only as diagnostics.** | Same-suite results regressed speed, acceptance, or both. |
+
+Current conclusion: there is no known exact-safe llama-compat speed win left
+unpromoted. Future exact-mode work should start from a new exact kernel or a
+fresh full-suite default rerun, not from the closed single-logit parity chase.
+
+### RETAINED TRACKING - default vs llama-compat vs llama.cpp HIP
+
+This is the canonical dashboard for the closed speed-parity sprint. Keep this
+section as a three-lane comparison if MTP work is reopened: hipEngine default
+exact, hipEngine `llama-compat`, and llama.cpp HIP. Update it after each
+retained or diagnostic MTP run that changes any lane. The headline speed row
+uses retained full-suite numbers where available; the stage rows use
+instrumented/deep traces on the same model and gfx1151 host. `llama-compat` is
+the route that mirrors llama.cpp's no-probe B2 structure, so its delta column is
+the audit ledger for any future work.
+
+Tracking invariant when reopened: the first question is always "where is
 `llama-compat` still slower than llama.cpp HIP, and by how much?" Keep the
 default exact lane beside it as a regression guard, but do not let exact-mode
 concerns obscure the replication lane. The standing table must answer that
 question at a glance: current speed, per-stage cost, compat gap size, and the
-next llama.cpp source path or kernel family to compare. When the compat shape
-matches llama.cpp and a positive delta remains, the next implementation step is
-to inspect the matching llama.cpp source path and either copy the mechanism or
-document why its economics do not transfer.
+next llama.cpp source path or kernel family to compare. In the current closed
+state, the stage-wall delta is not positive; only the request-level semantic /
+proposal-economy delta remains.
 
 Update rule: every future `llama-compat` run that changes the route shape or moves
 throughput must update the standing snapshot, source-artifact row, headline gap,
@@ -124,9 +160,9 @@ no-copy GDN state-row capture moves the active natural24 replication lane
 **51.85 -> 71.52 tok/s**, cycle **19.308 -> 14.005 ms/output**, verifier drain
 **16.891 -> 11.436 ms/output**, replay/commit **2.489 -> 0.044 ms/output**,
 and replay rows **38 -> 0**. The fixed-cycle provenance row for the same route
-is **72.23 tok/s / 13.865 ms/output / 11.405 ms verifier drain**. The immediate
-speed target has therefore shifted: partial replay and verifier drain no longer
-explain the request-level llama.cpp deficit. The active gap is semantic/economic:
+is **72.23 tok/s / 13.865 ms/output / 11.405 ms verifier drain**. The speed
+target is closed: partial replay and verifier drain no longer explain the
+request-level llama.cpp deficit. The remaining gap is semantic/economic:
 the corrected full-suite run reaches all **240/240** requested output tokens, but
 the focused `mixed_ja_en_translate` trace first diverges after both engines fully
 accept draft `[11, 567]`; hipEngine samples bonus token `8940` while llama.cpp

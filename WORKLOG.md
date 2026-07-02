@@ -139053,3 +139053,30 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`102 passed`), both JSON artifacts
   validate, and diff check passed.
+
+## 2026-07-03 - close MTP llama.cpp speed-parity sprint
+
+- Audited the retained MTP parity artifacts and docs before closing the sprint.
+  The active `llama-compat` natural24 cyclecap24 row is
+  `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
+  at **71.52 tok/s**, **14.005 ms/output**, **1.3055x AR**. The filename is
+  misleading; the route did not enable verifier-head top-1. The actual
+  verifier-head diagnostic remains rejected at **66.45 tok/s** /
+  **15.072 ms/output**.
+- Confirmed the speed target is closed at the stage-wall level:
+  `llama-compat` is **14.005 ms/output** versus the llama.cpp HIP natural24
+  rerun **14.269 ms/output**. The remaining request headline gap
+  (**71.52 vs 71.91 tok/s**) is semantic/proposal economy and prompt variance,
+  not a known verifier or draft wall-time bucket.
+- Added a closure/portability audit to `docs/MTP-LLAMACPP-PARITY.md`. Known
+  exact-safe compat wins are either already promoted or documented as not
+  promotable: shared parallel `mtp_dense_attn_f32` is in the exact default row,
+  Q8 shared-dual draft gate/up is default-on for exact resident draft, and
+  earlier exact wins remain in the default route. Llama-style direct partial
+  commit/no-copy captured-row commit and dp4a/Q8/X8/q8_1 sidecars remain
+  compat-only because they are accuracy-traded or lifecycle-contract-specific.
+- Corrected the stale detailed MTP row in `benchmarks/README.md` from the prior
+  **71.11 tok/s / 14.087 ms/output** natural24 cyclecap24 artifact to the
+  refreshed **71.52 tok/s / 14.005 ms/output** artifact, keeping the prior run
+  as historical provenance. No benchmark rerun was performed; this was a docs
+  consistency and closure pass over already-retained artifacts.
