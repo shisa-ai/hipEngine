@@ -138392,3 +138392,30 @@ python3 scripts/gguf_mtp_bench.py \
   worsening the margin to **+0.45249**. Next split should stay on accumulated
   residual/RMSNorm drift and final LM-head amplification, not layer-0
   projection/conv/GDN/`ssm_out`/post-norm-buffer/MoE.
+
+## 2026-07-03 - MTP capture-vs-noncapture reducer
+
+- Added `scripts/gguf_mtp_compare_forced_target_paths.py`, a diagnostic reducer
+  for hipEngine forced-target artifacts. It compares sampled token, accepted
+  count, candidate-token margin, and per-layer hidden-vector drift between a
+  reference path and a candidate path. Added focused tests in
+  `tests/test_gguf_mtp_compare_forced_target_paths.py`.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/gguf_mtp_compare_forced_target_paths.py tests/test_gguf_mtp_compare_forced_target_paths.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_compare_forced_target_paths.py
+  ```
+  Py_compile passed and the focused reducer suite passed (`2 passed`).
+- Ran the reducer on the active forced pair-12 F32-selected-intermediate split:
+  ```bash
+  python3 scripts/gguf_mtp_compare_forced_target_paths.py --reference /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-noncapture-layeroutputs-row1.json --candidate /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-capture-default-layeroutputs-row1.json --reference-label noncapture --candidate-label capture-default --row 1 --candidate-tokens 539,26126 --threshold 0.001 --output benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-default-compare.json
+  python3 scripts/gguf_mtp_compare_forced_target_paths.py --reference /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-noncapture-layeroutputs-row1.json --candidate /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-capture-prefillconvgdn-layeroutputs-row1.json --reference-label noncapture --candidate-label capture-prefillconvgdn --row 1 --candidate-tokens 539,26126 --threshold 0.001 --output benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-prefillconvgdn-compare.json
+  ```
+- Result: default capture moves row-1 `539 - 26126` by **+0.083063**
+  (`-0.00303 -> +0.08004`), changes sampled token `26126 -> 539`, adds one
+  accepted draft, first crosses `1e-3` hidden MAE at layer 11, and reaches
+  **0.007225 MAE** at layer 39. Prefill Conv/GDN capture makes layer 0 exact
+  but still moves the margin by **+0.298283** (`-0.00303 -> +0.29526`) and
+  reaches **0.007415 MAE** at layer 39. The active semantic target remains the
+  direct-state verifier FP32 hidden/KV history contract, not layer-0 Conv/GDN
+  row-state replacement.
