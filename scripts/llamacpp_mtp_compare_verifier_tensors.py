@@ -201,9 +201,18 @@ def _candidate_map(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     return {int(row["token_id"]): row for row in rows}
 
 
+def _score_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for key in ("top_k", "candidate_scores"):
+        scores = row.get(key)
+        if isinstance(scores, list):
+            rows.extend(scores)
+    return rows
+
+
 def _token_margin(sample_trace: dict[str, Any], hip_row: dict[str, Any], *, token_a: int, token_b: int) -> dict[str, Any]:
-    llama_candidates = _candidate_map(list(sample_trace.get("candidate_scores", [])))
-    hip_candidates = _candidate_map(list(hip_row.get("candidate_scores", [])))
+    llama_candidates = _candidate_map(_score_rows(sample_trace))
+    hip_candidates = _candidate_map(_score_rows(hip_row))
 
     def engine_row(candidates: dict[int, dict[str, Any]], sampled: int | None) -> dict[str, Any]:
         if token_a not in candidates or token_b not in candidates:
@@ -251,7 +260,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
     llama_values = _llama_values_by_label(llama_record, token_id=token_id, position=position)
 
     layer_values = hip_row.get("layer_output_hidden_values")
-    if not isinstance(layer_values, dict):
+    if layers and not isinstance(layer_values, dict):
         raise SystemExit("hipEngine row is missing layer_output_hidden_values")
     comparisons: list[dict[str, Any]] = []
     for layer_id in layers:
@@ -259,6 +268,7 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         hip_key = str(layer_id)
         if llama_label not in llama_values:
             raise SystemExit(f"llama.cpp trace missing {llama_label}")
+        assert isinstance(layer_values, dict)
         if hip_key not in layer_values:
             raise SystemExit(f"hipEngine trace missing layer output {hip_key}")
         comparisons.append(

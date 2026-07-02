@@ -181,3 +181,116 @@ def test_compare_verifier_tensors_writes_compact_artifact(tmp_path: Path) -> Non
         "mean_abs_diff": 1.5,
     }
     assert artifact["summary"]["first_layer_mean_abs_diff_ge_1e-3"]["name"] == "verify_layer_output_0"
+
+
+def test_compare_verifier_tensors_allows_boundary_only(tmp_path: Path) -> None:
+    llama_jsonl = tmp_path / "llama.jsonl"
+    hip_json = tmp_path / "hip.json"
+    output = tmp_path / "compare.json"
+
+    llama_jsonl.write_text(
+        json.dumps(
+            {
+                "task_id": 9,
+                "cycle": 18,
+                "draft_token_ids": [15495, 539],
+                "accepted_draft_tokens": 1,
+                "output_token_ids": [15495, 26126],
+                "bonus_token_id": 26126,
+                "target_sample_trace": [
+                    {"candidate_scores": []},
+                    {
+                        "sampled_token": 26126,
+                        "top_k": [
+                            {"token_id": 539, "rank": 2, "logit": 8.75},
+                            {"token_id": 26126, "rank": 1, "logit": 9.0},
+                        ],
+                        "candidate_scores": [
+                            {"token_id": 539, "rank": 2, "logit": 8.75},
+                        ],
+                    },
+                ],
+                "tensor_values": [
+                    {
+                        "label": "process_h_input",
+                        "token_id": 15495,
+                        "position": 73,
+                        "values": [1.0, 2.0, 3.0],
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    hip_json.write_text(
+        json.dumps(
+            {
+                "probe": {"cycle": 12, "trace_draft_tokens": [15495, 539]},
+                "result": {
+                    "sampled_tokens": [15495, 26126, 1151],
+                    "accepted_draft_tokens": 1,
+                    "rows": [
+                        {"row": 0},
+                        {
+                            "row": 1,
+                            "position": 73,
+                            "input_token": 15495,
+                            "sampled_token": 26126,
+                            "candidate_scores": [
+                                {"token_id": 539, "rank": 2, "logit": 8.5},
+                                {"token_id": 26126, "rank": 1, "logit": 8.875},
+                            ],
+                        },
+                    ],
+                    "scored_layer_boundary_captures": [
+                        {
+                            "layer": 0,
+                            "row": 1,
+                            "values": {"hidden_in": [1.0, 2.5, 3.0]},
+                        }
+                    ],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--llamacpp-jsonl",
+            str(llama_jsonl),
+            "--hipengine-json",
+            str(hip_json),
+            "--cycle",
+            "18",
+            "--task-id",
+            "9",
+            "--draft-tokens",
+            "15495,539",
+            "--row",
+            "1",
+            "--boundary-layers",
+            "0",
+            "--boundary-source",
+            "scored",
+            "--boundary-pairs",
+            "hidden_in=process_h_input",
+            "--candidate-tokens",
+            "539,26126",
+            "--output",
+            str(output),
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+
+    artifact = json.loads(output.read_text(encoding="utf-8"))
+    assert artifact["comparisons"] == []
+    assert artifact["boundary_comparisons"][0]["name"] == "hidden_in"
+    assert artifact["boundary_comparisons"][0]["llamacpp_label"] == "process_h_input"
+    assert artifact["boundary_comparisons"][0]["delta"]["mean_abs_diff"] == 1.0 / 6.0
+    assert artifact["summary"]["first_layer_mean_abs_diff_ge_1e-3"] is None
