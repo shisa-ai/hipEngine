@@ -134715,3 +134715,32 @@ python3 scripts/gguf_mtp_draft_rocprof.py \
   `benchmarks/results/2026-07-02-gguf-mtp-draft-fusedheadq8-rejected.json` and
   updated `docs/MTP-LLAMACPP-PARITY.md`. No full-suite run: the parent
   draft-chain diagnostic regressed before promotion criteria.
+
+## 2026-07-02 - hipEngine vs llama.cpp MTP draft-kernel compare artifact
+
+- Added `scripts/mtp_draft_kernel_compare.py`, an offline diagnostic joiner for
+  the active hipEngine draft-chain rocprof artifact, active hipEngine
+  full-suite `llama-compat` artifact, llama.cpp MTP ROCTX range artifact, and
+  retained llama.cpp HIP stage rerun. Command:
+
+```bash
+PYTHONPATH=. python3 scripts/mtp_draft_kernel_compare.py \
+  --hipengine-draft-rocprof benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-routerrow-sharedgate-parallelattn-gpuevents.json \
+  --hipengine-full-suite benchmarks/results/2026-07-02-ar-mtp-llama-compat-parallelattn-clean-rerun-full.json \
+  --llamacpp-rocprof benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json \
+  --llamacpp-stage benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json \
+  --out benchmarks/results/2026-07-02-mtp-draft-kernel-compare-active.json
+```
+
+- Result: hipEngine draft profile **6.529 ms/cycle host** and **5.498
+  ms/cycle kernel**; llama.cpp `llama_draft_sample_topk` ROCTX range **2.553
+  ms/call** and **2.170 ms/call kernel**. Dominant Q6 top-1 dispatch is at
+  per-call parity: hipEngine
+  `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` **1.783 ms/call** vs llama.cpp
+  Q6_K `mul_mat_vec_q` **1.781 ms/call** (**+0.002 ms/call**).
+- Retained-stage context in the artifact preserves the active full-suite gap:
+  hipEngine `draft_initial` **2.204 ms/output** vs llama.cpp **2.141**
+  (**+0.063 ms/output**), visible sampler/drain **+0.151 ms/output**, and
+  total cycle wall **13.463 vs 14.269 ms/output** (**-0.806** in hipEngine's
+  favor). Updated `docs/MTP-LLAMACPP-PARITY.md` to mark Q6 top-1 as a
+  measured guardrail rather than the next live body-variant target.
