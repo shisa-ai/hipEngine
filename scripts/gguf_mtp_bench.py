@@ -814,6 +814,33 @@ def _target_lm_head_score_rows(
     return records
 
 
+def _target_hidden_seed_summary_rows(
+    hidden_rows: list[np.ndarray],
+    score_rows: list[dict[str, object]],
+    *,
+    cycle_start_seq_position: int,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for score_row in score_rows:
+        row_index = int(score_row.get("row", -1))
+        record: dict[str, object] = {
+            "row": row_index,
+            "input_token": int(score_row["input_token"]) if "input_token" in score_row else None,
+            "target_token": int(score_row["target_token"]) if "target_token" in score_row else None,
+            "hidden_available": bool(0 <= row_index < len(hidden_rows)),
+        }
+        if 0 <= row_index < len(hidden_rows):
+            record["summary"] = hidden_state_summary(
+                hidden_rows[row_index],
+                label="target_hidden_seed",
+                depth=row_index,
+                token_id=int(score_row["target_token"]) if "target_token" in score_row else None,
+                position=int(cycle_start_seq_position + row_index),
+            )
+        records.append(record)
+    return records
+
+
 def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[np.ndarray, np.ndarray]:
     """Compute split-half RoPE cos/sin tables (mirrors qwen35_gguf_runner._rope_tables)."""
     positions = np.arange(max_positions, dtype=np.float32)[:, None]
@@ -3314,6 +3341,15 @@ def main(argv: list[str] | None = None):
                 )
             output_tokens = list(acceptance["output_tokens"])
             comparison_target_tokens = list(acceptance["comparison_target_tokens"])
+            target_hidden_seed_rows = (
+                _target_hidden_seed_summary_rows(
+                    target_hidden_seeds,
+                    target_lm_head_score_rows,
+                    cycle_start_seq_position=int(cycle_start_seq_position),
+                )
+                if args.record_target_topk_scores and target_lm_head_score_rows
+                else []
+            )
             if target_hidden_seeds:
                 if args.record_draft_hidden_stats:
                     pending_index_for_trace = int(acceptance["pending_hidden_row_index"])
@@ -3567,6 +3603,7 @@ def main(argv: list[str] | None = None):
                 "target_block_consumed_rows": target_block_consumed_rows,
                 "target_lm_head_logits_available": bool(target_lm_head_logits_available),
                 "target_lm_head_score_rows": target_lm_head_score_rows,
+                "target_hidden_seed_rows": target_hidden_seed_rows,
                 "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings and block_verify_used),
                 "target_b1_branch_safe_block_verify": bool(b1_branch_safe_block_verify_used),
                 "target_graph_batched_verify": bool(batched_verify_used),

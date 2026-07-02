@@ -666,12 +666,18 @@ should be boring.
   already-materialized full target lm-head logits back to host for block-verifier
   rows and serialize compact `target_lm_head_score_rows` with top-k plus
   candidate-token scores. `--target-score-candidate-tokens` adds explicit
-  llama.cpp near-tie tokens to the candidate list.
+  llama.cpp near-tie tokens to the candidate list. When score rows are present,
+  the same diagnostic also emits compact `target_hidden_seed_rows` summaries so
+  the scored verifier hidden row can be lined up with llama.cpp `verify_h`
+  traces without dumping full hidden vectors in the normal artifact.
 - Purpose: diagnose the active llama.cpp parity miss on target verifier
   near-ties without relying on forced-target replay. The first smoke artifact
   `benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json` populated
   three live target verifier rows on the active `llama-compat` direct-commit
-  shape.
+  shape. The hidden-seed follow-up artifact
+  `benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-hidden-scores-live.json`
+  captures the live task-9/cycle-3/row-2 hidden summary for the `8940` vs `668`
+  rank flip.
 - Remove when: target hidden-to-logit parity is closed or replaced by a broader
   cross-engine tensor trace. Keep it default-off; the extra full-logit D2H copy
   makes it invalid for retained timing claims.

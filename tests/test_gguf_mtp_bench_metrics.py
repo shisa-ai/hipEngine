@@ -14,6 +14,7 @@ from scripts.gguf_mtp_bench import (
     _draft_top1_prob,
     _diagnostic_topk_candidate_count,
     _rope_tables,
+    _target_hidden_seed_summary_rows,
     _target_lm_head_score_rows,
     apply_llama_compat_args,
     build_arg_parser,
@@ -101,6 +102,37 @@ def test_target_lm_head_score_rows_are_compact_and_candidate_driven() -> None:
         {"token": 0, "score": 0.0, "delta_vs_top1": -4.0},
         {"token": 4, "score": 1.0, "delta_vs_top1": -3.0},
     ]
+
+
+def test_target_hidden_seed_summary_rows_align_to_score_rows() -> None:
+    hidden_rows = [
+        np.asarray([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
+        np.asarray([[5.0, 6.0, 7.0, 8.0]], dtype=np.float32),
+    ]
+    score_rows = [
+        {"row": 0, "input_token": 100, "target_token": 200},
+        {"row": 2, "input_token": 102, "target_token": 202},
+    ]
+
+    rows = _target_hidden_seed_summary_rows(
+        hidden_rows,
+        score_rows,
+        cycle_start_seq_position=64,
+    )
+
+    assert rows[0]["row"] == 0
+    assert rows[0]["input_token"] == 100
+    assert rows[0]["target_token"] == 200
+    assert rows[0]["hidden_available"] is True
+    assert rows[0]["summary"]["label"] == "target_hidden_seed"
+    assert rows[0]["summary"]["position"] == 64
+    assert rows[0]["summary"]["first8"] == [1.0, 2.0, 3.0, 4.0]
+    assert rows[1] == {
+        "row": 2,
+        "input_token": 102,
+        "target_token": 202,
+        "hidden_available": False,
+    }
 
 
 def test_mtp_policy_accepts_adaptive_production_selector_flags() -> None:
