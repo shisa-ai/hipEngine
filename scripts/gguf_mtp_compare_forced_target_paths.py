@@ -26,6 +26,12 @@ def _parse_int_list(value: str | None) -> list[int]:
     return [int(part.strip()) for part in value.split(",") if part.strip()]
 
 
+def _parse_str_list(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {part.strip() for part in value.split(",") if part.strip()}
+
+
 def _selected_artifact(data: Any, *, cycle: int | None, label: str) -> dict[str, Any]:
     if isinstance(data, dict) and isinstance(data.get("result"), dict):
         return data
@@ -160,6 +166,97 @@ def _layer_comparisons(
     return comparisons
 
 
+def _captures_by_layer_row(
+    result: dict[str, Any],
+    *,
+    source: str,
+    label: str,
+) -> dict[tuple[int, int], dict[str, Any]]:
+    captures = result.get(source)
+    if captures is None:
+        return {}
+    if not isinstance(captures, list):
+        raise SystemExit(f"{label} result {source} must be a list")
+    mapped: dict[tuple[int, int], dict[str, Any]] = {}
+    for capture in captures:
+        if not isinstance(capture, dict):
+            continue
+        if "layer" not in capture or "row" not in capture:
+            continue
+        mapped[(int(capture["layer"]), int(capture["row"]))] = capture
+    return mapped
+
+
+def _capture_values(capture: dict[str, Any], *, label: str) -> dict[str, Any]:
+    values = capture.get("values")
+    if not isinstance(values, dict):
+        raise SystemExit(f"{label} boundary capture is missing values")
+    return values
+
+
+def _boundary_layers(
+    reference_captures: dict[tuple[int, int], dict[str, Any]],
+    candidate_captures: dict[tuple[int, int], dict[str, Any]],
+    *,
+    row_index: int,
+    requested_layers: list[int],
+) -> list[int]:
+    if requested_layers:
+        return requested_layers
+    common = {
+        layer
+        for layer, row in set(reference_captures) & set(candidate_captures)
+        if int(row) == int(row_index)
+    }
+    return sorted(common)
+
+
+def _boundary_comparisons(
+    reference_result: dict[str, Any],
+    candidate_result: dict[str, Any],
+    *,
+    source: str,
+    row_index: int,
+    layers: list[int],
+    ignored_values: set[str],
+) -> list[dict[str, Any]]:
+    reference_captures = _captures_by_layer_row(reference_result, source=source, label="reference")
+    candidate_captures = _captures_by_layer_row(candidate_result, source=source, label="candidate")
+    selected_layers = _boundary_layers(
+        reference_captures,
+        candidate_captures,
+        row_index=row_index,
+        requested_layers=layers,
+    )
+    comparisons: list[dict[str, Any]] = []
+    for layer in selected_layers:
+        key = (int(layer), int(row_index))
+        if key not in reference_captures:
+            raise SystemExit(f"reference {source} has no layer {layer} row {row_index}")
+        if key not in candidate_captures:
+            raise SystemExit(f"candidate {source} has no layer {layer} row {row_index}")
+        reference_values = _capture_values(reference_captures[key], label="reference")
+        candidate_values = _capture_values(candidate_captures[key], label="candidate")
+        value_rows: list[dict[str, Any]] = []
+        for name in sorted(set(reference_values) & set(candidate_values)):
+            if str(name) in ignored_values:
+                continue
+            try:
+                delta = _diff_metrics(reference_values[name], candidate_values[name])
+            except SystemExit:
+                continue
+            value_rows.append({"name": str(name), "delta": delta})
+        comparisons.append(
+            {
+                "source": source,
+                "layer": int(layer),
+                "row": int(row_index),
+                "values": value_rows,
+            }
+        )
+    return comparisons
+
+
 def _optional_vector_comparisons(reference_row: dict[str, Any], candidate_row: dict[str, Any]) -> list[dict[str, Any]]:
     keys = (
         ("hidden_seed_values", "hidden_seed"),
@@ -222,6 +319,20 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
     margin_key = f"{token_ids[0]}_minus_{token_ids[1]}"
     layer_comparisons = _layer_comparisons(reference_row, candidate_row, layers=layers)
     vector_comparisons = _optional_vector_comparisons(reference_row, candidate_row)
+    boundary_layers = _parse_int_list(args.boundary_layers)
+    ignored_boundary_values = _parse_str_list(args.ignore_boundary_values)
+    boundary_comparisons = (
+        _boundary_comparisons(
+            reference_result,
+            candidate_result,
+            source=args.boundary_source,
+            row_index=int(args.row),
+            layers=boundary_layers,
+            ignored_values=ignored_boundary_values,
+        )
+        if args.boundary_layers is not None
+        else []
+    )
 
     first_layer_over_threshold = next(
         (
@@ -241,6 +352,29 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         ),
         key=lambda item: float(item["mean_abs_diff"]),
     )
+    boundary_value_rows = [
+        {
+            "layer": int(comparison["layer"]),
+            "name": str(value["name"]),
+            "mean_abs_diff": float(value["delta"]["mean_abs_diff"]),
+        }
+        for comparison in boundary_comparisons
+        for value in comparison["values"]
+    ]
+    largest_boundary_value = (
+        max(boundary_value_rows, key=lambda item: float(item["mean_abs_diff"]))
+        if boundary_value_rows
+        else None
+    )
+    boundary_layer_out = [
+        {
+            "layer": int(comparison["layer"]),
+            "mean_abs_diff": float(value["delta"]["mean_abs_diff"]),
+        }
+        for comparison in boundary_comparisons
+        for value in comparison["values"]
+        if value["name"] == "layer_out"
+    ]
 
     return {
         "schema": SCHEMA,
@@ -257,6 +391,9 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "row": int(args.row),
             "candidate_tokens": token_ids,
             "layers": layers,
+            "boundary_source": args.boundary_source,
+            "boundary_layers": boundary_layers,
+            "ignored_boundary_values": sorted(ignored_boundary_values),
             "threshold": float(args.threshold),
         },
         "paths": {
@@ -289,9 +426,12 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             - int(reference_result.get("accepted_draft_tokens", 0))
         ),
         "comparisons": layer_comparisons + vector_comparisons,
+        "boundary_comparisons": boundary_comparisons,
         "summary": {
             "first_layer_mean_abs_diff_ge_threshold": first_layer_over_threshold,
             "largest_layer_mean_abs_diff": largest_layer,
+            "largest_boundary_value_mean_abs_diff": largest_boundary_value,
+            "boundary_layer_out_mean_abs_diff": boundary_layer_out,
             "pre_output_norm_mean_abs_diff": next(
                 (
                     row["delta"]["mean_abs_diff"]
@@ -322,6 +462,22 @@ def main() -> int:
         help="Two comma-separated token IDs. The artifact reports token_a_minus_token_b logits.",
     )
     parser.add_argument("--layers", help="Comma-separated layer IDs. Defaults to common captured layers.")
+    parser.add_argument(
+        "--boundary-layers",
+        help=(
+            "Comma-separated scored/isolated boundary layer IDs to compare. "
+            "When omitted, boundary captures are not compared."
+        ),
+    )
+    parser.add_argument(
+        "--boundary-source",
+        choices=("scored_layer_boundary_captures", "layer_boundary_captures"),
+        default="scored_layer_boundary_captures",
+    )
+    parser.add_argument(
+        "--ignore-boundary-values",
+        help="Comma-separated boundary value names to exclude from comparisons.",
+    )
     parser.add_argument("--threshold", type=float, default=1.0e-3)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

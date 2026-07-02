@@ -138419,3 +138419,35 @@ python3 scripts/gguf_mtp_bench.py \
   reaches **0.007415 MAE** at layer 39. The active semantic target remains the
   direct-state verifier FP32 hidden/KV history contract, not layer-0 Conv/GDN
   row-state replacement.
+
+## 2026-07-03 - MTP scored-boundary capture reducer split
+
+- Extended `scripts/gguf_mtp_compare_forced_target_paths.py` with optional
+  `--boundary-layers` / `--boundary-source` support so the compact reducer can
+  compare raw `scored_layer_boundary_captures` arrays without retaining the
+  multi-MB probe dumps. Added `--ignore-boundary-values` because
+  `recurrent_out` is stale in the fused noncapture path and should not dominate
+  boundary summaries.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/gguf_mtp_compare_forced_target_paths.py tests/test_gguf_mtp_compare_forced_target_paths.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_compare_forced_target_paths.py
+  ```
+  Py_compile passed and the focused reducer suite passed (`2 passed`).
+- Ran fresh forced pair-12 probes under the current F32 selected-intermediate
+  environment for noncapture, default chain capture, and active
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` no-copy capture. The raw
+  scored-boundary dumps were left unretained; compact outputs:
+  `benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-default-boundary-l0-l1-compare.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-prefillgdn-boundary-l0-l1-compare.json`.
+- Result: default chain capture diverges immediately from noncapture at layer 0
+  (`attn_out` **3.06e-05 MAE**, post-attn norm **0.001200**, router logits
+  **0.003050**, layer out **6.15e-05**) and reaches layer-1 output
+  **0.000502 MAE**. Active prefill-GDN/no-copy capture is layer-0 exact
+  (`hidden_in`, F32 attn-norm, `attn_out`, post-attn norm, router logits, and
+  layer out all **0 MAE**) and first differs in layer 1 (`attn_out`
+  **3.01e-05**, post-attn norm **0.000874**, router logits **0.001316**, layer
+  out **6.73e-05**). Active no-copy row-state capture is therefore not a
+  layer-0 Conv/GDN materialization bug; the next split is deeper accumulated
+  verifier hidden/MoE/KV history against llama.cpp.
