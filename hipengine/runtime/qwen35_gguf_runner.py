@@ -1842,6 +1842,52 @@ class Qwen35GGUFFullStackRunner:
             and hasattr(scratch, "linear_alpha_f32")
             and hasattr(scratch, "linear_beta_f32")
         ):
+            if (
+                _gguf_linear_supports_f32_activation_f32_output(layer.weight("ssm_alpha"), rows=rows)
+                and _gguf_linear_supports_f32_activation_f32_output(layer.weight("ssm_beta"), rows=rows)
+            ):
+                launch_gguf_linear(
+                    layer.weight("ssm_alpha"),
+                    int(norm_f32_ptr),
+                    scratch.linear_alpha_f32.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=cfg.ssm_time_step_rank,
+                    activation_dtype=GGUF_ACTIVATION_F32,
+                    output_dtype=GGUF_OUTPUT_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("ssm_beta"),
+                    int(norm_f32_ptr),
+                    scratch.linear_beta_f32.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=cfg.ssm_time_step_rank,
+                    activation_dtype=GGUF_ACTIVATION_F32,
+                    output_dtype=GGUF_OUTPUT_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                cast_library = self._cast_library()
+                f32_to_bf16(
+                    scratch.linear_alpha_f32.ptr,
+                    scratch.linear_alpha.ptr,
+                    rows * cfg.ssm_time_step_rank,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                f32_to_bf16(
+                    scratch.linear_beta_f32.ptr,
+                    scratch.linear_beta.ptr,
+                    rows * cfg.ssm_time_step_rank,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                return "f32_singletons_f32_out"
             if _try_launch_dense_q8_pair_dp4a_f32_out(
                 layer.weight("ssm_alpha"),
                 layer.weight("ssm_beta"),
@@ -2699,7 +2745,7 @@ class Qwen35GGUFFullStackRunner:
         )
         if (
             use_f32_linear_projections
-            and alpha_beta_route != "dense_q8_dp4a_f32_out"
+            and not _linear_attention_alpha_beta_f32_outputs_ready(alpha_beta_route)
             and hasattr(scratch, "linear_alpha_f32")
             and hasattr(scratch, "linear_beta_f32")
         ):
@@ -5086,6 +5132,27 @@ def _gguf_linear_supports_f32_activation(weight: Qwen35GGUFDeviceWeight) -> bool
     except ValueError:
         return False
     return True
+
+
+def _gguf_linear_supports_f32_activation_f32_output(
+    weight: Qwen35GGUFDeviceWeight,
+    *,
+    rows: int,
+) -> bool:
+    try:
+        resolve_gguf_linear_dispatch(
+            weight,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            rows=rows,
+        )
+    except ValueError:
+        return False
+    return True
+
+
+def _linear_attention_alpha_beta_f32_outputs_ready(route: str) -> bool:
+    return route in {"dense_q8_dp4a_f32_out", "f32_singletons_f32_out"}
 
 
 def _try_launch_gguf_linear_bf16_f32_output(
