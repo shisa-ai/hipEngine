@@ -464,6 +464,21 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--resident-mtp-draft-dense-q8-dp4a-stages", "draft",
         "--target-block-direct-partial-replay-mode", "direct-commit",
     ],
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1": [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+        "--resident-mtp-draft-q6-top1-dp4a",
+        "--resident-mtp-draft-q6-top1-stage1-shape", "x8",
+        "--selected-down-x8-repack", "q6",
+        "--verify-dense-q8-dp4a-all",
+        "--verify-dense-q8-dp4a-f32",
+        "--resident-mtp-draft-router-row-parallel",
+        "--resident-mtp-draft-dense-q8-dp4a",
+        "--resident-mtp-draft-dense-q8-dp4a-stages", "draft",
+        "--target-block-direct-partial-replay-mode", "direct-commit",
+        "--verify-lm-head-q6-top1-dp4a",
+    ],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-allsync": [
         "--llama-compat",
         "--resident-mtp-device-chain",
@@ -955,6 +970,7 @@ MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-serialstate": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit": [2],
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-allsync": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm": [2],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-sharedq8": [2],
@@ -995,6 +1011,9 @@ MTP_ROUTE_ENVS: dict[str, dict[str, str]] = {
         "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "1",
     },
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    },
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1": {
         "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     },
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-allsync": {

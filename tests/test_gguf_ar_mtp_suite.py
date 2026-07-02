@@ -306,6 +306,27 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "direct-commit",
     ]
     assert suite.MTP_ROUTES[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1"
+    ] == [
+        "--llama-compat",
+        "--resident-mtp-device-chain",
+        "--verify-dp4a",
+        "--resident-mtp-draft-q6-top1-dp4a",
+        "--resident-mtp-draft-q6-top1-stage1-shape",
+        "x8",
+        "--selected-down-x8-repack",
+        "q6",
+        "--verify-dense-q8-dp4a-all",
+        "--verify-dense-q8-dp4a-f32",
+        "--resident-mtp-draft-router-row-parallel",
+        "--resident-mtp-draft-dense-q8-dp4a",
+        "--resident-mtp-draft-dense-q8-dp4a-stages",
+        "draft",
+        "--target-block-direct-partial-replay-mode",
+        "direct-commit",
+        "--verify-lm-head-q6-top1-dp4a",
+    ]
+    assert suite.MTP_ROUTES[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-allsync"
     ] == [
         "--llama-compat",
@@ -545,6 +566,9 @@ def test_suite_exposes_llama_compat_routes() -> None:
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1"
+    ] == [2]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1"
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16"
@@ -919,4 +943,29 @@ def test_suite_active_directcommit_route_records_nocopy_env(monkeypatch, tmp_pat
     assert suite.main() == 0
 
     out = capsys.readouterr().out
+    assert '"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"' in out
+
+
+def test_suite_current_directcommit_vlmheadtop1_records_flag_and_env(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "smoke",
+            "--mtp-route",
+            "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--extra-arg=--verify-lm-head-q6-top1-dp4a" in out
     assert '"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"' in out

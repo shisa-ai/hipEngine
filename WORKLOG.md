@@ -138854,3 +138854,44 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/CHANGELOG.md`. Remaining gap vs llama.cpp HIP rerun is now
   request/economy **71.52 vs 71.91 tok/s**, not stage wall; verifier and draft
   parent buckets are faster than the traced llama.cpp rows.
+
+## 2026-07-03 - verifier-head attribution correction and current-shape diagnostic
+
+- Correction to the prior section: the artifact
+  `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
+  was run on route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`,
+  which did **not** include `--verify-lm-head-q6-top1-dp4a`. Its **71.52 tok/s
+  / 14.005 ms/output** result is therefore a refreshed active-route rerun, not
+  proof that the FP32 verifier-head path improved throughput.
+- Added a current-shape diagnostic route:
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1`.
+  It uses the active no-copy prefill-GDN direct-commit shape plus
+  `--verify-lm-head-q6-top1-dp4a` and records
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` through the suite route env.
+- Full-suite result on AMD Radeon 8060S / gfx1151:
+  **66.45 tok/s**, **15.072 ms/output**, **1.2125x AR**, acc/output **0.596**,
+  draft acceptance **0.777**, target rows/output **1.171**, verifier drain
+  **12.501 ms/output**, `target_block_lm_head_sample` **2.118 ms/output**,
+  replay/commit **0.051 ms/output**, replay rows **0**, direct-commit rows
+  **95**, discarded rows **41** over **240** output tokens. Acceptance/economy
+  is unchanged from the active route, but throughput regresses
+  **71.52 -> 66.45 tok/s** and lm-head/sample cost regresses
+  **1.068 -> 2.118 ms/output**, so this route is rejected as a speed path.
+- Exact command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1 --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --output benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-vlmheadtop1-full.json
+  ```
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/gguf_ar_mtp_suite.py tests/test_gguf_ar_mtp_suite.py
+  PYTHONPATH=. pytest -q tests/test_gguf_ar_mtp_suite.py
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  rocminfo | grep -E 'Name:|gfx' | head -40
+  python3 -m json.tool benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-vlmheadtop1-full.json >/dev/null
+  ```
+  Pycompile passed, focused route tests passed (`27 passed`), ROCm reported
+  gfx1151, and JSON validation passed.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md` to keep the active lane at **71.52 tok/s** and mark
+  the actual current-shape verifier-head route as rejected.

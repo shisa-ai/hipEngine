@@ -19,7 +19,7 @@ Examples:
 
 ## 2026-07-03
 
-- [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-style direct-commit compat B2 natural24 cyclecap24 full suite: MTP `71.11 -> 71.52 tok/s` (+0.58%) and cycle wall `14.087 -> 14.005 ms/output` (-0.58%) by feeding the direct dp4a verifier head from FP32 post-output-norm rows instead of the BF16 output-norm scratch; acceptance/economy unchanged (`acc/output 0.596`, draft acceptance `0.777`, target rows/output `1.171`), so the remaining gap vs llama.cpp HIP rerun is request/economy `71.52 vs 71.91 tok/s`, not stage wall. `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`.
+- [correction / rejected diagnostic] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / llama-style direct-commit compat B2 natural24 cyclecap24 full suite: the retained `71.52 tok/s / 14.005 ms/output` artifact did not enable `--verify-lm-head-q6-top1-dp4a` despite the `f32head` filename, so it is a refreshed active-route rerun, not FP32 verifier-head evidence. The actual current-shape verifier-head route regresses to `66.45 tok/s / 15.072 ms/output` with unchanged acceptance/economy and `target_block_lm_head_sample 1.068 -> 2.118 ms/output`; do not retain it as a speed path. `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`, `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-vlmheadtop1-full.json`.
 
 ## 2026-07-02
 
