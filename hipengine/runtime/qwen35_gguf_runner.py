@@ -179,6 +179,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
     gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out,
+    gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out,
     gguf_q8_0_dp4a_rowtile4_gemv_f32_f32_out,
     gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out,
     gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out,
@@ -1835,6 +1836,44 @@ class Qwen35GGUFFullStackRunner:
         runtime: HipRuntime,
     ) -> str:
         cfg = self.weights.config
+        if (
+            norm_f32_ptr is not None
+            and _gguf_verify_f32_linear_projections_enabled()
+            and hasattr(scratch, "linear_alpha_f32")
+            and hasattr(scratch, "linear_beta_f32")
+        ):
+            if _try_launch_dense_q8_pair_dp4a_f32_out(
+                layer.weight("ssm_alpha"),
+                layer.weight("ssm_beta"),
+                int(norm_f32_ptr),
+                scratch.linear_alpha_f32.ptr,
+                scratch.linear_beta_f32.ptr,
+                scratch,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features_a=cfg.ssm_time_step_rank,
+                out_features_b=cfg.ssm_time_step_rank,
+                stream=stream,
+                runtime=runtime,
+            ):
+                cast_library = self._cast_library()
+                f32_to_bf16(
+                    scratch.linear_alpha_f32.ptr,
+                    scratch.linear_alpha.ptr,
+                    rows * cfg.ssm_time_step_rank,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                f32_to_bf16(
+                    scratch.linear_beta_f32.ptr,
+                    scratch.linear_beta.ptr,
+                    rows * cfg.ssm_time_step_rank,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                return "dense_q8_dp4a_f32_out"
         if norm_f32_ptr is not None and _gguf_verify_f32_alpha_beta_enabled():
             if _try_launch_dense_q8_pair_dp4a_f32(
                 layer.weight("ssm_alpha"),
@@ -2476,13 +2515,21 @@ class Qwen35GGUFFullStackRunner:
             t_stage = time.perf_counter()
         qkv_gate_route = "pair"
         pair_fused = False
-        if attn_norm_f32_ptr is not None:
-            pair_fused = _try_launch_dense_q8_pair_dp4a_f32(
+        linear_qkv_f32_ready = False
+        linear_z_f32_ready = False
+        use_f32_linear_projections = (
+            attn_norm_f32_ptr is not None
+            and _gguf_verify_f32_linear_projections_enabled()
+            and hasattr(scratch, "linear_qkv_f32")
+            and hasattr(scratch, "linear_z_f32")
+        )
+        if use_f32_linear_projections:
+            pair_fused = _try_launch_dense_q8_pair_dp4a_f32_out(
                 layer.weight("attn_qkv"),
                 layer.weight("attn_gate"),
                 int(attn_norm_f32_ptr),
-                scratch.linear_qkv.ptr,
-                scratch.linear_z.ptr,
+                scratch.linear_qkv_f32.ptr,
+                scratch.linear_z_f32.ptr,
                 scratch,
                 rows=rows,
                 in_features=self.hidden_size,
@@ -2492,7 +2539,45 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
             if pair_fused:
-                qkv_gate_route = "dense_q8_dp4a_f32"
+                cast_library = self._cast_library()
+                f32_to_bf16(
+                    scratch.linear_qkv_f32.ptr,
+                    scratch.linear_qkv.ptr,
+                    rows * self.linear_qkv_width,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                f32_to_bf16(
+                    scratch.linear_z_f32.ptr,
+                    scratch.linear_z.ptr,
+                    rows * cfg.ssm_inner_size,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                qkv_gate_route = "dense_q8_dp4a_f32_out"
+                linear_qkv_f32_ready = True
+                linear_z_f32_ready = True
+        if attn_norm_f32_ptr is not None:
+            if not pair_fused:
+                pair_fused = _try_launch_dense_q8_pair_dp4a_f32(
+                    layer.weight("attn_qkv"),
+                    layer.weight("attn_gate"),
+                    int(attn_norm_f32_ptr),
+                    scratch.linear_qkv.ptr,
+                    scratch.linear_z.ptr,
+                    scratch,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features_a=self.linear_qkv_width,
+                    out_features_b=cfg.ssm_inner_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            if pair_fused:
+                if not linear_qkv_f32_ready:
+                    qkv_gate_route = "dense_q8_dp4a_f32"
             elif (
                 _gguf_linear_supports_f32_activation(layer.weight("attn_qkv"))
                 and _gguf_linear_supports_f32_activation(layer.weight("attn_gate"))
@@ -2574,6 +2659,27 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if use_f32_linear_projections:
+            if not linear_qkv_f32_ready:
+                bf16_to_f32(
+                    scratch.linear_qkv.ptr,
+                    scratch.linear_qkv_f32.ptr,
+                    rows * self.linear_qkv_width,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                linear_qkv_f32_ready = True
+            if not linear_z_f32_ready:
+                bf16_to_f32(
+                    scratch.linear_z.ptr,
+                    scratch.linear_z_f32.ptr,
+                    rows * cfg.ssm_inner_size,
+                    stream=stream,
+                    library=cast_library,
+                    runtime=runtime,
+                )
+                linear_z_f32_ready = True
         if sync_stages:
             runtime.device_synchronize()
             t_now = time.perf_counter()
@@ -2591,6 +2697,28 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if (
+            use_f32_linear_projections
+            and alpha_beta_route != "dense_q8_dp4a_f32_out"
+            and hasattr(scratch, "linear_alpha_f32")
+            and hasattr(scratch, "linear_beta_f32")
+        ):
+            bf16_to_f32(
+                scratch.linear_alpha.ptr,
+                scratch.linear_alpha_f32.ptr,
+                rows * cfg.ssm_time_step_rank,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
+            bf16_to_f32(
+                scratch.linear_beta.ptr,
+                scratch.linear_beta_f32.ptr,
+                rows * cfg.ssm_time_step_rank,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
         if sync_stages and stage_timings is not None:
             runtime.device_synchronize()
             alpha_beta_ms = (time.perf_counter() - t_stage) * 1000
@@ -2613,14 +2741,16 @@ class Qwen35GGUFFullStackRunner:
                 _gguf_verify_capture_f32_chain_conv_enabled() or use_prefill_gdn_capture
             )
             if use_prefill_gdn_capture:
-                bf16_to_f32(
-                    scratch.linear_qkv.ptr,
-                    scratch.linear_qkv_f32.ptr,
-                    rows * self.linear_qkv_width,
-                    stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
+                if not linear_qkv_f32_ready:
+                    bf16_to_f32(
+                        scratch.linear_qkv.ptr,
+                        scratch.linear_qkv_f32.ptr,
+                        rows * self.linear_qkv_width,
+                        stream=stream,
+                        library=cast_library,
+                        runtime=runtime,
+                    )
+                    linear_qkv_f32_ready = True
                 qwen35_linear_attn_conv_prefill_f32_state_rows(
                     scratch.linear_qkv_f32.ptr,
                     conv_state.ptr,
@@ -2634,14 +2764,16 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             elif use_f32_chain_conv:
-                bf16_to_f32(
-                    scratch.linear_qkv.ptr,
-                    scratch.linear_qkv_f32.ptr,
-                    rows * self.linear_qkv_width,
-                    stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
+                if not linear_qkv_f32_ready:
+                    bf16_to_f32(
+                        scratch.linear_qkv.ptr,
+                        scratch.linear_qkv_f32.ptr,
+                        rows * self.linear_qkv_width,
+                        stream=stream,
+                        library=cast_library,
+                        runtime=runtime,
+                    )
+                    linear_qkv_f32_ready = True
                 qwen35_linear_attn_chain_conv_decode_f32_tloop(
                     scratch.linear_qkv_f32.ptr,
                     conv_state.ptr,
@@ -2764,14 +2896,16 @@ class Qwen35GGUFFullStackRunner:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     stream,
                 )
-                bf16_to_f32(
-                    scratch.linear_qkv.ptr,
-                    scratch.linear_qkv_f32.ptr,
-                    rows * self.linear_qkv_width,
-                    stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
+                if not linear_qkv_f32_ready:
+                    bf16_to_f32(
+                        scratch.linear_qkv.ptr,
+                        scratch.linear_qkv_f32.ptr,
+                        rows * self.linear_qkv_width,
+                        stream=stream,
+                        library=cast_library,
+                        runtime=runtime,
+                    )
+                    linear_qkv_f32_ready = True
                 qwen35_linear_attn_conv_prefill_f32(
                     scratch.linear_qkv_f32.ptr,
                     scratch.linear_conv_state_tmp.ptr,
@@ -2953,14 +3087,16 @@ class Qwen35GGUFFullStackRunner:
                 stage_prefix=f"{stage_prefix}_ffn",
             )
             return
-        bf16_to_f32(
-            scratch.linear_qkv.ptr,
-            scratch.linear_qkv_f32.ptr,
-            rows * self.linear_qkv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=runtime,
-        )
+        if not linear_qkv_f32_ready:
+            bf16_to_f32(
+                scratch.linear_qkv.ptr,
+                scratch.linear_qkv_f32.ptr,
+                rows * self.linear_qkv_width,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
+            linear_qkv_f32_ready = True
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -4678,6 +4814,7 @@ _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_D
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
 _GGUF_VERIFY_F32_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING"
 _GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
+_GGUF_VERIFY_F32_LINEAR_PROJECTIONS_ENV = "HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS"
 _GGUF_VERIFY_F32_ALPHA_BETA_ENV = "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA"
 _GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
 _GGUF_VERIFY_F32_MOE_COMBINE_ENV = "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE"
@@ -4797,6 +4934,10 @@ def _gguf_verify_f32_token_embedding_enabled() -> bool:
 
 def _gguf_verify_f32_attention_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_ATTENTION_NORM_ENV, False)
+
+
+def _gguf_verify_f32_linear_projections_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_LINEAR_PROJECTIONS_ENV, False)
 
 
 def _gguf_verify_f32_alpha_beta_enabled() -> bool:
@@ -5497,6 +5638,60 @@ def _try_launch_dense_q8_pair_dp4a_f32(
     return True
 
 
+def _try_launch_dense_q8_pair_dp4a_f32_out(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in raw-Q8 q8_1/dp4a dual route for F32 verifier outputs."""
+
+    if (
+        not _gguf_verify_f32_linear_projections_enabled()
+        or not _gguf_dense_q8_dp4a_enabled()
+        or int(rows) <= 1
+    ):
+        return False
+    raw_a = _dense_q8_raw_ptr(weight_a)
+    raw_b = _dense_q8_raw_ptr(weight_b)
+    if raw_a is None or raw_b is None:
+        return False
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_f32_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out(
+        q8_1_workspace_ptr,
+        raw_a,
+        raw_b,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
 def _gguf_aotriton_prefill_mode(start: int, rows: int, key_rows: int) -> str:
     """Resolve the GGUF AOTriton prefill wrapper for the current query window.
 
@@ -5889,26 +6084,64 @@ class Qwen35GGUFResidentSession:
             arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
 
         if str(layer_type) == LINEAR_ATTENTION:
-            key, value = copy_bf16(
-                "linear_qkv",
-                int(scratch.linear_qkv.ptr),
-                (row_count, int(self.runner.linear_qkv_width)),
+            use_f32_linear_projection_capture = (
+                _gguf_verify_f32_linear_projections_enabled()
+                and hasattr(scratch, "linear_qkv_f32")
+                and hasattr(scratch, "linear_z_f32")
+                and hasattr(scratch, "linear_alpha_f32")
+                and hasattr(scratch, "linear_beta_f32")
             )
-            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
-            key, value = copy_bf16("linear_z", int(scratch.linear_z.ptr), (row_count, int(cfg.ssm_inner_size)))
-            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
-            key, value = copy_bf16(
-                "ssm_alpha",
-                int(scratch.linear_alpha.ptr),
-                (row_count, int(cfg.ssm_time_step_rank)),
-            )
-            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
-            key, value = copy_bf16(
-                "ssm_beta",
-                int(scratch.linear_beta.ptr),
-                (row_count, int(cfg.ssm_time_step_rank)),
-            )
-            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            linear_qkv_shape = (row_count, int(self.runner.linear_qkv_width))
+            linear_z_shape = (row_count, int(cfg.ssm_inner_size))
+            linear_ab_shape = (row_count, int(cfg.ssm_time_step_rank))
+            if use_f32_linear_projection_capture:
+                key, value = copy_f32("linear_qkv", int(scratch.linear_qkv_f32.ptr), linear_qkv_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+                key, value = copy_bf16(
+                    "linear_qkv_bf16_mirror",
+                    int(scratch.linear_qkv.ptr),
+                    linear_qkv_shape,
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            else:
+                key, value = copy_bf16("linear_qkv", int(scratch.linear_qkv.ptr), linear_qkv_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if use_f32_linear_projection_capture:
+                key, value = copy_f32("linear_z", int(scratch.linear_z_f32.ptr), linear_z_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+                key, value = copy_bf16(
+                    "linear_z_bf16_mirror",
+                    int(scratch.linear_z.ptr),
+                    linear_z_shape,
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            else:
+                key, value = copy_bf16("linear_z", int(scratch.linear_z.ptr), linear_z_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if use_f32_linear_projection_capture:
+                key, value = copy_f32("ssm_alpha", int(scratch.linear_alpha_f32.ptr), linear_ab_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+                key, value = copy_bf16(
+                    "ssm_alpha_bf16_mirror",
+                    int(scratch.linear_alpha.ptr),
+                    linear_ab_shape,
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            else:
+                key, value = copy_bf16("ssm_alpha", int(scratch.linear_alpha.ptr), linear_ab_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            if use_f32_linear_projection_capture:
+                key, value = copy_f32("ssm_beta", int(scratch.linear_beta_f32.ptr), linear_ab_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+                key, value = copy_bf16(
+                    "ssm_beta_bf16_mirror",
+                    int(scratch.linear_beta.ptr),
+                    linear_ab_shape,
+                )
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+            else:
+                key, value = copy_bf16("ssm_beta", int(scratch.linear_beta.ptr), linear_ab_shape)
+                arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
             if not _gguf_verify_f32_attn_out_enabled():
                 key, value = copy_f32(
                     "conv_out",
@@ -8587,8 +8820,11 @@ class _GGUFFullAttentionPrefillScratch:
     linear_qkv: object
     linear_qkv_f32: object
     linear_z: object
+    linear_z_f32: object
     linear_alpha: object
+    linear_alpha_f32: object
     linear_beta: object
+    linear_beta_f32: object
     conv_out: object
     prefill_query: object
     prefill_key: object
@@ -8719,7 +8955,9 @@ class _GGUFFullAttentionPrefillScratch:
         linear_qkv_bf16_bytes = rows * runner.linear_qkv_width * 2
         linear_qkv_f32_bytes = rows * runner.linear_qkv_width * 4
         linear_z_bytes = rows * cfg.ssm_inner_size * 2
+        linear_z_f32_bytes = rows * cfg.ssm_inner_size * 4
         linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
+        linear_ab_f32_bytes = rows * cfg.ssm_time_step_rank * 4
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
         conv_state_bytes = runner.linear_qkv_width * cfg.ssm_conv_kernel * DType.FP32.itemsize
         recurrent_state_bytes = (
@@ -8748,8 +8986,11 @@ class _GGUFFullAttentionPrefillScratch:
             "linear_qkv": buf(linear_qkv_bf16_bytes),
             "linear_qkv_f32": buf(linear_qkv_f32_bytes),
             "linear_z": buf(linear_z_bytes),
+            "linear_z_f32": buf(linear_z_f32_bytes),
             "linear_alpha": buf(linear_ab_bytes),
+            "linear_alpha_f32": buf(linear_ab_f32_bytes),
             "linear_beta": buf(linear_ab_bytes),
+            "linear_beta_f32": buf(linear_ab_f32_bytes),
             "conv_out": buf(linear_qkv_f32_bytes),
             "prefill_query": buf(recurrent_f32_bytes),
             "prefill_key": buf(recurrent_f32_bytes),

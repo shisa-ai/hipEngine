@@ -252,6 +252,40 @@ def test_dense_q8_dp4a_f32_route_launches_f32_pair_rowtile(monkeypatch: pytest.M
     assert calls[1][1][:9] == (400, 20, 20, 200, 300, 2, 2048, 8192, 4096)
 
 
+def test_dense_q8_dp4a_f32_out_route_launches_f32_pair_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", "1")
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def quantize(*args, **kwargs):
+        calls.append(("quantize_f32", args, kwargs))
+
+    def dp4a_pair(*args, **kwargs):
+        calls.append(("dp4a_pair_f32_out", args, kwargs))
+
+    monkeypatch.setattr(qgr, "gguf_q4_k_quantize_f32_q8_1", quantize)
+    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out", dp4a_pair)
+
+    assert qgr._try_launch_dense_q8_pair_dp4a_f32_out(
+        _weight(),
+        _weight(),
+        100,
+        200,
+        300,
+        SimpleNamespace(moe_q8_1=_buf(400, nbytes=2 * (2048 // 32) * 36)),
+        rows=2,
+        in_features=2048,
+        out_features_a=8192,
+        out_features_b=4096,
+        stream=7,
+        runtime=SimpleNamespace(),
+    )
+
+    assert [name for name, _args, _kwargs in calls] == ["quantize_f32", "dp4a_pair_f32_out"]
+    assert calls[0][1][:4] == (100, 400, 2, 2048)
+    assert calls[1][1][:9] == (400, 20, 20, 200, 300, 2, 2048, 8192, 4096)
+
+
 def test_dense_q8_dp4a_all_route_launches_triple_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", raising=False)
     monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL", "1")

@@ -203,18 +203,25 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
   existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
   The follow-up diagnostic also feeds layer-entry attention RMSNorm from FP32
   residual rows when available, but intentionally does not claim full llama.cpp
-  graph parity. `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` materializes
-  layer-entry attention RMSNorm into FP32 scratch, casts a BF16 mirror for
-  unsupported consumers, and routes dense-Q8 dp4a QKV / QKV+gate consumers from
-  the FP32 tensor when the F32 dense-Q8 diagnostic is already active.
-  `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1` additionally routes row-bulk
-  linear-attention `ssm_alpha`/`ssm_beta` from that FP32 attention-norm tensor to
+	  graph parity. `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` materializes
+	  layer-entry attention RMSNorm into FP32 scratch, casts a BF16 mirror for
+	  unsupported consumers, and routes dense-Q8 dp4a QKV / QKV+gate consumers from
+	  the FP32 tensor when the F32 dense-Q8 diagnostic is already active.
+	  `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1` additionally routes
+	  compatible row-bulk linear-attention Q8 `attn_qkv`/`attn_gate` projections
+	  into FP32 scratch through the raw-Q8 dp4a F32-output dual wrapper, casts BF16
+	  mirrors for existing downstream kernels, and emits explicit BF16 mirror
+	  capture keys. It also allocates/populates F32 scratch for `ssm_alpha` and
+	  `ssm_beta`, currently by widening the BF16 mirror unless a later dense-F32
+	  projection-output kernel is added.
+	  `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1` additionally routes row-bulk
+	  linear-attention `ssm_alpha`/`ssm_beta` from that FP32 attention-norm tensor to
   mirror llama.cpp's `build_layer_attn_linear` source shape.
   `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1` keeps the row-bulk linear-attention
   `ssm_out` projection output in FP32 through the post-attention residual/RMSNorm
