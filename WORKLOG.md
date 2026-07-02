@@ -136311,3 +136311,43 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_verify_f32_alpha_beta.py tests/test_qwen35_gguf_verify_f32_attention_norm.py tests/test_qwen35_gguf_verify_f32_attn_out.py`
   - `python3 -m pytest tests/test_qwen35_gguf_verify_f32_attention_norm.py tests/test_qwen35_gguf_verify_f32_attn_out.py tests/test_qwen35_gguf_verify_f32_alpha_beta.py -q` => **10 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-denseq8-diagnostic.json`
+
+## 2026-07-02 - Verifier FP32 full-attention output split
+
+- Extended default-off semantic diagnostic `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1`
+  to row-bulk full-attention layers. The full-attention `attn_output` projection
+  now tries a BF16-input/FP32-output GGUF path and falls back to the raw-Q8
+  sidecar row-tile BF16->F32 kernel for the q8_0_t16 + raw-sidecar
+  llama-compat route. It then casts the BF16 mirror for existing captures and
+  downstream kernels and feeds the FP32 attention output to the existing FP32
+  residual + post-attention RMSNorm helper. Default behavior is unchanged when
+  the diagnostic flag, FP32 residual sidecars, or raw sidecar path are absent.
+- Ran the comparable pair-12 forced target probe on top of the residual +
+  attention-norm-output + linear-attention-output + alpha/beta diagnostic stack:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-fullattnout-denseq8-diagnostic.json
+```
+
+  Result: no semantic parity. The row still samples `[15495, 539, 1151]` and
+  accepts 2. Row-1 `539 - 26126` worsens from **+0.176634** in the alpha/beta
+  slice to **+0.274796** (`26.229906 - 25.955111`), still opposite llama.cpp's
+  about **-0.00896**. This rules out the full-attention `attn_output` BF16
+  output round as the active missing lever.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_verify_f32_full_attn_out.py tests/test_qwen35_gguf_verify_f32_attn_out.py`
+  - `python3 -m pytest tests/test_qwen35_gguf_verify_f32_full_attn_out.py tests/test_qwen35_gguf_verify_f32_attn_out.py -q` => **6 passed**
+  - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-fullattnout-denseq8-diagnostic.json`

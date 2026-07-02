@@ -144,6 +144,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     register_gguf_x8_selected_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    gguf_q8_0_gemv_bf16_f32_out,
+    gguf_q8_0_gemv_rowtile_bf16_f32_out,
     gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
     gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -2145,13 +2147,14 @@ class Qwen35GGUFFullStackRunner:
             library=paged_attn_library,
             runtime=runtime,
         )
-        launch_gguf_linear(
-            layer.weight("attn_output"),
+        attn_out_f32_ptr = self._run_full_attention_output_rows(
+            layer,
             scratch.full_gated.ptr,
             scratch.attn_out.ptr,
+            scratch,
             rows=rows,
-            in_features=self.q_width,
-            out_features=self.hidden_size,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
             stream=stream,
             runtime=runtime,
         )
@@ -2173,6 +2176,7 @@ class Qwen35GGUFFullStackRunner:
             expert_sidecar=expert_sidecar,
             hidden_f32_ptr=hidden_f32_ptr,
             out_f32_ptr=out_f32_ptr,
+            attn_out_f32_ptr=attn_out_f32_ptr,
             stage_timings=stage_timings,
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
@@ -3048,6 +3052,59 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+
+    def _run_full_attention_output_rows(
+        self,
+        layer,
+        gated_ptr: int,
+        attn_out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        hidden_f32_ptr: int | None,
+        out_f32_ptr: int | None,
+        stream: int,
+        runtime: HipRuntime,
+    ) -> int | None:
+        attn_out_f32_ptr: int | None = None
+        if (
+            _gguf_verify_f32_attn_out_enabled()
+            and hidden_f32_ptr is not None
+            and out_f32_ptr is not None
+            and hasattr(scratch, "post_norm_f32")
+        ):
+            candidate_ptr = int(scratch.post_norm_f32.ptr)
+            if _try_launch_gguf_linear_bf16_f32_output(
+                layer.weight("attn_output"),
+                gated_ptr,
+                candidate_ptr,
+                rows=rows,
+                in_features=self.q_width,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            ):
+                f32_to_bf16(
+                    candidate_ptr,
+                    attn_out_ptr,
+                    rows * self.hidden_size,
+                    stream=stream,
+                    library=self._cast_library(),
+                    runtime=runtime,
+                )
+                attn_out_f32_ptr = candidate_ptr
+        if attn_out_f32_ptr is None:
+            launch_gguf_linear(
+                layer.weight("attn_output"),
+                gated_ptr,
+                attn_out_ptr,
+                rows=rows,
+                in_features=self.q_width,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        return attn_out_f32_ptr
 
     def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
         self._run_post_attention_ffn_rows(layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch, rows=1, stream=stream)
@@ -4354,6 +4411,86 @@ def _gguf_linear_supports_f32_activation(weight: Qwen35GGUFDeviceWeight) -> bool
         resolve_gguf_linear_dispatch(weight, activation_dtype=GGUF_ACTIVATION_F32)
     except ValueError:
         return False
+    return True
+
+
+def _try_launch_gguf_linear_bf16_f32_output(
+    weight: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    try:
+        resolve_gguf_linear_dispatch(weight, output_dtype=GGUF_OUTPUT_F32, rows=rows)
+    except ValueError:
+        pass
+    else:
+        launch_gguf_linear(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+    return _try_launch_dense_q8_raw_bf16_f32_output(
+        weight,
+        x_ptr,
+        out_ptr,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        stream=stream,
+        runtime=runtime,
+    )
+
+
+def _try_launch_dense_q8_raw_bf16_f32_output(
+    weight: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    raw = _dense_q8_raw_ptr(weight)
+    if raw is None:
+        return False
+    rows = int(rows)
+    if 2 <= rows <= 8:
+        gguf_q8_0_gemv_rowtile_bf16_f32_out(
+            x_ptr,
+            raw,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+    else:
+        gguf_q8_0_gemv_bf16_f32_out(
+            x_ptr,
+            raw,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
     return True
 
 

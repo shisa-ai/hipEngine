@@ -210,7 +210,9 @@ should be boring.
   `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1` keeps the row-bulk linear-attention
   `ssm_out` projection output in FP32 through the post-attention residual/RMSNorm
   add while preserving the BF16 mirror for existing captures and downstream
-  kernels.
+  kernels. It also keeps row-bulk full-attention `attn_output` in FP32 through
+  the same residual/RMSNorm helper when a raw Q8 sidecar BF16-input/F32-output
+  path is available.
   `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` extends the probe by materializing
   post-attention RMSNorm into FP32 scratch and independently gating router /
   selected-q8 / shared-q8 consumers with
@@ -238,7 +240,11 @@ should be boring.
   `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-denseq8-diagnostic.json`
   is byte-identical to the attention-output slice and leaves the row-1 margin at
   **+0.17663**, ruling out `ssm_alpha`/`ssm_beta` projection input precision for
-  the active branch. The post-norm split artifact
+  the active branch. The full-attention output-to-residual split
+  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-fullattnout-denseq8-diagnostic.json`
+  still samples `[15495, 539, 1151]`, accepts 2, and worsens row-1
+  `539 - 26126` to **+0.27480**, so full-attention `attn_output` BF16 output
+  rounding is ruled out as well. The post-norm split artifact
   `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`
   shows the combined router+selected-q8 consumer path breaks the old trace at
   cycle 7; selected-q8 alone flips row 1 (`413 - 4071` **+0.13053 -> -0.14458**),
