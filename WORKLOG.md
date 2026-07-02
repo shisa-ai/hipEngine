@@ -138574,3 +138574,41 @@ python3 scripts/gguf_mtp_bench.py \
   the captured verifier row state. Next useful split is full-attention
   captured-row materialization / hidden-KV history ordering around layers 35
   and 39, plus final LM-head score accumulation for tokens `539` and `26126`.
+
+## 2026-07-03 - MTP prefix-state fingerprint diagnostic
+
+- Added `--prefix-state-fingerprint` to
+  `scripts/gguf_mtp_forced_target_probe.py`. The diagnostic records the hidden
+  seed, all linear Conv/GDN state hashes, and live full-attention KV hashes
+  after replaying prior cycles and before scoring the requested forced cycle.
+  It is diagnostic-only and does not change runtime behavior.
+- Result: the previous capture-vs-noncapture split was partly conflating
+  current-cycle scoring with prior-cycle prefix state. `_replay_prior_cycles()`
+  uses captured rows for prior blocks, so enabling
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` changes the committed prefix
+  before cycle 12 is scored.
+- Cycle 1 already diverges after only cycle 0 has committed: default and
+  prefill-GDN prefixes have different hidden seed hashes, 29/30 linear-state
+  layers differ, and all 10 full-attention KV layers differ. Sampled tokens are
+  still the same (`[10562, 87682, 1494]`), so this is latent state drift before
+  the visible mismatch.
+- Cycle 12 forced pair result: default prefix samples `[15495, 26126, 1151]`
+  and rejects draft token `539` in favor of `26126` with row-1 margin
+  `539 - 26126 = -0.003027`; prefill-GDN prefix samples
+  `[15495, 539, 1151]` with margin `+0.295256`. The default prefix side matches
+  llama.cpp's near-tie reject decision, while active prefill-GDN capture flips
+  it.
+- Retained compact artifact:
+  `benchmarks/results/2026-07-03-mtp-prefix-state-fingerprint-default-vs-prefillgdn.json`.
+  Updated `docs/MTP-LLAMACPP-PARITY.md` so the active target is now explicit:
+  compare llama.cpp raw `verify_h` / pending hidden / draft seed rows against
+  hipEngine default and prefill-GDN prefix hidden rows before changing more row
+  kernels.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_forced_target_probe.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_forced_target_probe.py
+  jq empty benchmarks/results/2026-07-03-mtp-prefix-state-fingerprint-default-vs-prefillgdn.json
+  ```
+  Pycompile passed, focused tests passed (`8 passed`), and the compact artifact
+  is valid JSON.

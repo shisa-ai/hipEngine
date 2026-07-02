@@ -350,11 +350,52 @@ def _device_buffer_fingerprint(session: Any, buffer: Any) -> dict[str, Any]:
     }
 
 
+def _device_range_fingerprint(session: Any, ptr: int, nbytes: int) -> dict[str, Any]:
+    raw = _copy_device_bytes(session, int(ptr), int(nbytes))
+    return {
+        "nbytes": int(nbytes),
+        "blake2b_128": _bytes_digest(raw),
+    }
+
+
+def _session_live_kv_fingerprint(session: Any) -> dict[str, Any]:
+    from hipengine.runtime.qwen35_gguf_runner import DType
+
+    if session.runner is None or session.runner.weights is None or session.scratch is None:
+        raise ProbeError("session is closed")
+    cfg = session.runner.weights.config
+    live_positions = max(0, min(int(session.position), int(session.scratch.max_positions)))
+    row_nbytes = int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+    live_nbytes = int(live_positions) * int(row_nbytes)
+    layers: list[dict[str, Any]] = []
+    for layer_id, (key_cache, value_cache) in enumerate(
+        zip(session.scratch.full_key_caches, session.scratch.full_value_caches, strict=True)
+    ):
+        if key_cache is None or value_cache is None:
+            continue
+        max_live_nbytes = min(int(live_nbytes), int(key_cache.nbytes), int(value_cache.nbytes))
+        layers.append(
+            {
+                "layer": int(layer_id),
+                "key": _device_range_fingerprint(session, int(key_cache.ptr), max_live_nbytes),
+                "value": _device_range_fingerprint(session, int(value_cache.ptr), max_live_nbytes),
+            }
+        )
+    return {
+        "checked": True,
+        "live_positions": int(live_positions),
+        "row_nbytes": int(row_nbytes),
+        "live_nbytes_per_layer": int(live_nbytes),
+        "layers": layers,
+    }
+
+
 def _session_lifecycle_fingerprint(
     session: Any,
     *,
     current_prev: int,
     label: str,
+    include_kv: bool = False,
 ) -> dict[str, Any]:
     if session.runner is None or session.scratch is None:
         raise ProbeError("session is closed")
@@ -372,6 +413,16 @@ def _session_lifecycle_fingerprint(
                 "recurrent": _device_buffer_fingerprint(session, recurrent_state),
             }
         )
+    if include_kv:
+        kv_state = _session_live_kv_fingerprint(session)
+    else:
+        kv_state = {
+            "checked": False,
+            "reason": (
+                "Full-attention KV cache tails are not zeroed on reset; "
+                "this diagnostic hashes hidden seed and linear Conv/GDN state only."
+            ),
+        }
     return {
         "label": str(label),
         "position": int(session.position),
@@ -388,13 +439,7 @@ def _session_lifecycle_fingerprint(
             ),
         },
         "linear_state_layers": linear_layers,
-        "kv_state": {
-            "checked": False,
-            "reason": (
-                "Full-attention KV cache tails are not zeroed on reset; "
-                "this diagnostic hashes hidden seed and linear Conv/GDN state only."
-            ),
-        },
+        "kv_state": kv_state,
     }
 
 
@@ -1689,6 +1734,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "fingerprints through --cycle and exit."
         ),
     )
+    parser.add_argument(
+        "--prefix-state-fingerprint",
+        action="store_true",
+        help=(
+            "Diagnostic only: include hidden seed, linear-state, and live full-attention "
+            "KV fingerprints after replaying prior cycles and before scoring --cycle."
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -1852,6 +1905,16 @@ def main(argv: list[str] | None = None) -> int:
         if int(session.position) != cycle_start_position:
             raise ProbeError(f"replayed position {session.position} does not match cycle start {cycle_start_position}")
         cycle_pending_hidden_seed = _copy_current_hidden_seed(session)
+        prefix_state_fingerprint = (
+            _session_lifecycle_fingerprint(
+                session,
+                current_prev=current_prev,
+                label="prefix",
+                include_kv=True,
+            )
+            if bool(args.prefix_state_fingerprint)
+            else None
+        )
 
         if args.target_block_verify_mode == "serial-exact":
             sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden, layer_output_hidden = _probe_serial(
@@ -2044,6 +2107,7 @@ def main(argv: list[str] | None = None) -> int:
             "capture_linear_state_rows": bool(args.capture_linear_state_rows),
             "capture_scored_layer_boundary_hidden": capture_scored_layer_boundary_hidden,
             "prior_cycle_replay": replay_rows,
+            "prefix_state_fingerprint": prefix_state_fingerprint,
             "cycle_pending_hidden_seed_summary": hidden_state_summary(
                 cycle_pending_hidden_seed,
                 label="cycle_pending_hidden_seed",
@@ -2063,6 +2127,7 @@ def main(argv: list[str] | None = None) -> int:
             "Prefix replay consumes initial_prev_token plus prior visible outputs except the final cycle_prev_token, matching scripts/gguf_mtp_bench.py block verifier state.",
             "The verifier direct Q6 top-1 path is forced off so full row logits are available.",
             "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
+            "prefix_state_fingerprint is emitted only for --prefix-state-fingerprint diagnostics.",
             "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
             "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
             "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
