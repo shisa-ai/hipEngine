@@ -565,6 +565,41 @@ aggregate `ffn_out` is **0.0000583 MAE**, and post-MoE is **0.0000980 MAE**.
 Layer 1 still has no projection/conv/MoE copy target; the next semantic split
 moves upstream to scored layer 0.
 
+Layer-0 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-moe-taps-compare.json`.
+
+| layer-0 scored linear-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| pre-layer-0 target hidden | n/a | n/a | llama.cpp has no `verify_layer_output_-1`; `process_h_input` is context-only draft input and must not be compared to target `hidden_in`. |
+| `attn_norm_0` vs hipEngine `attn_norm` | **0.00115** | **0.00207** | Small normalized input delta is already present at the first target layer. |
+| `z_0` vs hipEngine `linear_z` | 0.00485 | 0.00625 | Projection follows the normalized input delta; no layer-0 projection cliff. |
+| `beta_0` vs hipEngine `ssm_beta` | 0.00177 | 0.00273 | Below the projection close threshold. |
+| `conv_output_silu_0` vs hipEngine `conv_out` | 0.000118 | 0.000865 | No conv cliff. |
+| `linear_attn_out_0` vs hipEngine `attn_out` | 0.0000353 | 0.0000619 | Linear-attention output is already very close. |
+| `attn_residual_0` vs hipEngine `attn_residual` | 0.0000374 | 0.0000504 | Carries the tiny first-layer output drift forward. |
+| `attn_post_norm_0` vs hipEngine `attn_post_norm` | **0.00193** | **0.00265** | Second RMSNorm amplifies residual-space drift before MoE. |
+| `ffn_out_0` vs hipEngine reconstructed `ffn_out` | 0.0000386 | 0.0000494 | MoE projection/combination remains small. |
+| `post_moe_0` / `verify_layer_output_0` vs hipEngine layer output | **0.0000547** | **0.0000813** | Exactly the incoming layer-1 hidden delta measured above. |
+
+Layer-0 MoE top-k selection matches exactly:
+`[57, 6, 56, 66, 127, 110, 106, 157]`. Router logits differ by
+**0.00442 MAE / 0.00528 RMSE**, routing weights by **0.000279 MAE**,
+selected weighted rows by **0.0000108 MAE**, aggregate `ffn_out` by
+**0.0000386 MAE**, and post-MoE by **0.0000547 MAE**. Layer 0 also has no
+projection/conv/MoE copy target.
+
+The live token mismatch remains a sensitive LM-head near-tie, not a layer body
+cliff. On the same task-9/cycle-3/row-2 branch, llama.cpp samples bonus `668`
+with logits `668=25.54584`, `8940=25.53623` (only **0.00961** apart), while
+hipEngine samples `8940` with logits `8940=25.84120`, `668=25.32186`
+(**0.51934** apart). The next instrumentation target is therefore the exact
+target-row input/pre-layer-0 hidden construction and the final hidden/LM-head
+amplification path, not copying a different layer-0 attention or MoE
+implementation.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
@@ -976,6 +1011,7 @@ Current source artifacts:
 | hipEngine scored layer-13 MoE cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-bonus-row-layer13-scored-moe-taps-compare.json` | Diagnostic-only companion to the scored layer-13 split. Layer-13 MoE is not the next copy target: router top-k only permutes ranks 2/3 among the same experts (`172` and `239`), with no hip-only or llama-only expert. Common-expert selected rows stay close, aggregate `ffn_out` is **0.000539 MAE**, and post-MoE is **0.001097 MAE**, matching the layer-13 output/incoming layer-14 hidden delta. |
 | hipEngine scored layer-12 input/linear-attention cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer12-cycle3.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer12-scored-linear-attn-compare.json` | Diagnostic-only `mixed_ja_en_translate` task 9 / cycle 3 / row 2 split; `performance_claim=false`. Same scored bulk/native verifier path, now capturing layer 12. Result: incoming hidden vs llama.cpp `verify_layer_output_11` is **0.000996 MAE / 0.001264 RMSE**, `attn_norm_12` is **0.01826 / 0.02342**, `z_12` is **0.01290 / 0.01663**, `conv_output_silu_12` is **0.000803 / 0.00175**, `linear_attn_out_12` is **0.000607 / 0.000778**, attention residual is **0.000956 / 0.00120**, `ffn_out_12` is **0.000445 / 0.000592**, and post-MoE/layer output is **0.000975 / 0.001244**. CPU RMSNorm exactly reproduces both engines, so the split moves upstream to layer 11. qkv/beta raw taps remain trace-label/layout caveated. |
 | hipEngine scored layer-12 MoE cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-bonus-row-layer12-scored-moe-taps-compare.json` | Diagnostic-only companion to the scored layer-12 split. Added `--llamacpp-task-id` to `scripts/llamacpp_mtp_compare_target_moe_taps.py` because the multi-task llama.cpp JSONL otherwise selected task 0 cycle 3. Correct task-9 result: only a rank 5/6 swap among the same experts (`71` and `194`), no hip-only or llama-only experts, aggregate `ffn_out` **0.000445 MAE**, and post-MoE **0.000975 MAE**. |
+| hipEngine scored layer-0 input/linear-attention/MoE cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-linear-attn-compare.json`, `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-scored-moe-taps-compare.json` | Diagnostic-only `mixed_ja_en_translate` task 9 / cycle 3 / row 2 split; `performance_claim=false`. This closes the scored layer-body walk: there is no `verify_layer_output_-1` target hidden label in llama.cpp, and `process_h_input` is context-only draft input, but the first complete layer-0 tensors are already close. `attn_norm_0` is **0.00115 MAE / 0.00207 RMSE**, `conv_output_silu_0` is **0.000118 / 0.000865**, `linear_attn_out_0` is **0.0000353 / 0.0000619**, `ffn_out_0` is **0.0000386 / 0.0000494**, and post-MoE/layer output is **0.0000547 / 0.0000813**. Layer-0 MoE top-k matches exactly (`[57, 6, 56, 66, 127, 110, 106, 157]`). The final token flip is a sensitive LM-head near-tie: llama.cpp ranks `668` over `8940` by **0.00961** logits, while hipEngine ranks `8940` over `668` by **0.51934**. Next target: target-row input/pre-layer-0 hidden construction and final hidden/LM-head amplification, not a layer-0 attention/MoE copy target. |
 | hipEngine validation of llama.cpp `final_output_0` tap | `benchmarks/results/2026-07-02-mtp-target-layer0-final-output-reprojection-diagnostic.json` | Superseded diagnostic-only model-backed projection check; `performance_claim=false`. The helper loads only hipEngine's layer-0 `ssm_out` weight with decode repack enabled, reprojects hipEngine `recurrent_out`, and reprojects traced llama.cpp `final_output_0`. Result: hipEngine `recurrent_out -> ssm_out` exactly reconstructs the captured hipEngine `attn_out` (**0 MAE**), but traced llama.cpp `final_output_0 -> ssm_out` is **0.2977 MAE / 0.3772 RMSE / -0.0302 cosine** from llama.cpp `linear_attn_out_0`. Keep this only as proof that the old `final_output_0` label was not a projectable semantic pre-`ssm_out` oracle; the corrected contiguous tap below supersedes it. |
 | hipEngine validation of llama.cpp `final_output_cont_0` tap | `benchmarks/results/2026-07-02-mtp-target-layer0-final-output-cont-reprojection-diagnostic.json`; patch artifact `benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.patch` | Diagnostic-only materialized contiguous post-GDN/pre-`ssm_out` tap; `performance_claim=false`. `scripts/llamacpp_mtp_final_output_cont_trace_patch.py` generates a local llama.cpp patch that adds `final_output_cont_` to both tensor-trace allowlists, emits `final_output_cont`, and feeds `ssm_out` from that contiguous tensor in the temporary trace tree. Cycle 18 remains the active llama.cpp branch (`[15495, 539]` drafted, one accepted, bonus `26126`), and the tap is projectable: llama.cpp `final_output_cont_0 -> ssm_out` reconstructs `linear_attn_out_0` at **0.000157 MAE / 0.000207 RMSE / 0.999953 cosine**. Direct hipEngine `recurrent_out` vs llama.cpp `final_output_cont_0` is only **0.0000176 MAE / 0.0000391 RMSE / 0.999999 cosine**, and hipEngine `attn_out` vs llama.cpp `linear_attn_out_0` remains **0.0001595 MAE / 0.0002100 RMSE / 0.999952 cosine**. Layer-0 GDN/recurrent layout and `ssm_out` projection are ruled out; keep the active semantic search on accumulated layer-output/router-input precision drift. |
 | hipEngine vs llama.cpp target output_norm recompute diagnostic | `benchmarks/results/2026-07-02-mtp-target-output-norm-recompute-diagnostic.json` | Diagnostic-only CPU recompute from the raw row-1 pre-output residuals; `performance_claim=false`. Using `output_norm.weight` and `eps=1e-6`, CPU `x * weight / sqrt(mean(x^2)+eps)` exactly reproduces hipEngine `verify_h` from hipEngine `pre_output_norm` and exactly reproduces llama.cpp `verify_h` from llama.cpp `verify_pre_output_norm` (**0 MAE** for both). The pre-output residual delta is **0.01015 MAE / 0.01273 RMSE / 0.99931 cosine**; applying the same CPU output_norm to both rows deterministically produces **0.07789 MAE / 0.09815 RMSE / 0.99908 cosine**, exactly matching the observed final hidden delta. Rounding llama.cpp pre-output to BF16 barely changes it (**0.07787 MAE**), so final output_norm and final-boundary BF16 rounding are not separate implementation suspects. |
