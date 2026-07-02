@@ -92,6 +92,24 @@ def _parse_token_csv(raw: str | None) -> list[int]:
     return values
 
 
+def _parse_layer_row(raw: str | None) -> tuple[int, int]:
+    if raw is None or raw.strip() == "":
+        raise argparse.ArgumentTypeError("expected LAYER:ROW")
+    parts = raw.split(":")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError("expected LAYER:ROW")
+    try:
+        layer = int(parts[0].strip())
+        row = int(parts[1].strip())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected integer LAYER:ROW") from exc
+    if layer < 0:
+        raise argparse.ArgumentTypeError("layer must be non-negative")
+    if row < 0:
+        raise argparse.ArgumentTypeError("row must be non-negative")
+    return layer, row
+
+
 def _unique_ints(values: Iterable[int]) -> list[int]:
     seen: set[int] = set()
     result: list[int] = []
@@ -277,12 +295,14 @@ def _probe_bulk_or_native(
     mode: str,
     use_wmma_prefill: bool,
     capture_pre_output_norm_hidden: bool,
-) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None]:
+    capture_layer_output_hidden: list[int],
+) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None, dict[int, np.ndarray] | None]:
     result = session.verify_target_block(
         verifier_inputs,
         bulk_attention_mode=mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+        capture_layer_output_hidden=capture_layer_output_hidden,
         record_stage_timings=False,
     )
     return (
@@ -294,6 +314,14 @@ def _probe_bulk_or_native(
             if result.pre_output_norm_hidden is None
             else np.ascontiguousarray(result.pre_output_norm_hidden, dtype=np.float32)
         ),
+        (
+            None
+            if result.layer_output_hidden is None
+            else {
+                int(layer_id): np.ascontiguousarray(hidden, dtype=np.float32)
+                for layer_id, hidden in result.layer_output_hidden.items()
+            }
+        ),
     )
 
 
@@ -302,17 +330,20 @@ def _probe_serial(
     verifier_inputs: list[int],
     *,
     capture_pre_output_norm_hidden: bool,
-) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None]:
+    capture_layer_output_hidden: list[int],
+) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None, dict[int, np.ndarray] | None]:
     token_ids: list[int] = []
     logits_rows: list[np.ndarray] = []
     hidden_rows: list[np.ndarray] = []
     pre_output_norm_rows: list[np.ndarray] = []
+    layer_output_rows: dict[int, list[np.ndarray]] = {int(layer_id): [] for layer_id in capture_layer_output_hidden}
     for token in verifier_inputs:
         row = session.step(
             int(token),
             return_logits=True,
             capture_hidden_seed_fp32=True,
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+            capture_layer_output_hidden=capture_layer_output_hidden,
         )
         token_ids.append(int(row.token_id))
         logits_rows.append(np.ascontiguousarray(row.logits.reshape(-1), dtype=np.float32))
@@ -322,6 +353,13 @@ def _probe_serial(
             if pre_hidden is None:
                 raise ProbeError("pre-output_norm hidden was requested but not captured")
             pre_output_norm_rows.append(np.ascontiguousarray(pre_hidden.reshape(-1), dtype=np.float32))
+        if capture_layer_output_hidden:
+            last_layer_hidden = session.last_layer_output_hidden
+            for layer_id in capture_layer_output_hidden:
+                layer_hidden = last_layer_hidden.get(int(layer_id))
+                if layer_hidden is None:
+                    raise ProbeError(f"layer {layer_id} output hidden was requested but not captured")
+                layer_output_rows[int(layer_id)].append(np.ascontiguousarray(layer_hidden.reshape(-1), dtype=np.float32))
     return (
         token_ids,
         np.ascontiguousarray(np.stack(logits_rows, axis=0), dtype=np.float32),
@@ -329,6 +367,14 @@ def _probe_serial(
         (
             np.ascontiguousarray(np.stack(pre_output_norm_rows, axis=0), dtype=np.float32)
             if capture_pre_output_norm_hidden
+            else None
+        ),
+        (
+            {
+                int(layer_id): np.ascontiguousarray(np.stack(rows, axis=0), dtype=np.float32)
+                for layer_id, rows in sorted(layer_output_rows.items())
+            }
+            if capture_layer_output_hidden
             else None
         ),
     )
@@ -468,6 +514,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Diagnostic only: include full FP32 values for the pre-output_norm BF16 residual row at the given verifier row index.",
     )
+    parser.add_argument(
+        "--layer-output-row",
+        action="append",
+        type=_parse_layer_row,
+        default=[],
+        metavar="LAYER:ROW",
+        help="Diagnostic only: include a summary of the post-layer BF16 residual row for LAYER:ROW.",
+    )
+    parser.add_argument(
+        "--raw-layer-output-row",
+        action="append",
+        type=_parse_layer_row,
+        default=[],
+        metavar="LAYER:ROW",
+        help="Diagnostic only: include full FP32 post-layer BF16 residual values for LAYER:ROW.",
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -521,6 +583,10 @@ def main(argv: list[str] | None = None) -> int:
     pre_output_norm_rows = {int(row) for row in args.pre_output_norm_row}
     raw_pre_output_norm_rows = {int(row) for row in args.raw_pre_output_norm_row}
     pre_output_norm_capture_rows = pre_output_norm_rows | raw_pre_output_norm_rows
+    layer_output_rows = {(int(layer), int(row)) for layer, row in args.layer_output_row}
+    raw_layer_output_rows = {(int(layer), int(row)) for layer, row in args.raw_layer_output_row}
+    layer_output_capture_rows = layer_output_rows | raw_layer_output_rows
+    capture_layer_output_hidden = sorted({int(layer) for layer, _row in layer_output_capture_rows})
     route_env = _apply_trace_route_env(workload, decode_repack=args.decode_repack)
     if _env_truthy("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"):
         raise ProbeError("direct verifier top-1 path is enabled; full row logits would be unavailable")
@@ -581,18 +647,20 @@ def main(argv: list[str] | None = None) -> int:
         cycle_pending_hidden_seed = _copy_current_hidden_seed(session)
 
         if args.target_block_verify_mode == "serial-exact":
-            sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden = _probe_serial(
+            sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden, layer_output_hidden = _probe_serial(
                 session,
                 verifier_inputs,
                 capture_pre_output_norm_hidden=bool(pre_output_norm_capture_rows),
+                capture_layer_output_hidden=capture_layer_output_hidden,
             )
         else:
-            sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden = _probe_bulk_or_native(
+            sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden, layer_output_hidden = _probe_bulk_or_native(
                 session,
                 verifier_inputs,
                 mode=str(args.target_block_verify_mode),
                 use_wmma_prefill=bool(args.target_block_wmma_prefill),
                 capture_pre_output_norm_hidden=bool(pre_output_norm_capture_rows),
+                capture_layer_output_hidden=capture_layer_output_hidden,
             )
         accepted_draft_tokens = _llama_accept_count(draft_tokens, sampled_tokens[: len(draft_tokens)])
         rows: list[dict[str, Any]] = []
@@ -634,6 +702,33 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if int(row_index) in raw_pre_output_norm_rows:
                     row_record["pre_output_norm_hidden_values"] = [float(value) for value in pre_row]
+            row_layer_ids = sorted(
+                layer_id
+                for layer_id, requested_row in layer_output_capture_rows
+                if int(requested_row) == int(row_index)
+            )
+            if row_layer_ids:
+                if layer_output_hidden is None:
+                    raise ProbeError("layer output rows were requested but not captured")
+                layer_summaries: dict[str, Any] = {}
+                layer_values: dict[str, list[float]] = {}
+                for layer_id in row_layer_ids:
+                    layer_rows = layer_output_hidden.get(int(layer_id))
+                    if layer_rows is None:
+                        raise ProbeError(f"layer {layer_id} output rows were requested but not captured")
+                    layer_row = np.ascontiguousarray(layer_rows[row_index], dtype=np.float32).reshape(-1)
+                    layer_summaries[str(layer_id)] = hidden_state_summary(
+                        layer_row,
+                        label=f"target_verify_layer_output_{layer_id}",
+                        depth=int(row_index),
+                        token_id=int(input_token),
+                        position=int(cycle_start_position + row_index),
+                    )
+                    if (int(layer_id), int(row_index)) in raw_layer_output_rows:
+                        layer_values[str(layer_id)] = [float(value) for value in layer_row]
+                row_record["layer_output_hidden_summaries"] = layer_summaries
+                if layer_values:
+                    row_record["layer_output_hidden_values"] = layer_values
             rows.append(row_record)
     finally:
         session.close()
@@ -692,6 +787,8 @@ def main(argv: list[str] | None = None) -> int:
             "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
             "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
             "pre_output_norm_hidden_values is emitted only for --raw-pre-output-norm-row diagnostics.",
+            "layer_output_hidden_summaries is emitted only for requested --layer-output-row or --raw-layer-output-row LAYER:ROW diagnostics.",
+            "layer_output_hidden_values is emitted only for --raw-layer-output-row LAYER:ROW diagnostics.",
         ],
     }
     text = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"

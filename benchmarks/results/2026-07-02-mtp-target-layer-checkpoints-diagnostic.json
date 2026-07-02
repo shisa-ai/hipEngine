@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "kind": "mtp_target_layer_checkpoint_parity",
+  "timestamp": "2026-07-02T03:24:00Z",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD ROCm HIP, gfx1151 host",
+  "active_mismatch": {
+    "hipengine_cycle": 12,
+    "llamacpp_cycle": 18,
+    "verifier_row": 1,
+    "input_token": 15495,
+    "position": 73,
+    "draft_tokens": [15495, 539],
+    "hipengine_serial_sampled_token": 539,
+    "llamacpp_sampled_token": 26126
+  },
+  "source_artifacts": {
+    "hipengine_bulk_layer_summaries": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-layercheck-all.json",
+    "hipengine_serial_layer_summaries": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-layercheck-all.json",
+    "hipengine_serial_layer_raw": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-layerraw-all.json",
+    "llamacpp_layer_summaries_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layercheck-all.jsonl",
+    "llamacpp_layer_raw_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layerraw-all.jsonl",
+    "llamacpp_layer_raw_json": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layerraw-all.json"
+  },
+  "instrumentation": {
+    "hipengine": [
+      "Qwen35GGUFBlockVerifyResult.layer_output_hidden",
+      "Qwen35GGUFResidentSession.verify_target_block(capture_layer_output_hidden=...)",
+      "Qwen35GGUFResidentSession.step(capture_layer_output_hidden=...)",
+      "scripts/gguf_mtp_forced_target_probe.py --layer-output-row LAYER:ROW",
+      "scripts/gguf_mtp_forced_target_probe.py --raw-layer-output-row LAYER:ROW"
+    ],
+    "llamacpp_local_dirty": [
+      "target graph l_out tensors are traceable as l_out_N",
+      "common/speculative.cpp maps l_out_N to verify_layer_output_N"
+    ]
+  },
+  "row1_full_vector_deltas": {
+    "note": "Layer 0 raw values changed only when llama.cpp value capture was enabled; layer 0 summary capture remains close, so full-vector layer 0 is excluded from the retained curve until the diagnostic hook is fixed.",
+    "selected_layers": [
+      {"layer": 1, "mae": 0.00053470, "rmse": 0.00066447, "max_abs": 0.00220183, "cosine": 0.99983377},
+      {"layer": 2, "mae": 0.00071380, "rmse": 0.00090562, "max_abs": 0.00724626, "cosine": 0.99981973},
+      {"layer": 4, "mae": 0.00132073, "rmse": 0.00166041, "max_abs": 0.00659153, "cosine": 0.99938331},
+      {"layer": 8, "mae": 0.00089028, "rmse": 0.00113724, "max_abs": 0.00667167, "cosine": 0.99978230},
+      {"layer": 12, "mae": 0.00075776, "rmse": 0.00102936, "max_abs": 0.01170850, "cosine": 0.99986414},
+      {"layer": 16, "mae": 0.00097334, "rmse": 0.00128323, "max_abs": 0.01355755, "cosine": 0.99982971},
+      {"layer": 20, "mae": 0.00123004, "rmse": 0.00158347, "max_abs": 0.01343513, "cosine": 0.99982820},
+      {"layer": 24, "mae": 0.00143848, "rmse": 0.00184208, "max_abs": 0.01039332, "cosine": 0.99980110},
+      {"layer": 28, "mae": 0.00268967, "rmse": 0.00341244, "max_abs": 0.01919234, "cosine": 0.99950970},
+      {"layer": 30, "mae": 0.00293431, "rmse": 0.00372273, "max_abs": 0.01831210, "cosine": 0.99963838},
+      {"layer": 32, "mae": 0.00538965, "rmse": 0.00682171, "max_abs": 0.04616213, "cosine": 0.99892687},
+      {"layer": 35, "mae": 0.00844681, "rmse": 0.01090582, "max_abs": 0.12154770, "cosine": 0.99867721},
+      {"layer": 38, "mae": 0.00965078, "rmse": 0.01213552, "max_abs": 0.04010880, "cosine": 0.99937788},
+      {"layer": 39, "mae": 0.01015184, "rmse": 0.01273188, "max_abs": 0.04481628, "cosine": 0.99931170}
+    ],
+    "pre_output_norm": {
+      "mae": 0.01015184,
+      "rmse": 0.01273188,
+      "max_abs": 0.04481628,
+      "cosine": 0.99931170
+    },
+    "post_output_norm_target_verify_h": {
+      "mae": 0.07789410,
+      "rmse": 0.09815333,
+      "max_abs": 0.38062410,
+      "cosine": 0.99907762
+    }
+  },
+  "interpretation": [
+    "There is no single large target-layer cliff after layer 0; the retained raw curve grows gradually from about 5e-4 MAE near layer 1 to about 1e-2 MAE at layer 39.",
+    "The corrected target pre-output_norm residual is close, not the previously recorded 0.248 MAE outlier.",
+    "hipEngine materializes verifier layer outputs as BF16 boundaries; llama.cpp target graph exposes F32 l_out tensors. The gradual drift is consistent with accumulated inter-layer BF16 rounding, then final output_norm/head amplification of a near-tie.",
+    "The next fix target is a llama-compat F32 residual boundary experiment for the target verifier, or a narrower proof that matching llama.cpp's F32 l_out precision changes the 539 vs 26126 tie-break."
+  ]
+}

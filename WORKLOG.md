@@ -135251,3 +135251,67 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   near-tie: hip serial `539 - 26126` **+0.11822** vs llama **-0.00896**.
   Next split: forced-prefix per-layer target residual checkpoints, then
   sub-boundary split in the first widening layer.
+
+## 2026-07-02 - Target per-layer residual checkpoints for pair-12
+
+- Added diagnostic-only hipEngine target post-layer residual capture:
+  `Qwen35GGUFBlockVerifyResult.layer_output_hidden`,
+  `capture_layer_output_hidden=...` plumbing through
+  `verify_target_block()`, `verify_target_block_serial_exact()`, and `step()`,
+  plus forced-probe flags `--layer-output-row LAYER:ROW` and
+  `--raw-layer-output-row LAYER:ROW`. Defaults are off.
+- Extended the local dirty llama.cpp diagnostic checkout to trace target graph
+  `l_out` tensors as `l_out_N` / `verify_layer_output_N`; rebuilt:
+
+```bash
+cd /home/lhl/llama.cpp/llama.cpp-hip
+cmake --build build --target llama-server -j 8
+```
+
+- Reran forced pair-12 row-1 layer probes for all 40 target layers:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --raw-layer-output-row 0:1 ... --raw-layer-output-row 39:1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-layerraw-all.json
+```
+
+```bash
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_TENSOR_TRACE_VALUES=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=h_nextn_pre_output_norm,h_nextn,l_out_0,...,l_out_39 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layerraw-all.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layerraw-all.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layerraw-all-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-layer-checkpoints-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`. This corrects the prior
+  pre-output_norm interpretation: the old **0.248 MAE** llama trace was an
+  ambiguous target/draft `h_nextn` label capture. With `verify_layer_output_N`
+  and corrected `verify_pre_output_norm`, hipEngine serial-exact vs llama.cpp
+  row-1 residual drift is gradual: layer 1 MAE **0.000535**, layer 28
+  **0.00269**, layer 32 **0.00539**, layer 39/pre-output_norm **0.01015**
+  (cosine **0.99931**). Final target `verify_h` remains MAE **0.07789**, RMSE
+  **0.09815**, cosine **0.99908**, and the logits near-tie still flips. Active
+  hypothesis: hipEngine's BF16 verifier layer boundaries accumulate drift
+  relative to llama.cpp's F32 target `l_out` graph tensors. Next proof/fix is a
+  llama-compat F32 residual-boundary experiment or a narrower sub-boundary check
+  that moves the `539` vs `26126` tie-break.
