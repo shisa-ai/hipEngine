@@ -95,9 +95,9 @@ def main() -> None:
                 "linear_attn_out_mae": artifact["tensor_deltas"]["linear_attn_out"][
                     "mean_abs_diff"
                 ],
-                "attn_residual_mae": artifact["tensor_deltas"]["attn_residual"][
-                    "mean_abs_diff"
-                ],
+                "attn_residual_mae": _mae_or_none(
+                    artifact["tensor_deltas"].get("attn_residual", {})
+                ),
                 "post_moe_mae": artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"],
                 "conv_output_silu_mae": artifact["pre_ssm_stable_deltas"][
                     "conv_output_silu"
@@ -151,13 +151,12 @@ def build_linear_attn_compare_artifact(
         model_path=Path(str(hip_artifact.get("model", ""))),
         weight_loader=attn_norm_weight_loader or load_layer0_attn_norm_weight,
     )
-    tensor_deltas = {
-        name: _numeric_delta(
-            _array_label(llama_values, llama_label.format(layer=layer), "llama.cpp"),
-            _array(hip_values, hip_key, "hipEngine"),
-        )
-        for name, hip_key, llama_label in TENSOR_PAIRS
-    }
+    tensor_deltas = _optional_deltas(
+        pairs=TENSOR_PAIRS,
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+    )
     pre_ssm_stable_deltas = _optional_deltas(
         pairs=PRE_SSM_STABLE_PAIRS,
         hip_values=hip_values,
@@ -260,7 +259,10 @@ def _hip_values(capture: dict[str, Any]) -> dict[str, np.ndarray]:
     values = capture.get("values")
     if not isinstance(values, dict):
         raise ValueError("hipEngine capture must include raw values")
-    return {key: np.asarray(value, dtype=np.float32).reshape(-1) for key, value in values.items()}
+    parsed = {key: np.asarray(value, dtype=np.float32).reshape(-1) for key, value in values.items()}
+    if "post_moe_rounded_from_components" not in parsed and "layer_out" in parsed:
+        parsed["post_moe_rounded_from_components"] = parsed["layer_out"]
+    return parsed
 
 
 def _llamacpp_cycle(path: Path, *, cycle: int, task_id: int | None = None) -> dict[str, Any]:
@@ -354,6 +356,12 @@ def _numeric_delta(reference: np.ndarray, candidate: np.ndarray) -> dict[str, An
     }
 
 
+def _mae_or_none(delta: dict[str, Any]) -> float | None:
+    if delta.get("status") != "complete" or "mean_abs_diff" not in delta:
+        return None
+    return float(delta["mean_abs_diff"])
+
+
 def _optional_deltas(
     *,
     pairs: tuple[tuple[str, str, str], ...],
@@ -395,12 +403,14 @@ def _input_boundary_deltas(
     layer: int,
 ) -> dict[str, Any]:
     prev_layer = int(layer) - 1
+    llama_input_label = _llamacpp_layer_input_label(layer)
     deltas: dict[str, Any] = {
         "process_h_input_context": _process_h_input_context(llama_values),
     }
     pairs: tuple[tuple[str, str, str], ...] = (
-        ("hidden_in_vs_prev_layer_output", "hidden_in", f"verify_layer_output_{prev_layer}"),
+        ("hidden_in_vs_prev_layer_output", "hidden_in", llama_input_label),
         ("attn_norm_input", "attn_norm", f"attn_norm_{int(layer)}"),
+        ("attn_norm_f32_scratch_input", "attn_norm_f32_scratch", f"attn_norm_{int(layer)}"),
     )
     for name, hip_key, llama_label in pairs:
         if hip_key not in hip_values or llama_label not in llama_values:
@@ -425,6 +435,12 @@ def _input_boundary_deltas(
             **_numeric_delta(llama_values[llama_label], hip_values[hip_key]),
         }
     return deltas
+
+
+def _llamacpp_layer_input_label(layer: int) -> str:
+    if int(layer) == 0:
+        return "model.input_embed"
+    return f"verify_layer_output_{int(layer) - 1}"
 
 
 def _process_h_input_context(llama_values: dict[str, np.ndarray]) -> dict[str, Any]:
@@ -455,7 +471,7 @@ def _attn_norm_formula_assessment(
     model_path: Path,
     weight_loader: Callable[[Path, int], tuple[np.ndarray, float, dict[str, Any]]],
 ) -> dict[str, Any]:
-    prev_label = f"verify_layer_output_{int(layer) - 1}"
+    prev_label = _llamacpp_layer_input_label(layer)
     llama_attn_label = f"attn_norm_{int(layer)}"
     required = {
         "hip_hidden_in": hip_values.get("hidden_in"),
@@ -931,9 +947,14 @@ def _conclusion(artifact: dict[str, Any]) -> str:
     stable = artifact.get("stable_split_assessment", {})
     layer = int(artifact["inputs"]["layer"])
     linear = deltas["linear_attn_out"]["mean_abs_diff"]
-    residual = deltas["attn_residual"]["mean_abs_diff"]
+    residual = _mae_or_none(deltas.get("attn_residual", {}))
     ffn = deltas["ffn_out"]["mean_abs_diff"]
     post = deltas["post_moe"]["mean_abs_diff"]
+    residual_text = (
+        f"attention residual MAE {residual:.6g}"
+        if residual is not None
+        else "attention residual unavailable in this capture"
+    )
     pre_assessment = artifact.get("pre_ssm_out_label_assessment", {})
     pre_note = ""
     if pre_assessment.get("status") == "unresolved_label_or_layout":
@@ -985,7 +1006,7 @@ def _conclusion(artifact: dict[str, Any]) -> str:
             )
     return (
         f"Layer {layer} drift is already present at the linear-attention output: "
-        f"linear_attn_out MAE {linear:.6g}, attention residual MAE {residual:.6g}, "
+        f"linear_attn_out MAE {linear:.6g}, {residual_text}, "
         f"ffn_out MAE {ffn:.6g}, post_moe MAE {post:.6g}. "
         "The next semantic target is the earliest complete input/pre-SSM delta above threshold."
         f"{stable_note}"

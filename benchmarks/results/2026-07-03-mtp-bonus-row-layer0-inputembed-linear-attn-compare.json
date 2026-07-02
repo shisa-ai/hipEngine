@@ -1,0 +1,1526 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_linear_attn_cross_engine_compare",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T17:59:24.033959+00:00",
+  "inputs": {
+    "hipengine_raw": "benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json",
+    "llamacpp_jsonl": "/tmp/hipengine-llamacpp-layer0-inputembed-raw-row2-task9-cycle3.jsonl",
+    "llamacpp_cycle": 3,
+    "llamacpp_task_id": 9,
+    "row": 2,
+    "layer": 0,
+    "hipengine_capture_source": "scored_target_block"
+  },
+  "hipengine": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "source_trace": "/tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json",
+    "command": {
+      "argv": [
+        "scripts/gguf_mtp_forced_target_probe.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--trace",
+        "/tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json",
+        "--cycle",
+        "3",
+        "--target-block-verify-mode",
+        "bulk",
+        "--replay-target-block-verify-mode",
+        "bulk",
+        "--target-block-direct-partial-replay-mode",
+        "direct-commit",
+        "--capture-linear-state-rows",
+        "--candidate-token",
+        "668,8940",
+        "--top-k",
+        "20",
+        "--raw-scored-layer-boundary-row",
+        "0:2",
+        "--raw-layer-output-row",
+        "0:2",
+        "--require-cached-build",
+        "--compiler-version-file",
+        "scratchpad/_bv_compiler_version.txt",
+        "--output",
+        "benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json"
+      ],
+      "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json --cycle 3 --target-block-verify-mode bulk --replay-target-block-verify-mode bulk --target-block-direct-partial-replay-mode direct-commit --capture-linear-state-rows --candidate-token 668,8940 --top-k 20 --raw-scored-layer-boundary-row 0:2 --raw-layer-output-row 0:2 --require-cached-build --compiler-version-file scratchpad/_bv_compiler_version.txt --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-cycle3.json"
+    },
+    "cycle": 3,
+    "sampled_tokens": [
+      11,
+      567,
+      8940
+    ],
+    "accepted_draft_tokens": 2,
+    "layer": 0,
+    "row": 2,
+    "position": 75,
+    "input_token": 567,
+    "trace_target_token": 8940,
+    "capture_source": "scored_target_block"
+  },
+  "llamacpp": {
+    "task_id": 9,
+    "cycle": 3,
+    "accepted_draft_tokens": 2,
+    "accepted_token_ids": [
+      11,
+      567
+    ],
+    "bonus_token_id": 668,
+    "cycle_wall_ms": 274.139,
+    "duplicate_value_labels": {
+      "ffn_moe_out_0": {
+        "count": 2,
+        "max_abs_vs_first": 0.0
+      },
+      "ffn_out_0": {
+        "count": 2,
+        "max_abs_vs_first": 0.0
+      }
+    }
+  },
+  "input_boundary_deltas": {
+    "process_h_input_context": {
+      "status": "context_only",
+      "llamacpp_label": "process_h_input",
+      "reason": "process_h_input is the MTP draft-context embedding input, not the target layer hidden state; do not compare it to hipEngine target hidden_in",
+      "summary": {
+        "shape": [
+          2048
+        ],
+        "count": 2048,
+        "sha256": "a87d3857df16ea5a10cfa2f2cb6bd6ffa90a7ba2e5e05a8da45e1823dcd77e42",
+        "stats": {
+          "count": 2048,
+          "finite_count": 2048,
+          "min": -12.986543655395508,
+          "max": 24.255687713623047,
+          "mean": -0.004328157752752304,
+          "l2": 117.01753922124571
+        },
+        "samples": [
+          -1.76976752,
+          3.93853521,
+          -1.65932655,
+          -3.06758881,
+          7.96070385,
+          -2.66952848,
+          1.16222203,
+          -3.00249791
+        ],
+        "top_abs": [
+          {
+            "index": 1735,
+            "value": 24.25568771,
+            "abs": 24.25568771
+          },
+          {
+            "index": 1300,
+            "value": 16.20921707,
+            "abs": 16.20921707
+          },
+          {
+            "index": 1050,
+            "value": 14.42477798,
+            "abs": 14.42477798
+          },
+          {
+            "index": 1754,
+            "value": 14.30115414,
+            "abs": 14.30115414
+          },
+          {
+            "index": 1294,
+            "value": -12.98654366,
+            "abs": 12.98654366
+          },
+          {
+            "index": 928,
+            "value": -12.72048473,
+            "abs": 12.72048473
+          },
+          {
+            "index": 1524,
+            "value": 12.0871048,
+            "abs": 12.0871048
+          },
+          {
+            "index": 1034,
+            "value": -11.66503906,
+            "abs": 11.66503906
+          }
+        ]
+      }
+    },
+    "hidden_in_vs_prev_layer_output": {
+      "status": "complete",
+      "hipengine_key": "hidden_in",
+      "llamacpp_label": "model.input_embed",
+      "count": 2048,
+      "mean_abs_diff": 6.431539077311754e-06,
+      "rmse": 1.0324683898943476e-05,
+      "max_abs_diff": 0.00010585784912109375,
+      "cosine": 0.9999991655349731,
+      "llamacpp_rms": 0.009019688703119755,
+      "hipengine_rms": 0.009019473567605019,
+      "llamacpp_sample": [
+        -0.0011358261108398438,
+        -0.001514434814453125,
+        0.009843826293945312,
+        0.005679130554199219,
+        -0.001514434814453125,
+        0.004164695739746094,
+        0.0007572174072265625,
+        0.010979652404785156
+      ],
+      "hipengine_sample": [
+        -0.00113677978515625,
+        -0.0015106201171875,
+        0.00982666015625,
+        0.00567626953125,
+        -0.0015106201171875,
+        0.004150390625,
+        0.00075531005859375,
+        0.010986328125
+      ],
+      "diff_sample": [
+        -9.5367431640625e-07,
+        3.814697265625e-06,
+        -1.71661376953125e-05,
+        -2.86102294921875e-06,
+        3.814697265625e-06,
+        -1.430511474609375e-05,
+        -1.9073486328125e-06,
+        6.67572021484375e-06
+      ]
+    },
+    "attn_norm_input": {
+      "status": "complete",
+      "hipengine_key": "attn_norm",
+      "llamacpp_label": "attn_norm_0",
+      "count": 2048,
+      "mean_abs_diff": 0.0011545694433152676,
+      "rmse": 0.0020690294913947582,
+      "max_abs_diff": 0.016740798950195312,
+      "cosine": 0.9999980926513672,
+      "llamacpp_rms": 1.065304160118103,
+      "hipengine_rms": 1.0651594400405884,
+      "llamacpp_sample": [
+        -0.13768881559371948,
+        -0.17344023287296295,
+        1.1337172985076904,
+        0.6022740006446838,
+        -0.16892801225185394,
+        0.4583442509174347,
+        0.08753496408462524,
+        1.2249497175216675
+      ],
+      "hipengine_sample": [
+        -0.1376953125,
+        -0.1728515625,
+        1.1328125,
+        0.6015625,
+        -0.1689453125,
+        0.45703125,
+        0.08740234375,
+        1.2265625
+      ],
+      "diff_sample": [
+        -6.496906280517578e-06,
+        0.0005886703729629517,
+        -0.0009047985076904297,
+        -0.0007115006446838379,
+        -1.730024814605713e-05,
+        -0.0013130009174346924,
+        -0.00013262033462524414,
+        0.0016127824783325195
+      ]
+    }
+  },
+  "attn_norm_formula_assessment": {
+    "status": "complete",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "layer": 0,
+    "weight": {
+      "tensor_name": "blk.0.attn_norm.weight",
+      "ggml_type": "F32",
+      "shape": [
+        2048
+      ],
+      "summary": {
+        "shape": [
+          2048
+        ],
+        "count": 2048,
+        "sha256": "f452e90d3bc696497fce0aee0233ce7d3f7dfa4dbfc2ebcc992d426a5df9e4ee",
+        "stats": {
+          "count": 2048,
+          "finite_count": 2048,
+          "min": 0.919921875,
+          "max": 1.330078125,
+          "mean": 1.0311105251312256,
+          "l2": 46.715349809669284
+        },
+        "samples": [
+          1.10009766,
+          1.03930664,
+          1.04516602,
+          0.96240234,
+          1.01226807,
+          0.99874115,
+          1.04907227,
+          1.01245117
+        ],
+        "top_abs": [
+          {
+            "index": 567,
+            "value": 1.33007812,
+            "abs": 1.33007812
+          },
+          {
+            "index": 120,
+            "value": 1.3046875,
+            "abs": 1.3046875
+          },
+          {
+            "index": 1626,
+            "value": 1.29296875,
+            "abs": 1.29296875
+          },
+          {
+            "index": 602,
+            "value": 1.29296875,
+            "abs": 1.29296875
+          },
+          {
+            "index": 1269,
+            "value": 1.29296875,
+            "abs": 1.29296875
+          },
+          {
+            "index": 1875,
+            "value": 1.26953125,
+            "abs": 1.26953125
+          },
+          {
+            "index": 1695,
+            "value": 1.25976562,
+            "abs": 1.25976562
+          },
+          {
+            "index": 61,
+            "value": 1.25585938,
+            "abs": 1.25585938
+          }
+        ]
+      },
+      "config_eps": 9.999999974752427e-07,
+      "metadata_eps_key": "qwen35moe.attention.layer_norm_rms_epsilon",
+      "metadata_eps": 9.999999974752427e-07,
+      "materialization_slot": "layers.0.attn_norm",
+      "materialization_layout": "dense_f32",
+      "materialization_quant_key": "f32"
+    },
+    "eps": 9.999999974752427e-07,
+    "formula": "x * rsqrt(mean(x^2) + eps) * weight",
+    "source_labels": {
+      "llamacpp_input": "model.input_embed",
+      "llamacpp_attn_norm": "attn_norm_0",
+      "hipengine_input": "hidden_in",
+      "hipengine_attn_norm": "attn_norm"
+    },
+    "observed_attn_norm_delta": {
+      "available": true,
+      "shape_match": true,
+      "count": 2048,
+      "actual_sha256": "ae6d74814dd4f0d2b82bd7f1b68ebb778afc0119fa072364515f5f970e44aaf3",
+      "reference_sha256": "e10de3d732e805fb79585281780033eea59b820eab08cf050829af85d5081ee5",
+      "max_abs_diff": 0.016740798950195312,
+      "mean_abs_diff": 0.0011545694433152676,
+      "rmse": 0.0020690294913947582,
+      "diff_samples": [
+        6.5e-06,
+        -0.00058867,
+        0.0009048,
+        0.0007115,
+        1.73e-05,
+        0.001313,
+        0.00013262,
+        -0.00161278
+      ],
+      "top_abs_diff": [
+        {
+          "index": 670,
+          "actual": -10.3917408,
+          "reference": -10.375,
+          "diff": -0.0167408,
+          "abs_diff": 0.0167408
+        },
+        {
+          "index": 1972,
+          "actual": -3.53226042,
+          "reference": -3.515625,
+          "diff": -0.01663542,
+          "abs_diff": 0.01663542
+        },
+        {
+          "index": 1086,
+          "actual": -5.89094353,
+          "reference": -5.90625,
+          "diff": 0.01530647,
+          "abs_diff": 0.01530647
+        },
+        {
+          "index": 1695,
+          "actual": -12.26519489,
+          "reference": -12.25,
+          "diff": -0.01519489,
+          "abs_diff": 0.01519489
+        },
+        {
+          "index": 1296,
+          "actual": -6.98232603,
+          "reference": -6.96875,
+          "diff": -0.01357603,
+          "abs_diff": 0.01357603
+        },
+        {
+          "index": 286,
+          "actual": -5.73212862,
+          "reference": -5.71875,
+          "diff": -0.01337862,
+          "abs_diff": 0.01337862
+        },
+        {
+          "index": 1617,
+          "actual": 2.18469381,
+          "reference": 2.171875,
+          "diff": 0.01281881,
+          "abs_diff": 0.01281881
+        },
+        {
+          "index": 1818,
+          "actual": -4.23728466,
+          "reference": -4.25,
+          "diff": 0.01271534,
+          "abs_diff": 0.01271534
+        }
+      ],
+      "exact_match": false
+    },
+    "best_llamacpp_candidate": {
+      "available": true,
+      "name": "llama_input_f32_out",
+      "delta": {
+        "available": true,
+        "shape_match": true,
+        "count": 2048,
+        "actual_sha256": "ae6d74814dd4f0d2b82bd7f1b68ebb778afc0119fa072364515f5f970e44aaf3",
+        "reference_sha256": "ae6d74814dd4f0d2b82bd7f1b68ebb778afc0119fa072364515f5f970e44aaf3",
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "rmse": 0.0,
+        "diff_samples": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "top_abs_diff": [
+          {
+            "index": 0,
+            "actual": -0.13768882,
+            "reference": -0.13768882,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 1,
+            "actual": -0.17344023,
+            "reference": -0.17344023,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 2,
+            "actual": 1.1337173,
+            "reference": 1.1337173,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 3,
+            "actual": 0.602274,
+            "reference": 0.602274,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 4,
+            "actual": -0.16892801,
+            "reference": -0.16892801,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 5,
+            "actual": 0.45834425,
+            "reference": 0.45834425,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 6,
+            "actual": 0.08753496,
+            "reference": 0.08753496,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 7,
+            "actual": 1.22494972,
+            "reference": 1.22494972,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          }
+        ],
+        "exact_match": true
+      }
+    },
+    "best_hipengine_candidate": {
+      "available": true,
+      "name": "hip_input_f32_bf16_out",
+      "delta": {
+        "available": true,
+        "shape_match": true,
+        "count": 2048,
+        "actual_sha256": "e10de3d732e805fb79585281780033eea59b820eab08cf050829af85d5081ee5",
+        "reference_sha256": "e10de3d732e805fb79585281780033eea59b820eab08cf050829af85d5081ee5",
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "rmse": 0.0,
+        "diff_samples": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "top_abs_diff": [
+          {
+            "index": 0,
+            "actual": -0.13769531,
+            "reference": -0.13769531,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 1,
+            "actual": -0.17285156,
+            "reference": -0.17285156,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 2,
+            "actual": 1.1328125,
+            "reference": 1.1328125,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 3,
+            "actual": 0.6015625,
+            "reference": 0.6015625,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 4,
+            "actual": -0.16894531,
+            "reference": -0.16894531,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 5,
+            "actual": 0.45703125,
+            "reference": 0.45703125,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 6,
+            "actual": 0.08740234,
+            "reference": 0.08740234,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          },
+          {
+            "index": 7,
+            "actual": 1.2265625,
+            "reference": 1.2265625,
+            "diff": 0.0,
+            "abs_diff": 0.0
+          }
+        ],
+        "exact_match": true
+      }
+    },
+    "cpu_attn_norm_delta_from_inputs": {
+      "llama_f32_vs_hip_f32": {
+        "available": true,
+        "shape_match": true,
+        "count": 2048,
+        "actual_sha256": "ae6d74814dd4f0d2b82bd7f1b68ebb778afc0119fa072364515f5f970e44aaf3",
+        "reference_sha256": "87379076abbd780921e6cee79aa237457c0d11024e5c8dc6bfb21c2fb3fb7068",
+        "max_abs_diff": 0.010900735855102539,
+        "mean_abs_diff": 0.0007286227773874998,
+        "rmse": 0.0011605385225266218,
+        "diff_samples": [
+          0.00011885,
+          -0.00043277,
+          0.00195026,
+          0.00028926,
+          -0.00042152,
+          0.00156355,
+          0.00021842,
+          -0.00077367
+        ],
+        "top_abs_diff": [
+          {
+            "index": 1972,
+            "actual": -3.53226042,
+            "reference": -3.52135968,
+            "diff": -0.01090074,
+            "abs_diff": 0.01090074
+          },
+          {
+            "index": 409,
+            "actual": 2.05279374,
+            "reference": 2.05959153,
+            "diff": -0.00679779,
+            "abs_diff": 0.00679779
+          },
+          {
+            "index": 952,
+            "actual": 3.93316293,
+            "reference": 3.92672873,
+            "diff": 0.0064342,
+            "abs_diff": 0.0064342
+          },
+          {
+            "index": 1974,
+            "actual": -2.80873299,
+            "reference": -2.80243468,
+            "diff": -0.0062983,
+            "abs_diff": 0.0062983
+          },
+          {
+            "index": 1616,
+            "actual": 1.83307552,
+            "reference": 1.83922541,
+            "diff": -0.00614989,
+            "abs_diff": 0.00614989
+          },
+          {
+            "index": 595,
+            "actual": -1.83031309,
+            "reference": -1.82431746,
+            "diff": -0.00599563,
+            "abs_diff": 0.00599563
+          },
+          {
+            "index": 1078,
+            "actual": 2.78507733,
+            "reference": 2.7910552,
+            "diff": -0.00597787,
+            "abs_diff": 0.00597787
+          },
+          {
+            "index": 1617,
+            "actual": 2.18469381,
+            "reference": 2.17873883,
+            "diff": 0.00595498,
+            "abs_diff": 0.00595498
+          }
+        ],
+        "exact_match": false
+      },
+      "llama_bf16_vs_hip_bf16": {
+        "available": true,
+        "shape_match": true,
+        "count": 2048,
+        "actual_sha256": "69bc47ff38d205e874a921b22745d10470e95cf31ad161dc0100f69a21d21a83",
+        "reference_sha256": "e10de3d732e805fb79585281780033eea59b820eab08cf050829af85d5081ee5",
+        "max_abs_diff": 0.015625,
+        "mean_abs_diff": 0.0007301867008209229,
+        "rmse": 0.0021202447824180126,
+        "diff_samples": [
+          0.0,
+          -0.00097656,
+          0.0,
+          0.0,
+          0.0,
+          0.00195312,
+          0.0,
+          0.0
+        ],
+        "top_abs_diff": [
+          {
+            "index": 1874,
+            "actual": -2.046875,
+            "reference": -2.03125,
+            "diff": -0.015625,
+            "abs_diff": 0.015625
+          },
+          {
+            "index": 1673,
+            "actual": 2.21875,
+            "reference": 2.203125,
+            "diff": 0.015625,
+            "abs_diff": 0.015625
+          },
+          {
+            "index": 1078,
+            "actual": 2.78125,
+            "reference": 2.796875,
+            "diff": -0.015625,
+            "abs_diff": 0.015625
+          },
+          {
+            "index": 680,
+            "actual": -3.125,
+            "reference": -3.109375,
+            "diff": -0.015625,
+            "abs_diff": 0.015625
+          },
+          {
+            "index": 409,
+            "actual": 2.046875,
+            "reference": 2.0625,
+            "diff": -0.015625,
+            "abs_diff": 0.015625
+          },
+          {
+            "index": 310,
+            "actual": 3.453125,
+            "reference": 3.46875,
+            "diff": -0.015625,
+            "abs_diff": 0.015625
+          },
+          {
+            "index": 1190,
+            "actual": 2.109375,
+            "reference": 2.125,
+            "diff": -0.015625,
+            "abs_diff": 0.015625
+          },
+          {
+            "index": 1617,
+            "actual": 2.1875,
+            "reference": 2.171875,
+            "diff": 0.015625,
+            "abs_diff": 0.015625
+          }
+        ],
+        "exact_match": false
+      }
+    },
+    "classification": "attn_norm_delta_explained_by_input_delta"
+  },
+  "pre_ssm_stable_deltas": {
+    "z_projection": {
+      "status": "complete",
+      "hipengine_key": "linear_z",
+      "llamacpp_label": "z_0",
+      "count": 4096,
+      "mean_abs_diff": 0.004850446246564388,
+      "rmse": 0.006249979138374329,
+      "max_abs_diff": 0.03839588165283203,
+      "cosine": 0.9999958276748657,
+      "llamacpp_rms": 2.169642448425293,
+      "hipengine_rms": 2.169400453567505,
+      "llamacpp_sample": [
+        -2.9665539264678955,
+        -2.7210631370544434,
+        -3.340806484222412,
+        -0.054889291524887085,
+        -3.382868528366089,
+        -0.3682324290275574,
+        -0.6447094678878784,
+        -3.254469394683838
+      ],
+      "hipengine_sample": [
+        -2.96875,
+        -2.734375,
+        -3.34375,
+        -0.047119140625,
+        -3.375,
+        -0.37109375,
+        -0.6484375,
+        -3.25
+      ],
+      "diff_sample": [
+        -0.002196073532104492,
+        -0.01331186294555664,
+        -0.0029435157775878906,
+        0.007770150899887085,
+        0.007868528366088867,
+        -0.002861320972442627,
+        -0.003728032112121582,
+        0.004469394683837891
+      ]
+    },
+    "beta_projection": {
+      "status": "complete",
+      "hipengine_key": "ssm_beta",
+      "llamacpp_label": "beta_0",
+      "count": 32,
+      "mean_abs_diff": 0.0017746775411069393,
+      "rmse": 0.0027347062714397907,
+      "max_abs_diff": 0.008636474609375,
+      "cosine": 0.9999987483024597,
+      "llamacpp_rms": 1.622356653213501,
+      "hipengine_rms": 1.6228336095809937,
+      "llamacpp_sample": [
+        -1.8393369913101196,
+        -0.28668904304504395,
+        1.2142465114593506,
+        -0.8486714959144592,
+        -1.0926833152770996,
+        -0.247141033411026,
+        -0.1310633271932602,
+        2.169764518737793
+      ],
+      "hipengine_sample": [
+        -1.8359375,
+        -0.287109375,
+        1.2109375,
+        -0.84765625,
+        -1.09375,
+        -0.2470703125,
+        -0.130859375,
+        2.171875
+      ],
+      "diff_sample": [
+        0.003399491310119629,
+        -0.0004203319549560547,
+        -0.003309011459350586,
+        0.0010152459144592285,
+        -0.0010666847229003906,
+        7.072091102600098e-05,
+        0.00020395219326019287,
+        0.0021104812622070312
+      ]
+    },
+    "conv_output_silu": {
+      "status": "complete",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "conv_output_silu_0",
+      "count": 8192,
+      "mean_abs_diff": 0.00011828502465505153,
+      "rmse": 0.0008650008239783347,
+      "max_abs_diff": 0.029183387756347656,
+      "cosine": 0.9999991655349731,
+      "llamacpp_rms": 0.6606307029724121,
+      "hipengine_rms": 0.660450279712677,
+      "llamacpp_sample": [
+        -0.0037882006727159023,
+        -0.019360912963747978,
+        -0.01547890342772007,
+        -0.002556461375206709,
+        0.03933810070157051,
+        -0.012542534619569778,
+        0.020686468109488487,
+        -0.03887118026614189
+      ],
+      "hipengine_sample": [
+        -0.0037436208222061396,
+        -0.01968897506594658,
+        -0.015437722206115723,
+        -0.002656162017956376,
+        0.03937351703643799,
+        -0.012429676949977875,
+        0.020746847614645958,
+        -0.03855869174003601
+      ],
+      "diff_sample": [
+        4.4579850509762764e-05,
+        -0.00032806210219860077,
+        4.118122160434723e-05,
+        -9.970064274966717e-05,
+        3.541633486747742e-05,
+        0.00011285766959190369,
+        6.03795051574707e-05,
+        0.00031248852610588074
+      ]
+    }
+  },
+  "conv_view_deltas": {
+    "q_conv": {
+      "status": "complete",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "q_conv_0",
+      "hipengine_slice": [
+        0,
+        2048
+      ],
+      "count": 2048,
+      "mean_abs_diff": 0.00010356161510571837,
+      "rmse": 0.00022810444352217019,
+      "max_abs_diff": 0.004654884338378906,
+      "cosine": 0.9999995231628418,
+      "llamacpp_rms": 0.2022058516740799,
+      "hipengine_rms": 0.20228295028209686,
+      "llamacpp_sample": [
+        -0.0037882006727159023,
+        -0.019360912963747978,
+        -0.01547890342772007,
+        -0.002556461375206709,
+        0.03933810070157051,
+        -0.012542534619569778,
+        0.020686468109488487,
+        -0.03887118026614189
+      ],
+      "hipengine_sample": [
+        -0.0037436208222061396,
+        -0.01968897506594658,
+        -0.015437722206115723,
+        -0.002656162017956376,
+        0.03937351703643799,
+        -0.012429676949977875,
+        0.020746847614645958,
+        -0.03855869174003601
+      ],
+      "diff_sample": [
+        4.4579850509762764e-05,
+        -0.00032806210219860077,
+        4.118122160434723e-05,
+        -9.970064274966717e-05,
+        3.541633486747742e-05,
+        0.00011285766959190369,
+        6.03795051574707e-05,
+        0.00031248852610588074
+      ]
+    },
+    "k_conv": {
+      "status": "complete",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "k_conv_0",
+      "hipengine_slice": [
+        2048,
+        4096
+      ],
+      "count": 2048,
+      "mean_abs_diff": 0.00013640035467687994,
+      "rmse": 0.00036625389475375414,
+      "max_abs_diff": 0.011576652526855469,
+      "cosine": 0.9999953508377075,
+      "llamacpp_rms": 0.10588875412940979,
+      "hipengine_rms": 0.10571382194757462,
+      "llamacpp_sample": [
+        -0.0007645858568139374,
+        -0.03749670088291168,
+        0.01673312857747078,
+        -0.00014586158795282245,
+        -0.017824415117502213,
+        0.0005105557502247393,
+        0.016237342730164528,
+        0.0005231780232861638
+      ],
+      "hipengine_sample": [
+        -0.0007263242150656879,
+        -0.03743942081928253,
+        0.016703063622117043,
+        -0.0001584263809490949,
+        -0.017734071239829063,
+        0.00043701837421394885,
+        0.016197795048356056,
+        0.0005770522402599454
+      ],
+      "diff_sample": [
+        3.826164174824953e-05,
+        5.728006362915039e-05,
+        -3.0064955353736877e-05,
+        -1.2564792996272445e-05,
+        9.034387767314911e-05,
+        -7.353737601079047e-05,
+        -3.954768180847168e-05,
+        5.3874216973781586e-05
+      ]
+    },
+    "v_conv": {
+      "status": "complete",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "v_conv_0",
+      "hipengine_slice": [
+        4096,
+        8192
+      ],
+      "count": 4096,
+      "mean_abs_diff": 0.00011658905714284629,
+      "rmse": 0.0011846375418826938,
+      "max_abs_diff": 0.029183387756347656,
+      "cosine": 0.9999992251396179,
+      "llamacpp_rms": 0.9202260971069336,
+      "hipengine_rms": 0.9199686050415039,
+      "llamacpp_sample": [
+        0.010259714908897877,
+        0.01004838664084673,
+        0.009305066429078579,
+        -0.01659698598086834,
+        0.008183296769857407,
+        -0.013568569906055927,
+        0.015108801424503326,
+        0.010513236746191978
+      ],
+      "hipengine_sample": [
+        0.010242817923426628,
+        0.010044846683740616,
+        0.009334088303148746,
+        -0.01655181683599949,
+        0.008173667825758457,
+        -0.013621317222714424,
+        0.015114626847207546,
+        0.01051947008818388
+      ],
+      "diff_sample": [
+        -1.6896985471248627e-05,
+        -3.539957106113434e-06,
+        2.902187407016754e-05,
+        4.516914486885071e-05,
+        -9.628944098949432e-06,
+        -5.274731665849686e-05,
+        5.825422704219818e-06,
+        6.233341991901398e-06
+      ]
+    },
+    "coverage": {
+      "status": "complete",
+      "hipengine_key": "conv_out",
+      "covered_values": 8192,
+      "hipengine_count": 8192
+    }
+  },
+  "pre_ssm_ambiguous_deltas": {
+    "qkv_mixed_vs_linear_qkv": {
+      "status": "complete",
+      "hipengine_key": "linear_qkv",
+      "llamacpp_label": "linear_attn_qkv_mixed_0",
+      "count": 8192,
+      "mean_abs_diff": 0.9692832231521606,
+      "rmse": 1.8901057243347168,
+      "max_abs_diff": 27.25128936767578,
+      "cosine": 0.010059497319161892,
+      "llamacpp_rms": 0.006783057004213333,
+      "hipengine_rms": 1.8901617527008057,
+      "llamacpp_sample": [
+        -0.005777190905064344,
+        0.00878104753792286,
+        5.802878149552271e-05,
+        -0.0027939502615481615,
+        0.007141025271266699,
+        0.002600819570943713,
+        0.0009432347724214196,
+        -0.0006642910302616656
+      ],
+      "hipengine_sample": [
+        0.466796875,
+        0.52734375,
+        2.0625,
+        0.357421875,
+        1.171875,
+        0.7734375,
+        0.82421875,
+        -1.3671875
+      ],
+      "diff_sample": [
+        0.47257405519485474,
+        0.5185626745223999,
+        2.0624420642852783,
+        0.36021581292152405,
+        1.1647340059280396,
+        0.7708366513252258,
+        0.8232755064964294,
+        -1.366523265838623
+      ]
+    },
+    "alpha_vs_ssm_alpha": {
+      "status": "complete",
+      "hipengine_key": "ssm_alpha",
+      "llamacpp_label": "alpha_0",
+      "count": 32,
+      "mean_abs_diff": 10.104166030883789,
+      "rmse": 23.444551467895508,
+      "max_abs_diff": 91.57747650146484,
+      "cosine": 0.013626697473227978,
+      "llamacpp_rms": 23.377479553222656,
+      "hipengine_rms": 2.1190671920776367,
+      "llamacpp_sample": [
+        -6.210993160493672e-05,
+        -0.0010954185854643583,
+        -0.9216901063919067,
+        -5.42962625331711e-05,
+        -0.0003543600323610008,
+        -0.0011912110494449735,
+        -0.009645447134971619,
+        -0.00043534196447581053
+      ],
+      "hipengine_sample": [
+        -2.34375,
+        -0.5625,
+        -3.421875,
+        -1.796875,
+        -2.0,
+        -1.125,
+        1.5625,
+        -0.056884765625
+      ],
+      "diff_sample": [
+        -2.3436877727508545,
+        -0.5614045858383179,
+        -2.500185012817383,
+        -1.7968207597732544,
+        -1.9996455907821655,
+        -1.123808741569519,
+        1.5721454620361328,
+        -0.05644942447543144
+      ]
+    }
+  },
+  "trace_label_caveats": {
+    "linear_attn_qkv_mixed": {
+      "status": "layout_or_value_extraction_ambiguous",
+      "reason": "llama.cpp linear_attn_qkv_mixed raw values do not align with hipEngine linear_qkv, but downstream conv/linear-attention tensors match closely; treat qkv_mixed as a trace-layout caveat.",
+      "qkv_mixed_mae": 0.9692832231521606,
+      "conv_output_silu_mae": 0.00011828502465505153,
+      "linear_attn_out_mae": 3.525105057633482e-05
+    },
+    "alpha": {
+      "status": "aliases_gate_or_mutated_value",
+      "reason": "llama.cpp alpha raw values are byte-identical to gate in this trace, so alpha_0 is not a trustworthy raw alpha projection oracle.",
+      "alpha_vs_gate": {
+        "count": 32,
+        "mean_abs_diff": 0.0,
+        "rmse": 0.0,
+        "max_abs_diff": 0.0,
+        "cosine": 1.0,
+        "llamacpp_rms": 23.377479553222656,
+        "hipengine_rms": 23.377479553222656,
+        "llamacpp_sample": [
+          -6.210993160493672e-05,
+          -0.0010954185854643583,
+          -0.9216901063919067,
+          -5.42962625331711e-05,
+          -0.0003543600323610008,
+          -0.0011912110494449735,
+          -0.009645447134971619,
+          -0.00043534196447581053
+        ],
+        "hipengine_sample": [
+          -6.210993160493672e-05,
+          -0.0010954185854643583,
+          -0.9216901063919067,
+          -5.42962625331711e-05,
+          -0.0003543600323610008,
+          -0.0011912110494449735,
+          -0.009645447134971619,
+          -0.00043534196447581053
+        ],
+        "diff_sample": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "alpha_vs_hipengine_ssm_alpha": {
+        "status": "complete",
+        "hipengine_key": "ssm_alpha",
+        "llamacpp_label": "alpha_0",
+        "count": 32,
+        "mean_abs_diff": 10.104166030883789,
+        "rmse": 23.444551467895508,
+        "max_abs_diff": 91.57747650146484,
+        "cosine": 0.013626697473227978,
+        "llamacpp_rms": 23.377479553222656,
+        "hipengine_rms": 2.1190671920776367,
+        "llamacpp_sample": [
+          -6.210993160493672e-05,
+          -0.0010954185854643583,
+          -0.9216901063919067,
+          -5.42962625331711e-05,
+          -0.0003543600323610008,
+          -0.0011912110494449735,
+          -0.009645447134971619,
+          -0.00043534196447581053
+        ],
+        "hipengine_sample": [
+          -2.34375,
+          -0.5625,
+          -3.421875,
+          -1.796875,
+          -2.0,
+          -1.125,
+          1.5625,
+          -0.056884765625
+        ],
+        "diff_sample": [
+          -2.3436877727508545,
+          -0.5614045858383179,
+          -2.500185012817383,
+          -1.7968207597732544,
+          -1.9996455907821655,
+          -1.123808741569519,
+          1.5721454620361328,
+          -0.05644942447543144
+        ]
+      }
+    },
+    "beta": {
+      "status": "usable",
+      "reason": "beta and downstream linear_attn_out deltas are directionally consistent.",
+      "beta_projection_mae": 0.0017746775411069393,
+      "linear_attn_out_mae": 3.525105057633482e-05
+    }
+  },
+  "tensor_deltas": {
+    "linear_attn_out": {
+      "count": 2048,
+      "mean_abs_diff": 3.525105057633482e-05,
+      "rmse": 6.188321276567876e-05,
+      "max_abs_diff": 0.0018992424011230469,
+      "cosine": 0.999993622303009,
+      "llamacpp_rms": 0.013389593921601772,
+      "hipengine_rms": 0.013349720276892185,
+      "llamacpp_sample": [
+        -0.0010434873402118683,
+        0.0011284793727099895,
+        -0.013555130921304226,
+        0.0018601249903440475,
+        0.001242761965841055,
+        0.00211855536326766,
+        -0.004497314337641001,
+        0.011413246393203735
+      ],
+      "hipengine_sample": [
+        -0.00110626220703125,
+        0.001190185546875,
+        -0.01348876953125,
+        0.00189208984375,
+        0.00124359130859375,
+        0.00213623046875,
+        -0.00445556640625,
+        0.01141357421875
+      ],
+      "diff_sample": [
+        -6.277486681938171e-05,
+        6.170617416501045e-05,
+        6.636139005422592e-05,
+        3.1964853405952454e-05,
+        8.293427526950836e-07,
+        1.767510548233986e-05,
+        4.174793139100075e-05,
+        3.2782554626464844e-07
+      ]
+    },
+    "attn_residual": {
+      "count": 2048,
+      "mean_abs_diff": 3.7407960917335004e-05,
+      "rmse": 5.036599395680241e-05,
+      "max_abs_diff": 0.00040912628173828125,
+      "cosine": 0.9999961256980896,
+      "llamacpp_rms": 0.017515147104859352,
+      "hipengine_rms": 0.01750350371003151,
+      "llamacpp_sample": [
+        -0.002179313451051712,
+        -0.00038595544174313545,
+        -0.0037113046273589134,
+        0.007539255544543266,
+        -0.0002716728486120701,
+        0.006283251103013754,
+        -0.0037400969304144382,
+        0.02239289879798889
+      ],
+      "hipengine_sample": [
+        -0.0022430419921875,
+        -0.0003204345703125,
+        -0.003662109375,
+        0.007568359375,
+        -0.00026702880859375,
+        0.00628662109375,
+        -0.003692626953125,
+        0.0224609375
+      ],
+      "diff_sample": [
+        -6.372854113578796e-05,
+        6.552087143063545e-05,
+        4.919525235891342e-05,
+        2.9103830456733704e-05,
+        4.644040018320084e-06,
+        3.369990736246109e-06,
+        4.746997728943825e-05,
+        6.80387020111084e-05
+      ]
+    },
+    "attn_post_norm": {
+      "count": 2048,
+      "mean_abs_diff": 0.0019343749154359102,
+      "rmse": 0.0026453142054378986,
+      "max_abs_diff": 0.024482250213623047,
+      "cosine": 0.9999901056289673,
+      "llamacpp_rms": 0.5619121193885803,
+      "hipengine_rms": 0.5627847909927368,
+      "llamacpp_sample": [
+        -0.14751386642456055,
+        -0.020227260887622833,
+        -0.18510331213474274,
+        0.33573609590530396,
+        -0.014041312970221043,
+        0.3042868971824646,
+        -0.23483972251415253,
+        1.0121524333953857
+      ],
+      "hipengine_sample": [
+        -0.15234375,
+        -0.016845703125,
+        -0.1826171875,
+        0.337890625,
+        -0.01385498046875,
+        0.3046875,
+        -0.232421875,
+        1.015625
+      ],
+      "diff_sample": [
+        -0.004829883575439453,
+        0.0033815577626228333,
+        0.002486124634742737,
+        0.002154529094696045,
+        0.00018633250147104263,
+        0.0004006028175354004,
+        0.002417847514152527,
+        0.003472566604614258
+      ]
+    },
+    "ffn_out": {
+      "count": 2048,
+      "mean_abs_diff": 3.859374191961251e-05,
+      "rmse": 4.937386984238401e-05,
+      "max_abs_diff": 0.00043563544750213623,
+      "cosine": 0.9999621510505676,
+      "llamacpp_rms": 0.004900339990854263,
+      "hipengine_rms": 0.004925127141177654,
+      "llamacpp_sample": [
+        -0.001597412396222353,
+        -0.0008249980164691806,
+        0.003403550013899803,
+        -0.00046473252587020397,
+        0.004615786951035261,
+        0.003850265173241496,
+        0.006608012598007917,
+        0.0026569680776447058
+      ],
+      "hipengine_sample": [
+        -0.0015979246236383915,
+        -0.0008773939916864038,
+        0.0033970412332564592,
+        -0.0004258592380210757,
+        0.00468159094452858,
+        0.003897849703207612,
+        0.006680664140731096,
+        0.0026563238352537155
+      ],
+      "diff_sample": [
+        -5.122274160385132e-07,
+        -5.239597521722317e-05,
+        -6.5087806433439255e-06,
+        3.8873287849128246e-05,
+        6.580399349331856e-05,
+        4.758452996611595e-05,
+        7.265154272317886e-05,
+        -6.442423909902573e-07
+      ]
+    },
+    "post_moe": {
+      "count": 2048,
+      "mean_abs_diff": 5.471469194162637e-05,
+      "rmse": 8.127313776640221e-05,
+      "max_abs_diff": 0.0018870830535888672,
+      "cosine": 0.9999901056289673,
+      "llamacpp_rms": 0.017489833757281303,
+      "hipengine_rms": 0.01746552810072899,
+      "llamacpp_sample": [
+        -0.003776725847274065,
+        -0.001210953458212316,
+        -0.00030775461345911026,
+        0.007074522785842419,
+        0.004344114102423191,
+        0.010133516043424606,
+        0.002867915667593479,
+        0.02504986710846424
+      ],
+      "hipengine_sample": [
+        -0.00384521484375,
+        -0.00119781494140625,
+        -0.0002651214599609375,
+        0.00714111328125,
+        0.004425048828125,
+        0.01019287109375,
+        0.00299072265625,
+        0.025146484375
+      ],
+      "diff_sample": [
+        -6.848899647593498e-05,
+        1.3138516806066036e-05,
+        4.263315349817276e-05,
+        6.659049540758133e-05,
+        8.093472570180893e-05,
+        5.935505032539368e-05,
+        0.00012280698865652084,
+        9.661726653575897e-05
+      ]
+    },
+    "layer_out": {
+      "count": 2048,
+      "mean_abs_diff": 5.471469194162637e-05,
+      "rmse": 8.127313776640221e-05,
+      "max_abs_diff": 0.0018870830535888672,
+      "cosine": 0.9999901056289673,
+      "llamacpp_rms": 0.017489833757281303,
+      "hipengine_rms": 0.01746552810072899,
+      "llamacpp_sample": [
+        -0.003776725847274065,
+        -0.001210953458212316,
+        -0.00030775461345911026,
+        0.007074522785842419,
+        0.004344114102423191,
+        0.010133516043424606,
+        0.002867915667593479,
+        0.02504986710846424
+      ],
+      "hipengine_sample": [
+        -0.00384521484375,
+        -0.00119781494140625,
+        -0.0002651214599609375,
+        0.00714111328125,
+        0.004425048828125,
+        0.01019287109375,
+        0.00299072265625,
+        0.025146484375
+      ],
+      "diff_sample": [
+        -6.848899647593498e-05,
+        1.3138516806066036e-05,
+        4.263315349817276e-05,
+        6.659049540758133e-05,
+        8.093472570180893e-05,
+        5.935505032539368e-05,
+        0.00012280698865652084,
+        9.661726653575897e-05
+      ]
+    }
+  },
+  "pre_ssm_out_deltas": {
+    "recurrent_out_vs_final_output": {
+      "status": "missing",
+      "hipengine_key": "recurrent_out",
+      "llamacpp_label": "final_output_0",
+      "missing": [
+        "hipEngine"
+      ]
+    },
+    "recurrent_bf16_vs_final_output": {
+      "status": "complete",
+      "hipengine_key": "recurrent_bf16",
+      "llamacpp_label": "final_output_0",
+      "count": 4096,
+      "mean_abs_diff": 1.243248516402673e-05,
+      "rmse": 7.95589730842039e-05,
+      "max_abs_diff": 0.004668474197387695,
+      "cosine": 0.9999995231628418,
+      "llamacpp_rms": 0.031321387737989426,
+      "hipengine_rms": 0.0312472116202116,
+      "llamacpp_sample": [
+        -0.001789849833585322,
+        -0.0014528539031744003,
+        -0.0011408934369683266,
+        0.00020576616225298494,
+        -0.001040375092998147,
+        -0.001328576123341918,
+        -0.002470702165737748,
+        -0.0012056430568918586
+      ],
+      "hipengine_sample": [
+        -0.0017852783203125,
+        -0.00144195556640625,
+        -0.00113677978515625,
+        0.0001773834228515625,
+        -0.00104522705078125,
+        -0.00133514404296875,
+        -0.0024871826171875,
+        -0.00121307373046875
+      ],
+      "diff_sample": [
+        4.571513272821903e-06,
+        1.089833676815033e-05,
+        4.113651812076569e-06,
+        -2.838273940142244e-05,
+        -4.851957783102989e-06,
+        -6.567919626832008e-06,
+        -1.6480451449751854e-05,
+        -7.430673576891422e-06
+      ]
+    }
+  },
+  "pre_ssm_out_label_assessment": {
+    "status": "unavailable",
+    "reason": "hipEngine recurrent_out or llama.cpp final_output values are missing",
+    "linear_attn_out_mae": 3.525105057633482e-05
+  },
+  "final_output_summary": {
+    "label": "final_output_0",
+    "count": 4096,
+    "rms": 0.031321387737989426,
+    "sample": [
+      -0.001789849833585322,
+      -0.0014528539031744003,
+      -0.0011408934369683266,
+      0.00020576616225298494,
+      -0.001040375092998147,
+      -0.001328576123341918,
+      -0.002470702165737748,
+      -0.0012056430568918586
+    ]
+  },
+  "stable_split_assessment": {
+    "status": "no_projection_or_conv_cliff",
+    "reason": "z, beta, and convolved q/k/v all match closely; the active semantic blocker is accumulated small target-hidden drift, not a large projection or conv layout bug in this layer.",
+    "z_projection_mae": 0.004850446246564388,
+    "beta_projection_mae": 0.0017746775411069393,
+    "conv_output_silu_mae": 0.00011828502465505153,
+    "max_conv_qkv_view_mae": 0.00013640035467687994,
+    "hidden_in_vs_prev_layer_output_mae": 6.431539077311754e-06,
+    "attn_norm_input_mae": 0.0011545694433152676,
+    "linear_attn_out_mae": 3.525105057633482e-05,
+    "attn_post_norm_mae": 0.0019343749154359102,
+    "post_moe_mae": 5.471469194162637e-05,
+    "next_split_needed": "layer-0 scored boundary split when incoming hidden drift explains this layer's attention RMSNorm delta"
+  },
+  "conclusion": "Layer 0 drift is already present at the linear-attention output: linear_attn_out MAE 3.52511e-05, attention residual MAE 3.7408e-05, ffn_out MAE 3.85937e-05, post_moe MAE 5.47147e-05. The next semantic target is the earliest complete input/pre-SSM delta above threshold. Stable pre-ssm labels show no projection/conv cliff: z MAE 0.00485045, beta MAE 0.00177468, conv_output_silu MAE 0.000118285."
+}

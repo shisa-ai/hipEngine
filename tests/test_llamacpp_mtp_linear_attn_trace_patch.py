@@ -18,10 +18,13 @@ def test_generates_linear_attn_trace_allowlist_patch() -> None:
     diff = render_combined_diff(result)
 
     assert result.status == "patch_ready"
+    assert "+             std::strcmp(name, \"model.input_embed\") == 0 ||" in diff
+    assert "+         std::strcmp(name, \"model.input_embed\") == 0 ||" in diff
     assert "+             std::strncmp(name, \"linear_attn_qkv_mixed_\", 22) == 0 ||" in diff
     assert "+         std::strncmp(name, \"linear_attn_qkv_mixed_\", 22) == 0 ||" in diff
     assert "+             std::strcmp(name, \"q_conv_predelta\") == 0 ||" in diff
     assert "+    if (label.rfind(\"beta_\", 0) == 0 ||" in diff
+    assert result.graph.patched_text.count("model.input_embed") == 2
     assert result.graph.patched_text.count("linear_attn_qkv_mixed_") == 2
     assert "b/src/llama-graph.cpp" in diff
     assert "b/src/llama-context.cpp" in diff
@@ -39,6 +42,29 @@ def test_reports_already_wired_trace_sources_without_patch() -> None:
 
     assert second.status == "already_wired"
     assert render_combined_diff(second) == ""
+
+
+def test_adds_model_input_embed_to_existing_linear_trace_wiring() -> None:
+    graph = _graph_source(wired=True).replace(
+        '             std::strcmp(name, "model.input_embed") == 0 ||\n',
+        "",
+    ).replace(
+        '         std::strcmp(name, "model.input_embed") == 0 ||\n',
+        "",
+    )
+
+    result = build_linear_attn_trace_patch_text(
+        graph_text=graph,
+        context_text=_context_source(wired=True),
+    )
+    diff = render_combined_diff(result)
+
+    assert result.status == "patch_ready"
+    assert "+             std::strcmp(name, \"model.input_embed\") == 0 ||" in diff
+    assert "+         std::strcmp(name, \"model.input_embed\") == 0 ||" in diff
+    assert "+             std::strncmp(name, \"linear_attn_qkv_mixed_\", 22) == 0 ||" not in diff
+    assert "+         std::strncmp(name, \"linear_attn_qkv_mixed_\", 22) == 0 ||" not in diff
+    assert result.graph.patched_text.count("model.input_embed") == 2
 
 
 def test_reports_missing_graph_anchor_without_mutating_graph() -> None:
@@ -74,6 +100,7 @@ def test_writes_patch_and_json_artifact(tmp_path: Path) -> None:
 
     assert artifact["status"] == "patch_ready"
     assert artifact["reference_basis"]["external_checkout_modified"] is False
+    assert artifact["validation"]["graph_allows_model_input_embed"] is True
     assert artifact["validation"]["graph_allows_projection_input"] is True
     assert artifact["validation"]["context_qkv_views_use_token_dim_2"] is True
     assert artifact["next_action"] == (
@@ -86,6 +113,7 @@ def test_writes_patch_and_json_artifact(tmp_path: Path) -> None:
 
 def _graph_source(*, wired: bool) -> str:
     prefix = (
+        '             std::strcmp(name, "model.input_embed") == 0 ||\n'
         '             std::strncmp(name, "linear_attn_qkv_mixed_", 22) == 0 ||\n'
         if wired
         else ""

@@ -138117,3 +138117,66 @@ python3 scripts/gguf_mtp_bench.py \
   while hipEngine ranks `8940` over `668` by `0.51934` logits (`25.84120` vs
   `25.32186`). Next semantic target is target-row input/pre-layer-0 hidden
   construction and final hidden/LM-head amplification, not a middle-layer body.
+
+## 2026-07-03 - Layer-0 input-embed and F32-attn-norm checkpoint
+
+- Patched the local llama.cpp trace helper to add `model.input_embed` to both
+  target tensor-trace allowlists:
+  `benchmarks/results/2026-07-03-llamacpp-model-input-embed-trace-patch.json`.
+  Reran llama.cpp HIP task 9 / cycle 3 / row 2 with
+  `LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=model.input_embed,...`; the branch stayed
+  draft `[11, 567]`, accepted both, and sampled bonus `668`.
+- Reduced the corrected layer-0 input comparison:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-inputembed-linear-attn-compare.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-inputembed-moe-taps-compare.json`.
+  Result: hipEngine `hidden_in` vs llama.cpp `model.input_embed` is
+  `0.00000643 MAE / 0.0000103 RMSE / 0.999999 cosine`. The first complete split
+  is attention RMSNorm output: llama.cpp `attn_norm_0` is exact F32 RMSNorm over
+  `model.input_embed`, while hipEngine's captured `attn_norm` is the BF16 mirror
+  (`0.001155 MAE / 0.002069 RMSE`). Layer-0 MoE top-k still matches exactly.
+- Added scored-capture instrumentation for `attn_norm_f32_scratch`, plus reducer
+  tolerance for F32-residual captures that omit BF16 `attn_residual` and
+  component-rounded post-MoE fields. Focused validation:
+  ```bash
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_forced_target_probe.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_target_moe_taps.py tests/test_llamacpp_mtp_linear_attn_trace_patch.py
+  python3 -m py_compile scripts/gguf_mtp_forced_target_probe.py scripts/llamacpp_mtp_compare_layer0_linear_attn.py scripts/llamacpp_mtp_compare_target_moe_taps.py scripts/llamacpp_mtp_linear_attn_trace_patch.py hipengine/runtime/qwen35_gguf_runner.py
+  ```
+  Both passed.
+- Important flag correction: `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` alone
+  is inert in the row-bulk verifier unless
+  `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` also supplies F32 hidden buffers. The
+  no-residual reruns
+  `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32attnnorm-cycle3.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32attnnorm-capture-cycle3.json`
+  therefore kept the BF16 path and still sampled `[11, 567, 8940]`.
+- Reran the meaningful F32 residual + F32 attention-norm branch:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 0:2 \
+    --raw-layer-output-row 0:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32res-attnnorm-cycle3.json
+  ```
+- Reduced
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32res-attnnorm-linear-attn-compare.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32res-attnnorm-moe-taps-compare.json`.
+  The F32 scratch is closer but still not enough: `attn_norm_f32_scratch` vs
+  llama.cpp `attn_norm_0` is `0.000729 MAE / 0.001161 RMSE`, `z_0` improves
+  `0.004850 -> 0.003687 MAE`, `linear_attn_out_0` improves
+  `0.0000353 -> 0.0000314 MAE`, and post-MoE improves
+  `0.0000547 -> 0.0000495 MAE`. The branch still samples `[11, 567, 8940]`;
+  this is a small semantic improvement and a better bucket, not the remaining
+  token-flip fix.

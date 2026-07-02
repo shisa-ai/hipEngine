@@ -620,6 +620,7 @@ def _boundary_array_summaries(
     arrays: dict[str, np.ndarray | None] = {
         "hidden_in": capture.hidden_in_f32,
         "attn_norm": capture.attn_norm_f32,
+        "attn_norm_f32_scratch": getattr(capture, "attn_norm_exact_f32", None),
         "linear_qkv": getattr(capture, "linear_qkv_f32", None),
         "linear_z": getattr(capture, "linear_z_f32", None),
         "ssm_alpha": getattr(capture, "ssm_alpha_f32", None),
@@ -695,6 +696,7 @@ def _scored_boundary_row_capture(
 ) -> Any:
     hidden_in = _row_from_capture_arrays(arrays, "hidden_in", row_index)
     attn_norm = _row_from_capture_arrays(arrays, "attn_norm", row_index)
+    attn_norm_exact = _row_from_capture_arrays(arrays, "attn_norm_f32_scratch", row_index)
     attn_out = _row_from_capture_arrays(arrays, "attn_out", row_index)
     post_norm_bf16 = _row_from_capture_arrays(arrays, "attn_post_norm_bf16", row_index, fallback="attn_post_norm")
     post_norm = _row_from_capture_arrays(arrays, "attn_post_norm_f32", row_index)
@@ -723,6 +725,7 @@ def _scored_boundary_row_capture(
         top_k=top_k,
         hidden_in_f32=hidden_in,
         attn_norm_f32=attn_norm,
+        attn_norm_exact_f32=attn_norm_exact,
         linear_qkv_f32=_row_from_capture_arrays(arrays, "linear_qkv", row_index),
         linear_z_f32=_row_from_capture_arrays(arrays, "linear_z", row_index),
         ssm_alpha_f32=_row_from_capture_arrays(arrays, "ssm_alpha", row_index),

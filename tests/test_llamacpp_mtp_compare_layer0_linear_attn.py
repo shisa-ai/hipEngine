@@ -34,6 +34,15 @@ def test_build_linear_attn_compare_artifact_reports_early_attention_drift(
     assert artifact["tensor_deltas"]["attn_residual"]["mean_abs_diff"] == 1.0
     assert artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"] == 0.0
     assert artifact["tensor_deltas"]["layer_out"]["mean_abs_diff"] == 0.0
+    assert artifact["input_boundary_deltas"]["hidden_in_vs_prev_layer_output"][
+        "llamacpp_label"
+    ] == "model.input_embed"
+    assert artifact["input_boundary_deltas"]["hidden_in_vs_prev_layer_output"][
+        "mean_abs_diff"
+    ] == 0.0
+    assert artifact["input_boundary_deltas"]["attn_norm_f32_scratch_input"][
+        "status"
+    ] == "missing"
     assert artifact["pre_ssm_stable_deltas"]["conv_output_silu"][
         "mean_abs_diff"
     ] == 0.0
@@ -55,6 +64,31 @@ def test_build_linear_attn_compare_artifact_reports_early_attention_drift(
         "max_abs_vs_first"
     ] == 0.0
     assert "earliest complete input/pre-SSM delta" in artifact["conclusion"]
+    json.dumps(artifact)
+
+
+def test_build_linear_attn_compare_artifact_tolerates_missing_f32_residual(
+    tmp_path: Path,
+) -> None:
+    hip = _hip_artifact()
+    capture = hip["result"]["layer_boundary_captures"][0]
+    capture["values"].pop("attn_residual")
+    capture["values"].pop("post_moe_rounded_from_components")
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(hip) + "\n")
+    llama_path.write_text(json.dumps(_llama_cycle()) + "\n")
+
+    artifact = build_linear_attn_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=0,
+    )
+
+    assert artifact["tensor_deltas"]["attn_residual"]["status"] == "missing"
+    assert artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"] == 0.0
     json.dumps(artifact)
 
 
@@ -272,6 +306,8 @@ def _hip_artifact() -> dict:
 
 def _hip_values() -> dict:
     return {
+        "hidden_in": [0.25, 0.5],
+        "attn_norm": [0.75, 1.0],
         "linear_qkv": [10.0, 10.0],
         "linear_z": [1.0, 2.0],
         "ssm_alpha": [9.0, 9.0],
@@ -288,6 +324,8 @@ def _hip_values() -> dict:
 
 def _llama_cycle() -> dict:
     values_by_label = {
+        "model.input_embed": [0.25, 0.5],
+        "attn_norm_0": [0.75, 1.0],
         "linear_attn_qkv_mixed_0": [0.0, 0.0],
         "z_0": [1.001, 2.001],
         "alpha_0": [7.0, 7.0],

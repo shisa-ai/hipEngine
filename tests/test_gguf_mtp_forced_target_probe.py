@@ -143,6 +143,9 @@ def test_scored_boundary_capture_record_formats_bulk_rows() -> None:
         "layer_type_id": np.asarray([[0], [0]], dtype=np.int64),
         "hidden_in": np.asarray([[0.0, 0.1, 0.2, 0.3], [1.0, 1.1, 1.2, 1.3]], dtype=np.float32),
         "attn_norm": np.asarray([[0.4, 0.5, 0.6, 0.7], [1.4, 1.5, 1.6, 1.7]], dtype=np.float32),
+        "attn_norm_f32_scratch": np.asarray(
+            [[0.45, 0.55, 0.65, 0.75], [1.45, 1.55, 1.65, 1.75]], dtype=np.float32
+        ),
         "linear_qkv": np.asarray([[0.1, 0.2], [0.3, 0.4]], dtype=np.float32),
         "linear_z": np.asarray([[0.5, 0.6], [0.7, 0.8]], dtype=np.float32),
         "ssm_alpha": np.asarray([[0.01], [0.02]], dtype=np.float32),
@@ -185,6 +188,7 @@ def test_scored_boundary_capture_record_formats_bulk_rows() -> None:
 
     assert record["capture_source"] == "scored_target_block"
     assert record["capture"]["array_shapes"]["moe_router_logits"] == [2, 4]
+    assert record["capture"]["array_shapes"]["attn_norm_f32_scratch"] == [2, 4]
     assert record["selected_experts"] == [7, 8]
     assert record["trace_target_token"] == 668
     assert "moe_router_logits" in record["summaries"]
@@ -201,6 +205,7 @@ def _fake_moe_capture() -> SimpleNamespace:
         top_k=2,
         hidden_in_f32=hidden,
         attn_norm_f32=hidden + 1.0,
+        attn_norm_exact_f32=hidden + 1.25,
         linear_qkv_f32=np.asarray([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float32),
         linear_z_f32=np.asarray([0.6, 0.7, 0.8, 0.9], dtype=np.float32),
         ssm_alpha_f32=np.asarray([0.01, 0.02], dtype=np.float32),
