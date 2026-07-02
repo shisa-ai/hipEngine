@@ -138694,3 +138694,37 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`2 passed`), and both compact
   artifacts are valid JSON.
+
+## 2026-07-03 - MTP prefix-state numeric summary diagnostic
+
+- Added diagnostic-only `--prefix-state-numeric-summary` to
+  `scripts/gguf_mtp_forced_target_probe.py`. When used with
+  `--prefix-state-fingerprint`, the probe now includes compact numeric summaries
+  for linear Conv/GDN state buffers and live full-attention KV ranges. The flag
+  is default-off and does not change verifier behavior.
+- Added `scripts/gguf_mtp_compare_prefix_state_summaries.py` plus focused tests.
+  The reducer compares two hipEngine prefix-state artifacts, reports hash-change
+  counts, ranks compact summary deltas, and carries through the decisive row
+  token margin. It explicitly does not claim full pairwise state MAE because the
+  probe stores summaries rather than raw arrays.
+- Reran forced pair-12 prefix probes for default-prefix and prefill-GDN-prefix
+  state with the active F32 selected-intermediate environment. Raw outputs are:
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-prefix-default-state-numeric.json`
+  and
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-prefix-prefillgdn-state-numeric.json`.
+- Produced compact diagnostic artifact:
+  `benchmarks/results/2026-07-03-mtp-prefix-state-numeric-summary-default-vs-prefillgdn.json`.
+  Result: default vs prefill-GDN differ in **58/60** linear-state components and
+  **20/20** full-attention KV components at forced cycle 12. Row-1 margin remains
+  default reject (`539 - 26126 = -0.003027`) vs prefill-GDN accept
+  (`+0.295256`). Largest compact summary deltas rank Conv-state layers
+  **33/26/18/32/30** and full-attention key-cache layers **15/11/27/31/35**.
+  This gives the next selected raw-dump targets but is not final attribution.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/gguf_mtp_forced_target_probe.py scripts/gguf_mtp_compare_prefix_state_summaries.py tests/test_gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_compare_prefix_state_summaries.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_compare_prefix_state_summaries.py
+  jq empty benchmarks/results/2026-07-03-mtp-prefix-state-numeric-summary-default-vs-prefillgdn.json /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-prefix-default-state-numeric.json /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-prefix-prefillgdn-state-numeric.json
+  ```
+  Pycompile passed, focused tests passed (`12 passed`), and all three JSON
+  artifacts are valid.
