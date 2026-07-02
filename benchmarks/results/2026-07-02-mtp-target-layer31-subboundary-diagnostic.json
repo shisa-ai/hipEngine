@@ -1,24 +1,24 @@
 {
-  "schema": 1,
+  "schema": 2,
   "kind": "mtp_target_layer31_subboundary_diagnostic",
   "status": "complete",
   "performance_claim": false,
-  "timestamp": "2026-07-02T03:26:58.392883+00:00",
+  "timestamp": "2026-07-02T03:40:09.618936+00:00",
   "repo": {
     "root": "/home/lhl/hipEngine",
-    "commit": "0157fd4987254dcfcf79e810a7681e087338d7e9",
+    "commit": "ea97c28fe9eaec79f4d93abd7345e1f2882bd2dc",
     "branch": "mtp-gguf",
     "dirty": true
   },
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "hardware": "AMD Radeon Pro W7900 / gfx1151 host setting",
   "source_raw_files": {
-    "hipengine": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw.json",
+    "hipengine": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw-v2.json",
     "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.jsonl",
     "llamacpp_summary": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.json"
   },
   "commands": {
-    "hipengine": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-layer-boundary-row 31:1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw.json",
+    "hipengine": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-layer-boundary-row 31:1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw-v2.json",
     "llamacpp": "LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_TENSOR_TRACE_VALUES=1 LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=attn_norm_31,attn_residual_31,attn_post_norm_31,ffn_out_31,post_moe_31,l_out_31 LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 120 --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw.json --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer31-subraw-logs --server-start-timeout 180 --request-timeout 240"
   },
   "case": {
@@ -59,6 +59,9 @@
       "top_k": 8,
       "preceding_layer_count": 31,
       "hidden_in_shape": [
+        2048
+      ],
+      "attn_norm_shape": [
         2048
       ],
       "attn_out_shape": [
@@ -141,6 +144,38 @@
           -0.00171661,
           0.19433594,
           0.0703125
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "attn_norm": {
+        "label": "target_verify_layer_31_attn_norm",
+        "size": 2048,
+        "sha256_16": "7ccdb5d212235aa2",
+        "mean": -0.01228266,
+        "rms": 0.8398036,
+        "min": -11.4375,
+        "max": 16.75,
+        "first8": [
+          0.59375,
+          0.38476562,
+          -0.65625,
+          -0.5546875,
+          -0.23144531,
+          0.7265625,
+          -0.07275391,
+          0.00109863
+        ],
+        "last8": [
+          0.04321289,
+          -0.11865234,
+          0.67578125,
+          0.59375,
+          -0.48242188,
+          -0.01361084,
+          1.34375,
+          0.31835938
         ],
         "depth": 1,
         "token_id": 15495,
@@ -369,6 +404,102 @@
         "depth": 1,
         "token_id": 15495,
         "position": 73
+      },
+      "moe_selected_weighted_bf16": {
+        "label": "target_verify_layer_31_moe_selected_weighted_bf16",
+        "size": 2048,
+        "sha256_16": "a0f56df2895dac8b",
+        "mean": -0.00090369,
+        "rms": 0.03968653,
+        "min": -0.15429688,
+        "max": 0.13085938,
+        "first8": [
+          -0.06396484,
+          -0.01513672,
+          -0.01745605,
+          0.01293945,
+          -0.01806641,
+          0.09423828,
+          -0.02746582,
+          0.04638672
+        ],
+        "last8": [
+          -0.02648926,
+          -0.04589844,
+          0.02050781,
+          0.05126953,
+          -0.04907227,
+          0.01055908,
+          0.03564453,
+          -0.00872803
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "ffn_out_combined_from_components": {
+        "label": "target_verify_layer_31_ffn_out_combined_from_components",
+        "size": 2048,
+        "sha256_16": "e605b71c6079c712",
+        "mean": -0.00053965,
+        "rms": 0.04258644,
+        "min": -0.15816592,
+        "max": 0.46578509,
+        "first8": [
+          -0.02942387,
+          -0.01509926,
+          -0.03910024,
+          0.00436028,
+          -0.01860961,
+          0.09908859,
+          -0.04053083,
+          0.04640851
+        ],
+        "last8": [
+          -0.04712413,
+          -0.04186118,
+          0.02975986,
+          0.04658743,
+          -0.01834425,
+          0.01891396,
+          0.02807467,
+          -0.01369049
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
+      },
+      "post_moe_rounded_from_components": {
+        "label": "target_verify_layer_31_post_moe_rounded_from_components",
+        "size": 2048,
+        "sha256_16": "73c355f4e86f4bf8",
+        "mean": -0.00236012,
+        "rms": 0.13221113,
+        "min": -0.90625,
+        "max": 1.421875,
+        "first8": [
+          0.04516602,
+          0.0625,
+          -0.1328125,
+          -0.08349609,
+          -0.07861328,
+          0.27148438,
+          -0.03540039,
+          0.04418945
+        ],
+        "last8": [
+          -0.04443359,
+          -0.09619141,
+          0.17089844,
+          0.16796875,
+          -0.08886719,
+          0.00244141,
+          0.21777344,
+          0.04077148
+        ],
+        "depth": 1,
+        "token_id": 15495,
+        "position": 73
       }
     }
   },
@@ -490,6 +621,36 @@
   },
   "comparisons": [
     {
+      "name": "hip attn_norm vs llama.cpp attn_norm_31",
+      "hip_label": "attn_norm",
+      "llamacpp_label": "attn_norm_31",
+      "size": 2048,
+      "mae": 0.01622598245739937,
+      "rmse": 0.020816850116227564,
+      "max_abs": 0.10760641098022461,
+      "cosine": 0.9996927648564606,
+      "hip_first8": [
+        0.59375,
+        0.384765625,
+        -0.65625,
+        -0.5546875,
+        -0.2314453125,
+        0.7265625,
+        -0.07275390625,
+        0.0010986328125
+      ],
+      "llamacpp_first8": [
+        0.5588096976280212,
+        0.3605082333087921,
+        -0.6631937623023987,
+        -0.5194215178489685,
+        -0.26975610852241516,
+        0.7446970343589783,
+        -0.09695493429899216,
+        0.005524051375687122
+      ]
+    },
+    {
       "name": "hip residual vs llama.cpp attn_residual_31",
       "hip_label": "attn_residual",
       "llamacpp_label": "attn_residual_31",
@@ -550,23 +711,23 @@
       ]
     },
     {
-      "name": "hip layer_out-residual vs llama.cpp ffn_out_31",
-      "hip_label": "post_moe_delta_from_residual",
+      "name": "hip reconstructed ffn_out vs llama.cpp ffn_out_31",
+      "hip_label": "ffn_out_combined_from_components",
       "llamacpp_label": "ffn_out_31",
       "size": 2048,
-      "mae": 0.00446714460849762,
-      "rmse": 0.0056196657363680735,
-      "max_abs": 0.02113071084022522,
-      "cosine": 0.991595592295114,
+      "mae": 0.004460176452994347,
+      "rmse": 0.0056163277302862915,
+      "max_abs": 0.024095624685287476,
+      "cosine": 0.9916104934558833,
       "hip_first8": [
-        -0.029541015625,
-        -0.01513671875,
-        -0.03955078125,
-        0.00439453125,
-        -0.0185546875,
-        0.099609375,
-        -0.04052734375,
-        0.0463714599609375
+        -0.029423866420984268,
+        -0.01509926375001669,
+        -0.03910023719072342,
+        0.004360281862318516,
+        -0.018609613180160522,
+        0.09908859431743622,
+        -0.04053083062171936,
+        0.046408511698246
       ],
       "llamacpp_first8": [
         -0.028600018471479416,
@@ -577,6 +738,36 @@
         0.09241006523370743,
         -0.033499009907245636,
         0.050370488315820694
+      ]
+    },
+    {
+      "name": "hip reconstructed rounded post_moe vs llama.cpp post_moe_31",
+      "hip_label": "post_moe_rounded_from_components",
+      "llamacpp_label": "post_moe_31",
+      "size": 2048,
+      "mae": 0.005275707691907883,
+      "rmse": 0.006707611573164632,
+      "max_abs": 0.04485619068145752,
+      "cosine": 0.9987127799063799,
+      "hip_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ],
+      "llamacpp_first8": [
+        0.040544722229242325,
+        0.059281691908836365,
+        -0.1275990605354309,
+        -0.06849028170108795,
+        -0.09282846748828888,
+        0.26752394437789917,
+        -0.033323001116514206,
+        0.051274701952934265
       ]
     },
     {
@@ -638,11 +829,42 @@
         -0.033323001116514206,
         0.051274701952934265
       ]
+    },
+    {
+      "name": "hip reconstructed rounded post_moe vs hip layer_out",
+      "hip_label": "post_moe_rounded_from_components",
+      "llamacpp_label": "layer_out",
+      "size": 2048,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs": 0.0,
+      "cosine": 1.0,
+      "hip_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ],
+      "llamacpp_first8": [
+        0.045166015625,
+        0.0625,
+        -0.1328125,
+        -0.08349609375,
+        -0.07861328125,
+        0.271484375,
+        -0.035400390625,
+        0.044189453125
+      ]
     }
   ],
   "reading": [
-    "Layer 31 does not contain a new large residual cliff: hipEngine layer_out vs llama.cpp l_out/post_moe is MAE 0.00528, RMSE 0.00671, cosine 0.99871.",
-    "The largest normalized-space delta in this split is attn_post_norm MAE 0.03616 at RMS about 1.30, but the post-layer residual remains in the same gradual-drift band as the per-layer checkpoint diagnostic.",
-    "The active semantic mismatch remains accumulated target hidden precision drift that final output_norm/lm-head turns into a near-tie flip between tokens 539 and 26126, not a single layer-31 sub-boundary bug."
+    "Layer 31 still does not contain a new large residual cliff after adding direct attn_norm and reconstructed ffn_out comparisons.",
+    "The direct attn_norm comparison is MAE 0.01623 / RMSE 0.02082 / cosine 0.99969; normalized-space post-attn norm remains the largest layer-31 sub-boundary delta at MAE 0.03616.",
+    "The reconstructed hip ffn_out from selected/shared MoE components compares to llama.cpp ffn_out_31 at MAE 0.00446 / RMSE 0.00562 / cosine 0.99161, and reconstructed rounded post_moe exactly equals hip layer_out.",
+    "The next implementation target remains the residual-stream BF16 contraction across target layers rather than layer-31 attention, MoE combine, final output_norm, or lm-head ordering."
   ]
 }

@@ -288,6 +288,44 @@ def _copy_current_hidden_seed(session: Any) -> np.ndarray:
     return np.ascontiguousarray(hidden, dtype=np.float32)
 
 
+def _bf16_roundtrip_f32(values: np.ndarray) -> np.ndarray:
+    row = np.ascontiguousarray(np.asarray(values, dtype=np.float32))
+    bits = row.view(np.uint32)
+    lsb = (bits >> np.uint32(16)) & np.uint32(1)
+    rounded = bits + np.uint32(0x7FFF) + lsb
+    return np.ascontiguousarray((rounded & np.uint32(0xFFFF0000)).view(np.float32), dtype=np.float32)
+
+
+def _capture_moe_component_arrays(capture: Any) -> dict[str, np.ndarray]:
+    if (
+        not bool(getattr(capture, "is_moe", False))
+        or capture.moe_routing_weights_f32 is None
+        or capture.moe_shared_out_f32 is None
+        or capture.moe_shared_gate_f32 is None
+    ):
+        return {}
+    hidden_size = int(capture.hidden_size)
+    top_k = int(capture.top_k)
+    down = np.ascontiguousarray(capture.ffn_or_moe_down_f32, dtype=np.float32).reshape(top_k, hidden_size)
+    weights = np.ascontiguousarray(capture.moe_routing_weights_f32, dtype=np.float32).reshape(top_k)
+    selected_acc = np.zeros((hidden_size,), dtype=np.float32)
+    for index in range(top_k):
+        selected_acc = np.float32(selected_acc + down[index] * weights[index])
+    # The fused combine kernel preserves the old two-kernel contract: selected
+    # expert sum rounds to BF16 before adding the shared expert and residual.
+    selected_bf16 = _bf16_roundtrip_f32(selected_acc)
+    shared = np.ascontiguousarray(capture.moe_shared_out_f32, dtype=np.float32).reshape(hidden_size)
+    gate_logit = float(np.asarray(capture.moe_shared_gate_f32, dtype=np.float32).reshape(-1)[0])
+    gate = np.float32(1.0 / (1.0 + np.exp(np.float32(-gate_logit))))
+    ffn_out = np.ascontiguousarray(selected_bf16 + gate * shared, dtype=np.float32)
+    residual = np.ascontiguousarray(capture.residual_f32, dtype=np.float32).reshape(hidden_size)
+    return {
+        "moe_selected_weighted_bf16": selected_bf16,
+        "ffn_out_combined_from_components": ffn_out,
+        "post_moe_rounded_from_components": _bf16_roundtrip_f32(residual + ffn_out),
+    }
+
+
 def _probe_bulk_or_native(
     session: Any,
     verifier_inputs: list[int],
@@ -389,6 +427,7 @@ def _boundary_array_summaries(
 ) -> tuple[dict[str, Any], dict[str, list[float]]]:
     arrays: dict[str, np.ndarray | None] = {
         "hidden_in": capture.hidden_in_f32,
+        "attn_norm": capture.attn_norm_f32,
         "attn_out": capture.attn_out_f32,
         "attn_residual": capture.residual_f32,
         "attn_post_norm": capture.post_norm_f32,
@@ -400,6 +439,7 @@ def _boundary_array_summaries(
         ),
         "layer_out": capture.layer_out_f32,
     }
+    arrays.update(_capture_moe_component_arrays(capture))
     summaries: dict[str, Any] = {}
     values: dict[str, list[float]] = {}
     for name, array in arrays.items():
@@ -1013,6 +1053,7 @@ def main(argv: list[str] | None = None) -> int:
             "layer_output_hidden_values is emitted only for --raw-layer-output-row LAYER:ROW diagnostics.",
             "layer_boundary_captures is emitted only for requested --layer-boundary-row or --raw-layer-boundary-row LAYER:ROW diagnostics.",
             "Layer boundary captures run in isolated replay sessions so diagnostic sub-layer taps do not perturb the scored verifier probe.",
+            "Layer boundary captures include attn_norm and, for MoE layers, host-reconstructed ffn_out_combined_from_components plus post_moe_rounded_from_components.",
             "post_moe_delta_from_residual is derived as layer_out - attn_residual and is an approximate bridge to llama.cpp post_moe/ffn residual comparisons after BF16 output rounding.",
         ],
     }

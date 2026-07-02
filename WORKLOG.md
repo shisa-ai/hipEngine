@@ -135400,3 +135400,36 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   accumulated residual-boundary precision across target layers, not lm-head
   ordering, output_norm implementation, final BF16 cast, or one bad layer-31
   attention/MoE substage.
+
+## 2026-07-02 - Target layer-31 direct attn_norm and MoE ffn_out split
+
+- Extended the diagnostic-only layer-boundary capture to include hipEngine
+  `attn_norm` and a host reconstruction of MoE `ffn_out` from copied selected
+  expert down rows, routing weights, shared expert output, and shared-gate logit.
+  The reconstruction matches the fused hip combine contract: selected branch
+  rounds to BF16 before shared/residual add, and reconstructed rounded post-MoE
+  equals hip layer output exactly.
+- Reran the hipEngine row-1 layer-31 boundary probe:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 \
+  --candidate-token 26126 --raw-layer-boundary-row 31:1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-layer31-boundaryraw-v2.json
+```
+
+- Updated
+  `benchmarks/results/2026-07-02-mtp-target-layer31-subboundary-diagnostic.json`
+  to schema 2 and refreshed `docs/MTP-LLAMACPP-PARITY.md`. Direct layer-31
+  results: `attn_norm` **0.01623 MAE / 0.02082 RMSE / 0.99969 cosine**;
+  residual **0.00303 MAE / 0.00405 RMSE / 0.99943 cosine**; post-attn norm
+  **0.03616 MAE / 0.04541 RMSE / 0.99940 cosine**; reconstructed MoE
+  `ffn_out` vs llama `ffn_out_31` **0.00446 MAE / 0.00562 RMSE /
+  0.99161 cosine**; rounded post-MoE reconstruction vs hip layer output
+  **0 MAE**. This rules out a hidden MoE-combine mismatch in layer 31; the
+  remaining semantic target stays residual-stream precision across target
+  layers.

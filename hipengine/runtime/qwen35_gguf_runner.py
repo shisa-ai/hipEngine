@@ -506,6 +506,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
     top_k: int
     preceding_layer_count: int
     hidden_in_f32: np.ndarray
+    attn_norm_f32: np.ndarray
     attn_out_f32: np.ndarray
     post_norm_f32: np.ndarray
     residual_f32: np.ndarray
@@ -538,6 +539,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
             "top_k": int(self.top_k),
             "preceding_layer_count": int(self.preceding_layer_count),
             "hidden_in_shape": list(self.hidden_in_f32.shape),
+            "attn_norm_shape": list(self.attn_norm_f32.shape),
             "attn_out_shape": list(self.attn_out_f32.shape),
             "post_norm_shape": list(self.post_norm_f32.shape),
             "residual_shape": list(self.residual_f32.shape),
@@ -565,6 +567,7 @@ class Qwen35GGUFLinearAttentionLayerCapture:
             "layer_out_shape": list(self.layer_out_f32.shape),
             "finite": bool(
                 np.all(np.isfinite(self.hidden_in_f32))
+                and np.all(np.isfinite(self.attn_norm_f32))
                 and np.all(np.isfinite(self.attn_out_f32))
                 and np.all(np.isfinite(self.post_norm_f32))
                 and np.all(np.isfinite(self.residual_f32))
@@ -5498,6 +5501,9 @@ class Qwen35GGUFResidentSession:
             preceding_layer_count=int(layer_id) if run_preceding_layers else 0,
             hidden_in_f32=_copy_bf16_ptr_to_host_f32(
                 target_src_ptr, hidden_size, runtime=runtime
+            ),
+            attn_norm_f32=_copy_bf16_ptr_to_host_f32(
+                int(self.scratch.norm.ptr), hidden_size, runtime=runtime
             ),
             attn_out_f32=_copy_bf16_ptr_to_host_f32(
                 int(self.scratch.attn_out.ptr), hidden_size, runtime=runtime
