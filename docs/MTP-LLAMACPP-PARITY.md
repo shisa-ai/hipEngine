@@ -223,6 +223,7 @@ Current source artifacts:
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. This remains a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | llama.cpp HIP MTP whole-run rocprof proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json` | Diagnostic-only `llama-server` MTP request under `rocprofv3 --kernel-trace`, with `LLAMA_MTP_STAGE_TIMINGS` enabled. It produces the first llama.cpp MTP kernel-family bucket split in this tracker, but it is whole-process and required `SIGKILL` after profiler finalize timeout, so use it only as a source/kernel proxy. |
 | llama.cpp HIP MTP ROCTX range proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json` | Diagnostic-only rerun after llama.cpp commit `dd7ec418c` added `LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers. The artifact includes `range_name_summaries` for stage-window kernel buckets, but it is still whole-process and includes warmup/prompt/server ranges, so do not use it as a headline timing row. |
+| hipEngine vs llama.cpp target pre-output-norm diagnostic | `benchmarks/results/2026-07-02-mtp-target-pre-output-norm-diagnostic.json` | Diagnostic-only forced pair-12 row-1 split; `performance_claim=false`. hipEngine now emits requested pre-output_norm BF16 residual rows via `--raw-pre-output-norm-row 1`; local llama.cpp emits `verify_pre_output_norm` from the target graph with `LLAMA_MTP_TENSOR_TRACE=1`, `LLAMA_MTP_TENSOR_TRACE_VALUES=1`, `LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=h_nextn_pre_output_norm`, and `LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1`. The row entering output_norm already differs: hip serial-exact vs llama pre-output_norm MAE **0.2481**, RMSE **0.3180**, cosine **0.6576**. Final output_norm compresses this to post-norm MAE **0.0779**, RMSE **0.0982**, cosine **0.9991**, but the near-tie still flips: hip serial `539-26126` **+0.1182** logits vs llama **-0.0090**. Next split is per-layer target residual checkpoints at the same forced prefix. |
 | hipEngine vs llama.cpp raw target hidden + lm-head diagnostic | `benchmarks/results/2026-07-02-mtp-target-hidden-raw-lmhead-diagnostic.json` | Diagnostic-only raw row-1 split at the active pair-12 mismatch; `performance_claim=false`. The hipEngine probe emits full FP32 hidden values for row 1 via `--raw-hidden-row 1`; local llama.cpp emits raw `verify_h` row-1 values with `LLAMA_MTP_HIDDEN_TRACE_VALUES=1`, `LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS=verify_h`, and `LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS=1`. Dequantizing only `output.weight` rows `539` and `26126` and dotting them with the raw hidden vectors reproduces the observed ranking: hipEngine serial CPU margin `539-26126` **+0.1235** vs observed **+0.1182**, llama CPU margin **-0.0019** vs observed **-0.0090**. The mismatch is therefore target hidden production drift, not lm-head implementation ordering. |
 | hipEngine vs llama.cpp forced target hidden diagnostic | `benchmarks/results/2026-07-02-mtp-target-hidden-compare-diagnostic.json` | Diagnostic-only direct hidden-row comparison at the active pair-12 mismatch; `performance_claim=false`. The hipEngine probe now records the cycle-start pending seed and target verifier hidden rows; local llama.cpp instrumentation now emits `verify_h` rows from `common/speculative.cpp`. This corrects the earlier row alignment: llama `process_h_input` is shifted by one row, while `verify_h` is the direct target. Pending seed matches structurally but not bit-for-bit (first8 MAE **0.0909**, last8 MAE **0.0953**). Direct row-1 `verify_h` hidden deltas are small but nonzero: hipEngine bulk vs llama first8 MAE **0.0773**, last8 MAE **0.0609**; hipEngine serial-exact vs llama first8 MAE **0.0785**, last8 MAE **0.0391**. The row-1 logits still flip: hipEngine serial-exact ranks `539` over `26126` by **0.1182**, llama.cpp ranks `26126` over `539` by **0.0090**. |
 | hipEngine vs llama.cpp forced target score diagnostic | `benchmarks/results/2026-07-02-mtp-target-score-compare-diagnostic.json` | Diagnostic-only forced-prefix score comparison at the active pair-12 mismatch; `performance_claim=false`. hipEngine reconstructs the active prefix with block-cycle replay and then probes row 1 after input token `15495`. Bulk target verification samples `[15495, 539, 1151]` and ranks `539` over `26126` by **0.336 logits**; final serial-exact probing on the same bulk-replayed prefix still samples `[15495, 539, 1151]` and ranks `539` over `26126` by **0.118 logits**. llama.cpp HIP samples `[15495, 26126]` and ranks `26126` over `539` by **0.009 logits**. This rules out draft generation and a bulk-only verifier bug; the live semantic target is sub-0.12-logit target-row numerical drift/tie-break parity. |
@@ -389,11 +390,29 @@ those rows against each raw hidden vector.
 Reading: the same dequantized lm-head rows reproduce each engine's ranking from
 the raw hidden vector. The row-1 accept/reject mismatch is therefore not an
 lm-head ordering or candidate-sort issue. It is explained by the target hidden
-row that reaches the lm-head. The next split should move earlier in target
-forward: capture pre-output-norm residual rows and/or per-layer row-1 hidden
-checkpoints at the forced prefix, then compare hipEngine serial-exact against
-llama.cpp `llama_decode()` to find the first layer/stage that creates the
-~0.08 MAE drift.
+row that reaches the lm-head.
+
+Pre-output-norm target residual diagnostic:
+`benchmarks/results/2026-07-02-mtp-target-pre-output-norm-diagnostic.json`.
+This reruns the same forced pair-12 prefix with hipEngine
+`--raw-pre-output-norm-row 1` and local llama.cpp target graph tensor tracing for
+`h_nextn_pre_output_norm` row 1. The local llama.cpp checkout needed diagnostic
+plumbing in `qwen35moe.cpp`, `llama-graph.cpp`, `llama-context.cpp`, and
+`common/speculative.cpp`; those external changes are not part of hipEngine.
+
+| row-1 hidden checkpoint | hipEngine bulk vs llama | hipEngine serial-exact vs llama | reading |
+| --- | ---: | ---: | --- |
+| pre-output_norm residual MAE / RMSE | **0.24833 / 0.31823** | **0.24815 / 0.31797** | The residual stream entering final output_norm is already substantially different. |
+| pre-output_norm residual cosine | **0.65539** | **0.65759** | Bulk and serial-exact are close to each other but both are far from llama.cpp at this checkpoint. |
+| post-output_norm `verify_h` MAE / RMSE | **0.08067 / 0.10226** | **0.07789 / 0.09815** | Output norm compresses the residual-space drift into a much smaller post-norm hidden delta. |
+| post-output_norm `verify_h` cosine | **0.999005** | **0.999078** | The rows are visually close after norm, but the candidate logits are a near-tie. |
+| observed margin `539 - 26126` | **+0.33617** | **+0.11822** | llama.cpp is **-0.00896**, so the remaining post-norm drift still flips acceptance. |
+
+Updated target: the drift is before final output_norm, not inside lm-head
+ordering and not created by output_norm. The next split is forced-prefix
+per-layer residual checkpoints for the target verifier row, then a sub-boundary
+split inside the first widening layer: attention, residual add, post-attn norm,
+MoE/shared expert, and post-FFN residual.
 
 Superseded short-trace artifact:
 `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json`.

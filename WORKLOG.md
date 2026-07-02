@@ -135181,3 +135181,73 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   mismatch source. The active target is now target hidden production before or
   during output norm: pre-output-norm residual rows and/or per-layer row-1
   checkpoints at the forced prefix.
+
+## 2026-07-02 - Target pre-output-norm residual split for pair-12
+
+- Added diagnostic-only hipEngine pre-output_norm capture to
+  `Qwen35GGUFResidentSession.verify_target_block()` and serial `step()` plumbing,
+  surfaced by `scripts/gguf_mtp_forced_target_probe.py` flags
+  `--pre-output-norm-row` and `--raw-pre-output-norm-row`. Defaults are off.
+- Added local llama.cpp diagnostic instrumentation (external dirty checkout only)
+  to emit target graph `h_nextn_pre_output_norm` tensor traces and optional raw
+  values. Rebuilt `llama-server` with:
+
+```bash
+cd /home/lhl/llama.cpp/llama.cpp-hip
+cmake --build build --target llama-server -j 8
+```
+
+- Reran the forced pair-12 probes:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --top-k 20 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-prenormraw.json
+
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-prenormraw.json
+```
+
+```bash
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+LLAMA_MTP_HIDDEN_TRACE_VALUES=1 \
+LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS=verify_h \
+LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS=1 \
+LLAMA_MTP_TENSOR_TRACE=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUES=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=h_nextn_pre_output_norm \
+LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-prenormraw.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-prenormraw.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-prenormraw-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-pre-output-norm-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`. Result: row-1 target residual
+  entering output_norm is already different. hip serial-exact vs llama
+  pre-output_norm MAE **0.24815**, RMSE **0.31797**, cosine **0.65759**; after
+  output_norm the same row is MAE **0.07789**, RMSE **0.09815**, cosine
+  **0.99908**. The branch still flips because the post-norm logits are a
+  near-tie: hip serial `539 - 26126` **+0.11822** vs llama **-0.00896**.
+  Next split: forced-prefix per-layer target residual checkpoints, then
+  sub-boundary split in the first widening layer.

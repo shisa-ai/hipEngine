@@ -276,37 +276,61 @@ def _probe_bulk_or_native(
     *,
     mode: str,
     use_wmma_prefill: bool,
-) -> tuple[list[int], np.ndarray, np.ndarray]:
+    capture_pre_output_norm_hidden: bool,
+) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None]:
     result = session.verify_target_block(
         verifier_inputs,
         bulk_attention_mode=mode,
         use_wmma_prefill=bool(use_wmma_prefill),
+        capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         record_stage_timings=False,
     )
     return (
         [int(token) for token in result.token_ids],
         _copy_verify_logits(session, len(verifier_inputs)),
         np.ascontiguousarray(result.hidden_seeds, dtype=np.float32),
+        (
+            None
+            if result.pre_output_norm_hidden is None
+            else np.ascontiguousarray(result.pre_output_norm_hidden, dtype=np.float32)
+        ),
     )
 
 
-def _probe_serial(session: Any, verifier_inputs: list[int]) -> tuple[list[int], np.ndarray, np.ndarray]:
+def _probe_serial(
+    session: Any,
+    verifier_inputs: list[int],
+    *,
+    capture_pre_output_norm_hidden: bool,
+) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None]:
     token_ids: list[int] = []
     logits_rows: list[np.ndarray] = []
     hidden_rows: list[np.ndarray] = []
+    pre_output_norm_rows: list[np.ndarray] = []
     for token in verifier_inputs:
         row = session.step(
             int(token),
             return_logits=True,
             capture_hidden_seed_fp32=True,
+            capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         )
         token_ids.append(int(row.token_id))
         logits_rows.append(np.ascontiguousarray(row.logits.reshape(-1), dtype=np.float32))
         hidden_rows.append(_copy_current_hidden_seed(session).reshape(-1))
+        if capture_pre_output_norm_hidden:
+            pre_hidden = session.last_pre_output_norm_hidden
+            if pre_hidden is None:
+                raise ProbeError("pre-output_norm hidden was requested but not captured")
+            pre_output_norm_rows.append(np.ascontiguousarray(pre_hidden.reshape(-1), dtype=np.float32))
     return (
         token_ids,
         np.ascontiguousarray(np.stack(logits_rows, axis=0), dtype=np.float32),
         np.ascontiguousarray(np.stack(hidden_rows, axis=0), dtype=np.float32),
+        (
+            np.ascontiguousarray(np.stack(pre_output_norm_rows, axis=0), dtype=np.float32)
+            if capture_pre_output_norm_hidden
+            else None
+        ),
     )
 
 
@@ -430,6 +454,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Diagnostic only: include full FP32 hidden_seed values for the given verifier row index.",
     )
+    parser.add_argument(
+        "--pre-output-norm-row",
+        action="append",
+        type=int,
+        default=[],
+        help="Diagnostic only: include a summary of the pre-output_norm BF16 residual row at the given verifier row index.",
+    )
+    parser.add_argument(
+        "--raw-pre-output-norm-row",
+        action="append",
+        type=int,
+        default=[],
+        help="Diagnostic only: include full FP32 values for the pre-output_norm BF16 residual row at the given verifier row index.",
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -480,6 +518,9 @@ def main(argv: list[str] | None = None) -> int:
     extra_candidates = [token for values in args.candidate_token for token in values]
     candidate_tokens = _unique_ints([*draft_tokens, *target_tokens, *output_tokens, *extra_candidates])
     raw_hidden_rows = {int(row) for row in args.raw_hidden_row}
+    pre_output_norm_rows = {int(row) for row in args.pre_output_norm_row}
+    raw_pre_output_norm_rows = {int(row) for row in args.raw_pre_output_norm_row}
+    pre_output_norm_capture_rows = pre_output_norm_rows | raw_pre_output_norm_rows
     route_env = _apply_trace_route_env(workload, decode_repack=args.decode_repack)
     if _env_truthy("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"):
         raise ProbeError("direct verifier top-1 path is enabled; full row logits would be unavailable")
@@ -540,13 +581,18 @@ def main(argv: list[str] | None = None) -> int:
         cycle_pending_hidden_seed = _copy_current_hidden_seed(session)
 
         if args.target_block_verify_mode == "serial-exact":
-            sampled_tokens, logits, hidden_seeds = _probe_serial(session, verifier_inputs)
+            sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden = _probe_serial(
+                session,
+                verifier_inputs,
+                capture_pre_output_norm_hidden=bool(pre_output_norm_capture_rows),
+            )
         else:
-            sampled_tokens, logits, hidden_seeds = _probe_bulk_or_native(
+            sampled_tokens, logits, hidden_seeds, pre_output_norm_hidden = _probe_bulk_or_native(
                 session,
                 verifier_inputs,
                 mode=str(args.target_block_verify_mode),
                 use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                capture_pre_output_norm_hidden=bool(pre_output_norm_capture_rows),
             )
         accepted_draft_tokens = _llama_accept_count(draft_tokens, sampled_tokens[: len(draft_tokens)])
         rows: list[dict[str, Any]] = []
@@ -575,6 +621,19 @@ def main(argv: list[str] | None = None) -> int:
                     float(value)
                     for value in np.ascontiguousarray(hidden_seeds[row_index], dtype=np.float32).reshape(-1)
                 ]
+            if int(row_index) in pre_output_norm_capture_rows:
+                if pre_output_norm_hidden is None:
+                    raise ProbeError("pre-output_norm rows were requested but not captured")
+                pre_row = np.ascontiguousarray(pre_output_norm_hidden[row_index], dtype=np.float32).reshape(-1)
+                row_record["pre_output_norm_hidden_summary"] = hidden_state_summary(
+                    pre_row,
+                    label="target_verify_pre_output_norm_hidden",
+                    depth=int(row_index),
+                    token_id=int(input_token),
+                    position=int(cycle_start_position + row_index),
+                )
+                if int(row_index) in raw_pre_output_norm_rows:
+                    row_record["pre_output_norm_hidden_values"] = [float(value) for value in pre_row]
             rows.append(row_record)
     finally:
         session.close()
@@ -631,6 +690,8 @@ def main(argv: list[str] | None = None) -> int:
             "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
             "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
             "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
+            "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
+            "pre_output_norm_hidden_values is emitted only for --raw-pre-output-norm-row diagnostics.",
         ],
     }
     text = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"

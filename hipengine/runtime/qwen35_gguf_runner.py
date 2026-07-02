@@ -410,6 +410,7 @@ class Qwen35GGUFBlockVerifyResult:
     token_ids: list[int]
     hidden_seeds: np.ndarray
     start_position: int
+    pre_output_norm_hidden: np.ndarray | None = None
     linear_state_rows_captured: bool = False
 
     def __post_init__(self) -> None:
@@ -423,6 +424,11 @@ class Qwen35GGUFBlockVerifyResult:
             raise ValueError("hidden_seeds rows must match input_token_ids length")
         if self.hidden_seeds.dtype != np.float32:
             raise ValueError("hidden_seeds must be float32")
+        if self.pre_output_norm_hidden is not None:
+            if self.pre_output_norm_hidden.shape != self.hidden_seeds.shape:
+                raise ValueError("pre_output_norm_hidden shape must match hidden_seeds")
+            if self.pre_output_norm_hidden.dtype != np.float32:
+                raise ValueError("pre_output_norm_hidden must be float32")
 
 
 @dataclass(frozen=True)
@@ -4087,6 +4093,7 @@ class Qwen35GGUFResidentSession:
     _buffers: tuple[object, ...] = field(default=(), init=False)
     _position: int = field(default=0, init=False)
     _hidden_seed_fp32_populated: bool = field(default=False, init=False)
+    _last_pre_output_norm_hidden: np.ndarray | None = field(default=None, init=False)
     _lm_head_threads: int = field(default=128, init=False)
     _lm_head_stage1_blocks: int = field(default=0, init=False)
     last_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
@@ -4194,6 +4201,14 @@ class Qwen35GGUFResidentSession:
         """Next token position that will be consumed by :meth:`step`."""
 
         return int(self._position)
+
+    @property
+    def last_pre_output_norm_hidden(self) -> np.ndarray | None:
+        """Return the last diagnostic pre-output_norm decode row, if captured."""
+
+        if self._last_pre_output_norm_hidden is None:
+            return None
+        return np.ascontiguousarray(self._last_pre_output_norm_hidden, dtype=np.float32)
 
     def hidden_seed_contract(self, *, rows: int = 1) -> Qwen35GGUFHiddenSeedContract:
         """Return the current GGUF MTP hidden-seed contract for this session.
@@ -4334,6 +4349,7 @@ class Qwen35GGUFResidentSession:
         self.scratch.zero_states(runtime)
         self._position = 0
         self._hidden_seed_fp32_populated = False
+        self._last_pre_output_norm_hidden = None
         self._verify_hidden_seed_rows_populated = 0
 
     def _linear_state_snapshot(self) -> list[tuple[DeviceBuffer, DeviceBuffer]]:
@@ -4685,6 +4701,7 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         advance_state_only: bool = False,
         capture_linear_state_rows: bool = False,
+        capture_pre_output_norm_hidden: bool = False,
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
         defer_linear_state_commit: bool = False,
@@ -4752,6 +4769,7 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
         runtime = self.runtime or get_hip_runtime()
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+        pre_output_norm_hidden_host = None
         t_setup0 = time.perf_counter() if stage_timings is not None else 0.0
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
@@ -4898,6 +4916,13 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                 )
                 output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
+                if capture_pre_output_norm_hidden:
+                    pre_output_norm_hidden_host = _copy_bf16_rows_to_host_f32(
+                        src.ptr + start * row_nbytes,
+                        rows,
+                        self.runner.hidden_size,
+                        runtime=runtime,
+                    )
                 gguf_rmsnorm_bf16_f32_weight(
                     src.ptr + start * row_nbytes,
                     output_norm_weight_ptr,
@@ -5010,6 +5035,11 @@ class Qwen35GGUFResidentSession:
             token_ids=[int(token) for token in token_host.tolist()],
             hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
             start_position=start,
+            pre_output_norm_hidden=(
+                None
+                if pre_output_norm_hidden_host is None
+                else np.ascontiguousarray(pre_output_norm_hidden_host, dtype=np.float32)
+            ),
             linear_state_rows_captured=bool(capture_linear_state_rows),
         )
 
@@ -5018,6 +5048,7 @@ class Qwen35GGUFResidentSession:
         input_token_ids: list[int] | tuple[int, ...],
         *,
         capture_linear_state_rows: bool = False,
+        capture_pre_output_norm_hidden: bool = False,
         stream: int = 0,
     ) -> Qwen35GGUFBlockVerifyResult:
         """Consume a continuation block with the token-serial decode path.
@@ -5053,13 +5084,20 @@ class Qwen35GGUFResidentSession:
 
         token_host = np.empty((rows,), dtype=np.int64)
         hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+        pre_output_norm_rows: list[np.ndarray] = []
         for row, token in enumerate(tokens.tolist()):
             result = self.step(
                 int(token),
                 return_logits=False,
                 capture_hidden_seed_fp32=True,
+                capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             )
             token_host[row] = int(result.token_id)
+            if capture_pre_output_norm_hidden:
+                pre_hidden = self.last_pre_output_norm_hidden
+                if pre_hidden is None:
+                    raise RuntimeError("pre-output_norm hidden was requested but not captured")
+                pre_output_norm_rows.append(pre_hidden.reshape(-1))
             runtime.memcpy_async(
                 self._verify_hidden_seed_buf.ptr + row * hidden_row_nbytes,
                 self.scratch.hidden_seed_fp32.ptr,
@@ -5080,6 +5118,11 @@ class Qwen35GGUFResidentSession:
             token_ids=[int(token) for token in token_host.tolist()],
             hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
             start_position=start,
+            pre_output_norm_hidden=(
+                np.ascontiguousarray(np.stack(pre_output_norm_rows, axis=0), dtype=np.float32)
+                if capture_pre_output_norm_hidden
+                else None
+            ),
             linear_state_rows_captured=bool(capture_linear_state_rows),
         )
 
@@ -5128,6 +5171,7 @@ class Qwen35GGUFResidentSession:
         *,
         return_logits: bool = True,
         capture_hidden_seed_fp32: bool = False,
+        capture_pre_output_norm_hidden: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume one generated token and return the next greedy token.
 
@@ -5146,6 +5190,7 @@ class Qwen35GGUFResidentSession:
                 int(token_id),
                 position=self._position,
                 capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+                capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             )
             self._position += 1
             return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
@@ -5157,6 +5202,7 @@ class Qwen35GGUFResidentSession:
         position: int,
         stream: int = 0,
         capture_hidden_seed_fp32: bool = False,
+        capture_pre_output_norm_hidden: bool = False,
     ) -> int:
         if self._token_buf is None:
             raise RuntimeError("GGUF resident session buffers are closed")
@@ -5166,6 +5212,7 @@ class Qwen35GGUFResidentSession:
             position=position,
             stream=stream,
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+            capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         )
 
     def capture_linear_attention_boundary(
@@ -5426,6 +5473,7 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         attention_max_context_len: int | None = None,
         capture_hidden_seed_fp32: bool = False,
+        capture_pre_output_norm_hidden: bool = False,
     ) -> int:
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -5465,6 +5513,15 @@ class Qwen35GGUFResidentSession:
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             src, dst = dst, src
+        if capture_pre_output_norm_hidden:
+            self._last_pre_output_norm_hidden = _copy_bf16_rows_to_host_f32(
+                src.ptr,
+                1,
+                self.runner.hidden_size,
+                runtime=self.runtime or get_hip_runtime(),
+            )
+        else:
+            self._last_pre_output_norm_hidden = None
         return self._run_output_norm_hidden(
             src.ptr,
             self.scratch.norm.ptr,
@@ -8401,6 +8458,23 @@ def _copy_bf16_ptr_to_host_f32(ptr: int, elements: int, *, runtime: HipRuntime) 
         runtime=runtime,
     )
     return bf16_to_float32(bits)
+
+
+def _copy_bf16_rows_to_host_f32(ptr: int, rows: int, hidden_size: int, *, runtime: HipRuntime) -> np.ndarray:
+    rows = int(rows)
+    hidden_size = int(hidden_size)
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    bits = np.empty((rows, hidden_size), dtype=np.uint16)
+    copy_device_to_host(
+        host_array_ptr(bits),
+        DeviceBuffer(int(ptr), bits.nbytes),
+        bits.nbytes,
+        runtime=runtime,
+    )
+    return np.ascontiguousarray(bf16_to_float32(bits), dtype=np.float32)
 
 
 def _copy_f32_ptr_to_host(ptr: int, elements: int, *, runtime: HipRuntime) -> np.ndarray:
