@@ -614,6 +614,49 @@ class Qwen35GGUFLinearAttentionLayerCapture:
         }
 
 
+@dataclass(frozen=True)
+class Qwen35GGUFRouterTraceLayerCapture:
+    """Host-visible router snapshot for one decoded target layer."""
+
+    layer_id: int
+    layer_type: str
+    token_id: int
+    position: int
+    hidden_size: int
+    expert_count: int
+    top_k: int
+    hidden_in_f32: np.ndarray
+    layer_out_f32: np.ndarray
+    moe_router_logits_f32: np.ndarray
+    moe_routing_weights_f32: np.ndarray
+    moe_shared_gate_f32: np.ndarray
+    moe_selected_experts_i64: np.ndarray
+
+    def as_summary_dict(self) -> dict[str, object]:
+        return {
+            "layer_id": int(self.layer_id),
+            "layer_type": str(self.layer_type),
+            "token_id": int(self.token_id),
+            "position": int(self.position),
+            "hidden_size": int(self.hidden_size),
+            "expert_count": int(self.expert_count),
+            "top_k": int(self.top_k),
+            "hidden_in_shape": list(self.hidden_in_f32.shape),
+            "layer_out_shape": list(self.layer_out_f32.shape),
+            "moe_router_logits_shape": list(self.moe_router_logits_f32.shape),
+            "moe_routing_weights_shape": list(self.moe_routing_weights_f32.shape),
+            "moe_shared_gate_shape": list(self.moe_shared_gate_f32.shape),
+            "moe_selected_experts_shape": list(self.moe_selected_experts_i64.shape),
+            "finite": bool(
+                np.all(np.isfinite(self.hidden_in_f32))
+                and np.all(np.isfinite(self.layer_out_f32))
+                and np.all(np.isfinite(self.moe_router_logits_f32))
+                and np.all(np.isfinite(self.moe_routing_weights_f32))
+                and np.all(np.isfinite(self.moe_shared_gate_f32))
+            ),
+        }
+
+
 def _launch_qwen35_router_logits_bf16_hidden(
     hidden_ptr: int,
     weight: Qwen35GGUFDeviceWeight,
@@ -6054,6 +6097,112 @@ class Qwen35GGUFResidentSession:
             moe_selected_experts_i64=moe_selected_experts,
         )
 
+    def capture_attention_router_trace(
+        self,
+        token_id: int,
+        *,
+        position: int,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFRouterTraceLayerCapture]:
+        """Run one decode row and capture per-layer MoE router state.
+
+        This diagnostic tap mutates the resident decode state like ``step`` for
+        the supplied token/position, but stops before output_norm and sampling.
+        It is intended for cross-engine router/top-k bisection, not generation.
+        """
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._hidden_a is None or self._hidden_b is None:
+            raise RuntimeError("GGUF resident session buffers are closed")
+        if position < 0:
+            raise ValueError("position must be non-negative")
+        cfg = self.runner.weights.config
+        if not cfg.is_moe:
+            raise ValueError("router trace requires a MoE GGUF model")
+
+        runtime = self.runtime or get_hip_runtime()
+        self._hidden_seed_fp32_populated = False
+        self._set_full_attention_position_device(position, stream=stream)
+        self._set_token_id_device(int(token_id), stream=stream)
+        src = self._hidden_a
+        dst = self._hidden_b
+        hidden_size = int(self.runner.hidden_size)
+        expert_count = int(cfg.expert_count)
+        top_k = int(cfg.expert_used_count)
+        if top_k <= 0:
+            raise ValueError("qwen35moe GGUF expert_used_count must be positive")
+
+        captures: list[Qwen35GGUFRouterTraceLayerCapture] = []
+        for layer_id, layer_type in enumerate(cfg.layer_types):
+            hidden_in = _copy_bf16_ptr_to_host_f32(
+                int(src.ptr), hidden_size, runtime=runtime
+            )
+            if layer_type == LINEAR_ATTENTION:
+                self.runner._run_linear_attention_layer(
+                    layer_id,
+                    src.ptr,
+                    dst.ptr,
+                    self.scratch,
+                    stream=stream,
+                )
+            elif layer_type == FULL_ATTENTION:
+                self.runner._run_full_attention_layer(
+                    layer_id,
+                    src.ptr,
+                    dst.ptr,
+                    self.scratch,
+                    position=position,
+                    stream=stream,
+                )
+            else:
+                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            if stream:
+                runtime.stream_synchronize(stream)
+            else:
+                runtime.device_synchronize()
+            shared_gate_ptr = (
+                int(self.scratch.moe_router_logits.ptr)
+                + expert_count * DType.FP32.itemsize
+            )
+            captures.append(
+                Qwen35GGUFRouterTraceLayerCapture(
+                    layer_id=int(layer_id),
+                    layer_type=str(layer_type),
+                    token_id=int(token_id),
+                    position=int(position),
+                    hidden_size=hidden_size,
+                    expert_count=expert_count,
+                    top_k=top_k,
+                    hidden_in_f32=np.ascontiguousarray(hidden_in, dtype=np.float32),
+                    layer_out_f32=_copy_bf16_ptr_to_host_f32(
+                        int(dst.ptr), hidden_size, runtime=runtime
+                    ),
+                    moe_router_logits_f32=_copy_f32_ptr_to_host(
+                        int(self.scratch.moe_router_logits.ptr),
+                        expert_count,
+                        runtime=runtime,
+                    ),
+                    moe_routing_weights_f32=_copy_f32_ptr_to_host(
+                        int(self.scratch.moe_routing_weights.ptr),
+                        top_k,
+                        runtime=runtime,
+                    ),
+                    moe_shared_gate_f32=_copy_f32_ptr_to_host(
+                        shared_gate_ptr,
+                        1,
+                        runtime=runtime,
+                    ),
+                    moe_selected_experts_i64=_copy_i64_ptr_to_host(
+                        int(self.scratch.moe_selected_experts.ptr),
+                        top_k,
+                        runtime=runtime,
+                    ),
+                )
+            )
+            src, dst = dst, src
+        return captures
+
     def capture_linear_attention_layer(
         self,
         token_id: int,
@@ -9594,6 +9743,7 @@ __all__ = [
     "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFLinearAttentionBoundaryCapture",
     "Qwen35GGUFLinearAttentionLayerCapture",
+    "Qwen35GGUFRouterTraceLayerCapture",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFHiddenSeedContract",
     "Qwen35GGUFMTPDraftSeed",

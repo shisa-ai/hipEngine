@@ -604,6 +604,163 @@ def _capture_single_layer_boundary(
         session.close()
 
 
+def _capture_single_row_router_trace(
+    *,
+    args: argparse.Namespace,
+    compiler_version: str | None,
+    prompt_tokens: list[int],
+    cycles_to_replay: list[dict[str, Any]],
+    initial_prev_token: int,
+    initial_prev_position: int,
+    cycle_prev_token: int,
+    cycle_start_position: int,
+    verifier_inputs: list[int],
+    target_tokens: list[int],
+    row_index: int,
+    max_sequence_length: int,
+) -> dict[str, Any]:
+    if row_index < 0 or row_index >= len(verifier_inputs):
+        raise ProbeError(
+            f"router trace row {row_index} outside verifier input length {len(verifier_inputs)}"
+        )
+
+    from hipengine.runtime.prefill import PrefillConfig
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    session = Qwen35GGUFResidentSession(
+        args.model,
+        compiler_version=compiler_version,
+        require_cached_build=bool(args.require_cached_build),
+        max_sequence_length=max_sequence_length,
+        use_wmma_prefill=bool(args.use_wmma_prefill),
+        use_gemv_decode=bool(args.use_gemv_decode),
+        prefill_config=PrefillConfig(),
+    )
+    try:
+        prefill = session.prefill(
+            prompt_tokens,
+            use_bulk=True,
+            bulk_attention_mode=str(args.prefill_attention_mode),
+            return_logits=False,
+            capture_hidden_seed_fp32=True,
+        )
+        current_prev = int(prefill.token_id)
+        if current_prev != initial_prev_token:
+            raise ProbeError(
+                f"router trace prefill token {current_prev} does not match trace initial_prev_token {initial_prev_token}"
+            )
+        if int(session.position) != initial_prev_position:
+            raise ProbeError(
+                f"router trace prefill position {session.position} does not match trace {initial_prev_position}"
+            )
+        current_prev, replay_rows = _replay_prior_cycles(
+            session,
+            cycles_to_replay,
+            current_prev=current_prev,
+            mode=str(args.replay_target_block_verify_mode or args.target_block_verify_mode),
+            use_wmma_prefill=bool(args.target_block_wmma_prefill),
+        )
+        if current_prev != cycle_prev_token:
+            raise ProbeError(
+                f"router trace replay prev token {current_prev} does not match cycle prev {cycle_prev_token}"
+            )
+        if int(session.position) != cycle_start_position:
+            raise ProbeError(
+                f"router trace replay position {session.position} does not match cycle start {cycle_start_position}"
+            )
+
+        prior_row_replay: list[dict[str, Any]] = []
+        for prior_row in range(row_index):
+            prior_input = int(verifier_inputs[prior_row])
+            result = session.step(prior_input, return_logits=False)
+            sampled = int(result.token_id)
+            expected = int(target_tokens[prior_row]) if prior_row < len(target_tokens) else None
+            if expected is not None and sampled != expected:
+                raise ProbeError(
+                    f"router trace row replay mismatch at row {prior_row}: sampled {sampled}, trace {expected}"
+                )
+            prior_row_replay.append(
+                {
+                    "row": int(prior_row),
+                    "position": int(cycle_start_position + prior_row),
+                    "input_token": int(prior_input),
+                    "sampled_token": int(sampled),
+                    "trace_target_token": expected,
+                }
+            )
+        if int(session.position) != int(cycle_start_position + row_index):
+            raise ProbeError(
+                f"router trace position {session.position} does not match row position "
+                f"{cycle_start_position + row_index}"
+            )
+
+        input_token = int(verifier_inputs[row_index])
+        position = int(cycle_start_position + row_index)
+        captures = session.capture_attention_router_trace(
+            input_token,
+            position=position,
+        )
+        layers: list[dict[str, Any]] = []
+        for capture in captures:
+            router_logits = np.ascontiguousarray(
+                capture.moe_router_logits_f32, dtype=np.float32
+            ).reshape(-1)
+            layers.append(
+                {
+                    "layer": int(capture.layer_id),
+                    "layer_type": str(capture.layer_type),
+                    "capture": capture.as_summary_dict(),
+                    "hidden_in_summary": hidden_state_summary(
+                        np.ascontiguousarray(capture.hidden_in_f32, dtype=np.float32).reshape(-1),
+                        label=f"target_verify_layer_{int(capture.layer_id)}_router_hidden_in",
+                        depth=int(row_index),
+                        token_id=input_token,
+                        position=position,
+                    ),
+                    "layer_out_summary": hidden_state_summary(
+                        np.ascontiguousarray(capture.layer_out_f32, dtype=np.float32).reshape(-1),
+                        label=f"target_verify_layer_{int(capture.layer_id)}_router_layer_out",
+                        depth=int(row_index),
+                        token_id=input_token,
+                        position=position,
+                    ),
+                    "moe_selected_experts": [
+                        int(value)
+                        for value in np.asarray(capture.moe_selected_experts_i64).reshape(-1)
+                    ],
+                    "moe_routing_weights": [
+                        float(value)
+                        for value in np.asarray(
+                            capture.moe_routing_weights_f32, dtype=np.float32
+                        ).reshape(-1)
+                    ],
+                    "moe_shared_gate": [
+                        float(value)
+                        for value in np.asarray(
+                            capture.moe_shared_gate_f32, dtype=np.float32
+                        ).reshape(-1)
+                    ],
+                    "router_top_k": _top_k_rows(router_logits, top_k=int(capture.top_k)),
+                    "values": {
+                        "moe_router_logits": [float(value) for value in router_logits],
+                    },
+                }
+            )
+        return {
+            "row": int(row_index),
+            "position": int(position),
+            "input_token": int(input_token),
+            "trace_target_token": int(target_tokens[row_index])
+            if row_index < len(target_tokens)
+            else None,
+            "prior_cycle_replay": replay_rows,
+            "prior_row_replay": prior_row_replay,
+            "layers": layers,
+        }
+    finally:
+        session.close()
+
+
 def _run_trace_block(
     session: Any,
     verifier_inputs: list[int],
@@ -770,6 +927,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         metavar="LAYER:ROW",
         help="Diagnostic only: include full FP32 sub-boundary buffer values inside one target layer for LAYER:ROW.",
     )
+    parser.add_argument(
+        "--router-trace-row",
+        action="append",
+        type=int,
+        default=[],
+        help="Diagnostic only: include per-layer MoE router logits/top-k for one verifier row.",
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -834,6 +998,12 @@ def main(argv: list[str] | None = None) -> int:
         if int(row_index) >= len(verifier_inputs):
             raise ProbeError(
                 f"layer boundary row {row_index} outside verifier input length {len(verifier_inputs)}"
+            )
+    router_trace_rows = sorted({int(row) for row in args.router_trace_row})
+    for row_index in router_trace_rows:
+        if int(row_index) < 0 or int(row_index) >= len(verifier_inputs):
+            raise ProbeError(
+                f"router trace row {row_index} outside verifier input length {len(verifier_inputs)}"
             )
     route_env = _apply_trace_route_env(workload, decode_repack=args.decode_repack)
     if _env_truthy("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"):
@@ -1001,6 +1171,24 @@ def main(argv: list[str] | None = None) -> int:
                 include_raw=(int(layer_id), int(row_index)) in raw_layer_boundary_rows,
             )
         )
+    router_trace_captures: list[dict[str, Any]] = []
+    for row_index in router_trace_rows:
+        router_trace_captures.append(
+            _capture_single_row_router_trace(
+                args=args,
+                compiler_version=compiler_version,
+                prompt_tokens=prompt_tokens,
+                cycles_to_replay=cycles[:cycle_index],
+                initial_prev_token=int(initial_prev_token),
+                initial_prev_position=int(initial_prev_position),
+                cycle_prev_token=int(cycle_prev_token),
+                cycle_start_position=int(cycle_start_position),
+                verifier_inputs=verifier_inputs,
+                target_tokens=target_tokens,
+                row_index=int(row_index),
+                max_sequence_length=int(max_sequence_length),
+            )
+        )
 
     artifact = {
         "schema": 1,
@@ -1047,6 +1235,7 @@ def main(argv: list[str] | None = None) -> int:
             "accepted_draft_tokens": int(accepted_draft_tokens),
             "rows": rows,
             "layer_boundary_captures": layer_boundary_captures,
+            "router_trace_captures": router_trace_captures,
         },
         "notes": [
             "Diagnostic only: forced-prefix target verifier score capture, not a performance run.",
@@ -1062,6 +1251,7 @@ def main(argv: list[str] | None = None) -> int:
             "layer_boundary_captures is emitted only for requested --layer-boundary-row or --raw-layer-boundary-row LAYER:ROW diagnostics.",
             "Layer boundary captures run in isolated replay sessions so diagnostic sub-layer taps do not perturb the scored verifier probe.",
             "Layer boundary captures include attn_norm and, for MoE layers, router logits, selected SwigLU/down/weighted sums, shared intermediate/out/gated contribution, host-reconstructed ffn_out_combined_from_components, and post_moe_rounded_from_components.",
+            "router_trace_captures is emitted only for requested --router-trace-row ROW diagnostics and runs one isolated row replay through all layers, capturing per-layer router logits/top-k without perturbing the scored verifier probe.",
             "post_moe_delta_from_residual is derived as layer_out - attn_residual and is an approximate bridge to llama.cpp post_moe/ffn residual comparisons after BF16 output rounding.",
         ],
     }

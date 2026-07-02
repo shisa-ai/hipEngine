@@ -135666,3 +135666,54 @@ python3 scripts/llamacpp_mtp_compare_target_moe_taps.py \
   - `python3 -m pytest tests/test_llamacpp_mtp_compare_target_moe_taps.py tests/test_gguf_mtp_forced_target_probe.py -q` => **3 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-cross-engine-diagnostic.json`
   - `git diff --check`
+
+## 2026-07-02 - Target all-layer router trace diagnostic
+
+- Added `Qwen35GGUFResidentSession.capture_attention_router_trace()` plus
+  `scripts/gguf_mtp_forced_target_probe.py --router-trace-row ROW`, an
+  isolated one-row replay that records per-layer MoE router logits, selected
+  experts, routing weights, shared-gate logits, and compact hidden/layer
+  summaries without perturbing the scored verifier probe. Added
+  `scripts/llamacpp_mtp_compare_router_trace.py` to compare that trace against
+  local llama.cpp dirty tensor traces.
+- Ran the hipEngine router trace on the active pair-12 row-1 mismatch:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 \
+  --candidate-token 26126 --router-trace-row 1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-router-trace.json
+```
+
+- Reran local llama.cpp dirty instrumentation with raw values for
+  `ffn_moe_logits_N`, `ffn_moe_weights_norm_N`, and `shared_expert_gate_N` for
+  all 40 layers (row 1 only), then compared:
+
+```bash
+python3 scripts/llamacpp_mtp_compare_router_trace.py \
+  --hipengine-router-trace /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-router-trace.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-router-alllayers.jsonl \
+  --llamacpp-cycle 18 --row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-router-trace-cross-engine-diagnostic.json
+```
+
+  Result: layer 0 router top-k matches llama.cpp. The first router top-k
+  divergence is layer 1, rank 8 only: hipEngine selects expert `126`, llama.cpp
+  selects expert `63`. Layer-1 router logits are still very close
+  (**0.00562 MAE / 0.00694 RMSE / 0.999999 cosine**) and routing weights differ
+  by **0.00054 MAE**. Across 40 layers, **29/40** top-k selections match; the
+  11 mismatches are near-tie rank swaps or cutoff differences, including the
+  previously observed layer-31 split. Next semantic target: raw layer-0 output
+  / layer-1 router input precision, not late-layer selected-MoE math.
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-router-trace-cross-engine-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_forced_target_probe.py scripts/llamacpp_mtp_compare_router_trace.py tests/test_llamacpp_mtp_compare_router_trace.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_compare_router_trace.py tests/test_llamacpp_mtp_compare_target_moe_taps.py tests/test_gguf_mtp_forced_target_probe.py -q` => **4 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-router-trace-cross-engine-diagnostic.json`
+  - `git diff --check`
