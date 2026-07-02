@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.gguf_mtp_bench import GGUF_PATH, build_chat_prompt
+from scripts.gguf_mtp_bench import GGUF_PATH, build_chat_prompt, hidden_state_summary
 
 
 class ProbeError(RuntimeError):
@@ -251,25 +251,49 @@ def _copy_verify_logits(session: Any, rows: int) -> np.ndarray:
     return np.ascontiguousarray(logits, dtype=np.float32)
 
 
+def _copy_current_hidden_seed(session: Any) -> np.ndarray:
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+    from hipengine.runtime.qwen35_gguf_runner import DType
+
+    if session.runner is None or session.scratch is None:
+        raise ProbeError("session is closed")
+    hidden = np.empty((1, int(session.runner.hidden_size)), dtype=np.float32)
+    copy_device_to_host(
+        host_array_ptr(hidden),
+        DeviceBuffer(
+            int(session.scratch.hidden_seed_fp32.ptr),
+            int(session.runner.hidden_size) * DType.FP32.itemsize,
+        ),
+        hidden.nbytes,
+        runtime=session.runtime,
+    )
+    return np.ascontiguousarray(hidden, dtype=np.float32)
+
+
 def _probe_bulk_or_native(
     session: Any,
     verifier_inputs: list[int],
     *,
     mode: str,
     use_wmma_prefill: bool,
-) -> tuple[list[int], np.ndarray]:
+) -> tuple[list[int], np.ndarray, np.ndarray]:
     result = session.verify_target_block(
         verifier_inputs,
         bulk_attention_mode=mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         record_stage_timings=False,
     )
-    return [int(token) for token in result.token_ids], _copy_verify_logits(session, len(verifier_inputs))
+    return (
+        [int(token) for token in result.token_ids],
+        _copy_verify_logits(session, len(verifier_inputs)),
+        np.ascontiguousarray(result.hidden_seeds, dtype=np.float32),
+    )
 
 
-def _probe_serial(session: Any, verifier_inputs: list[int]) -> tuple[list[int], np.ndarray]:
+def _probe_serial(session: Any, verifier_inputs: list[int]) -> tuple[list[int], np.ndarray, np.ndarray]:
     token_ids: list[int] = []
     logits_rows: list[np.ndarray] = []
+    hidden_rows: list[np.ndarray] = []
     for token in verifier_inputs:
         row = session.step(
             int(token),
@@ -278,7 +302,12 @@ def _probe_serial(session: Any, verifier_inputs: list[int]) -> tuple[list[int], 
         )
         token_ids.append(int(row.token_id))
         logits_rows.append(np.ascontiguousarray(row.logits.reshape(-1), dtype=np.float32))
-    return token_ids, np.ascontiguousarray(np.stack(logits_rows, axis=0), dtype=np.float32)
+        hidden_rows.append(_copy_current_hidden_seed(session).reshape(-1))
+    return (
+        token_ids,
+        np.ascontiguousarray(np.stack(logits_rows, axis=0), dtype=np.float32),
+        np.ascontiguousarray(np.stack(hidden_rows, axis=0), dtype=np.float32),
+    )
 
 
 def _run_trace_block(
@@ -500,11 +529,12 @@ def main(argv: list[str] | None = None) -> int:
             raise ProbeError(f"replayed prev token {current_prev} does not match cycle prev {cycle_prev_token}")
         if int(session.position) != cycle_start_position:
             raise ProbeError(f"replayed position {session.position} does not match cycle start {cycle_start_position}")
+        cycle_pending_hidden_seed = _copy_current_hidden_seed(session)
 
         if args.target_block_verify_mode == "serial-exact":
-            sampled_tokens, logits = _probe_serial(session, verifier_inputs)
+            sampled_tokens, logits, hidden_seeds = _probe_serial(session, verifier_inputs)
         else:
-            sampled_tokens, logits = _probe_bulk_or_native(
+            sampled_tokens, logits, hidden_seeds = _probe_bulk_or_native(
                 session,
                 verifier_inputs,
                 mode=str(args.target_block_verify_mode),
@@ -523,6 +553,13 @@ def main(argv: list[str] | None = None) -> int:
                     "trace_target_token": int(target_tokens[row_index]) if row_index < len(target_tokens) else None,
                     "trace_output_token": int(output_tokens[row_index]) if row_index < len(output_tokens) else None,
                     "draft_token_at_depth": int(draft_tokens[row_index]) if row_index < len(draft_tokens) else None,
+                    "hidden_seed_summary": hidden_state_summary(
+                        hidden_seeds[row_index],
+                        label="target_verify_hidden_seed",
+                        depth=int(row_index),
+                        token_id=int(input_token),
+                        position=int(cycle_start_position + row_index),
+                    ),
                     "top_k": _top_k_rows(row_logits, top_k=int(args.top_k)),
                     "candidate_scores": _candidate_rows(row_logits, candidate_tokens),
                 }
@@ -564,6 +601,13 @@ def main(argv: list[str] | None = None) -> int:
             "replay_target_block_verify_mode": str(args.replay_target_block_verify_mode or args.target_block_verify_mode),
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
             "prior_cycle_replay": replay_rows,
+            "cycle_pending_hidden_seed_summary": hidden_state_summary(
+                cycle_pending_hidden_seed,
+                label="cycle_pending_hidden_seed",
+                depth=-1,
+                token_id=int(cycle_prev_token),
+                position=int(cycle_start_position),
+            ),
             "sampled_tokens": sampled_tokens,
             "accepted_draft_tokens": int(accepted_draft_tokens),
             "rows": rows,
@@ -572,6 +616,8 @@ def main(argv: list[str] | None = None) -> int:
             "Diagnostic only: forced-prefix target verifier score capture, not a performance run.",
             "Prefix replay consumes initial_prev_token plus prior visible outputs except the final cycle_prev_token, matching scripts/gguf_mtp_bench.py block verifier state.",
             "The verifier direct Q6 top-1 path is forced off so full row logits are available.",
+            "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
+            "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
         ],
     }
     text = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"

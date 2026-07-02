@@ -135056,3 +135056,68 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   timings are not retained. The live semantic target is now target row-1
   hidden/logit numerics at the forced prefix: hidden after input `15495`, output
   norm, lm-head input, and lm-head GEMV/output ordering.
+
+## 2026-07-02 - Forced target hidden row alignment for pair-12 mismatch
+
+- Extended `scripts/gguf_mtp_forced_target_probe.py` to record the cycle-start
+  pending hidden seed in addition to per-row target verifier hidden seeds. The
+  hidden summaries are diagnostic only; no performance claim.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --top-k 20 --candidate-token 26126 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-hidden2.json
+
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-hidden2.json
+```
+
+- Added a local llama.cpp diagnostic trace point in
+  `/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp` to emit `verify_h`
+  hidden summaries while copying `llama_get_embeddings_nextn_ith(ctx_tgt, ...)`
+  into `verify_h` (dirty external instrumentation, not a hipEngine commit),
+  rebuilt `llama-server`, and reran the same prompt:
+
+```bash
+cmake --build build --target llama-server -j 8
+
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-hidden-compare-diagnostic.json` and
+  updated `docs/MTP-LLAMACPP-PARITY.md`. Result: the earlier unshifted
+  `process_h_input` comparison was misaligned. llama.cpp `process_h_input` row
+  `i+1` corresponds to target verifier `verify_h` row `i`; direct `verify_h`
+  is the right comparison for hipEngine target verifier hidden rows.
+- At the pair-12 forced prefix, the cycle pending seed is structurally aligned
+  but not bit-identical (hip vs llama draft seed first8 MAE **0.0909**, last8
+  **0.0953**). Direct row-1 `verify_h` after input `15495` is also close but
+  non-identical: hip bulk vs llama first8 MAE **0.0773**, last8 **0.0609**;
+  hip serial-exact vs llama first8 MAE **0.0785**, last8 **0.0391**.
+- The branch decision remains a row-1 near-tie: hipEngine bulk ranks `539` over
+  `26126` by **0.3362** logits, hipEngine serial-exact ranks `539` over
+  `26126` by **0.1182**, and llama.cpp ranks `26126` over `539` by **0.0090**.
+  This rules out a missing shifted hidden handoff; next split is raw row-1
+  hidden/lm-head cross-scoring or pre-output-norm/per-layer target hidden
+  checkpoints to locate the first source of the small drift.
