@@ -28,19 +28,22 @@ DEFAULT_JSON_OUTPUT = Path(
 GRAPH_RELATIVE_PATH = Path("src/llama-graph.cpp")
 CONTEXT_RELATIVE_PATH = Path("src/llama-context.cpp")
 
-TRACE_PREFIX_LINES = (
-    '             std::strncmp(name, "linear_attn_qkv_mixed_", 22) == 0 ||\n',
-    '             std::strncmp(name, "z_", 2) == 0 ||\n',
-    '             std::strncmp(name, "beta_", 5) == 0 ||\n',
-    '             std::strncmp(name, "alpha_", 6) == 0 ||\n',
-    '             std::strncmp(name, "a_softplus_", 11) == 0 ||\n',
-    '             std::strncmp(name, "gate_", 5) == 0 ||\n',
-    '             std::strncmp(name, "conv_output_raw_", 16) == 0 ||\n',
-    '             std::strncmp(name, "conv_output_silu_", 17) == 0 ||\n',
-    '             std::strncmp(name, "q_conv_", 7) == 0 ||\n',
-    '             std::strncmp(name, "k_conv_", 7) == 0 ||\n',
-    '             std::strncmp(name, "v_conv_", 7) == 0 ||\n',
+TRACE_PREFIX_ENTRIES = (
+    ('std::strcmp(name, "model.input_embed")', '             std::strcmp(name, "model.input_embed") == 0 ||\n'),
+    ('std::strncmp(name, "linear_attn_qkv_mixed_", 22)', '             std::strncmp(name, "linear_attn_qkv_mixed_", 22) == 0 ||\n'),
+    ('std::strncmp(name, "z_", 2)', '             std::strncmp(name, "z_", 2) == 0 ||\n'),
+    ('std::strncmp(name, "beta_", 5)', '             std::strncmp(name, "beta_", 5) == 0 ||\n'),
+    ('std::strncmp(name, "alpha_", 6)', '             std::strncmp(name, "alpha_", 6) == 0 ||\n'),
+    ('std::strncmp(name, "a_softplus_", 11)', '             std::strncmp(name, "a_softplus_", 11) == 0 ||\n'),
+    ('std::strncmp(name, "gate_", 5)', '             std::strncmp(name, "gate_", 5) == 0 ||\n'),
+    ('std::strncmp(name, "conv_output_raw_", 16)', '             std::strncmp(name, "conv_output_raw_", 16) == 0 ||\n'),
+    ('std::strncmp(name, "conv_output_silu_", 17)', '             std::strncmp(name, "conv_output_silu_", 17) == 0 ||\n'),
+    ('std::strncmp(name, "q_conv_", 7)', '             std::strncmp(name, "q_conv_", 7) == 0 ||\n'),
+    ('std::strncmp(name, "k_conv_", 7)', '             std::strncmp(name, "k_conv_", 7) == 0 ||\n'),
+    ('std::strncmp(name, "v_conv_", 7)', '             std::strncmp(name, "v_conv_", 7) == 0 ||\n'),
 )
+
+TRACE_PREFIX_LINES = tuple(line for _needle, line in TRACE_PREFIX_ENTRIES)
 
 RENAME_LINES = (
     '             std::strcmp(name, "linear_attn_qkv_mixed") == 0 ||\n',
@@ -222,6 +225,7 @@ def build_linear_attn_trace_patch_text(*, graph_text: str, context_text: str) ->
 
 def audit_graph_trace_support(text: str) -> dict[str, Any]:
     wanted = [
+        "model.input_embed",
         "linear_attn_qkv_mixed_",
         "conv_output_silu_",
         "q_conv_",
@@ -235,7 +239,12 @@ def audit_graph_trace_support(text: str) -> dict[str, Any]:
     ]
     prefix_counts = {item: text.count(item) for item in wanted}
     return {
-        "ready": all(count >= 2 for count in prefix_counts.values())
+        "ready": prefix_counts["model.input_embed"] >= 2
+        and all(
+            count >= 2
+            for item, count in prefix_counts.items()
+            if item != "model.input_embed"
+        )
         and all(item in text for item in renames),
         "wanted_prefix_counts": prefix_counts,
         "rename_labels_present": {item: item in text for item in renames},
@@ -252,16 +261,21 @@ def audit_context_trace_support(text: str) -> dict[str, Any]:
 
 def patch_graph_trace_support(text: str) -> str:
     patched = text
-    if patched.count("linear_attn_qkv_mixed_") < 2:
-        wants_block = GRAPH_PREFIX_ANCHOR + "".join(TRACE_PREFIX_LINES)
+    missing_lines = _missing_trace_prefix_lines(patched)
+    if missing_lines:
+        wants_block = GRAPH_PREFIX_ANCHOR + "".join(missing_lines)
         patched = replace_n(patched, GRAPH_PREFIX_ANCHOR, wants_block, count=1)
-        target_lines = "".join(line.replace("             ", "         ", 1) for line in TRACE_PREFIX_LINES)
+        target_lines = "".join(line.replace("             ", "         ", 1) for line in missing_lines)
         target_block = GRAPH_TARGET_PREFIX_ANCHOR + target_lines
         patched = replace_n(patched, GRAPH_TARGET_PREFIX_ANCHOR, target_block, count=1)
     if 'std::strcmp(name, "linear_attn_qkv_mixed")' not in patched:
         block = GRAPH_RENAME_ANCHOR + "".join(RENAME_LINES)
         patched = replace_n(patched, GRAPH_RENAME_ANCHOR, block, count=1)
     return patched
+
+
+def _missing_trace_prefix_lines(text: str) -> tuple[str, ...]:
+    return tuple(line for needle, line in TRACE_PREFIX_ENTRIES if text.count(needle) < 2)
 
 
 def patch_context_trace_support(text: str) -> str:
@@ -316,6 +330,7 @@ def summarize_patch_validation(result: PatchBuildResult, diff_text: str) -> dict
         "changed": result.changed,
         "diff_has_graph_target": f"b/{GRAPH_RELATIVE_PATH.as_posix()}" in diff_text,
         "diff_has_context_target": f"b/{CONTEXT_RELATIVE_PATH.as_posix()}" in diff_text,
+        "graph_allows_model_input_embed": patched_graph.count("model.input_embed") >= 2,
         "graph_allows_projection_input": patched_graph.count("linear_attn_qkv_mixed_") >= 2,
         "graph_allows_conv_output": patched_graph.count("conv_output_silu_") >= 2,
         "graph_renames_qkv": 'std::strcmp(name, "linear_attn_qkv_mixed")' in patched_graph,

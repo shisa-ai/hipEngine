@@ -247,10 +247,13 @@ def _hip_values(capture: dict[str, Any]) -> dict[str, np.ndarray]:
     values = capture.get("values")
     if not isinstance(values, dict):
         raise ValueError("hipEngine capture must include raw values")
-    return {
+    parsed = {
         key: np.asarray(value, dtype=np.float32).reshape(-1)
         for key, value in values.items()
     }
+    if "post_moe_rounded_from_components" not in parsed and "layer_out" in parsed:
+        parsed["post_moe_rounded_from_components"] = parsed["layer_out"]
+    return parsed
 
 
 def _llamacpp_cycle(path: Path, *, cycle: int, task_id: int | None = None) -> dict[str, Any]:

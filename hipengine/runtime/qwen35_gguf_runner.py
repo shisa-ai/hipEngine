@@ -5835,6 +5835,18 @@ class Qwen35GGUFResidentSession:
         arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
         key, value = copy_bf16("attn_norm", int(scratch.norm.ptr), (row_count, hidden_size))
         arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
+        if (
+            hidden_in_f32_ptr is not None
+            and hasattr(scratch, "post_norm_f32")
+            and _gguf_verify_f32_attention_norm_enabled()
+            and not _gguf_verify_f32_post_norm_enabled()
+        ):
+            key, value = copy_f32(
+                "attn_norm_f32_scratch",
+                int(scratch.post_norm_f32.ptr),
+                (row_count, hidden_size),
+            )
+            arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
 
         if str(layer_type) == LINEAR_ATTENTION:
             key, value = copy_bf16(
