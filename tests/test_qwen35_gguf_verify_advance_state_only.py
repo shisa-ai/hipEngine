@@ -109,6 +109,41 @@ def test_advance_state_only_matches_full_replay(monkeypatch) -> None:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
+def test_serial_exact_advance_state_only_matches_full_replay(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
+    block_rows, consumed = 5, 2
+
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=256) as session:
+        first = session.prefill(prompt_ids, use_bulk=True, return_logits=False)
+        prefix_position = int(session.position)
+        snapshot = session._linear_state_snapshot()
+
+        block_inputs = [int(first.token_id)]
+        current = int(first.token_id)
+        for _ in range(block_rows - 1):
+            step = session.step(current, return_logits=False)
+            block_inputs.append(int(step.token_id))
+            current = int(step.token_id)
+
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        ref = session.verify_target_block_serial_exact(block_inputs[:consumed])
+        ref_state = _read_linear_state(session)
+
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        fast = session.verify_target_block_serial_exact(block_inputs[:consumed], advance_state_only=True)
+        fast_state = _read_linear_state(session)
+
+        session._free_linear_state_snapshot(snapshot)
+
+    assert ref_state.shape == fast_state.shape and ref_state.size > 0
+    np.testing.assert_array_equal(ref_state, fast_state)
+    np.testing.assert_array_equal(ref.hidden_seeds, fast.hidden_seeds)
+    assert [int(t) for t in fast.token_ids] == block_inputs[:consumed]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
 def test_direct_block_state_commit_row0_matches_serial(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
     prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]

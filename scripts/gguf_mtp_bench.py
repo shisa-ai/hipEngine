@@ -798,14 +798,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--target-block-direct-partial-replay-mode",
-        choices=("serial-exact", "bulk-state-only", "native-state-only"),
+        choices=("serial-exact", "serial-state-only", "bulk-state-only", "native-state-only"),
         default="serial-exact",
         help=(
             "Diagnostic: when direct-state block verification rejects or partially accepts a block, "
             "restore the snapshot and replay the accepted prefix with either the serial-exact target "
-            "path (default, semantic baseline), the bulk verifier in advance_state_only mode, or "
-            "the native row-serial-attention verifier in advance_state_only mode. State-only modes "
-            "never use replayed token IDs for scoring."
+            "path (default, semantic baseline), the serial-exact path with LM-head sampling skipped, "
+            "the bulk verifier in advance_state_only mode, or the native row-serial-attention verifier "
+            "in advance_state_only mode. State-only modes never use replayed token IDs for scoring."
         ),
     )
     parser.add_argument(
@@ -1406,6 +1406,8 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.target_block_verify_mode = "bulk"
     args.target_block_min_rows = 2
     args.target_block_direct_state_commit = True
+    if getattr(args, "target_block_direct_partial_replay_mode", "serial-exact") == "serial-exact":
+        args.target_block_direct_partial_replay_mode = "serial-state-only"
     args.target_b1_branch_safe_block_verify = False
 
     args.adaptive_draft_window = False
@@ -2648,8 +2650,13 @@ def main(argv: list[str] | None = None):
                                 verify_mode=args.target_block_verify_mode,
                                 direct_partial_replay_mode=args.target_block_direct_partial_replay_mode,
                             ):
+                                serial_state_only = (
+                                    direct_state_commit
+                                    and args.target_block_direct_partial_replay_mode == "serial-state-only"
+                                )
                                 replay_result = session.verify_target_block_serial_exact(
                                     block_inputs[:consumed_rows],
+                                    advance_state_only=serial_state_only,
                                 )
                                 record_target_verify(
                                     consumed_rows,
@@ -2684,6 +2691,10 @@ def main(argv: list[str] | None = None):
                             replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
                             if (
                                 (direct_state_commit or args.target_block_verify_mode == "serial-exact")
+                                and not (
+                                    direct_state_commit
+                                    and args.target_block_direct_partial_replay_mode == "serial-state-only"
+                                )
                                 and [int(token) for token in replay_result.token_ids] != replay_tokens
                             ):
                                 raise RuntimeError("serial-exact accepted-prefix replay diverged from block rows")

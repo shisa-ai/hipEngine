@@ -6697,6 +6697,7 @@ class Qwen35GGUFResidentSession:
         self,
         input_token_ids: list[int] | tuple[int, ...],
         *,
+        advance_state_only: bool = False,
         capture_linear_state_rows: bool = False,
         capture_pre_output_norm_hidden: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
@@ -6708,6 +6709,11 @@ class Qwen35GGUFResidentSession:
         same per-token kernels as :meth:`step`, then stages each hidden row and,
         optionally, each Conv/GDN state row for direct commit.  It deliberately
         does not amortize target weight loads.
+
+        ``advance_state_only`` keeps the exact serial hidden/state path but
+        skips the LM-head sampling used only to re-derive already-known block
+        target tokens during accepted-prefix replay.  ``token_ids`` echoes the
+        inputs in this mode and must not be used for scoring.
         """
 
         if stream != 0:
@@ -6738,36 +6744,49 @@ class Qwen35GGUFResidentSession:
         pre_output_norm_rows: list[np.ndarray] = []
         capture_layer_ids = self._normalize_layer_output_capture(capture_layer_output_hidden)
         layer_output_rows: dict[int, list[np.ndarray]] = {int(layer_id): [] for layer_id in capture_layer_ids}
-        for row, token in enumerate(tokens.tolist()):
-            result = self.step(
-                int(token),
-                return_logits=False,
-                capture_hidden_seed_fp32=True,
-                capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
-                capture_layer_output_hidden=capture_layer_ids,
-            )
-            token_host[row] = int(result.token_id)
-            if capture_pre_output_norm_hidden:
-                pre_hidden = self.last_pre_output_norm_hidden
-                if pre_hidden is None:
-                    raise RuntimeError("pre-output_norm hidden was requested but not captured")
-                pre_output_norm_rows.append(pre_hidden.reshape(-1))
-            if capture_layer_ids:
-                last_layer_hidden = self.last_layer_output_hidden
-                for layer_id in sorted(capture_layer_ids):
-                    layer_hidden = last_layer_hidden.get(int(layer_id))
-                    if layer_hidden is None:
-                        raise RuntimeError(f"layer {layer_id} output hidden was requested but not captured")
-                    layer_output_rows[int(layer_id)].append(layer_hidden.reshape(-1))
-            runtime.memcpy_async(
-                self._verify_hidden_seed_buf.ptr + row * hidden_row_nbytes,
-                self.scratch.hidden_seed_fp32.ptr,
-                hidden_row_nbytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
-            if capture_linear_state_rows:
-                self._record_current_linear_state_row(row, stream=stream)
+        with gemv_decode_session(self.use_gemv_decode):
+            for row, token in enumerate(tokens.tolist()):
+                if advance_state_only:
+                    self._run_token_to_final_hidden(
+                        int(token),
+                        position=self._position,
+                        stream=stream,
+                        capture_hidden_seed_fp32=True,
+                        capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+                        capture_layer_output_hidden=capture_layer_ids,
+                    )
+                    self._position += 1
+                    token_host[row] = int(token)
+                else:
+                    result = self.step(
+                        int(token),
+                        return_logits=False,
+                        capture_hidden_seed_fp32=True,
+                        capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+                        capture_layer_output_hidden=capture_layer_ids,
+                    )
+                    token_host[row] = int(result.token_id)
+                if capture_pre_output_norm_hidden:
+                    pre_hidden = self.last_pre_output_norm_hidden
+                    if pre_hidden is None:
+                        raise RuntimeError("pre-output_norm hidden was requested but not captured")
+                    pre_output_norm_rows.append(pre_hidden.reshape(-1))
+                if capture_layer_ids:
+                    last_layer_hidden = self.last_layer_output_hidden
+                    for layer_id in sorted(capture_layer_ids):
+                        layer_hidden = last_layer_hidden.get(int(layer_id))
+                        if layer_hidden is None:
+                            raise RuntimeError(f"layer {layer_id} output hidden was requested but not captured")
+                        layer_output_rows[int(layer_id)].append(layer_hidden.reshape(-1))
+                runtime.memcpy_async(
+                    self._verify_hidden_seed_buf.ptr + row * hidden_row_nbytes,
+                    self.scratch.hidden_seed_fp32.ptr,
+                    hidden_row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                if capture_linear_state_rows:
+                    self._record_current_linear_state_row(row, stream=stream)
 
         runtime.device_synchronize()
         hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)

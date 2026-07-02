@@ -1024,9 +1024,13 @@ def _run_lifecycle_cycle(
                     verify_mode=mode,
                     direct_partial_replay_mode=direct_partial_replay_mode,
                 ):
-                    replay_result = session.verify_target_block_serial_exact(verifier_inputs[:consumed_rows])
+                    serial_state_only = direct_partial_replay_mode == "serial-state-only"
+                    replay_result = session.verify_target_block_serial_exact(
+                        verifier_inputs[:consumed_rows],
+                        advance_state_only=serial_state_only,
+                    )
                     replay_sampled_tokens = [int(token) for token in replay_result.token_ids]
-                    state_source = "serial_exact_replay"
+                    state_source = "serial_exact_state_only_replay" if serial_state_only else "serial_exact_replay"
                 else:
                     state_only_mode = "native" if direct_partial_replay_mode == "native-state-only" else mode
                     replay_result = session.verify_target_block(
@@ -1341,12 +1345,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-block-wmma-prefill", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument(
         "--target-block-direct-partial-replay-mode",
-        choices=("serial-exact", "bulk-state-only", "native-state-only"),
+        choices=("serial-exact", "serial-state-only", "bulk-state-only", "native-state-only"),
         default="serial-exact",
         help=(
             "State lifecycle diagnostic: when the direct-state candidate partially accepts or rejects a block, "
-            "restore the snapshot and replay the accepted prefix through either serial-exact or the bulk "
-            "or native advance_state_only path. Token scoring still comes from the original full-block pass."
+            "restore the snapshot and replay the accepted prefix through serial-exact, serial-exact with "
+            "LM-head sampling skipped, or the bulk/native advance_state_only path. Token scoring still "
+            "comes from the original full-block pass."
         ),
     )
     parser.add_argument(

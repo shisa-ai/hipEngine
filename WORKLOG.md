@@ -136867,3 +136867,63 @@ python3 scripts/gguf_mtp_bench.py \
   The remaining fix must make the captured direct-state partial row
   prefix-equivalent to serial, or avoid relying on bulk-row state for
   rejected/partial verifier transactions.
+
+## 2026-07-02 - Serial state-only partial replay retained
+
+- Added `verify_target_block_serial_exact(..., advance_state_only=True)`. It keeps
+  the exact serial hidden/state path for accepted-prefix replay, stages hidden
+  rows, advances position, and skips only replay LM-head sampling; returned
+  `token_ids` echo inputs and are not used for scoring.
+- `--target-block-direct-partial-replay-mode serial-state-only` is now available
+  in `scripts/gguf_mtp_bench.py` and `scripts/gguf_mtp_forced_target_probe.py`.
+  `--llama-compat` promotes the default `serial-exact` replay mode to
+  `serial-state-only` while preserving explicit bulk/native diagnostic modes.
+- Lifecycle comparator command:
+  ```bash
+  HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+  HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 \
+  HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+  PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py \
+    --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json \
+    --cycle 12 --target-block-verify-mode bulk --no-target-block-wmma-prefill \
+    --target-block-direct-partial-replay-mode serial-state-only \
+    --state-lifecycle-compare \
+    --output benchmarks/results/2026-07-02-mtp-state-lifecycle-serial-state-only-partial-replay-compare.json
+  ```
+- Result: clean. `first_mismatch: null` over 13 compared cycles. Partial/reject
+  cycles use direct source `serial_exact_state_only_replay`.
+- Full-suite command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope full \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-serialstate \
+    --budgets 2 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-serial-state-only-partial-replay-full.json
+  ```
+- Result: true AR **54.7419 tok/s**; semantic-safe llama-compat B2
+  **51.8531 tok/s**, **0.9472x AR**, cycle wall **19.3076 ms/output**,
+  acc/output **0.6063**, draft acceptance **0.770**, target rows/output
+  **1.3307**. Verifier drain is **16.8906 ms/output** and replay/commit is
+  **2.4888 ms/output**. This improves the previous semantic-safe full serial
+  replay control **50.96 -> 51.85 tok/s**, cycle **19.645 -> 19.308**, verifier
+  **17.222 -> 16.891**, and replay/commit **2.775 -> 2.489** with unchanged
+  row economy (**38** replay rows, **46** discarded rows).
+- 13-cycle smoke:
+  `benchmarks/results/2026-07-02-ar-mtp-llama-compat-serial-state-only-partial-replay-smoke.json`
+  measured **61.60 tok/s**, cycle **16.257 ms/output**, replay/commit
+  **0.526 ms/output**. It is validation/profiling evidence, not the retained
+  headline.
+- Validation after docs/update: `python3 -m py_compile
+  hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_bench.py
+  scripts/gguf_mtp_forced_target_probe.py scripts/gguf_ar_mtp_suite.py`;
+  `PYTHONPATH=. pytest tests/test_gguf_mtp_bench_metrics.py
+  tests/test_gguf_mtp_forced_target_probe.py -q`; `PYTHONPATH=. pytest
+  tests/test_qwen35_gguf_verify_advance_state_only.py::test_serial_exact_advance_state_only_matches_full_replay
+  -q`; `jq empty` on the serial-state lifecycle, smoke, and full artifacts; and
+  `git diff --check`.

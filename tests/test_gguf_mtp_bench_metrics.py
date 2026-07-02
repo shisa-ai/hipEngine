@@ -610,13 +610,13 @@ def test_arg_parser_exposes_target_block_direct_partial_replay_mode() -> None:
             "--target-block-verify",
             "--target-block-direct-state-commit",
             "--target-block-direct-partial-replay-mode",
-            "native-state-only",
+            "serial-state-only",
         ]
     )
 
     assert args.target_block_verify is True
     assert args.target_block_direct_state_commit is True
-    assert args.target_block_direct_partial_replay_mode == "native-state-only"
+    assert args.target_block_direct_partial_replay_mode == "serial-state-only"
 
 
 def test_target_block_direct_commit_exactness_policy() -> None:
@@ -663,6 +663,12 @@ def test_target_block_replay_state_policy_uses_serial_exact_state() -> None:
         replay_state_commit=False,
         direct_state_commit=True,
         verify_mode="bulk",
+    ) is True
+    assert target_block_state_replay_uses_serial_exact(
+        replay_state_commit=False,
+        direct_state_commit=True,
+        verify_mode="bulk",
+        direct_partial_replay_mode="serial-state-only",
     ) is True
     assert target_block_state_replay_uses_serial_exact(
         replay_state_commit=False,
@@ -916,6 +922,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.target_block_verify_mode == "bulk"
     assert args.target_block_min_rows == 2
     assert args.target_block_direct_state_commit is True
+    assert args.target_block_direct_partial_replay_mode == "serial-state-only"
     assert args.target_b1_branch_safe_block_verify is False
     assert args.adaptive_draft_window is False
     assert args.adaptive_ar_fallback is False
@@ -937,6 +944,20 @@ def test_apply_llama_compat_args_preserves_explicit_device_lifecycle_route_flags
 
     assert args.resident_mtp_device_seed is True
     assert args.resident_mtp_device_chain is True
+
+
+def test_apply_llama_compat_args_preserves_explicit_partial_replay_diagnostic() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--llama-compat",
+            "--target-block-direct-partial-replay-mode",
+            "bulk-state-only",
+        ]
+    )
+
+    apply_llama_compat_args(args)
+
+    assert args.target_block_direct_partial_replay_mode == "bulk-state-only"
 
 
 def test_llama_compat_diagnostic_topk_does_not_force_host_top10() -> None:
