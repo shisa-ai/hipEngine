@@ -138180,3 +138180,60 @@ python3 scripts/gguf_mtp_bench.py \
   `0.0000547 -> 0.0000495 MAE`. The branch still samples `[11, 567, 8940]`;
   this is a small semantic improvement and a better bucket, not the remaining
   token-flip fix.
+
+## 2026-07-03 - MTP F32 token-embedding verifier diagnostic
+
+- Implemented default-off verifier diagnostic
+  `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING=1`. In row-bulk target verify, the
+  BF16 token embedding launch still populates the existing mirror buffer, but
+  when `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` is also enabled the verifier F32
+  residual seed can now be copied from host-dequantized `token_embd.weight` rows
+  instead of widening the BF16 mirror. Added unit coverage for the row-dequant
+  helper and env flag.
+- Validation:
+  ```bash
+  PYTHONPATH=. pytest -q tests/test_qwen35_gguf_verify_f32_token_embedding.py tests/test_gguf_mtp_forced_target_probe.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_target_moe_taps.py
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  rocminfo | grep -E 'Name:|gfx' | head -n 20
+  ```
+  Tests passed (`23 passed`), py_compile passed, HIP runtime loaded, and the
+  local GPU is `gfx1151`.
+- Ran the focused task-9 / cycle-3 / row-2 forced-target probe:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 0:2 \
+    --raw-layer-output-row 0:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32embed-f32res-attnnorm-cycle3.json
+  ```
+- Reduced against the existing llama.cpp row:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32embed-f32res-attnnorm-linear-attn-compare.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32embed-f32res-attnnorm-moe-taps-compare.json`.
+  Result: the diagnostic closes the target input split. `hidden_in` vs
+  `model.input_embed` is now `0.0 MAE / 0.0 RMSE`, and
+  `attn_norm_f32_scratch` vs llama.cpp `attn_norm_0` is also `0.0 MAE / 0.0
+  RMSE`. The remaining first-layer split moves to projection/dequant from exact
+  F32 normalized input: `z_0` vs `linear_z` is `0.002233 MAE`, `beta_0` vs
+  `ssm_beta` is `0.001754 MAE`, `conv_output_silu_0` is `0.0000667 MAE`,
+  `linear_attn_out_0` is `0.0000296 MAE`, `attn_post_norm_0` is `0.001667
+  MAE`, and post-MoE / layer output is `0.0000493 MAE`.
+- Token result: still not the llama.cpp bonus. Row 2 remains `sampled_token
+  8940`, with `8940=25.73693` rank 1 and `668=25.24251` rank 4
+  (**0.49442** behind). Layer-0 MoE expert selection still matches exactly
+  `[57, 6, 56, 66, 127, 110, 106, 157]`.
+- Interpretation: input embedding / RMSNorm scratch parity is closed, but the
+  live flip remains. Next split should instrument/copy the llama.cpp F32-input
+  projection/dequant path for `z_0`/`beta_0`, then continue to the residual
+  norm and LM-head amplification path.

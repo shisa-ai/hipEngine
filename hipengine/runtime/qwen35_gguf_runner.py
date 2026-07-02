@@ -213,7 +213,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     gguf_decode_repack_enabled,
     materialize_qwen35_gguf_weights,
 )
-from hipengine.quant.gguf import bf16_to_float32
+from hipengine.quant.gguf import bf16_to_float32, dequantize_gguf_data
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_BF16,
@@ -4676,6 +4676,7 @@ _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
+_GGUF_VERIFY_F32_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING"
 _GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
 _GGUF_VERIFY_F32_ALPHA_BETA_ENV = "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA"
 _GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
@@ -4693,6 +4694,7 @@ _GGUF_VERIFY_CAPTURE_BF16_GDN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
+_GGUF_TOKEN_EMBEDDING_TENSOR = "token_embd.weight"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
 
@@ -4789,6 +4791,10 @@ def _gguf_verify_f32_residual_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_RESIDUAL_ENV, False)
 
 
+def _gguf_verify_f32_token_embedding_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_TOKEN_EMBEDDING_ENV, False)
+
+
 def _gguf_verify_f32_attention_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_ATTENTION_NORM_ENV, False)
 
@@ -4851,6 +4857,39 @@ def _gguf_verify_capture_prefill_gdn_enabled() -> bool:
 
 def _gguf_verify_capture_score_prefill_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV, False)
+
+
+def _gguf_token_embedding_rows_f32(
+    reader: GGUFReader,
+    token_ids: object,
+    *,
+    hidden_size: int,
+    vocab_size: int,
+    tensor_name: str = _GGUF_TOKEN_EMBEDDING_TENSOR,
+) -> np.ndarray:
+    tokens = np.asarray(token_ids, dtype=np.int64).reshape(-1)
+    hidden_size = int(hidden_size)
+    vocab_size = int(vocab_size)
+    info = reader.tensor_info(tensor_name)
+    shape = tuple(int(dim) for dim in info.shape)
+    if shape != (vocab_size, hidden_size):
+        raise ValueError(
+            f"{tensor_name} shape {shape} does not match expected {(vocab_size, hidden_size)}"
+        )
+    raw = reader.tensor_data(tensor_name)
+    rows = np.empty((int(tokens.size), hidden_size), dtype=np.float32)
+    for row_index, token in enumerate(tokens.tolist()):
+        token = int(token)
+        if token < 0 or token >= vocab_size:
+            raise ValueError(f"token_id {token} outside [0, {vocab_size})")
+        dequantized = np.asarray(dequantize_gguf_data(raw[token], info.ggml_type), dtype=np.float32).reshape(-1)
+        if int(dequantized.size) != hidden_size:
+            raise ValueError(
+                f"{tensor_name} token {token} dequantized to {dequantized.size} values, "
+                f"expected {hidden_size}"
+            )
+        rows[row_index, :] = dequantized
+    return np.ascontiguousarray(rows, dtype=np.float32)
 
 
 def _gguf_f32_moe_combine_out_fn():
@@ -5636,6 +5675,7 @@ class Qwen35GGUFResidentSession:
     _expert_pack8_library: object | None = field(default=None, init=False)
     _q6_pack8_library: object | None = field(default=None, init=False)
     _expert_sidecar_reader: GGUFReader | None = field(default=None, init=False)
+    _verify_token_embedding_reader: GGUFReader | None = field(default=None, init=False)
     _expert_sidecar_model_map: object | None = field(default=None, init=False)
     _expert_sidecar_host_layers: dict[int, dict[str, GGUFExpertPackedTensor]] | None = field(default=None, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
@@ -6484,6 +6524,36 @@ class Qwen35GGUFResidentSession:
         )
         return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
 
+    def _verify_token_embedding_reader_cached(self) -> GGUFReader:
+        reader = self._verify_token_embedding_reader
+        if reader is None:
+            reader = GGUFReader(self.model_path)
+            self._verify_token_embedding_reader = reader
+        return reader
+
+    def _seed_verify_hidden_f32_from_token_embedding(
+        self,
+        token_ids: np.ndarray,
+        *,
+        runtime: HipRuntime,
+    ) -> None:
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._verify_hidden_f32_a is None:
+            raise RuntimeError("GGUF verifier F32 residual buffer is closed")
+        rows_f32 = _gguf_token_embedding_rows_f32(
+            self._verify_token_embedding_reader_cached(),
+            token_ids,
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+        )
+        copy_host_to_device(
+            self._verify_hidden_f32_a,
+            host_array_ptr(rows_f32),
+            rows_f32.nbytes,
+            runtime=runtime,
+        )
+
     def verify_target_block(
         self,
         input_token_ids: list[int] | tuple[int, ...],
@@ -6599,14 +6669,24 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
             )
             if use_f32_residual:
-                bf16_to_f32(
-                    self._prefill_hidden_a.ptr + start * row_nbytes,
-                    self._verify_hidden_f32_a.ptr,
-                    rows * self.runner.hidden_size,
-                    stream=stream,
-                    library=self.runner._cast_library(),
-                    runtime=runtime,
-                )
+                if _gguf_verify_f32_token_embedding_enabled():
+                    t_f32_embedding_seed0 = time.perf_counter() if stage_timings is not None else 0.0
+                    self._seed_verify_hidden_f32_from_token_embedding(tokens, runtime=runtime)
+                    add_verify_stage(
+                        "target_block_f32_token_embedding_seed",
+                        (time.perf_counter() - t_f32_embedding_seed0) * 1000
+                        if stage_timings is not None
+                        else 0.0,
+                    )
+                else:
+                    bf16_to_f32(
+                        self._prefill_hidden_a.ptr + start * row_nbytes,
+                        self._verify_hidden_f32_a.ptr,
+                        rows * self.runner.hidden_size,
+                        stream=stream,
+                        library=self.runner._cast_library(),
+                        runtime=runtime,
+                    )
             if sync_stages:
                 runtime.device_synchronize()
             add_verify_stage(
