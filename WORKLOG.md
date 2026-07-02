@@ -136012,3 +136012,88 @@ python3 scripts/llamacpp_mtp_validate_final_output_projection.py \
 - Validation:
   - `python3 -m py_compile scripts/llamacpp_mtp_validate_final_output_projection.py tests/test_llamacpp_mtp_validate_final_output_projection.py`
   - `python3 -m pytest tests/test_llamacpp_mtp_validate_final_output_projection.py -q` => **1 passed**
+
+## 2026-07-02 - Target layer0 pre-ssm llama.cpp trace split
+
+- Added `scripts/llamacpp_mtp_linear_attn_trace_patch.py` to generate a
+  temp-tree llama.cpp patch for early Qwen35MoE linear-attention trace labels
+  without editing `/home/lhl/llama.cpp/llama.cpp-hip` directly. The generated
+  patch/artifact are:
+  - `benchmarks/results/2026-07-02-llamacpp-linear-attn-trace-allowlist.patch`
+  - `benchmarks/results/2026-07-02-llamacpp-linear-attn-trace-allowlist.json`
+- Applied that patch to a temporary copy at
+  `/tmp/hipengine-llamacpp-linear-attn-trace.ixHJSR/llama.cpp-hip`, built it
+  with:
+
+```bash
+REPO_DIR="$TEMP_LLAMA_ROOT" BUILD_DIR="$TEMP_LLAMA_ROOT/build" CLEAN=1 JOBS=8 \
+  /home/lhl/llama.cpp/build-hip.sh
+```
+
+- Ran the focused target trace from the temp `llama-server`:
+
+```bash
+TEMP_LLAMA_ROOT=$(cat /tmp/hipengine-llamacpp-linear-attn-trace-root.txt)
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 \
+LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+LLAMA_MTP_TENSOR_TRACE=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUES=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 \
+LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=linear_attn_qkv_mixed_0,z_0,alpha_0,beta_0,beta_sigmoid_0,a_softplus_0,gate_0,conv_output_raw_0,conv_output_silu_0,q_conv_0,k_conv_0,v_conv_0,q_conv_predelta_0,k_conv_predelta_0,v_conv_predelta_0,final_output_0,linear_attn_out_0,attn_residual_0,attn_post_norm_0,ffn_out_0,post_moe_0 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin "$TEMP_LLAMA_ROOT/build/bin/llama-server" \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b-linear-presmm \
+  --port 8141 \
+  --ctx-size 8192 \
+  --gpu-layers 99 \
+  --draft-max 2 \
+  --mode mtp \
+  --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-pre-ssm.jsonl \
+  --stage-token-trace \
+  --server-extra-arg=--reasoning \
+  --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-pre-ssm.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-pre-ssm-logs \
+  --server-start-timeout 180 \
+  --request-timeout 240
+```
+
+  Cycle 18 is still the active mismatch: draft `[15495, 539]`, llama.cpp
+  accepts one token and samples `[15495, 26126]`.
+- Extended `scripts/llamacpp_mtp_compare_layer0_linear_attn.py` to emit stable
+  pre-`ssm_out` deltas, conv q/k/v view deltas, and trace-label caveats. Reran:
+
+```bash
+python3 scripts/llamacpp_mtp_compare_layer0_linear_attn.py \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-pre-ssm.jsonl \
+  --llamacpp-cycle 18 \
+  --row 1 \
+  --layer 0 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json
+```
+
+  Result: no layer-0 projection/conv cliff. Stable pre-`ssm_out` labels are
+  close: `z` projection **0.004111 MAE / 0.999996 cosine**, `beta` projection
+  **0.001866 MAE / 0.999999 cosine**, `conv_output_silu` **0.0001452 MAE /
+  0.9999995 cosine**, and q/k/v conv-view slices **<=0.0001865 MAE**.
+  Downstream `linear_attn_out` remains **0.0001595 MAE**, attention post-norm
+  is **0.005668 MAE**, and post-MoE remains **0.0002027 MAE**.
+- Caveats: llama.cpp `linear_attn_qkv_mixed_0` is layout/value-extraction
+  ambiguous because it does not match hipEngine `linear_qkv` while downstream
+  `conv_output_silu_0` does; llama.cpp `alpha_0` is byte-identical to `gate_0`;
+  `final_output_0` remains non-projectable. Next valid split needs a
+  projectable llama.cpp post-GDN/pre-`ssm_out` tap.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` with the pre-`ssm_out` split and
+  standing diagnostic table row.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py scripts/llamacpp_mtp_linear_attn_trace_patch.py tests/test_llamacpp_mtp_linear_attn_trace_patch.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_linear_attn_trace_patch.py -q` => **7 passed**
+  - `jq empty benchmarks/results/2026-07-02-llamacpp-linear-attn-trace-allowlist.json benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json`
+  - `git -C /home/lhl/llama.cpp/llama.cpp-hip apply --check /home/lhl/hipEngine/benchmarks/results/2026-07-02-llamacpp-linear-attn-trace-allowlist.patch`
+  - temp-copy patch audit: `graph_ready=True`, `context_ready=True`
+  - `git diff --check`

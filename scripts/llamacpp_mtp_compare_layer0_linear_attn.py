@@ -24,6 +24,17 @@ TENSOR_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("layer_out", "layer_out", "post_moe_{layer}"),
 )
 
+PRE_SSM_STABLE_PAIRS: tuple[tuple[str, str, str], ...] = (
+    ("z_projection", "linear_z", "z_{layer}"),
+    ("beta_projection", "ssm_beta", "beta_{layer}"),
+    ("conv_output_silu", "conv_out", "conv_output_silu_{layer}"),
+)
+
+PRE_SSM_AMBIGUOUS_PAIRS: tuple[tuple[str, str, str], ...] = (
+    ("qkv_mixed_vs_linear_qkv", "linear_qkv", "linear_attn_qkv_mixed_{layer}"),
+    ("alpha_vs_ssm_alpha", "ssm_alpha", "alpha_{layer}"),
+)
+
 PRE_SSM_OUT_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("recurrent_out_vs_final_output", "recurrent_out", "final_output_{layer}"),
     ("recurrent_bf16_vs_final_output", "recurrent_bf16", "final_output_{layer}"),
@@ -31,6 +42,8 @@ PRE_SSM_OUT_PAIRS: tuple[tuple[str, str, str], ...] = (
 
 POST_SSM_OUT_CLOSE_MAE = 1.0e-3
 PRE_SSM_OUT_MISMATCH_MAE = 1.0e-2
+PROJECTION_CLOSE_MAE = 1.0e-2
+CONV_CLOSE_MAE = 1.0e-3
 
 
 def main() -> None:
@@ -64,6 +77,10 @@ def main() -> None:
                     "mean_abs_diff"
                 ],
                 "post_moe_mae": artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"],
+                "conv_output_silu_mae": artifact["pre_ssm_stable_deltas"][
+                    "conv_output_silu"
+                ].get("mean_abs_diff"),
+                "stable_split_status": artifact["stable_split_assessment"]["status"],
                 "pre_ssm_out_label_assessment": artifact[
                     "pre_ssm_out_label_assessment"
                 ]["status"],
@@ -95,6 +112,23 @@ def build_linear_attn_compare_artifact(
         )
         for name, hip_key, llama_label in TENSOR_PAIRS
     }
+    pre_ssm_stable_deltas = _optional_deltas(
+        pairs=PRE_SSM_STABLE_PAIRS,
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+    )
+    conv_view_deltas = _conv_view_deltas(
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+    )
+    pre_ssm_ambiguous_deltas = _optional_deltas(
+        pairs=PRE_SSM_AMBIGUOUS_PAIRS,
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+    )
     pre_ssm_out_deltas = _optional_deltas(
         pairs=PRE_SSM_OUT_PAIRS,
         hip_values=hip_values,
@@ -117,6 +151,15 @@ def build_linear_attn_compare_artifact(
         },
         "hipengine": _hip_metadata(hip_artifact, hip_capture),
         "llamacpp": _llamacpp_metadata(llama_cycle, duplicates),
+        "pre_ssm_stable_deltas": pre_ssm_stable_deltas,
+        "conv_view_deltas": conv_view_deltas,
+        "pre_ssm_ambiguous_deltas": pre_ssm_ambiguous_deltas,
+        "trace_label_caveats": _trace_label_caveats(
+            pre_ssm_stable_deltas=pre_ssm_stable_deltas,
+            pre_ssm_ambiguous_deltas=pre_ssm_ambiguous_deltas,
+            llama_values=llama_values,
+            layer=layer,
+        ),
         "tensor_deltas": tensor_deltas,
         "pre_ssm_out_deltas": pre_ssm_out_deltas,
         "pre_ssm_out_label_assessment": _pre_ssm_out_label_assessment(
@@ -127,6 +170,7 @@ def build_linear_attn_compare_artifact(
             llama_values, f"final_output_{int(layer)}"
         ),
     }
+    artifact["stable_split_assessment"] = _stable_split_assessment(artifact)
     artifact["conclusion"] = _conclusion(artifact)
     return artifact
 
@@ -266,6 +310,125 @@ def _optional_deltas(
     return deltas
 
 
+def _conv_view_deltas(
+    *,
+    hip_values: dict[str, np.ndarray],
+    llama_values: dict[str, np.ndarray],
+    layer: int,
+) -> dict[str, Any]:
+    conv = hip_values.get("conv_out")
+    if conv is None:
+        return {
+            name: {
+                "status": "missing",
+                "hipengine_key": "conv_out",
+                "llamacpp_label": f"{name}_{layer}",
+                "missing": ["hipEngine"],
+            }
+            for name in ("q_conv", "k_conv", "v_conv")
+        }
+
+    deltas: dict[str, Any] = {}
+    offset = 0
+    for name in ("q_conv", "k_conv", "v_conv"):
+        label = f"{name}_{int(layer)}"
+        reference = llama_values.get(label)
+        if reference is None:
+            deltas[name] = {
+                "status": "missing",
+                "hipengine_key": "conv_out",
+                "llamacpp_label": label,
+                "missing": ["llama.cpp"],
+            }
+            continue
+        end = offset + int(reference.size)
+        if end > conv.size:
+            deltas[name] = {
+                "status": "shape_mismatch",
+                "hipengine_key": "conv_out",
+                "llamacpp_label": label,
+                "hipengine_count": int(conv.size),
+                "llamacpp_count": int(reference.size),
+                "slice_start": int(offset),
+                "slice_end": int(end),
+            }
+            offset = end
+            continue
+        deltas[name] = {
+            "status": "complete",
+            "hipengine_key": "conv_out",
+            "llamacpp_label": label,
+            "hipengine_slice": [int(offset), int(end)],
+            **_numeric_delta(reference, conv[offset:end]),
+        }
+        offset = end
+
+    deltas["coverage"] = {
+        "status": "complete" if offset == conv.size else "partial",
+        "hipengine_key": "conv_out",
+        "covered_values": int(offset),
+        "hipengine_count": int(conv.size),
+    }
+    return deltas
+
+
+def _trace_label_caveats(
+    *,
+    pre_ssm_stable_deltas: dict[str, Any],
+    pre_ssm_ambiguous_deltas: dict[str, Any],
+    llama_values: dict[str, np.ndarray],
+    layer: int,
+) -> dict[str, Any]:
+    caveats: dict[str, Any] = {}
+    qkv_delta = pre_ssm_ambiguous_deltas.get("qkv_mixed_vs_linear_qkv", {})
+    conv_delta = pre_ssm_stable_deltas.get("conv_output_silu", {})
+    if qkv_delta.get("status") == "complete" and conv_delta.get("status") == "complete":
+        qkv_mae = float(qkv_delta["mean_abs_diff"])
+        conv_mae = float(conv_delta["mean_abs_diff"])
+        if qkv_mae > PROJECTION_CLOSE_MAE and conv_mae <= CONV_CLOSE_MAE:
+            status = "layout_or_value_extraction_ambiguous"
+            reason = (
+                "llama.cpp linear_attn_qkv_mixed raw values do not align with "
+                "hipEngine linear_qkv, but the downstream conv_output_silu tensor "
+                "matches closely; treat qkv_mixed as a trace-layout caveat."
+            )
+        else:
+            status = "usable"
+            reason = "qkv_mixed and downstream conv_output_silu deltas are directionally consistent."
+        caveats["linear_attn_qkv_mixed"] = {
+            "status": status,
+            "reason": reason,
+            "qkv_mixed_mae": qkv_mae,
+            "conv_output_silu_mae": conv_mae,
+        }
+
+    alpha_label = f"alpha_{int(layer)}"
+    gate_label = f"gate_{int(layer)}"
+    alpha = llama_values.get(alpha_label)
+    gate = llama_values.get(gate_label)
+    if alpha is not None and gate is not None and alpha.shape == gate.shape:
+        alpha_gate_delta = _numeric_delta(gate, alpha)
+        if alpha_gate_delta["max_abs_diff"] == 0.0:
+            status = "aliases_gate_or_mutated_value"
+            reason = (
+                "llama.cpp alpha raw values are byte-identical to gate in this "
+                "trace, so alpha_0 is not a trustworthy raw alpha projection oracle."
+            )
+        else:
+            status = "usable"
+            reason = "llama.cpp alpha and gate labels are distinct in this trace."
+        caveats["alpha"] = {
+            "status": status,
+            "reason": reason,
+            "alpha_vs_gate": alpha_gate_delta,
+            "alpha_vs_hipengine_ssm_alpha": pre_ssm_ambiguous_deltas.get(
+                "alpha_vs_ssm_alpha"
+            ),
+        }
+
+    return caveats
+
+
 def _pre_ssm_out_label_assessment(
     *,
     tensor_deltas: dict[str, Any],
@@ -299,6 +462,63 @@ def _pre_ssm_out_label_assessment(
         "reason": "pre-ssm and post-ssm deltas are directionally consistent",
         "linear_attn_out_mae": float(linear_delta),
         "recurrent_out_vs_final_output_mae": recurrent_mae,
+    }
+
+
+def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
+    stable = artifact["pre_ssm_stable_deltas"]
+    conv_views = artifact["conv_view_deltas"]
+    tensor = artifact["tensor_deltas"]
+    required = ("z_projection", "beta_projection", "conv_output_silu")
+    if any(stable.get(name, {}).get("status") == "missing" for name in required):
+        return {
+            "status": "incomplete",
+            "reason": "one or more stable pre-ssm labels are missing from the trace",
+        }
+
+    z_mae = float(stable["z_projection"]["mean_abs_diff"])
+    beta_mae = float(stable["beta_projection"]["mean_abs_diff"])
+    conv_mae = float(stable["conv_output_silu"]["mean_abs_diff"])
+    qkv_view_maes = [
+        float(conv_views[name]["mean_abs_diff"])
+        for name in ("q_conv", "k_conv", "v_conv")
+        if conv_views.get(name, {}).get("status") == "complete"
+    ]
+    linear_mae = float(tensor["linear_attn_out"]["mean_abs_diff"])
+    post_norm_mae = float(tensor["attn_post_norm"]["mean_abs_diff"])
+    post_moe_mae = float(tensor["post_moe"]["mean_abs_diff"])
+
+    if (
+        z_mae <= PROJECTION_CLOSE_MAE
+        and beta_mae <= PROJECTION_CLOSE_MAE
+        and conv_mae <= CONV_CLOSE_MAE
+        and qkv_view_maes
+        and max(qkv_view_maes) <= CONV_CLOSE_MAE
+    ):
+        status = "no_projection_or_conv_cliff"
+        reason = (
+            "z, beta, convolved q/k/v, and ssm_out output all match closely; "
+            "the active semantic blocker is accumulated small target-hidden drift, "
+            "not a large layer-0 projection or conv layout bug."
+        )
+    else:
+        status = "pre_ssm_drift_present"
+        reason = "at least one stable pre-ssm label exceeds the close-match threshold."
+
+    return {
+        "status": status,
+        "reason": reason,
+        "z_projection_mae": z_mae,
+        "beta_projection_mae": beta_mae,
+        "conv_output_silu_mae": conv_mae,
+        "max_conv_qkv_view_mae": max(qkv_view_maes) if qkv_view_maes else None,
+        "linear_attn_out_mae": linear_mae,
+        "attn_post_norm_mae": post_norm_mae,
+        "post_moe_mae": post_moe_mae,
+        "next_split_needed": (
+            "a projectable llama.cpp post-GDN/pre-ssm_out tensor value dump, "
+            "because current final_output values are label/layout unresolved"
+        ),
     }
 
 
@@ -343,6 +563,7 @@ def _llamacpp_metadata(cycle_record: dict[str, Any], duplicates: dict[str, Any])
 
 def _conclusion(artifact: dict[str, Any]) -> str:
     deltas = artifact["tensor_deltas"]
+    stable = artifact.get("stable_split_assessment", {})
     linear = deltas["linear_attn_out"]["mean_abs_diff"]
     residual = deltas["attn_residual"]["mean_abs_diff"]
     ffn = deltas["ffn_out"]["mean_abs_diff"]
@@ -354,11 +575,21 @@ def _conclusion(artifact: dict[str, Any]) -> str:
             " Direct final_output vs hipEngine recurrent_out is label/layout "
             "unresolved because downstream ssm_out still matches closely."
         )
+    stable_note = ""
+    if stable.get("status") == "no_projection_or_conv_cliff":
+        stable_note = (
+            f" Stable pre-ssm labels show no projection/conv cliff: z MAE "
+            f"{stable['z_projection_mae']:.6g}, beta MAE "
+            f"{stable['beta_projection_mae']:.6g}, conv_output_silu MAE "
+            f"{stable['conv_output_silu_mae']:.6g}."
+        )
     return (
         "Layer-0 drift is already present at the linear-attention output: "
         f"linear_attn_out MAE {linear:.6g}, attention residual MAE {residual:.6g}, "
         f"ffn_out MAE {ffn:.6g}, post_moe MAE {post:.6g}. "
-        "The next semantic target is the layer-0 linear-attention/GDN output contract."
+        "The next semantic target is a valid projectable llama.cpp post-GDN/pre-ssm_out "
+        "tap to separate recurrent/GDN drift from ssm_out projection drift."
+        f"{stable_note}"
         f"{pre_note}"
     )
 

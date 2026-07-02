@@ -30,6 +30,18 @@ def test_build_linear_attn_compare_artifact_reports_early_attention_drift(
     assert artifact["tensor_deltas"]["attn_residual"]["mean_abs_diff"] == 1.0
     assert artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"] == 0.0
     assert artifact["tensor_deltas"]["layer_out"]["mean_abs_diff"] == 0.0
+    assert artifact["pre_ssm_stable_deltas"]["conv_output_silu"][
+        "mean_abs_diff"
+    ] == 0.0
+    assert artifact["conv_view_deltas"]["q_conv"]["mean_abs_diff"] == 0.0
+    assert artifact["conv_view_deltas"]["v_conv"]["hipengine_slice"] == [4, 6]
+    assert artifact["trace_label_caveats"]["linear_attn_qkv_mixed"]["status"] == (
+        "layout_or_value_extraction_ambiguous"
+    )
+    assert artifact["trace_label_caveats"]["alpha"]["status"] == (
+        "aliases_gate_or_mutated_value"
+    )
+    assert artifact["stable_split_assessment"]["status"] == "no_projection_or_conv_cliff"
     assert artifact["final_output_summary"]["count"] == 4
     assert artifact["pre_ssm_out_deltas"]["recurrent_out_vs_final_output"][
         "status"
@@ -38,7 +50,7 @@ def test_build_linear_attn_compare_artifact_reports_early_attention_drift(
     assert artifact["llamacpp"]["duplicate_value_labels"]["linear_attn_out_0"][
         "max_abs_vs_first"
     ] == 0.0
-    assert "layer-0 linear-attention/GDN output contract" in artifact["conclusion"]
+    assert "post-GDN/pre-ssm_out tap" in artifact["conclusion"]
     json.dumps(artifact)
 
 
@@ -94,6 +106,11 @@ def _hip_artifact() -> dict:
 
 def _hip_values() -> dict:
     return {
+        "linear_qkv": [10.0, 10.0],
+        "linear_z": [1.0, 2.0],
+        "ssm_alpha": [9.0, 9.0],
+        "ssm_beta": [3.0, 4.0],
+        "conv_out": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
         "attn_out": [1.5, 2.5],
         "attn_residual": [4.0, 5.0],
         "attn_post_norm": [6.5, 7.5],
@@ -105,6 +122,15 @@ def _hip_values() -> dict:
 
 def _llama_cycle() -> dict:
     values_by_label = {
+        "linear_attn_qkv_mixed_0": [0.0, 0.0],
+        "z_0": [1.001, 2.001],
+        "alpha_0": [7.0, 7.0],
+        "beta_0": [3.002, 4.002],
+        "gate_0": [7.0, 7.0],
+        "conv_output_silu_0": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+        "q_conv_0": [0.0, 1.0],
+        "k_conv_0": [2.0, 3.0],
+        "v_conv_0": [4.0, 5.0],
         "final_output_0": [0.0, 1.0, 2.0, 3.0],
         "linear_attn_out_0": [1.0, 2.0],
         "attn_residual_0": [3.0, 4.0],
