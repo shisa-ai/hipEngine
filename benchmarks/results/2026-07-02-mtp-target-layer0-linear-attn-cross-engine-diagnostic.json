@@ -3,9 +3,9 @@
   "kind": "mtp_target_layer0_linear_attn_cross_engine_compare",
   "status": "complete",
   "performance_claim": false,
-  "timestamp": "2026-07-02T06:23:56.239820+00:00",
+  "timestamp": "2026-07-02T06:38:35.132873+00:00",
   "inputs": {
-    "hipengine_raw": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json",
+    "hipengine_raw": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json",
     "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.jsonl",
     "llamacpp_cycle": 18,
     "row": 1,
@@ -33,12 +33,10 @@
         "26126",
         "--raw-layer-boundary-row",
         "0:1",
-        "--raw-layer-boundary-row",
-        "1:1",
         "--output",
-        "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json"
+        "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json"
       ],
-      "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-layer-boundary-row 0:1 --raw-layer-boundary-row 1:1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json"
+      "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-layer-boundary-row 0:1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json"
     },
     "cycle": 12,
     "sampled_tokens": [
@@ -304,6 +302,98 @@
       ]
     }
   },
+  "pre_ssm_out_deltas": {
+    "recurrent_out_vs_final_output": {
+      "status": "complete",
+      "hipengine_key": "recurrent_out",
+      "llamacpp_label": "final_output_0",
+      "count": 4096,
+      "mean_abs_diff": 0.14951007068157196,
+      "rmse": 0.39386165142059326,
+      "max_abs_diff": 9.910208702087402,
+      "cosine": 0.005212078336626291,
+      "llamacpp_rms": 0.3925670087337494,
+      "hipengine_rms": 0.034020449966192245,
+      "llamacpp_sample": [
+        -0.3425004780292511,
+        0.3497983515262604,
+        0.14996008574962616,
+        -0.034749824553728104,
+        -0.2648751139640808,
+        0.20997737348079681,
+        -0.45305004715919495,
+        0.4507230222225189
+      ],
+      "hipengine_sample": [
+        -0.0029404177330434322,
+        -0.0026489701122045517,
+        -0.002559815300628543,
+        -0.0009326724684797227,
+        -0.0020897916983813047,
+        -0.001251939800567925,
+        -0.002603512955829501,
+        -0.0016095357714220881
+      ],
+      "diff_sample": [
+        0.33956006169319153,
+        -0.3524473309516907,
+        -0.15251989662647247,
+        0.03381715342402458,
+        0.26278531551361084,
+        -0.21122930943965912,
+        0.45044654607772827,
+        -0.4523325562477112
+      ]
+    },
+    "recurrent_bf16_vs_final_output": {
+      "status": "complete",
+      "hipengine_key": "recurrent_bf16",
+      "llamacpp_label": "final_output_0",
+      "count": 4096,
+      "mean_abs_diff": 0.15070012211799622,
+      "rmse": 0.3925670087337494,
+      "max_abs_diff": 9.91079044342041,
+      "cosine": null,
+      "llamacpp_rms": 0.3925670087337494,
+      "hipengine_rms": 0.0,
+      "llamacpp_sample": [
+        -0.3425004780292511,
+        0.3497983515262604,
+        0.14996008574962616,
+        -0.034749824553728104,
+        -0.2648751139640808,
+        0.20997737348079681,
+        -0.45305004715919495,
+        0.4507230222225189
+      ],
+      "hipengine_sample": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "diff_sample": [
+        0.3425004780292511,
+        -0.3497983515262604,
+        -0.14996008574962616,
+        0.034749824553728104,
+        0.2648751139640808,
+        -0.20997737348079681,
+        0.45305004715919495,
+        -0.4507230222225189
+      ]
+    }
+  },
+  "pre_ssm_out_label_assessment": {
+    "status": "unresolved_label_or_layout",
+    "reason": "llama.cpp final_output differs much more than downstream linear_attn_out; do not treat the direct final_output vs recurrent_out comparison as semantic drift until the trace label/layout is revalidated",
+    "linear_attn_out_mae": 0.00015951463137753308,
+    "recurrent_out_vs_final_output_mae": 0.14951007068157196
+  },
   "final_output_summary": {
     "label": "final_output_0",
     "count": 4096,
@@ -319,5 +409,5 @@
       0.4507230222225189
     ]
   },
-  "conclusion": "Layer-0 drift is already present at the linear-attention output: linear_attn_out MAE 0.000159515, attention residual MAE 0.000163003, ffn_out MAE 0.000125615, post_moe MAE 0.000202713. The next semantic target is the layer-0 linear-attention/GDN output contract."
+  "conclusion": "Layer-0 drift is already present at the linear-attention output: linear_attn_out MAE 0.000159515, attention residual MAE 0.000163003, ffn_out MAE 0.000125615, post_moe MAE 0.000202713. The next semantic target is the layer-0 linear-attention/GDN output contract. Direct final_output vs hipEngine recurrent_out is label/layout unresolved because downstream ssm_out still matches closely."
 }

@@ -526,31 +526,34 @@ class Qwen35GGUFLinearAttentionLayerCapture:
     moe_routing_weights_f32: np.ndarray | None = None
     moe_shared_gate_f32: np.ndarray | None = None
     moe_selected_experts_i64: np.ndarray | None = None
+    linear_qkv_f32: np.ndarray | None = None
+    linear_z_f32: np.ndarray | None = None
+    ssm_alpha_f32: np.ndarray | None = None
+    ssm_beta_f32: np.ndarray | None = None
+    conv_out_f32: np.ndarray | None = None
+    recurrent_out_f32: np.ndarray | None = None
+    recurrent_bf16_f32: np.ndarray | None = None
 
     def as_summary_dict(self) -> dict[str, object]:
         optional_finite = True
-        if self.moe_router_logits_f32 is not None:
-            optional_finite = bool(np.all(np.isfinite(self.moe_router_logits_f32)))
-        if self.moe_selected_intermediate_f32 is not None:
-            optional_finite = optional_finite and bool(
-                np.all(np.isfinite(self.moe_selected_intermediate_f32))
-            )
-        if self.moe_shared_intermediate_f32 is not None:
-            optional_finite = optional_finite and bool(
-                np.all(np.isfinite(self.moe_shared_intermediate_f32))
-            )
-        if self.moe_shared_out_f32 is not None:
-            optional_finite = optional_finite and bool(
-                np.all(np.isfinite(self.moe_shared_out_f32))
-            )
-        if self.moe_routing_weights_f32 is not None:
-            optional_finite = optional_finite and bool(
-                np.all(np.isfinite(self.moe_routing_weights_f32))
-            )
-        if self.moe_shared_gate_f32 is not None:
-            optional_finite = optional_finite and bool(
-                np.all(np.isfinite(self.moe_shared_gate_f32))
-            )
+        optional_arrays = (
+            self.moe_router_logits_f32,
+            self.moe_selected_intermediate_f32,
+            self.moe_shared_intermediate_f32,
+            self.moe_shared_out_f32,
+            self.moe_routing_weights_f32,
+            self.moe_shared_gate_f32,
+            self.linear_qkv_f32,
+            self.linear_z_f32,
+            self.ssm_alpha_f32,
+            self.ssm_beta_f32,
+            self.conv_out_f32,
+            self.recurrent_out_f32,
+            self.recurrent_bf16_f32,
+        )
+        for array in optional_arrays:
+            if array is not None:
+                optional_finite = optional_finite and bool(np.all(np.isfinite(array)))
         return {
             "layer_id": int(self.layer_id),
             "layer_type": str(self.layer_type),
@@ -600,6 +603,31 @@ class Qwen35GGUFLinearAttentionLayerCapture:
                 None
                 if self.moe_selected_experts_i64 is None
                 else list(self.moe_selected_experts_i64.shape)
+            ),
+            "linear_qkv_shape": (
+                None if self.linear_qkv_f32 is None else list(self.linear_qkv_f32.shape)
+            ),
+            "linear_z_shape": (
+                None if self.linear_z_f32 is None else list(self.linear_z_f32.shape)
+            ),
+            "ssm_alpha_shape": (
+                None if self.ssm_alpha_f32 is None else list(self.ssm_alpha_f32.shape)
+            ),
+            "ssm_beta_shape": (
+                None if self.ssm_beta_f32 is None else list(self.ssm_beta_f32.shape)
+            ),
+            "conv_out_shape": (
+                None if self.conv_out_f32 is None else list(self.conv_out_f32.shape)
+            ),
+            "recurrent_out_shape": (
+                None
+                if self.recurrent_out_f32 is None
+                else list(self.recurrent_out_f32.shape)
+            ),
+            "recurrent_bf16_shape": (
+                None
+                if self.recurrent_bf16_f32 is None
+                else list(self.recurrent_bf16_f32.shape)
             ),
             "layer_out_shape": list(self.layer_out_f32.shape),
             "finite": bool(
@@ -6128,6 +6156,52 @@ class Qwen35GGUFResidentSession:
         moe_router_logits = None
         moe_selected_intermediate = None
         moe_shared_intermediate = None
+        linear_qkv = None
+        linear_z = None
+        ssm_alpha = None
+        ssm_beta = None
+        conv_out = None
+        recurrent_out = None
+        recurrent_bf16 = None
+        if layer_type == LINEAR_ATTENTION:
+            linear_qkv_width = int(self.runner.linear_qkv_width)
+            ssm_inner_size = int(cfg.ssm_inner_size)
+            ssm_time_step_rank = int(cfg.ssm_time_step_rank)
+            linear_qkv = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.linear_qkv.ptr),
+                linear_qkv_width,
+                runtime=runtime,
+            )
+            linear_z = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.linear_z.ptr),
+                ssm_inner_size,
+                runtime=runtime,
+            )
+            ssm_alpha = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.linear_alpha.ptr),
+                ssm_time_step_rank,
+                runtime=runtime,
+            )
+            ssm_beta = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.linear_beta.ptr),
+                ssm_time_step_rank,
+                runtime=runtime,
+            )
+            conv_out = _copy_f32_ptr_to_host(
+                int(self.scratch.conv_out.ptr),
+                linear_qkv_width,
+                runtime=runtime,
+            )
+            recurrent_out = _copy_f32_ptr_to_host(
+                int(self.scratch.recurrent_out.ptr),
+                ssm_inner_size,
+                runtime=runtime,
+            )
+            recurrent_bf16 = _copy_bf16_ptr_to_host_f32(
+                int(self.scratch.recurrent_bf16.ptr),
+                ssm_inner_size,
+                runtime=runtime,
+            )
         if cfg.is_moe:
             moe_router_logits = _copy_f32_ptr_to_host(
                 int(self.scratch.moe_router_logits.ptr),
@@ -6196,6 +6270,13 @@ class Qwen35GGUFResidentSession:
             moe_routing_weights_f32=moe_routing_weights,
             moe_shared_gate_f32=moe_shared_gate,
             moe_selected_experts_i64=moe_selected_experts,
+            linear_qkv_f32=linear_qkv,
+            linear_z_f32=linear_z,
+            ssm_alpha_f32=ssm_alpha,
+            ssm_beta_f32=ssm_beta,
+            conv_out_f32=conv_out,
+            recurrent_out_f32=recurrent_out,
+            recurrent_bf16_f32=recurrent_bf16,
         )
 
     def capture_attention_router_trace(

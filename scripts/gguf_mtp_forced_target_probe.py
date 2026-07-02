@@ -433,6 +433,13 @@ def _boundary_array_summaries(
     arrays: dict[str, np.ndarray | None] = {
         "hidden_in": capture.hidden_in_f32,
         "attn_norm": capture.attn_norm_f32,
+        "linear_qkv": getattr(capture, "linear_qkv_f32", None),
+        "linear_z": getattr(capture, "linear_z_f32", None),
+        "ssm_alpha": getattr(capture, "ssm_alpha_f32", None),
+        "ssm_beta": getattr(capture, "ssm_beta_f32", None),
+        "conv_out": getattr(capture, "conv_out_f32", None),
+        "recurrent_out": getattr(capture, "recurrent_out_f32", None),
+        "recurrent_bf16": getattr(capture, "recurrent_bf16_f32", None),
         "attn_out": capture.attn_out_f32,
         "attn_residual": capture.residual_f32,
         "attn_post_norm": capture.post_norm_f32,

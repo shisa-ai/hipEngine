@@ -45,6 +45,13 @@ def test_boundary_array_summaries_include_fine_grained_moe_taps() -> None:
     )
 
     for name in (
+        "linear_qkv",
+        "linear_z",
+        "ssm_alpha",
+        "ssm_beta",
+        "conv_out",
+        "recurrent_out",
+        "recurrent_bf16",
         "moe_router_logits",
         "moe_selected_swiglu",
         "moe_selected_down_weighted",
@@ -70,6 +77,13 @@ def _fake_moe_capture() -> SimpleNamespace:
         top_k=2,
         hidden_in_f32=hidden,
         attn_norm_f32=hidden + 1.0,
+        linear_qkv_f32=np.asarray([0.1, 0.2, 0.3, 0.4, 0.5], dtype=np.float32),
+        linear_z_f32=np.asarray([0.6, 0.7, 0.8, 0.9], dtype=np.float32),
+        ssm_alpha_f32=np.asarray([0.01, 0.02], dtype=np.float32),
+        ssm_beta_f32=np.asarray([0.03, 0.04], dtype=np.float32),
+        conv_out_f32=np.asarray([1.1, 1.2, 1.3, 1.4, 1.5], dtype=np.float32),
+        recurrent_out_f32=np.asarray([1.6, 1.7, 1.8, 1.9], dtype=np.float32),
+        recurrent_bf16_f32=np.asarray([1.6015625, 1.703125, 1.796875, 1.8984375], dtype=np.float32),
         attn_out_f32=np.asarray([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
         residual_f32=hidden + 0.25,
         post_norm_f32=hidden - 0.25,

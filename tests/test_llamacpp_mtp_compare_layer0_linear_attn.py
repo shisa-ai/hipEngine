@@ -31,10 +31,41 @@ def test_build_linear_attn_compare_artifact_reports_early_attention_drift(
     assert artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"] == 0.0
     assert artifact["tensor_deltas"]["layer_out"]["mean_abs_diff"] == 0.0
     assert artifact["final_output_summary"]["count"] == 4
+    assert artifact["pre_ssm_out_deltas"]["recurrent_out_vs_final_output"][
+        "status"
+    ] == "missing"
+    assert artifact["pre_ssm_out_label_assessment"]["status"] == "unavailable"
     assert artifact["llamacpp"]["duplicate_value_labels"]["linear_attn_out_0"][
         "max_abs_vs_first"
     ] == 0.0
     assert "layer-0 linear-attention/GDN output contract" in artifact["conclusion"]
+    json.dumps(artifact)
+
+
+def test_build_linear_attn_compare_artifact_marks_final_output_layout_unresolved(
+    tmp_path: Path,
+) -> None:
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(_hip_artifact_with_recurrent()) + "\n")
+    llama_path.write_text(json.dumps(_llama_cycle_with_matching_ssm_out()) + "\n")
+
+    artifact = build_linear_attn_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=0,
+    )
+
+    assert artifact["tensor_deltas"]["linear_attn_out"]["mean_abs_diff"] == 0.0
+    recurrent_delta = artifact["pre_ssm_out_deltas"]["recurrent_out_vs_final_output"]
+    assert recurrent_delta["status"] == "complete"
+    assert recurrent_delta["mean_abs_diff"] == 2.5
+    assert artifact["pre_ssm_out_label_assessment"]["status"] == (
+        "unresolved_label_or_layout"
+    )
+    assert "label/layout unresolved" in artifact["conclusion"]
     json.dumps(artifact)
 
 
@@ -94,4 +125,44 @@ def _llama_cycle() -> dict:
         "bonus_token_id": 26126,
         "cycle_wall_ms": 215.0,
         "draft_hidden_state_trace": trace,
+    }
+
+
+def _hip_artifact_with_recurrent() -> dict:
+    artifact = _hip_artifact()
+    values = artifact["result"]["layer_boundary_captures"][0]["values"]
+    values.update(
+        {
+            "attn_out": [1.0, 2.0],
+            "attn_residual": [3.0, 4.0],
+            "attn_post_norm": [5.0, 6.0],
+            "ffn_out_combined_from_components": [7.0, 8.0],
+            "post_moe_rounded_from_components": [9.0, 10.0],
+            "layer_out": [9.0, 10.0],
+            "recurrent_out": [0.0, 0.0, 0.0, 0.0],
+            "recurrent_bf16": [0.0, 0.0, 0.0, 0.0],
+        }
+    )
+    return artifact
+
+
+def _llama_cycle_with_matching_ssm_out() -> dict:
+    values_by_label = {
+        "final_output_0": [1.0, 2.0, 3.0, 4.0],
+        "linear_attn_out_0": [1.0, 2.0],
+        "attn_residual_0": [3.0, 4.0],
+        "attn_post_norm_0": [5.0, 6.0],
+        "ffn_out_0": [7.0, 8.0],
+        "post_moe_0": [9.0, 10.0],
+    }
+    return {
+        "cycle": 18,
+        "accepted_draft_tokens": 1,
+        "accepted_token_ids": [15495],
+        "bonus_token_id": 26126,
+        "cycle_wall_ms": 215.0,
+        "draft_hidden_state_trace": [
+            {"label": label, "row_index": 1, "values": values}
+            for label, values in values_by_label.items()
+        ],
     }

@@ -24,6 +24,14 @@ TENSOR_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("layer_out", "layer_out", "post_moe_{layer}"),
 )
 
+PRE_SSM_OUT_PAIRS: tuple[tuple[str, str, str], ...] = (
+    ("recurrent_out_vs_final_output", "recurrent_out", "final_output_{layer}"),
+    ("recurrent_bf16_vs_final_output", "recurrent_bf16", "final_output_{layer}"),
+)
+
+POST_SSM_OUT_CLOSE_MAE = 1.0e-3
+PRE_SSM_OUT_MISMATCH_MAE = 1.0e-2
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -56,6 +64,9 @@ def main() -> None:
                     "mean_abs_diff"
                 ],
                 "post_moe_mae": artifact["tensor_deltas"]["post_moe"]["mean_abs_diff"],
+                "pre_ssm_out_label_assessment": artifact[
+                    "pre_ssm_out_label_assessment"
+                ]["status"],
                 "conclusion": artifact["conclusion"],
             },
             indent=2,
@@ -84,6 +95,12 @@ def build_linear_attn_compare_artifact(
         )
         for name, hip_key, llama_label in TENSOR_PAIRS
     }
+    pre_ssm_out_deltas = _optional_deltas(
+        pairs=PRE_SSM_OUT_PAIRS,
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+    )
 
     artifact = {
         "schema": 1,
@@ -101,6 +118,11 @@ def build_linear_attn_compare_artifact(
         "hipengine": _hip_metadata(hip_artifact, hip_capture),
         "llamacpp": _llamacpp_metadata(llama_cycle, duplicates),
         "tensor_deltas": tensor_deltas,
+        "pre_ssm_out_deltas": pre_ssm_out_deltas,
+        "pre_ssm_out_label_assessment": _pre_ssm_out_label_assessment(
+            tensor_deltas=tensor_deltas,
+            pre_ssm_out_deltas=pre_ssm_out_deltas,
+        ),
         "final_output_summary": _summary_for_optional_label(
             llama_values, f"final_output_{int(layer)}"
         ),
@@ -210,6 +232,76 @@ def _numeric_delta(reference: np.ndarray, candidate: np.ndarray) -> dict[str, An
     }
 
 
+def _optional_deltas(
+    *,
+    pairs: tuple[tuple[str, str, str], ...],
+    hip_values: dict[str, np.ndarray],
+    llama_values: dict[str, np.ndarray],
+    layer: int,
+) -> dict[str, Any]:
+    deltas: dict[str, Any] = {}
+    for name, hip_key, llama_label in pairs:
+        formatted_label = llama_label.format(layer=layer)
+        if hip_key not in hip_values or formatted_label not in llama_values:
+            deltas[name] = {
+                "status": "missing",
+                "hipengine_key": hip_key,
+                "llamacpp_label": formatted_label,
+                "missing": [
+                    owner
+                    for owner, present in (
+                        ("hipEngine", hip_key in hip_values),
+                        ("llama.cpp", formatted_label in llama_values),
+                    )
+                    if not present
+                ],
+            }
+            continue
+        deltas[name] = {
+            "status": "complete",
+            "hipengine_key": hip_key,
+            "llamacpp_label": formatted_label,
+            **_numeric_delta(llama_values[formatted_label], hip_values[hip_key]),
+        }
+    return deltas
+
+
+def _pre_ssm_out_label_assessment(
+    *,
+    tensor_deltas: dict[str, Any],
+    pre_ssm_out_deltas: dict[str, Any],
+) -> dict[str, Any]:
+    linear_delta = tensor_deltas["linear_attn_out"]["mean_abs_diff"]
+    recurrent = pre_ssm_out_deltas.get("recurrent_out_vs_final_output", {})
+    if recurrent.get("status") != "complete":
+        return {
+            "status": "unavailable",
+            "reason": "hipEngine recurrent_out or llama.cpp final_output values are missing",
+            "linear_attn_out_mae": float(linear_delta),
+        }
+
+    recurrent_mae = float(recurrent["mean_abs_diff"])
+    if linear_delta <= POST_SSM_OUT_CLOSE_MAE and recurrent_mae >= PRE_SSM_OUT_MISMATCH_MAE:
+        return {
+            "status": "unresolved_label_or_layout",
+            "reason": (
+                "llama.cpp final_output differs much more than downstream "
+                "linear_attn_out; do not treat the direct final_output vs "
+                "recurrent_out comparison as semantic drift until the trace "
+                "label/layout is revalidated"
+            ),
+            "linear_attn_out_mae": float(linear_delta),
+            "recurrent_out_vs_final_output_mae": recurrent_mae,
+        }
+
+    return {
+        "status": "usable",
+        "reason": "pre-ssm and post-ssm deltas are directionally consistent",
+        "linear_attn_out_mae": float(linear_delta),
+        "recurrent_out_vs_final_output_mae": recurrent_mae,
+    }
+
+
 def _summary_for_optional_label(values: dict[str, np.ndarray], label: str) -> dict[str, Any] | None:
     row = values.get(label)
     if row is None:
@@ -255,11 +347,19 @@ def _conclusion(artifact: dict[str, Any]) -> str:
     residual = deltas["attn_residual"]["mean_abs_diff"]
     ffn = deltas["ffn_out"]["mean_abs_diff"]
     post = deltas["post_moe"]["mean_abs_diff"]
+    pre_assessment = artifact.get("pre_ssm_out_label_assessment", {})
+    pre_note = ""
+    if pre_assessment.get("status") == "unresolved_label_or_layout":
+        pre_note = (
+            " Direct final_output vs hipEngine recurrent_out is label/layout "
+            "unresolved because downstream ssm_out still matches closely."
+        )
     return (
         "Layer-0 drift is already present at the linear-attention output: "
         f"linear_attn_out MAE {linear:.6g}, attention residual MAE {residual:.6g}, "
         f"ffn_out MAE {ffn:.6g}, post_moe MAE {post:.6g}. "
         "The next semantic target is the layer-0 linear-attention/GDN output contract."
+        f"{pre_note}"
     )
 
 

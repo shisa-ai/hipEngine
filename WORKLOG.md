@@ -135935,3 +135935,48 @@ python3 scripts/llamacpp_mtp_compare_layer0_linear_attn.py \
   - `python3 -m pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py -q` => **1 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json`
   - `git diff --check`
+
+## 2026-07-02 - Target layer0 raw linear-attention internals caveat
+
+- Extended the hipEngine forced target boundary capture for linear-attention
+  layers to include raw `linear_qkv`, `linear_z`, `ssm_alpha`, `ssm_beta`,
+  `conv_out`, `recurrent_out`, and `recurrent_bf16` values in addition to the
+  existing layer/MoE taps.
+- Regenerated the layer-0 cross-engine diagnostic artifact with the new raw
+  internals:
+
+```bash
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 \
+  --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact \
+  --top-k 20 \
+  --candidate-token 26126 \
+  --raw-layer-boundary-row 0:1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json
+```
+
+```bash
+python3 scripts/llamacpp_mtp_compare_layer0_linear_attn.py \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.jsonl \
+  --llamacpp-cycle 18 --row 1 --layer 0 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json
+```
+
+  Result: `linear_attn_out` remains the validated first drift point at
+  **0.0001595 MAE / 0.0002100 RMSE / 0.999952 cosine** and post-MoE remains
+  **0.0002027 MAE**. Direct hipEngine `recurrent_out` vs llama.cpp
+  `final_output_0` is **not** currently a valid semantic split: it is
+  **0.1495 MAE / 0.3939 RMSE / 0.00521 cosine** with hipEngine RMS **0.0340**
+  vs llama.cpp RMS **0.3926**, while the immediately downstream `ssm_out`
+  output still matches closely. The artifact now marks that comparison as
+  `unresolved_label_or_layout`; the next split needs a revalidated contiguous
+  llama.cpp pre-`ssm_out` tap or an earlier matched input label before blaming
+  hipEngine GDN magnitude/layout.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` with the raw-internals caveat.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_forced_target_probe.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_gguf_mtp_forced_target_probe.py -q` => **4 passed**
