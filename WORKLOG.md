@@ -135980,3 +135980,35 @@ python3 scripts/llamacpp_mtp_compare_layer0_linear_attn.py \
 - Validation:
   - `python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py hipengine/runtime/qwen35_gguf_runner.py scripts/gguf_mtp_forced_target_probe.py tests/test_gguf_mtp_forced_target_probe.py`
   - `python3 -m pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_gguf_mtp_forced_target_probe.py -q` => **4 passed**
+
+## 2026-07-02 - Target layer0 final_output reprojection diagnostic
+
+- Added `scripts/llamacpp_mtp_validate_final_output_projection.py`, a
+  diagnostic helper that validates whether a traced llama.cpp `final_output_N`
+  row is projectable through hipEngine's matching `ssm_out` weight. It
+  materializes only the selected layer's `ssm_out` with
+  `HIPENGINE_GGUF_DECODE_REPACK=1` and compares the reprojected output against
+  the traced/captured `linear_attn_out`.
+
+```bash
+python3 scripts/llamacpp_mtp_validate_final_output_projection.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-linear-attn-output.jsonl \
+  --llamacpp-cycle 18 --row 1 --layer 0 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer0-final-output-reprojection-diagnostic.json
+```
+
+  Result: the traced llama.cpp `final_output_0` values are not a valid
+  projectable pre-`ssm_out` oracle. hipEngine `recurrent_out -> ssm_out`
+  exactly reconstructs the captured hipEngine `attn_out` (**0 MAE**), while
+  llama.cpp `final_output_0 -> ssm_out` is **0.2977 MAE / 0.3772 RMSE /
+  -0.0302 cosine** from llama.cpp `linear_attn_out_0`. This makes the previous
+  `final_output_0` vs `recurrent_out` mismatch a trace-label/layout problem,
+  not an actionable hipEngine GDN magnitude fix.
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-layer0-final-output-reprojection-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_validate_final_output_projection.py tests/test_llamacpp_mtp_validate_final_output_projection.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_validate_final_output_projection.py -q` => **1 passed**
