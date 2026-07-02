@@ -57,6 +57,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
     silu_mul_pair_rotate_out_bf16,
     silu_mul_pair_rotate_out_fp16,
     silu_mul_separate_out_bf16,
+    silu_mul_separate_out_f32,
     silu_mul_separate_out_fp16,
 )
 
@@ -97,6 +98,7 @@ __all__ = [
     "silu_mul_pair_rotate_out_bf16",
     "silu_mul_pair_rotate_out_fp16",
     "silu_mul_separate_out_bf16",
+    "silu_mul_separate_out_f32",
     "silu_mul_separate_out_fp16",
     "weighted_lanes_sum_out_bf16_f32w",
     "weighted_lanes_sum_out_fp16_f32w",

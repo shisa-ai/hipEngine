@@ -194,7 +194,7 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
   existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
@@ -219,6 +219,10 @@ should be boring.
   `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1` requires the F32 MoE combine
   diagnostic and routes compatible X8 Q5/Q6 selected-down GEMV outputs into an
   FP32 scratch buffer before combining selected rows with BF16 shared output.
+  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1` requires the F32 MoE
+  combine + selected-down stack, computes selected `silu(gate) * up` into FP32
+  scratch, preserves the BF16 mirror, and feeds the FP32 activation into
+  selected-down.
   `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN=1` requires the F32 MoE combine and
   selected-down stack, routes shared-expert down output into FP32 scratch,
   preserves the BF16 mirror, and combines FP32 selected rows with FP32 shared
@@ -263,7 +267,14 @@ should be boring.
   `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-denseq8-diagnostic.json`
   keeps compatible X8 selected-down rows in FP32 and narrows the same margin to
   **+0.00536** (`26.06115 - 26.05580`), still on the wrong side of llama.cpp by
-  about **0.0143 logits**. The shared-down output split
+  about **0.0143 logits**. The selected-intermediate split
+  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-selectedintermediate-denseq8-diagnostic.json`
+  is the first pair-12 side-matching slice: sampled tokens become
+  `[15495, 26126, 1151]`, accepted drafts fall to 1, and row-1 `539 - 26126`
+  moves to **-0.00303** (`26.04795 - 26.05098`), close to llama.cpp's
+  **-0.00896**. This confirms the selected SwigLU/intermediate BF16 boundary
+  is a parity contract to fold into a cohesive llama-compat verifier mode if
+  longer-trace/full-suite acceptance validates it. The shared-down output split
   `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-shareddown-denseq8-diagnostic.json`
   still samples `[15495, 539, 1151]` and accepts 2, and widens the same margin
   to **+0.03043** (`26.12703 - 26.09660`), ruling out isolated shared-down

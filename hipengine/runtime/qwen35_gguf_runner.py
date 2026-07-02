@@ -58,6 +58,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     register_paro_silu_kernels,
     shared_gate_combine_residual_batch_out_bf16,
     silu_mul_dual_out_bf16,
+    silu_mul_separate_out_f32,
     silu_mul_separate_out_bf16,
     weighted_lanes_sum_out_bf16_f32w,
 )
@@ -3664,8 +3665,12 @@ class Qwen35GGUFFullStackRunner:
         megakernel (architectural invariant), and the default rows==1 path."""
         cfg = self.weights.config
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
+        f32_selected_intermediate = _gguf_use_f32_selected_intermediate(
+            scratch,
+            bool(prefer_f32_selected_down),
+        )
         expert_silu_ready = False
-        if post_norm_f32_ptr is None:
+        if post_norm_f32_ptr is None and not f32_selected_intermediate:
             expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
                 gate_weight,
                 up_weight,
@@ -3737,15 +3742,34 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
-            silu_mul_separate_out_bf16(
-                scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                scratch.ffn_intermediate.ptr,
-                rows=selected_rows,
-                features=cfg.expert_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
+            if f32_selected_intermediate:
+                silu_mul_separate_out_f32(
+                    scratch.ffn_gate_up.ptr,
+                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                    scratch.ffn_intermediate_f32.ptr,
+                    rows=selected_rows,
+                    features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                f32_to_bf16(
+                    scratch.ffn_intermediate_f32.ptr,
+                    scratch.ffn_intermediate.ptr,
+                    selected_rows * cfg.expert_feed_forward_length,
+                    stream=stream,
+                    library=self._cast_library(),
+                    runtime=runtime,
+                )
+            else:
+                silu_mul_separate_out_bf16(
+                    scratch.ffn_gate_up.ptr,
+                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                    scratch.ffn_intermediate.ptr,
+                    rows=selected_rows,
+                    features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
         f32_selected_down = bool(prefer_f32_selected_down)
         _launch_selected_raw_gguf_moe_linear(
             down_weight,
@@ -3767,6 +3791,7 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_gemv_requires_q8_1_input(down_weight)
                 ),
             ),
+            x_f32_ptr=scratch.ffn_intermediate_f32.ptr if f32_selected_intermediate else None,
             prefer_f32_out=f32_selected_down,
             stream=stream,
             runtime=runtime,
@@ -3872,6 +3897,15 @@ class Qwen35GGUFFullStackRunner:
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
         down_weight = layer.weight("ffn_down_exps")
+        prefer_f32_selected_down = (
+            False
+            if expert_sidecar is not None
+            else _gguf_use_f32_selected_down(down_weight, scratch, f32_residual)
+        )
+        f32_selected_intermediate = _gguf_use_f32_selected_intermediate(
+            scratch,
+            prefer_f32_selected_down,
+        )
         if (not f32_residual) and _try_run_post_attention_moe_rows_compact_wmma(
             self,
             layer,
@@ -4039,15 +4073,34 @@ class Qwen35GGUFFullStackRunner:
             t_stage,
         )
         if not expert_silu_ready:
-            silu_mul_separate_out_bf16(
-                scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                scratch.ffn_intermediate.ptr,
-                rows=selected_rows,
-                features=cfg.expert_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
+            if f32_selected_intermediate:
+                silu_mul_separate_out_f32(
+                    scratch.ffn_gate_up.ptr,
+                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                    scratch.ffn_intermediate_f32.ptr,
+                    rows=selected_rows,
+                    features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                f32_to_bf16(
+                    scratch.ffn_intermediate_f32.ptr,
+                    scratch.ffn_intermediate.ptr,
+                    selected_rows * cfg.expert_feed_forward_length,
+                    stream=stream,
+                    library=self._cast_library(),
+                    runtime=runtime,
+                )
+            else:
+                silu_mul_separate_out_bf16(
+                    scratch.ffn_gate_up.ptr,
+                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
+                    scratch.ffn_intermediate.ptr,
+                    rows=selected_rows,
+                    features=cfg.expert_feed_forward_length,
+                    stream=stream,
+                    runtime=runtime,
+                )
             t_stage = _mark_sync_stage(
                 runtime,
                 stage_timings,
@@ -4072,7 +4125,7 @@ class Qwen35GGUFFullStackRunner:
                 library=getattr(self, "_expert_pack8_library", None),
             )
         else:
-            selected_down_is_f32 = _gguf_use_f32_selected_down(down_weight, scratch, f32_residual)
+            selected_down_is_f32 = prefer_f32_selected_down
             _launch_selected_raw_gguf_moe_linear(
                 down_weight,
                 scratch.ffn_intermediate.ptr,
@@ -4093,6 +4146,7 @@ class Qwen35GGUFFullStackRunner:
                         or _selected_gemv_requires_q8_1_input(down_weight)
                     ),
                 ),
+                x_f32_ptr=scratch.ffn_intermediate_f32.ptr if f32_selected_intermediate else None,
                 prefer_f32_out=selected_down_is_f32,
                 stream=stream,
                 runtime=runtime,
@@ -4403,6 +4457,7 @@ _GGUF_VERIFY_F32_ALPHA_BETA_ENV = "HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA"
 _GGUF_VERIFY_F32_ATTN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT"
 _GGUF_VERIFY_F32_MOE_COMBINE_ENV = "HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE"
 _GGUF_VERIFY_F32_SELECTED_DOWN_ENV = "HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN"
+_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE_ENV = "HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE"
 _GGUF_VERIFY_F32_SHARED_DOWN_ENV = "HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN"
 _GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 _GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
@@ -4525,6 +4580,10 @@ def _gguf_verify_f32_selected_down_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_SELECTED_DOWN_ENV, False)
 
 
+def _gguf_verify_f32_selected_intermediate_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE_ENV, False)
+
+
 def _gguf_verify_f32_shared_down_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_SHARED_DOWN_ENV, False)
 
@@ -4579,6 +4638,16 @@ def _gguf_use_f32_shared_down(scratch, f32_residual: bool, selected_down_is_f32:
         and _gguf_verify_f32_selected_down_enabled()
         and _gguf_verify_f32_shared_down_enabled()
         and getattr(scratch, "moe_shared_out_f32", None) is not None
+    )
+
+
+def _gguf_use_f32_selected_intermediate(scratch, prefer_f32_selected_down: bool) -> bool:
+    return (
+        prefer_f32_selected_down
+        and _gguf_verify_f32_moe_combine_enabled()
+        and _gguf_verify_f32_selected_down_enabled()
+        and _gguf_verify_f32_selected_intermediate_enabled()
+        and getattr(scratch, "ffn_intermediate_f32", None) is not None
     )
 
 
@@ -7955,6 +8024,7 @@ class _GGUFFullAttentionPrefillScratch:
     residual: object
     ffn_gate_up: object
     ffn_intermediate: object
+    ffn_intermediate_f32: object
     ffn_down: object
     moe_q8_1: object
     moe_router_logits: object
@@ -8106,6 +8176,7 @@ class _GGUFFullAttentionPrefillScratch:
             "residual": buf(hidden_bytes),
             "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
             "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
+            "ffn_intermediate_f32": buf(moe_selected_rows_capacity * runner.ffn_size * DType.FP32.itemsize),
             "ffn_down": buf(hidden_bytes),
             "moe_q8_1": buf(q8_1_moe_bytes),
             "moe_router_logits": buf(rows * moe_experts * DType.FP32.itemsize),
@@ -8327,6 +8398,7 @@ class _FullStackScratch:
     context_host: np.ndarray
     ffn_gate_up: object
     ffn_intermediate: object
+    ffn_intermediate_f32: object
     ffn_down: object
     moe_q8_1: object
     moe_router_logits: object
@@ -8490,6 +8562,7 @@ class _FullStackScratch:
             "full_gated": buf(runner.q_width * 2),
             "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
             "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
+            "ffn_intermediate_f32": buf(moe_top_k * runner.ffn_size * DType.FP32.itemsize),
             "ffn_down": buf(hidden_bytes),
             "moe_q8_1": buf(q8_1_moe_bytes),
             "moe_router_logits": buf((moe_experts + 1) * DType.FP32.itemsize),

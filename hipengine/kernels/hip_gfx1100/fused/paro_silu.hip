@@ -82,6 +82,21 @@ __global__ void silu_mul_separate_out_kernel(
   out[idx] = float_to_scalar<scalar_t>(g * sig * u);
 }
 
+__global__ void silu_mul_separate_out_f32_kernel(
+    const uint16_t* __restrict__ gate,
+    const uint16_t* __restrict__ up,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t features) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t total = rows * features;
+  if (idx >= total) return;
+  const float g = bf16_bits_to_float(gate[idx]);
+  const float u = bf16_bits_to_float(up[idx]);
+  const float sig = 1.0f / (1.0f + expf(-g));
+  out[idx] = g * sig * u;
+}
+
 
 template <typename scalar_t>
 __global__ void silu_mul_dual_rotate_out_kernel(
@@ -291,6 +306,32 @@ extern "C" int hipengine_silu_mul_separate_out_fp16(
   const int64_t total = rows * features;
   hipLaunchKernelGGL(
       (silu_mul_separate_out_kernel<half_t>),
+      dim3(static_cast<unsigned int>((total + threads - 1) / threads)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      gate,
+      up,
+      out,
+      rows,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_silu_mul_separate_out_f32(
+    const uint16_t* gate,
+    const uint16_t* up,
+    float* out,
+    int64_t rows,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * features;
+  hipLaunchKernelGGL(
+      silu_mul_separate_out_f32_kernel,
       dim3(static_cast<unsigned int>((total + threads - 1) / threads)),
       dim3(static_cast<unsigned int>(threads)),
       0,

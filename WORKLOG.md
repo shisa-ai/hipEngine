@@ -136497,3 +136497,56 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
   - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-shareddown-denseq8-diagnostic.json`
+
+## 2026-07-02 - Verifier FP32 selected-intermediate split
+
+- Added default-off semantic diagnostic
+  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1`. It requires the F32
+  residual/MoE-combine/selected-down stack, computes selected
+  `silu(gate) * up` into FP32 scratch, preserves the BF16 mirror for existing
+  captures/fallbacks, and feeds the FP32 selected activation into selected-down.
+  The route is wired for both C=1 and row-bulk target verifier MoE paths.
+- Added the HIP/Python wrapper and registry variant
+  `hipengine_silu_mul_separate_out_f32` / `silu_mul_separate_out_f32`, plus a
+  guarded HIP oracle test comparing BF16 gate/up input to NumPy FP32 SiLU output.
+- Ran the comparable pair-12 forced target probe on top of the residual +
+  attention-norm-output + attention-output + alpha/beta + F32 MoE combine +
+  selected-down stack:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode bulk --top-k 5 --candidate-token 26126 \
+  --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-selectedintermediate-denseq8-diagnostic.json
+```
+
+  Result: first pair-12 side-matching F32 slice. Pair-12 now samples
+  `[15495, 26126, 1151]` and accepts 1 instead of accepting draft token `539`.
+  Row-1 `539 - 26126` moves from the selected-down slice **+0.005356** to
+  **-0.003027** (`26.047951 - 26.050978`), close to llama.cpp's about
+  **-0.00896**. This confirms the selected SwigLU/intermediate BF16 boundary is
+  a real llama.cpp parity contract. Next semantic validation should run longer
+  proposal/full-suite acceptance checks and decide whether to fold this into a
+  cohesive F32 selected-FFN/MoE llama-compat verifier mode.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/REFACTOR.md`, and
+  `docs/KERNELS.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/kernels/hip_gfx1100/fused/paro_silu.py hipengine/kernels/hip_gfx1100/fused/__init__.py hipengine/runtime/qwen35_gguf_runner.py tests/test_paro_silu_plan.py tests/test_qwen35_gguf_verify_f32_moe_combine.py`
+  - `python3 -m pytest tests/test_paro_silu_plan.py tests/test_qwen35_gguf_verify_f32_moe_combine.py -q` => **9 passed**
+  - `python3 -m pytest tests/test_gguf_x8_selected_gemv.py tests/test_paro_combine_plan.py tests/test_paro_silu_plan.py tests/test_qwen35_gguf_verify_f32_moe_combine.py -q` => **21 passed**
+  - `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_TEXT="$(hipcc --version)" rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-silu-f32-rocprof-20260702 -o trace -- python3 -c "..."` => `(anonymous namespace)::silu_mul_separate_out_f32_kernel(unsigned short const*, unsigned short const*, float*, long, long)`, `End-Start=2027 ns`, `Scratch_Size=0`, `VGPR_Count=16`
+  - `python3 scripts/check_lineage.py --kind kernel --diff stat` => blocked:
+    configured reference repo `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is missing.
+  - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  - `rocminfo` => gfx1151 present
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-selectedintermediate-denseq8-diagnostic.json`
