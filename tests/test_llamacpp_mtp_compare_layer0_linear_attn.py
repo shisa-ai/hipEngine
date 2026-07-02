@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
+
 from scripts.llamacpp_mtp_compare_layer0_linear_attn import (
+    _attn_norm_formula_assessment,
     build_linear_attn_compare_artifact,
 )
 
@@ -141,6 +144,35 @@ def test_build_linear_attn_compare_artifact_filters_llamacpp_task_id(
     assert artifact["inputs"]["llamacpp_task_id"] == 9
     assert artifact["llamacpp"]["task_id"] == 9
     assert artifact["tensor_deltas"]["linear_attn_out"]["mean_abs_diff"] == 0.5
+    json.dumps(artifact)
+
+
+def test_attn_norm_formula_assessment_can_explain_input_delta(tmp_path: Path) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_text("fake")
+
+    def weight_loader(_model: Path, layer: int):
+        assert layer == 14
+        return np.ones(2, dtype=np.float32), 0.0, {"tensor_name": "fake"}
+
+    artifact = _attn_norm_formula_assessment(
+        hip_values={
+            "hidden_in": np.asarray([1.0, 1.0], dtype=np.float32),
+            "attn_norm": np.asarray([1.0, 1.0], dtype=np.float32),
+        },
+        llama_values={
+            "verify_layer_output_13": np.asarray([1.0, -1.0], dtype=np.float32),
+            "attn_norm_14": np.asarray([1.0, -1.0], dtype=np.float32),
+        },
+        layer=14,
+        model_path=model,
+        weight_loader=weight_loader,
+    )
+
+    assert artifact["status"] == "complete"
+    assert artifact["classification"] == "attn_norm_delta_explained_by_input_delta"
+    assert artifact["best_llamacpp_candidate"]["delta"]["exact_match"] is True
+    assert artifact["best_hipengine_candidate"]["delta"]["exact_match"] is True
     json.dumps(artifact)
 
 
