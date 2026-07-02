@@ -137405,3 +137405,55 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest tests/test_qwen35_gguf_hidden_seed_contract.py -q
   jq empty benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-moe-taps-compare.json
   ```
+
+## 2026-07-03 - Scored layer-14 input/linear-attention split
+
+- Extended `scripts/llamacpp_mtp_compare_layer0_linear_attn.py` beyond the old
+  layer-0-only shape:
+  - generic artifact kind/conclusion for arbitrary target layers,
+  - `--hipengine-capture-source {auto,isolated,scored}`,
+  - `--llamacpp-task-id` so unfiltered llama.cpp JSONL traces do not pick the
+    same cycle from the warmup task,
+  - input-boundary deltas for `hidden_in`, prior layer output when raw values
+    exist, and `attn_norm`.
+- Reran the patched temp llama.cpp trace at
+  `/tmp/hipengine-llamacpp-linear-attn-trace.ixHJSR/llama.cpp-hip` on the same
+  `mixed_ja_en_translate` task-9/cycle-3 bonus-row branch with
+  `LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=2`. The first rerun accidentally kept
+  `VALUE_ROWS=1`, which produced summaries but no row-2 raw values; the row-2
+  rerun stayed on the same branch (`[11, 567]` accepted, bonus `668`).
+- Compact scored comparison:
+  ```bash
+  PYTHONPATH=. python3 scripts/llamacpp_mtp_compare_layer0_linear_attn.py \
+    --hipengine-raw benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json \
+    --llamacpp-jsonl /tmp/hipengine-llamacpp-layer14-input-row2-task9-cycle3.jsonl \
+    --llamacpp-cycle 3 \
+    --llamacpp-task-id 9 \
+    --row 2 \
+    --layer 14 \
+    --hipengine-capture-source scored \
+    --output benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json
+  ```
+- Result: the first complete layer-14 sub-boundary above threshold is before
+  projection/MoE. `attn_norm_14` vs hipEngine `attn_norm` is `0.020513 MAE /
+  0.026542 RMSE`; `z_14` is `0.015638 / 0.020347`, `beta_14` is `0.009142 /
+  0.013425`, `conv_output_silu_14` is `0.001204 / 0.002719`,
+  `linear_attn_out_14` is `0.000653 / 0.000844`, `attn_post_norm_14` is
+  `0.027360 / 0.034981`, `ffn_out_14` is `0.002282 / 0.002896`, and
+  `post_moe_14` is `0.002532 / 0.003193`.
+- Interpretation: do not copy a different MoE rule first. The qwen35moe path is
+  still softmax gating; the expert `175` vs `32` swap is downstream of
+  accumulated hidden/RMSNorm drift reaching the router cutoff. The next
+  instrumentation target is raw llama.cpp `process_h_input` /
+  `verify_layer_output_13` values (currently summaries-only) or an equivalent
+  compact layer-13-output-to-layer-14-RMSNorm boundary capture.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` active tracker and diagnostic ledger
+  with the scored input/linear-attention table.
+- Validation:
+  ```bash
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  rocminfo | grep -E 'Name:|gfx' | head -n 20
+  python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py
+  PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_target_moe_taps.py tests/test_gguf_mtp_forced_target_probe.py -q
+  jq empty benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-moe-taps-compare.json benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json
+  ```

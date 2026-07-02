@@ -50,7 +50,7 @@ def test_build_linear_attn_compare_artifact_reports_early_attention_drift(
     assert artifact["llamacpp"]["duplicate_value_labels"]["linear_attn_out_0"][
         "max_abs_vs_first"
     ] == 0.0
-    assert "post-GDN/pre-ssm_out tap" in artifact["conclusion"]
+    assert "earliest complete input/pre-SSM delta" in artifact["conclusion"]
     json.dumps(artifact)
 
 
@@ -78,6 +78,69 @@ def test_build_linear_attn_compare_artifact_marks_final_output_layout_unresolved
         "unresolved_label_or_layout"
     )
     assert "label/layout unresolved" in artifact["conclusion"]
+    json.dumps(artifact)
+
+
+def test_build_linear_attn_compare_artifact_can_use_scored_capture(
+    tmp_path: Path,
+) -> None:
+    hip = _hip_artifact()
+    scored = dict(hip["result"]["layer_boundary_captures"][0])
+    scored["capture_source"] = "scored_target_block"
+    hip["result"]["scored_layer_boundary_captures"] = [scored]
+    hip["result"]["layer_boundary_captures"] = []
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(hip) + "\n")
+    llama_path.write_text(json.dumps(_llama_cycle()) + "\n")
+
+    artifact = build_linear_attn_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=0,
+        hipengine_capture_source="scored",
+    )
+
+    assert artifact["inputs"]["hipengine_capture_source"] == "scored_target_block"
+    assert artifact["hipengine"]["capture_source"] == "scored_target_block"
+    assert artifact["tensor_deltas"]["linear_attn_out"]["mean_abs_diff"] == 0.5
+    json.dumps(artifact)
+
+
+def test_build_linear_attn_compare_artifact_filters_llamacpp_task_id(
+    tmp_path: Path,
+) -> None:
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(_hip_artifact()) + "\n")
+    decoy = _llama_cycle()
+    decoy["task_id"] = 0
+    decoy["draft_hidden_state_trace"] = [
+        {
+            **trace,
+            "values": [100.0 for _ in trace["values"]],
+        }
+        for trace in decoy["draft_hidden_state_trace"]
+        if trace.get("row_index") == 1
+    ]
+    target = _llama_cycle()
+    target["task_id"] = 9
+    llama_path.write_text(json.dumps(decoy) + "\n" + json.dumps(target) + "\n")
+
+    artifact = build_linear_attn_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        llamacpp_task_id=9,
+        row=1,
+        layer=0,
+    )
+
+    assert artifact["inputs"]["llamacpp_task_id"] == 9
+    assert artifact["llamacpp"]["task_id"] == 9
+    assert artifact["tensor_deltas"]["linear_attn_out"]["mean_abs_diff"] == 0.5
     json.dumps(artifact)
 
 

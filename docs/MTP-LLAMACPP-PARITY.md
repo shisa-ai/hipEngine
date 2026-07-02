@@ -171,10 +171,10 @@ rank 7 differs (**hipEngine expert 175 vs llama.cpp expert 32**), router MAE is
 **0.02493**, and the MoE path jumps to **0.00227 ffn_out MAE / 0.00245
 post-MoE MAE**. Attention output itself is smaller
 (layer 14 linear-attn output **0.000612 MAE**, attention residual
-**0.000962 MAE**), so the current copy/retune target is the llama.cpp-compatible
-MoE router/projection precision around layer 14, not the outer MTP economics
-loop, row scheduling, direct commit, output-norm-only behavior, or LM-head
-top-k.
+**0.000962 MAE**). The scored live-path split below supersedes the earlier
+"copy MoE/router first" target: the first complete layer-14 sub-boundary above
+threshold is already the layer-14 attention RMSNorm input, before layer-14
+projection, conv/GDN, or MoE router code runs.
 
 New live-path instrumentation (2026-07-03) closes one diagnostic ambiguity:
 `scripts/gguf_mtp_forced_target_probe.py` can now emit
@@ -192,10 +192,37 @@ confirms the live scored path has the same material top-k mismatch
 (isolated replay was **0.02493**), `ffn_out` MAE is **0.00228**, and
 post-MoE/layer-output MAE is **0.00253**. The small scored-vs-isolated numeric
 shift proves the new capture is observing the live verifier path, but it does
-not change the target: layer-14 router-input/logit precision near the cutoff is
-still the first material semantic gap. Future live-path bisection should prefer
-the scored capture block, and use isolated captures only for narrower
-single-layer experiments.
+not change the token-level failure: layer-14 router-input/logit precision near
+the cutoff still produces the expert `175` vs `32` split. Future live-path
+bisection should prefer the scored capture block, and use isolated captures only
+for narrower single-layer experiments.
+
+The matching scored linear-attention/input split is compacted in
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json`.
+It uses the same row, a patched temp llama.cpp trace with row-2 values, and an
+explicit `task_id=9` filter so the reducer selects the `mixed_ja_en_translate`
+cycle-3 record rather than the same cycle from the warmup task.
+
+| layer-14 scored boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `attn_norm_14` vs hipEngine `attn_norm` | **0.02051** | **0.02654** | First complete sub-boundary above threshold; drift is already present before layer-14 projections. |
+| `z_14` vs hipEngine `linear_z` | **0.01564** | **0.02035** | Projection output follows the already-drifted input. |
+| `beta_14` vs hipEngine `ssm_beta` | 0.00914 | 0.01342 | Near the 1e-2 split threshold. |
+| `conv_output_silu_14` vs hipEngine `conv_out` | 0.00120 | 0.00272 | Drift is present but smaller after conv/SILU. |
+| `linear_attn_out_14` vs hipEngine `attn_out` | 0.000653 | 0.000844 | Smaller than the input/RMSNorm split. |
+| `attn_residual_14` vs hipEngine `attn_residual` | 0.00109 | 0.00140 | Residual carries the input-side drift forward. |
+| `attn_post_norm_14` vs hipEngine `attn_post_norm` | **0.02736** | **0.03498** | Post-attention RMSNorm amplifies the residual drift before the MoE router. |
+| `ffn_out_14` vs hipEngine reconstructed `ffn_out` | 0.00228 | 0.00290 | Includes the expert-set split. |
+| `post_moe_14` vs hipEngine layer output | 0.00253 | 0.00319 | Matches the layer-14 output checkpoint. |
+
+Interpretation: the next semantic target is the layer-13 output / layer-14
+attention-RMSNorm input boundary, not layer-14 MoE implementation shape. The
+current llama.cpp trace still emits only summaries, not raw values, for
+`process_h_input` and `verify_layer_output_13`, so the next instrumentation fix
+is to expose those raw rows (or an equivalent compact boundary capture) and
+separate incoming hidden drift from RMSNorm arithmetic. Do not copy a different
+MoE selection rule: the target model is qwen35moe softmax gating, and the
+expert-set mismatch is downstream of the input/RMSNorm precision gap.
 
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
@@ -204,10 +231,12 @@ calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
 model. The observed layer-14 expert swap is therefore not a missing router-bias
 mechanism; softmax-over-all-experts followed by selected-weight renormalization
 is equivalent to hipEngine's softmax over the selected raw logits. The live gap
-is accumulated router-input/logit precision near the top-k cutoff. New boundary
-captures keep the legacy `attn_post_norm` field for compatibility but also emit
-`attn_post_norm_bf16` so future comparisons do not confuse the BF16 scratch
-capture with the verifier's optional F32 residual diagnostics.
+is accumulated hidden/RMSNorm precision that reaches the router logits near the
+top-k cutoff. New boundary captures keep the legacy `attn_post_norm` field for
+compatibility but also emit `attn_post_norm_bf16` so future comparisons do not
+confuse the BF16 scratch capture with the verifier's optional F32 residual
+diagnostics.
+
 A tempting exact-mode
 shortcut remains rejected:
 `--target-block-direct-partial-replay-mode bulk-state-only` still emitted the
@@ -601,6 +630,7 @@ Current source artifacts:
 | hipEngine vs llama.cpp target layer0/1 boundary cross-engine diagnostic | `benchmarks/results/2026-07-02-mtp-target-layer0-1-boundary-cross-engine-diagnostic.json` | Diagnostic-only forced pair-12 / llama cycle-18 row-1 split; `performance_claim=false`. The new `scripts/llamacpp_mtp_compare_early_boundary.py` helper compares the raw hipEngine layer-0 and layer-1 boundary capture against local llama.cpp dirty tensor traces for `post_moe_0`, layer-1 router logits/weights, and layer-1 output. Result: hipEngine's local layer-0 output to layer-1 input is exact (**0 MAE**), but that same boundary is already **0.000203 MAE / 0.000263 RMSE / 0.999950 cosine** away from llama.cpp `post_moe_0` before layer 1 begins. Layer 0 router top-k still matches llama.cpp; layer 1 has the same rank-7 cutoff split (hipEngine expert `126`, llama.cpp expert `63`) with layer-1 router logits **0.00562 MAE / 0.00694 RMSE / 0.999999 cosine**, routing weights **0.000541 MAE**, shared-gate logit delta **-0.00474**, and layer-1 post-MoE/layer output **0.000535 MAE / 0.000664 RMSE / 0.999834 cosine**. The artifact marks llama.cpp `attn_norm_0` as label-alignment suspect because it disagrees while downstream residual/post-MoE tensors align; do not chase that label without revalidating the llama.cpp trace instrumentation. |
 | hipEngine vs llama.cpp target layer0/1 fine MoE cross-engine diagnostic | `benchmarks/results/2026-07-02-mtp-target-layer0-fine-moe-cross-engine-diagnostic.json`, `benchmarks/results/2026-07-02-mtp-target-layer1-fine-moe-cross-engine-diagnostic.json` | Diagnostic-only forced pair-12 / llama cycle-18 row-1 split; `performance_claim=false`. Local llama.cpp dirty instrumentation was extended to convert BF16/F16 debug tensors to F32 before exporting raw `LLAMA_MTP_TENSOR_TRACE_VALUES`, because early selected/shared MoE internals were otherwise summary-only. Result: layer 0 top-k matches llama.cpp and selected/shared internals are very close: router logits **0.0107 MAE / 0.0138 RMSE / 0.999998 cosine**, routing weights **0.00169 MAE**, common-expert selected weighted rows **<=0.0000764 MAE**, shared-gate logit delta **+0.00170**, `ffn_out` **0.000126 MAE**, post-MoE/layer output **0.000203 MAE**. Layer 1 repeats the first router cutoff split (hipEngine `126`, llama.cpp `63`) while common-expert selected weighted rows are still **<=0.0001005 MAE**, shared-gate logit delta **-0.00474**, `ffn_out` **0.000489 MAE**, and post-MoE/layer output **0.000535 MAE**. This rules out selected/shared projection or combine math as the early semantic cliff; the remaining target is layer-output/router-input precision before the layer-1 cutoff. |
 | hipEngine vs llama.cpp target layer-0 linear-attention cross-engine diagnostic | `benchmarks/results/2026-07-02-mtp-target-layer0-linear-attn-cross-engine-diagnostic.json` | Diagnostic-only forced pair-12 / llama cycle-18 row-1 split; `performance_claim=false`. `scripts/llamacpp_mtp_linear_attn_trace_patch.py` generates the temp-tree llama.cpp patch that exposes early linear-attention labels; `scripts/llamacpp_mtp_compare_layer0_linear_attn.py` compares those labels to hipEngine raw layer-0 boundary taps. Result: no large layer-0 projection/conv cliff. Stable pre-`ssm_out` labels are close: `z` projection **0.004111 MAE / 0.999996 cosine**, `beta` projection **0.001866 MAE / 0.999999 cosine**, `conv_output_silu` **0.0001452 MAE / 0.9999995 cosine**, and q/k/v conv-view slices **<=0.0001865 MAE**. Downstream `linear_attn_out` remains **0.0001595 MAE / 0.0002100 RMSE / 0.999952 cosine**, attention residual **0.0001630 MAE / 0.0002197 RMSE / 0.999962 cosine**, attention post-norm **0.005668 MAE**, `ffn_out` **0.0001256 MAE**, and post-MoE/layer output **0.0002027 MAE**. The artifact marks `linear_attn_qkv_mixed_0` and `alpha_0` as trace-label caveats, and its direct `final_output_0` caveat is superseded by the projectable contiguous tap row below. |
+| hipEngine scored layer-14 input/linear-attention cross-engine diagnostic | `benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json` | Diagnostic-only `mixed_ja_en_translate` task 9 / cycle 3 / row 2 split; `performance_claim=false`. `scripts/llamacpp_mtp_compare_layer0_linear_attn.py` now supports arbitrary layers, scored hipEngine captures, and `--llamacpp-task-id` for unfiltered llama.cpp JSONL traces. Result: the first complete layer-14 sub-boundary above threshold is before layer-14 projection/MoE: `attn_norm_14` vs hipEngine `attn_norm` is **0.02051 MAE / 0.02654 RMSE**. Downstream `z` is **0.01564 MAE**, `beta` **0.00914**, `conv_output_silu` **0.00120**, `linear_attn_out` **0.000653**, post-attention norm **0.02736**, `ffn_out` **0.00228**, and post-MoE/layer output **0.00253**. The next instrumentation target is raw llama.cpp `process_h_input` / `verify_layer_output_13` values, which are currently summaries-only in the local trace. |
 | hipEngine validation of llama.cpp `final_output_0` tap | `benchmarks/results/2026-07-02-mtp-target-layer0-final-output-reprojection-diagnostic.json` | Superseded diagnostic-only model-backed projection check; `performance_claim=false`. The helper loads only hipEngine's layer-0 `ssm_out` weight with decode repack enabled, reprojects hipEngine `recurrent_out`, and reprojects traced llama.cpp `final_output_0`. Result: hipEngine `recurrent_out -> ssm_out` exactly reconstructs the captured hipEngine `attn_out` (**0 MAE**), but traced llama.cpp `final_output_0 -> ssm_out` is **0.2977 MAE / 0.3772 RMSE / -0.0302 cosine** from llama.cpp `linear_attn_out_0`. Keep this only as proof that the old `final_output_0` label was not a projectable semantic pre-`ssm_out` oracle; the corrected contiguous tap below supersedes it. |
 | hipEngine validation of llama.cpp `final_output_cont_0` tap | `benchmarks/results/2026-07-02-mtp-target-layer0-final-output-cont-reprojection-diagnostic.json`; patch artifact `benchmarks/results/2026-07-02-llamacpp-final-output-cont-trace.patch` | Diagnostic-only materialized contiguous post-GDN/pre-`ssm_out` tap; `performance_claim=false`. `scripts/llamacpp_mtp_final_output_cont_trace_patch.py` generates a local llama.cpp patch that adds `final_output_cont_` to both tensor-trace allowlists, emits `final_output_cont`, and feeds `ssm_out` from that contiguous tensor in the temporary trace tree. Cycle 18 remains the active llama.cpp branch (`[15495, 539]` drafted, one accepted, bonus `26126`), and the tap is projectable: llama.cpp `final_output_cont_0 -> ssm_out` reconstructs `linear_attn_out_0` at **0.000157 MAE / 0.000207 RMSE / 0.999953 cosine**. Direct hipEngine `recurrent_out` vs llama.cpp `final_output_cont_0` is only **0.0000176 MAE / 0.0000391 RMSE / 0.999999 cosine**, and hipEngine `attn_out` vs llama.cpp `linear_attn_out_0` remains **0.0001595 MAE / 0.0002100 RMSE / 0.999952 cosine**. Layer-0 GDN/recurrent layout and `ssm_out` projection are ruled out; keep the active semantic search on accumulated layer-output/router-input precision drift. |
 | hipEngine vs llama.cpp target output_norm recompute diagnostic | `benchmarks/results/2026-07-02-mtp-target-output-norm-recompute-diagnostic.json` | Diagnostic-only CPU recompute from the raw row-1 pre-output residuals; `performance_claim=false`. Using `output_norm.weight` and `eps=1e-6`, CPU `x * weight / sqrt(mean(x^2)+eps)` exactly reproduces hipEngine `verify_h` from hipEngine `pre_output_norm` and exactly reproduces llama.cpp `verify_h` from llama.cpp `verify_pre_output_norm` (**0 MAE** for both). The pre-output residual delta is **0.01015 MAE / 0.01273 RMSE / 0.99931 cosine**; applying the same CPU output_norm to both rows deterministically produces **0.07789 MAE / 0.09815 RMSE / 0.99908 cosine**, exactly matching the observed final hidden delta. Rounding llama.cpp pre-output to BF16 barely changes it (**0.07787 MAE**), so final output_norm and final-boundary BF16 rounding are not separate implementation suspects. |
