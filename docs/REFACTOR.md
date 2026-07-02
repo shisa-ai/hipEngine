@@ -622,6 +622,22 @@ should be boring.
   or if a different fused Q5 selected-down body replaces it and wins the draft
   parent profile. Do not promote the flag as-is.
 
+## `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING`
+- Added 2026-07-03. Default-off verifier diagnostic that seeds the target
+  verifier F32 residual buffer from host-dequantized `token_embd.weight` rows
+  when `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` is enabled. The BF16 token
+  embedding launch still runs and still populates the BF16 mirror path.
+- Purpose: isolate llama.cpp MTP parity for layer-0 target input construction.
+  The first task-9/cycle-3/row-2 run closed `hidden_in` and
+  `attn_norm_f32_scratch` to exact llama.cpp parity, but it did not flip the
+  bonus token; the remaining split moved to F32-input projection/dequant and
+  later residual/LM-head amplification.
+- Remove / promote when: remove once the projection/dequant split is resolved
+  and this host-side diagnostic is no longer needed. Promote only by replacing
+  it with a real device-side F32 embedding path if full-suite llama-compat
+  evidence shows it is required and non-regressive; do not keep host dequant/H2D
+  in a timing route.
+
 ## `--record-draft-stage-stats`
 - Added 2026-07-02. Bench flag that records compact FP32 summaries for resident
   MTP draft sub-stage tensors and dense MTP K/V cache rows in

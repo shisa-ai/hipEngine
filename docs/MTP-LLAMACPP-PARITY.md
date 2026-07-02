@@ -611,6 +611,36 @@ BF16 mirror and the actual F32 scratch are not conflated.
 | `linear_attn_out_0` vs `attn_out` | 0.0000353 | **0.0000314** | Small improvement. |
 | `post_moe_0` / layer output | 0.0000547 | **0.0000495** | Small improvement, but the sampled bonus still stays `8940`, not llama.cpp's `668`. |
 
+F32-token-embedding + F32-residual + F32-attention-norm rerun:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32embed-f32res-attnnorm-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32embed-f32res-attnnorm-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32embed-f32res-attnnorm-moe-taps-compare.json`.
+This is diagnostic-only (`performance_claim=false`) and uses
+`HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING=1` to seed the verifier F32 residual
+buffer directly from dequantized `token_embd.weight` rows while leaving the BF16
+mirror embedding path intact.
+
+| layer-0 F32 token-embedding diagnostic, row 2 | prior F32-res+attn-norm MAE | F32 token-embed MAE | readout |
+| --- | ---: | ---: | --- |
+| pre-layer-0 target hidden vs `model.input_embed` | 0.00000643 | **0.0** | Input construction is now exact for the captured row. |
+| `attn_norm_0` vs `attn_norm_f32_scratch` | 0.000729 | **0.0** | F32 RMSNorm scratch now exactly matches llama.cpp. |
+| `attn_norm_0` vs BF16 mirror `attn_norm` | 0.001155 | **0.000906** | Mirror remains BF16 and is not the verifier F32 residual source. |
+| `z_0` vs `linear_z` | 0.003687 | **0.002233** | Remaining first split is now projection/dequant from exact F32 normalized input. |
+| `beta_0` vs `ssm_beta` | 0.001775 | **0.001754** | Essentially unchanged. |
+| `conv_output_silu_0` vs `conv_out` | 0.0000919 | **0.0000667** | Smaller, still no conv cliff. |
+| `linear_attn_out_0` vs `attn_out` | 0.0000314 | **0.0000296** | Slightly closer. |
+| `attn_post_norm_0` vs `attn_post_norm` | 0.001766 | **0.001667** | Residual-space norm drift remains. |
+| `post_moe_0` / layer output | 0.0000495 | **0.0000493** | Essentially unchanged. |
+
+The live branch still samples hipEngine bonus `8940`, not llama.cpp bonus `668`.
+For row 2 after F32 token embedding, hipEngine ranks `8940` first at
+`25.73693`; `668` remains rank 4 at `25.24251` (**0.49442** behind). This
+closes the target-input/RMSNorm-scratch hypothesis but does not close the token
+flip. The next semantic target is the layer-0 projection/dequant path from exact
+F32 normalized input (`z_0` / `beta_0`) and the later residual/LM-head
+amplification path.
+
 Layer-0 MoE top-k selection matches exactly:
 `[57, 6, 56, 66, 127, 110, 106, 157]`. Router logits differ by
 **0.00442 MAE / 0.00528 RMSE**, routing weights by **0.000279 MAE**,
