@@ -137457,3 +137457,30 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_target_moe_taps.py tests/test_gguf_mtp_forced_target_probe.py -q
   jq empty benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-moe-taps-compare.json benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json
   ```
+
+## 2026-07-03 - Scored layer-14 RMSNorm formula audit
+
+- Extended the scored layer-14 linear-attention reducer with raw
+  input-boundary handling and a CPU RMSNorm formula audit. `process_h_input` is
+  now reported as context-only because it is llama.cpp's MTP draft-context
+  hidden input, not the target verifier layer input.
+- Regenerated
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json`
+  against the row-2 raw llama.cpp trace
+  `/tmp/hipengine-llamacpp-layer14-input-raw-row2-task9-cycle3.jsonl`.
+  Result: valid incoming target hidden comparison is hipEngine `hidden_in` vs
+  llama.cpp `verify_layer_output_13`, only `0.00109696 MAE / 0.00142193 RMSE`.
+  CPU RMSNorm with `blk.14.attn_norm.weight` exactly reproduces llama.cpp
+  `attn_norm_14` from `verify_layer_output_13` and hipEngine `attn_norm` from
+  `hidden_in` (`max_abs_diff=0` for both best candidates). The observed
+  `attn_norm_14` delta (`0.0205127 MAE / 0.0265420 RMSE`) is therefore
+  normalized-space amplification of incoming layer-13 output drift, not a
+  layer-14 RMSNorm implementation mismatch.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` to move the next semantic target from
+  layer-14 RMSNorm/MoE to the scored layer-13 boundary/internal split.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py
+  PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py -q
+  jq empty benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-linear-attn-compare.json
+  ```

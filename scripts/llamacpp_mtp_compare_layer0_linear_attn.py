@@ -7,9 +7,17 @@ import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
+
+from scripts.llamacpp_mtp_audit_layer0_attn_norm_formula import (
+    bf16_roundtrip_array,
+    delta_summary,
+    load_layer0_attn_norm_weight,
+    rmsnorm_f32,
+    summarize_array,
+)
 
 DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-07-02-mtp-target-linear-attn-cross-engine-diagnostic.json"
@@ -114,6 +122,7 @@ def build_linear_attn_compare_artifact(
     layer: int,
     llamacpp_task_id: int | None = None,
     hipengine_capture_source: str = "auto",
+    attn_norm_weight_loader: Callable[[Path, int], tuple[np.ndarray, float, dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     hip_artifact = json.loads(hipengine_raw_path.read_text())
     hip_capture = _hip_capture(
@@ -134,6 +143,13 @@ def build_linear_attn_compare_artifact(
         hip_values=hip_values,
         llama_values=llama_values,
         layer=layer,
+    )
+    attn_norm_formula = _attn_norm_formula_assessment(
+        hip_values=hip_values,
+        llama_values=llama_values,
+        layer=layer,
+        model_path=Path(str(hip_artifact.get("model", ""))),
+        weight_loader=attn_norm_weight_loader or load_layer0_attn_norm_weight,
     )
     tensor_deltas = {
         name: _numeric_delta(
@@ -184,6 +200,7 @@ def build_linear_attn_compare_artifact(
         "hipengine": _hip_metadata(hip_artifact, hip_capture),
         "llamacpp": _llamacpp_metadata(llama_cycle, duplicates),
         "input_boundary_deltas": input_boundary_deltas,
+        "attn_norm_formula_assessment": attn_norm_formula,
         "pre_ssm_stable_deltas": pre_ssm_stable_deltas,
         "conv_view_deltas": conv_view_deltas,
         "pre_ssm_ambiguous_deltas": pre_ssm_ambiguous_deltas,
@@ -377,12 +394,13 @@ def _input_boundary_deltas(
     layer: int,
 ) -> dict[str, Any]:
     prev_layer = int(layer) - 1
+    deltas: dict[str, Any] = {
+        "process_h_input_context": _process_h_input_context(llama_values),
+    }
     pairs: tuple[tuple[str, str, str], ...] = (
-        ("hidden_in_vs_process_h_input", "hidden_in", "process_h_input"),
         ("hidden_in_vs_prev_layer_output", "hidden_in", f"verify_layer_output_{prev_layer}"),
         ("attn_norm_input", "attn_norm", f"attn_norm_{int(layer)}"),
     )
-    deltas: dict[str, Any] = {}
     for name, hip_key, llama_label in pairs:
         if hip_key not in hip_values or llama_label not in llama_values:
             deltas[name] = {
@@ -406,6 +424,188 @@ def _input_boundary_deltas(
             **_numeric_delta(llama_values[llama_label], hip_values[hip_key]),
         }
     return deltas
+
+
+def _process_h_input_context(llama_values: dict[str, np.ndarray]) -> dict[str, Any]:
+    values = llama_values.get("process_h_input")
+    if values is None:
+        return {
+            "status": "missing",
+            "llamacpp_label": "process_h_input",
+            "missing": ["llama.cpp"],
+            "reason": "not captured in this trace",
+        }
+    return {
+        "status": "context_only",
+        "llamacpp_label": "process_h_input",
+        "reason": (
+            "process_h_input is the MTP draft-context embedding input, not the "
+            "target layer hidden state; do not compare it to hipEngine target hidden_in"
+        ),
+        "summary": summarize_array(values),
+    }
+
+
+def _attn_norm_formula_assessment(
+    *,
+    hip_values: dict[str, np.ndarray],
+    llama_values: dict[str, np.ndarray],
+    layer: int,
+    model_path: Path,
+    weight_loader: Callable[[Path, int], tuple[np.ndarray, float, dict[str, Any]]],
+) -> dict[str, Any]:
+    prev_label = f"verify_layer_output_{int(layer) - 1}"
+    llama_attn_label = f"attn_norm_{int(layer)}"
+    required = {
+        "hip_hidden_in": hip_values.get("hidden_in"),
+        "hip_attn_norm": hip_values.get("attn_norm"),
+        "llamacpp_prev_layer_output": llama_values.get(prev_label),
+        "llamacpp_attn_norm": llama_values.get(llama_attn_label),
+    }
+    missing = [name for name, value in required.items() if value is None]
+    if missing:
+        return {
+            "status": "missing",
+            "missing": missing,
+            "reason": "one or more input or attn_norm rows are missing",
+        }
+    if not model_path.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"model path does not exist: {model_path}",
+            "model": str(model_path),
+        }
+
+    weight, eps, metadata = weight_loader(model_path, int(layer))
+    hip_hidden = np.asarray(required["hip_hidden_in"], dtype=np.float32)
+    hip_attn = np.asarray(required["hip_attn_norm"], dtype=np.float32)
+    llama_hidden = np.asarray(required["llamacpp_prev_layer_output"], dtype=np.float32)
+    llama_attn = np.asarray(required["llamacpp_attn_norm"], dtype=np.float32)
+    if hip_hidden.shape != llama_hidden.shape or hip_hidden.shape != weight.shape:
+        return {
+            "status": "shape_mismatch",
+            "hip_hidden_shape": list(hip_hidden.shape),
+            "llamacpp_hidden_shape": list(llama_hidden.shape),
+            "weight_shape": list(weight.shape),
+        }
+
+    candidates = {
+        "llama_input_f32_out": rmsnorm_f32(llama_hidden, weight, float(eps)),
+        "llama_input_bf16_out": rmsnorm_f32(
+            bf16_roundtrip_array(llama_hidden),
+            weight,
+            float(eps),
+        ),
+        "llama_input_f32_bf16_out": bf16_roundtrip_array(
+            rmsnorm_f32(llama_hidden, weight, float(eps))
+        ),
+        "hip_input_f32_out": rmsnorm_f32(hip_hidden, weight, float(eps)),
+        "hip_input_bf16_out": rmsnorm_f32(
+            bf16_roundtrip_array(hip_hidden),
+            weight,
+            float(eps),
+        ),
+        "hip_input_f32_bf16_out": bf16_roundtrip_array(
+            rmsnorm_f32(hip_hidden, weight, float(eps))
+        ),
+    }
+    llama_candidate_deltas = {
+        name: delta_summary(values, llama_attn)
+        for name, values in candidates.items()
+        if name.startswith("llama_")
+    }
+    hip_candidate_deltas = {
+        name: delta_summary(values, hip_attn)
+        for name, values in candidates.items()
+        if name.startswith("hip_")
+    }
+    best_llama = _best_delta(llama_candidate_deltas)
+    best_hip = _best_delta(hip_candidate_deltas)
+    cpu_from_inputs = {
+        "llama_f32_vs_hip_f32": delta_summary(
+            candidates["llama_input_f32_out"],
+            candidates["hip_input_f32_out"],
+        ),
+        "llama_bf16_vs_hip_bf16": delta_summary(
+            candidates["llama_input_f32_bf16_out"],
+            candidates["hip_input_f32_bf16_out"],
+        ),
+    }
+    observed = delta_summary(llama_attn, hip_attn)
+    return {
+        "status": "complete",
+        "model": str(model_path),
+        "layer": int(layer),
+        "weight": metadata,
+        "eps": float(eps),
+        "formula": "x * rsqrt(mean(x^2) + eps) * weight",
+        "source_labels": {
+            "llamacpp_input": prev_label,
+            "llamacpp_attn_norm": llama_attn_label,
+            "hipengine_input": "hidden_in",
+            "hipengine_attn_norm": "attn_norm",
+        },
+        "observed_attn_norm_delta": observed,
+        "best_llamacpp_candidate": best_llama,
+        "best_hipengine_candidate": best_hip,
+        "cpu_attn_norm_delta_from_inputs": cpu_from_inputs,
+        "classification": _classify_attn_norm_formula(
+            observed=observed,
+            best_llama=best_llama,
+            best_hip=best_hip,
+            cpu_from_inputs=cpu_from_inputs,
+        ),
+    }
+
+
+def _best_delta(deltas: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    available = [
+        (name, delta)
+        for name, delta in deltas.items()
+        if delta.get("available") and delta.get("shape_match")
+    ]
+    if not available:
+        return {"available": False}
+    name, delta = min(
+        available,
+        key=lambda item: (
+            float(item[1].get("rmse", float("inf"))),
+            float(item[1].get("max_abs_diff", float("inf"))),
+        ),
+    )
+    return {
+        "available": True,
+        "name": name,
+        "delta": delta,
+    }
+
+
+def _classify_attn_norm_formula(
+    *,
+    observed: dict[str, Any],
+    best_llama: dict[str, Any],
+    best_hip: dict[str, Any],
+    cpu_from_inputs: dict[str, Any],
+) -> str:
+    if not best_llama.get("available") or not best_hip.get("available"):
+        return "attn_norm_formula_unavailable"
+    if (
+        float(best_llama["delta"].get("max_abs_diff", float("inf"))) <= 1.0e-6
+        and float(best_hip["delta"].get("max_abs_diff", float("inf"))) <= 1.0e-6
+    ):
+        return "attn_norm_delta_explained_by_input_delta"
+    cpu_delta = cpu_from_inputs.get("llama_bf16_vs_hip_bf16", {})
+    if (
+        cpu_delta.get("available")
+        and observed.get("available")
+        and abs(
+            float(cpu_delta.get("mean_abs_diff", 0.0))
+            - float(observed.get("mean_abs_diff", 0.0))
+        )
+        <= 1.0e-3
+    ):
+        return "attn_norm_delta_mostly_explained_by_input_delta"
+    return "attn_norm_formula_or_capture_mismatch"
 
 
 def _conv_view_deltas(
@@ -565,6 +765,7 @@ def _pre_ssm_out_label_assessment(
 
 def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
     inputs = artifact.get("input_boundary_deltas", {})
+    formula = artifact.get("attn_norm_formula_assessment", {})
     stable = artifact["pre_ssm_stable_deltas"]
     conv_views = artifact["conv_view_deltas"]
     tensor = artifact["tensor_deltas"]
@@ -586,7 +787,6 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
     linear_mae = float(tensor["linear_attn_out"]["mean_abs_diff"])
     post_norm_mae = float(tensor["attn_post_norm"]["mean_abs_diff"])
     post_moe_mae = float(tensor["post_moe"]["mean_abs_diff"])
-    hidden_process_mae = _maybe_mae(inputs.get("hidden_in_vs_process_h_input", {}))
     hidden_prev_mae = _maybe_mae(inputs.get("hidden_in_vs_prev_layer_output", {}))
     attn_norm_input_mae = _maybe_mae(inputs.get("attn_norm_input", {}))
 
@@ -605,7 +805,12 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
         )
     else:
         status = "pre_ssm_drift_present"
-        if attn_norm_input_mae is not None and attn_norm_input_mae > PROJECTION_CLOSE_MAE:
+        if formula.get("classification") == "attn_norm_delta_explained_by_input_delta":
+            reason = (
+                "attention RMSNorm arithmetic matches both engines exactly; "
+                "the layer-14 norm-space drift is explained by incoming layer-13 output drift."
+            )
+        elif attn_norm_input_mae is not None and attn_norm_input_mae > PROJECTION_CLOSE_MAE:
             reason = (
                 "layer projection input already exceeds the close-match threshold; "
                 "fix the incoming hidden/RMSNorm boundary before retuning projection kernels."
@@ -625,15 +830,14 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
         "beta_projection_mae": beta_mae,
         "conv_output_silu_mae": conv_mae,
         "max_conv_qkv_view_mae": max(qkv_view_maes) if qkv_view_maes else None,
-        "hidden_in_vs_process_h_input_mae": hidden_process_mae,
         "hidden_in_vs_prev_layer_output_mae": hidden_prev_mae,
         "attn_norm_input_mae": attn_norm_input_mae,
         "linear_attn_out_mae": linear_mae,
         "attn_post_norm_mae": post_norm_mae,
         "post_moe_mae": post_moe_mae,
         "next_split_needed": (
-            "layer input/RMSNorm comparison if input drift is already present; "
-            "otherwise projection and conv/GDN arithmetic"
+            "layer-13 scored boundary split; layer-14 RMSNorm formula is explained "
+            "by incoming hidden drift when attn_norm_formula_assessment says so"
         ),
     }
 
@@ -725,6 +929,12 @@ def _conclusion(artifact: dict[str, Any]) -> str:
             f"beta MAE {stable['beta_projection_mae']:.6g}, "
             f"conv_output_silu MAE {stable['conv_output_silu_mae']:.6g}."
         )
+        formula = artifact.get("attn_norm_formula_assessment", {})
+        if formula.get("classification") == "attn_norm_delta_explained_by_input_delta":
+            stable_note += (
+                " CPU RMSNorm exactly reproduces both engines' attn_norm rows, "
+                "so this is incoming hidden drift amplified by normalization."
+            )
     return (
         f"Layer {layer} drift is already present at the linear-attention output: "
         f"linear_attn_out MAE {linear:.6g}, attention residual MAE {residual:.6g}, "
