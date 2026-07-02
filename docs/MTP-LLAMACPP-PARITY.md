@@ -390,6 +390,28 @@ selected weighted rows are **0.00135 MAE**, aggregate `ffn_out` is
 copying MoE selection or layer-8 linear attention; the next semantic split moves
 upstream to scored layer 7.
 
+Layer-7 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer7-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer7-scored-full-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer7-scored-moe-taps-compare.json`.
+
+| layer-7 scored full-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `verify_layer_output_6` vs hipEngine `hidden_in` | **0.000310** | **0.000438** | Incoming layer-6 output remains the live boundary drift. |
+| `attn_norm_7` vs hipEngine `attn_norm` | **0.00733** | **0.01101** | CPU RMSNorm exactly reproduces both engines; normalized drift is input-driven. |
+| `attn_output_7` vs hipEngine `attn_out` | 0.000337 | 0.000434 | No full-attention output cliff. |
+| `attn_residual_7` vs hipEngine `attn_residual` | 0.000440 | 0.000582 | Carries the incoming drift forward. |
+| `attn_post_norm_7` vs hipEngine `attn_post_norm` | **0.01339** | **0.01728** | Second RMSNorm amplifies residual-space drift before MoE. |
+| `ffn_out_7` vs hipEngine reconstructed `ffn_out` | 0.000240 | 0.000304 | MoE projection/combination remains small. |
+| `post_moe_7` / `verify_layer_output_7` vs hipEngine layer output | **0.000459** | **0.000593** | Exactly the incoming layer-8 hidden delta measured above. |
+
+Layer-7 MoE top-k selection matches exactly:
+`[40, 56, 37, 74, 192, 120, 10, 158]`. Selected weighted rows are
+**0.0000644 MAE**, aggregate `ffn_out` is **0.000240 MAE**, and post-MoE is
+**0.000459 MAE**. Layer 7 is a full-attention layer and still not the copy
+target; the next semantic split moves upstream to scored layer 6.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
