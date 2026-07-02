@@ -85,7 +85,10 @@ reruns or proposal traces before claiming a remaining cross-engine gap. The
 active llama.cpp timing target is the diagnostic-retained
 rerun at `benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`;
 it was collected with local llama.cpp instrumentation patches, so treat it as a
-stage target rather than a clean upstream performance claim.
+stage target rather than a clean upstream performance claim. The active semantic
+target is now the long proposal trace's pair-12 target accept/reject mismatch:
+both engines draft `[15495, 539]`, but hipEngine accepts `539` while llama.cpp
+rejects it and samples `26126`.
 
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
@@ -209,7 +212,8 @@ Current source artifacts:
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. This remains a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | llama.cpp HIP MTP whole-run rocprof proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json` | Diagnostic-only `llama-server` MTP request under `rocprofv3 --kernel-trace`, with `LLAMA_MTP_STAGE_TIMINGS` enabled. It produces the first llama.cpp MTP kernel-family bucket split in this tracker, but it is whole-process and required `SIGKILL` after profiler finalize timeout, so use it only as a source/kernel proxy. |
 | llama.cpp HIP MTP ROCTX range proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json` | Diagnostic-only rerun after llama.cpp commit `dd7ec418c` added `LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers. The artifact includes `range_name_summaries` for stage-window kernel buckets, but it is still whole-process and includes warmup/prompt/server ranges, so do not use it as a headline timing row. |
-| hipEngine vs llama.cpp active proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json` | Diagnostic-only same-prompt token trace using the current active `draftdenseq8-draftonly` `llama-compat` route and the existing llama.cpp HIP B2 token trace; `performance_claim=false`. It shows the old pair-3 proposal mismatch is closed: **9/10** draft rows, output rows, and accepted-count rows match exactly, and hipEngine's flat output stream contains all **26/26** llama.cpp tokens as a prefix. The only mismatch is the final measured row, where hipEngine drafts two tokens and llama.cpp generated one draft token at the trace limit. |
+| hipEngine vs llama.cpp active long proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-long-diagnostic.json` | Diagnostic-only same-prompt token trace using the current active `draftdenseq8-draftonly` `llama-compat` route for 32 measured hipEngine cycles and a fresh llama.cpp HIP B2 120-token trace; `performance_claim=false`. It supersedes the short trace: proposals stay aligned at the first real mismatch, but target acceptance diverges at pair 12. Both engines draft `[15495, 539]`; hipEngine accepts both and emits `[15495, 539, 1151]`, while llama.cpp rejects `539` and emits `[15495, 26126]`. Serial-exact hipEngine A/B reproduces the same row-12 decision, so the active semantic target is target verifier/sample parity, not draft proposal generation. |
+| hipEngine vs llama.cpp short proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json` | Superseded diagnostic-only same-prompt token trace using the current active `draftdenseq8-draftonly` `llama-compat` route and the earlier llama.cpp HIP B2 token trace; `performance_claim=false`. It remains useful because it showed the old pair-3 proposal mismatch was closed, but its final-row boundary interpretation is superseded by the longer trace above. |
 | hipEngine vs llama.cpp prior proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-diagnostic.json` | Historical diagnostic-only same-prompt token trace before the resident initial MTP KV writer fix was retained in the active route; `performance_claim=false`. The v3 comparison adds per-row stream offsets and token-divergence row locations. It proves the old prompt/target state aligned for the first three measured cycles, then draft proposals diverged before any rejection; keep as provenance for the resident-initial-KV semantic fix, not as the current active proposal gap. |
 | hipEngine draft-context/logit A/B diagnostic | `benchmarks/results/2026-07-02-mtp-draft-context-logit-ab-diagnostic.json` | Diagnostic-only follow-up on the same prompt; `performance_claim=false`. It rules out hipEngine accepted-row KV commit and llama.cpp's public backend-sampling toggle as the primary cause, shows resident full-logit draft is not closer, and records cycle-3 top-k score margins with/without hipEngine MTP device KV. |
 | llama.cpp draft score trace diagnostic | `benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json` | Historical diagnostic-only same-prompt score trace after llama.cpp commit `0f7d32267` added `draft_sample_trace` to `LLAMA_MTP_TOKEN_TRACE` rows. At the pre-fix first divergence llama.cpp ranks token `8` first and `65342` second by only **0.100 logits**, while hipEngine with device KV ranks `65342` first and token `8` third, **1.260 logits** behind. This showed the then-active blocker was MTP seed/context/logit parity at seq position 49, not merely accepted-row KV commit or sampler toggles. |
@@ -255,52 +259,65 @@ Current source artifacts:
 
 #### Latest proposal trace finding
 
-Artifact:
-`benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json`.
-This is a one-prompt diagnostic, not a retained performance claim. The prompt
-matches the first code-suite prompt and both engines use B2/no-probe,
-reasoning-off, top-1, and the same GGUF model on gfx1151. The hipEngine side is
-the current active `llama-compat` route with resident initial MTP KV seeding,
-parallel MTP attention, and draft-only dense-Q8 dp4a. The llama.cpp side reuses
-the existing same-prompt token trace from the HIP B2 diagnostic because the
-purpose here is to check whether the active hipEngine route still has the old
-proposal mismatch.
+Active long-trace artifact:
+`benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-long-diagnostic.json`.
+This is a one-prompt diagnostic, not a retained performance claim. It reruns
+the active `draftdenseq8-draftonly` `llama-compat` route for 32 measured cycles
+and reruns llama.cpp HIP B2 with a 120-token budget so the comparison is no
+longer clipped at the old 10-row trace boundary.
 
 | comparison | hipEngine active `llama-compat` | llama.cpp HIP B2 | reading |
 | --- | ---: | ---: | --- |
-| cycle rows compared | 10 | 10 | Same measured prompt after llama.cpp warmup exclusion. |
-| exact draft rows | 9 / 10 | 9 / 10 | The old pair-3 proposal mismatch is closed. |
-| exact output rows | 9 / 10 | 9 / 10 | Rows match until the final trace-limit row. |
-| accepted-count match rows | 9 / 10 | 9 / 10 | Same reading: one final-row chunking difference remains. |
-| visible output tokens | 27 | 26 | hipEngine emits one more token in this short diagnostic. |
-| accepted / output | 0.630 | 0.615 | This prompt is not the full-suite row-economy deficit; do not generalize it. |
-| draft acceptance | 0.850 | 0.842 | Same caution: one prompt only. |
-| flattened output stream prefix | 26 tokens | 26 tokens | HipEngine contains the full llama.cpp output stream as a prefix. |
-| first row/chunk mismatch | pair 9, stream offset 24, row output `[198, 285, 460]` | pair 9, stream offset 24, row output `[198, 285]` | Same stream start and same two output tokens; hipEngine has one extra accepted draft token at the trace limit. |
-| first stream-offset mismatch | none in 10 compared rows | none | The rows stay aligned through the compared stream starts. |
-| first stream token divergence | token index 26 = `460` | no token, llama trace ended at 26 tokens | This is a trace-length/chunking difference, not a content mismatch within llama.cpp's emitted stream. |
+| cycle rows compared | 32 | 32 | Same measured prompt after llama.cpp warmup exclusion. |
+| exact draft rows | 30 / 32 | 30 / 32 | Draft proposal shape is mostly aligned; the first real mismatch is not a draft-token mismatch. |
+| exact output rows | 29 / 32 | 29 / 32 | The old final-row boundary explanation is superseded by a real target accept/reject mismatch. |
+| accepted-count match rows | 30 / 32 | 30 / 32 | Same reading: target acceptance diverges before proposal chunking drifts. |
+| visible output tokens in compared rows | 88 | 89 | One-prompt diagnostic only; do not generalize to full-suite row economy. |
+| accepted / output | 0.636 | 0.640 | Same caution: one prompt only. |
+| draft acceptance | 0.875 | 0.891 | Same caution: one prompt only. |
+| flattened output stream prefix | 33 tokens | 33 tokens | Streams match beyond the old 26-token short-trace boundary, then diverge at pair 12. |
+| first stream token divergence | token index 33 = `539` | token index 33 = `26126` | This is a target verifier accept/reject difference, not a proposal-generation difference. |
 
-First cycle-level divergence:
+First real cycle-level divergence:
 
 | field | hipEngine | llama.cpp |
 | --- | --- | --- |
-| pair / cycle | pair 9 / cycle 9 | pair 9 / traced cycle 15 |
-| draft tokens | `[198, 285]` | `[198]` |
+| pair / cycle | pair 12 / cycle 12 | pair 12 / traced cycle 18 |
+| draft tokens | `[15495, 539]` | `[15495, 539]` |
 | accepted draft tokens | 2 | 1 |
-| output tokens | `[198, 285, 460]` | `[198, 285]` |
+| output tokens | `[15495, 539, 1151]` | `[15495, 26126]` |
+| rejected draft token | none | `539` |
 
-Interpretation: the old pair-3 proposal mismatch is closed on the current
-active route. HipEngine and llama.cpp now match every compared proposal row
-until the final measured row, and hipEngine's flattened stream contains all
-llama.cpp emitted tokens. The remaining mismatch is a trace-boundary/chunking
-difference: llama.cpp generated one draft token on the final measured row while
-hipEngine generated and accepted two. Do not treat this as a live semantic gap
-without a longer same-protocol token trace or fresh llama.cpp rerun.
+Interpretation: the old pair-3 proposal mismatch is closed, but the short
+10-row active trace was insufficient to prove sustained semantic parity. The
+longer same-protocol trace shows the current live mismatch is target verifier
+semantic parity at pair 12: both engines propose the same two draft tokens
+`[15495, 539]`, then hipEngine accepts both while llama.cpp rejects `539` and
+samples `26126`.
+
+Follow-up A/B checks:
+
+| A/B | result | reading |
+| --- | --- | --- |
+| hipEngine active block verifier vs `--target-block-verify-mode serial-exact` | Same row-12 decision: `[15495, 539, 1151]`. | Rules out row-bulk verifier scheduling and direct-state commit as the local cause. |
+| Disable selected-down X8 in the serial-exact verifier run | Rows 0-15 remain identical to active serial-exact, including row 12. | The selected-down X8 sidecar is not the isolated cause. |
+| Disable `--verify-dp4a` in the serial-exact verifier run | Rows 0-15 remain identical to active serial-exact, including row 12. | The mismatch is not isolated to the selected-expert dp4a opt-in. |
+| Disable dense verifier dp4a | Stream diverges earlier by accepting `[262, 4071]` where active hipEngine and llama.cpp reject `4071`. | Dense verifier dp4a is required for earlier trace alignment on this prompt; simply removing it is not a fix. |
+
+Next diagnostic target: capture target-side score/top-k detail at the forced
+pair-12 prefix for both engines. The source-comparison focus moves from draft
+proposal generation to the target verification/sample path that makes
+hipEngine accept `539` while llama.cpp samples `26126`.
+
+Superseded short-trace artifact:
+`benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json`.
+That 10-row diagnostic remains useful provenance because it proved the old
+pair-3 proposal mismatch was closed, but its "only a trace-boundary mismatch"
+reading is now superseded by the longer same-protocol trace above.
 
 The historical diagnostics below explain how the old pair-3 mismatch was found
 and closed by resident initial MTP KV seeding. They remain useful provenance,
-but the active proposal trace no longer points at draft-context/KV row contents
-as a current blocker on this prompt.
+but they are not the current active blocker on this prompt.
 
 Follow-up A/B artifact:
 `benchmarks/results/2026-07-02-mtp-draft-context-logit-ab-diagnostic.json`.
@@ -697,9 +714,10 @@ match but the timings do not.
 
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
+| S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, target-side score/top-k probes at forced prefixes | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp` plus a target-side score trace | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]` | Add forced-prefix target score/top-k instrumentation for both engines, then compare target decode/sample numerics at the pair-12 prefix. This is semantic parity, not a retained full-suite perf gap yet. |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | rerun B2 cycle wall plus suite tok/s | **-0.944 ms/output** | Parent wall is closed on the retained row; verify with same-protocol reruns. |
 | 2 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head`, `draft_gpu_decode_initial`, `draft_gpu_decode_next`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **-0.076 ms/output** | Fixed on the retained row. Draft-only dense-Q8 moves full-suite draft drain **2.204 -> 2.066 ms/output** without changing row economy; future leaf work must move the retained parent row before becoming a live parity target. |
-| 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **+0.077 outputs/cycle**, -0.012 target rows/output | Fixed. Resident initial KV changes the full-suite histogram from `{2 accepts: 54}` to `{2 accepts: 75}` out of 100 cycles. Keep proposal tracing as a regression guard. |
+| 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **+0.077 outputs/cycle**, -0.012 target rows/output | Retained full-suite row economy is closed. Resident initial KV changes the full-suite histogram from `{2 accepts: 54}` to `{2 accepts: 75}` out of 100 cycles. Long-trace semantic follow-up is tracked in row S because the first real mismatch has matching draft tokens and divergent target acceptance. |
 | 4 | Target verifier drain | `target_block_verify_total`, `target_block_linear_attn_layers`, `target_block_full_attn_layers`, `target_block_lm_head_sample` | llama verifier drain inside `mtp_context_replay_append` / `mul_mat_vec_q` / `mul_mat_vec_q_moe` | **-1.187 ms/output** | Fixed/offsetting. Further verifier work should be justified by a retained full-suite parent movement, not isolated leaf wins. |
 | 5 | Non-targets | AR tok/s, `target_serial_verify_step`, setup/snapshot/commit/accounting | n/a | n/a | Keep as regressions guards, not active gap work. |
 

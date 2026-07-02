@@ -134928,3 +134928,68 @@ PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py \
 - Updated `docs/MTP-LLAMACPP-PARITY.md` so the current proposal-trace section
   reflects the active retained route. This is diagnostic/provenance only; no
   new performance claim or benchmark rollup update.
+
+## 2026-07-02 - Long active llama-compat proposal trace
+
+- Re-ran the active `draftdenseq8-draftonly` `llama-compat` route for a longer
+  same-prompt token trace after the prior 10-row comparison ended at the
+  llama.cpp token boundary:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 32 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --llama-compat --resident-mtp-device-chain \
+  --verify-dp4a --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --resident-mtp-draft-dense-q8-dp4a \
+  --resident-mtp-draft-dense-q8-dp4a-stages draft \
+  --record-cycle-stage-timings \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json
+
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8137 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-long-stage-c120.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-long-c120.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-long-c120-logs \
+  --server-start-timeout 180 --request-timeout 240
+
+PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py \
+  --hipengine /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --llamacpp /tmp/hipengine-mtp-proposal-trace/llamacpp-long-c120.json \
+  --out /tmp/hipengine-mtp-proposal-trace/compare-active-draftdenseq8-draftonly-c32-vs-llamacpp-c120-v3.json
+```
+
+- Added diagnostic-retained artifact
+  `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-long-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`. Result: the old pair-3 proposal
+  mismatch remains closed, but the prior boundary-only conclusion is superseded.
+  The longer trace compares **32** rows: exact draft rows **30/32**, exact
+  output rows **29/32**, accepted-count rows **30/32**. The first real
+  divergence is pair **12**: both engines draft `[15495, 539]`, but hipEngine
+  accepts both and emits `[15495, 539, 1151]`, while llama.cpp accepts only
+  `15495`, rejects `539`, and emits `[15495, 26126]`.
+- Ran follow-up hipEngine A/B diagnostics on the same prompt. Active
+  `--target-block-verify-mode serial-exact` reproduces the same row-12 target
+  decision, ruling out row-bulk verifier scheduling and direct-state commit.
+  Disabling selected-down X8 or disabling `--verify-dp4a` also leaves rows 0-15
+  unchanged, including row 12. Disabling dense verifier dp4a diverges earlier by
+  accepting `[262, 4071]`, where active hipEngine and llama.cpp reject `4071`,
+  so dense verifier dp4a is required for earlier trace alignment and is not a
+  simple removal fix.
+- No new performance claim. Parent full-suite wall remains closed
+  (`13.325 ms/output` hipEngine compat vs `14.269 ms/output` llama.cpp rerun).
+  Active next instrumentation target: forced-prefix target score/top-k capture
+  for both engines at pair 12, then source comparison of the target
+  verify/sample path.
