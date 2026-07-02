@@ -90,6 +90,62 @@ __global__ void gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(
   }
 }
 
+__global__ void gguf_rmsnorm_f32_f32_weight_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ weight,
+    uint16_t* __restrict__ out,
+    float eps,
+    int64_t hidden_size) {
+  extern __shared__ float partial[];
+  const int64_t tid = threadIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * hidden_size;
+  float sum = 0.0f;
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value = x[row_base + idx];
+    sum += value * value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(hidden_size) + eps);
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    out[row_base + idx] = float_to_bf16_bits(x[row_base + idx] * inv_rms * weight[idx]);
+  }
+}
+
+__global__ void gguf_rmsnorm_f32_f32_weight_out_f32_kernel(
+    const float* __restrict__ x,
+    const float* __restrict__ weight,
+    float* __restrict__ out,
+    float eps,
+    int64_t hidden_size) {
+  extern __shared__ float partial[];
+  const int64_t tid = threadIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * hidden_size;
+  float sum = 0.0f;
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value = x[row_base + idx];
+    sum += value * value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(hidden_size) + eps);
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    out[row_base + idx] = x[row_base + idx] * inv_rms * weight[idx];
+  }
+}
+
 __global__ void gguf_add_rmsnorm_bf16_f32_weight_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ add,
@@ -122,6 +178,38 @@ __global__ void gguf_add_rmsnorm_bf16_f32_weight_kernel(
   }
 }
 
+__global__ void gguf_add_rmsnorm_f32_bf16_f32_weight_kernel(
+    const float* __restrict__ x,
+    const uint16_t* __restrict__ add,
+    const float* __restrict__ weight,
+    uint16_t* __restrict__ norm_out,
+    float* __restrict__ residual_out,
+    float eps,
+    int64_t hidden_size) {
+  extern __shared__ float partial[];
+  const int64_t tid = threadIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * hidden_size;
+  float sum = 0.0f;
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value = x[row_base + idx] + bf16_bits_to_float(add[row_base + idx]);
+    sum += value * value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(hidden_size) + eps);
+  for (int64_t idx = tid; idx < hidden_size; idx += blockDim.x) {
+    const float value = x[row_base + idx] + bf16_bits_to_float(add[row_base + idx]);
+    residual_out[row_base + idx] = value;
+    norm_out[row_base + idx] = float_to_bf16_bits(value * inv_rms * weight[idx]);
+  }
+}
+
 __global__ void gguf_bf16_add_kernel(
     const uint16_t* __restrict__ a,
     const uint16_t* __restrict__ b,
@@ -130,6 +218,17 @@ __global__ void gguf_bf16_add_kernel(
   const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
   for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < n; idx += stride) {
     out[idx] = float_to_bf16_bits(bf16_bits_to_float(a[idx]) + bf16_bits_to_float(b[idx]));
+  }
+}
+
+__global__ void gguf_f32_bf16_add_out_f32_kernel(
+    const float* __restrict__ a,
+    const uint16_t* __restrict__ b,
+    float* __restrict__ out,
+    int64_t n) {
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < n; idx += stride) {
+    out[idx] = a[idx] + bf16_bits_to_float(b[idx]);
   }
 }
 
@@ -440,6 +539,52 @@ extern "C" int hipengine_gguf_rmsnorm_bf16_f32_weight_out_f32(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_gguf_rmsnorm_f32_f32_weight(
+    const float* x,
+    const float* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_rmsnorm_f32_f32_weight_kernel<<<
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(x, weight, out, eps, hidden_size);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_rmsnorm_f32_f32_weight_out_f32(
+    const float* x,
+    const float* weight,
+    float* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || threads <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads > 1024) {
+    threads = 1024;
+  }
+  gguf_rmsnorm_f32_f32_weight_out_f32_kernel<<<
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(x, weight, out, eps, hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight(
     const uint16_t* x,
     const uint16_t* add,
@@ -465,6 +610,31 @@ extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight(
   return hipGetLastError();
 }
 
+extern "C" int hipengine_gguf_add_rmsnorm_f32_bf16_f32_weight(
+    const float* x,
+    const uint16_t* add,
+    const float* weight,
+    uint16_t* norm_out,
+    float* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_add_rmsnorm_f32_bf16_f32_weight_kernel<<<
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(x, add, weight, norm_out, residual_out, eps, hidden_size);
+  return hipGetLastError();
+}
+
 extern "C" int hipengine_gguf_bf16_add(
     const uint16_t* a,
     const uint16_t* b,
@@ -480,6 +650,25 @@ extern "C" int hipengine_gguf_bf16_add(
   }
   const int64_t blocks = (n + threads - 1) / threads;
   gguf_bf16_add_kernel<<<static_cast<unsigned int>(blocks), static_cast<unsigned int>(threads), 0, stream>>>(
+      a, b, out, n);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_f32_bf16_add_out_f32(
+    const float* a,
+    const uint16_t* b,
+    float* out,
+    int64_t n,
+    int64_t threads,
+    hipStream_t stream) {
+  if (n <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  const int64_t blocks = (n + threads - 1) / threads;
+  gguf_f32_bf16_add_out_f32_kernel<<<static_cast<unsigned int>(blocks), static_cast<unsigned int>(threads), 0, stream>>>(
       a, b, out, n);
   return hipGetLastError();
 }

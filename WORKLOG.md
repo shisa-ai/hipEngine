@@ -135433,3 +135433,72 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   **0 MAE**. This rules out a hidden MoE-combine mismatch in layer 31; the
   remaining semantic target stays residual-stream precision across target
   layers.
+
+## 2026-07-02 - Verifier FP32 residual-boundary diagnostic slice
+
+- Added default-off env flag `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` for a
+  verifier-only llama.cpp parity probe. The mode keeps target block residual
+  outputs in FP32, preserves BF16 mirrors for existing projection kernels, and
+  runs final output_norm from the FP32 residual stream. It is diagnostic only,
+  not a retained speed path, and not full llama.cpp F32 graph parity because
+  attention norms plus selected/shared expert projections still consume BF16
+  mirrors.
+- Added GGUF helper kernels/wrappers:
+  `gguf_rmsnorm_f32_f32_weight`,
+  `gguf_rmsnorm_f32_f32_weight_out_f32`,
+  `gguf_add_rmsnorm_f32_bf16_f32_weight`, and
+  `gguf_f32_bf16_add_out_f32`. Added MoE FP32 residual combine wrappers:
+  `weighted_sum_shared_gate_combine_residual_out_f32_f32w` and
+  `weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w`.
+- Attempted to replay the old cycle-12 target probe with the FP32 residual
+  slice:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 \
+  --candidate-token 26126 --raw-hidden-row 1 --raw-pre-output-norm-row 1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32residual.json
+```
+
+  Result: replay fails before cycle 12:
+  `ProbeError: cycle 2 target replay mismatch: sampled [40798, 1590, 1103],
+  trace [40798, 25, 1103]`. This proves the precision slice is semantically
+  active before the old pair-12 mismatch.
+- Captured cycle 2 exact and FP32-residual probes. Exact current samples
+  `[40798, 25, 1103]` and accepts 2; FP32 residual samples
+  `[40798, 1590, 1103]` and accepts 1. Row 1 flips from exact token `25`
+  rank 1 / logit **29.51889** and `1590` rank 2 / **29.42545** to
+  FP32-residual token `1590` rank 1 / **29.54754** and `25` rank 2 /
+  **29.50755**.
+- Exact-vs-FP32-residual row-1 movement: `pre_output_norm_hidden_values`
+  **0.007928 MAE / 0.010479 RMSE / 0.15625 max_abs / 0.999438 cosine**;
+  `hidden_seed_values` **0.067571 MAE / 0.085276 RMSE / 0.36144 max_abs /
+  0.999430 cosine**.
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json`,
+  updated `docs/MTP-LLAMACPP-PARITY.md`, and added a `docs/REFACTOR.md` entry
+  for removing/superseding the env flag once a fuller F32 verifier graph exists.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/kernels/hip_gfx1100/fused/gguf_ops.py hipengine/kernels/hip_gfx1100/fused/paro_combine.py hipengine/kernels/hip_gfx1100/fused/__init__.py tests/test_gguf_ops.py tests/test_paro_combine_plan.py`
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json`
+  - `git diff --check`
+  - `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_ops.py tests/test_paro_combine_plan.py -q` => **9 passed**
+  - `python3 -m pytest tests/test_qwen35_decode_state.py -q` => **65 passed**
+  - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q` => **21 passed**
+  - `rocprofv3 --kernel-trace` smoke for `gguf_ops` helpers confirmed
+    `gguf_rmsnorm_f32_f32_weight_kernel`,
+    `gguf_rmsnorm_f32_f32_weight_out_f32_kernel`,
+    `gguf_add_rmsnorm_f32_bf16_f32_weight_kernel`, and
+    `gguf_f32_bf16_add_out_f32_kernel` in
+    `/tmp/hipengine-rocprof-gguf-f32-residual-1782965443/gguf_f32_residual_kernel_trace.csv`.
+  - `rocprofv3 --kernel-trace` smoke for `paro_combine` helpers confirmed
+    `weighted_sum_shared_gate_combine_residual_out_f32_kernel` and
+    `weighted_sum_shared_gate_combine_residual_batch_out_f32_kernel` in
+    `/tmp/hipengine-rocprof-f32-residual-1782965409/f32_residual_kernel_trace.csv`.
+  - `python3 scripts/check_lineage.py --kind kernel --diff stat` could not run
+    because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent in this
+    environment; no lineage configuration was changed.

@@ -44,11 +44,15 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, build_cast, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
+    gguf_add_rmsnorm_f32_bf16_f32_weight,
     gguf_bf16_add,
+    gguf_f32_bf16_add_out_f32,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight_out_f32,
+    gguf_rmsnorm_f32_f32_weight,
+    gguf_rmsnorm_f32_f32_weight_out_f32,
     register_paro_combine_kernels,
     register_paro_silu_kernels,
     shared_gate_combine_residual_batch_out_bf16,
@@ -57,7 +61,9 @@ from hipengine.kernels.hip_gfx1100.fused import (
     weighted_lanes_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
@@ -1599,6 +1605,8 @@ class Qwen35GGUFFullStackRunner:
         *,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        hidden_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_full_attn",
@@ -1838,6 +1846,8 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             expert_sidecar=expert_sidecar,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
             stage_timings=stage_timings,
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
@@ -2015,6 +2025,8 @@ class Qwen35GGUFFullStackRunner:
         decode_scratch,
         start_position: int = 0,
         linear_state_rows: tuple[object, object] | None = None,
+        hidden_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
         stream: int = 0,
     ) -> None:
         """Run row-serial attention followed by the row-bulk GGUF FFN/MoE path.
@@ -2070,7 +2082,17 @@ class Qwen35GGUFFullStackRunner:
                 )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, rows=rows, stream=stream)
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+        )
 
     def _run_linear_attention_prefill_layer_rows(
         self,
@@ -2085,6 +2107,8 @@ class Qwen35GGUFFullStackRunner:
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         linear_state_rows: tuple[object, object] | None = None,
         commit_final_linear_state: bool = True,
+        hidden_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_linear_attn",
@@ -2343,6 +2367,8 @@ class Qwen35GGUFFullStackRunner:
                 rows=rows,
                 stream=stream,
                 expert_sidecar=expert_sidecar,
+                hidden_f32_ptr=hidden_f32_ptr,
+                out_f32_ptr=out_f32_ptr,
                 stage_timings=stage_timings,
                 sync_stage_timings=sync_stage_timings,
                 stage_prefix=f"{stage_prefix}_ffn",
@@ -2434,6 +2460,8 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             expert_sidecar=expert_sidecar,
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
             stage_timings=stage_timings,
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
@@ -2692,6 +2720,8 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        hidden_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn",
@@ -2701,18 +2731,35 @@ class Qwen35GGUFFullStackRunner:
         runtime = self.runtime or get_hip_runtime()
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
-        gguf_add_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            attn_out_ptr,
-            layer.weight("post_attention_norm").allocation().tensor.ptr,
-            scratch.post_norm.ptr,
-            scratch.residual.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            eps=self.weights.config.rms_norm_eps,
-            stream=stream,
-            runtime=runtime,
-        )
+        f32_residual = hidden_f32_ptr is not None or out_f32_ptr is not None
+        if f32_residual:
+            if hidden_f32_ptr is None or out_f32_ptr is None:
+                raise ValueError("hidden_f32_ptr and out_f32_ptr must be provided together")
+            gguf_add_rmsnorm_f32_bf16_f32_weight(
+                int(hidden_f32_ptr),
+                attn_out_ptr,
+                layer.weight("post_attention_norm").allocation().tensor.ptr,
+                scratch.post_norm.ptr,
+                int(out_f32_ptr),
+                rows=rows,
+                hidden_size=self.hidden_size,
+                eps=self.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            gguf_add_rmsnorm_bf16_f32_weight(
+                hidden_ptr,
+                attn_out_ptr,
+                layer.weight("post_attention_norm").allocation().tensor.ptr,
+                scratch.post_norm.ptr,
+                scratch.residual.ptr,
+                rows=rows,
+                hidden_size=self.hidden_size,
+                eps=self.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -2722,7 +2769,14 @@ class Qwen35GGUFFullStackRunner:
         )
         if self.weights.config.is_moe:
             if rows == 1:
-                self._run_post_attention_moe_c1(layer_id, out_ptr, scratch, stream=stream)
+                self._run_post_attention_moe_c1(
+                    layer_id,
+                    out_ptr,
+                    scratch,
+                    stream=stream,
+                    residual_f32_ptr=out_f32_ptr if f32_residual else None,
+                    out_f32_ptr=out_f32_ptr if f32_residual else None,
+                )
             else:
                 self._run_post_attention_moe_rows(
                     layer_id,
@@ -2731,6 +2785,8 @@ class Qwen35GGUFFullStackRunner:
                     rows=rows,
                     stream=stream,
                     expert_sidecar=expert_sidecar,
+                    residual_f32_ptr=out_f32_ptr if f32_residual else None,
+                    out_f32_ptr=out_f32_ptr if f32_residual else None,
                     stage_timings=stage_timings,
                     sync_stage_timings=sync_stage_timings,
                     stage_prefix=f"{stage_prefix}_moe",
@@ -2801,14 +2857,33 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        gguf_bf16_add(
-            scratch.residual.ptr,
-            scratch.ffn_down.ptr,
-            out_ptr,
-            rows * self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        if f32_residual:
+            count = rows * self.hidden_size
+            gguf_f32_bf16_add_out_f32(
+                int(out_f32_ptr),
+                scratch.ffn_down.ptr,
+                int(out_f32_ptr),
+                count,
+                stream=stream,
+                runtime=runtime,
+            )
+            f32_to_bf16(
+                int(out_f32_ptr),
+                out_ptr,
+                count,
+                stream=stream,
+                library=self._cast_library(),
+                runtime=runtime,
+            )
+        else:
+            gguf_bf16_add(
+                scratch.residual.ptr,
+                scratch.ffn_down.ptr,
+                out_ptr,
+                rows * self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
         _mark_sync_stage(
             runtime,
             stage_timings,
@@ -2817,7 +2892,16 @@ class Qwen35GGUFFullStackRunner:
             t_stage,
         )
 
-    def _run_post_attention_moe_c1(self, layer_id: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
+    def _run_post_attention_moe_c1(
+        self,
+        layer_id: int,
+        out_ptr: int,
+        scratch,
+        *,
+        stream: int = 0,
+        residual_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
+    ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
         if not cfg.is_moe:
@@ -2870,8 +2954,13 @@ class Qwen35GGUFFullStackRunner:
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
         down_weight = layer.weight("ffn_down_exps")
+        f32_residual = residual_f32_ptr is not None or out_f32_ptr is not None
+        if f32_residual and (residual_f32_ptr is None or out_f32_ptr is None):
+            raise ValueError("residual_f32_ptr and out_f32_ptr must be provided together")
+
         if (
-            _env_flag(_GGUF_COMPACT_MOE_C1_ENV, False)
+            not f32_residual
+            and _env_flag(_GGUF_COMPACT_MOE_C1_ENV, False)
             and _try_run_post_attention_moe_c1_compact_gemv(
                 self,
                 layer,
@@ -2982,18 +3071,40 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
-            scratch.moe_down_out.ptr,
-            scratch.moe_routing_weights.ptr,
-            scratch.moe_shared_out.ptr,
-            scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-            scratch.residual.ptr,
-            out_ptr,
-            top_k,
-            self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        if f32_residual:
+            weighted_sum_shared_gate_combine_residual_out_f32_f32w(
+                scratch.moe_down_out.ptr,
+                scratch.moe_routing_weights.ptr,
+                scratch.moe_shared_out.ptr,
+                scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                int(residual_f32_ptr),
+                int(out_f32_ptr),
+                top_k,
+                self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            f32_to_bf16(
+                int(out_f32_ptr),
+                out_ptr,
+                self.hidden_size,
+                stream=stream,
+                library=self._cast_library(),
+                runtime=runtime,
+            )
+        else:
+            weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
+                scratch.moe_down_out.ptr,
+                scratch.moe_routing_weights.ptr,
+                scratch.moe_shared_out.ptr,
+                scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                scratch.residual.ptr,
+                out_ptr,
+                top_k,
+                self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
 
     def _run_post_attention_moe_c1_unfused_selected_ffn(
         self,
@@ -3121,6 +3232,8 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        residual_f32_ptr: int | None = None,
+        out_f32_ptr: int | None = None,
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn_moe",
@@ -3141,6 +3254,9 @@ class Qwen35GGUFFullStackRunner:
         if top_k <= 0:
             raise ValueError("qwen35moe GGUF expert_used_count must be positive")
         selected_rows = rows * top_k
+        f32_residual = residual_f32_ptr is not None or out_f32_ptr is not None
+        if f32_residual and (residual_f32_ptr is None or out_f32_ptr is None):
+            raise ValueError("residual_f32_ptr and out_f32_ptr must be provided together")
 
         _launch_qwen35_router_logits_bf16_hidden(
             scratch.post_norm.ptr,
@@ -3184,7 +3300,7 @@ class Qwen35GGUFFullStackRunner:
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
         down_weight = layer.weight("ffn_down_exps")
-        if _try_run_post_attention_moe_rows_compact_wmma(
+        if (not f32_residual) and _try_run_post_attention_moe_rows_compact_wmma(
             self,
             layer,
             gate_weight,
@@ -3206,19 +3322,23 @@ class Qwen35GGUFFullStackRunner:
                 t_stage,
             )
             return
-        if _gguf_row_compact_gemv_enabled() and _try_run_post_attention_moe_rows_compact_gemv(
-            self,
-            layer,
-            gate_weight,
-            up_weight,
-            down_weight,
-            out_ptr,
-            scratch,
-            rows=rows,
-            selected_rows=selected_rows,
-            top_k=top_k,
-            stream=stream,
-            runtime=runtime,
+        if (
+            (not f32_residual)
+            and _gguf_row_compact_gemv_enabled()
+            and _try_run_post_attention_moe_rows_compact_gemv(
+                self,
+                layer,
+                gate_weight,
+                up_weight,
+                down_weight,
+                out_ptr,
+                scratch,
+                rows=rows,
+                selected_rows=selected_rows,
+                top_k=top_k,
+                stream=stream,
+                runtime=runtime,
+            )
         ):
             _mark_sync_stage(
                 runtime,
@@ -3533,20 +3653,44 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_shared_down",
             t_stage,
         )
-        weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
-            scratch.moe_down_out.ptr,
-            scratch.moe_routing_weights.ptr,
-            scratch.moe_shared_out.ptr,
-            scratch.moe_shared_gate_logits.ptr,
-            scratch.residual.ptr,
-            out_ptr,
-            rows,
-            top_k,
-            self.hidden_size,
-            1,
-            stream=stream,
-            runtime=runtime,
-        )
+        if f32_residual:
+            weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w(
+                scratch.moe_down_out.ptr,
+                scratch.moe_routing_weights.ptr,
+                scratch.moe_shared_out.ptr,
+                scratch.moe_shared_gate_logits.ptr,
+                int(residual_f32_ptr),
+                int(out_f32_ptr),
+                rows,
+                top_k,
+                self.hidden_size,
+                1,
+                stream=stream,
+                runtime=runtime,
+            )
+            f32_to_bf16(
+                int(out_f32_ptr),
+                out_ptr,
+                rows * self.hidden_size,
+                stream=stream,
+                library=self._cast_library(),
+                runtime=runtime,
+            )
+        else:
+            weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
+                scratch.moe_down_out.ptr,
+                scratch.moe_routing_weights.ptr,
+                scratch.moe_shared_out.ptr,
+                scratch.moe_shared_gate_logits.ptr,
+                scratch.residual.ptr,
+                out_ptr,
+                rows,
+                top_k,
+                self.hidden_size,
+                1,
+                stream=stream,
+                runtime=runtime,
+            )
         _mark_sync_stage(
             runtime,
             stage_timings,
@@ -3584,6 +3728,7 @@ _GGUF_DENSE_Q8_DP4A_F32_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
+_GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
@@ -3675,6 +3820,10 @@ def _gguf_verify_row_lm_head_enabled() -> bool:
 
 def _gguf_verify_lm_head_q6_top1_dp4a_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV, False)
+
+
+def _gguf_verify_f32_residual_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_RESIDUAL_ENV, False)
 
 
 def _gguf_moe_graph_enabled() -> bool:
@@ -4070,6 +4219,8 @@ class Qwen35GGUFResidentSession:
     _verify_lm_out_values: object | None = field(default=None, init=False)
     _verify_lm_q8_1: object | None = field(default=None, init=False)
     _verify_lm_rows_capacity: int = field(default=0, init=False)
+    _verify_hidden_f32_a: object | None = field(default=None, init=False)
+    _verify_hidden_f32_b: object | None = field(default=None, init=False)
     _verify_linear_conv_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_recurrent_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_state_rows_capacity: int = field(default=0, init=False)
@@ -4819,6 +4970,9 @@ class Qwen35GGUFResidentSession:
             self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
         if self._verify_hidden_seed_buf is None:
             raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
+        use_f32_residual = _gguf_verify_f32_residual_enabled()
+        if use_f32_residual and (self._verify_hidden_f32_a is None or self._verify_hidden_f32_b is None):
+            raise RuntimeError("GGUF verifier F32 residual buffers are closed")
         hidden_seed_buf = self._verify_hidden_seed_buf
         token_ids_buf = self._verify_token_ids_i64
         token_counter_buf = self._verify_token_counter_i64
@@ -4840,6 +4994,15 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 runtime=runtime,
             )
+            if use_f32_residual:
+                bf16_to_f32(
+                    self._prefill_hidden_a.ptr + start * row_nbytes,
+                    self._verify_hidden_f32_a.ptr,
+                    rows * self.runner.hidden_size,
+                    stream=stream,
+                    library=self.runner._cast_library(),
+                    runtime=runtime,
+                )
             if sync_stages:
                 runtime.device_synchronize()
             add_verify_stage(
@@ -4848,6 +5011,8 @@ class Qwen35GGUFResidentSession:
             )
             src = self._prefill_hidden_a
             dst = self._prefill_hidden_b
+            src_f32 = self._verify_hidden_f32_a if use_f32_residual else None
+            dst_f32 = self._verify_hidden_f32_b if use_f32_residual else None
             block_wmma_prefill = gguf_wmma_prefill_enabled(
                 self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
             )
@@ -4874,6 +5039,8 @@ class Qwen35GGUFResidentSession:
                         )
                         src_chunk_ptr = src.ptr + start * row_nbytes
                         dst_chunk_ptr = dst.ptr + start * row_nbytes
+                        src_f32_chunk_ptr = None if src_f32 is None else int(src_f32.ptr)
+                        dst_f32_chunk_ptr = None if dst_f32 is None else int(dst_f32.ptr)
                         if bulk_attention_mode == "native":
                             self.runner._run_native_attention_bulk_ffn_layer_rows(
                                 layer_id,
@@ -4890,6 +5057,8 @@ class Qwen35GGUFResidentSession:
                                     if capture_linear_state_rows
                                     else None
                                 ),
+                                hidden_f32_ptr=src_f32_chunk_ptr,
+                                out_f32_ptr=dst_f32_chunk_ptr,
                             )
                         elif layer_type == LINEAR_ATTENTION:
                             self.runner._run_linear_attention_prefill_layer_rows(
@@ -4907,6 +5076,8 @@ class Qwen35GGUFResidentSession:
                                     else None
                                 ),
                                 commit_final_linear_state=not bool(defer_linear_state_commit),
+                                hidden_f32_ptr=src_f32_chunk_ptr,
+                                out_f32_ptr=dst_f32_chunk_ptr,
                                 stage_timings=stage_timings,
                                 sync_stage_timings=sync_stage_timings,
                                 stage_prefix="target_block_linear_attn",
@@ -4925,8 +5096,15 @@ class Qwen35GGUFResidentSession:
                                     stage_timings=stage_timings,
                                     sync_stage_timings=sync_stage_timings,
                                     stage_prefix="target_block_full_attn",
+                                    hidden_f32_ptr=src_f32_chunk_ptr,
+                                    out_f32_ptr=dst_f32_chunk_ptr,
                                 )
                             else:
+                                if use_f32_residual:
+                                    raise RuntimeError(
+                                        "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL currently supports "
+                                        "the full-attention decode-batch verifier path only (context < 1024)"
+                                    )
                                 self.runner._run_full_attention_prefill_layer_aotriton(
                                     layer_id,
                                     src_chunk_ptr,
@@ -4950,13 +5128,22 @@ class Qwen35GGUFResidentSession:
                                 add_verify_stage("target_block_other_layers", layer_ms)
                             add_verify_stage("target_block_layer_total", layer_ms)
                     src, dst = dst, src
+                    if use_f32_residual:
+                        src_f32, dst_f32 = dst_f32, src_f32
                     if layer_id in capture_layer_ids:
-                        layer_output_hidden_host[int(layer_id)] = _copy_bf16_rows_to_host_f32(
-                            src.ptr + start * row_nbytes,
-                            rows,
-                            self.runner.hidden_size,
-                            runtime=runtime,
-                        )
+                        if use_f32_residual:
+                            layer_output_hidden_host[int(layer_id)] = _copy_f32_ptr_to_host(
+                                int(src_f32.ptr),
+                                rows * self.runner.hidden_size,
+                                runtime=runtime,
+                            ).reshape(rows, self.runner.hidden_size)
+                        else:
+                            layer_output_hidden_host[int(layer_id)] = _copy_bf16_rows_to_host_f32(
+                                src.ptr + start * row_nbytes,
+                                rows,
+                                self.runner.hidden_size,
+                                runtime=runtime,
+                            )
                 t_output0 = time.perf_counter() if stage_timings is not None else 0.0
                 final_scratch = self._bulk_prefill_scratch.for_chunk(
                     start,
@@ -4967,32 +5154,61 @@ class Qwen35GGUFResidentSession:
                 )
                 output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
                 if capture_pre_output_norm_hidden:
-                    pre_output_norm_hidden_host = _copy_bf16_rows_to_host_f32(
-                        src.ptr + start * row_nbytes,
-                        rows,
-                        self.runner.hidden_size,
+                    if use_f32_residual:
+                        pre_output_norm_hidden_host = _copy_f32_ptr_to_host(
+                            int(src_f32.ptr),
+                            rows * self.runner.hidden_size,
+                            runtime=runtime,
+                        ).reshape(rows, self.runner.hidden_size)
+                    else:
+                        pre_output_norm_hidden_host = _copy_bf16_rows_to_host_f32(
+                            src.ptr + start * row_nbytes,
+                            rows,
+                            self.runner.hidden_size,
+                            runtime=runtime,
+                        )
+                if use_f32_residual:
+                    gguf_rmsnorm_f32_f32_weight(
+                        int(src_f32.ptr),
+                        output_norm_weight_ptr,
+                        final_scratch.norm.ptr,
+                        rows=rows,
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
                         runtime=runtime,
                     )
-                gguf_rmsnorm_bf16_f32_weight(
-                    src.ptr + start * row_nbytes,
-                    output_norm_weight_ptr,
-                    final_scratch.norm.ptr,
-                    rows=rows,
-                    hidden_size=self.runner.hidden_size,
-                    eps=self.runner.weights.config.rms_norm_eps,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                gguf_rmsnorm_bf16_f32_weight_out_f32(
-                    src.ptr + start * row_nbytes,
-                    output_norm_weight_ptr,
-                    hidden_seed_buf.ptr,
-                    rows=rows,
-                    hidden_size=self.runner.hidden_size,
-                    eps=self.runner.weights.config.rms_norm_eps,
-                    stream=stream,
-                    runtime=runtime,
-                )
+                    gguf_rmsnorm_f32_f32_weight_out_f32(
+                        int(src_f32.ptr),
+                        output_norm_weight_ptr,
+                        hidden_seed_buf.ptr,
+                        rows=rows,
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                else:
+                    gguf_rmsnorm_bf16_f32_weight(
+                        src.ptr + start * row_nbytes,
+                        output_norm_weight_ptr,
+                        final_scratch.norm.ptr,
+                        rows=rows,
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                    gguf_rmsnorm_bf16_f32_weight_out_f32(
+                        src.ptr + start * row_nbytes,
+                        output_norm_weight_ptr,
+                        hidden_seed_buf.ptr,
+                        rows=rows,
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
                 runtime.memcpy_async(
                     self.scratch.hidden_seed_fp32.ptr,
                     hidden_seed_buf.ptr + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
@@ -5821,12 +6037,22 @@ class Qwen35GGUFResidentSession:
             self._verify_token_counter_i64,
             self._verify_token_ids_i64,
             self._verify_hidden_seed_buf,
+            self._verify_hidden_f32_a,
+            self._verify_hidden_f32_b,
         ):
             if buffer is not None:
                 free(buffer, runtime=runtime)
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
         self._verify_hidden_seed_buf = malloc(
+            rows * self.runner.hidden_size * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        self._verify_hidden_f32_a = malloc(
+            rows * self.runner.hidden_size * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        self._verify_hidden_f32_b = malloc(
             rows * self.runner.hidden_size * DType.FP32.itemsize,
             runtime=runtime,
         )
@@ -6385,10 +6611,14 @@ class Qwen35GGUFResidentSession:
             self._verify_token_counter_i64,
             self._verify_token_ids_i64,
             self._verify_hidden_seed_buf,
+            self._verify_hidden_f32_a,
+            self._verify_hidden_f32_b,
         ):
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._verify_hidden_seed_buf = None
+        self._verify_hidden_f32_a = None
+        self._verify_hidden_f32_b = None
         self._verify_token_ids_i64 = None
         self._verify_token_counter_i64 = None
         self._verify_block_rows_capacity = 0

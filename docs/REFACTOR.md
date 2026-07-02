@@ -194,6 +194,24 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` (default OFF, semantic diagnostic)
+- Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
+  FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
+  existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers,
+  but intentionally does not claim full llama.cpp graph parity: attention-side
+  RMSNorm inputs and selected/shared expert projection inputs still consume the
+  BF16 mirror.
+- Purpose: test the current semantic hypothesis that accumulated BF16 verifier
+  layer-boundary drift is enough to flip near-tie target decisions versus
+  llama.cpp's F32 target `l_out` graph tensors. The diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json`
+  confirms the lever is active: the old cycle-12 trace cannot replay unchanged
+  because cycle 2 flips from exact `[40798, 25, 1103]` / accepted 2 to
+  FP32-residual `[40798, 1590, 1103]` / accepted 1.
+- Remove when: either a fuller F32 verifier graph path supersedes this partial
+  residual-boundary slice, or parity work decides llama.cpp's F32 graph
+  semantics are not the target. Do not promote this flag as a speed path.
+
 ## `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` (diagnostic rollback)
 - Added 2026-07-01. Host-side launch switch for the selected T16 q8_1/dp4a
   verifier kernels used by `--verify-dp4a` / `llama-compat-device-chain-dp4a`.

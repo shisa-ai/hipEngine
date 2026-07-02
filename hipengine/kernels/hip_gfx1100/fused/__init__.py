@@ -3,7 +3,9 @@
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     build_gguf_ops,
     gguf_add_rmsnorm_bf16_f32_weight,
+    gguf_add_rmsnorm_f32_bf16_f32_weight,
     gguf_bf16_add,
+    gguf_f32_bf16_add_out_f32,
     gguf_gate_mul_bf16,
     gguf_gate_repeat_value_bf16,
     gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight,
@@ -11,6 +13,8 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight_out_f32,
+    gguf_rmsnorm_f32_f32_weight,
+    gguf_rmsnorm_f32_f32_weight_out_f32,
     plan_gguf_ops_build,
     register_gguf_ops,
 )
@@ -29,8 +33,10 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_out_bf16_f32w,
     weighted_sum_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_out_f32_f32w,
     weighted_sum_shared_gate_combine_residual_out_fp16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
@@ -52,7 +58,9 @@ __all__ = [
     "build_paro_combine",
     "build_paro_silu",
     "gguf_add_rmsnorm_bf16_f32_weight",
+    "gguf_add_rmsnorm_f32_bf16_f32_weight",
     "gguf_bf16_add",
+    "gguf_f32_bf16_add_out_f32",
     "gguf_gate_mul_bf16",
     "gguf_gate_repeat_value_bf16",
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
@@ -60,6 +68,8 @@ __all__ = [
     "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
     "gguf_rmsnorm_bf16_f32_weight",
     "gguf_rmsnorm_bf16_f32_weight_out_f32",
+    "gguf_rmsnorm_f32_f32_weight",
+    "gguf_rmsnorm_f32_f32_weight_out_f32",
     "plan_gguf_ops_build",
     "plan_paro_combine_build",
     "plan_paro_silu_build",
@@ -85,7 +95,9 @@ __all__ = [
     "weighted_sum_out_bf16_f32w",
     "weighted_sum_out_fp16_f32w",
     "weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w",
+    "weighted_sum_shared_gate_combine_residual_batch_out_f32_f32w",
     "weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w",
     "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
+    "weighted_sum_shared_gate_combine_residual_out_f32_f32w",
     "weighted_sum_shared_gate_combine_residual_out_fp16_f32w",
 ]

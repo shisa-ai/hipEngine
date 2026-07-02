@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_f32_residual_diagnostic",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T04:05:34+00:00",
+  "repo": {
+    "root": "/home/lhl/hipEngine",
+    "commit": "05aad0904b091707d778c349c339b92d0e3c25ac",
+    "branch": "mtp-gguf",
+    "dirty": true
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon Pro W7900 / gfx1151 host setting",
+  "diagnostic_mode": {
+    "env": {
+      "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "PYTHONPATH": "."
+    },
+    "description": "Verifier-only FP32 residual-boundary slice. Token embeddings are converted to FP32 once at target-block entry, target layer residual outputs are accumulated in FP32, BF16 mirrors are preserved for existing projection inputs, and final output_norm can consume the FP32 residual stream.",
+    "limitations": [
+      "Not full llama.cpp F32 graph parity: attention-side RMSNorm inputs still use the BF16 mirror.",
+      "Selected expert and shared expert projection outputs still use the existing BF16 contraction before the FP32 residual add.",
+      "The mode disables compact MoE residual-output shortcuts that only write BF16 layer outputs.",
+      "The mode is default-off and diagnostic only."
+    ]
+  },
+  "source_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+  "source_raw_files": {
+    "f32_residual_cycle2": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle2-f32residual.json",
+    "exact_cycle2": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle2-exact-current.json",
+    "failed_cycle12_attempt": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32residual.json"
+  },
+  "commands": {
+    "failed_cycle12_f32_residual": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32residual.json",
+    "cycle2_f32_residual": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 2 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle2-f32residual.json",
+    "cycle2_exact": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 2 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle2-exact-current.json"
+  },
+  "results": {
+    "cycle12_replay_attempt": {
+      "status": "failed_before_requested_cycle",
+      "failure": "ProbeError: cycle 2 target replay mismatch: sampled [40798, 1590, 1103], trace [40798, 25, 1103]",
+      "reading": "The FP32 residual slice is semantically active before the old cycle-12 mismatch, so the old hipEngine trace cannot be replayed unchanged to cycle 12 in this mode."
+    },
+    "cycle2": {
+      "exact": {
+        "sampled_tokens": [
+          40798,
+          25,
+          1103
+        ],
+        "accepted_draft_tokens": 2,
+        "row1_top_tokens": [
+          {
+            "token": 25,
+            "rank": 1,
+            "logit": 29.518890380859375
+          },
+          {
+            "token": 1590,
+            "rank": 2,
+            "logit": 29.425447463989258
+          }
+        ]
+      },
+      "f32_residual": {
+        "sampled_tokens": [
+          40798,
+          1590,
+          1103
+        ],
+        "accepted_draft_tokens": 1,
+        "row1_top_tokens": [
+          {
+            "token": 1590,
+            "rank": 1,
+            "logit": 29.547542572021484
+          },
+          {
+            "token": 25,
+            "rank": 2,
+            "logit": 29.507545471191406
+          }
+        ]
+      },
+      "exact_vs_f32_residual": {
+        "pre_output_norm_hidden_values": {
+          "mae": 0.00792846,
+          "rmse": 0.01047859,
+          "max_abs": 0.15625,
+          "cosine": 0.99943775
+        },
+        "hidden_seed_values": {
+          "mae": 0.06757131,
+          "rmse": 0.0852764,
+          "max_abs": 0.36144352,
+          "cosine": 0.99943048
+        }
+      }
+    }
+  },
+  "conclusion": "Residual-boundary precision is confirmed active because the opt-in FP32 residual slice flips a cycle-2 near-tie and changes acceptance. This partial slice is not llama.cpp parity and does not prove the cycle-12 llama decision; the next semantic port is a fuller F32 verifier graph or a same-cycle llama.cpp comparison against the new FP32-residual path."
+}
