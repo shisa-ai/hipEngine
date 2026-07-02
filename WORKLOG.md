@@ -138658,3 +138658,39 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`10 passed`), JSON validation passed,
   and diff-check passed.
+
+## 2026-07-03 - MTP row-1 handoff boundary caveat
+
+- Extended `scripts/llamacpp_mtp_compare_verifier_tensors.py` so boundary-only
+  comparisons no longer require `layer_output_hidden_values`, and so token-margin
+  extraction merges llama.cpp `top_k` plus `candidate_scores`. The raw hidden
+  lifecycle trace stores the sampled row-1 token in `top_k` while
+  `candidate_scores` may contain only explicitly traced candidates.
+- Added focused reducer coverage in
+  `tests/test_llamacpp_mtp_compare_verifier_tensors.py`.
+- Produced compact diagnostic artifacts:
+  `benchmarks/results/2026-07-03-mtp-process-h-input-vs-layer0-hiddenin-noncapture.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-process-h-input-vs-layer0-hiddenin-prefillgdn.json`.
+- Result: comparing llama.cpp `process_h_input` to hipEngine target layer-0
+  `hidden_in` gives the same large delta for both lanes (**1.80063 MAE**,
+  cosine **0.0593**), while both lanes have identical scored layer-0 input for
+  row 1. This is a label-contract caveat, not a copy target: `process_h_input`
+  is the MTP process hidden input, not the target model layer-0 embedding. Future
+  target-layer input splits must use llama.cpp `model.input_embed` for layer 0
+  or `verify_layer_output_{N-1}` for later layers.
+- The active-vs-noncapture row-1 flip is therefore not at layer-0 input. The
+  existing current-env path comparison still puts the first layer-output split
+  over **1e-3 MAE** at layer **23** and the material jump at full-attention layer
+  **35**; code review points next at the captured-state linear-attention scoring
+  contract feeding later full-attention layers, especially the prefill-GDN path
+  scoring from `recurrent_bf16` while the noncapture side-match scores from the
+  F32 recurrent output.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_compare_verifier_tensors.py tests/test_llamacpp_mtp_compare_verifier_tensors.py
+  PYTHONPATH=. pytest -q tests/test_llamacpp_mtp_compare_verifier_tensors.py
+  jq empty benchmarks/results/2026-07-03-mtp-process-h-input-vs-layer0-hiddenin-noncapture.json benchmarks/results/2026-07-03-mtp-process-h-input-vs-layer0-hiddenin-prefillgdn.json
+  ```
+  Pycompile passed, focused tests passed (`2 passed`), and both compact
+  artifacts are valid JSON.
