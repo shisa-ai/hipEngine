@@ -206,6 +206,66 @@ def _per_call(value: Any, calls: Any) -> float | None:
     return float(value) / float(calls)
 
 
+def _as_float(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _div(value: Any, denom: Any) -> float | None:
+    value_f = _as_float(value)
+    denom_f = _as_float(denom)
+    if value_f is None or denom_f is None or denom_f == 0.0:
+        return None
+    return value_f / denom_f
+
+
+def _sub(left: Any, right: Any) -> float | None:
+    left_f = _as_float(left)
+    right_f = _as_float(right)
+    if left_f is None or right_f is None:
+        return None
+    return left_f - right_f
+
+
+def _normalized_kernel_cycle(hip: dict[str, Any], llama: dict[str, Any]) -> dict[str, Any]:
+    hip_q6 = hip.get("q6_top1_stage1") or {}
+    llama_q6 = llama.get("q6_top1_kernel") or {}
+    llama_stage = llama.get("roctx_stage_context") or {}
+
+    hip_steps = hip.get("steps")
+    llama_cycles = llama_stage.get("cycles") if isinstance(llama_stage, dict) else None
+    hip_kernel = _as_float(hip.get("avg_kernel_ms_per_cycle"))
+    hip_q6_cycle = (
+        _as_float(hip_q6.get("ms_per_step"))
+        if isinstance(hip_q6, dict)
+        else None
+    )
+    if hip_q6_cycle is None and isinstance(hip_q6, dict):
+        hip_q6_cycle = _div(hip_q6.get("total_ms"), hip_steps)
+
+    llama_kernel_cycle = _div(llama.get("kernel_ms_total"), llama_cycles)
+    llama_range_cycle = _div(llama.get("range_duration_ms_total"), llama_cycles)
+    llama_q6_cycle = _div(llama_q6.get("total_ms"), llama_cycles) if isinstance(llama_q6, dict) else None
+
+    hip_non_q6 = _sub(hip_kernel, hip_q6_cycle)
+    llama_non_q6 = _sub(llama_kernel_cycle, llama_q6_cycle)
+    non_q6_delta = _sub(hip_non_q6, llama_non_q6)
+    return {
+        "hipengine_total_kernel_ms_per_cycle": hip_kernel,
+        "hipengine_q6_top1_ms_per_cycle": hip_q6_cycle,
+        "hipengine_non_q6_kernel_ms_per_cycle": hip_non_q6,
+        "llamacpp_sample_range_ms_per_cycle": llama_range_cycle,
+        "llamacpp_sample_kernel_ms_per_cycle": llama_kernel_cycle,
+        "llamacpp_q6_top1_ms_per_cycle": llama_q6_cycle,
+        "llamacpp_non_q6_sample_kernel_ms_per_cycle": llama_non_q6,
+        "non_q6_kernel_delta_hip_minus_llama_ms_per_cycle": non_q6_delta,
+        "reading": (
+            "diagnostic ROCTX proxy only; Q6 is normalized at parity, so any "
+            "profiler residual is secondary non-Q6 draft work and must move a "
+            "retained full-suite draft row before becoming a live target"
+        ),
+    }
+
+
 def build_comparison(
     *,
     hip_path: Path,
@@ -275,6 +335,7 @@ def build_comparison(
                 llama_retained_stage,
                 "cycle_wall_ms_per_output",
             ),
+            "roctx_kernel_ms_per_cycle": _normalized_kernel_cycle(hip, llama),
             "interpretation": (
                 "The dominant Q6_K top-1 draft lm-head dispatch is at per-call parity; "
                 "the remaining retained draft-drain delta should be treated as small "
@@ -328,6 +389,12 @@ def _print_summary(payload: dict[str, Any]) -> None:
         f"{_fmt_ms(cmp.get('q6_top1_ms_per_call_delta_hip_minus_llama'))} ms "
         f"({cmp.get('q6_top1_reading')})"
     )
+    kernel_cycle = cmp.get("roctx_kernel_ms_per_cycle")
+    if isinstance(kernel_cycle, dict):
+        print(
+            "ROCTX non-Q6 kernel delta hip-llama: "
+            f"{_fmt_ms(kernel_cycle.get('non_q6_kernel_delta_hip_minus_llama_ms_per_cycle'))} ms/cycle"
+        )
     delta = cmp.get("retained_full_suite_draft_initial_delta_ms_per_output")
     if delta is not None:
         print(f"retained draft_initial delta hip-llama: {delta:.3f} ms/output")

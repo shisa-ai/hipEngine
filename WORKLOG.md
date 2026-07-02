@@ -134744,3 +134744,10 @@ PYTHONPATH=. python3 scripts/mtp_draft_kernel_compare.py \
   total cycle wall **13.463 vs 14.269 ms/output** (**-0.806** in hipEngine's
   favor). Updated `docs/MTP-LLAMACPP-PARITY.md` to mark Q6 top-1 as a
   measured guardrail rather than the next live body-variant target.
+- Extended the artifact with normalized ROCTX kernel-cycle accounting. The
+  short profiler proxy has hipEngine total kernel **5.498 ms/cycle** vs
+  llama.cpp `llama_draft_sample_topk` **4.340 ms/cycle**; Q6 is equal
+  (**3.565 vs 3.561 ms/cycle**), leaving the proxy residual in non-Q6 draft
+  kernels (**1.932 vs 0.778 ms/cycle**, **+1.154 ms/cycle**). Treat that as
+  secondary leaf-ranking evidence only until it moves the retained full-suite
+  `draft_initial` row.

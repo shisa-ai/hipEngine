@@ -396,6 +396,17 @@
     "retained_full_suite_draft_initial_delta_ms_per_output": 0.06297537199347669,
     "retained_full_suite_visible_sampler_delta_ms_per_output": 0.15096226049735018,
     "retained_full_suite_cycle_delta_ms_per_output": -0.8058985799701048,
+    "roctx_kernel_ms_per_cycle": {
+      "hipengine_total_kernel_ms_per_cycle": 5.497651,
+      "hipengine_q6_top1_ms_per_cycle": 3.56524475,
+      "hipengine_non_q6_kernel_ms_per_cycle": 1.93240625,
+      "llamacpp_sample_range_ms_per_cycle": 5.105545,
+      "llamacpp_sample_kernel_ms_per_cycle": 4.339737,
+      "llamacpp_q6_top1_ms_per_cycle": 3.561304,
+      "llamacpp_non_q6_sample_kernel_ms_per_cycle": 0.7784330000000006,
+      "non_q6_kernel_delta_hip_minus_llama_ms_per_cycle": 1.1539732499999995,
+      "reading": "diagnostic ROCTX proxy only; Q6 is normalized at parity, so any profiler residual is secondary non-Q6 draft work and must move a retained full-suite draft row before becoming a live target"
+    },
     "interpretation": "The dominant Q6_K top-1 draft lm-head dispatch is at per-call parity; the remaining retained draft-drain delta should be treated as small rollup/accounting variance or a non-Q6 secondary-leaf target unless a future same-protocol rerun reopens the parent wall gap."
   }
 }
