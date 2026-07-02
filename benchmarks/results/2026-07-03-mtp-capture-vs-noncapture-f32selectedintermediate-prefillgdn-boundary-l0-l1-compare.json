@@ -1,0 +1,1294 @@
+{
+  "accepted_draft_tokens_delta": 1,
+  "boundary_comparisons": [
+    {
+      "layer": 0,
+      "row": 1,
+      "source": "scored_layer_boundary_captures",
+      "values": [
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "2788d59aaaa19c95",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "2788d59aaaa19c95",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_norm"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "e101b6e800bcff0e",
+            "cosine": 1.0000000000000002,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "e101b6e800bcff0e",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_norm_f32_scratch"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "e4726eeffbf3a8a4",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "e4726eeffbf3a8a4",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_out"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "4a1872099140c81f",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "4a1872099140c81f",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_post_norm"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "4a1872099140c81f",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "4a1872099140c81f",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_post_norm_bf16"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "4a1872099140c81f",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "4a1872099140c81f",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_post_norm_router_input"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0002425462007522583,
+              0.0012718811631202698,
+              -0.0038456618785858154,
+              -0.004361048340797424,
+              -0.00010839477181434631,
+              0.0021924376487731934,
+              -0.001981690526008606,
+              0.00427168607711792
+            ],
+            "candidate_sha256_16": "0388a8ad61b3a36b",
+            "cosine": 0.9997850593324658,
+            "max_abs_diff": 0.033170104026794434,
+            "mean_abs_diff": 0.0027880771528003834,
+            "reference_sha256_16": "d85cd037885cf89c",
+            "rmse": 0.003666873261184628,
+            "size": 16384
+          },
+          "name": "ffn_or_moe_down"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0002425462007522583,
+              0.0012718811631202698,
+              -0.0038456618785858154,
+              -0.004361048340797424,
+              -0.00010839477181434631,
+              0.0021924376487731934,
+              -0.001981690526008606,
+              0.00427168607711792
+            ],
+            "candidate_sha256_16": "0388a8ad61b3a36b",
+            "cosine": 0.9997850593324658,
+            "max_abs_diff": 0.033170104026794434,
+            "mean_abs_diff": 0.0027880771528003834,
+            "reference_sha256_16": "d85cd037885cf89c",
+            "rmse": 0.003666873261184628,
+            "size": 16384
+          },
+          "name": "ffn_or_moe_down_f32_scratch"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.001220703125,
+              0.0009765625,
+              0.000732421875,
+              0.0,
+              6.103515625e-05,
+              -0.0001220703125,
+              -0.000732421875,
+              0.0009765625
+            ],
+            "candidate_sha256_16": "3472351002611130",
+            "cosine": 0.9999034832616576,
+            "max_abs_diff": 0.005859375,
+            "mean_abs_diff": 0.001243079727288432,
+            "reference_sha256_16": "cbe9d1507b05a60d",
+            "rmse": 0.0015922962151676567,
+            "size": 2048
+          },
+          "name": "ffn_out_combined_from_components"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "dd93122db49a87a2",
+            "cosine": 0.9999999999999999,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "dd93122db49a87a2",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "hidden_in"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "8194348e8e2363c8",
+            "cosine": 1.0000000000000002,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "8194348e8e2363c8",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "layer_out"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "00c66534275894db",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "00c66534275894db",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "layer_out_bf16"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "98c3538a66cb6cca",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "98c3538a66cb6cca",
+            "rmse": 0.0,
+            "size": 8192
+          },
+          "name": "linear_qkv"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "b8b93a1901c8983d",
+            "cosine": 1.0000000000000002,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "b8b93a1901c8983d",
+            "rmse": 0.0,
+            "size": 4096
+          },
+          "name": "linear_z"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "e2ce2e2e779dece6",
+            "cosine": 0.9999999999999998,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "e2ce2e2e779dece6",
+            "rmse": 0.0,
+            "size": 256
+          },
+          "name": "moe_router_logits"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              5.073565989732742e-05,
+              0.0002660490572452545,
+              -0.0008044261485338211,
+              -0.0009122341871261597,
+              -2.2673775674775243e-05,
+              0.00045860931277275085,
+              -0.000414527952671051,
+              0.0008935481309890747
+            ],
+            "candidate_sha256_16": "df3d1a6b6fc1ebc1",
+            "cosine": 0.9998249623020675,
+            "max_abs_diff": 0.005575740709900856,
+            "mean_abs_diff": 0.00035836680531095566,
+            "reference_sha256_16": "205bf4c2400f5e63",
+            "rmse": 0.0005250121927981129,
+            "size": 16384
+          },
+          "name": "moe_selected_down_weighted"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0016049742698669434,
+              -0.003809630870819092,
+              0.0026474446058273315,
+              0.011107079684734344,
+              -0.002539500594139099,
+              0.04033660888671875,
+              -0.0275038480758667,
+              -0.002577364444732666
+            ],
+            "candidate_sha256_16": "522c95ab669c7d81",
+            "cosine": 0.9997527818934694,
+            "max_abs_diff": 0.10167336463928223,
+            "mean_abs_diff": 0.00750537527062789,
+            "reference_sha256_16": "7ff9f00dfcfa7355",
+            "rmse": 0.013299307798246857,
+            "size": 4096
+          },
+          "name": "moe_selected_swiglu"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0016049742698669434,
+              -0.003809630870819092,
+              0.0026474446058273315,
+              0.011107079684734344,
+              -0.002539500594139099,
+              0.04033660888671875,
+              -0.0275038480758667,
+              -0.002577364444732666
+            ],
+            "candidate_sha256_16": "522c95ab669c7d81",
+            "cosine": 0.9997527818934694,
+            "max_abs_diff": 0.10167336463928223,
+            "mean_abs_diff": 0.00750537527062789,
+            "reference_sha256_16": "7ff9f00dfcfa7355",
+            "rmse": 0.013299307798246857,
+            "size": 4096
+          },
+          "name": "moe_selected_swiglu_f32_scratch"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.001220703125,
+              0.0009765625,
+              0.000732421875,
+              0.0,
+              6.103515625e-05,
+              -0.0001220703125,
+              -0.000732421875,
+              0.0009765625
+            ],
+            "candidate_sha256_16": "6077d0a4b50088c0",
+            "cosine": 0.9999026620364798,
+            "max_abs_diff": 0.005859375,
+            "mean_abs_diff": 0.0012430797214619815,
+            "reference_sha256_16": "183da16d751b20d3",
+            "rmse": 0.001592296206389572,
+            "size": 2048
+          },
+          "name": "moe_selected_weighted_bf16"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0012021753937005997,
+              0.0010825395584106445,
+              0.0006073862314224243,
+              -3.9070844650268555e-05,
+              5.6974589824676514e-05,
+              -8.79485160112381e-05,
+              -0.0007385294884443283,
+              0.0011929571628570557
+            ],
+            "candidate_sha256_16": "d004ae5d3c317cfe",
+            "cosine": 0.9999049341264852,
+            "max_abs_diff": 0.006124839186668396,
+            "mean_abs_diff": 0.0012474349228739356,
+            "reference_sha256_16": "f840db0d020d38c9",
+            "rmse": 0.0015741327293129347,
+            "size": 2048
+          },
+          "name": "moe_selected_weighted_sum_f32"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "0c802934fb3fed1a",
+            "cosine": 1.0000000000000002,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "0c802934fb3fed1a",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "moe_shared_gated"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "b94e3a0d0d3586df",
+            "cosine": 0.9999999999999998,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "b94e3a0d0d3586df",
+            "rmse": 0.0,
+            "size": 512
+          },
+          "name": "moe_shared_intermediate"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "31fec09732e35c16",
+            "cosine": 1.0000000000000002,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "31fec09732e35c16",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "moe_shared_out"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "cf77ea9280bdd661",
+            "cosine": 0.9999999999999999,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "cf77ea9280bdd661",
+            "rmse": 0.0,
+            "size": 32
+          },
+          "name": "ssm_alpha"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "5c66d7601ab298f0",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "5c66d7601ab298f0",
+            "rmse": 0.0,
+            "size": 32
+          },
+          "name": "ssm_beta"
+        }
+      ]
+    },
+    {
+      "layer": 1,
+      "row": 1,
+      "source": "scored_layer_boundary_captures",
+      "values": [
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "ec2c333a7fabec45",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "ec2c333a7fabec45",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_norm"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "43633ec1405d4c93",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "43633ec1405d4c93",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "attn_norm_f32_scratch"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              -3.0517578125e-05,
+              -3.814697265625e-05,
+              -7.62939453125e-06,
+              -4.1961669921875e-05,
+              0.0,
+              4.57763671875e-05,
+              -3.0517578125e-05,
+              6.103515625e-05
+            ],
+            "candidate_sha256_16": "80e419047446c82b",
+            "cosine": 0.9999944889119293,
+            "max_abs_diff": 0.0002899169921875,
+            "mean_abs_diff": 3.0077697374508716e-05,
+            "reference_sha256_16": "130ed78c9a7535ff",
+            "rmse": 4.197731234416677e-05,
+            "size": 2048
+          },
+          "name": "attn_out"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              -0.0009765625,
+              0.0,
+              -0.0013427734375,
+              0.0,
+              0.0,
+              -0.0009765625,
+              0.001953125
+            ],
+            "candidate_sha256_16": "21d8284d5703976a",
+            "cosine": 0.9999968001874584,
+            "max_abs_diff": 0.009765625,
+            "mean_abs_diff": 0.0008741175988689065,
+            "reference_sha256_16": "09e9fea062ae5f42",
+            "rmse": 0.0015632666004866426,
+            "size": 2048
+          },
+          "name": "attn_post_norm"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              -0.0009765625,
+              0.0,
+              -0.0013427734375,
+              0.0,
+              0.0,
+              -0.0009765625,
+              0.001953125
+            ],
+            "candidate_sha256_16": "21d8284d5703976a",
+            "cosine": 0.9999968001874584,
+            "max_abs_diff": 0.009765625,
+            "mean_abs_diff": 0.0008741175988689065,
+            "reference_sha256_16": "09e9fea062ae5f42",
+            "rmse": 0.0015632666004866426,
+            "size": 2048
+          },
+          "name": "attn_post_norm_bf16"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              -0.0009765625,
+              0.0,
+              -0.0013427734375,
+              0.0,
+              0.0,
+              -0.0009765625,
+              0.001953125
+            ],
+            "candidate_sha256_16": "21d8284d5703976a",
+            "cosine": 0.9999968001874584,
+            "max_abs_diff": 0.009765625,
+            "mean_abs_diff": 0.0008741175988689065,
+            "reference_sha256_16": "09e9fea062ae5f42",
+            "rmse": 0.0015632666004866426,
+            "size": 2048
+          },
+          "name": "attn_post_norm_router_input"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0002425462007522583,
+              0.0012718811631202698,
+              -0.0038456618785858154,
+              -0.004361048340797424,
+              -0.00010839477181434631,
+              0.0021924376487731934,
+              -0.001981690526008606,
+              0.00427168607711792
+            ],
+            "candidate_sha256_16": "0388a8ad61b3a36b",
+            "cosine": 0.9997850593324658,
+            "max_abs_diff": 0.033170104026794434,
+            "mean_abs_diff": 0.0027880771528003834,
+            "reference_sha256_16": "d85cd037885cf89c",
+            "rmse": 0.003666873261184628,
+            "size": 16384
+          },
+          "name": "ffn_or_moe_down"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0002425462007522583,
+              0.0012718811631202698,
+              -0.0038456618785858154,
+              -0.004361048340797424,
+              -0.00010839477181434631,
+              0.0021924376487731934,
+              -0.001981690526008606,
+              0.00427168607711792
+            ],
+            "candidate_sha256_16": "0388a8ad61b3a36b",
+            "cosine": 0.9997850593324658,
+            "max_abs_diff": 0.033170104026794434,
+            "mean_abs_diff": 0.0027880771528003834,
+            "reference_sha256_16": "d85cd037885cf89c",
+            "rmse": 0.003666873261184628,
+            "size": 16384
+          },
+          "name": "ffn_or_moe_down_f32_scratch"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0008692857809364796,
+              0.0014648810029029846,
+              0.0007268674671649933,
+              -0.00010725576430559158,
+              -0.0001294836401939392,
+              0.00024783238768577576,
+              -0.0006251093000173569,
+              0.0019498765468597412
+            ],
+            "candidate_sha256_16": "e4a73ee3fdee78fc",
+            "cosine": 0.9999002683769427,
+            "max_abs_diff": 0.007814943790435791,
+            "mean_abs_diff": 0.0014482335863306162,
+            "reference_sha256_16": "1438e3d3161665a7",
+            "rmse": 0.001870612228463944,
+            "size": 2048
+          },
+          "name": "ffn_out_combined_from_components"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "8194348e8e2363c8",
+            "cosine": 1.0000000000000002,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "8194348e8e2363c8",
+            "rmse": 0.0,
+            "size": 2048
+          },
+          "name": "hidden_in"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              -6.317161023616791e-05,
+              -1.9319355487823486e-05,
+              0.00010547041893005371,
+              5.2199698984622955e-05,
+              -2.187676727771759e-05,
+              3.945641219615936e-05,
+              -7.884018123149872e-05,
+              5.2569201216101646e-05
+            ],
+            "candidate_sha256_16": "04825ad901ee0629",
+            "cosine": 0.9999972016503286,
+            "max_abs_diff": 0.0003445334732532501,
+            "mean_abs_diff": 6.734488934778682e-05,
+            "reference_sha256_16": "305246958cda2237",
+            "rmse": 8.608957294650745e-05,
+            "size": 2048
+          },
+          "name": "layer_out"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              -6.103515625e-05,
+              0.0,
+              0.000244140625,
+              6.103515625e-05,
+              0.0,
+              0.0001220703125,
+              -6.103515625e-05,
+              5.340576171875e-05
+            ],
+            "candidate_sha256_16": "a39d96c66203518d",
+            "cosine": 0.9999959968026002,
+            "max_abs_diff": 0.00048828125,
+            "mean_abs_diff": 6.666113040409982e-05,
+            "reference_sha256_16": "e1d8f8b7f49abad4",
+            "rmse": 0.00010292648494835095,
+            "size": 2048
+          },
+          "name": "layer_out_bf16"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "94e84254ddfd1001",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "94e84254ddfd1001",
+            "rmse": 0.0,
+            "size": 8192
+          },
+          "name": "linear_qkv"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "1fddd1da8c2570b0",
+            "cosine": 1.0000000000000002,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "1fddd1da8c2570b0",
+            "rmse": 0.0,
+            "size": 4096
+          },
+          "name": "linear_z"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              -0.00023365020751953125,
+              -7.534027099609375e-05,
+              -0.0014867782592773438,
+              -0.0016050338745117188,
+              0.0006661415100097656,
+              0.0006036758422851562,
+              0.0010190010070800781,
+              0.0010385513305664062
+            ],
+            "candidate_sha256_16": "55a438b122a3a1a2",
+            "cosine": 0.9999999593023874,
+            "max_abs_diff": 0.0061931610107421875,
+            "mean_abs_diff": 0.0013161133974790573,
+            "reference_sha256_16": "11bb47bc072fe99f",
+            "rmse": 0.0016851276041354823,
+            "size": 256
+          },
+          "name": "moe_router_logits"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              9.385496377944946e-05,
+              0.00031878799200057983,
+              -0.001211453229188919,
+              -0.001227155327796936,
+              -3.184002707712352e-05,
+              0.0007419586181640625,
+              -0.0006841793656349182,
+              0.0015810579061508179
+            ],
+            "candidate_sha256_16": "83b7c8ff315e3232",
+            "cosine": 0.9998475422324999,
+            "max_abs_diff": 0.007910331711173058,
+            "mean_abs_diff": 0.0003739863674971089,
+            "reference_sha256_16": "74821109de7bf334",
+            "rmse": 0.0006216496647727399,
+            "size": 16384
+          },
+          "name": "moe_selected_down_weighted"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0016049742698669434,
+              -0.003809630870819092,
+              0.0026474446058273315,
+              0.011107079684734344,
+              -0.002539500594139099,
+              0.04033660888671875,
+              -0.0275038480758667,
+              -0.002577364444732666
+            ],
+            "candidate_sha256_16": "522c95ab669c7d81",
+            "cosine": 0.9997527818934694,
+            "max_abs_diff": 0.10167336463928223,
+            "mean_abs_diff": 0.00750537527062789,
+            "reference_sha256_16": "7ff9f00dfcfa7355",
+            "rmse": 0.013299307798246857,
+            "size": 4096
+          },
+          "name": "moe_selected_swiglu"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0016049742698669434,
+              -0.003809630870819092,
+              0.0026474446058273315,
+              0.011107079684734344,
+              -0.002539500594139099,
+              0.04033660888671875,
+              -0.0275038480758667,
+              -0.002577364444732666
+            ],
+            "candidate_sha256_16": "522c95ab669c7d81",
+            "cosine": 0.9997527818934694,
+            "max_abs_diff": 0.10167336463928223,
+            "mean_abs_diff": 0.00750537527062789,
+            "reference_sha256_16": "7ff9f00dfcfa7355",
+            "rmse": 0.013299307798246857,
+            "size": 4096
+          },
+          "name": "moe_selected_swiglu_f32_scratch"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0008544921875,
+              0.00146484375,
+              0.000732421875,
+              -0.0001220703125,
+              -0.0001220703125,
+              0.000244140625,
+              -0.0006103515625,
+              0.001953125
+            ],
+            "candidate_sha256_16": "7de6be8a52457847",
+            "cosine": 0.9998995943158664,
+            "max_abs_diff": 0.0078125,
+            "mean_abs_diff": 0.0014470261412498076,
+            "reference_sha256_16": "9e83761465b440db",
+            "rmse": 0.001870606141933095,
+            "size": 2048
+          },
+          "name": "moe_selected_weighted_bf16"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0008512642234563828,
+              0.001086905598640442,
+              0.0007574446499347687,
+              -0.00012103468179702759,
+              -0.00011324603110551834,
+              0.00011981651186943054,
+              -0.0006362535059452057,
+              0.0018323957920074463
+            ],
+            "candidate_sha256_16": "f6cf2690f69acac6",
+            "cosine": 0.9999028942732272,
+            "max_abs_diff": 0.007056739181280136,
+            "mean_abs_diff": 0.0014492696287504714,
+            "reference_sha256_16": "74db4fa228a0e431",
+            "rmse": 0.0018398183100100805,
+            "size": 2048
+          },
+          "name": "moe_selected_weighted_sum_f32"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              1.4793302398175001e-05,
+              3.4458935260772705e-08,
+              -5.5542332120239735e-06,
+              1.4814373571425676e-05,
+              -7.413211278617382e-06,
+              3.6926649045199156e-06,
+              -1.4757970348000526e-05,
+              -3.2352254493162036e-06
+            ],
+            "candidate_sha256_16": "5a91921c109a4117",
+            "cosine": 0.9999943173107396,
+            "max_abs_diff": 0.00011802278459072113,
+            "mean_abs_diff": 9.836356055198392e-06,
+            "reference_sha256_16": "a213d227f7fb2906",
+            "rmse": 1.4016766205226835e-05,
+            "size": 2048
+          },
+          "name": "moe_shared_gated"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.000244140625,
+              0.000244140625,
+              5.340576171875e-05,
+              -0.000244140625,
+              -0.0001220703125
+            ],
+            "candidate_sha256_16": "998910bd20261dff",
+            "cosine": 0.9999941972804701,
+            "max_abs_diff": 0.00390625,
+            "mean_abs_diff": 0.00019386016356293112,
+            "reference_sha256_16": "b43880d30c679746",
+            "rmse": 0.00038186939631618426,
+            "size": 512
+          },
+          "name": "moe_shared_intermediate"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0001220703125,
+              0.0,
+              -4.57763671875e-05,
+              0.0001220703125,
+              -6.103515625e-05,
+              3.0517578125e-05,
+              -0.0001220703125,
+              -2.6702880859375e-05
+            ],
+            "candidate_sha256_16": "7843a4967f644067",
+            "cosine": 0.9999943173039099,
+            "max_abs_diff": 0.0009765625,
+            "mean_abs_diff": 8.103079744614661e-05,
+            "reference_sha256_16": "f19a578c2a388735",
+            "rmse": 0.00011568127700222368,
+            "size": 2048
+          },
+          "name": "moe_shared_out"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "957343a2bd6af81c",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "957343a2bd6af81c",
+            "rmse": 0.0,
+            "size": 32
+          },
+          "name": "ssm_alpha"
+        },
+        {
+          "delta": {
+            "candidate_minus_reference_first8": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "candidate_sha256_16": "c1229b312454e103",
+            "cosine": 1.0,
+            "max_abs_diff": 0.0,
+            "mean_abs_diff": 0.0,
+            "reference_sha256_16": "c1229b312454e103",
+            "rmse": 0.0,
+            "size": 32
+          },
+          "name": "ssm_beta"
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "delta": {
+        "candidate_minus_reference_first8": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "candidate_sha256_16": "8194348e8e2363c8",
+        "cosine": 1.0000000000000002,
+        "max_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "reference_sha256_16": "8194348e8e2363c8",
+        "rmse": 0.0,
+        "size": 2048
+      },
+      "layer": 0,
+      "name": "layer_output_hidden_0"
+    },
+    {
+      "delta": {
+        "candidate_minus_reference_first8": [
+          -6.317161023616791e-05,
+          -1.9319355487823486e-05,
+          0.00010547041893005371,
+          5.2199698984622955e-05,
+          -2.187676727771759e-05,
+          3.945641219615936e-05,
+          -7.884018123149872e-05,
+          5.2569201216101646e-05
+        ],
+        "candidate_sha256_16": "04825ad901ee0629",
+        "cosine": 0.9999972016503286,
+        "max_abs_diff": 0.0003445334732532501,
+        "mean_abs_diff": 6.734488934778682e-05,
+        "reference_sha256_16": "305246958cda2237",
+        "rmse": 8.608957294650745e-05,
+        "size": 2048
+      },
+      "layer": 1,
+      "name": "layer_output_hidden_1"
+    }
+  ],
+  "inputs": {
+    "boundary_layers": [
+      0,
+      1
+    ],
+    "boundary_source": "scored_layer_boundary_captures",
+    "candidate": "benchmarks/results/2026-07-03-mtp-f32selectedintermediate-scored-boundary-l0-l1-capture-prefillgdn-cycle12.json",
+    "candidate_label": "capture-prefillgdn",
+    "candidate_tokens": [
+      539,
+      26126
+    ],
+    "cycle": null,
+    "ignored_boundary_values": [
+      "recurrent_out"
+    ],
+    "layers": [
+      0,
+      1
+    ],
+    "reference": "benchmarks/results/2026-07-03-mtp-f32selectedintermediate-scored-boundary-l0-l1-noncapture-cycle12.json",
+    "reference_label": "noncapture",
+    "row": 1,
+    "threshold": 0.001
+  },
+  "kind": "diagnostic",
+  "paths": {
+    "candidate": {
+      "accepted_draft_tokens": 2,
+      "capture_linear_state_rows": true,
+      "cycle": 12,
+      "label": "capture-prefillgdn",
+      "path": "benchmarks/results/2026-07-03-mtp-f32selectedintermediate-scored-boundary-l0-l1-capture-prefillgdn-cycle12.json",
+      "replay_target_block_verify_mode": "bulk",
+      "row": {
+        "input_token": 15495,
+        "position": 73,
+        "row": 1,
+        "sampled_token": 539
+      },
+      "sampled_tokens": [
+        15495,
+        539,
+        1151
+      ],
+      "target_block_verify_mode": "bulk"
+    },
+    "reference": {
+      "accepted_draft_tokens": 1,
+      "capture_linear_state_rows": false,
+      "cycle": 12,
+      "label": "noncapture",
+      "path": "benchmarks/results/2026-07-03-mtp-f32selectedintermediate-scored-boundary-l0-l1-noncapture-cycle12.json",
+      "replay_target_block_verify_mode": "bulk",
+      "row": {
+        "input_token": 15495,
+        "position": 73,
+        "row": 1,
+        "sampled_token": 26126
+      },
+      "sampled_tokens": [
+        15495,
+        26126,
+        1151
+      ],
+      "target_block_verify_mode": "bulk"
+    }
+  },
+  "performance_claim": false,
+  "sampled_token_changed": true,
+  "schema": "gguf_mtp_forced_target_path_compare.v1",
+  "status": "completed",
+  "summary": {
+    "boundary_layer_out_mean_abs_diff": [
+      {
+        "layer": 0,
+        "mean_abs_diff": 0.0
+      },
+      {
+        "layer": 1,
+        "mean_abs_diff": 6.734488934778682e-05
+      }
+    ],
+    "first_layer_mean_abs_diff_ge_threshold": null,
+    "hidden_seed_mean_abs_diff": null,
+    "largest_boundary_value_mean_abs_diff": {
+      "layer": 0,
+      "mean_abs_diff": 0.00750537527062789,
+      "name": "moe_selected_swiglu"
+    },
+    "largest_layer_mean_abs_diff": {
+      "layer": 1,
+      "mean_abs_diff": 6.734488934778682e-05
+    },
+    "pre_output_norm_mean_abs_diff": null
+  },
+  "timestamp": "2026-07-02T19:53:12.398185+00:00",
+  "token_margin": {
+    "candidate": {
+      "539_minus_26126": 0.2952556610107422,
+      "logits": {
+        "26126": 25.968475341796875,
+        "539": 26.263731002807617
+      },
+      "ranks": {
+        "26126": 2,
+        "539": 1
+      },
+      "sampled_token": 539
+    },
+    "candidate_minus_reference": 0.2982826232910156,
+    "margin_key": "539_minus_26126",
+    "reference": {
+      "539_minus_26126": -0.0030269622802734375,
+      "logits": {
+        "26126": 26.05097770690918,
+        "539": 26.047950744628906
+      },
+      "ranks": {
+        "26126": 1,
+        "539": 2
+      },
+      "sampled_token": 26126
+    },
+    "token_a": 539,
+    "token_b": 26126
+  }
+}

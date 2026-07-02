@@ -20,6 +20,26 @@ def _artifact(*, sampled_token: int, accepted: int, margin_shift: float) -> dict
             "target_block_verify_mode": "bulk",
             "sampled_tokens": [15495, sampled_token, 1151],
             "accepted_draft_tokens": accepted,
+            "scored_layer_boundary_captures": [
+                {
+                    "layer": 0,
+                    "row": 1,
+                    "values": {
+                        "hidden_in": [1.0, 2.0, 3.0],
+                        "attn_out": [4.0, 5.0, 6.0],
+                        "layer_out": [7.0, 8.0, 9.0],
+                        "moe_selected_experts": [1, 2],
+                    },
+                },
+                {
+                    "layer": 1,
+                    "row": 1,
+                    "values": {
+                        "hidden_in": [7.0, 8.0, 9.0],
+                        "layer_out": [10.0, 11.0, 12.0],
+                    },
+                },
+            ],
             "rows": [
                 {"row": 0},
                 {
@@ -74,6 +94,10 @@ def test_compare_forced_target_paths_reports_margin_and_layer_drift(tmp_path: Pa
             "539,26126",
             "--layers",
             "0,1",
+            "--boundary-layers",
+            "0,1",
+            "--ignore-boundary-values",
+            "moe_selected_experts",
             "--threshold",
             "0.001",
             "--output",
@@ -96,6 +120,18 @@ def test_compare_forced_target_paths_reports_margin_and_layer_drift(tmp_path: Pa
     assert first_layer["mean_abs_diff"] == pytest.approx(0.002, abs=1.0e-7)
     assert artifact["summary"]["hidden_seed_mean_abs_diff"] == pytest.approx(1.0 / 30.0)
     assert artifact["comparisons"][0]["delta"]["mean_abs_diff"] == pytest.approx(0.0001, abs=1.0e-7)
+    assert artifact["boundary_comparisons"][0]["layer"] == 0
+    assert artifact["boundary_comparisons"][0]["values"][0]["name"] == "attn_out"
+    assert artifact["inputs"]["ignored_boundary_values"] == ["moe_selected_experts"]
+    assert "moe_selected_experts" not in {
+        value["name"]
+        for comparison in artifact["boundary_comparisons"]
+        for value in comparison["values"]
+    }
+    assert artifact["summary"]["boundary_layer_out_mean_abs_diff"] == [
+        {"layer": 0, "mean_abs_diff": 0.0},
+        {"layer": 1, "mean_abs_diff": 0.0},
+    ]
 
 
 def test_compare_forced_target_paths_can_select_cycle_keyed_artifacts(tmp_path: Path) -> None:
