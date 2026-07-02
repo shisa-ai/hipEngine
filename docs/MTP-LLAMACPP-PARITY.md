@@ -633,13 +633,35 @@ mirror embedding path intact.
 | `attn_post_norm_0` vs `attn_post_norm` | 0.001766 | **0.001667** | Residual-space norm drift remains. |
 | `post_moe_0` / layer output | 0.0000495 | **0.0000493** | Essentially unchanged. |
 
+F32 projection-output rerun:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32proj-f32embed-f32res-attnnorm-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-f32embed-f32res-attnnorm-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-f32embed-f32res-attnnorm-moe-taps-compare.json`.
+This is diagnostic-only (`performance_claim=false`) and uses
+`HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1` to route compatible
+linear-attention `attn_qkv`/`attn_gate` projections through the raw-Q8 dp4a
+F32-output dual wrapper, while preserving BF16 mirror buffers for downstream
+consumers and captures.
+
+| layer-0 F32 projection-output diagnostic, row 2 | F32 token-embed MAE | F32 projection-output MAE | readout |
+| --- | ---: | ---: | --- |
+| pre-layer-0 target hidden vs `model.input_embed` | **0.0** | **0.0** | Input construction remains exact. |
+| `attn_norm_0` vs `attn_norm_f32_scratch` | **0.0** | **0.0** | F32 norm scratch remains exact. |
+| `z_0` vs `linear_z` | 0.002233 | **0.0000000841** | Q8 `attn_gate` projection output is now effectively closed. |
+| `beta_0` vs `ssm_beta` | 0.001754 | **0.001754** | Unchanged: `ssm_beta.weight` is dense F32, not Q8_0, so the raw-Q8 output wrapper cannot cover it. |
+| `conv_output_silu_0` vs `conv_out` | 0.0000667 | **0.00000000283** | Conv/GDN input from qkv is now effectively closed. |
+| `linear_attn_out_0` vs `attn_out` | 0.0000296 | **0.0000284** | Slightly closer, but still not a cliff. |
+| `attn_post_norm_0` vs `attn_post_norm` | 0.001667 | **0.001607** | Residual-space norm drift remains. |
+| `post_moe_0` / layer output | 0.0000493 | **0.0000493** | Essentially unchanged. |
+
 The live branch still samples hipEngine bonus `8940`, not llama.cpp bonus `668`.
-For row 2 after F32 token embedding, hipEngine ranks `8940` first at
-`25.73693`; `668` remains rank 4 at `25.24251` (**0.49442** behind). This
-closes the target-input/RMSNorm-scratch hypothesis but does not close the token
-flip. The next semantic target is the layer-0 projection/dequant path from exact
-F32 normalized input (`z_0` / `beta_0`) and the later residual/LM-head
-amplification path.
+The scored block remains `[11, 567, 8940]`. This closes the
+target-input/RMSNorm-scratch and Q8 `attn_qkv`/`attn_gate` projection-output
+hypotheses, but not the token flip. The next semantic target is a dense-F32
+projection-output path for `ssm_alpha`/`ssm_beta` (`blk.0.ssm_alpha.weight` and
+`blk.0.ssm_beta.weight` are GGML type 0 / F32, while `attn_qkv`/`attn_gate` are
+GGML type 8 / Q8_0), followed by the later residual/LM-head amplification path.
 
 Layer-0 MoE top-k selection matches exactly:
 `[57, 6, 56, 66, 127, 110, 106, 157]`. Router logits differ by

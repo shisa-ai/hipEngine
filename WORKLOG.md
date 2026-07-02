@@ -138237,3 +138237,56 @@ python3 scripts/gguf_mtp_bench.py \
   live flip remains. Next split should instrument/copy the llama.cpp F32-input
   projection/dequant path for `z_0`/`beta_0`, then continue to the residual
   norm and LM-head amplification path.
+
+## 2026-07-03 - MTP F32 linear-projection output diagnostic
+
+- Implemented default-off verifier diagnostic
+  `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1`. For row-bulk
+  linear-attention verifier layers, compatible Q8 `attn_qkv`/`attn_gate`
+  projections can now write FP32 outputs through the raw-Q8 dp4a dual F32-output
+  wrapper, then cast BF16 mirrors for existing downstream kernels. The scored
+  boundary capture now reports those FP32 buffers under the existing
+  `linear_qkv`/`linear_z` comparison keys and emits `*_bf16_mirror` keys for the
+  old mirror values. Dedicated FP32 scratch was added for `linear_z`,
+  `ssm_alpha`, and `ssm_beta`; alpha/beta currently widen the BF16 mirror unless
+  a later dense-F32 projection-output route exists.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py
+  PYTHONPATH=. pytest -q tests/test_qwen35_gguf_verify_f32_linear_projections.py tests/test_qwen35_gguf_verify_f32_alpha_beta.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py
+  ```
+  Py_compile passed and the focused suite passed (`20 passed`).
+- Ran the focused task-9 / cycle-3 / row-2 forced-target probe:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING=1 HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 0:2 \
+    --raw-layer-output-row 0:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32proj-f32embed-f32res-attnnorm-cycle3.json
+  ```
+- Reduced against the existing llama.cpp row:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-f32embed-f32res-attnnorm-linear-attn-compare.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-f32embed-f32res-attnnorm-moe-taps-compare.json`.
+  This closes the Q8 projection split: `z_0` vs `linear_z` moves
+  `0.002233 -> 0.0000000841 MAE`, and `conv_output_silu_0` vs `conv_out` moves
+  `0.0000667 -> 0.00000000283 MAE`. `linear_attn_out_0` improves slightly to
+  `0.0000284 MAE`; post-MoE/layer output stays `0.0000493 MAE`. The scored
+  block still samples `[11, 567, 8940]`, so this is a better semantic split, not
+  the token-flip fix.
+- Exact weight check: layer-0 `attn_gate.weight` and `attn_qkv.weight` are GGML
+  type 8 / Q8_0, while `ssm_alpha.weight` and `ssm_beta.weight` are GGML type 0
+  / F32. The unchanged `beta_0` delta (`0.001754 MAE`, BF16-rounded samples)
+  is therefore expected: the raw-Q8 F32-output wrapper cannot cover dense-F32
+  alpha/beta. Next split should add or reuse a dense-F32 F32-input/F32-output
+  projection path for `ssm_alpha`/`ssm_beta`, then rerun the same row.
