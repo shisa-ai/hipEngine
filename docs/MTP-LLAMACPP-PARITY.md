@@ -799,8 +799,9 @@ device sync after every leaf. It is still diagnostic-only (`performance_claim=fa
 because event recording perturbs host enqueue time, but it answers the immediate
 accounting question: the large async `draft_topk_readback` / `draft_device_chain_drain`
 bucket is queued GPU draft work, not D2H copy or Python readback. The largest
-event bucket is still the Q6 lm-head/top-1 path, followed by QKV, selected
-gate/up, selected down/combine, and the now-small attention bucket.
+event bucket is still the Q6 lm-head/top-1 path, followed by selected gate/up,
+selected down/combine, QKV/dense-Q8 projection work, and the now-small attention
+bucket.
 The cross-engine draft-kernel compare artifact
 `benchmarks/results/2026-07-02-mtp-draft-kernel-compare-draftdenseq8-draftonly.json` joins this
 hipEngine profile with the llama.cpp ROCTX range profile and the retained
@@ -826,31 +827,33 @@ Non-sync GPU-event split for the same active route:
 
 | GPU event bucket | ms/cycle | approx ms/output | reading |
 | --- | ---: | ---: | --- |
-| `draft_device_chain_drain` (host timer) | **5.258** | **1.992** | Async drain waiting for queued draft GPU work. |
-| `draft_topk_readback` (host timer) | **5.888** | **2.230** | Drain plus tiny D2H and host accounting; compare through `draft_initial`. |
-| `draft_topk_d2h` | 0.054 | 0.020 | D2H is not the draft gap. |
-| `draft_gpu_decode_initial` | **2.869** | **1.087** | Depth-0 queued draft work; includes the MTP block and lm-head/top-1. |
-| `draft_gpu_decode_next` | **2.854** | **1.081** | Depth-1 queued draft work; effectively same cost as initial. |
-| `draft_gpu_run_lm_head` | **3.710** | **1.405** | Dominant event bucket; matches the kernel trace's Q6 top-1 stage1 dominance. |
-| `draft_gpu_run_attention` | 0.243 | 0.092 | Now small after the parallel dense-attention body. |
-| `draft_gpu_run_qkv_kvwrite` | 0.486 | 0.184 | Q/gate, K/V, RoPE, and KV-write work. |
+| `draft_device_chain_drain` (host timer) | **4.864** | **1.842** | Async drain waiting for queued draft GPU work. |
+| `draft_topk_readback` (host timer) | **5.501** | **2.083** | Drain plus tiny D2H and host accounting; compare through `draft_initial`. |
+| `draft_topk_d2h` | 0.075 | 0.028 | D2H is not the draft gap. |
+| `draft_gpu_decode_initial` | **2.684** | **1.017** | Depth-0 queued draft work; includes the MTP block and lm-head/top-1. |
+| `draft_gpu_decode_next` | **2.636** | **0.998** | Depth-1 queued draft work; effectively same cost as initial. |
+| `draft_gpu_run_lm_head` | **3.716** | **1.407** | Dominant event bucket; matches the kernel trace's Q6 top-1 stage1 dominance. |
+| `draft_gpu_run_attention` | 0.157 | 0.059 | Now small after the parallel dense-attention body. |
+| `draft_gpu_run_qkv_kvwrite` | 0.249 | 0.094 | Q/gate, K/V, RoPE, and KV-write work. |
 | `draft_gpu_run_ffn_selected_gate_up` | 0.451 | 0.171 | Largest non-Q6 FFN leaf. |
-| `draft_gpu_run_moe_down_combine` | 0.384 | 0.145 | Selected down plus combine. |
-| `draft_gpu_run_project` | 0.271 | 0.103 | E/H projection path. |
-| `draft_gpu_run_ffn_up_shared` | 0.098 | 0.037 | Shared expert path is no longer a top target. |
+| `draft_gpu_run_moe_down_combine` | 0.382 | 0.145 | Selected down plus combine. |
+| `draft_gpu_run_project` | 0.201 | 0.076 | E/H projection path. |
+| `draft_gpu_run_ffn_up_shared` | 0.084 | 0.032 | Shared expert path is no longer a top target. |
 | `draft_gpu_run_ffn_router_select` | 0.075 | 0.028 | Router path is small after row-parallel logits. |
 | `draft_gpu_device_topk_gather` | 0.005 | 0.002 | Device gather is effectively gone. |
 
 | kernel-family bucket | calls/cycle | ms/cycle | approx ms/output | kernel share | next action |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` | 2.0 | **3.565** | **1.350** | **64.9%** | Largest individual draft kernel family, but the ROCTX llama.cpp comparison shows per-call parity: hipEngine **1.783 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call** (**+0.002 ms/call**). Treat this as an amortization/acceptance target before writing more Q6 body variants. |
-| `top1_stage2_gather` | 2.0 | 0.097 | 0.037 | 1.8% | Not the missing cost; prior stage2/gather work already made this small. |
-| `gguf_k_prefill_out` | 12.0 | 0.800 | 0.303 | 14.6% | Secondary draft dense/shared GEMV target after proposal/row-economy parity; Q8 shared gate/up dual reduced this from 16 single calls/cycle. |
-| `gguf_k_dual_prefill_out` | 2.0 | 0.035 | 0.013 | 0.6% | Q8 shared gate/up dual launch; it removes single-call traffic but is too small to close the draft gap alone. |
+| `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1` | 2.0 | **3.571** | **1.353** | **70.7%** | Largest individual draft kernel family, but the ROCTX llama.cpp comparison shows per-call parity: hipEngine **1.786 ms/call** vs llama.cpp Q6_K `mul_mat_vec_q` **1.781 ms/call** (**+0.005 ms/call**). Treat this as a guardrail unless a same-protocol rerun reopens the parent draft row. |
+| `top1_stage2_gather` | 2.0 | 0.097 | 0.037 | 1.9% | Not the missing cost; prior stage2/gather work already made this small. |
+| `gguf_q4_k_selected_dual_prefill_out` | 2.0 | 0.441 | 0.167 | 8.7% | Selected gate/up target, but prior X8/raw attempts regressed. |
+| `gguf_k_selected_prefill_out` | 2.0 | 0.330 | 0.125 | 6.5% | Selected down remains secondary. |
+| `q8_0_dp4a_gemv` | 6.0 | 0.179 | 0.068 | 3.5% | Draft-only dense-Q8 singleton leaves; replaces slower `gguf_k_prefill_out` calls in this route. |
+| `q8_0_dp4a_triple_split_rowtile_gemv` | 2.0 | 0.176 | 0.067 | 3.5% | Draft Q/K/V dense-Q8 triple leaf. |
+| `hipengine_mtp_rmsnorm_f32` | 14.0 | 0.067 | 0.026 | 1.3% | Prep cost; not the retained parent limiter. |
+| `hipengine_mtp_dense_attn_f32` | 2.0 | 0.036 | 0.014 | 0.7% | Closed by the parallel dense-attention body; no longer a top target. |
 | `qwen35_router_logits` | 4.0 | 0.027 | 0.010 | 0.5% | Covers both router logits and the shared-gate scalar dot after the fix; no longer a top draft target. |
-| `gguf_q4_k_selected_dual_prefill_out` | 2.0 | 0.440 | 0.167 | 8.0% | Selected gate/up target, but prior X8/raw attempts regressed. |
-| `hipengine_mtp_dense_attn_f32` | 2.0 | 0.033 | 0.013 | 0.6% | Closed by the parallel dense-attention body; no longer a top target. |
-| `gguf_k_selected_prefill_out` | 2.0 | 0.332 | 0.126 | 6.0% | Selected down remains secondary. |
+| `q8_0_dp4a_dual_split_rowtile_gemv` | 2.0 | 0.025 | 0.009 | 0.5% | Draft dense-Q8 dual leaf; small after the draft-only selector. |
 
 Fine-sync draft leaf attribution for the same active X8 route:
 `scripts/gguf_mtp_draft_rocprof.py --steps 4 --warmup 2 --q6-top1-dp4a

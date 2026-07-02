@@ -134841,3 +134841,20 @@ PYTHONPATH=. python3 scripts/mtp_draft_kernel_compare.py \
   accuracy-traded llama-compat only; do not enable all-stage dense-Q8 dp4a or
   promote to exact default without a new full-suite row proving unchanged
   acceptance/economy and exact-mode correctness.
+
+## 2026-07-02 - MTP parity doc GPU-event table correction
+
+- Re-read `docs/MTP-LLAMACPP-PARITY.md` after the retained draft-only dense-Q8
+  commit and found the detailed non-sync GPU-event table still carried the
+  pre-selector values even though the surrounding prose named
+  `benchmarks/results/2026-07-02-gguf-mtp-draft-rocprof-llama-compat-b2-draftdenseq8-draftonly-gpuevents.json`.
+- Updated only the attribution table in the parity doc to match the tracked
+  draft-only artifact: `draft_device_chain_drain` **4.864 ms/cycle**,
+  `draft_topk_readback` **5.501**, `draft_gpu_decode_initial` **2.684**,
+  `draft_gpu_decode_next` **2.636**, Q6 top-1 stage1 **3.571 ms/cycle**,
+  selected gate/up **0.441**, selected down **0.330**, and the new draft-only
+  dense-Q8 dp4a kernel rows (`q8_0_dp4a_gemv`, triple, and dual).
+- No new benchmark claim; this is a docs/provenance correction against already
+  retained artifacts. The retained full-suite conclusion remains unchanged:
+  `llama-compat` B2 is **13.325 ms/output** vs llama.cpp HIP rerun
+  **14.269 ms/output**.
