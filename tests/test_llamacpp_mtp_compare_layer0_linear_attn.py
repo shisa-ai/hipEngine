@@ -7,6 +7,7 @@ import numpy as np
 
 from scripts.llamacpp_mtp_compare_layer0_linear_attn import (
     _attn_norm_formula_assessment,
+    _stable_split_assessment,
     build_linear_attn_compare_artifact,
 )
 
@@ -204,6 +205,46 @@ def test_attn_norm_formula_assessment_can_explain_input_delta(tmp_path: Path) ->
     assert artifact["best_llamacpp_candidate"]["delta"]["exact_match"] is True
     assert artifact["best_hipengine_candidate"]["delta"]["exact_match"] is True
     json.dumps(artifact)
+
+
+def test_stable_split_assessment_uses_current_layer_in_reason() -> None:
+    artifact = {
+        "inputs": {"layer": 9},
+        "input_boundary_deltas": {
+            "hidden_in_vs_prev_layer_output": {
+                "status": "complete",
+                "mean_abs_diff": 0.0005,
+            },
+            "attn_norm_input": {
+                "status": "complete",
+                "mean_abs_diff": 0.014,
+            },
+        },
+        "attn_norm_formula_assessment": {
+            "classification": "attn_norm_delta_explained_by_input_delta",
+        },
+        "pre_ssm_stable_deltas": {
+            "z_projection": {"status": "complete", "mean_abs_diff": 0.012},
+            "beta_projection": {"status": "complete", "mean_abs_diff": 0.012},
+            "conv_output_silu": {"status": "complete", "mean_abs_diff": 0.0007},
+        },
+        "conv_view_deltas": {
+            "q_conv": {"status": "complete", "mean_abs_diff": 0.0007},
+            "k_conv": {"status": "complete", "mean_abs_diff": 0.0007},
+            "v_conv": {"status": "complete", "mean_abs_diff": 0.0007},
+        },
+        "tensor_deltas": {
+            "linear_attn_out": {"mean_abs_diff": 0.0004},
+            "attn_post_norm": {"mean_abs_diff": 0.018},
+            "post_moe": {"mean_abs_diff": 0.00065},
+        },
+    }
+
+    assessment = _stable_split_assessment(artifact)
+
+    assert "layer-9 norm-space drift" in assessment["reason"]
+    assert "layer-8 output drift" in assessment["reason"]
+    assert "layer-14" not in assessment["reason"]
 
 
 def _hip_artifact() -> dict:
