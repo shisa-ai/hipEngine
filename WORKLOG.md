@@ -138346,3 +138346,49 @@ python3 scripts/gguf_mtp_bench.py \
   behind. Layer-0 projection/conv hypotheses are now closed; next split is the
   post-projection linear-attention output path (`linear_attn_out` /
   recurrent-GDN / `ssm_out`) and then residual/post-norm amplification.
+
+## 2026-07-03 - MTP layer-0 pre-ssm and F32 post-norm split
+
+- Updated `scripts/llamacpp_mtp_compare_layer0_linear_attn.py` so the scored
+  row reducer treats pre-`ssm_out` as first-class even when the active
+  prefill-GDN capture only has hipEngine `recurrent_bf16` (not `recurrent_out`),
+  and so it reports post-attention-norm variants:
+  `attn_post_norm`, `attn_post_norm_bf16`, `attn_post_norm_f32`, and
+  `attn_post_norm_router_input` against llama.cpp `attn_post_norm_N`.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py
+  PYTHONPATH=. pytest -q tests/test_llamacpp_mtp_compare_layer0_linear_attn.py
+  ```
+  Py_compile passed and the focused reducer suite passed (`9 passed`).
+- Regenerated the task-9 / cycle-3 / row-2 dense-F32 alpha/beta compare:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-keepf32-f32embed-f32res-attnnorm-pre-ssm-linear-attn-compare.json`.
+  Result: `recurrent_bf16` vs llama.cpp `final_output_0` is **6.23e-06 MAE**
+  and `linear_attn_out_0` remains **2.85e-05 MAE**, so recurrent-GDN and
+  `ssm_out` are now closed for the live scored row.
+- Ran a focused F32 post-attention-norm diagnostic:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING=1 HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 0:2 \
+    --raw-layer-output-row 0:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer0-f32proj-densef32ab-f32postnorm-keepf32-f32embed-f32res-attnnorm-cycle3.json
+  ```
+- Reduced against the same llama.cpp row:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer0-f32proj-densef32ab-f32postnorm-keepf32-f32embed-f32res-attnnorm-pre-ssm-linear-attn-compare.json`.
+  F32 post-norm improves the local post-norm bucket **0.001603 -> 0.001528
+  MAE** and post-MoE **4.88e-05 -> 4.60e-05 MAE**, but it still samples
+  `8940`; row 2 scores `8940=25.71944` rank 1 vs `668=25.26696` rank 4,
+  worsening the margin to **+0.45249**. Next split should stay on accumulated
+  residual/RMSNorm drift and final LM-head amplification, not layer-0
+  projection/conv/GDN/`ssm_out`/post-norm-buffer/MoE.
