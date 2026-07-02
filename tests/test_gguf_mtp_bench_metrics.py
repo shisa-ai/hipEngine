@@ -26,6 +26,7 @@ from scripts.gguf_mtp_bench import (
     sibling_topk_acceptance_from_target_samples,
     target_block_direct_commit_is_exact,
     target_block_needs_linear_state_snapshot,
+    target_block_state_replay_uses_serial_exact,
     target_membership_in_draft_topk,
     validate_draft_n_max,
 )
@@ -595,6 +596,13 @@ def test_arg_parser_exposes_target_block_verify_diagnostic() -> None:
     assert args.target_block_wmma_prefill is True
 
 
+def test_arg_parser_exposes_target_block_replay_state_commit_diagnostic() -> None:
+    args = build_arg_parser().parse_args(["--target-block-verify", "--target-block-replay-state-commit"])
+
+    assert args.target_block_verify is True
+    assert args.target_block_replay_state_commit is True
+
+
 def test_target_block_direct_commit_exactness_policy() -> None:
     assert target_block_direct_commit_is_exact("native", start_position=4096, rows=5) is True
     assert target_block_direct_commit_is_exact("serial-exact", start_position=4096, rows=5) is True
@@ -616,6 +624,29 @@ def test_target_block_snapshot_policy_skips_exact_direct_commit() -> None:
         direct_state_commit=False,
         direct_state_commit_exact_mode=True,
     ) is True
+
+
+def test_target_block_replay_state_policy_uses_serial_exact_state() -> None:
+    assert target_block_state_replay_uses_serial_exact(
+        replay_state_commit=True,
+        direct_state_commit=False,
+        verify_mode="bulk",
+    ) is True
+    assert target_block_state_replay_uses_serial_exact(
+        replay_state_commit=False,
+        direct_state_commit=True,
+        verify_mode="bulk",
+    ) is True
+    assert target_block_state_replay_uses_serial_exact(
+        replay_state_commit=False,
+        direct_state_commit=False,
+        verify_mode="serial-exact",
+    ) is True
+    assert target_block_state_replay_uses_serial_exact(
+        replay_state_commit=False,
+        direct_state_commit=False,
+        verify_mode="bulk",
+    ) is False
 
 
 def test_arg_parser_defaults_target_block_wmma_prefill_off() -> None:

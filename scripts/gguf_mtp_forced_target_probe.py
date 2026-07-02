@@ -337,6 +337,7 @@ def _probe_bulk_or_native(
     *,
     mode: str,
     use_wmma_prefill: bool,
+    capture_linear_state_rows: bool,
     capture_pre_output_norm_hidden: bool,
     capture_layer_output_hidden: list[int],
 ) -> tuple[list[int], np.ndarray, np.ndarray, np.ndarray | None, dict[int, np.ndarray] | None]:
@@ -344,6 +345,8 @@ def _probe_bulk_or_native(
         verifier_inputs,
         bulk_attention_mode=mode,
         use_wmma_prefill=bool(use_wmma_prefill),
+        capture_linear_state_rows=bool(capture_linear_state_rows),
+        defer_linear_state_commit=bool(capture_linear_state_rows),
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         capture_layer_output_hidden=capture_layer_output_hidden,
         record_stage_timings=False,
@@ -877,6 +880,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-block-verify-mode", choices=("bulk", "native", "serial-exact"), default="bulk")
     parser.add_argument("--replay-target-block-verify-mode", choices=("bulk", "native", "serial-exact"), default=None)
     parser.add_argument("--target-block-wmma-prefill", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--capture-linear-state-rows",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic: make the scored bulk/native block capture verifier Conv/GDN "
+            "linear-state rows, matching gguf_mtp_bench direct-state commit call shape."
+        ),
+    )
     parser.add_argument("--decode-repack", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True)
@@ -1084,6 +1096,7 @@ def main(argv: list[str] | None = None) -> int:
                 verifier_inputs,
                 mode=str(args.target_block_verify_mode),
                 use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                capture_linear_state_rows=bool(args.capture_linear_state_rows),
                 capture_pre_output_norm_hidden=bool(pre_output_norm_capture_rows),
                 capture_layer_output_hidden=capture_layer_output_hidden,
             )
@@ -1230,6 +1243,7 @@ def main(argv: list[str] | None = None) -> int:
             "target_block_verify_mode": str(args.target_block_verify_mode),
             "replay_target_block_verify_mode": str(args.replay_target_block_verify_mode or args.target_block_verify_mode),
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
+            "capture_linear_state_rows": bool(args.capture_linear_state_rows),
             "prior_cycle_replay": replay_rows,
             "cycle_pending_hidden_seed_summary": hidden_state_summary(
                 cycle_pending_hidden_seed,

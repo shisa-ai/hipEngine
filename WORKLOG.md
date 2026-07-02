@@ -136550,3 +136550,67 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
   - `rocminfo` => gfx1151 present
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-selectedintermediate-denseq8-diagnostic.json`
+
+## 2026-07-02 - Target block replay-state diagnostic corrected
+
+- Continued llama.cpp MTP semantic parity validation after the F32
+  selected-intermediate forced-prefix win. Added/fixed the default-off
+  diagnostic `scripts/gguf_mtp_bench.py --target-block-replay-state-commit` so
+  it actually scores strict target blocks with the selected block verifier
+  without direct linear-state capture, then restores the cycle-start snapshot and
+  replays the accepted prefix through `verify_target_block_serial_exact()` for
+  resident state. This also records `target_block_raw_tokens`,
+  `target_block_consumed_rows`, `target_block_direct_commit_exact`, and reports
+  the effective cycle-level `target_block_direct_state_commit`.
+- Added `scripts/gguf_mtp_forced_target_probe.py --capture-linear-state-rows`
+  to make forced bulk/native target probes reproduce the direct-state commit call
+  shape. The diagnostic split found the contradiction: non-capturing bulk at
+  the old pair-12 prefix samples `[15495, 26126, 1151]`, but capturing rows or
+  serial-exact/live direct-state semantics sample `[15495, 539, 1151]`.
+- Reran the 13-cycle live diagnostic on gfx1151:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 13 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --llama-compat --resident-mtp-device-chain \
+  --verify-dp4a --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --resident-mtp-draft-dense-q8-dp4a \
+  --resident-mtp-draft-dense-q8-dp4a-stages draft \
+  --record-cycle-stage-timings --target-block-replay-state-commit \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-replaystate-fixed2-c13.json
+```
+
+  Result: diagnostic-only and rejected. The transaction wiring is correct
+  (`target_verify_replay_rows=38`, `target_verify_serial_rows=38`,
+  `target_verify_direct_commit_rows=0`, cycle-level
+  `target_block_direct_state_commit=false`) but the live token stream diverges
+  early at cycle 2: raw block tokens `[40798, 1590, 1103]`, consumed rows `2`,
+  visible output `[40798, 1590]`. Speed drops to **31.14 tok/s** because every
+  accepted prefix is replayed serial-exactly. The pair-12 non-capturing bulk
+  side match is therefore prefix-local; it is not a viable llama.cpp replication
+  path.
+- Conclusion: keep chasing direct-state capture / linear-attention Conv/GDN
+  capture-path parity. The target is to make the direct-state verifier preserve
+  llama-shaped scoring without switching to the chain capture numerics, not to
+  run a permanent two-pass score-bulk/serial-replay mode.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` and `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_forced_target_probe.py`
+  - `python3 -m pytest tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_forced_target_probe.py -q` => **98 passed**
+  - `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`
+  - `rocminfo | grep -E 'Name:|gfx' | head -n 40` => gfx1151 present
