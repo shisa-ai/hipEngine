@@ -33,6 +33,7 @@ from scripts.gguf_mtp_bench import (
     hidden_state_summary,
     target_block_direct_commit_is_exact,
     target_block_direct_partial_commit_is_exact,
+    target_block_direct_partial_commit_is_llama_style,
     target_block_state_replay_uses_serial_exact,
 )
 
@@ -970,11 +971,18 @@ def _run_lifecycle_cycle(
         rows=len(verifier_inputs),
     )
     direct_partial_commit_exact = target_block_direct_partial_commit_is_exact(mode)
+    direct_partial_commit_llama_style = target_block_direct_partial_commit_is_llama_style(
+        mode,
+        direct_partial_replay_mode,
+    )
+    direct_partial_commit_supported = bool(direct_partial_commit_exact) or bool(
+        direct_partial_commit_llama_style
+    )
 
     snapshot = None
     if policy == "replay" or (
         policy == "direct"
-        and not (direct_commit_exact and direct_partial_commit_exact)
+        and not (direct_commit_exact and direct_partial_commit_supported)
     ):
         snapshot = session._linear_state_snapshot()
     try:
@@ -1007,13 +1015,13 @@ def _run_lifecycle_cycle(
                 raise ProbeError(f"{policy} lifecycle cycle {cycle_number} did not capture linear-state rows")
             if direct_commit_exact and (
                 consumed_rows == len(verifier_inputs)
-                or direct_partial_commit_exact
+                or direct_partial_commit_supported
             ):
                 session._commit_verify_linear_state_row(
                     consumed_rows - 1,
                     position=start_position + consumed_rows,
                 )
-                state_source = "direct_commit"
+                state_source = "llama_direct_commit" if direct_partial_commit_llama_style else "direct_commit"
             else:
                 if snapshot is None:
                     raise ProbeError(f"{policy} lifecycle cycle {cycle_number} missing serial replay snapshot")
@@ -1071,6 +1079,7 @@ def _run_lifecycle_cycle(
             "state_source": state_source,
             "direct_commit_exact": bool(direct_commit_exact),
             "direct_partial_commit_exact": bool(direct_partial_commit_exact),
+            "direct_partial_commit_llama_style": bool(direct_partial_commit_llama_style),
             "direct_partial_replay_mode": str(direct_partial_replay_mode),
             "replay_sampled_tokens": replay_sampled_tokens,
             "matches_trace_target_prefix": sampled_tokens[: len(trace_target_tokens)] == trace_target_tokens,
@@ -1345,12 +1354,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-block-wmma-prefill", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument(
         "--target-block-direct-partial-replay-mode",
-        choices=("serial-exact", "serial-state-only", "bulk-state-only", "native-state-only"),
+        choices=("serial-exact", "serial-state-only", "bulk-state-only", "native-state-only", "direct-commit"),
         default="serial-exact",
         help=(
             "State lifecycle diagnostic: when the direct-state candidate partially accepts or rejects a block, "
             "restore the snapshot and replay the accepted prefix through serial-exact, serial-exact with "
-            "LM-head sampling skipped, or the bulk/native advance_state_only path. Token scoring still "
+            "LM-head sampling skipped, the bulk/native advance_state_only path, or commit the captured "
+            "verifier row directly to match llama.cpp's normal MTP accept lifecycle. Token scoring still "
             "comes from the original full-block pass."
         ),
     )

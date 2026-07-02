@@ -29,6 +29,23 @@ def test_parser_exposes_direct_partial_replay_mode() -> None:
     assert args.target_block_direct_partial_replay_mode == "serial-state-only"
 
 
+def test_parser_exposes_llama_direct_partial_commit_mode() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--trace",
+            "trace.json",
+            "--cycle",
+            "12",
+            "--state-lifecycle-compare",
+            "--target-block-direct-partial-replay-mode",
+            "direct-commit",
+        ]
+    )
+
+    assert args.state_lifecycle_compare is True
+    assert args.target_block_direct_partial_replay_mode == "direct-commit"
+
+
 def test_capture_moe_component_arrays_emits_weighted_and_shared_gated_terms() -> None:
     capture = _fake_moe_capture()
 

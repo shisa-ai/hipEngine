@@ -136927,3 +136927,80 @@ python3 scripts/gguf_mtp_bench.py \
   tests/test_qwen35_gguf_verify_advance_state_only.py::test_serial_exact_advance_state_only_matches_full_replay
   -q`; `jq empty` on the serial-state lifecycle, smoke, and full artifacts; and
   `git diff --check`.
+
+## 2026-07-02 - Llama-compat direct partial commit retained
+
+- Implemented `--target-block-direct-partial-replay-mode direct-commit` for the
+  llama.cpp replication lane. `--llama-compat` now promotes an unspecified
+  `serial-exact` partial replay mode to `direct-commit`; explicit
+  `serial-state-only` remains the exact-state control.
+- Added suite route
+  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`.
+  This mode commits the captured verifier row for rejected/partial blocks,
+  matching llama.cpp's normal MTP accept lifecycle, rather than restoring and
+  serial-replaying the accepted prefix.
+- Smoke command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope smoke \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
+    --budgets 2 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-smoke.json
+  ```
+- Smoke result: AR **55.02 tok/s**; B2 **64.08 tok/s**, **1.1646x AR**,
+  acc/output **0.667**, draft acceptance **1.000**, cycle wall
+  **15.639 ms/output**, and **0** replay rows.
+- Full-suite command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope full \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
+    --budgets 2 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json
+  ```
+- Full-suite result: true AR **54.7773 tok/s**; active llama-replication B2
+  **60.5587 tok/s**, **1.1055x AR**, cycle wall **16.5342 ms/output**,
+  acc/output **0.6094**, draft acceptance **0.780**, target rows/output
+  **1.1719**, verifier drain **14.0709 ms/output**, target forward
+  **14.0230 ms/output**, replay/commit **0.0427 ms/output**, **100**
+  direct-commit rows, **0** replay rows, and **44** discarded rows.
+- Lifecycle diagnostic command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 \
+  HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1 \
+  HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1 \
+  HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1 \
+  HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1 \
+  HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+  PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py \
+    --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-f32selectedintermediate-c32.json \
+    --cycle 12 --target-block-verify-mode bulk --no-target-block-wmma-prefill \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --state-lifecycle-compare \
+    --output benchmarks/results/2026-07-02-mtp-state-lifecycle-directcommit-partial-compare.json
+  ```
+- Lifecycle result: `first_mismatch` at cycle 3 vs serial replay, with matching
+  visible token `[65342]` but hidden/linear-state divergence. This is expected
+  for the llama-replication lane and is why the serial-state row remains the
+  exact-state control.
+- Comparison: directcommit moves the active compat row **51.85 -> 60.56 tok/s**,
+  cycle **19.308 -> 16.534 ms/output**, verifier drain **16.891 -> 14.071
+  ms/output**, replay/commit **2.489 -> 0.043 ms/output**, replay rows
+  **38 -> 0**, and target rows/output **1.331 -> 1.172** versus the serial-state
+  control.
+- Remaining gap vs the rerun llama.cpp HIP B2 timing target
+  `benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`:
+  total **+2.265 ms/output**, target verifier drain **+1.951 ms/output**, draft
+  drain **+0.005 ms/output**, replay/commit **+0.039 ms/output**, and target
+  rows/output **+0.024**. The next work is target verifier forward
+  (`target_block_linear_attn_layers`, `target_block_full_attn_layers`,
+  `target_block_lm_head_sample`) against llama.cpp HIP kernels.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `docs/REFACTOR.md`,
+  `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` so the active tracking
+  tables show hipEngine default exact, hipEngine llama-compat directcommit, and
+  llama.cpp HIP side by side.

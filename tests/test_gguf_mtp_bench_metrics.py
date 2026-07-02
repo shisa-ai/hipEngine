@@ -26,6 +26,7 @@ from scripts.gguf_mtp_bench import (
     sibling_topk_acceptance_from_target_samples,
     target_block_direct_commit_is_exact,
     target_block_direct_partial_commit_is_exact,
+    target_block_direct_partial_commit_is_llama_style,
     target_block_needs_linear_state_snapshot,
     target_block_state_replay_uses_serial_exact,
     target_membership_in_draft_topk,
@@ -628,6 +629,9 @@ def test_target_block_direct_commit_exactness_policy() -> None:
     assert target_block_direct_partial_commit_is_exact("native") is True
     assert target_block_direct_partial_commit_is_exact("serial-exact") is True
     assert target_block_direct_partial_commit_is_exact("bulk") is False
+    assert target_block_direct_partial_commit_is_llama_style("bulk", "direct-commit") is True
+    assert target_block_direct_partial_commit_is_llama_style("native", "direct-commit") is False
+    assert target_block_direct_partial_commit_is_llama_style("bulk", "serial-state-only") is False
 
 
 def test_target_block_snapshot_policy_skips_exact_direct_commit() -> None:
@@ -646,6 +650,12 @@ def test_target_block_snapshot_policy_skips_exact_direct_commit() -> None:
         direct_state_commit_exact_mode=True,
         direct_partial_commit_exact_mode=False,
     ) is True
+    assert target_block_needs_linear_state_snapshot(
+        direct_state_commit=True,
+        direct_state_commit_exact_mode=True,
+        direct_partial_commit_exact_mode=False,
+        direct_partial_commit_llama_style=True,
+    ) is False
     assert target_block_needs_linear_state_snapshot(
         direct_state_commit=False,
         direct_state_commit_exact_mode=True,
@@ -681,6 +691,12 @@ def test_target_block_replay_state_policy_uses_serial_exact_state() -> None:
         direct_state_commit=True,
         verify_mode="bulk",
         direct_partial_replay_mode="native-state-only",
+    ) is False
+    assert target_block_state_replay_uses_serial_exact(
+        replay_state_commit=False,
+        direct_state_commit=True,
+        verify_mode="bulk",
+        direct_partial_replay_mode="direct-commit",
     ) is False
     assert target_block_state_replay_uses_serial_exact(
         replay_state_commit=True,
@@ -922,7 +938,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.target_block_verify_mode == "bulk"
     assert args.target_block_min_rows == 2
     assert args.target_block_direct_state_commit is True
-    assert args.target_block_direct_partial_replay_mode == "serial-state-only"
+    assert args.target_block_direct_partial_replay_mode == "direct-commit"
     assert args.target_b1_branch_safe_block_verify is False
     assert args.adaptive_draft_window is False
     assert args.adaptive_ar_fallback is False

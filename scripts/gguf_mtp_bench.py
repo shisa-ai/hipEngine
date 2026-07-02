@@ -112,16 +112,36 @@ def target_block_direct_partial_commit_is_exact(verify_mode: str) -> bool:
     return verify_mode in {"native", "serial-exact"}
 
 
+def target_block_direct_partial_commit_is_llama_style(
+    verify_mode: str,
+    direct_partial_replay_mode: str,
+) -> bool:
+    """Return true for llama.cpp-style captured-row partial accepts.
+
+    This is intentionally not an exactness predicate.  llama.cpp MTP accepts the
+    verifier hidden row produced by the block pass; it does not restore and
+    replay the accepted prefix through a token-serial target path on normal
+    partial accepts.  hipEngine keeps the exact/default path separate and uses
+    this only for the explicit llama replication lane.
+    """
+
+    return verify_mode == "bulk" and direct_partial_replay_mode == "direct-commit"
+
+
 def target_block_needs_linear_state_snapshot(
     *,
     direct_state_commit: bool,
     direct_state_commit_exact_mode: bool,
     direct_partial_commit_exact_mode: bool = True,
+    direct_partial_commit_llama_style: bool = False,
 ) -> bool:
+    direct_partial_commit_supported = bool(direct_partial_commit_exact_mode) or bool(
+        direct_partial_commit_llama_style
+    )
     return not (
         bool(direct_state_commit)
         and bool(direct_state_commit_exact_mode)
-        and bool(direct_partial_commit_exact_mode)
+        and direct_partial_commit_supported
     )
 
 
@@ -143,7 +163,7 @@ def target_block_state_replay_uses_serial_exact(
     if bool(replay_state_commit) or verify_mode == "serial-exact":
         return True
     if bool(direct_state_commit):
-        return direct_partial_replay_mode not in {"bulk-state-only", "native-state-only"}
+        return direct_partial_replay_mode not in {"bulk-state-only", "native-state-only", "direct-commit"}
     return False
 
 
@@ -798,14 +818,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--target-block-direct-partial-replay-mode",
-        choices=("serial-exact", "serial-state-only", "bulk-state-only", "native-state-only"),
+        choices=("serial-exact", "serial-state-only", "bulk-state-only", "native-state-only", "direct-commit"),
         default="serial-exact",
         help=(
             "Diagnostic: when direct-state block verification rejects or partially accepts a block, "
             "restore the snapshot and replay the accepted prefix with either the serial-exact target "
             "path (default, semantic baseline), the serial-exact path with LM-head sampling skipped, "
             "the bulk verifier in advance_state_only mode, or the native row-serial-attention verifier "
-            "in advance_state_only mode. State-only modes never use replayed token IDs for scoring."
+            "in advance_state_only mode. direct-commit skips replay and commits the captured verifier "
+            "row, matching llama.cpp's normal MTP accept lifecycle. State-only modes never use replayed "
+            "token IDs for scoring."
         ),
     )
     parser.add_argument(
@@ -1407,7 +1429,7 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.target_block_min_rows = 2
     args.target_block_direct_state_commit = True
     if getattr(args, "target_block_direct_partial_replay_mode", "serial-exact") == "serial-exact":
-        args.target_block_direct_partial_replay_mode = "serial-state-only"
+        args.target_block_direct_partial_replay_mode = "direct-commit"
     args.target_b1_branch_safe_block_verify = False
 
     args.adaptive_draft_window = False
@@ -2376,12 +2398,20 @@ def main(argv: list[str] | None = None):
                 direct_partial_commit_exact_mode = target_block_direct_partial_commit_is_exact(
                     args.target_block_verify_mode
                 )
+                direct_partial_commit_llama_style = target_block_direct_partial_commit_is_llama_style(
+                    args.target_block_verify_mode,
+                    args.target_block_direct_partial_replay_mode,
+                )
+                direct_partial_commit_supported = bool(direct_partial_commit_exact_mode) or bool(
+                    direct_partial_commit_llama_style
+                )
                 target_block_direct_commit_exact = bool(direct_state_commit_exact_mode)
                 snapshot = None
                 if target_block_needs_linear_state_snapshot(
                     direct_state_commit=direct_state_commit,
                     direct_state_commit_exact_mode=direct_state_commit_exact_mode,
                     direct_partial_commit_exact_mode=direct_partial_commit_exact_mode,
+                    direct_partial_commit_llama_style=direct_partial_commit_llama_style,
                 ):
                     snapshot = session._linear_state_snapshot()
                 try:
@@ -2473,7 +2503,7 @@ def main(argv: list[str] | None = None):
                     else:
                         record_target_verify(0, discarded_rows=1)
                         row0_direct_committed = False
-                        if direct_state_commit and direct_partial_commit_exact_mode:
+                        if direct_state_commit and direct_partial_commit_supported:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
                             session._commit_verify_linear_state_row(0, position=seq_position + 1)
@@ -2561,12 +2591,20 @@ def main(argv: list[str] | None = None):
                 direct_partial_commit_exact_mode = target_block_direct_partial_commit_is_exact(
                     args.target_block_verify_mode
                 )
+                direct_partial_commit_llama_style = target_block_direct_partial_commit_is_llama_style(
+                    args.target_block_verify_mode,
+                    args.target_block_direct_partial_replay_mode,
+                )
+                direct_partial_commit_supported = bool(direct_partial_commit_exact_mode) or bool(
+                    direct_partial_commit_llama_style
+                )
                 target_block_direct_commit_exact = bool(direct_state_commit_exact_mode)
                 snapshot = None
                 if target_block_needs_linear_state_snapshot(
                     direct_state_commit=direct_state_commit,
                     direct_state_commit_exact_mode=direct_state_commit_exact_mode,
                     direct_partial_commit_exact_mode=direct_partial_commit_exact_mode,
+                    direct_partial_commit_llama_style=direct_partial_commit_llama_style,
                 ):
                     t_snapshot0 = time.perf_counter()
                     snapshot = session._linear_state_snapshot()
@@ -2627,7 +2665,7 @@ def main(argv: list[str] | None = None):
                     if consumed_rows < len(block_inputs):
                         replay_tokens: list[int]
                         replay_hidden: list[np.ndarray]
-                        if direct_state_commit and direct_partial_commit_exact_mode:
+                        if direct_state_commit and direct_partial_commit_supported:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
                             session._commit_verify_linear_state_row(
