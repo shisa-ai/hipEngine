@@ -172,6 +172,43 @@ def test_compare_proposal_traces_separates_chunking_from_stream_match() -> None:
     assert summary["row_alignment"]["offset_samples"][0]["llamacpp"]["stream_end"] == 1
 
 
+def test_compare_proposal_traces_labels_bonus_token_after_full_accept() -> None:
+    hip_rows = [
+        compare.ProposalRow(
+            source="hipengine",
+            index=0,
+            cycle=3,
+            generated_draft_tokens=2,
+            accepted_draft_tokens=2,
+            visible_output_tokens=3,
+            draft_token_ids=[11, 567],
+            accepted_token_ids=[11, 567],
+            output_token_ids=[11, 567, 8940],
+            bonus_token_id=8940,
+            rejected_draft_token_id=None,
+        )
+    ]
+    llama_rows = [
+        compare.ProposalRow(
+            source="llamacpp",
+            index=0,
+            cycle=3,
+            generated_draft_tokens=2,
+            accepted_draft_tokens=2,
+            visible_output_tokens=3,
+            draft_token_ids=[11, 567],
+            accepted_token_ids=[11, 567],
+            output_token_ids=[11, 567, 668],
+            bonus_token_id=668,
+            rejected_draft_token_id=None,
+        )
+    ]
+
+    summary = compare.compare_rows(hip_rows, llama_rows)
+
+    assert summary["first_divergence"]["divergence_type"] == "bonus_token_after_full_accept"
+
+
 def test_load_llamacpp_rows_from_wrapper_artifact(tmp_path: Path) -> None:
     path = tmp_path / "llama-wrapper.json"
     path.write_text(

@@ -137159,3 +137159,45 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/CHANGELOG.md` so the active parity tracker uses the natural24
   row and identifies proposal/row economy, not verifier wall time, as the next
   llama-compat target.
+
+## 2026-07-02 - Cyclecap24 correction and bonus-token semantic split
+
+- Found that the previous natural24 hipEngine row was still partially capped:
+  `--cycles 10 --max-output-tokens 24` allowed low-accept prompts to stop before
+  reaching 24 output tokens (`general_ja_explain` emitted 21, `mixed_ja_en_translate`
+  emitted 23). Corrected the suite harness so an explicit output cap raises the
+  default cycle safety bound to at least the cap when `--cycles` is omitted.
+- Corrected full-suite command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope full \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
+    --budgets 2 \
+    --cycles 24 \
+    --max-output-tokens 24 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-full.json
+  ```
+- Corrected result on gfx1151 / Qwen3.6-35B-A3B-UD-Q4_K_M GGUF: AR
+  **54.90 tok/s**, B2 **71.11 tok/s** (**1.2953x AR**), total output
+  **240/240**, cycle wall **14.087 ms/output**, acc/output **0.596**, draft
+  acceptance **0.777**, target rows/output **1.171**, verifier drain
+  **11.507 ms/output**, draft drain **2.109 ms/output**, draft top-k/readback
+  **1.941 ms/output**, replay/commit **0.049 ms/output**, **0** replay rows,
+  **95** direct-commit rows, **41** discarded rows, and histograms
+  `generated={0:2,1:6,2:89}`, `accepted={0:19,1:13,2:65}`,
+  `visible={1:19,2:13,3:65}`, `rows_evaluated={1:2,2:6,3:89}`.
+- Comparison to llama.cpp HIP B2 natural24 rerun
+  `benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`:
+  hipEngine stage wall is still faster (**14.087 vs 14.269 ms/output**), but the
+  request-level headline is slightly behind (**71.11 vs 71.91 tok/s**). The
+  exposed economics delta is accepted/output **0.596 vs 0.610**, draft
+  acceptance **0.777 vs 0.805**, target rows/output **1.171 vs 1.148**, and
+  visible outputs/cycle **2.474 vs 2.563**.
+- Regenerated the focused mixed-ja/en translation proposal compare with
+  `scripts/mtp_proposal_trace_compare.py`. First divergence is now classified as
+  `bonus_token_after_full_accept`: at cycle 3 both engines draft and accept
+  `[11, 567]`, but hipEngine outputs `[11, 567, 8940]` while llama.cpp outputs
+  `[11, 567, 668]`. One-prompt hipEngine serial-exact verifier reproduces
+  `[11, 567, 8940]`, so the next target is target-state/logit parity at the
+  full-accept bonus row, not bulk scheduling or direct-commit overhead.

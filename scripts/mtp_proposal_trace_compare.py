@@ -142,6 +142,14 @@ def compare_rows(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow], *, 
         if first_divergence is None and not (draft_match and accepted_match and output_match and count_match):
             first_divergence = {
                 "pair_index": index,
+                "divergence_type": _divergence_type(
+                    hip,
+                    llama,
+                    draft_match=draft_match,
+                    accepted_match=accepted_match,
+                    output_match=output_match,
+                    accepted_count_match=count_match,
+                ),
                 "draft_match": draft_match,
                 "accepted_match": accepted_match,
                 "output_match": output_match,
@@ -169,6 +177,30 @@ def compare_rows(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow], *, 
         "row_alignment": _row_alignment(hip_rows[:n], llama_rows[:n]),
         "first_divergence": first_divergence,
     }
+
+
+def _divergence_type(
+    hip: ProposalRow,
+    llama: ProposalRow,
+    *,
+    draft_match: bool,
+    accepted_match: bool,
+    output_match: bool,
+    accepted_count_match: bool,
+) -> str:
+    if not draft_match:
+        return "draft_tokens"
+    if not accepted_count_match:
+        return "accepted_count"
+    if not accepted_match:
+        return "accepted_tokens"
+    if not output_match:
+        hip_full = hip.generated_draft_tokens > 0 and hip.accepted_draft_tokens == hip.generated_draft_tokens
+        llama_full = llama.generated_draft_tokens > 0 and llama.accepted_draft_tokens == llama.generated_draft_tokens
+        if hip_full and llama_full and hip.output_token_ids[:-1] == llama.output_token_ids[:-1]:
+            return "bonus_token_after_full_accept"
+        return "output_tokens"
+    return "none"
 
 
 def _stream_compare(hip_rows: list[ProposalRow], llama_rows: list[ProposalRow]) -> dict[str, Any]:

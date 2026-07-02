@@ -1163,10 +1163,18 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    scope = SCOPES[args.scope]
-    cycles = args.cycles if args.cycles is not None else scope["cycles"]
     if int(args.max_output_tokens) < 0:
         raise SuiteError("--max-output-tokens must be non-negative")
+    scope = SCOPES[args.scope]
+    max_output_tokens = int(args.max_output_tokens)
+    if args.cycles is not None:
+        cycles = args.cycles
+    elif max_output_tokens > 0:
+        # In llama.cpp parity mode --cycles is only a safety upper bound. Make
+        # the default high enough for zero-accept prompts to hit the token cap.
+        cycles = max(int(scope["cycles"]), max_output_tokens)
+    else:
+        cycles = scope["cycles"]
     limit = args.limit if args.limit is not None else scope["limit"]
     route_args = MTP_ROUTES[args.mtp_route]
     route_env = MTP_ROUTE_ENVS.get(args.mtp_route, {})

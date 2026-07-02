@@ -894,7 +894,9 @@ def test_suite_dry_run_forwards_llamacpp_natural_token_cap(monkeypatch, tmp_path
 
     out = capsys.readouterr().out
     assert "--decode-tokens 24" in out
+    assert "--cycles 24" in out
     assert "--max-output-tokens 24" in out
+    assert '"cycles": 24' in out
     assert '"max_output_tokens": 24' in out
 
 
