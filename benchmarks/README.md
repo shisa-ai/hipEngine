@@ -1,6 +1,7 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-02 (llama.cpp replication lane natural24 cyclecap24 correction:
+Last updated: 2026-07-02 (llama.cpp replication lane natural24 cyclecap24 correction
+and bonus-row target-logit probe:
 the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`
 B2 full-suite row now matches llama.cpp's normal MTP accept lifecycle and
@@ -20,6 +21,10 @@ the remaining delta is target semantic/proposal economy, not verifier wall time.
 The fixed-cycle provenance row for the same route remains **72.23 tok/s /
 13.865 ms/output**. The serial-state row
 remains the semantic-safe exact control at **51.85 tok/s / 19.308 ms/output**.)
+Focused bonus-row target-logit diagnostics show the active semantic gap: on
+`mixed_ja_en_translate` cycle 3 row 2, llama.cpp samples **668** with `668`
+ahead of `8940` by **0.0096 logits**, while hipEngine bulk/serial/F32 verifier
+probes all sample **8940** with `8940` ahead by **0.413-0.519 logits**.
 Current exact default fastest row also uses the shared parallel attention
 kernel, **AR 54.79 tok/s; best MTP B5 61.98 tok/s = 1.1312× AR**; exact cycle
 wall moved **16.496 -> 16.162 ms/output** with unchanged acc/output **0.535**.
@@ -41,6 +46,12 @@ natural24 proposal comparison
 `results/2026-07-02-mtp-proposal-trace-compare-natural24-mixed-ja-en-translate.json`;
 serial-exact one-prompt target semantic control
 `results/2026-07-02-hipengine-mtp-serialexact-natural24-mixed-ja-en-translate.json`;
+bonus-row target-logit diagnostics
+`results/2026-07-02-llamacpp-mtp-token-trace-b2-natural24-mixed-ja-en-translate.jsonl`,
+`results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-cycle3.json`,
+`results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32res-cycle3.json`,
+`results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32wide-cycle3.json`, and
+`results/2026-07-02-mtp-target-bonus-row-hipengine-serialexact-cycle3.json`;
 prior safe compat control
 `results/2026-07-02-ar-mtp-llama-compat-directstate-prefillgdn-partialfix-full.json`;
 superseded unsafe compat artifact

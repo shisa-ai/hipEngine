@@ -119,6 +119,25 @@ direct-commit shortcut. Evidence:
 `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-natural24-mixed-ja-en-translate.json`
 and
 `benchmarks/results/2026-07-02-hipengine-mtp-serialexact-natural24-mixed-ja-en-translate.json`.
+
+Current bonus-row target-logit split, focused on `mixed_ja_en_translate`, cycle
+3, verifier row 2 after both engines accept draft `[11, 567]`:
+
+| engine / verifier path | sampled row-2 token | logit 8940 | logit 668 | `8940 - 668` | artifact |
+| --- | ---: | ---: | ---: | ---: | --- |
+| llama.cpp HIP B2 token trace | **668** | 25.536228 | **25.545841** | **-0.009613** | `benchmarks/results/2026-07-02-llamacpp-mtp-token-trace-b2-natural24-mixed-ja-en-translate.jsonl` |
+| hipEngine bulk active verifier | **8940** | **25.841198** | 25.321857 | **+0.519341** | `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-cycle3.json` |
+| hipEngine bulk + `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` | **8940** | **25.795452** | 25.382889 | **+0.412563** | `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32res-cycle3.json` |
+| hipEngine bulk + wide F32 verifier-boundary flags | **8940** | **25.798450** | 25.361250 | **+0.437201** | `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32wide-cycle3.json` |
+| hipEngine serial-exact verifier | **8940** | **25.754116** | 25.289141 | **+0.464975** | `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-serialexact-cycle3.json` |
+
+The available hipEngine F32 verifier-boundary diagnostics reduce the wrong
+margin slightly but do not reproduce llama.cpp's near-tie or sampled token. The
+next parity step is therefore not another speed bucket: capture llama.cpp
+`LLAMA_MTP_TENSOR_TRACE` rows for this exact cycle/row, compare
+`process_h_input -> verify_h` plus pre-output/layer-boundary taps against
+hipEngine's forced-target `--layer-boundary-row` captures, and then copy the
+specific target graph boundary that explains the hidden/logit drift.
 A tempting exact-mode
 shortcut remains rejected:
 `--target-block-direct-partial-replay-mode bulk-state-only` still emitted the
@@ -2888,7 +2907,7 @@ semantic-safe control at **51.85 tok/s** / **19.308 ms/output**.
 | priority | fix | why this is next | success gate |
 | ---: | --- | --- | --- |
 | 1 | **Fused B1/block verifier path** | Current dp4a B5 pays `target_serial_verify_step` **6.647 ms/output** plus block verify **8.073 ms/output**. A useful implementation must preserve the B1 probe's acceptance economy while avoiding a separate full serial target pass. | **Implemented and rejected for promotion 2026-06-30.** It cuts B1 serial work but moves too much work into 2-row blocks; exact B5 is **60.40 tok/s**, below the retained exact **60.78** and dp4a **61.61** rows. |
-| 2 | Proposal / row-economy comparison | Cyclecap24 shows the live economic gap: hipEngine emits **2.474 visible outputs/cycle** vs llama **2.563**, acc/output **0.596** vs **0.610**, and target rows/output **1.171** vs **1.148**. The focused trace now labels the first mismatch `bonus_token_after_full_accept`: both engines accept draft `[11, 567]`, then hipEngine samples bonus `8940` while llama.cpp samples `668`. | Compare target logits/hidden/KV state at the full-accept bonus row; improve only with full-suite category evidence. |
+| 2 | Proposal / row-economy comparison | Cyclecap24 shows the live economic gap: hipEngine emits **2.474 visible outputs/cycle** vs llama **2.563**, acc/output **0.596** vs **0.610**, and target rows/output **1.171** vs **1.148**. The focused trace now labels the first mismatch `bonus_token_after_full_accept`: both engines accept draft `[11, 567]`, then hipEngine samples bonus `8940` while llama.cpp samples `668`. Row-2 target probes show llama has `668` ahead of `8940` by **0.0096 logits**, while hipEngine bulk/serial/F32 diagnostics keep `8940` ahead by **0.413-0.519 logits**. | Capture llama.cpp tensor rows for this exact cycle/row and compare layer-boundary/pre-output taps; improve only with full-suite category evidence. |
 | 3 | Verifier and draft regression guards | Current natural24 cyclecap24 draft drain is **2.109 ms/output** vs llama **2.141**, and verifier drain is **11.507 ms/output** vs llama **12.120**. These are closed speed buckets, not active deficits. | Keep all-sync/rocprof splits available after each acceptance-policy or verifier change; do not chase these unless a new run reopens a positive gap. |
 | 4 | Confidence-gated no-probe policy | Historical pre-resident-initial-KV note: no-probe acc/output was **0.578**. The current natural24 directcommit compat row is **0.596** and no longer pays serial replay; confidence gating is now an acceptance/row-economy question, not a verifier wall question. | Revisit only with full-suite category evidence and proposal-trace comparison against llama.cpp. |
 | 5 | Keep llama.cpp deep instrumentation aligned | The current split proved llama's verifier drain lives in `llama_process_build_draft_batch`, not raw `target_block_forward`. Keep this patch available for A/B after every major hipEngine verifier change. | Re-run llama deep trace when upstream or local diagnostic patch changes; do not compare raw async buckets. |

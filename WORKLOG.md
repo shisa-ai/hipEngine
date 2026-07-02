@@ -137201,3 +137201,29 @@ python3 scripts/gguf_mtp_bench.py \
   `[11, 567, 668]`. One-prompt hipEngine serial-exact verifier reproduces
   `[11, 567, 8940]`, so the next target is target-state/logit parity at the
   full-accept bonus row, not bulk scheduling or direct-commit overhead.
+
+## 2026-07-02 - Bonus-row target-logit parity probes
+
+- Extracted the llama.cpp HIP token trace for `mixed_ja_en_translate` cycle 3,
+  row 2. With the same prefix and both drafts `[11, 567]` accepted, llama.cpp
+  samples bonus token **668**; row-2 logits put `668` at **25.545841** and
+  `8940` at **25.536228** (`8940 - 668 = -0.009613`).
+- Ran hipEngine forced-target probes on the same cycle/prefix:
+  - bulk active verifier:
+    `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-cycle3.json`
+    samples **8940**, with `8940 - 668 = +0.519341`.
+  - bulk + `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`:
+    `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32res-cycle3.json`
+    samples **8940**, margin **+0.412563**.
+  - bulk + wide F32 verifier-boundary flags:
+    `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-f32wide-cycle3.json`
+    samples **8940**, margin **+0.437201**.
+  - serial-exact verifier:
+    `benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-serialexact-cycle3.json`
+    samples **8940**, margin **+0.464975**.
+- Conclusion: the current available F32 verifier-boundary diagnostics reduce the
+  wrong margin slightly but do not reproduce llama.cpp's row-2 near-tie or token
+  `668`. The active `llama-compat` gap is target hidden/logit parity on this
+  prefix, not verifier wall time. Next step is a llama.cpp `LLAMA_MTP_TENSOR_TRACE`
+  capture for this exact cycle/row plus hipEngine `--layer-boundary-row` taps to
+  locate the first target graph boundary that explains the hidden/logit drift.
