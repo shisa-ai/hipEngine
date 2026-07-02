@@ -30,6 +30,35 @@ def test_build_moe_tap_compare_artifact_aligns_router_and_segments(tmp_path: Pat
     assert artifact["tensor_deltas"]["ffn_out"]["mean_abs_diff"] == 0.0
 
 
+def test_build_moe_tap_compare_artifact_falls_back_to_post_moe_layer_output(
+    tmp_path: Path,
+) -> None:
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    hip_path.write_text(json.dumps(_hip_artifact()) + "\n")
+    cycle = _llama_cycle()
+    for trace in cycle["draft_hidden_state_trace"]:
+        if trace["label"] == "verify_layer_output_31":
+            trace.pop("values")
+        if trace["label"] == "shared_expert_gate_sigmoid_31":
+            trace.pop("values")
+    llama_path.write_text(json.dumps(cycle) + "\n")
+
+    artifact = build_moe_tap_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=31,
+    )
+
+    assert artifact["tensor_deltas"]["layer_out"]["mean_abs_diff"] == 0.0
+    assert (
+        artifact["shared_gate"]["llamacpp_sigmoid_source"]
+        == "computed_from_shared_expert_gate_31"
+    )
+
+
 def _hip_artifact() -> dict:
     return {
         "model": "/models/fake.gguf",

@@ -135810,3 +135810,74 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` => **18 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-postnorm-shared-fallback-smoke.json`
   - `git diff --check`
+
+## 2026-07-02 - Target layer0/1 fine MoE cross-engine diagnostic
+
+- Extended `scripts/llamacpp_mtp_compare_target_moe_taps.py` to handle two
+  llama.cpp trace realities seen in early-layer target diagnostics:
+  `verify_layer_output_N` may be summary-only, so `layer_out` comparison now
+  falls back to raw `post_moe_N`; `shared_expert_gate_sigmoid_N` may also be
+  summary-only, so the comparator computes the sigmoid from the traced shared
+  gate logit and records the source.
+- Patched the local dirty llama.cpp HIP instrumentation tree at
+  `/home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp` so debug tensor row
+  extraction converts F32/F16/BF16 tensors through the existing
+  `llama_mtp_debug_tensor_get_f32()` helper instead of skipping non-F32 tensors
+  or memcpying every row as 4-byte floats. This was required because early
+  selected/shared MoE internals were otherwise absent from the raw trace even
+  with `LLAMA_MTP_TENSOR_TRACE_VALUES=1`.
+
+```bash
+cmake --build build --target llama-server -j 8
+```
+
+```bash
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 LLAMA_MTP_TENSOR_TRACE=1 LLAMA_MTP_TENSOR_TRACE_VALUES=1 LLAMA_MTP_TENSOR_TRACE_VALUE_ROWS=1 LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=ffn_moe_logits_0,ffn_moe_weights_norm_0,ffn_moe_swiglu_0,ffn_moe_down_0,ffn_moe_weighted_0,ffn_moe_out_0,ffn_shexp_0,shared_expert_gate_0,ffn_shexp_gated_0,ffn_out_0,post_moe_0,verify_layer_output_0,ffn_moe_logits_1,ffn_moe_weights_norm_1,ffn_moe_swiglu_1,ffn_moe_down_1,ffn_moe_weighted_1,ffn_moe_out_1,ffn_shexp_1,shared_expert_gate_1,ffn_shexp_gated_1,ffn_out_1,post_moe_1,verify_layer_output_1 PYTHONPATH=. \
+python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8142 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-1-finemoe.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-1-finemoe.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-1-finemoe-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+```bash
+python3 scripts/llamacpp_mtp_compare_target_moe_taps.py \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-1-finemoe.jsonl \
+  --llamacpp-cycle 18 --row 1 --layer 0 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer0-fine-moe-cross-engine-diagnostic.json
+
+python3 scripts/llamacpp_mtp_compare_target_moe_taps.py \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-1-finemoe.jsonl \
+  --llamacpp-cycle 18 --row 1 --layer 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer1-fine-moe-cross-engine-diagnostic.json
+```
+
+  Result: selected/shared projection and combine math are not the early
+  semantic cliff. Layer 0 top-k matches llama.cpp; selected weighted rows are
+  **<=0.0000764 MAE** by common expert, shared-gate logit delta is **+0.00170**,
+  `ffn_out` is **0.000126 MAE**, and post-MoE/layer output is **0.000203 MAE**.
+  Layer 1 repeats the first router cutoff split (hipEngine expert `126`,
+  llama.cpp expert `63`) while common-expert selected weighted rows are still
+  **<=0.0001005 MAE**, shared-gate logit delta is **-0.00474**, `ffn_out` is
+  **0.000489 MAE**, and post-MoE/layer output is **0.000535 MAE**. Current
+  target returns to accumulated layer-output/router-input precision before the
+  layer-1 cutoff, not selected/shared intermediate or down-output math.
+- Added artifacts
+  `benchmarks/results/2026-07-02-mtp-target-layer0-fine-moe-cross-engine-diagnostic.json`
+  and
+  `benchmarks/results/2026-07-02-mtp-target-layer1-fine-moe-cross-engine-diagnostic.json`,
+  and updated `docs/MTP-LLAMACPP-PARITY.md`.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_compare_target_moe_taps.py tests/test_llamacpp_mtp_compare_target_moe_taps.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_compare_target_moe_taps.py -q` => **2 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-layer0-fine-moe-cross-engine-diagnostic.json benchmarks/results/2026-07-02-mtp-target-layer1-fine-moe-cross-engine-diagnostic.json`
+  - `git diff --check`

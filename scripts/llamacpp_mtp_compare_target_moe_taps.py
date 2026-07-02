@@ -15,7 +15,7 @@ DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-07-02-mtp-target-layer31-fine-moe-cross-engine-diagnostic.json"
 )
 
-TENSOR_PAIRS: tuple[tuple[str, str, str], ...] = (
+TENSOR_PAIRS: tuple[tuple[str, str, str | tuple[str, ...]], ...] = (
     ("router_logits", "moe_router_logits", "ffn_moe_logits_{layer}"),
     ("selected_swiglu", "moe_selected_swiglu", "ffn_moe_swiglu_{layer}"),
     ("selected_down", "ffn_or_moe_down", "ffn_moe_down_{layer}"),
@@ -26,7 +26,7 @@ TENSOR_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("shared_gated", "moe_shared_gated", "ffn_shexp_gated_{layer}"),
     ("ffn_out", "ffn_out_combined_from_components", "ffn_out_{layer}"),
     ("post_moe", "post_moe_rounded_from_components", "post_moe_{layer}"),
-    ("layer_out", "layer_out", "verify_layer_output_{layer}"),
+    ("layer_out", "layer_out", ("verify_layer_output_{layer}", "post_moe_{layer}")),
 )
 
 SEGMENT_PAIRS: tuple[tuple[str, str, str], ...] = (
@@ -93,7 +93,7 @@ def build_moe_tap_compare_artifact(
 
     tensor_deltas = {
         name: _numeric_delta(
-            _array_label(llama_values, llama_label.format(layer=layer), "llama.cpp"),
+            _array_label_any(llama_values, _format_labels(llama_label, layer=layer), "llama.cpp"),
             _array(hip_values, hip_key, "hipEngine"),
         )
         for name, hip_key, llama_label in TENSOR_PAIRS
@@ -254,6 +254,24 @@ def _array_label(values: dict[str, np.ndarray], label: str, owner: str) -> np.nd
     return values[label]
 
 
+def _format_labels(labels: str | tuple[str, ...], *, layer: int) -> tuple[str, ...]:
+    if isinstance(labels, str):
+        return (labels.format(layer=layer),)
+    return tuple(label.format(layer=layer) for label in labels)
+
+
+def _array_label_any(values: dict[str, np.ndarray], labels: tuple[str, ...], owner: str) -> np.ndarray:
+    for label in labels:
+        if label in values:
+            return values[label]
+    joined = ", ".join(labels)
+    raise ValueError(f"{owner} trace missing raw values for all labels: {joined}")
+
+
+def _optional_array_label(values: dict[str, np.ndarray], label: str) -> np.ndarray | None:
+    return values.get(label)
+
+
 def _numeric_delta(reference: np.ndarray, candidate: np.ndarray) -> dict[str, Any]:
     reference = np.asarray(reference, dtype=np.float32).reshape(-1)
     candidate = np.asarray(candidate, dtype=np.float32).reshape(-1)
@@ -365,8 +383,11 @@ def _shared_gate(
     layer: int,
 ) -> dict[str, Any]:
     llama_gate = _array_label(llama_values, f"shared_expert_gate_{layer}", "llama.cpp")
-    llama_sigmoid = _array_label(
-        llama_values, f"shared_expert_gate_sigmoid_{layer}", "llama.cpp"
+    llama_sigmoid = _optional_array_label(llama_values, f"shared_expert_gate_sigmoid_{layer}")
+    llama_sigmoid_value = (
+        float(llama_sigmoid[0])
+        if llama_sigmoid is not None
+        else float(1.0 / (1.0 + np.exp(-np.float32(float(llama_gate[0])))))
     )
     hip_sigmoid = float(1.0 / (1.0 + np.exp(-np.float32(hip_gate))))
     return {
@@ -374,8 +395,13 @@ def _shared_gate(
         "llamacpp_logit": float(llama_gate[0]),
         "logit_delta_hip_minus_llama": float(hip_gate - float(llama_gate[0])),
         "hipengine_sigmoid": hip_sigmoid,
-        "llamacpp_sigmoid": float(llama_sigmoid[0]),
-        "sigmoid_delta_hip_minus_llama": float(hip_sigmoid - float(llama_sigmoid[0])),
+        "llamacpp_sigmoid": llama_sigmoid_value,
+        "llamacpp_sigmoid_source": (
+            f"shared_expert_gate_sigmoid_{layer}"
+            if llama_sigmoid is not None
+            else f"computed_from_shared_expert_gate_{layer}"
+        ),
+        "sigmoid_delta_hip_minus_llama": float(hip_sigmoid - llama_sigmoid_value),
     }
 
 
