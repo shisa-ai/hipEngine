@@ -134887,3 +134887,44 @@ PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py \
 - Updated `docs/MTP-LLAMACPP-PARITY.md` to record the sharper reading. No new
   performance claim; this is instrumentation/provenance for future
   same-protocol proposal traces.
+
+## 2026-07-02 - Active llama-compat proposal trace refresh
+
+- The v3 proposal-trace artifact still used older hipEngine raw traces that
+  predated the active `draftdenseq8-draftonly` route. Refreshed the hipEngine
+  side on the same prompt with the current active route:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --cycles 10 --draft-n-max 2 \
+  --prompt "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code." \
+  --prompt-reasoning off --llama-compat --resident-mtp-device-chain \
+  --verify-dp4a --resident-mtp-draft-q6-top1-dp4a \
+  --resident-mtp-draft-q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel \
+  --resident-mtp-draft-dense-q8-dp4a \
+  --resident-mtp-draft-dense-q8-dp4a-stages draft \
+  --record-cycle-stage-timings \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly.json
+
+PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py \
+  --hipengine /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly.json \
+  --llamacpp /tmp/hipengine-mtp-proposal-trace/llamacpp.json \
+  --out /tmp/hipengine-mtp-proposal-trace/compare-active-draftdenseq8-draftonly-v3.json
+```
+
+- Added diagnostic-retained artifact
+  `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json`.
+  Result: the old pair-3 proposal mismatch is closed. The active route matches
+  **9/10** draft rows, output rows, and accepted-count rows against the same
+  llama.cpp HIP B2 trace; hipEngine's flat output stream contains all **26/26**
+  llama.cpp output tokens as a prefix. The only mismatch is the final measured
+  row: hipEngine drafts/accepts `[198, 285]` and emits `[198, 285, 460]`, while
+  llama.cpp generated one draft token and emits `[198, 285]` at the trace limit.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` so the current proposal-trace section
+  reflects the active retained route. This is diagnostic/provenance only; no
+  new performance claim or benchmark rollup update.
