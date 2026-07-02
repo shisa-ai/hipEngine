@@ -464,6 +464,32 @@ Layer-5 MoE top-k selection matches exactly:
 **0.000294 MAE**. Layer 5 again has no projection/conv/MoE copy target; the
 next semantic split moves upstream to scored layer 4.
 
+Layer-4 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer4-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer4-scored-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer4-scored-moe-taps-compare.json`.
+
+| layer-4 scored linear-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `verify_layer_output_3` vs hipEngine `hidden_in` | **0.000204** | **0.000297** | Incoming layer-3 output remains the live boundary drift. |
+| `attn_norm_4` vs hipEngine `attn_norm` | **0.00716** | **0.00952** | CPU RMSNorm exactly reproduces both engines; normalized drift is input-driven. |
+| `z_4` vs hipEngine `linear_z` | 0.00798 | 0.01029 | Below the projection close threshold. |
+| `beta_4` vs hipEngine `ssm_beta` | 1.23614 | 1.65309 | Trace-label/layout caveated; downstream linear-attention output remains close. |
+| `conv_output_silu_4` vs hipEngine `conv_out` | 0.000328 | 0.000907 | No conv cliff. |
+| `linear_attn_out_4` vs hipEngine `attn_out` | 0.000157 | 0.000207 | Not a linear-attention output cliff. |
+| `attn_residual_4` vs hipEngine `attn_residual` | 0.000223 | 0.000293 | Carries the incoming drift forward. |
+| `attn_post_norm_4` vs hipEngine `attn_post_norm` | **0.00793** | **0.01004** | Second RMSNorm amplifies residual-space drift before MoE. |
+| `ffn_out_4` vs hipEngine reconstructed `ffn_out` | 0.000112 | 0.000142 | MoE projection/combination remains small. |
+| `post_moe_4` / `verify_layer_output_4` vs hipEngine layer output | **0.000243** | **0.000324** | Exactly the incoming layer-5 hidden delta measured above. |
+
+Layer-4 MoE top-k selection matches exactly:
+`[17, 74, 254, 25, 160, 122, 190, 104]`. Router logits differ by
+**0.00851 MAE / 0.01103 RMSE**, selected weighted rows are **0.0000318 MAE**,
+aggregate `ffn_out` is **0.000112 MAE**, and post-MoE is **0.000243 MAE**.
+Layer 4 again has no linear-attention or MoE copy target; the next semantic
+split moves upstream to scored layer 3.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35

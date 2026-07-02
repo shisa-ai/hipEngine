@@ -137887,3 +137887,49 @@ python3 scripts/gguf_mtp_bench.py \
   `[144, 24, 169, 11, 249, 14, 212, 158]`; selected weighted rows are
   `0.0000400 MAE`, aggregate `ffn_out` is `0.000165 MAE`, and post-MoE is
   `0.000294 MAE`. The semantic split moves upstream to layer 4.
+
+## 2026-07-03 - Scored layer-4 split moves semantic target to layer 3
+
+- Captured the same task-9/cycle-3/row-2 bonus branch at scored target layer 4:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 4:2 \
+    --raw-layer-output-row 4:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer4-cycle3.json
+  ```
+- Reran patched llama.cpp HIP with row-2 raw layer-4 labels at
+  `/tmp/hipengine-llamacpp-layer4-input-raw-row2-task9-cycle3.jsonl`; it stayed
+  on `[11, 567]` accepted, bonus `668`. Boundary raw values used
+  `l_out_3,l_out_4`, exported as `verify_layer_output_3` and
+  `verify_layer_output_4`.
+- Reduced
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer4-scored-linear-attn-compare.json`.
+  Result: incoming hidden vs llama.cpp `verify_layer_output_3` is
+  `0.000204 MAE / 0.000297 RMSE`; `attn_norm_4` is
+  `0.007161 / 0.009520`; `z_4` is `0.007975 / 0.010292`;
+  `beta_4` is `1.236142 / 1.653085` but trace-label/layout caveated;
+  `conv_output_silu_4` is `0.000328 / 0.000907`; `linear_attn_out_4`
+  is `0.000157 / 0.000207`; `attn_residual_4` is
+  `0.000223 / 0.000293`; `attn_post_norm_4` is `0.007925 / 0.010036`;
+  `ffn_out_4` is `0.000112 / 0.000142`; post-MoE /
+  `verify_layer_output_4` is `0.000243 / 0.000324`. CPU RMSNorm explains the
+  norm-space delta from the incoming layer-3 hidden drift; no linear-attention
+  projection/conv cliff.
+- Reduced the layer-4 MoE split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer4-scored-moe-taps-compare.json`.
+  Router top-k matches exactly
+  `[17, 74, 254, 25, 160, 122, 190, 104]`; router logits are
+  `0.008512 MAE`, selected weighted rows are `0.0000318 MAE`, aggregate
+  `ffn_out` is `0.000112 MAE`, and post-MoE is `0.000243 MAE`. The semantic
+  split moves upstream to layer 3.
