@@ -134671,3 +134671,47 @@ python3 scripts/gguf_ar_mtp_suite.py \
   (**13.463 vs 14.269 ms/output**, **-0.806**), target verifier is faster
   (**10.929 vs 12.120**, **-1.191**), and the only positive child delta is the
   tiny draft drain (**2.204 vs 2.141**, **+0.063 ms/output**).
+
+## 2026-07-02 - Rejected llama-compat fused-head-q8 draft lm-head prep
+
+- Tested a temporary exact fused draft lm-head prep kernel that combined final
+  draft RMSNorm, BF16 rounding, and q8_1 activation quantization before the
+  Q6_K top-1 lm-head path. The byte-level GPU correctness check passed against
+  the existing RMSNorm -> BF16 -> q8_1 quantization chain, but the route was a
+  diagnostic only.
+- Fused command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings --require-cached --skip-warmbuild \
+  --fused-head-q8 \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-fused-head-q8-gpuevents \
+  --out /tmp/gguf-mtp-draft-fused-head-q8-gpuevents.json
+```
+
+- Control command:
+
+```bash
+PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 \
+python3 scripts/gguf_mtp_draft_rocprof.py \
+  --steps 4 --warmup 2 --q6-top1-dp4a --q6-top1-stage1-shape x8 \
+  --selected-down-x8-repack q6 --router-row-parallel \
+  --record-stage-timings --gpu-event-stage-timings --require-cached --skip-warmbuild \
+  --raw-root /tmp/hipengine-gguf-mtp-draft-rocprof-routerrow-control-gpuevents \
+  --out /tmp/gguf-mtp-draft-routerrow-control-gpuevents.json
+```
+
+- Result rejected the candidate: host wall was noise (**6.650 -> 6.649
+  ms/cycle**), while kernel work regressed (**5.514 -> 5.572 ms/cycle**),
+  `draft_device_chain_drain` rose **5.266 -> 5.370 ms/cycle**,
+  `draft_gpu_run_lm_head` rose **3.723 -> 3.781 ms/cycle**, and the
+  norm/cast/quant bucket rose **0.076 -> 0.145 ms/cycle**. The single fused CTA
+  removed launches but serialized q8_1 block work enough to lose.
+- Reverted the experimental kernel, wrappers, route flag, suite route, and
+  temporary correctness test. Added compact rejection artifact
+  `benchmarks/results/2026-07-02-gguf-mtp-draft-fusedheadq8-rejected.json` and
+  updated `docs/MTP-LLAMACPP-PARITY.md`. No full-suite run: the parent
+  draft-chain diagnostic regressed before promotion criteria.
