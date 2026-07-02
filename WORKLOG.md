@@ -135717,3 +135717,59 @@ python3 scripts/llamacpp_mtp_compare_router_trace.py \
   - `python3 -m pytest tests/test_llamacpp_mtp_compare_router_trace.py tests/test_llamacpp_mtp_compare_target_moe_taps.py tests/test_gguf_mtp_forced_target_probe.py -q` => **4 passed**
   - `jq empty benchmarks/results/2026-07-02-mtp-target-router-trace-cross-engine-diagnostic.json`
   - `git diff --check`
+
+## 2026-07-02 - Target layer0/1 boundary cross-engine diagnostic
+
+- Added `scripts/llamacpp_mtp_compare_early_boundary.py` plus
+  `tests/test_llamacpp_mtp_compare_early_boundary.py` to compare the raw
+  hipEngine layer-0/layer-1 forced-target boundary capture against local
+  llama.cpp dirty tensor traces for the active pair-12 row-1 mismatch.
+- Reused the already captured hipEngine raw boundary trace:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 \
+  --candidate-token 26126 \
+  --raw-layer-boundary-row 0:1 --raw-layer-boundary-row 1:1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json
+```
+
+- Reused the already captured llama.cpp cycle-18 dirty tensor JSONL with raw
+  values for row 1 labels `post_moe_0`, `ffn_moe_logits_1`,
+  `ffn_moe_weights_norm_1`, `shared_expert_gate_1`, and `post_moe_1`, then
+  compared:
+
+```bash
+python3 scripts/llamacpp_mtp_compare_early_boundary.py \
+  --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-1-raw-boundary.json \
+  --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-1-raw.jsonl \
+  --llamacpp-cycle 18 --row 1 \
+  --output benchmarks/results/2026-07-02-mtp-target-layer0-1-boundary-cross-engine-diagnostic.json
+```
+
+  Result: hipEngine's local layer-0 output to layer-1 input is exact
+  (**0 MAE**), so the layer handoff is not corrupting the row. Cross-engine,
+  that same boundary is already **0.000203 MAE / 0.000263 RMSE / 0.999950
+  cosine** away from llama.cpp `post_moe_0` before layer 1 begins. Layer 0
+  router top-k still matches; layer 1 repeats the known rank-7 cutoff split
+  (hipEngine expert `126`, llama.cpp expert `63`) with router logits
+  **0.00562 MAE / 0.00694 RMSE / 0.999999 cosine**, routing weights
+  **0.000541 MAE**, shared-gate logit delta **-0.00474**, and layer-1
+  post-MoE/layer output **0.000535 MAE / 0.000664 RMSE / 0.999834 cosine**.
+  The artifact marks llama.cpp `attn_norm_0` as label-alignment suspect because
+  it disagrees while downstream layer-0 residual/post-MoE tensors align.
+  Current target: true GGML-like F32 projection/output contracts through the
+  early target layers, not a broken hipEngine layer handoff or late MoE combine
+  rule.
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-layer0-1-boundary-cross-engine-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`.
+- Validation:
+  - `python3 -m py_compile scripts/llamacpp_mtp_compare_early_boundary.py tests/test_llamacpp_mtp_compare_early_boundary.py`
+  - `python3 -m pytest tests/test_llamacpp_mtp_compare_early_boundary.py tests/test_llamacpp_mtp_compare_router_trace.py tests/test_llamacpp_mtp_compare_target_moe_taps.py -q` => **3 passed**
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-layer0-1-boundary-cross-engine-diagnostic.json`
+  - `git diff --check`
