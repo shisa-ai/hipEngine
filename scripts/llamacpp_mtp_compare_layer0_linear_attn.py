@@ -844,7 +844,8 @@ def _stable_split_assessment(artifact: dict[str, Any]) -> dict[str, Any]:
         if formula.get("classification") == "attn_norm_delta_explained_by_input_delta":
             reason = (
                 "attention RMSNorm arithmetic matches both engines exactly; "
-                "the layer-14 norm-space drift is explained by incoming layer-13 output drift."
+                f"the layer-{layer} norm-space drift is explained by incoming "
+                f"layer-{max(layer - 1, 0)} output drift."
             )
         elif attn_norm_input_mae is not None and attn_norm_input_mae > PROJECTION_CLOSE_MAE:
             reason = (

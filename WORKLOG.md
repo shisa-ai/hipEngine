@@ -137656,3 +137656,59 @@ python3 scripts/gguf_mtp_bench.py \
   `[91, 24, 252, 73, 92, 165, 105, 72]`; selected weighted rows are
   `0.0000857 MAE`, aggregate `ffn_out` is `0.000334 MAE`, and post-MoE is
   `0.000693 MAE`. The semantic split moves upstream to layer 9.
+
+## 2026-07-03 - Scored layer-9 split moves semantic target to layer 8
+
+- Captured the same task-9/cycle-3/row-2 bonus branch at scored target layer 9:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 9:2 \
+    --raw-layer-output-row 9:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer9-cycle3.json
+  ```
+- Reran patched llama.cpp HIP with row-2 raw layer-9 labels at
+  `/tmp/hipengine-llamacpp-layer9-input-raw-row2-task9-cycle3.jsonl`; it stayed
+  on `[11, 567]` accepted, bonus `668`. Boundary raw values used
+  `l_out_8,l_out_9`, exported as `verify_layer_output_8` and
+  `verify_layer_output_9`.
+- Fixed a reducer reporting bug in
+  `scripts/llamacpp_mtp_compare_layer0_linear_attn.py`: the generic
+  `attn_norm_delta_explained_by_input_delta` reason string no longer says
+  `layer-14`; it now uses the current layer and previous layer. Added a focused
+  test in `tests/test_llamacpp_mtp_compare_layer0_linear_attn.py`.
+- Reduced
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer9-scored-linear-attn-compare.json`.
+  Result: incoming hidden vs llama.cpp `verify_layer_output_8` is
+  `0.000542 MAE / 0.000712 RMSE`; `attn_norm_9` is
+  `0.014461 / 0.018730`; `z_9` is `0.012286 / 0.015856`;
+  `conv_output_silu_9` is `0.000748 / 0.001859`; `linear_attn_out_9` is
+  `0.000386 / 0.000502`; `attn_residual_9` is `0.000570 / 0.000730`;
+  `attn_post_norm_9` is `0.017735 / 0.022820`; `ffn_out_9` is
+  `0.000357 / 0.000450`; post-MoE / `verify_layer_output_9` is
+  `0.000648 / 0.000832`. CPU RMSNorm exactly reproduces both engines'
+  attn_norm rows; layer 9 is not the linear-attention cliff.
+- Reduced the layer-9 MoE split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer9-scored-moe-taps-compare.json`.
+  Router top-k has only a rank 2/3 permutation among the same experts:
+  hipEngine `[148, 217, 78, 61, 123, 227, 183, 115]` vs llama.cpp
+  `[148, 217, 61, 78, 123, 227, 183, 115]`; no hip-only or llama-only experts.
+  Selected weighted rows are `0.000684 MAE`, aggregate `ffn_out` is
+  `0.000357 MAE`, and post-MoE is `0.000648 MAE`. The semantic split moves
+  upstream to layer 8.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_layer0_linear_attn.py
+  PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py -q
+  jq empty benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer9-cycle3.json benchmarks/results/2026-07-03-mtp-bonus-row-layer9-scored-linear-attn-compare.json benchmarks/results/2026-07-03-mtp-bonus-row-layer9-scored-moe-taps-compare.json
+  ```
