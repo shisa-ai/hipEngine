@@ -137579,3 +137579,37 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py tests/test_llamacpp_mtp_compare_target_moe_taps.py -q
   jq empty benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer12-cycle3.json benchmarks/results/2026-07-03-mtp-bonus-row-layer12-scored-linear-attn-compare.json benchmarks/results/2026-07-03-mtp-bonus-row-layer12-scored-moe-taps-compare.json
   ```
+
+## 2026-07-03 - Scored layer-11 full-attention split moves semantic target to layer 10
+
+- Added `scripts/llamacpp_mtp_compare_full_attn_boundary.py` and focused tests
+  so full-attention target layers can use the same scored/isolated capture
+  selection, task-id filtering, RMSNorm audit, and JSON artifact shape as the
+  linear-attention boundary reducer.
+- Used the existing hipEngine scored capture
+  `benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer11-cycle3.json`
+  for task 9 / cycle 3 / row 2. The llama.cpp HIP trace needed
+  `LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS=l_out_10,l_out_11,...`; requesting
+  `verify_layer_output_10` or `verify_layer_output_11` only emitted summaries,
+  because llama.cpp translates `l_out_N` to `verify_layer_output_N` during trace
+  drain.
+- Reran the patched temp llama.cpp HIP trace at
+  `/tmp/hipengine-llamacpp-layer11-input-raw-row2-task9-cycle3.jsonl`; the
+  branch stayed aligned with the live mismatch: draft `[11, 567]`, sampled
+  `[11, 567, 668]`, accepted `[11, 567]`, bonus `668`.
+- Reduced the full-attention split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer11-scored-full-attn-compare.json`.
+  Result: incoming hidden vs llama.cpp `verify_layer_output_10` is
+  `0.000693 MAE / 0.000898 RMSE`; `attn_norm_11` is
+  `0.011691 / 0.015544`; `attn_output_11` is `0.000485 / 0.000630`;
+  `attn_residual_11` is `0.000811 / 0.001028`; `attn_post_norm_11` is
+  `0.021461 / 0.027551`; `ffn_out_11` is `0.000595 / 0.000746`; post-MoE /
+  `verify_layer_output_11` is `0.000996 / 0.001245`. CPU RMSNorm mostly
+  explains the normalized-space delta from the input drift. Layer 11 is not the
+  full-attention cliff; the semantic split moves upstream to layer 10.
+- Reduced the layer-11 MoE split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer11-scored-moe-taps-compare.json`.
+  Router top-k matches exactly
+  `[210, 147, 7, 154, 107, 27, 106, 251]`; selected weighted rows are
+  `0.000137 MAE`, aggregate `ffn_out` is `0.000595 MAE`, and post-MoE is
+  `0.000996 MAE`.

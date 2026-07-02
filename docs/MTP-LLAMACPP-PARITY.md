@@ -278,8 +278,39 @@ and
 Layer-12 MoE is also not the next copy target. After adding
 `--llamacpp-task-id` to the MoE reducer, the correct task-9 record shows only a
 rank 5/6 swap among the same experts (`71` and `194`), aggregate `ffn_out` MAE
-**0.000445**, and post-MoE MAE **0.000975**. The next semantic target is now
-the scored layer-11 boundary/internal split.
+**0.000445**, and post-MoE MAE **0.000975**. At that point the semantic target
+moved to the scored layer-11 boundary/internal split.
+
+Layer-11 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer11-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer11-scored-full-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer11-scored-moe-taps-compare.json`.
+
+| layer-11 scored full-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `verify_layer_output_10` vs hipEngine `hidden_in` | **0.000693** | **0.000898** | Incoming layer-10 output is below the 1e-3 split threshold. |
+| `attn_norm_11` vs hipEngine `attn_norm` | **0.01169** | **0.01554** | CPU RMSNorm mostly explains the normalized-space delta from the input drift. |
+| `attn_output_11` vs hipEngine `attn_out` | 0.000485 | 0.000630 | No full-attention output cliff. |
+| `attn_residual_11` vs hipEngine `attn_residual` | 0.000811 | 0.00103 | Carries the incoming drift forward. |
+| `attn_post_norm_11` vs hipEngine `attn_post_norm` | **0.02146** | **0.02755** | Second RMSNorm amplifies the residual-space drift before MoE. |
+| `ffn_out_11` vs hipEngine reconstructed `ffn_out` | 0.000595 | 0.000746 | MoE projection/combination remains small. |
+| `post_moe_11` / `verify_layer_output_11` vs hipEngine layer output | **0.000996** | **0.001245** | Exactly the incoming layer-12 hidden delta measured above. |
+
+Layer-11 MoE top-k selection matches exactly:
+`[210, 147, 7, 154, 107, 27, 106, 251]`. Router logits differ by
+**0.0142 MAE / 0.0179 RMSE**, but the cutoff is not crossed; selected weighted
+rows are **0.000137 MAE**, aggregate `ffn_out` is **0.000595 MAE**, and
+post-MoE is **0.000996 MAE**. Layer 11 is the first full-attention layer in this
+backtrace, and it is not where hipEngine diverges from llama.cpp. The next
+semantic target moves upstream again to the scored layer-10 boundary/internal
+split.
+
+Trace gotcha for future raw layer-output captures: llama.cpp exports target
+layer outputs as `verify_layer_output_N`, but the raw tensor value allowlist
+must request the pre-translation graph label `l_out_N` in
+`LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS`; requesting `verify_layer_output_N` only
+captures summaries without `values`.
 
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
