@@ -138895,3 +138895,38 @@ python3 scripts/gguf_mtp_bench.py \
 - Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
   `benchmarks/CHANGELOG.md` to keep the active lane at **71.52 tok/s** and mark
   the actual current-shape verifier-head route as rejected.
+
+## 2026-07-03 - MTP economy denominator reconciliation
+
+- Added `scripts/mtp_economy_reconcile.py`, an offline reducer that compares
+  hipEngine full-suite request economy, llama.cpp request-row economy, and
+  llama.cpp stage-row economy in one artifact. This targets the active dashboard
+  ambiguity where hipEngine full-request rows were being compared to llama.cpp
+  stage rows with a different output-token denominator.
+- Ran the reducer on the active hipEngine natural24 cyclecap24 artifact, its
+  in-process category child artifact, and the llama.cpp HIP B2 rerun:
+  ```bash
+  python3 scripts/mtp_economy_reconcile.py --hip-suite benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json --hip-category /tmp/hipengine-ar-mtp-suite-full-1783030603/mtp-category.json --llamacpp benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json --out benchmarks/results/2026-07-03-mtp-economy-denominator-reconcile.json
+  ```
+- Result: request-level accepted/output is **not** a hipEngine deficit.
+  hipEngine is **143/240 = 0.5958**, llama.cpp request rows are **136/240 =
+  0.5667**, while the llama.cpp stage-measured bucket is **136/223 = 0.6099**.
+  The prior **-0.014** accepted/output reading was therefore a denominator
+  artifact. The true request-level gap remains **71.52 vs 71.91 tok/s** with
+  lower hipEngine draft acceptance (**0.777 vs 0.805**) and stage target
+  rows/output **+0.0229**. Per-prompt reconciliation points to
+  `mixed_ja_en_translate` as the largest local loss: hipEngine is **-10.21
+  tok/s** and accepts one fewer draft than llama.cpp on that prompt.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/mtp_economy_reconcile.py tests/test_mtp_economy_reconcile.py
+  PYTHONPATH=. pytest -q tests/test_mtp_economy_reconcile.py
+  python3 -m json.tool benchmarks/results/2026-07-03-mtp-economy-denominator-reconcile.json >/dev/null
+  ```
+  Pycompile passed, focused tests passed (`2 passed`), and JSON validation
+  passed.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`. The active work queue should no longer frame the
+  remaining gap as a broad full-request accepted/output deficit; focus on lower
+  draft acceptance/discarded-row mix and the known `mixed_ja_en_translate`
+  semantic mismatch.

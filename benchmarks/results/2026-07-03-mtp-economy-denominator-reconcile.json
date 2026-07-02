@@ -1,0 +1,469 @@
+{
+  "budget": "b2",
+  "denominator_readout": {
+    "hipengine_has_full_request_acceptance_deficit": false,
+    "llamacpp_request_accepted_per_output": 0.566667,
+    "llamacpp_request_and_stage_accepted_per_output_match": false,
+    "llamacpp_stage_measured_accepted_per_output": 0.609865,
+    "stage_acceptance_gap_uses_different_denominator": true
+  },
+  "gaps_hip_minus_llama": {
+    "request_accepted_per_output": 0.029166,
+    "request_draft_acceptance": -0.02756,
+    "request_tok_s": -0.39088,
+    "stage_measured_accepted_per_output": -0.014032,
+    "stage_measured_cycle_wall_ms_per_output": -0.264475,
+    "stage_measured_target_rows_per_output": 0.022851
+  },
+  "hipengine_full_request": {
+    "accepted_draft_tokens": 143,
+    "accepted_per_output": 0.595833,
+    "cycle_wall_ms_per_output": 14.00474,
+    "cycles": 97,
+    "discarded_rows": 41,
+    "discarded_rows_per_output": 0.170833,
+    "draft_acceptance": 0.777174,
+    "generated_draft_tokens": 184,
+    "output_tokens": 240,
+    "source": "hipengine_full_suite",
+    "target_rows_per_output": 1.170833,
+    "tok_s": 71.522658
+  },
+  "llamacpp_full_request": {
+    "accepted_draft_tokens": 136,
+    "accepted_per_output": 0.566667,
+    "draft_acceptance": 0.804734,
+    "generated_draft_tokens": 169,
+    "output_tokens": 240,
+    "predicted_ms_total": 3337.341,
+    "request_count": 10,
+    "source": "llamacpp_request_rows",
+    "tok_s": 71.913538
+  },
+  "llamacpp_stage_all": {
+    "accepted_draft_tokens": 148,
+    "accepted_per_output": 0.614108,
+    "cycle_wall_ms_per_output": 14.139344,
+    "cycles": 93,
+    "discarded_rows_per_output": 0.136929,
+    "draft_acceptance": 0.81768,
+    "generated_draft_tokens": 181,
+    "output_tokens": 241,
+    "source": "llamacpp_stage_all",
+    "target_rows_per_output": 1.136929
+  },
+  "llamacpp_stage_measured_excluding_first_task": {
+    "accepted_draft_tokens": 136,
+    "accepted_per_output": 0.609865,
+    "cycle_wall_ms_per_output": 14.269215,
+    "cycles": 87,
+    "discarded_rows_per_output": 0.147982,
+    "draft_acceptance": 0.804734,
+    "generated_draft_tokens": 169,
+    "output_tokens": 223,
+    "source": "llamacpp_stage_measured_excluding_first_task",
+    "target_rows_per_output": 1.147982
+  },
+  "performance_claim": false,
+  "prompt_rows_by_worst_acceptance_delta": [
+    {
+      "category": "mixed_ja_en",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": -1,
+        "accepted_per_output": -0.041633,
+        "draft_acceptance": -0.225,
+        "generated_draft_tokens": 4,
+        "tok_s": -10.213204
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 13,
+        "accepted_histogram": {
+          "0": 4,
+          "1": 1,
+          "2": 6
+        },
+        "accepted_per_output": 0.5417,
+        "category": "mixed_ja_en",
+        "cycles": 11,
+        "discarded_rows": 7,
+        "draft_acceptance": 0.65,
+        "generated_draft_tokens": 20,
+        "id": "mixed_ja_en_translate",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.2917,
+        "tok_s": 64.78
+      },
+      "id": "mixed_ja_en_translate",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 14,
+        "accepted_per_output": 0.583333,
+        "category": "mixed_ja_en",
+        "draft_acceptance": 0.875,
+        "generated_draft_tokens": 16,
+        "id": "mixed_ja_en_translate",
+        "output_tokens": 24,
+        "predicted_ms": 320.029,
+        "tok_s": 74.993204
+      }
+    },
+    {
+      "category": "general_ja",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 0,
+        "accepted_per_output": -3.3e-05,
+        "draft_acceptance": -0.0515,
+        "generated_draft_tokens": 1,
+        "tok_s": -1.799081
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 14,
+        "accepted_histogram": {
+          "0": 2,
+          "1": 2,
+          "2": 6
+        },
+        "accepted_per_output": 0.5833,
+        "category": "general_ja",
+        "cycles": 10,
+        "discarded_rows": 3,
+        "draft_acceptance": 0.8235,
+        "generated_draft_tokens": 17,
+        "id": "general_ja_plan",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.125,
+        "tok_s": 74.17
+      },
+      "id": "general_ja_plan",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 14,
+        "accepted_per_output": 0.583333,
+        "category": "general_ja",
+        "draft_acceptance": 0.875,
+        "generated_draft_tokens": 16,
+        "id": "general_ja_plan",
+        "output_tokens": 24,
+        "predicted_ms": 315.918,
+        "tok_s": 75.969081
+      }
+    },
+    {
+      "category": "general_en",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.041633,
+        "draft_acceptance": -0.064706,
+        "generated_draft_tokens": 3,
+        "tok_s": -1.513617
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 14,
+        "accepted_histogram": {
+          "0": 3,
+          "2": 7
+        },
+        "accepted_per_output": 0.5833,
+        "category": "general_en",
+        "cycles": 10,
+        "discarded_rows": 6,
+        "draft_acceptance": 0.7,
+        "generated_draft_tokens": 20,
+        "id": "general_en_explain",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.25,
+        "tok_s": 67.14
+      },
+      "id": "general_en_explain",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 13,
+        "accepted_per_output": 0.541667,
+        "category": "general_en",
+        "draft_acceptance": 0.764706,
+        "generated_draft_tokens": 17,
+        "id": "general_en_explain",
+        "output_tokens": 24,
+        "predicted_ms": 349.581,
+        "tok_s": 68.653617
+      }
+    },
+    {
+      "category": "code",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.041667,
+        "draft_acceptance": 0.058871,
+        "generated_draft_tokens": 0,
+        "tok_s": -1.025645
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 15,
+        "accepted_histogram": {
+          "0": 1,
+          "1": 1,
+          "2": 7
+        },
+        "accepted_per_output": 0.625,
+        "category": "code",
+        "cycles": 9,
+        "discarded_rows": 2,
+        "draft_acceptance": 0.8824,
+        "generated_draft_tokens": 17,
+        "id": "code_merge_intervals",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.0833,
+        "tok_s": 73.45
+      },
+      "id": "code_merge_intervals",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 14,
+        "accepted_per_output": 0.583333,
+        "category": "code",
+        "draft_acceptance": 0.823529,
+        "generated_draft_tokens": 17,
+        "id": "code_merge_intervals",
+        "output_tokens": 24,
+        "predicted_ms": 322.253,
+        "tok_s": 74.475645
+      }
+    },
+    {
+      "category": "code",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.041667,
+        "draft_acceptance": 0.0074,
+        "generated_draft_tokens": 1,
+        "tok_s": 0.378563
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 15,
+        "accepted_histogram": {
+          "0": 1,
+          "1": 1,
+          "2": 7
+        },
+        "accepted_per_output": 0.625,
+        "category": "code",
+        "cycles": 9,
+        "discarded_rows": 2,
+        "draft_acceptance": 0.8824,
+        "generated_draft_tokens": 17,
+        "id": "code_lru_cache",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.0833,
+        "tok_s": 77.1
+      },
+      "id": "code_lru_cache",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 14,
+        "accepted_per_output": 0.583333,
+        "category": "code",
+        "draft_acceptance": 0.875,
+        "generated_draft_tokens": 16,
+        "id": "code_lru_cache",
+        "output_tokens": 24,
+        "predicted_ms": 312.82,
+        "tok_s": 76.721437
+      }
+    },
+    {
+      "category": "mixed_ja_en",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.041633,
+        "draft_acceptance": -0.027906,
+        "generated_draft_tokens": 2,
+        "tok_s": 1.452919
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 14,
+        "accepted_histogram": {
+          "0": 2,
+          "1": 2,
+          "2": 6
+        },
+        "accepted_per_output": 0.5833,
+        "category": "mixed_ja_en",
+        "cycles": 10,
+        "discarded_rows": 5,
+        "draft_acceptance": 0.7368,
+        "generated_draft_tokens": 19,
+        "id": "mixed_ja_en_review",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.2083,
+        "tok_s": 69.23
+      },
+      "id": "mixed_ja_en_review",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 13,
+        "accepted_per_output": 0.541667,
+        "category": "mixed_ja_en",
+        "draft_acceptance": 0.764706,
+        "generated_draft_tokens": 17,
+        "id": "mixed_ja_en_review",
+        "output_tokens": 24,
+        "predicted_ms": 354.102,
+        "tok_s": 67.777081
+      }
+    },
+    {
+      "category": "general_en",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.041633,
+        "draft_acceptance": 0.014578,
+        "generated_draft_tokens": 1,
+        "tok_s": 1.697295
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 14,
+        "accepted_histogram": {
+          "0": 2,
+          "1": 2,
+          "2": 6
+        },
+        "accepted_per_output": 0.5833,
+        "category": "general_en",
+        "cycles": 10,
+        "discarded_rows": 5,
+        "draft_acceptance": 0.7368,
+        "generated_draft_tokens": 19,
+        "id": "general_en_plan",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.2083,
+        "tok_s": 69.35
+      },
+      "id": "general_en_plan",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 13,
+        "accepted_per_output": 0.541667,
+        "category": "general_en",
+        "draft_acceptance": 0.722222,
+        "generated_draft_tokens": 18,
+        "id": "general_en_plan",
+        "output_tokens": 24,
+        "predicted_ms": 354.753,
+        "tok_s": 67.652705
+      }
+    },
+    {
+      "category": "code",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.041667,
+        "draft_acceptance": 0.0074,
+        "generated_draft_tokens": 1,
+        "tok_s": 2.032169
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 15,
+        "accepted_histogram": {
+          "0": 1,
+          "1": 1,
+          "2": 7
+        },
+        "accepted_per_output": 0.625,
+        "category": "code",
+        "cycles": 9,
+        "discarded_rows": 2,
+        "draft_acceptance": 0.8824,
+        "generated_draft_tokens": 17,
+        "id": "code_markdown_table",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.0833,
+        "tok_s": 77.17
+      },
+      "id": "code_markdown_table",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 14,
+        "accepted_per_output": 0.583333,
+        "category": "code",
+        "draft_acceptance": 0.875,
+        "generated_draft_tokens": 16,
+        "id": "code_markdown_table",
+        "output_tokens": 24,
+        "predicted_ms": 319.413,
+        "tok_s": 75.137831
+      }
+    },
+    {
+      "category": "general_ja",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.0417,
+        "draft_acceptance": 0.019471,
+        "generated_draft_tokens": 1,
+        "tok_s": 2.171499
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 13,
+        "accepted_histogram": {
+          "0": 3,
+          "1": 3,
+          "2": 5
+        },
+        "accepted_per_output": 0.5417,
+        "category": "general_ja",
+        "cycles": 11,
+        "discarded_rows": 9,
+        "draft_acceptance": 0.5909,
+        "generated_draft_tokens": 22,
+        "id": "general_ja_explain",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.375,
+        "tok_s": 62.73
+      },
+      "id": "general_ja_explain",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 12,
+        "accepted_per_output": 0.5,
+        "category": "general_ja",
+        "draft_acceptance": 0.571429,
+        "generated_draft_tokens": 21,
+        "id": "general_ja_explain",
+        "output_tokens": 24,
+        "predicted_ms": 396.311,
+        "tok_s": 60.558501
+      }
+    },
+    {
+      "category": "code",
+      "delta_hip_minus_llama": {
+        "accepted_draft_tokens": 1,
+        "accepted_per_output": 0.0417,
+        "draft_acceptance": 0.0,
+        "generated_draft_tokens": 1,
+        "tok_s": 3.673512
+      },
+      "hipengine": {
+        "accepted_draft_tokens": 16,
+        "accepted_histogram": {
+          "2": 8
+        },
+        "accepted_per_output": 0.6667,
+        "category": "code",
+        "cycles": 8,
+        "discarded_rows": 0,
+        "draft_acceptance": 1.0,
+        "generated_draft_tokens": 16,
+        "id": "code_topological_sort",
+        "output_tokens": 24,
+        "target_rows_per_output": 1.0,
+        "tok_s": 85.82
+      },
+      "id": "code_topological_sort",
+      "llamacpp_request": {
+        "accepted_draft_tokens": 15,
+        "accepted_per_output": 0.625,
+        "category": "code",
+        "draft_acceptance": 1.0,
+        "generated_draft_tokens": 15,
+        "id": "code_topological_sort",
+        "output_tokens": 24,
+        "predicted_ms": 292.161,
+        "tok_s": 82.146488
+      }
+    }
+  ],
+  "protocol": "natural",
+  "schema": "hipengine.mtp_economy_reconcile.v1"
+}

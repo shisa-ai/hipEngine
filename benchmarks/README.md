@@ -17,6 +17,12 @@ Versus the llama.cpp HIP B2 same-protocol diagnostic rerun cycle **14.269
 ms/output**, the active compat lane is **0.264 ms/output faster** at the stage
 level but still trails llama.cpp request throughput (**71.52 vs 71.91 tok/s**);
 the remaining delta is target semantic/proposal economy, not verifier wall time.
+Economy reconciliation shows this is not a full-request accepted/output deficit:
+hipEngine is **143/240 = 0.596**, llama.cpp request rows are **136/240 =
+0.567**, and the prior **0.610** llama.cpp accepted/output figure used the
+stage-measured denominator **136/223**. The remaining request gap is lower draft
+acceptance (**0.777 vs 0.805**) plus prompt-level variance, led by
+`mixed_ja_en_translate` (**-10.21 tok/s**, one fewer accepted draft).
 The `f32head` artifact filename is misleading: that retained row did not enable
 `--verify-lm-head-q6-top1-dp4a`. The measured current-shape verifier-head route
 does enable the flag and is rejected at **66.45 tok/s**, **15.072 ms/output**,
@@ -38,6 +44,8 @@ the route did not enable verifier-head top-1)
 `results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`;
 rejected current-shape verifier-head diagnostic
 `results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-vlmheadtop1-full.json`;
+economy denominator reconciliation
+`results/2026-07-03-mtp-economy-denominator-reconcile.json`;
 prior BF16-head natural24 cyclecap24 compat artifact
 `results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-full.json`;
 superseded 10-cycle natural24 diagnostic
