@@ -4,10 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 
 SCHEMA = "gguf_mtp_prefix_state_summary_compare.v1"
@@ -96,7 +100,76 @@ def _compare_numeric_payload(
         "baseline_first8": base_summary.get("first8"),
         "candidate_first8": cand_summary.get("first8"),
     }
+    pairwise_delta = _raw_pairwise_delta(baseline, candidate, label=component)
+    if pairwise_delta is not None:
+        result["pairwise_delta"] = pairwise_delta
     return result
+
+
+def _f32_from_bf16_raw(raw: bytes) -> np.ndarray:
+    words = np.frombuffer(raw, dtype="<u2").astype(np.uint32)
+    return np.ascontiguousarray((words << np.uint32(16)).view(np.float32), dtype=np.float32)
+
+
+def _raw_values(payload: dict[str, Any], *, label: str) -> np.ndarray | None:
+    raw_payload = payload.get("raw_data")
+    if raw_payload is None:
+        return None
+    if not isinstance(raw_payload, dict):
+        raise SystemExit(f"{label} raw_data is not an object")
+    if str(raw_payload.get("encoding")) != "base64":
+        raise SystemExit(f"{label} raw_data encoding is not base64")
+    raw = base64.b64decode(str(raw_payload.get("data_b64", "")), validate=True)
+    expected_nbytes = int(raw_payload.get("nbytes", -1))
+    if len(raw) != expected_nbytes:
+        raise SystemExit(f"{label} raw_data nbytes mismatch: {len(raw)} vs {expected_nbytes}")
+    expected_digest = raw_payload.get("blake2b_128")
+    digest = hashlib.blake2b(raw, digest_size=16).hexdigest()
+    if expected_digest is not None and str(expected_digest) != digest:
+        raise SystemExit(f"{label} raw_data digest mismatch")
+    dtype = str(raw_payload.get("dtype"))
+    if dtype == "fp32":
+        if len(raw) % np.dtype(np.float32).itemsize != 0:
+            raise SystemExit(f"{label} raw_data is not FP32-aligned")
+        return np.ascontiguousarray(np.frombuffer(raw, dtype="<f4"), dtype=np.float32)
+    if dtype == "bf16":
+        if len(raw) % np.dtype(np.uint16).itemsize != 0:
+            raise SystemExit(f"{label} raw_data is not BF16-aligned")
+        return _f32_from_bf16_raw(raw)
+    raise SystemExit(f"{label} raw_data has unsupported dtype {dtype!r}")
+
+
+def _array_delta(reference: np.ndarray, candidate: np.ndarray) -> dict[str, Any]:
+    if reference.shape != candidate.shape:
+        raise SystemExit(f"raw shape mismatch: {reference.shape} vs {candidate.shape}")
+    ref64 = reference.astype(np.float64)
+    cand64 = candidate.astype(np.float64)
+    diff = ref64 - cand64
+    ref_norm = float(np.linalg.norm(ref64))
+    cand_norm = float(np.linalg.norm(cand64))
+    return {
+        "size": int(reference.size),
+        "mean_abs_diff": float(np.mean(np.abs(diff))),
+        "rmse": float(np.sqrt(np.mean(diff * diff))),
+        "max_abs_diff": float(np.max(np.abs(diff))),
+        "cosine": float(np.dot(ref64, cand64) / (ref_norm * cand_norm)) if ref_norm and cand_norm else None,
+        "first8_diff": [float(value) for value in diff[:8]],
+    }
+
+
+def _raw_pairwise_delta(
+    baseline: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    label: str,
+) -> dict[str, Any] | None:
+    base_values = _raw_values(baseline, label=f"baseline {label}")
+    cand_values = _raw_values(candidate, label=f"candidate {label}")
+    if base_values is None and cand_values is None:
+        return None
+    if base_values is None or cand_values is None:
+        raise SystemExit(f"{label} raw_data is present in only one input")
+    return _array_delta(base_values, cand_values)
 
 
 def _layer_map(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
@@ -212,6 +285,15 @@ def _top_deltas(rows: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     return sorted(sortable, key=lambda row: float(row["summary_delta_score"]), reverse=True)[:limit]
 
 
+def _top_pairwise_deltas(rows: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    sortable = [row for row in rows if isinstance(row.get("pairwise_delta"), dict)]
+    return sorted(
+        sortable,
+        key=lambda row: float(row["pairwise_delta"]["mean_abs_diff"]),
+        reverse=True,
+    )[:limit]
+
+
 def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
     baseline_artifact = _load_json(args.baseline_json)
     candidate_artifact = _load_json(args.candidate_json)
@@ -238,8 +320,9 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         },
         "contract": {
             "note": (
-                "This compares compact per-buffer numeric summaries. It ranks drift candidates "
-                "but is not pairwise full-buffer MAE; use a selected raw dump for final attribution."
+                "This compares compact per-buffer numeric summaries. When selected raw_data "
+                "payloads are present, it also computes full pairwise MAE/RMSE/max/cosine for "
+                "those buffers only."
             )
         },
         "prefix_metadata": {
@@ -277,6 +360,10 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "kv_hash_changed": len(kv_hash_changed),
             "top_linear_summary_deltas": _top_deltas(linear_rows, int(args.top_n)),
             "top_kv_summary_deltas": _top_deltas(kv_rows, int(args.top_n)),
+            "raw_linear_components": len([row for row in linear_rows if isinstance(row.get("pairwise_delta"), dict)]),
+            "raw_kv_components": len([row for row in kv_rows if isinstance(row.get("pairwise_delta"), dict)]),
+            "top_linear_pairwise_deltas": _top_pairwise_deltas(linear_rows, int(args.top_n)),
+            "top_kv_pairwise_deltas": _top_pairwise_deltas(kv_rows, int(args.top_n)),
         },
         "linear_state_summary_deltas": linear_rows,
         "kv_state_summary_deltas": kv_rows,

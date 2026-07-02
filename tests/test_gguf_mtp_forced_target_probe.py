@@ -10,6 +10,7 @@ from scripts.gguf_mtp_forced_target_probe import (
     _capture_moe_component_arrays,
     _f32_from_bf16_raw,
     _numeric_summary_from_raw,
+    _raw_numeric_payload_from_raw,
     _scored_boundary_capture_record,
     build_arg_parser,
     diagnostic_env_payload,
@@ -110,6 +111,26 @@ def test_parser_exposes_prefix_state_numeric_summary() -> None:
     assert args.prefix_state_numeric_summary is True
 
 
+def test_parser_exposes_raw_prefix_state_layers() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--trace",
+            "trace.json",
+            "--cycle",
+            "12",
+            "--raw-prefix-linear-state-layer",
+            "33",
+            "--raw-prefix-linear-state-layer",
+            "26",
+            "--raw-prefix-kv-state-layer",
+            "15",
+        ]
+    )
+
+    assert args.raw_prefix_linear_state_layer == [33, 26]
+    assert args.raw_prefix_kv_state_layer == [15]
+
+
 def test_prefix_state_numeric_summary_decodes_fp32_and_bf16() -> None:
     fp32_values = np.asarray([1.0, -2.0, 0.5], dtype=np.float32)
     fp32_summary = _numeric_summary_from_raw(
@@ -134,6 +155,21 @@ def test_prefix_state_numeric_summary_decodes_fp32_and_bf16() -> None:
     assert bf16_summary["label"] == "bf16_state"
     assert bf16_summary["size"] == 3
     assert bf16_summary["first8"][:3] == [1.0, -2.0, 0.5]
+
+
+def test_raw_numeric_payload_records_base64_bytes_and_summary() -> None:
+    values = np.asarray([1.0, -2.0, 0.5], dtype=np.float32)
+    payload = _raw_numeric_payload_from_raw(
+        values.view(np.uint8),
+        dtype="fp32",
+        label="raw_state",
+    )
+
+    assert payload["encoding"] == "base64"
+    assert payload["dtype"] == "fp32"
+    assert payload["nbytes"] == values.nbytes
+    assert payload["numeric_summary"]["first8"][:3] == [1.0, -2.0, 0.5]
+    assert isinstance(payload["data_b64"], str)
 
 
 def test_diagnostic_env_payload_records_f32_flags(monkeypatch) -> None:

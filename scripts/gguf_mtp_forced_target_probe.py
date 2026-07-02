@@ -10,6 +10,7 @@ not performance measurement.
 from __future__ import annotations
 
 import argparse
+import base64
 import ctypes
 import hashlib
 import json
@@ -60,6 +61,7 @@ DIAGNOSTIC_ENV_KEYS = (
     "HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN",
     "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT",
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV",
     "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL",
 )
 
@@ -361,12 +363,25 @@ def _numeric_summary_from_raw(raw: np.ndarray, *, dtype: str, label: str) -> dic
     return hidden_state_summary(values, label=label)
 
 
+def _raw_numeric_payload_from_raw(raw: np.ndarray, *, dtype: str, label: str) -> dict[str, Any]:
+    raw_u8 = np.ascontiguousarray(raw, dtype=np.uint8).reshape(-1)
+    return {
+        "encoding": "base64",
+        "dtype": str(dtype),
+        "nbytes": int(raw_u8.size),
+        "blake2b_128": _bytes_digest(raw_u8),
+        "numeric_summary": _numeric_summary_from_raw(raw_u8, dtype=dtype, label=label),
+        "data_b64": base64.b64encode(raw_u8.tobytes()).decode("ascii"),
+    }
+
+
 def _device_buffer_fingerprint(
     session: Any,
     buffer: Any,
     *,
     numeric_dtype: str | None = None,
     label: str | None = None,
+    include_raw: bool = False,
 ) -> dict[str, Any]:
     raw = _copy_device_bytes(session, int(buffer.ptr), int(buffer.nbytes))
     result: dict[str, Any] = {
@@ -375,6 +390,14 @@ def _device_buffer_fingerprint(
     }
     if numeric_dtype is not None:
         result["numeric_summary"] = _numeric_summary_from_raw(
+            raw,
+            dtype=str(numeric_dtype),
+            label=str(label or "device_buffer"),
+        )
+    if include_raw:
+        if numeric_dtype is None:
+            raise ProbeError("raw numeric payload requires numeric_dtype")
+        result["raw_data"] = _raw_numeric_payload_from_raw(
             raw,
             dtype=str(numeric_dtype),
             label=str(label or "device_buffer"),
@@ -389,6 +412,7 @@ def _device_range_fingerprint(
     *,
     numeric_dtype: str | None = None,
     label: str | None = None,
+    include_raw: bool = False,
 ) -> dict[str, Any]:
     raw = _copy_device_bytes(session, int(ptr), int(nbytes))
     result: dict[str, Any] = {
@@ -401,10 +425,23 @@ def _device_range_fingerprint(
             dtype=str(numeric_dtype),
             label=str(label or "device_range"),
         )
+    if include_raw:
+        if numeric_dtype is None:
+            raise ProbeError("raw numeric payload requires numeric_dtype")
+        result["raw_data"] = _raw_numeric_payload_from_raw(
+            raw,
+            dtype=str(numeric_dtype),
+            label=str(label or "device_range"),
+        )
     return result
 
 
-def _session_live_kv_fingerprint(session: Any, *, include_numeric_summary: bool = False) -> dict[str, Any]:
+def _session_live_kv_fingerprint(
+    session: Any,
+    *,
+    include_numeric_summary: bool = False,
+    raw_state_layers: set[int] | None = None,
+) -> dict[str, Any]:
     from hipengine.runtime.qwen35_gguf_runner import DType
 
     if session.runner is None or session.runner.weights is None or session.scratch is None:
@@ -414,12 +451,15 @@ def _session_live_kv_fingerprint(session: Any, *, include_numeric_summary: bool 
     row_nbytes = int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
     live_nbytes = int(live_positions) * int(row_nbytes)
     layers: list[dict[str, Any]] = []
+    raw_layers = set(raw_state_layers or set())
     for layer_id, (key_cache, value_cache) in enumerate(
         zip(session.scratch.full_key_caches, session.scratch.full_value_caches, strict=True)
     ):
         if key_cache is None or value_cache is None:
             continue
         max_live_nbytes = min(int(live_nbytes), int(key_cache.nbytes), int(value_cache.nbytes))
+        include_raw_layer = int(layer_id) in raw_layers
+        numeric_dtype = "bf16" if include_numeric_summary or include_raw_layer else None
         layers.append(
             {
                 "layer": int(layer_id),
@@ -427,15 +467,17 @@ def _session_live_kv_fingerprint(session: Any, *, include_numeric_summary: bool 
                     session,
                     int(key_cache.ptr),
                     max_live_nbytes,
-                    numeric_dtype="bf16" if include_numeric_summary else None,
+                    numeric_dtype=numeric_dtype,
                     label=f"full_attn_{layer_id}_key_live_bf16",
+                    include_raw=include_raw_layer,
                 ),
                 "value": _device_range_fingerprint(
                     session,
                     int(value_cache.ptr),
                     max_live_nbytes,
-                    numeric_dtype="bf16" if include_numeric_summary else None,
+                    numeric_dtype=numeric_dtype,
                     label=f"full_attn_{layer_id}_value_live_bf16",
+                    include_raw=include_raw_layer,
                 ),
             }
         )
@@ -456,6 +498,8 @@ def _session_lifecycle_fingerprint(
     include_kv: bool = False,
     include_hidden_values: bool = False,
     include_state_numeric_summary: bool = False,
+    raw_linear_state_layers: set[int] | None = None,
+    raw_kv_state_layers: set[int] | None = None,
 ) -> dict[str, Any]:
     if session.runner is None or session.scratch is None:
         raise ProbeError("session is closed")
@@ -477,25 +521,30 @@ def _session_lifecycle_fingerprint(
             for value in np.ascontiguousarray(hidden, dtype=np.float32).reshape(-1)
         ]
     linear_layers: list[dict[str, Any]] = []
+    raw_linear_layers = set(raw_linear_state_layers or set())
     for layer_id, (conv_state, recurrent_state) in enumerate(
         zip(session.scratch.layer_conv_states, session.scratch.layer_recurrent_states, strict=True)
     ):
         if conv_state is None or recurrent_state is None:
             continue
+        include_raw_layer = int(layer_id) in raw_linear_layers
+        numeric_dtype = "fp32" if include_state_numeric_summary or include_raw_layer else None
         linear_layers.append(
             {
                 "layer": int(layer_id),
                 "conv": _device_buffer_fingerprint(
                     session,
                     conv_state,
-                    numeric_dtype="fp32" if include_state_numeric_summary else None,
+                    numeric_dtype=numeric_dtype,
                     label=f"linear_{layer_id}_conv_state_fp32",
+                    include_raw=include_raw_layer,
                 ),
                 "recurrent": _device_buffer_fingerprint(
                     session,
                     recurrent_state,
-                    numeric_dtype="fp32" if include_state_numeric_summary else None,
+                    numeric_dtype=numeric_dtype,
                     label=f"linear_{layer_id}_recurrent_state_fp32",
+                    include_raw=include_raw_layer,
                 ),
             }
         )
@@ -503,6 +552,7 @@ def _session_lifecycle_fingerprint(
         kv_state = _session_live_kv_fingerprint(
             session,
             include_numeric_summary=bool(include_state_numeric_summary),
+            raw_state_layers=set(raw_kv_state_layers or set()),
         )
     else:
         kv_state = {
@@ -1838,6 +1888,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "--prefix-state-fingerprint payload."
         ),
     )
+    parser.add_argument(
+        "--raw-prefix-linear-state-layer",
+        action="append",
+        type=int,
+        default=[],
+        help=(
+            "Diagnostic only: include base64 raw FP32 Conv/GDN state buffers for "
+            "one selected linear-attention layer in the --prefix-state-fingerprint "
+            "payload. Repeat for multiple layers."
+        ),
+    )
+    parser.add_argument(
+        "--raw-prefix-kv-state-layer",
+        action="append",
+        type=int,
+        default=[],
+        help=(
+            "Diagnostic only: include base64 raw BF16 live key/value cache ranges "
+            "for one selected full-attention layer in the --prefix-state-fingerprint "
+            "payload. Repeat for multiple layers."
+        ),
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -1922,6 +1994,11 @@ def main(argv: list[str] | None = None) -> int:
             raise ProbeError(
                 f"router trace row {row_index} outside verifier input length {len(verifier_inputs)}"
             )
+    raw_prefix_linear_state_layers = {int(layer) for layer in args.raw_prefix_linear_state_layer}
+    raw_prefix_kv_state_layers = {int(layer) for layer in args.raw_prefix_kv_state_layer}
+    for layer_id in sorted(raw_prefix_linear_state_layers | raw_prefix_kv_state_layers):
+        if int(layer_id) < 0:
+            raise ProbeError(f"raw prefix state layer must be non-negative, got {layer_id}")
     route_env = _apply_trace_route_env(workload, decode_repack=args.decode_repack)
     if _env_truthy("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"):
         raise ProbeError("direct verifier top-1 path is enabled; full row logits would be unavailable")
@@ -2009,9 +2086,13 @@ def main(argv: list[str] | None = None) -> int:
                 include_kv=True,
                 include_hidden_values=bool(args.raw_prefix_hidden_seed),
                 include_state_numeric_summary=bool(args.prefix_state_numeric_summary),
+                raw_linear_state_layers=raw_prefix_linear_state_layers,
+                raw_kv_state_layers=raw_prefix_kv_state_layers,
             )
             if bool(args.prefix_state_fingerprint) or bool(args.raw_prefix_hidden_seed)
             or bool(args.prefix_state_numeric_summary)
+            or bool(raw_prefix_linear_state_layers)
+            or bool(raw_prefix_kv_state_layers)
             else None
         )
 
@@ -2229,6 +2310,7 @@ def main(argv: list[str] | None = None) -> int:
             "prefix_state_fingerprint is emitted only for --prefix-state-fingerprint diagnostics.",
             "prefix_state_fingerprint.hidden_seed.values is emitted only for --raw-prefix-hidden-seed diagnostics.",
             "prefix_state_fingerprint linear/KV numeric summaries are emitted only for --prefix-state-numeric-summary diagnostics.",
+            "prefix_state_fingerprint linear/KV raw_data is emitted only for selected --raw-prefix-*-state-layer diagnostics.",
             "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
             "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
             "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
