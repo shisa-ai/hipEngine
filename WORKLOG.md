@@ -135121,3 +135121,63 @@ PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
   This rules out a missing shifted hidden handoff; next split is raw row-1
   hidden/lm-head cross-scoring or pre-output-norm/per-layer target hidden
   checkpoints to locate the first source of the small drift.
+
+## 2026-07-02 - Raw target hidden plus lm-head cross-score for pair-12
+
+- Added `--raw-hidden-row` to `scripts/gguf_mtp_forced_target_probe.py` and
+  reran the forced pair-12 probes for row 1. Added local llama.cpp diagnostic
+  support for filtered raw hidden values in `common/speculative.h`,
+  `common/speculative.cpp`, and `tools/server/server-context.cpp`; rebuilt
+  `llama-server` and reran the same prompt with raw values limited to
+  `verify_h` row 1.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --top-k 20 --candidate-token 26126 --raw-hidden-row 1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-hiddenraw.json
+
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/gguf_mtp_forced_target_probe.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json \
+  --cycle 12 --replay-target-block-verify-mode bulk \
+  --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 \
+  --raw-hidden-row 1 \
+  --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-hiddenraw.json
+
+LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 \
+LLAMA_MTP_HIDDEN_TRACE_VALUES=1 \
+LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS=verify_h \
+LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS=1 \
+PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 \
+  --draft-max 2 --mode mtp --protocol natural \
+  --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl \
+  --max-tokens 120 \
+  --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw.jsonl \
+  --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off \
+  --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw.json \
+  --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw-logs \
+  --server-start-timeout 180 --request-timeout 240
+```
+
+- Added diagnostic artifact
+  `benchmarks/results/2026-07-02-mtp-target-hidden-raw-lmhead-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md`. Full row-1 hidden deltas vs
+  llama: hip bulk MAE **0.08067**, RMSE **0.10226**, max abs **0.38638**,
+  cosine **0.999005**; hip serial-exact MAE **0.07789**, RMSE **0.09815**,
+  max abs **0.38062**, cosine **0.999078**.
+- CPU-dequantized `output.weight` Q6_K rows `539` and `26126` with
+  `hipengine.quant.gguf.dequantize_gguf_data()` and dotted them with the raw
+  hidden vectors. The same lm-head rows reproduce each engine's branch:
+  hip bulk margin `539 - 26126` **+0.32916** vs observed **+0.33617**;
+  hip serial-exact **+0.12350** vs observed **+0.11822**; llama.cpp
+  **-0.00192** vs observed **-0.00896**. This rules out lm-head ordering as the
+  mismatch source. The active target is now target hidden production before or
+  during output norm: pre-output-norm residual rows and/or per-layer row-1
+  checkpoints at the forced prefix.

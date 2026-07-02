@@ -96,7 +96,10 @@ diagnostic corrects the earlier tensor alignment: llama.cpp's `process_h_input`
 is shifted, so `process_h_input` row `i+1` corresponds to verifier `verify_h`
 row `i`. Direct `verify_h` comparison shows the handoff is structurally aligned
 but not bit-identical; row-1 hidden summaries differ modestly, and the near-tie
-lm-head score flips.
+lm-head score flips. A raw row-1 hidden dump plus CPU-dequantized `output.weight`
+rows for tokens `539` and `26126` reproduces each engine's ranking, so the
+remaining mismatch is target hidden production drift before/during output norm,
+not a different lm-head ordering implementation.
 
 Use the tables in this order when choosing the next fix: first the canonical
 three-lane speed-gap board, then the standing snapshot/source artifacts, then
@@ -220,6 +223,7 @@ Current source artifacts:
 | llama.cpp HIP verifier-shape pp4 rocprof proxy | `benchmarks/results/2026-07-01-llamacpp-hip-pp4-kernel-summary.json` | Diagnostic-only `llama-bench -p 4 -b 4 -ub 4 -n 0` kernel-family summary. This remains a verifier-shaped source/kernel proxy, not a headline MTP timing row. |
 | llama.cpp HIP MTP whole-run rocprof proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-whole-run.json` | Diagnostic-only `llama-server` MTP request under `rocprofv3 --kernel-trace`, with `LLAMA_MTP_STAGE_TIMINGS` enabled. It produces the first llama.cpp MTP kernel-family bucket split in this tracker, but it is whole-process and required `SIGKILL` after profiler finalize timeout, so use it only as a source/kernel proxy. |
 | llama.cpp HIP MTP ROCTX range proxy | `benchmarks/results/2026-07-02-llamacpp-mtp-rocprof-token32-gen8-roctx-ranges.json` | Diagnostic-only rerun after llama.cpp commit `dd7ec418c` added `LLAMA_MTP_ROCTX=1` ranges around the existing MTP stage timers. The artifact includes `range_name_summaries` for stage-window kernel buckets, but it is still whole-process and includes warmup/prompt/server ranges, so do not use it as a headline timing row. |
+| hipEngine vs llama.cpp raw target hidden + lm-head diagnostic | `benchmarks/results/2026-07-02-mtp-target-hidden-raw-lmhead-diagnostic.json` | Diagnostic-only raw row-1 split at the active pair-12 mismatch; `performance_claim=false`. The hipEngine probe emits full FP32 hidden values for row 1 via `--raw-hidden-row 1`; local llama.cpp emits raw `verify_h` row-1 values with `LLAMA_MTP_HIDDEN_TRACE_VALUES=1`, `LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS=verify_h`, and `LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS=1`. Dequantizing only `output.weight` rows `539` and `26126` and dotting them with the raw hidden vectors reproduces the observed ranking: hipEngine serial CPU margin `539-26126` **+0.1235** vs observed **+0.1182**, llama CPU margin **-0.0019** vs observed **-0.0090**. The mismatch is therefore target hidden production drift, not lm-head implementation ordering. |
 | hipEngine vs llama.cpp forced target hidden diagnostic | `benchmarks/results/2026-07-02-mtp-target-hidden-compare-diagnostic.json` | Diagnostic-only direct hidden-row comparison at the active pair-12 mismatch; `performance_claim=false`. The hipEngine probe now records the cycle-start pending seed and target verifier hidden rows; local llama.cpp instrumentation now emits `verify_h` rows from `common/speculative.cpp`. This corrects the earlier row alignment: llama `process_h_input` is shifted by one row, while `verify_h` is the direct target. Pending seed matches structurally but not bit-for-bit (first8 MAE **0.0909**, last8 MAE **0.0953**). Direct row-1 `verify_h` hidden deltas are small but nonzero: hipEngine bulk vs llama first8 MAE **0.0773**, last8 MAE **0.0609**; hipEngine serial-exact vs llama first8 MAE **0.0785**, last8 MAE **0.0391**. The row-1 logits still flip: hipEngine serial-exact ranks `539` over `26126` by **0.1182**, llama.cpp ranks `26126` over `539` by **0.0090**. |
 | hipEngine vs llama.cpp forced target score diagnostic | `benchmarks/results/2026-07-02-mtp-target-score-compare-diagnostic.json` | Diagnostic-only forced-prefix score comparison at the active pair-12 mismatch; `performance_claim=false`. hipEngine reconstructs the active prefix with block-cycle replay and then probes row 1 after input token `15495`. Bulk target verification samples `[15495, 539, 1151]` and ranks `539` over `26126` by **0.336 logits**; final serial-exact probing on the same bulk-replayed prefix still samples `[15495, 539, 1151]` and ranks `539` over `26126` by **0.118 logits**. llama.cpp HIP samples `[15495, 26126]` and ranks `26126` over `539` by **0.009 logits**. This rules out draft generation and a bulk-only verifier bug; the live semantic target is sub-0.12-logit target-row numerical drift/tie-break parity. |
 | hipEngine vs llama.cpp active long proposal trace diagnostic | `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-long-diagnostic.json` | Diagnostic-only same-prompt token trace using the current active `draftdenseq8-draftonly` `llama-compat` route for 32 measured hipEngine cycles and a fresh llama.cpp HIP B2 120-token trace; `performance_claim=false`. It supersedes the short trace: proposals stay aligned at the first real mismatch, but target acceptance diverges at pair 12. Both engines draft `[15495, 539]`; hipEngine accepts both and emits `[15495, 539, 1151]`, while llama.cpp rejects `539` and emits `[15495, 26126]`. Serial-exact hipEngine A/B reproduces the same row-12 decision, so the active semantic target is target verifier/sample parity, not draft proposal generation. |
@@ -364,6 +368,32 @@ path, or instrument the target forward earlier (pre-output-norm residual and
 per-layer hidden checkpoints) to find the first source of the small row-1 drift.
 This remains semantic parity work; it is not a retained full-suite performance
 gap.
+
+Raw row-1 hidden + lm-head diagnostic:
+`benchmarks/results/2026-07-02-mtp-target-hidden-raw-lmhead-diagnostic.json`.
+This reruns the forced probes with `--raw-hidden-row 1` and reruns llama.cpp
+with raw values filtered to `verify_h` row 1. Then it dequantizes only
+`output.weight` rows `539` and `26126` using `dequantize_gguf_data()` and dots
+those rows against each raw hidden vector.
+
+| row-1 raw/cross-score check | hipEngine bulk | hipEngine serial-exact | llama.cpp HIP |
+| --- | ---: | ---: | ---: |
+| hidden MAE vs llama row 1 | **0.08067** | **0.07789** | 0 |
+| hidden RMSE vs llama row 1 | **0.10226** | **0.09815** | 0 |
+| hidden max abs delta vs llama row 1 | **0.38638** | **0.38062** | 0 |
+| hidden cosine vs llama row 1 | **0.999005** | **0.999078** | 1.0 |
+| CPU-dequant lm-head margin `539 - 26126` | **+0.32916** | **+0.12350** | **-0.00192** |
+| observed margin `539 - 26126` | **+0.33617** | **+0.11822** | **-0.00896** |
+| CPU-vs-observed margin error | **0.00701** | **0.00528** | **0.00704** |
+
+Reading: the same dequantized lm-head rows reproduce each engine's ranking from
+the raw hidden vector. The row-1 accept/reject mismatch is therefore not an
+lm-head ordering or candidate-sort issue. It is explained by the target hidden
+row that reaches the lm-head. The next split should move earlier in target
+forward: capture pre-output-norm residual rows and/or per-layer row-1 hidden
+checkpoints at the forced prefix, then compare hipEngine serial-exact against
+llama.cpp `llama_decode()` to find the first layer/stage that creates the
+~0.08 MAE drift.
 
 Superseded short-trace artifact:
 `benchmarks/results/2026-07-02-mtp-proposal-trace-compare-active-draftdenseq8-draftonly-diagnostic.json`.
@@ -770,7 +800,7 @@ match but the timings do not.
 
 | priority | gap area | hipEngine buckets to update | llama.cpp comparison point | current delta | next fix class |
 | ---: | --- | --- | --- | ---: | --- |
-| S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, next raw hidden/lm-head splits | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h` trace in `common/speculative.cpp`, and target hidden/logit source around `llama_decode()` + `common_sampler_sample_and_accept_n()` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. Forced row-1 score trace: hipEngine serial-exact ranks `539` over `26126` by **0.118 logits**; llama.cpp ranks `26126` over `539` by **0.009 logits**. Direct `verify_h` comparison fixes the shifted-row interpretation and shows row-1 hidden rows are close but not bit-identical (serial first8 MAE **0.0785**, last8 **0.0391**). | Score/top-k and direct `verify_h` instrumentation are done. Next split target row-1 raw hidden/lm-head numerics at the forced prefix: dump raw post-output-norm row values and cross-score `539`/`26126`, or instrument pre-output-norm/per-layer hidden checkpoints to locate the first source of the small drift. This is semantic parity, not a retained full-suite perf gap. |
+| S | Target verifier semantic parity | proposal trace `target_tokens`, `accepted_draft_tokens`, forced-prefix target score/top-k rows, forced-prefix pending seed and `verify_h` rows, raw row-1 hidden/lm-head cross-score, next pre-output-norm/per-layer hidden split | llama.cpp `sampled_token_ids`/accept accounting in `tools/server/server-context.cpp`, local `target_sample_trace`, local `verify_h`/raw-value trace in `common/speculative.cpp`, and target hidden source around `llama_decode()` | Diagnostic pair 12: both draft `[15495, 539]`; hipEngine accepts 2 and emits `[15495, 539, 1151]`, llama.cpp accepts 1 and emits `[15495, 26126]`. Forced row-1 score trace: hipEngine serial-exact ranks `539` over `26126` by **0.118 logits**; llama.cpp ranks `26126` over `539` by **0.009 logits**. Direct `verify_h` comparison fixes the shifted-row interpretation and shows row-1 hidden rows are close but not bit-identical (serial full-row MAE **0.0779**, cosine **0.99908**). CPU-dequant `output.weight[539,26126]` scoring reproduces the observed ranking from each raw hidden vector. | Score/top-k, direct `verify_h`, raw hidden dump, and common lm-head cross-score are done. The lm-head is not the mismatch source. Next split target row-1 hidden production before output norm: capture pre-output-norm residual and/or per-layer row-1 checkpoints for hipEngine serial-exact and llama.cpp `llama_decode()` to find the first stage that creates the small drift. This is semantic parity, not a retained full-suite perf gap. |
 | 1 | Total MTP wall | `cycle_wall_ms_per_output`, retained MTP tok/s | rerun B2 cycle wall plus suite tok/s | **-0.944 ms/output** | Parent wall is closed on the retained row; verify with same-protocol reruns. |
 | 2 | Draft operation drain | `draft_initial`, `draft_device_chain_drain`, `draft_topk_readback`, GPU-event `draft_gpu_run_lm_head`, `draft_gpu_decode_initial`, `draft_gpu_decode_next`, all-sync `draft_run_lm_head_q6_top1_dp4a_x8_stage1`, draft rocprof `gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1`, fine-sync draft body leaves | `llama_draft_sample_topk` plus llama draft decode/lm-head path | **-0.076 ms/output** | Fixed on the retained row. Draft-only dense-Q8 moves full-suite draft drain **2.204 -> 2.066 ms/output** without changing row economy; future leaf work must move the retained parent row before becoming a live parity target. |
 | 3 | Proposal / row economy | `target_rows_per_output`, `target_passes_per_output`, accepted/output, draft acceptance, visible outputs/cycle, proposal trace stream/chunking, draft top-k scores/margins, draft hidden summaries | llama B2 no-probe draft proposal, `common_speculative_process()`, and accept accounting | **+0.077 outputs/cycle**, -0.012 target rows/output | Retained full-suite row economy is closed. Resident initial KV changes the full-suite histogram from `{2 accepts: 54}` to `{2 accepts: 75}` out of 100 cycles. Long-trace semantic follow-up is tracked in row S because the first real mismatch has matching draft tokens and divergent target acceptance. |

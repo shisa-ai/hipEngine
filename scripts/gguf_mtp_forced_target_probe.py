@@ -423,6 +423,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--prefill-attention-mode", choices=("bulk", "native"), default="bulk")
+    parser.add_argument(
+        "--raw-hidden-row",
+        action="append",
+        type=int,
+        default=[],
+        help="Diagnostic only: include full FP32 hidden_seed values for the given verifier row index.",
+    )
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     return parser
@@ -472,6 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     verifier_inputs = [cycle_prev_token] + draft_tokens
     extra_candidates = [token for values in args.candidate_token for token in values]
     candidate_tokens = _unique_ints([*draft_tokens, *target_tokens, *output_tokens, *extra_candidates])
+    raw_hidden_rows = {int(row) for row in args.raw_hidden_row}
     route_env = _apply_trace_route_env(workload, decode_repack=args.decode_repack)
     if _env_truthy("HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"):
         raise ProbeError("direct verifier top-1 path is enabled; full row logits would be unavailable")
@@ -544,26 +552,30 @@ def main(argv: list[str] | None = None) -> int:
         rows: list[dict[str, Any]] = []
         for row_index, (input_token, sampled_token) in enumerate(zip(verifier_inputs, sampled_tokens, strict=True)):
             row_logits = logits[row_index]
-            rows.append(
-                {
-                    "row": int(row_index),
-                    "position": int(cycle_start_position + row_index),
-                    "input_token": int(input_token),
-                    "sampled_token": int(sampled_token),
-                    "trace_target_token": int(target_tokens[row_index]) if row_index < len(target_tokens) else None,
-                    "trace_output_token": int(output_tokens[row_index]) if row_index < len(output_tokens) else None,
-                    "draft_token_at_depth": int(draft_tokens[row_index]) if row_index < len(draft_tokens) else None,
-                    "hidden_seed_summary": hidden_state_summary(
-                        hidden_seeds[row_index],
-                        label="target_verify_hidden_seed",
-                        depth=int(row_index),
-                        token_id=int(input_token),
-                        position=int(cycle_start_position + row_index),
-                    ),
-                    "top_k": _top_k_rows(row_logits, top_k=int(args.top_k)),
-                    "candidate_scores": _candidate_rows(row_logits, candidate_tokens),
-                }
-            )
+            row_record = {
+                "row": int(row_index),
+                "position": int(cycle_start_position + row_index),
+                "input_token": int(input_token),
+                "sampled_token": int(sampled_token),
+                "trace_target_token": int(target_tokens[row_index]) if row_index < len(target_tokens) else None,
+                "trace_output_token": int(output_tokens[row_index]) if row_index < len(output_tokens) else None,
+                "draft_token_at_depth": int(draft_tokens[row_index]) if row_index < len(draft_tokens) else None,
+                "hidden_seed_summary": hidden_state_summary(
+                    hidden_seeds[row_index],
+                    label="target_verify_hidden_seed",
+                    depth=int(row_index),
+                    token_id=int(input_token),
+                    position=int(cycle_start_position + row_index),
+                ),
+                "top_k": _top_k_rows(row_logits, top_k=int(args.top_k)),
+                "candidate_scores": _candidate_rows(row_logits, candidate_tokens),
+            }
+            if int(row_index) in raw_hidden_rows:
+                row_record["hidden_seed_values"] = [
+                    float(value)
+                    for value in np.ascontiguousarray(hidden_seeds[row_index], dtype=np.float32).reshape(-1)
+                ]
+            rows.append(row_record)
     finally:
         session.close()
 
@@ -618,6 +630,7 @@ def main(argv: list[str] | None = None) -> int:
             "The verifier direct Q6 top-1 path is forced off so full row logits are available.",
             "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
             "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
+            "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
         ],
     }
     text = json.dumps(artifact, indent=2, ensure_ascii=False) + "\n"
