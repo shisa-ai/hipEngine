@@ -312,6 +312,31 @@ must request the pre-translation graph label `l_out_N` in
 `LLAMA_MTP_TENSOR_TRACE_VALUE_LABELS`; requesting `verify_layer_output_N` only
 captures summaries without `values`.
 
+Layer-10 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer10-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer10-scored-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer10-scored-moe-taps-compare.json`.
+
+| layer-10 scored linear-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `verify_layer_output_9` vs hipEngine `hidden_in` | **0.000648** | **0.000832** | Incoming layer-9 output is already the live boundary drift. |
+| `attn_norm_10` vs hipEngine `attn_norm` | **0.01561** | **0.02018** | CPU RMSNorm mostly explains the normalized-space delta from the input drift. |
+| `z_10` vs hipEngine `linear_z` | **0.01463** | **0.01892** | Projection follows normalized input drift. |
+| `conv_output_silu_10` vs hipEngine `conv_out` | 0.000714 | 0.00173 | No conv cliff; qkv/beta raw taps remain trace-label/layout caveated. |
+| `linear_attn_out_10` vs hipEngine `attn_out` | 0.000359 | 0.000466 | Not a linear-attention output cliff. |
+| `attn_residual_10` vs hipEngine `attn_residual` | 0.000661 | 0.000857 | Carries the incoming drift forward. |
+| `attn_post_norm_10` vs hipEngine `attn_post_norm` | **0.01845** | **0.02388** | Second RMSNorm amplifies residual-space drift before MoE. |
+| `ffn_out_10` vs hipEngine reconstructed `ffn_out` | 0.000334 | 0.000426 | MoE projection/combination remains small. |
+| `post_moe_10` / `verify_layer_output_10` vs hipEngine layer output | **0.000693** | **0.000898** | Exactly the incoming layer-11 hidden delta measured above. |
+
+Layer-10 MoE top-k selection also matches exactly:
+`[91, 24, 252, 73, 92, 165, 105, 72]`. Router logits differ by
+**0.0126 MAE / 0.0165 RMSE**, selected weighted rows are **0.0000857 MAE**,
+aggregate `ffn_out` is **0.000334 MAE**, and post-MoE is **0.000693 MAE**.
+Layer 10 is therefore not the copy target either; the next semantic split is
+the scored layer-9 boundary/internal split.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
