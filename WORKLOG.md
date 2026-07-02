@@ -137712,3 +137712,47 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_layer0_linear_attn.py -q
   jq empty benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer9-cycle3.json benchmarks/results/2026-07-03-mtp-bonus-row-layer9-scored-linear-attn-compare.json benchmarks/results/2026-07-03-mtp-bonus-row-layer9-scored-moe-taps-compare.json
   ```
+
+## 2026-07-03 - Scored layer-8 split moves semantic target to layer 7
+
+- Captured the same task-9/cycle-3/row-2 bonus branch at scored target layer 8:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 8:2 \
+    --raw-layer-output-row 8:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer8-cycle3.json
+  ```
+- Reran patched llama.cpp HIP with row-2 raw layer-8 labels at
+  `/tmp/hipengine-llamacpp-layer8-input-raw-row2-task9-cycle3.jsonl`; it stayed
+  on `[11, 567]` accepted, bonus `668`. Boundary raw values used
+  `l_out_7,l_out_8`, exported as `verify_layer_output_7` and
+  `verify_layer_output_8`.
+- Reduced
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer8-scored-linear-attn-compare.json`.
+  Result: incoming hidden vs llama.cpp `verify_layer_output_7` is
+  `0.000459 MAE / 0.000593 RMSE`; `attn_norm_8` is
+  `0.013006 / 0.016818`; `z_8` is `0.011942 / 0.015266`;
+  `conv_output_silu_8` is `0.000902 / 0.002144`; `linear_attn_out_8` is
+  `0.000342 / 0.000449`; `attn_residual_8` is `0.000505 / 0.000689`;
+  `attn_post_norm_8` is `0.016198 / 0.020894`; `ffn_out_8` is
+  `0.000301 / 0.000384`; post-MoE / `verify_layer_output_8` is
+  `0.000542 / 0.000712`. CPU RMSNorm exactly reproduces both engines'
+  attn_norm rows; layer 8 is not the linear-attention cliff.
+- Reduced the layer-8 MoE split:
+  `benchmarks/results/2026-07-03-mtp-bonus-row-layer8-scored-moe-taps-compare.json`.
+  Router top-k has rank permutations but no expert-set mismatch: hipEngine
+  `[168, 74, 207, 98, 29, 137, 200, 3]` vs llama.cpp
+  `[168, 74, 98, 207, 29, 3, 200, 137]`. Selected weighted rows are
+  `0.00135 MAE`, aggregate `ffn_out` is `0.000301 MAE`, and post-MoE is
+  `0.000542 MAE`. The semantic split moves upstream to layer 7.

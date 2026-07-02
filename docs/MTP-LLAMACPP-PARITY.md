@@ -364,6 +364,32 @@ llama-only experts. Common-expert rows remain close, selected weighted rows are
 **0.000648 MAE**. This is a useful cutoff-pressure signal, but not yet a layer
 to copy; the next semantic split moves upstream to scored layer 8.
 
+Layer-8 follow-up:
+`benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer8-cycle3.json`,
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer8-scored-linear-attn-compare.json`,
+and
+`benchmarks/results/2026-07-03-mtp-bonus-row-layer8-scored-moe-taps-compare.json`.
+
+| layer-8 scored linear-attention boundary, row 2 | MAE | RMSE | readout |
+| --- | ---: | ---: | --- |
+| `verify_layer_output_7` vs hipEngine `hidden_in` | **0.000459** | **0.000593** | Incoming layer-7 output remains the live boundary drift. |
+| `attn_norm_8` vs hipEngine `attn_norm` | **0.01301** | **0.01682** | CPU RMSNorm exactly reproduces both engines; normalized drift is input-driven. |
+| `z_8` vs hipEngine `linear_z` | **0.01194** | **0.01527** | Projection follows normalized input drift. |
+| `conv_output_silu_8` vs hipEngine `conv_out` | 0.000902 | 0.00214 | No conv cliff; qkv/beta raw taps remain trace-label/layout caveated. |
+| `linear_attn_out_8` vs hipEngine `attn_out` | 0.000342 | 0.000449 | Not a linear-attention output cliff. |
+| `attn_residual_8` vs hipEngine `attn_residual` | 0.000505 | 0.000689 | Carries the incoming drift forward. |
+| `attn_post_norm_8` vs hipEngine `attn_post_norm` | **0.01620** | **0.02089** | Second RMSNorm amplifies residual-space drift before MoE. |
+| `ffn_out_8` vs hipEngine reconstructed `ffn_out` | 0.000301 | 0.000384 | MoE projection/combination remains small. |
+| `post_moe_8` / `verify_layer_output_8` vs hipEngine layer output | **0.000542** | **0.000712** | Exactly the incoming layer-9 hidden delta measured above. |
+
+Layer-8 MoE has more rank movement, but still no expert-set mismatch:
+hipEngine `[168, 74, 207, 98, 29, 137, 200, 3]` vs llama.cpp
+`[168, 74, 98, 207, 29, 3, 200, 137]`. Common-expert rows remain close,
+selected weighted rows are **0.00135 MAE**, aggregate `ffn_out` is
+**0.000301 MAE**, and post-MoE is **0.000542 MAE**. This again argues against
+copying MoE selection or layer-8 linear attention; the next semantic split moves
+upstream to scored layer 7.
+
 Important correction for the next implementation pass: this GGUF advertises
 `general.architecture = qwen35moe`, and the current llama.cpp qwen35moe MTP path
 calls `build_moe_ffn(..., exp_probs_b=nullptr, gating=SOFTMAX)`. The Step35
