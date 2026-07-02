@@ -147,6 +147,36 @@ def test_build_linear_attn_compare_artifact_filters_llamacpp_task_id(
     json.dumps(artifact)
 
 
+def test_build_linear_attn_compare_artifact_caveats_beta_when_output_is_close(
+    tmp_path: Path,
+) -> None:
+    hip_path = tmp_path / "hip.json"
+    llama_path = tmp_path / "llama.jsonl"
+    llama = _llama_cycle()
+    for trace in llama["draft_hidden_state_trace"]:
+        if trace.get("label") == "beta_0" and trace.get("row_index") == 1:
+            trace["values"] = [100.0, 100.0]
+        if trace.get("label") == "linear_attn_out_0" and trace.get("row_index") == 1:
+            trace["values"] = [1.5, 2.5]
+    hip_path.write_text(json.dumps(_hip_artifact()) + "\n")
+    llama_path.write_text(json.dumps(llama) + "\n")
+
+    artifact = build_linear_attn_compare_artifact(
+        hipengine_raw_path=hip_path,
+        llamacpp_jsonl_path=llama_path,
+        llamacpp_cycle=18,
+        row=1,
+        layer=0,
+    )
+
+    assert artifact["tensor_deltas"]["linear_attn_out"]["mean_abs_diff"] == 0.0
+    assert artifact["pre_ssm_stable_deltas"]["beta_projection"]["mean_abs_diff"] > 1.0
+    assert artifact["trace_label_caveats"]["beta"]["status"] == (
+        "layout_or_value_extraction_ambiguous"
+    )
+    json.dumps(artifact)
+
+
 def test_attn_norm_formula_assessment_can_explain_input_delta(tmp_path: Path) -> None:
     model = tmp_path / "model.gguf"
     model.write_text("fake")
