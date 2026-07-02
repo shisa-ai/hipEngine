@@ -138451,3 +138451,44 @@ python3 scripts/gguf_mtp_bench.py \
   out **6.73e-05**). Active no-copy row-state capture is therefore not a
   layer-0 Conv/GDN materialization bug; the next split is deeper accumulated
   verifier hidden/MoE/KV history against llama.cpp.
+
+## 2026-07-03 - MTP layer22-24 semantic split status
+
+- Ran forced pair-12 probes for the active F32 selected-intermediate verifier
+  env at layers 22-24, comparing noncapture against active
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` no-copy capture. Raw probe
+  dumps were left unretained; compact output:
+  `benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-prefillgdn-boundary-l22-l24-compare.json`.
+- Result: active capture still flips row 1 from llama/noncapture side-match
+  token `26126` to `539`; row-1 `539 - 26126` moves by **+0.298283**
+  (`-0.00303 -> +0.29526`). Layer-output MAE is **0.000906** at layer 22,
+  **0.001022** at layer 23, and **0.001047** at layer 24, so the current active
+  path first crosses the 1e-3 hidden-drift threshold at layer 23. Largest
+  sub-boundary deltas in this window are post-attn norm / router input, router
+  logits, and selected MoE SwigLU/down.
+- Compared the same forced pair-12 row against llama.cpp task 9 / cycle 18 from
+  `/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layerraw-all.jsonl`.
+  Compact outputs:
+  `benchmarks/results/2026-07-03-mtp-noncapture-vs-llamacpp-layer22-24-compare.json`
+  and
+  `benchmarks/results/2026-07-03-mtp-capture-prefillgdn-vs-llamacpp-layer22-24-compare.json`.
+  Noncapture vs llama.cpp stays on the same side of the near-tie
+  (`-0.00303` vs `-0.00896`) but has layer-output MAE **0.001864**,
+  **0.001975**, **0.001909** for layers 22-24. Active capture vs llama.cpp
+  keeps the wrong margin (**+0.29526** vs **-0.00896**) with similar layer-output
+  MAE **0.001878**, **0.001994**, **0.001904**.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` with the retained layer22-24 tables and
+  target-map status. Current status: stage wall is effectively closed; the
+  remaining parity work is semantic/acceptance economics. Next technical target
+  is a llama.cpp sub-boundary trace around layer 23 for post-attn norm/router
+  input, router logits, selected SwigLU/down, final residual accumulation, and
+  hidden/KV history ordering.
+- Validation:
+  ```bash
+  jq empty benchmarks/results/2026-07-03-mtp-capture-vs-noncapture-f32selectedintermediate-prefillgdn-boundary-l22-l24-compare.json benchmarks/results/2026-07-03-mtp-noncapture-vs-llamacpp-layer22-24-compare.json benchmarks/results/2026-07-03-mtp-capture-prefillgdn-vs-llamacpp-layer22-24-compare.json
+  git diff --check
+  python3 -m py_compile scripts/gguf_mtp_compare_forced_target_paths.py tests/test_gguf_mtp_compare_forced_target_paths.py
+  PYTHONPATH=. pytest -q tests/test_gguf_mtp_compare_forced_target_paths.py
+  ```
+  JSON validation passed, `git diff --check` passed, py_compile passed, and the
+  focused reducer suite passed (`2 passed`).
