@@ -870,3 +870,51 @@ def test_suite_dry_run_forwards_cycle_stage_timing_flag(monkeypatch, tmp_path, c
     out = capsys.readouterr().out
     assert "--extra-arg=--record-cycle-stage-timings" in out
     assert '"record_cycle_stage_timings": true' in out
+
+
+def test_suite_dry_run_forwards_llamacpp_natural_token_cap(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "full",
+            "--mtp-route",
+            "llama-compat",
+            "--max-output-tokens",
+            "24",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert "--decode-tokens 24" in out
+    assert "--max-output-tokens 24" in out
+    assert '"max_output_tokens": 24' in out
+
+
+def test_suite_active_directcommit_route_records_nocopy_env(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "smoke",
+            "--mtp-route",
+            "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    assert '"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"' in out

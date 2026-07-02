@@ -963,6 +963,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--cycles", type=int, default=10, help="Number of speculate-verify cycles")
+    parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Optional llama.cpp server parity cap. When >0, stop once visible output "
+            "tokens reach this request budget and clamp each speculative draft window "
+            "to leave one corrective target token, matching llama.cpp's n_remaining - 1 "
+            "draft limit. The default 0 keeps the historical fixed-cycle bench."
+        ),
+    )
     parser.add_argument("--draft-n-max", type=int, default=1, help="Max draft tokens per cycle")
     parser.add_argument(
         "--adaptive-draft-window",
@@ -1563,6 +1574,8 @@ def main(argv: list[str] | None = None):
         args.draft_n_max = validate_draft_n_max(args.draft_n_max)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.max_output_tokens < 0:
+        parser.error("--max-output-tokens must be non-negative")
     if args.root_topk_accept < 1 or args.root_topk_accept > 4096:
         parser.error("--root-topk-accept must be in 1..4096")
     if args.sibling_topk_accept < 1 or args.sibling_topk_accept > 4096:
@@ -2032,9 +2045,16 @@ def main(argv: list[str] | None = None):
                     mtp_initial_kv_writer = "legacy_run_draft_kv_write_only"
 
         for cycle in range(args.cycles):
+            if int(args.max_output_tokens) > 0 and total_output_tokens >= int(args.max_output_tokens):
+                break
             cycle_wall_t0 = time.perf_counter()
             stage_timings_ms: dict[str, float] = {}
             cycle_start_seq_position = int(seq_position)
+            remaining_output_tokens = (
+                int(args.max_output_tokens) - int(total_output_tokens)
+                if int(args.max_output_tokens) > 0
+                else 0
+            )
 
             def add_cycle_stage(name: str, ms: float) -> None:
                 if not args.record_cycle_stage_timings:
@@ -2097,6 +2117,16 @@ def main(argv: list[str] | None = None):
                 if cycle_policy == "default":
                     cycle_policy = "fused_b1_block_probe"
             cycle_draft_n_max = 0 if cycle_ar_fallback else int(cycle_draft_window)
+            if int(args.max_output_tokens) > 0:
+                # llama.cpp server-side MTP leaves one token of budget for the
+                # target corrective row, so the last speculative cycle may draft
+                # fewer than the configured n_max. The corrective row can still
+                # make the request finish slightly above the nominal token cap
+                # after accepted speculative tokens are emitted.
+                cycle_draft_n_max = max(
+                    0,
+                    min(int(cycle_draft_n_max), int(remaining_output_tokens) - 1),
+                )
             cycle_topk_candidate_count = max(1, cycle_root_topk_accept, cycle_sibling_topk_accept)
             cycle_diagnostic_topk_candidate_count = _diagnostic_topk_candidate_count(
                 args,
@@ -3544,6 +3574,7 @@ def main(argv: list[str] | None = None):
             "initial_prev_token": int(initial_prev_token),
             "initial_prev_position": int(initial_prev_position),
             "cycles": args.cycles,
+            "max_output_tokens": int(args.max_output_tokens),
             "draft_n_max": args.draft_n_max,
             "adaptive_draft_window": bool(args.adaptive_draft_window),
             "adaptive_ar_fallback": bool(args.adaptive_ar_fallback),

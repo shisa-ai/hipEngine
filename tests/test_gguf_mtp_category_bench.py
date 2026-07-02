@@ -15,6 +15,7 @@ from scripts.gguf_mtp_category_bench import (
     DEFAULT_PROMPTS,
     BenchError,
     aggregate_rows,
+    build_one_command,
     build_split_contract,
     build_summary,
     compare_objective_metrics,
@@ -164,6 +165,70 @@ def test_aggregate_rows_propagates_optional_cycle_stage_timings() -> None:
         "target_verify_discarded_rows": {"0": 1},
         "target_verify_rows_minus_visible_output": {"0": 1},
     }
+
+
+def test_build_one_command_forwards_max_output_tokens() -> None:
+    cmd = build_one_command(
+        python="python3",
+        model=Path("/tmp/model.gguf"),
+        prompt="hello",
+        budget=2,
+        cycles=10,
+        max_output_tokens=24,
+        output=Path("/tmp/out.json"),
+        extra_args=["--llama-compat"],
+    )
+
+    assert "--max-output-tokens" in cmd
+    assert cmd[cmd.index("--max-output-tokens") + 1] == "24"
+    assert cmd[-1] == "--llama-compat"
+
+
+def test_category_summary_allows_variable_cycles_with_max_output_tokens() -> None:
+    args = SimpleNamespace(
+        model="/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        prompts="benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        cycles=3,
+        max_output_tokens=24,
+        raw_root="/tmp/raw",
+    )
+    prompts = [{"id": "code_1", "category": "code", "prompt": "write code"}]
+    row = _row("code_1", "code", output=4, accepted=2, drafts=2, ar_ms=40.0, draft_ms=10.0)
+    row["cycles"] = [
+        {
+            **row["cycles"][0],
+            "visible_output_tokens": 3,
+            "generated_draft_tokens": 2,
+            "accepted_draft_tokens": 2,
+            "ar_decode_ms": 30.0,
+            "mtp_draft_ms": 8.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 3,
+            "target_verify_serial_rows": 0,
+            "target_verify_block_passes": 1,
+            "target_verify_block_rows": 3,
+        },
+        {
+            **row["cycles"][0],
+            "visible_output_tokens": 1,
+            "generated_draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "ar_decode_ms": 10.0,
+            "mtp_draft_ms": 2.0,
+            "target_verify_layer_passes": 1,
+            "target_verify_rows_evaluated": 1,
+            "target_verify_serial_rows": 1,
+            "target_verify_block_passes": 0,
+            "target_verify_block_rows": 0,
+        },
+    ]
+
+    summary = build_summary(args=args, prompts=prompts, raw={1: [row]}, commands=[])
+
+    assert summary["cycles"] == 3
+    assert summary["max_output_tokens"] == 24
+    assert summary["totals"]["b1"]["cycle_histograms"]["visible_output_tokens"] == {"3": 1, "1": 1}
+    assert "max_output_tokens is active" in summary["diagnostic_notes"][-1]
 
 
 @pytest.mark.parametrize("text", ["", " ", "1,", ",1", "1,,5"])

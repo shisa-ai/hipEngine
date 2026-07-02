@@ -1,23 +1,28 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-02 (llama.cpp replication lane no-copy direct-commit
-partial accept: the active
+Last updated: 2026-07-02 (llama.cpp replication lane natural24 correction:
+the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`
-B2 full-suite row now matches llama.cpp's normal MTP accept lifecycle by
+B2 full-suite row now matches llama.cpp's normal MTP accept lifecycle and
+server token-cap behavior by
 committing the captured verifier row for rejected/partial blocks instead of
-serial-replaying the accepted prefix, and now removes the old per-layer
-recurrent-state D2D copy in prefill-GDN state-row capture: **72.23 tok/s**,
-**13.865 ms/output**, **1.319× AR**, acc/output **0.609**, draft acceptance
-**0.780**, target rows/output **1.172**, verifier drain **11.405 ms/output**,
-replay/commit **0.048 ms/output**, **0** replay rows, **44** discarded rows.
+serial-replaying the accepted prefix, removing the old per-layer recurrent-state
+D2D copy in prefill-GDN state-row capture, and using `--max-output-tokens 24`:
+**71.42 tok/s**, **14.025 ms/output**, **1.303× AR**, acc/output **0.597**,
+draft acceptance **0.775**, target rows/output **1.174**, verifier drain
+**11.508 ms/output**, replay/commit **0.047 ms/output**, **0** replay rows,
+**41** discarded rows.
 Versus the llama.cpp HIP B2 same-protocol diagnostic rerun cycle **14.269
-ms/output**, the active compat lane is **0.405 ms/output faster**. The
-serial-state row remains the semantic-safe exact control at **51.85 tok/s /
-19.308 ms/output**.)
+ms/output**, the active compat lane is **0.245 ms/output faster**; the remaining
+delta is proposal/row economy, not wall time. The fixed-cycle provenance row for
+the same route remains **72.23 tok/s / 13.865 ms/output**. The serial-state row
+remains the semantic-safe exact control at **51.85 tok/s / 19.308 ms/output**.)
 Current exact default fastest row also uses the shared parallel attention
 kernel, **AR 54.79 tok/s; best MTP B5 61.98 tok/s = 1.1312× AR**; exact cycle
 wall moved **16.496 -> 16.162 ms/output** with unchanged acc/output **0.535**.
-New compat artifact
+New natural24 compat artifact
+`results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-natural24-full.json`;
+fixed-cycle provenance compat artifact
 `results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-full.json`;
 new all-sync attribution artifact
 `results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-allsync-smoke.json`;

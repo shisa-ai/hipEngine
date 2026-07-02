@@ -953,6 +953,7 @@ def run_one(
     prompt: str,
     budget: int,
     cycles: int,
+    max_output_tokens: int,
     output: Path,
     log_path: Path,
     extra_args: list[str],
@@ -964,6 +965,7 @@ def run_one(
         prompt=prompt,
         budget=budget,
         cycles=cycles,
+        max_output_tokens=max_output_tokens,
         output=output,
         extra_args=extra_args,
     )
@@ -1021,10 +1023,11 @@ def build_one_command(
     prompt: str,
     budget: int,
     cycles: int,
+    max_output_tokens: int = 0,
     output: Path,
     extra_args: list[str],
 ) -> list[str]:
-    return [
+    cmd = [
         python,
         "scripts/gguf_mtp_bench.py",
         "--model",
@@ -1037,8 +1040,11 @@ def build_one_command(
         prompt,
         "--output",
         str(output),
-        *extra_args,
     ]
+    if int(max_output_tokens) > 0:
+        cmd += ["--max-output-tokens", str(int(max_output_tokens))]
+    cmd.extend(extra_args)
+    return cmd
 
 
 def quote_command(cmd: list[str]) -> str:
@@ -2345,11 +2351,13 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     prompts_arg = build_summary_path_arg(getattr(args, "prompts", None), field="prompts")
     raw_root_arg = build_summary_path_arg(getattr(args, "raw_root", None), field="raw_root")
     cycles_arg = build_summary_cycles_arg(getattr(args, "cycles", None))
+    max_output_tokens = int(getattr(args, "max_output_tokens", 0) or 0)
+    expected_cycles = None if max_output_tokens > 0 else cycles_arg
     commands_arg = validate_command_list(commands, label="build summary", allow_empty=True)
     raw = validate_raw_budget_map(raw)
     validate_raw_prompt_coverage(prompts=prompts, raw=raw)
     b1_rows = raw[min(raw)]
-    off_total = aggregate_off_from_b1(b1_rows, expected_cycles=cycles_arg)
+    off_total = aggregate_off_from_b1(b1_rows, expected_cycles=expected_cycles)
     categories = sorted({row["category"] for row in prompts})
     prompt_meta = {row["id"]: row for row in prompts}
 
@@ -2357,7 +2365,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
     off_by_category: dict[str, dict[str, Any]] = {}
     for category in categories:
         b1_cat = [row for row in b1_rows if row["suite_category"] == category]
-        off_by_category[category] = aggregate_off_from_b1(b1_cat, expected_cycles=cycles_arg)
+        off_by_category[category] = aggregate_off_from_b1(b1_cat, expected_cycles=expected_cycles)
 
     category_summary: dict[str, dict[str, Any]] = {
         category: {
@@ -2375,14 +2383,14 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         totals[f"b{budget}"] = {
             "label": f"b{budget}",
             "budget": budget,
-            **aggregate_rows(rows, off_tps=off_total["decode_tok_s_weighted"], expected_cycles=cycles_arg),
+            **aggregate_rows(rows, off_tps=off_total["decode_tok_s_weighted"], expected_cycles=expected_cycles),
         }
         for category in categories:
             cat_rows = [row for row in rows if row["suite_category"] == category]
             category_summary[category][f"b{budget}"] = {
                 "label": f"b{budget}",
                 "budget": budget,
-                **aggregate_rows(cat_rows, off_tps=off_by_category[category]["decode_tok_s_weighted"], expected_cycles=cycles_arg),
+                **aggregate_rows(cat_rows, off_tps=off_by_category[category]["decode_tok_s_weighted"], expected_cycles=expected_cycles),
             }
 
     best = {
@@ -2395,7 +2403,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         best["categories_by_decode_tok_s"][category] = max((v for k, v in payload.items() if k != "off"), key=lambda x: x["decode_tok_s_weighted"])["label"]
         best["categories_by_accepted_per_output"][category] = max((v for k, v in payload.items() if k != "off"), key=lambda x: x["accepted_per_output"])["label"]
 
-    split_summaries = build_split_summaries(prompts, raw, expected_cycles=cycles_arg)
+    split_summaries = build_split_summaries(prompts, raw, expected_cycles=expected_cycles)
 
     true_ar_baseline_json = getattr(args, "true_ar_baseline_json", None)
 
@@ -2431,7 +2439,11 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
             "Each prompt/budget is a separate process and model load; tok/s metrics use child JSON cycle timings only, not wrapper subprocess wall time.",
             "off/AR row is derived from B1 target-AR verifier timing and is not a true no-MTP autoregressive baseline.",
             "MTP-vs-AR speed claims are blocked until this harness measures a true AR/no-MTP path over the same prompt suite and timing protocol.",
-            "cycles is verify-cycle count, not llama.cpp max_tokens; accepted drafts add visible output tokens.",
+            (
+                "max_output_tokens is active; cycles is an upper bound and each prompt may run fewer verify cycles."
+                if max_output_tokens > 0
+                else "cycles is verify-cycle count, not llama.cpp max_tokens; accepted drafts add visible output tokens."
+            ),
         ],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "repo": repo_provenance(),
@@ -2439,6 +2451,7 @@ def build_summary(*, args: argparse.Namespace, prompts: list[dict[str, Any]], ra
         "quant": "UD-Q4_K_M GGUF with MTP blocks",
         "prompt_file": prompts_arg,
         "cycles": cycles_arg,
+        "max_output_tokens": max_output_tokens,
         "budgets": sorted(raw),
         "raw_root": raw_root_arg,
         "commands": commands_arg,
@@ -2538,6 +2551,16 @@ def main() -> int:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--cycles", type=int, default=10)
+    parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Optional per-prompt output-token budget for llama.cpp server parity. "
+            "When >0, --cycles is an upper bound and children clamp speculative "
+            "draft length near the tail."
+        ),
+    )
     parser.add_argument("--budgets", default=DEFAULT_BUDGETS)
     parser.add_argument("--raw-root", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
@@ -2749,6 +2772,8 @@ def main() -> int:
         raise BenchError("selected prompt list is empty")
     if not args.model.exists():
         raise BenchError(f"model not found: {args.model}")
+    if int(args.max_output_tokens) < 0:
+        raise BenchError("--max-output-tokens must be non-negative")
     run_tag = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     if args.raw_root is None:
         args.raw_root = Path(f"/tmp/hipengine-gguf-mtp-category-{run_tag}")
@@ -2778,6 +2803,7 @@ def main() -> int:
                             prompt=row["prompt"],
                             budget=budget,
                             cycles=args.cycles,
+                            max_output_tokens=args.max_output_tokens,
                             output=out,
                             extra_args=list(args.extra_arg),
                         )
@@ -2803,6 +2829,7 @@ def main() -> int:
                 prompt=row["prompt"],
                 budget=budget,
                 cycles=args.cycles,
+                max_output_tokens=args.max_output_tokens,
                 output=out,
                 log_path=log,
                 extra_args=list(args.extra_arg),

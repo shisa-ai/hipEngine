@@ -137103,3 +137103,59 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` so the active tracker,
   kernel catalog, and benchmark rollup promote the no-copy directcommit row and
   retain the copied-state row as superseded provenance.
+
+## 2026-07-02 - Natural24 parity correction for llama-compat MTP
+
+- Found the previous hipEngine/llama.cpp timing comparison mixed protocols:
+  hipEngine used fixed verify cycles while llama.cpp server clamps the draft
+  window to the request tail. Source anchor:
+  `/home/lhl/llama.cpp/llama.cpp-hip/tools/server/server-context.cpp`,
+  `server_slot::get_n_draft_max()` clamps `n_draft_max` with
+  `min(n_draft_max, n_remaining - 1)`, and
+  `common_speculative_get_draft_params(...).n_max = n_draft_max` passes that
+  cap into the draft path.
+- Added `--max-output-tokens` to `scripts/gguf_mtp_bench.py`,
+  `scripts/gguf_mtp_category_bench.py`, and `scripts/gguf_ar_mtp_suite.py`.
+  When active, cycles are an upper bound, the MTP child stops at the visible
+  output cap, and each cycle clamps `cycle_draft_n_max` to leave one corrective
+  target token. The suite also sets the true-AR baseline decode length to the
+  same cap. The active directcommit and directcommit-allsync routes now record
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` so no-copy capture is part of
+  the rerunnable route contract.
+- Natural24 retained diagnostic command:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_ar_mtp_suite.py \
+    --scope full \
+    --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
+    --budgets 2 \
+    --cycles 10 \
+    --max-output-tokens 24 \
+    --record-cycle-stage-timings \
+    --output benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-nocopy-natural24-full.json
+  ```
+- Result on gfx1151 / Qwen3.6-35B-A3B-UD-Q4_K_M GGUF: AR **54.82 tok/s**,
+  B2 **71.42 tok/s** (**1.303x AR**), cycle wall **14.025 ms/output**,
+  acc/output **0.597**, draft acceptance **0.775**, target rows/output
+  **1.174**, verifier drain **11.508 ms/output**, draft drain
+  **2.120 ms/output**, draft top-k/readback **1.932 ms/output**,
+  replay/commit **0.047 ms/output**, **0** replay rows, **94** direct-commit
+  rows, **41** discarded rows, and histograms
+  `generated={0:1,1:6,2:88}`, `accepted={0:18,1:13,2:64}`,
+  `visible={1:18,2:13,3:64}`, `rows_evaluated={1:1,2:6,3:88}`.
+- Comparison to llama.cpp HIP B2 natural24 rerun
+  `benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json`:
+  hipEngine is **14.025 vs 14.269 ms/output** (**0.245 ms/output faster**);
+  draft drain is **2.120 vs 2.141 ms/output**; verifier drain is **11.508 vs
+  12.120 ms/output**. The remaining exposed delta is row/proposal economy:
+  accepted/output **0.597 vs 0.610**, target rows/output **1.174 vs 1.148**,
+  and visible outputs/cycle **2.484 vs 2.563**. The fixed-cycle hipEngine row
+  remains provenance only at **72.23 tok/s / 13.865 ms/output**.
+- Narrow validation passed:
+  ```bash
+  python3 -m py_compile scripts/gguf_mtp_bench.py scripts/gguf_mtp_category_bench.py scripts/gguf_ar_mtp_suite.py tests/test_gguf_mtp_category_bench.py tests/test_gguf_ar_mtp_suite.py
+  PYTHONPATH=. pytest tests/test_gguf_mtp_category_bench.py::test_build_one_command_forwards_max_output_tokens tests/test_gguf_mtp_category_bench.py::test_category_summary_allows_variable_cycles_with_max_output_tokens tests/test_gguf_ar_mtp_suite.py::test_suite_dry_run_forwards_llamacpp_natural_token_cap tests/test_gguf_ar_mtp_suite.py::test_suite_active_directcommit_route_records_nocopy_env -q
+  ```
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md` so the active parity tracker uses the natural24
+  row and identifies proposal/row economy, not verifier wall time, as the next
+  llama-compat target.

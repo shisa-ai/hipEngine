@@ -994,6 +994,12 @@ MTP_ROUTE_ENVS: dict[str, dict[str, str]] = {
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall": {
         "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "1",
     },
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    },
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-allsync": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    },
 }
 
 SCOPES = {
@@ -1132,6 +1138,16 @@ def main() -> int:
     ap.add_argument("--mtp-route", choices=tuple(MTP_ROUTES), default=DEFAULT_MTP_ROUTE)
     ap.add_argument("--budgets", default=None, help="override scope budgets, e.g. 1,3,5")
     ap.add_argument("--cycles", type=int, default=None, help="override scope cycles")
+    ap.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Optional per-prompt output-token budget for llama.cpp server parity. "
+            "When >0, MTP children treat --cycles as an upper bound and clamp the "
+            "last draft window to leave a corrective target token."
+        ),
+    )
     ap.add_argument("--limit", type=int, default=None, help="override scope prompt limit")
     ap.add_argument("--python", default=sys.executable)
     ap.add_argument("--reuse-existing", action="store_true")
@@ -1149,6 +1165,8 @@ def main() -> int:
 
     scope = SCOPES[args.scope]
     cycles = args.cycles if args.cycles is not None else scope["cycles"]
+    if int(args.max_output_tokens) < 0:
+        raise SuiteError("--max-output-tokens must be non-negative")
     limit = args.limit if args.limit is not None else scope["limit"]
     route_args = MTP_ROUTES[args.mtp_route]
     route_env = MTP_ROUTE_ENVS.get(args.mtp_route, {})
@@ -1198,7 +1216,11 @@ def main() -> int:
     # AR decode-tokens: a representative steady-state count (tok/s is a rate, so a
     # single AR baseline serves every budget's ratio). Match the largest budget's
     # cycle output so the regime is comparable.
-    ar_decode_tokens = cycles * (max_budget + 1)
+    ar_decode_tokens = (
+        int(args.max_output_tokens)
+        if int(args.max_output_tokens) > 0
+        else cycles * (max_budget + 1)
+    )
     ar_json = raw_root / "true-ar-baseline.json"
     mtp_json = raw_root / "mtp-category.json"
 
@@ -1229,6 +1251,8 @@ def main() -> int:
         # enforce the one prompt-construction knob symmetrically + the route flags
         "--extra-arg=--prompt-reasoning", "--extra-arg=off",
     ]
+    if int(args.max_output_tokens) > 0:
+        mtp_cmd += ["--max-output-tokens", str(int(args.max_output_tokens))]
     # NOTE: we deliberately do NOT pass --true-ar-baseline-json. That attach path
     # in gguf_mtp_category_bench still validates against the RETIRED graph_replay
     # AR contract (TRUE_AR_PRODUCTION_TIMING_REQUIRED, stale since #8) and rejects
@@ -1249,6 +1273,7 @@ def main() -> int:
         "model": str(args.model),
         "prompts": str(args.prompts),
         "cycles": cycles,
+        "max_output_tokens": int(args.max_output_tokens),
         "budgets": budgets,
         "prompt_limit": limit,
         "ar_decode_tokens": ar_decode_tokens,
