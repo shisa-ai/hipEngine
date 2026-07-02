@@ -69,6 +69,49 @@ def test_selected_pair_dp4a_sync_timing_splits_quantize_and_gemv(monkeypatch: py
     assert runtime.syncs == 2
 
 
+def test_selected_pair_dp4a_uses_f32_quantizer_when_source_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", "1")
+    calls: list[tuple[str, tuple]] = []
+
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: pytest.fail("bf16 quantizer should not run"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_quantize_f32_q8_1",
+        lambda *args, **kwargs: calls.append(("quantize_f32", args)),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("gemv", args)),
+    )
+
+    assert qgr._launch_selected_raw_gguf_moe_pair(
+        _weight("gguf_q4_k_t16_v1"),
+        _weight("gguf_q4_k_t16_v1"),
+        100,
+        200,
+        300,
+        400,
+        x_rows=2,
+        rows=4,
+        num_experts=256,
+        in_features=2048,
+        out_features=512,
+        q8_1_workspace_ptr=500,
+        x_f32_ptr=900,
+        stream=7,
+        runtime=_Runtime(),
+    )
+
+    assert [name for name, _args in calls] == ["quantize_f32", "gemv"]
+    assert calls[0][1][:4] == (900, 500, 2, 2048)
+    assert calls[1][1][0] == 500
+
+
 def test_selected_pair_exact_sync_timing_reports_gemv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", raising=False)
     calls: list[str] = []

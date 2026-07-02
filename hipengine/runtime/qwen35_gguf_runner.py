@@ -622,6 +622,37 @@ def _launch_qwen35_router_logits_bf16_hidden(
     )
 
 
+def _launch_qwen35_router_logits_f32_hidden(
+    hidden_ptr: int,
+    weight: Qwen35GGUFDeviceWeight,
+    logits_ptr: int,
+    tokens: int,
+    hidden_size: int,
+    num_rows: int,
+    *,
+    stream: int = 0,
+    runtime=None,
+) -> None:
+    """Launch F32-hidden router logits through the kernel registry."""
+
+    fn = resolve(
+        backend="hip_gfx1100",
+        layer="router_logits",
+        quant=weight.spec.quant_key,
+        variant="f32_hidden",
+    )
+    fn(
+        hidden_ptr,
+        weight.allocation().tensor.ptr,
+        logits_ptr,
+        tokens,
+        hidden_size,
+        num_rows,
+        stream=stream,
+        runtime=runtime,
+    )
+
+
 @dataclass(frozen=True)
 class _DeviceExpertPackedTensor:
     quant_key: str
@@ -2779,13 +2810,15 @@ class Qwen35GGUFFullStackRunner:
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
         f32_residual = hidden_f32_ptr is not None or out_f32_ptr is not None
+        post_norm_f32_ptr: int | None = None
         if f32_residual:
             if hidden_f32_ptr is None or out_f32_ptr is None:
                 raise ValueError("hidden_f32_ptr and out_f32_ptr must be provided together")
+            post_attention_norm_ptr = layer.weight("post_attention_norm").allocation().tensor.ptr
             gguf_add_rmsnorm_f32_bf16_f32_weight(
                 int(hidden_f32_ptr),
                 attn_out_ptr,
-                layer.weight("post_attention_norm").allocation().tensor.ptr,
+                post_attention_norm_ptr,
                 scratch.post_norm.ptr,
                 int(out_f32_ptr),
                 rows=rows,
@@ -2794,6 +2827,20 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+            if _gguf_verify_f32_post_norm_enabled():
+                if not hasattr(scratch, "post_norm_f32"):
+                    raise ValueError("scratch is missing post_norm_f32 for verifier F32 post-norm diagnostic")
+                gguf_rmsnorm_f32_f32_weight_out_f32(
+                    int(out_f32_ptr),
+                    post_attention_norm_ptr,
+                    scratch.post_norm_f32.ptr,
+                    rows=rows,
+                    hidden_size=self.hidden_size,
+                    eps=self.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                post_norm_f32_ptr = scratch.post_norm_f32.ptr
         else:
             gguf_add_rmsnorm_bf16_f32_weight(
                 hidden_ptr,
@@ -2823,6 +2870,7 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     residual_f32_ptr=out_f32_ptr if f32_residual else None,
                     out_f32_ptr=out_f32_ptr if f32_residual else None,
+                    post_norm_f32_ptr=post_norm_f32_ptr,
                 )
             else:
                 self._run_post_attention_moe_rows(
@@ -2834,6 +2882,7 @@ class Qwen35GGUFFullStackRunner:
                     expert_sidecar=expert_sidecar,
                     residual_f32_ptr=out_f32_ptr if f32_residual else None,
                     out_f32_ptr=out_f32_ptr if f32_residual else None,
+                    post_norm_f32_ptr=post_norm_f32_ptr,
                     stage_timings=stage_timings,
                     sync_stage_timings=sync_stage_timings,
                     stage_prefix=f"{stage_prefix}_moe",
@@ -2948,6 +2997,7 @@ class Qwen35GGUFFullStackRunner:
         stream: int = 0,
         residual_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
+        post_norm_f32_ptr: int | None = None,
     ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
@@ -2965,8 +3015,24 @@ class Qwen35GGUFFullStackRunner:
         # Compute expert logits and the adjacent shared-gate logit separately via
         # the registry-resolved router adapter so GGUF F32 weights do not get
         # silently contracted to BF16 on the correctness-first decode path.
-        _launch_qwen35_router_logits_bf16_hidden(
-            scratch.post_norm.ptr,
+        router_f32_ptr = (
+            post_norm_f32_ptr
+            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_router_enabled()
+            else None
+        )
+        selected_f32_ptr = (
+            post_norm_f32_ptr
+            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_selected_q8_enabled()
+            else None
+        )
+        router_fn = (
+            _launch_qwen35_router_logits_f32_hidden
+            if router_f32_ptr is not None
+            else _launch_qwen35_router_logits_bf16_hidden
+        )
+        router_hidden_ptr = int(router_f32_ptr) if router_f32_ptr is not None else scratch.post_norm.ptr
+        router_fn(
+            router_hidden_ptr,
             layer.weight("ffn_gate_inp"),
             scratch.moe_router_logits.ptr,
             1,
@@ -2975,8 +3041,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        _launch_qwen35_router_logits_bf16_hidden(
-            scratch.post_norm.ptr,
+        router_fn(
+            router_hidden_ptr,
             layer.weight("ffn_gate_inp_shexp"),
             scratch.moe_router_logits.ptr + cfg.expert_count * DType.FP32.itemsize,
             1,
@@ -3043,6 +3109,7 @@ class Qwen35GGUFFullStackRunner:
                 down_weight,
                 scratch,
                 selected_rows=selected_rows,
+                post_norm_f32_ptr=selected_f32_ptr,
                 stream=stream,
                 runtime=runtime,
             )
@@ -3161,6 +3228,7 @@ class Qwen35GGUFFullStackRunner:
         scratch,
         *,
         selected_rows: int,
+        post_norm_f32_ptr: int | None = None,
         stream: int,
         runtime: HipRuntime,
     ) -> None:
@@ -3169,20 +3237,22 @@ class Qwen35GGUFFullStackRunner:
         megakernel (architectural invariant), and the default rows==1 path."""
         cfg = self.weights.config
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
-        expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
-            gate_weight,
-            up_weight,
-            scratch.post_norm.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.ffn_intermediate.ptr,
-            x_rows=1,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
+        expert_silu_ready = False
+        if post_norm_f32_ptr is None:
+            expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
+                gate_weight,
+                up_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_intermediate.ptr,
+                x_rows=1,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
         if not expert_silu_ready:
             q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
                 scratch,
@@ -3208,6 +3278,7 @@ class Qwen35GGUFFullStackRunner:
                 in_features=self.hidden_size,
                 out_features=cfg.expert_feed_forward_length,
                 q8_1_workspace_ptr=q8_1_workspace_ptr,
+                x_f32_ptr=post_norm_f32_ptr,
                 stream=stream,
                 runtime=runtime,
             ):
@@ -3221,6 +3292,7 @@ class Qwen35GGUFFullStackRunner:
                     num_experts=cfg.expert_count,
                     in_features=self.hidden_size,
                     out_features=cfg.expert_feed_forward_length,
+                    x_f32_ptr=post_norm_f32_ptr,
                     stream=stream,
                     runtime=runtime,
                 )
@@ -3234,6 +3306,7 @@ class Qwen35GGUFFullStackRunner:
                     num_experts=cfg.expert_count,
                     in_features=self.hidden_size,
                     out_features=cfg.expert_feed_forward_length,
+                    x_f32_ptr=post_norm_f32_ptr,
                     stream=stream,
                     runtime=runtime,
                 )
@@ -3281,6 +3354,7 @@ class Qwen35GGUFFullStackRunner:
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         residual_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
+        post_norm_f32_ptr: int | None = None,
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn_moe",
@@ -3305,8 +3379,29 @@ class Qwen35GGUFFullStackRunner:
         if f32_residual and (residual_f32_ptr is None or out_f32_ptr is None):
             raise ValueError("residual_f32_ptr and out_f32_ptr must be provided together")
 
-        _launch_qwen35_router_logits_bf16_hidden(
-            scratch.post_norm.ptr,
+        router_f32_ptr = (
+            post_norm_f32_ptr
+            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_router_enabled()
+            else None
+        )
+        selected_f32_ptr = (
+            post_norm_f32_ptr
+            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_selected_q8_enabled()
+            else None
+        )
+        shared_f32_ptr = (
+            post_norm_f32_ptr
+            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_shared_q8_enabled()
+            else None
+        )
+        router_fn = (
+            _launch_qwen35_router_logits_f32_hidden
+            if router_f32_ptr is not None
+            else _launch_qwen35_router_logits_bf16_hidden
+        )
+        router_hidden_ptr = int(router_f32_ptr) if router_f32_ptr is not None else scratch.post_norm.ptr
+        router_fn(
+            router_hidden_ptr,
             layer.weight("ffn_gate_inp"),
             scratch.moe_router_logits.ptr,
             rows,
@@ -3315,8 +3410,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        _launch_qwen35_router_logits_bf16_hidden(
-            scratch.post_norm.ptr,
+        router_fn(
+            router_hidden_ptr,
             layer.weight("ffn_gate_inp_shexp"),
             scratch.moe_shared_gate_logits.ptr,
             rows,
@@ -3471,6 +3566,7 @@ class Qwen35GGUFFullStackRunner:
                 in_features=self.hidden_size,
                 out_features=cfg.expert_feed_forward_length,
                 q8_1_workspace_ptr=q8_1_workspace_ptr,
+                x_f32_ptr=selected_f32_ptr,
                 stream=stream,
                 runtime=runtime,
                 stage_timings=stage_timings,
@@ -3487,6 +3583,7 @@ class Qwen35GGUFFullStackRunner:
                     num_experts=cfg.expert_count,
                     in_features=self.hidden_size,
                     out_features=cfg.expert_feed_forward_length,
+                    x_f32_ptr=selected_f32_ptr,
                     stream=stream,
                     runtime=runtime,
                 )
@@ -3500,6 +3597,7 @@ class Qwen35GGUFFullStackRunner:
                     num_experts=cfg.expert_count,
                     in_features=self.hidden_size,
                     out_features=cfg.expert_feed_forward_length,
+                    x_f32_ptr=selected_f32_ptr,
                     stream=stream,
                     runtime=runtime,
                 )
@@ -3578,20 +3676,36 @@ class Qwen35GGUFFullStackRunner:
         )
 
         shared_q8_dp4a_enabled = _gguf_dense_q8_dp4a_shared_enabled()
-        shared_gate_up_dp4a = shared_q8_dp4a_enabled and _try_launch_dense_q8_pair_dp4a(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            scratch.post_norm.ptr,
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            scratch,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features_a=cfg.expert_shared_feed_forward_length,
-            out_features_b=cfg.expert_shared_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
+        if shared_q8_dp4a_enabled and shared_f32_ptr is not None:
+            shared_gate_up_dp4a = _try_launch_dense_q8_pair_dp4a_f32(
+                layer.weight("ffn_gate_shexp"),
+                layer.weight("ffn_up_shexp"),
+                int(shared_f32_ptr),
+                scratch.moe_shared_gate.ptr,
+                scratch.moe_shared_up.ptr,
+                scratch,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features_a=cfg.expert_shared_feed_forward_length,
+                out_features_b=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            shared_gate_up_dp4a = shared_q8_dp4a_enabled and _try_launch_dense_q8_pair_dp4a(
+                layer.weight("ffn_gate_shexp"),
+                layer.weight("ffn_up_shexp"),
+                scratch.post_norm.ptr,
+                scratch.moe_shared_gate.ptr,
+                scratch.moe_shared_up.ptr,
+                scratch,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features_a=cfg.expert_shared_feed_forward_length,
+                out_features_b=cfg.expert_shared_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
         if shared_gate_up_dp4a:
             silu_mul_separate_out_bf16(
                 scratch.moe_shared_gate.ptr,
@@ -3776,6 +3890,10 @@ _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
+_GGUF_VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
+_GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER"
+_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8"
+_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
@@ -3873,6 +3991,22 @@ def _gguf_verify_f32_residual_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_RESIDUAL_ENV, False)
 
 
+def _gguf_verify_f32_post_norm_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ENV, False)
+
+
+def _gguf_verify_f32_post_norm_router_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV, True)
+
+
+def _gguf_verify_f32_post_norm_selected_q8_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8_ENV, True)
+
+
+def _gguf_verify_f32_post_norm_shared_q8_enabled() -> bool:
+    return _env_flag(_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8_ENV, True)
+
+
 def _gguf_moe_graph_enabled() -> bool:
     # Default off: per-layer MoE FFN graph capture/replay for the rows==1 resident
     # decode path. Experimental launch-count-reduction probe (task #15); promote to
@@ -3923,6 +4057,36 @@ def _dense_q8_workspace_ptr(scratch, rows: int, in_features: int) -> int | None:
         return _optional_q8_1_workspace_ptr(scratch, rows, in_features, enabled=True)
     except ValueError:
         return None
+
+
+def _quantize_activation_q8_1(
+    x_ptr: int,
+    q8_1_workspace_ptr: int,
+    rows: int,
+    in_features: int,
+    *,
+    x_f32_ptr: int | None = None,
+    stream: int,
+    runtime: HipRuntime,
+) -> None:
+    if x_f32_ptr is None:
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            q8_1_workspace_ptr,
+            rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
+    else:
+        gguf_q4_k_quantize_f32_q8_1(
+            int(x_f32_ptr),
+            q8_1_workspace_ptr,
+            rows,
+            in_features,
+            stream=stream,
+            runtime=runtime,
+        )
 
 
 def _try_launch_dense_q8_single_dp4a(
@@ -4095,6 +4259,56 @@ def _try_launch_dense_q8_pair_dp4a(
     if q8_1_workspace_ptr is None:
         return False
     gguf_q4_k_quantize_bf16_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out(
+        q8_1_workspace_ptr,
+        raw_a,
+        raw_b,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _try_launch_dense_q8_pair_dp4a_f32(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    scratch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Opt-in raw-Q8 q8_1/dp4a dual route for F32 verifier activations."""
+
+    if not _gguf_dense_q8_dp4a_enabled() or int(rows) <= 1:
+        return False
+    raw_a = _dense_q8_raw_ptr(weight_a)
+    raw_b = _dense_q8_raw_ptr(weight_b)
+    if raw_a is None or raw_b is None:
+        return False
+    q8_1_workspace_ptr = _dense_q8_workspace_ptr(scratch, rows, in_features)
+    if q8_1_workspace_ptr is None:
+        return False
+    gguf_q4_k_quantize_f32_q8_1(
         x_ptr,
         q8_1_workspace_ptr,
         rows,
@@ -6749,6 +6963,7 @@ class _GGUFFullAttentionPrefillScratch:
     full_gated: object
     attn_out: object
     post_norm: object
+    post_norm_f32: object
     residual: object
     ffn_gate_up: object
     ffn_intermediate: object
@@ -6831,6 +7046,7 @@ class _GGUFFullAttentionPrefillScratch:
             return malloc(nbytes, runtime=runtime)
 
         hidden_bytes = rows * runner.hidden_size * 2
+        hidden_f32_bytes = rows * runner.hidden_size * DType.FP32.itemsize
         q_proj_bytes = rows * 2 * runner.q_width * 2
         kv_bf16_bytes = rows * runner.kv_width * 2
         q_f32_bytes = rows * runner.q_width * 4
@@ -6896,6 +7112,7 @@ class _GGUFFullAttentionPrefillScratch:
             "full_gated": buf(rows * runner.q_width * 2),
             "attn_out": buf(hidden_bytes),
             "post_norm": buf(hidden_bytes),
+            "post_norm_f32": buf(hidden_f32_bytes),
             "residual": buf(hidden_bytes),
             "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
             "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
@@ -7069,6 +7286,7 @@ class _FullStackScratch:
     norm: object
     hidden_seed_fp32: object
     post_norm: object
+    post_norm_f32: object
     residual: object
     attn_out: object
     linear_qkv: object
@@ -7252,6 +7470,7 @@ class _FullStackScratch:
             "norm": buf(hidden_bytes),
             "hidden_seed_fp32": buf(hidden_fp32_bytes),
             "post_norm": buf(hidden_bytes),
+            "post_norm_f32": buf(hidden_fp32_bytes),
             "residual": buf(hidden_bytes),
             "attn_out": buf(hidden_bytes),
             "linear_qkv": buf(linear_qkv_bytes),
@@ -8935,6 +9154,7 @@ def _launch_selected_raw_gguf_moe_pair(
     in_features: int,
     out_features: int,
     q8_1_workspace_ptr: int | None = None,
+    x_f32_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime,
     stage_timings: dict[str, float] | None = None,
@@ -8947,11 +9167,12 @@ def _launch_selected_raw_gguf_moe_pair(
         if q8_1_workspace_ptr is not None and (
             _gguf_q4k_selected_dual_dp4a_enabled() or _gguf_raw_selected_dp4a_enabled()
         ):
-            gguf_q4_k_quantize_bf16_q8_1(
+            _quantize_activation_q8_1(
                 x_ptr,
                 q8_1_workspace_ptr,
                 x_rows,
                 in_features,
+                x_f32_ptr=x_f32_ptr,
                 stream=stream,
                 runtime=runtime,
             )
@@ -9012,11 +9233,12 @@ def _launch_selected_raw_gguf_moe_pair(
         if q8_1_workspace_ptr is not None and (
             _gguf_q4k_selected_dual_dp4a_enabled() or _gguf_t16_selected_dp4a_enabled()
         ):
-            gguf_q4_k_quantize_bf16_q8_1(
+            _quantize_activation_q8_1(
                 x_ptr,
                 q8_1_workspace_ptr,
                 x_rows,
                 in_features,
+                x_f32_ptr=x_f32_ptr,
                 stream=stream,
                 runtime=runtime,
             )
@@ -9076,11 +9298,12 @@ def _launch_selected_raw_gguf_moe_pair(
     if weight_a.spec.quant_key == "gguf_q4_k_x8_v1" and weight_b.spec.quant_key == "gguf_q4_k_x8_v1":
         if q8_1_workspace_ptr is None:
             raise ValueError("gguf_q4_k_x8_v1 selected-dual GEMV requires q8_1 workspace")
-        gguf_q4_k_quantize_bf16_q8_1(
+        _quantize_activation_q8_1(
             x_ptr,
             q8_1_workspace_ptr,
             x_rows,
             in_features,
+            x_f32_ptr=x_f32_ptr,
             stream=stream,
             runtime=runtime,
         )
@@ -9129,6 +9352,7 @@ def _launch_selected_raw_gguf_moe_linear(
     in_features: int,
     out_features: int,
     q8_1_workspace_ptr: int | None = None,
+    x_f32_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime,
     stage_timings: dict[str, float] | None = None,
@@ -9145,11 +9369,12 @@ def _launch_selected_raw_gguf_moe_linear(
         and quant_key == "gguf_q5_k_t16_v1"
         and _gguf_t16_selected_dp4a_enabled()
     ):
-        gguf_q4_k_quantize_bf16_q8_1(
+        _quantize_activation_q8_1(
             x_ptr,
             q8_1_workspace_ptr,
             x_rows,
             in_features,
+            x_f32_ptr=x_f32_ptr,
             stream=stream,
             runtime=runtime,
         )
@@ -9165,11 +9390,12 @@ def _launch_selected_raw_gguf_moe_linear(
     elif quant_key == "gguf_q5_k_x8_v1":
         if q8_1_workspace_ptr is None:
             raise ValueError("gguf_q5_k_x8_v1 selected GEMV requires q8_1 workspace")
-        gguf_q4_k_quantize_bf16_q8_1(
+        _quantize_activation_q8_1(
             x_ptr,
             q8_1_workspace_ptr,
             x_rows,
             in_features,
+            x_f32_ptr=x_f32_ptr,
             stream=stream,
             runtime=runtime,
         )
@@ -9185,11 +9411,12 @@ def _launch_selected_raw_gguf_moe_linear(
     elif quant_key == "gguf_q6_k_x8_v1":
         if q8_1_workspace_ptr is None:
             raise ValueError("gguf_q6_k_x8_v1 selected GEMV requires q8_1 workspace")
-        gguf_q4_k_quantize_bf16_q8_1(
+        _quantize_activation_q8_1(
             x_ptr,
             q8_1_workspace_ptr,
             x_rows,
             in_features,
+            x_f32_ptr=x_f32_ptr,
             stream=stream,
             runtime=runtime,
         )
@@ -9208,11 +9435,12 @@ def _launch_selected_raw_gguf_moe_linear(
         and out_features % 8 == 0
         and _gguf_raw_selected_dp4a_enabled()
     ):
-        gguf_q4_k_quantize_bf16_q8_1(
+        _quantize_activation_q8_1(
             x_ptr,
             q8_1_workspace_ptr,
             x_rows,
             in_features,
+            x_f32_ptr=x_f32_ptr,
             stream=stream,
             runtime=runtime,
         )
@@ -9231,11 +9459,12 @@ def _launch_selected_raw_gguf_moe_linear(
         and out_features % 8 == 0
         and _gguf_raw_selected_dp4a_enabled()
     ):
-        gguf_q4_k_quantize_bf16_q8_1(
+        _quantize_activation_q8_1(
             x_ptr,
             q8_1_workspace_ptr,
             x_rows,
             in_features,
+            x_f32_ptr=x_f32_ptr,
             stream=stream,
             runtime=runtime,
         )

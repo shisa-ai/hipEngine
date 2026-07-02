@@ -135539,3 +135539,44 @@ python3 scripts/gguf_mtp_forced_target_probe.py \
   - `python3 -m pytest tests/test_qwen35_decode_state.py -q` => **65 passed**
   - `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_ops.py tests/test_paro_combine_plan.py -q` => **9 passed**
   - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q` => **21 passed**
+
+## 2026-07-02 - Verifier FP32 post-attention norm split diagnostic
+
+- Added default-off `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` instrumentation on
+  top of `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1`. The verifier now allocates a
+  `post_norm_f32` scratch buffer, can compute post-attention RMSNorm from the
+  FP32 residual stream, and can independently route router, selected-q8, and
+  shared-q8 consumers with
+  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_{ROUTER,SELECTED_Q8,SHARED_Q8}`. Normal
+  paths remain BF16 and the mode is not a speed path.
+- Added tests for the F32 router/selected source plumbing, selected q8_1 F32
+  quantizer dispatch, and the F32 dense-Q8 pair helper.
+- Forced cycle-7 target split on the active
+  `/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json`
+  trace:
+  - control (`F32_RESIDUAL=1`, post-norm off): row 1 samples `413`, accepted 1,
+    `413 - 4071` **+0.130531**.
+  - router-only (`POST_NORM=1`, router=1, selected/shared=0): row 1 samples
+    `413`, accepted 1, `413 - 4071` **+0.087835**.
+  - selected-q8-only (`POST_NORM=1`, router=0, selected=1, shared=0): row 1
+    samples `4071`, accepted 2, `413 - 4071` **-0.144583**.
+  - combined (`POST_NORM=1` with default sub-flags): row 1 samples `4071`,
+    accepted 2, `413 - 4071` **-0.032896**.
+- Router-only reaches the old pair-12 branch, but worsens the original mismatch:
+  samples `[15495, 539, 1151]`, accepted 2, and row-1 `539 - 26126` moves to
+  **+0.335203** vs the attention-norm control **+0.143085** and llama.cpp
+  **-0.00896**. Conclusion: post-attn norm/router/input-q8 precision is useful
+  instrumentation, but not the missing parity fix; next suspect is true
+  GGML-like F32 projection/output contracts inside selected/shared MoE.
+- Added artifact
+  `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`
+  and updated `docs/MTP-LLAMACPP-PARITY.md` plus `docs/REFACTOR.md`.
+- Validation:
+  - `python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_selected_moe_stage_timing.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py`
+  - `jq empty benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`
+  - `git diff --check`
+  - `python3 -m pytest tests/test_qwen35_gguf_selected_moe_stage_timing.py tests/test_qwen35_gguf_dense_q8_dp4a_routing.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` => **30 passed**
+  - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_gemv_routing.py -q` => **16 passed** after clearing the new sub-flag env vars in the fixture
+  - `python3 -m pytest tests/test_qwen35_decode_state.py -q` => **65 passed**
+  - `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest tests/test_gguf_ops.py tests/test_paro_combine_plan.py -q` => **9 passed**
+  - `python3 -m pytest tests/test_qwen35_gguf_compact_moe_wmma_routing.py -q` => **6 passed**

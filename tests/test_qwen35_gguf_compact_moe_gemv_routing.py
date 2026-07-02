@@ -39,6 +39,9 @@ def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_ROW_COMPACT_GEMV", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_DOWN_RAW", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_X8_REPACK", raising=False)
     set_gemv_decode_enabled(None)
@@ -96,6 +99,55 @@ def test_c1_decode_uses_f32_router_logits_and_select(monkeypatch: pytest.MonkeyP
     assert ("router", ("ffn_gate_inp", 1, 4)) in calls
     assert ("router", ("ffn_gate_inp_shexp", 1, 1)) in calls
     assert "router_split_coop" not in names
+
+
+def test_c1_f32_post_norm_routes_f32_router_and_selected_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(
+        qgr,
+        "_launch_qwen35_router_logits_bf16_hidden",
+        lambda *args, **kwargs: pytest.fail("bf16 router should not run"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_qwen35_router_logits_f32_hidden",
+        lambda *args, **kwargs: calls.append(("router_f32", (args[0], args[1].spec.source.name, args[3], args[5]))),
+    )
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair_silu",
+        lambda *args, **kwargs: pytest.fail("bf16 selected pair silu should not run"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("legacy_pair", kwargs.get("x_f32_ptr"))) or False,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(
+            ("legacy_linear", (weight.spec.source.name, kwargs.get("x_f32_ptr")))
+        ),
+    )
+
+    runner._run_post_attention_moe_c1(
+        0,
+        out_ptr=9000,
+        scratch=scratch,
+        stream=7,
+        post_norm_f32_ptr=1234,
+    )
+
+    assert ("router_f32", (1234, "ffn_gate_inp", 1, 4)) in calls
+    assert ("router_f32", (1234, "ffn_gate_inp_shexp", 1, 1)) in calls
+    assert ("legacy_pair", 1234) in calls
+    assert ("legacy_linear", ("ffn_gate_exps", 1234)) in calls
+    assert ("legacy_linear", ("ffn_up_exps", 1234)) in calls
+    assert ("legacy_linear", ("ffn_down_exps", None)) in calls
 
 
 
