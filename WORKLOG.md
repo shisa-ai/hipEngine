@@ -137347,3 +137347,61 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest tests/test_gguf_mtp_forced_target_probe.py -q
   PYTHONPATH=. pytest tests/test_qwen35_gguf_hidden_seed_contract.py -q
   ```
+
+## 2026-07-03 - Scored bulk layer-boundary capture for MTP parity
+
+- Added opt-in scored layer-boundary capture to the GGUF target verifier:
+  `verify_target_block(..., capture_layer_boundary_hidden=...)` now copies
+  selected layer internals from the actual bulk/native scoring pass before the
+  hidden-buffer swap. `scripts/gguf_mtp_forced_target_probe.py` exposes this as
+  `--scored-layer-boundary-row` / `--raw-scored-layer-boundary-row`, separate
+  from the existing isolated `--layer-boundary-row` replay. The probe artifact
+  now also records active diagnostic env flags such as
+  `HIPENGINE_GGUF_VERIFY_F32_*` and `HIPENGINE_GGUF_VERIFY_CAPTURE_*`.
+- Extended `scripts/llamacpp_mtp_compare_target_moe_taps.py` with
+  `--hipengine-capture-source {auto,isolated,scored}` so the same compact
+  llama.cpp-vs-hipEngine MoE reducer works on live scored captures.
+- Ran the known bonus-row scored capture:
+  ```bash
+  PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 python3 scripts/gguf_mtp_forced_target_probe.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json \
+    --cycle 3 \
+    --target-block-verify-mode bulk \
+    --replay-target-block-verify-mode bulk \
+    --target-block-direct-partial-replay-mode direct-commit \
+    --capture-linear-state-rows \
+    --candidate-token 668,8940 \
+    --top-k 20 \
+    --raw-scored-layer-boundary-row 14:2 \
+    --raw-layer-output-row 14:2 \
+    --require-cached-build \
+    --compiler-version-file scratchpad/_bv_compiler_version.txt \
+    --output benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json
+  ```
+- Compact scored-vs-llama comparison:
+  ```bash
+  PYTHONPATH=. python3 scripts/llamacpp_mtp_compare_target_moe_taps.py \
+    --hipengine-raw benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json \
+    --llamacpp-jsonl /tmp/hipengine-llamacpp-layer14-gate-task9-cycle3.jsonl \
+    --llamacpp-cycle 3 \
+    --row 2 \
+    --layer 14 \
+    --hipengine-capture-source scored \
+    --output benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-moe-taps-compare.json
+  ```
+  Result: live scored path still picks hipEngine expert `175` vs llama.cpp
+  expert `32` at rank 7. Router MAE/RMSE is `0.021746 / 0.028151`; `ffn_out`
+  MAE is `0.002282`; post-MoE/layer-output MAE is `0.002532`. The older
+  isolated replay row had router MAE/RMSE `0.024925 / 0.030213` and the same
+  top-k mismatch, so future live-path bisection should prefer scored captures.
+- Updated `docs/MTP-LLAMACPP-PARITY.md` active tracker with the scored capture
+  artifacts and interpretation.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_compare_target_moe_taps.py scripts/gguf_mtp_forced_target_probe.py hipengine/runtime/qwen35_gguf_runner.py
+  PYTHONPATH=. pytest tests/test_gguf_mtp_forced_target_probe.py -q
+  PYTHONPATH=. pytest tests/test_llamacpp_mtp_compare_target_moe_taps.py -q
+  PYTHONPATH=. pytest tests/test_qwen35_gguf_hidden_seed_contract.py -q
+  jq empty benchmarks/results/2026-07-03-mtp-target-bonus-row-hipengine-scored-layer14-cycle3.json benchmarks/results/2026-07-03-mtp-bonus-row-layer14-scored-moe-taps-compare.json
+  ```

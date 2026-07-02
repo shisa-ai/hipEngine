@@ -43,6 +43,12 @@ def main() -> None:
     parser.add_argument("--llamacpp-cycle", type=int, required=True)
     parser.add_argument("--row", type=int, default=1)
     parser.add_argument("--layer", type=int, default=31)
+    parser.add_argument(
+        "--hipengine-capture-source",
+        choices=("auto", "isolated", "scored"),
+        default="auto",
+        help="Which hipEngine layer-boundary capture block to compare.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
@@ -52,6 +58,7 @@ def main() -> None:
         llamacpp_cycle=args.llamacpp_cycle,
         row=args.row,
         layer=args.layer,
+        hipengine_capture_source=args.hipengine_capture_source,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2) + "\n")
@@ -78,9 +85,15 @@ def build_moe_tap_compare_artifact(
     llamacpp_cycle: int,
     row: int,
     layer: int,
+    hipengine_capture_source: str = "auto",
 ) -> dict[str, Any]:
     hip_artifact = json.loads(hipengine_raw_path.read_text())
-    hip_capture = _hip_capture(hip_artifact, layer=layer, row=row)
+    hip_capture = _hip_capture(
+        hip_artifact,
+        layer=layer,
+        row=row,
+        capture_source=hipengine_capture_source,
+    )
     hip_values = _hip_values(hip_capture)
     llama_cycle = _llamacpp_cycle(llamacpp_jsonl_path, cycle=llamacpp_cycle)
     llama_values, duplicates = _llamacpp_row_values(llama_cycle, row=row)
@@ -159,6 +172,7 @@ def build_moe_tap_compare_artifact(
             "llamacpp_cycle": int(llamacpp_cycle),
             "row": int(row),
             "layer": int(layer),
+            "hipengine_capture_source": hip_capture.get("capture_source", "isolated_layer_replay"),
         },
         "hipengine": _hip_metadata(hip_artifact, hip_capture),
         "llamacpp": _llamacpp_metadata(llama_cycle, duplicates),
@@ -179,12 +193,41 @@ def build_moe_tap_compare_artifact(
     return artifact
 
 
-def _hip_capture(artifact: dict[str, Any], *, layer: int, row: int) -> dict[str, Any]:
-    captures = artifact.get("result", {}).get("layer_boundary_captures", [])
-    for capture in captures:
-        if int(capture.get("layer", -1)) == layer and int(capture.get("row", -1)) == row:
-            return capture
-    raise ValueError(f"hipEngine artifact has no layer_boundary_capture for layer={layer} row={row}")
+def _hip_capture(
+    artifact: dict[str, Any],
+    *,
+    layer: int,
+    row: int,
+    capture_source: str = "auto",
+) -> dict[str, Any]:
+    if capture_source not in {"auto", "isolated", "scored"}:
+        raise ValueError("capture_source must be auto, isolated, or scored")
+    source_keys: list[tuple[str, str]]
+    if capture_source == "scored":
+        source_keys = [("scored_layer_boundary_captures", "scored_target_block")]
+    elif capture_source == "isolated":
+        source_keys = [("layer_boundary_captures", "isolated_layer_replay")]
+    else:
+        source_keys = [
+            ("scored_layer_boundary_captures", "scored_target_block"),
+            ("layer_boundary_captures", "isolated_layer_replay"),
+        ]
+    result = artifact.get("result", {})
+    for key, source_name in source_keys:
+        captures = result.get(key, [])
+        for capture in captures:
+            if int(capture.get("layer", -1)) == layer and int(capture.get("row", -1)) == row:
+                capture = dict(capture)
+                capture.setdefault("capture_source", source_name)
+                if "moe_selected_experts" not in capture and "selected_experts" in capture:
+                    capture["moe_selected_experts"] = capture["selected_experts"]
+                if "moe_routing_weights" not in capture and "routing_weights" in capture:
+                    capture["moe_routing_weights"] = capture["routing_weights"]
+                if "moe_shared_gate" not in capture and "shared_gate" in capture:
+                    capture["moe_shared_gate"] = capture["shared_gate"]
+                return capture
+    searched = ", ".join(key for key, _source in source_keys)
+    raise ValueError(f"hipEngine artifact has no {searched} capture for layer={layer} row={row}")
 
 
 def _hip_values(capture: dict[str, Any]) -> dict[str, np.ndarray]:
@@ -441,6 +484,7 @@ def _hip_metadata(artifact: dict[str, Any], capture: dict[str, Any]) -> dict[str
         "position": capture.get("position"),
         "input_token": capture.get("input_token"),
         "trace_target_token": capture.get("trace_target_token"),
+        "capture_source": capture.get("capture_source", "isolated_layer_replay"),
     }
 
 
