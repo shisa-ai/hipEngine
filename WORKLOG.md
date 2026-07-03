@@ -139110,3 +139110,33 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest -q tests/test_llamacpp_mtp_bench_metrics.py
   ```
   Pycompile passed and focused tests passed (`7 passed`).
+
+## 2026-07-03 - mtpbench MTP vs AR c=1/4/8 diagnostic
+
+- Measured hipEngine exact default natural24 c=1 on AMD Radeon 8060S / gfx1151:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --budgets 5 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-03-ar-mtp-default-natural24-c1.json
+  ```
+  Result: AR **54.93 tok/s**, exact MTP B5 **50.16 tok/s** (**0.913x**),
+  acc/output **0.467**, draft acceptance **0.667**. This is a natural24
+  token-cap diagnostic and does not supersede the retained 10-cycle exact row
+  (**61.98 tok/s**, **1.131x AR**).
+- Measured llama.cpp Vulkan B2 natural24 on the same gfx1151 host with
+  `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server`,
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, f16 KV, `--reasoning off`,
+  `--max-tokens 24`, `--spec-type draft-mtp --spec-draft-n-max 2`, and
+  `--concurrency {1,4,8}` / `-np {1,4,8}`:
+  c=1 AR **64.15**, MTP **91.48** tok/s (**1.426x**);
+  c=4 AR **124.68**, MTP **92.19** tok/s (**0.739x**);
+  c=8 AR **139.71**, MTP **103.57** tok/s (**0.741x**). These are aggregate
+  decode rows using total predicted tokens over max `predicted_ms` per
+  concurrent batch. Artifacts:
+  `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c1.json`,
+  `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`, and
+  `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`.
+- hipEngine exact/compat c=4/c=8 MTP remains not directly measurable: the
+  OpenAI server advertises `speculative_mtp.serving_route=false`, and the
+  current GGUF exact/compat MTP harness is a direct serial suite. Measuring c>N
+  for hipEngine MTP needs an MTP serving route or a true concurrent direct
+  resident-session harness; parallel child processes would not be the same
+  protocol.
