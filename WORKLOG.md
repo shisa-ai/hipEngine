@@ -139096,3 +139096,17 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. pytest -q tests/test_mtp_bench_tool.py tests/test_llamacpp_mtp_bench_metrics.py
   ```
   Pycompile passed and focused tests passed (`12 passed`).
+
+## 2026-07-03 - llama.cpp MTP concurrent decode metric fix
+
+- Corrected `scripts/llamacpp_mtp_bench.py` concurrency summaries to include
+  `aggregate_decode_predicted_per_second`, computed as total predicted tokens
+  over the sum of max `predicted_ms` per concurrent batch. This is the
+  decode-only aggregate metric for c=N; the earlier client aggregate remains
+  recorded separately because it includes prompt eval and HTTP wall.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_bench.py tests/test_llamacpp_mtp_bench_metrics.py
+  PYTHONPATH=. pytest -q tests/test_llamacpp_mtp_bench_metrics.py
+  ```
+  Pycompile passed and focused tests passed (`7 passed`).
