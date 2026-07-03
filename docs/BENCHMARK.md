@@ -20,6 +20,355 @@ Every retained performance number must carry:
 
 Claims without a correctness gate are disallowed. A perf win that regresses correctness is reverted. Raw terminal output is not evidence — retain a compact JSON artifact per the schema at the bottom of this doc.
 
+## Anti-gaming
+
+A benchmark measures the model/kernels. Tuning a number to the specific inputs
+being measured measures nothing and is **INVALID** — it is never a retainable
+win, regardless of how the metric moved.
+
+Hard rules:
+
+- **No input-conditioned shortcuts.** Do not add code that detects the prompt,
+  token sequence, candidate-id pattern, logits shape, or any fixture-specific
+  signal and changes the output to make a metric look better. Examples that are
+  banned: hardcoding token IDs or candidate-pool-prefix reranks to force draft
+  "acceptance", special-casing a known fixture's expected tokens, or branching on
+  the prompt text. Optimize the drafter/kernel/sampler so it is genuinely better
+  on inputs it has never seen.
+- **Multi-prompt validation is mandatory for acceptance/quality metrics.**
+  Speculative-decode acceptance, sampling quality, and any prompt-sensitive
+  metric must be measured on the full multi-prompt **mtp-bench category suite**
+  (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, covering `code`,
+  `general_en`, `general_ja`, `mixed_ja_en`). A single fixed prompt (e.g. the
+  `gguf_mtp_bench.py` `"capital of France?"` default) is a smoke input only and
+  its acceptance/quality numbers are **not retainable**.
+- **Speculative speedups require a true AR baseline.** The denominator for
+  "MTP beats AR" must be a separate no-MTP autoregressive generation path in
+  the same benchmark script/protocol, over the same prompts, sampling settings,
+  warmup/hermeticity state, and timing window. A `B0`, `off`, or derived AR row
+  synthesized from target-verifier timings inside an MTP diagnostic cycle is
+  useful economics telemetry, but it is **not** a true AR baseline and cannot be
+  used for retained speedup claims or loop keep/revert decisions.
+- **Use train + category-heldout splits for optimization loops.** It is valid to
+  iterate on a training subset, but every keep/revert decision for acceptance or
+  speculative speed must also report full-suite metrics and a heldout subset with
+  at least one prompt per category. For
+  `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, the default heldout set is
+  `code_markdown_table`, `general_en_explain`, `general_ja_explain`, and
+  `mixed_ja_en_review`; train is the remaining six prompts. A change is not a win
+  if it improves train acceptance while regressing heldout acceptance or true-AR
+  speed ratio.
+- **Greedy selection stays greedy.** Draft/target token selection in benchmark
+  harnesses is pure argmax/top-k. The guard test
+  `tests/test_gguf_mtp_bench_metrics.py::test_select_topk_tokens_is_pure_argmax_no_prompt_specific_rerank`
+  fails if a prompt-specific override is reintroduced; do not weaken it.
+- **Cleanup, not just rejection.** When gaming is found, strip the offending code
+  and mark every WORKLOG/README/CHANGELOG row and `benchmarks/results/` artifact
+  that cited the gamed numbers as `INVALID` (gamed) so they are never reused as a
+  baseline. Real, input-agnostic engine wins measured alongside the gaming (e.g.
+  draft-compute `ms` reductions) survive on their own evidence.
+
+History: the `mtp-gguf` branch accumulated ~25 hardcoded token-id reranks in
+`scripts/gguf_mtp_bench.py::select_topk_tokens` overfit to the France prompt,
+inflating "acceptance" with no real drafter improvement; the category suite
+exposed it (acceptance collapsed, every MTP budget slower than AR). Those
+acceptance rows are INVALID.
+
+### Honest native GGUF-MTP category diagnostics
+
+> **Canonical gate (2026-06-29): use `scripts/gguf_ar_mtp_suite.py`.** It runs the
+> true no-MTP AR baseline and the MTP category suite under ONE enforced decode
+> config, computes the MTP/AR ratio itself, asserts `apple_to_apple_ok`, and emits
+> a single artifact with a `verdict` — and it loads the model once (full suite
+> ~3-4 min, not ~40+). **Every GGUF AR/MTP optimization must pass `--scope full`
+> before it is retained or made default; microbenches and partials routinely do
+> not translate to e2e (dp4a, split-K, rowtile, non-temporal were all isolated
+> wins that went flat at e2e).** See `docs/MTP-LLAMACPP-PARITY.md` →
+> "Validation protocol — run the suite for EVERY change". The manual two-step
+> below is the underlying mechanism; note its `--true-ar-baseline-json` *attach*
+> is currently broken (it still demands the #8-retired `graph_replay` AR contract,
+> see `docs/REFACTOR.md`), which is why the suite computes the ratio itself.
+>
+> **Scope: GGUF path only.** `gguf_ar_mtp_suite.py` covers the GGUF Q4_K_M path
+> (`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `Qwen35GGUFResidentSession`). The
+> **PARO path** (BF16 / W4-PARO safetensors, e.g.
+> `/models/hipengine/Qwen3.6-35B-A3B-PARO-...-MTP-BF16` and the `z-lab` HF
+> snapshots) is a **separate MTP/AR codepath** and is **NOT** covered by this
+> suite — it has no unified one-command AR-vs-MTP gate yet. PARO-path
+> optimizations must be validated e2e with the PARO harnesses
+> (`scripts/qwen35_paro_bench.py` for AR, `scripts/mtp_chain_e2e_bench.py` /
+> `scripts/mtp_verifier_economics.py` for MTP, `scripts/mtp_verifier_rocprof.py`
+> for the verifier trace). A change to kernels shared by both paths must be
+> validated on whichever path(s) it touches (ideally both). A unified PARO
+> equivalent of `gguf_ar_mtp_suite.py` is a TODO.
+
+Use this protocol before resuming native GGUF-MTP acceptance/speed optimization.
+It is the guarded replacement for the old fixed-prompt `gguf_mtp_bench.py`
+acceptance loops.
+
+1. **Measure true no-MTP AR first.** Produce a separate AR artifact over the same
+   category prompt suite:
+
+   ```bash
+   AR_ROOT=/tmp/hipengine-true-ar-category-$(date +%Y%m%d-%H%M%S)
+   python3 scripts/gguf_true_ar_category_bench.py \
+     --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+     --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+     --decode-tokens 128 \
+     --warmup-decode-tokens 1 \
+     --compiler-version-file /tmp/hipengine-readme-gfx1151-runs/20260615-040438/hipcc-version-gfx1151.txt \
+     --raw-root "$AR_ROOT" \
+     --output "$AR_ROOT/true-ar-baseline.json"
+   ```
+
+   The artifact must set `schema=1`,
+   `kind=hipengine_gguf_true_ar_category_baseline`,
+   `status=complete`, `true_autoregressive_path=true`,
+   `same_prompt_suite=true`, and `same_timing_protocol=true`; include non-empty
+   `commands`; include `repo` code-state provenance; include protocol metadata (`model`, matching `quant`,
+   `prompt_file`, `prompt_count`, positive `decode_tokens`, and non-negative
+   `warmup_decode_tokens`); include production `timing_protocol` metadata with
+   `decode_path=graph_replay`, `graph_replay_decode=true`,
+   `graph_steps_per_replay=1`, `decode_repack=true`,
+   `effective_decode_repack=true`, `use_gemv_decode=true`,
+   `effective_use_gemv_decode=true`, `use_wmma_prefill=true`, and
+   `effective_use_wmma_prefill=true`; include top-level `prompt_hashes`; and
+   contain one `prompt_metrics[]` row per selected prompt with `prompt_sha256`,
+   `finite_final_logits=true`, `output_tokens` matching artifact
+   `decode_tokens`, `warmup_decode_tokens` matching artifact
+   `warmup_decode_tokens`, and positive `decode_ms`. An eager/raw artifact such
+   as `/tmp/hipengine-true-ar-category-fullsuite-d32-20260622-134136/true-ar-baseline.json`
+   (`19.67 tok/s`, no production timing metadata/effective decode-repack GEMV)
+   is valid only as a diagnostic of that path and is **INVALID** as the
+   retained GGUF-MTP speed denominator.
+
+2. **Attach AR to the MTP category matrix.** Run the MTP diagnostic over the same
+   prompts/budgets and attach the AR artifact:
+
+   ```bash
+   MTP_ROOT=/tmp/hipengine-gguf-mtp-category-$(date +%Y%m%d-%H%M%S)
+   python3 scripts/gguf_mtp_category_bench.py \
+     --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+     --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+     --budgets 1,2,3,4,5 \
+     --cycles 10 \
+     --raw-root "$MTP_ROOT/raw" \
+     --output "$MTP_ROOT/summary.json" \
+     --true-ar-baseline-json "$AR_ROOT/true-ar-baseline.json"
+   ```
+
+   The summary must set `schema=1`,
+   `kind=hipengine_gguf_mtp_category_matrix`, include non-empty `commands`,
+   include per-prompt metadata (`id`, `category`, positive `prompt_chars`, and
+   `prompt_sha256`) matching `splits.contract.full_ids` and the default prompt
+   fixture text/category/length, include category
+   summary metadata whose keys match prompt categories, with a category row for
+   each objective budget, count-derived bounded acceptance ratios, positive
+   `decode_ms`, finite non-negative speed fields derived from output tokens and
+   decode time, prompt counts matching the prompt metadata, and per-category true-AR
+   ratios matching the attached true-AR category baselines, and carry attached
+   true-AR `true_autoregressive_path=true`, `same_prompt_suite=true`,
+   `same_timing_protocol=true`, `artifact_schema`/`artifact_kind` with strict
+   integer schema fields, plus self-consistent `protocol` metadata matching
+   the MTP `model`, quant family, `prompt_file`, and prompt count, the same
+   production `timing_protocol` metadata listed above,
+   `true_ar_comparison_available=true`, boolean `performance_claim=false`,
+   boolean `speed_claim_eligible=false`, `splits.full`,
+   `splits.train`, and `splits.heldout`; prompt fixture rows must use explicit unique non-blank strict
+   string IDs (no `name` or line-number fallback), explicit non-blank categories (no `uncategorized` fallback), non-blank prompt text, and explicit supported chat message roles/content before split
+   construction; split contract and per-split `prompt_ids` lists must contain strict non-blank strings,
+   `splits.contract.heldout_ids` must be the fixed set
+   `code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review`,
+   `train_ids` must be the default full-minus-heldout complement, and each split
+   `prompt_ids` list must match its `splits.contract` counterpart. Markdown tables must label the old
+   verifier-derived denominator as `vs verifier off`; same-protocol speed ratios
+   appear only in a separate `vs true AR` column. Any future retained summary with
+   `speed_claim_eligible=true` must pass the same current-schema checks for the
+   MTP summary, attached true-AR artifact identity, and guarded objective
+   extraction for every canonical positive `bN` MTP budget row. `performance_claim=true` is invalid
+   unless `speed_claim_eligible=true`, and both claim flags must be JSON
+   booleans (not truthy strings or integers).
+
+3. **Optimization decisions use all three views.** Report full-suite, train, and
+   heldout metrics for every budget:
+
+   - `accepted_per_output` and `draft_acceptance` (finite, bounded to [0, 1]);
+   - `decode_tok_s_weighted`;
+   - `mtp_vs_true_ar_decode_ratio`.
+
+   Category objective rows are also reported for every present category. A
+   train-only gain is not a win. The loop guard is speed-first: full-suite
+   `decode_tok_s_weighted` and `mtp_vs_true_ar_decode_ratio` must improve for a
+   guarded keep, while full-suite, heldout, and every-category
+   `draft_acceptance`, `decode_tok_s_weighted`, and
+   `mtp_vs_true_ar_decode_ratio` must not regress. `accepted_per_output` is
+   reported as a useful coverage signal, but it is report-only for keep/revert
+   decisions; a wider search that raises accepted/output while lowering speed or
+   draft efficiency is reward hacking. MTP/true-AR ratio must be computed from
+   the attached true-AR split/category baseline rather than `off`/`B0` verifier
+   telemetry.
+
+4. **Use the guarded objective CLI for loop metrics.** Future optimize loops
+   must consume objective metrics through the harness gate, not ad-hoc JSON paths.
+   Objective budget labels are canonical positive `bN` labels (`b1`, `b5`, …);
+   the summary `totals` key set must be only `off` plus canonical positive `bN`
+   rows. `off`, `b0`, leading-zero labels such as `b01`, bare numeric totals
+   keys such as `1`, and other malformed strings are invalid as objective
+   budgets:
+
+   ```bash
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5
+   ```
+
+   This CLI rejects verifier-only summaries, partial/smoke prompt suites, and
+   artifacts without current schema/kind metadata (schema fields must be strict
+   JSON integers, not booleans), explicit true-no-MTP / same-prompt-suite /
+   same-timing-protocol true-AR flags, a same-protocol true-AR
+   baseline with production timing protocol (`graph_replay` + decode-repack +
+   effective GEMV/WMMA), strict attached true-AR source provenance, repo provenance including matching summary / attached true-AR
+   `repo_root` and non-null `git_commit`, command provenance, summary prompt/category
+   provenance including strict prompt fixture and raw row identity typing,
+   default prompt hashes/categories/lengths plus exactly-one prompt text source per fixture row and category budget-row scalar fields, strict JSON-integer token counts and prompt counts
+   (not booleans, floats, or strings), strict true-AR protocol / prompt-row count
+   fields, attached true-AR total/split/category output counts matching `prompts * protocol.decode_tokens`, repo provenance including strict integer `git_untracked_count` and
+   same-repo root/commit checks between the summary and attached true-AR baseline,
+   protocol provenance including attached true-AR protocol self-normalization and
+   strict summary model/quant/prompt-file/prompt-count matching, strict true-AR `prompt_hashes` / `prompt_metrics`
+   non-blank prompt identity/category and hash typing, and true-AR finite-logit
+   evidence. CLI `--budgets` values must be unique and cannot contain empty
+   comma-separated entries. Build-summary model/prompt/raw-root/cycle arguments, raw MTP
+   budget-map keys/row lists, and command provenance lists are checked before
+   artifact construction rather than coerced with `str()` / `int()`.
+   Summary and attached true-AR category map keys must be strict
+   non-empty strings. In-memory prompt rows and raw per-prompt MTP rows are checked with
+   unique non-blank strict string prompt IDs/categories/text, non-blank summary prompt metadata IDs/categories, agreeing non-blank raw prompt/category identity fields, and the same strict count and
+   timing typing before aggregation; the child raw metrics helper and category aggregator require the same explicit cycle schema with no legacy `accepted`/missing-field fallbacks; raw cycle-list length must match the recorded `cycles` argument; raw per-cycle visible output counts are required and must sum to total output tokens; raw per-cycle generated/accepted draft counts are required and must sum to total draft/accepted counts; raw per-cycle timing keys are required, timing values must be non-negative,
+   present `total_cycle_ms` must match the sum of cycle timings, proposed-draft denominators must be positive, accepted counts cannot exceed output tokens or proposed drafts, and present falsy timing values such as `false` or `""` are rejected rather than zero-coerced. Scalar metric fields must be strict JSON
+   numbers (not booleans or numeric strings). The returned JSON contains compact `category_metrics` rows
+   plus full/train/heldout finite [0, 1] `accepted_per_output` and
+   `draft_acceptance`, positive `decode_ms`, finite non-negative
+   `decode_tok_s_weighted`, and `mtp_vs_true_ar_decode_ratio`, each with a
+   positive prompt count matching the
+   split `prompt_ids` length, strict string split `prompt_ids` matching
+   `splits.contract`, count-derived split acceptance ratios, and the fixed heldout/train split described above.
+   Train+heldout split aggregate counts and `decode_ms` must sum back to the
+   full split for both MTP rows and attached true-AR rows, so forged split
+   payloads cannot pass by preserving only local ratios.
+   The gate also verifies each split and category
+   `mtp_vs_true_ar_decode_ratio` against the attached true-AR
+   split/category `decode_tok_s_weighted` and matching prompt count / prompt-id
+   list length where applicable, checks split acceptance ratios against split
+   token counts, checks MTP summary totals against the full split and category
+   sums, and checks attached true-AR totals against the full split
+   plus category sums. Attached true-AR total, split, and category
+   `decode_tok_s_weighted` rows must also equal `1000 * total_output_tokens /
+   decode_ms`, so forged denominators cannot pass by adjusting MTP ratios around
+   them. MTP summary total, split, and category rows must likewise carry
+   positive `decode_ms` and satisfy `decode_tok_s_weighted = 1000 *
+   total_output_tokens / decode_ms`, so numerator-side speed forgeries are
+   caught before any compare decision.
+
+   When an optimize loop needs a single scalar verify metric, keep the same gates
+   and request one split/field or category/field explicitly:
+
+   ```bash
+   # Primary speed metric: full-suite same-protocol MTP/true-AR ratio.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split full \
+     --objective-field mtp_vs_true_ar_decode_ratio
+
+   # Proposal/selector efficiency monitor: full-suite draft acceptance.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split full \
+     --objective-field draft_acceptance
+
+   # Coverage signal only: accepted/output is not a keep metric by itself.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-split full \
+     --objective-field accepted_per_output
+
+   # Per-category speed monitor: reject aggregate gains that hide category regressions.
+   python3 scripts/gguf_mtp_category_bench.py \
+     --objective-summary-json "$MTP_ROOT/summary.json" \
+     --objective-budget b5 \
+     --objective-category code \
+     --objective-field mtp_vs_true_ar_decode_ratio
+   ```
+
+   `--objective-split` and `--objective-category` are mutually exclusive scalar
+   selectors; either selector must be paired with `--objective-field`. Scalar
+   mode still calls the guarded objective extractor first; it is not a way
+   to read verifier-derived `off`/`B0` telemetry or partial prompt suites. Add
+   `--objective-output-json /path/to/objective.json` when a scalar verify command
+   should also retain the full guarded full/train/heldout/category objective JSON
+   as an artifact; the artifact records `objective_sources`, `objective_command`,
+   `objective_cwd`, and output-path provenance, and the command rejects output
+   paths that would overwrite the input summary JSON. Any artifact that flips
+   `speed_claim_eligible=true` must also pass this guarded
+   extractor for every canonical positive `bN` MTP budget before the contract accepts it. Any artifact
+   that flips `performance_claim=true` must also flip `speed_claim_eligible=true`
+   and pass the same guarded eligibility checks.
+
+   Baseline-vs-candidate comparisons should use the guarded comparator:
+
+   ```bash
+   python3 scripts/gguf_mtp_category_bench.py \
+     --compare-baseline-summary-json /path/to/baseline-summary.json \
+     --compare-candidate-summary-json /path/to/candidate-summary.json \
+     --compare-budget b5 \
+     --compare-require-pass \
+     --compare-require-guarded-improvement \
+     --compare-require-draft-acceptance-improvement
+   ```
+
+   With `--compare-require-pass`, the command exits non-zero when full, heldout,
+   or any category `draft_acceptance`, `decode_tok_s_weighted`, or
+   `mtp_vs_true_ar_decode_ratio` regress. `accepted_per_output` deltas are
+   retained in `report_only_improvements[]`, but cannot make `guarded_improved`
+   true by themselves. Train deltas are reported but are not sufficient for a
+   keep decision. The comparator also reports an `improvements[]` list,
+   `report_only_improvements[]`, `guarded_improved` (true only when full-suite
+   tok/s and true-AR ratio improve), `draft_acceptance_improved`,
+   `missing_required_speed_improvements[]`, `decision_state` enum
+   (`fail_regressed`, `pass_no_speed_improvement`, or `pass_speed_improved`),
+   guarded field/scope lists, and `train_report_only=true` for those same
+   guarded full/heldout/category fields. Add
+   `--compare-require-guarded-improvement` when an optimize loop must reject
+   accepted/output-only or exact no-op candidates in addition to regressions. Add
+   `--compare-require-draft-acceptance-improvement` for proposal/selector loops;
+   runtime/kernel-only loops may omit that flag but still must not regress draft
+   acceptance. The optional `--compare-tolerance` applies a finite non-negative
+   absolute tolerance to guarded regressions and improvements; its default is `0.0` for exact
+   non-regression. NaN/Inf tolerances are invalid because they can mask
+   regressions. Compare-mode JSON also records `comparison_sources` (baseline and
+   candidate summary paths plus resolved paths), `comparison_command`, and
+   `comparison_cwd`; keep these fields with any loop decision artifact so the
+   exact command and compared summaries remain auditable. Use
+   `--compare-output-json /path/to/comparison.json` to write the same guarded
+   comparison JSON printed to stdout as a durable decision artifact; the command
+   rejects output paths that would overwrite either compared summary.
+
+5. **Promotion remains separate from diagnostics.** The category diagnostic is
+   not a retained speed claim even when a true-AR baseline is attached. To promote
+   a speed row into `benchmarks/README.md`, rerun the retained benchmark protocol
+   with hermetic/warm timing (prebuilt kernels, no `hipcc`/clang in the timed
+   process), full artifact provenance, correctness gate, and rollup updates. The
+   optimization target is MTP/true-AR decode ratio first: diagnostic progress may
+   be logged below 1.0× only when the same-protocol ratio and tok/s improve;
+   retained speedups require ratio > 1.0×, and the target remains >1.3×. For
+   proposal/selector work, full-suite draft acceptance should move toward the
+   llama.cpp reference band (~0.50–0.84 depending on budget) rather than being
+   traded away for accepted/output; lower accepted/output is acceptable only when
+   speed ratio improves and draft acceptance does not regress. No hardcoding.
+
 ## Benchmark Output Contract
 
 A benchmark artifact must answer five questions without rereading raw logs:
@@ -249,8 +598,9 @@ while `synthetic_stress` rows are diagnostic until code rows already beat AR.
 Rebuild/validate it with `scripts/dflash_prepare_prompts.py` when the retained
 tokenizer snapshot changes.
 
-A speculative row is promotable only when every row is exact/finite and aggregate
-speculative decode is >1.10× same-session AR. The checked-in
+A speculative row is promotable only when every row is exact/finite, the artifact
+contains a true no-MTP autoregressive baseline (not a verifier-derived `off` row),
+and aggregate speculative decode is >1.10× that same-protocol AR. The checked-in
 `benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json`
 is a synthetic schema fixture, not a performance claim.
 
@@ -337,7 +687,7 @@ PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
   --json benchmarks/results/<date>-qwen36-35b-a3b-q4km-p9-e2-correctness.json
 ```
 
-The fixture compares a candidate launched with `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. The qwen35moe resident runtime currently safety-disables those two requested fast paths unless `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1` is set, because P9.E2 rejected their real opt-in output. The artifact records `fastpath_safety` with requested vs effective flags; a passing gate with `effective_* = false` is a correctness fallback only, not a performance acceptance for WMMA/GEMV. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
+The fixture compares a candidate launched with `HIPENGINE_GGUF_WMMA_PREFILL=1` + `HIPENGINE_GGUF_GEMV_DECODE=1` against the legacy row-GEMV path (`0`/`0`) over the prefill sample plus 128 eager decode logits rows. Do not infer fastpath use from requested flags alone: artifacts must record `fastpath_safety` and requested vs effective flags, and only rows with `effective_use_wmma_prefill=true` / `effective_use_gemv_decode=true` can be used as WMMA/GEMV performance evidence. A passing gate with `effective_* = false` is a correctness fallback only. Acceptance is mean KL ≤ 0.05, top-1 agreement ≥ 90%, finite final logits, and deterministic candidate tail token IDs across three runs. A failed gate makes any dependent throughput row `rejected_correctness`; do not promote it to the rollup.
 
 Fixtures (prompts + reference logits) are tiny (< 10 MB) and *are* committed under `fixtures/`. They are not "benchmark outputs" and do not count against the never-commit rule.
 

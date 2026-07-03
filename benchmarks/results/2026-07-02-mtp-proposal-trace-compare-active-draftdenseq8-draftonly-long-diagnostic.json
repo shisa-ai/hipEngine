@@ -1,0 +1,147 @@
+{
+  "schema": "hipengine.mtp_proposal_trace_diagnostic.v1",
+  "date": "2026-07-02",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Longer same-prompt token-trace comparison for the active draft-dense-Q8 draft-only llama-compat route after the prior 10-row trace ended at the llama.cpp token boundary.",
+  "hardware": {
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt": {
+    "id": "diag_merge_intervals",
+    "category": "diagnostic",
+    "text": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+    "reasoning": "off"
+  },
+  "hipengine": {
+    "route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly",
+    "raw_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 32 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --llama-compat --resident-mtp-device-chain --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --resident-mtp-draft-dense-q8-dp4a --resident-mtp-draft-dense-q8-dp4a-stages draft --record-cycle-stage-timings --output /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+    "cycles": 32,
+    "visible_output_tokens": 88,
+    "accepted_draft_tokens": 56,
+    "generated_draft_tokens": 64,
+    "accepted_per_output": 0.6363636363636364,
+    "draft_acceptance": 0.875
+  },
+  "llamacpp": {
+    "mode": "mtp",
+    "raw_trace": "/tmp/hipengine-mtp-proposal-trace/llamacpp-long-c120.json",
+    "stage_timing_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-long-stage-c120.jsonl",
+    "command": "PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8137 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 120 --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-long-stage-c120.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-proposal-trace/llamacpp-long-c120.json --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-long-c120-logs --server-start-timeout 180 --request-timeout 240",
+    "traced_rows": 49,
+    "compared_rows": 32,
+    "visible_output_tokens_in_compared_rows": 89,
+    "accepted_draft_tokens_in_compared_rows": 57,
+    "generated_draft_tokens_in_compared_rows": 64,
+    "accepted_per_output_in_compared_rows": 0.6404494382022472,
+    "draft_acceptance_in_compared_rows": 0.890625
+  },
+  "comparison_command": "PYTHONPATH=. python3 scripts/mtp_proposal_trace_compare.py --hipengine /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --llamacpp /tmp/hipengine-mtp-proposal-trace/llamacpp-long-c120.json --out /tmp/hipengine-mtp-proposal-trace/compare-active-draftdenseq8-draftonly-c32-vs-llamacpp-c120-v3.json",
+  "comparison": {
+    "schema": "hipengine.mtp_proposal_trace_compare.v3",
+    "compared_rows": 32,
+    "hipengine_rows": 32,
+    "llamacpp_rows": 32,
+    "exact_draft_rows": 30,
+    "exact_accepted_rows": 29,
+    "exact_output_rows": 29,
+    "accepted_count_match_rows": 30,
+    "exact_draft_rate": 0.9375,
+    "exact_accepted_rate": 0.90625,
+    "exact_output_rate": 0.90625,
+    "accepted_count_match_rate": 0.9375,
+    "output_stream_common_prefix_tokens": 33,
+    "first_token_divergence": {
+      "token_index": 33,
+      "hipengine_token": 539,
+      "llamacpp_token": 26126,
+      "hipengine_location": {
+        "row_index": 12,
+        "cycle": 12,
+        "offset_in_row": 1
+      },
+      "llamacpp_location": {
+        "row_index": 12,
+        "cycle": 18,
+        "offset_in_row": 1
+      }
+    },
+    "first_divergence": {
+      "pair_index": 12,
+      "draft_match": true,
+      "accepted_match": false,
+      "output_match": false,
+      "accepted_count_match": false,
+      "hipengine": {
+        "cycle": 12,
+        "generated_draft_tokens": 2,
+        "accepted_draft_tokens": 2,
+        "draft_token_ids": [
+          15495,
+          539
+        ],
+        "accepted_token_ids": [
+          15495,
+          539
+        ],
+        "output_token_ids": [
+          15495,
+          539,
+          1151
+        ],
+        "bonus_token_id": 1151,
+        "rejected_draft_token_id": null
+      },
+      "llamacpp": {
+        "cycle": 18,
+        "generated_draft_tokens": 2,
+        "accepted_draft_tokens": 1,
+        "draft_token_ids": [
+          15495,
+          539
+        ],
+        "accepted_token_ids": [
+          15495
+        ],
+        "output_token_ids": [
+          15495,
+          26126
+        ],
+        "bonus_token_id": 26126,
+        "rejected_draft_token_id": 539
+      }
+    }
+  },
+  "follow_up_diagnostics": [
+    {
+      "name": "active serial-exact verifier A/B",
+      "raw_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-serialexact-c16.json",
+      "result": "Same row-12 decision as active block verify: hipEngine serial target path accepts draft tokens [15495, 539] and emits [15495, 539, 1151]. This rules out the row-bulk verifier and direct-state commit as the local cause."
+    },
+    {
+      "name": "selected-down-X8 disabled serial-exact A/B",
+      "raw_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-no-selecteddownx8-serialexact-c16.json",
+      "result": "Rows 0-15 match the active serial-exact token decisions, including the row-12 false accept versus llama.cpp. The selected-down X8 sidecar is not the isolated cause."
+    },
+    {
+      "name": "verify-dp4a disabled serial-exact A/B",
+      "raw_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-no-verifydp4a-serialexact-c16.json",
+      "result": "Rows 0-15 still match the active serial-exact token decisions, including the row-12 false accept. The mismatch is not isolated to the selected-expert dp4a opt-in."
+    },
+    {
+      "name": "dense verifier dp4a disabled A/B",
+      "raw_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-compat-no-denseverify-c16.json",
+      "result": "Disabling dense verifier dp4a changes the stream earlier by accepting [262, 4071] at cycle 7, where active hipEngine and llama.cpp reject 4071. Dense verifier dp4a is required for earlier trace alignment on this prompt and is not a simple removal fix."
+    }
+  ],
+  "interpretation": [
+    "The prior 10-row active trace was clipped at the llama.cpp token limit and was insufficient to prove sustained semantic parity.",
+    "The longer trace shows draft proposals remain aligned at the first real mismatch: both engines draft [15495, 539] at pair 12.",
+    "The mismatch is target acceptance: hipEngine accepts both draft tokens and emits [15495, 539, 1151], while llama.cpp accepts only 15495 and emits [15495, 26126].",
+    "The active hipEngine serial-exact verifier reproduces the same row-12 decision, so this is not explained by row-bulk verifier scheduling or direct-state commit.",
+    "Next instrumentation should capture target-side score/top-k detail at the forced pair-12 prefix for hipEngine and llama.cpp, then compare the target decode path rather than draft proposal generation."
+  ]
+}

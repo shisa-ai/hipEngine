@@ -17,8 +17,10 @@ _SYMBOL_FP16 = "hipengine_qwen35_linear_attn_conv_decode_fp16"
 _SYMBOL_TREE_BF16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_bf16_tloop"
 _SYMBOL_TREE_FP16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_fp16_tloop"
 _SYMBOL_CHAIN_BF16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_tloop"
+_SYMBOL_CHAIN_F32_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop"
 _SYMBOL_CHAIN_FP16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
+_SYMBOL_PREFILL_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_f32_state_rows"
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
 
@@ -245,6 +247,38 @@ def qwen35_linear_attn_chain_conv_decode_bf16_tloop(
     )
 
 
+def qwen35_linear_attn_chain_conv_decode_f32_tloop(
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    chain_conv_state_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    max_nodes: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP32-input single-chain convolution t-loop with row-state output."""
+
+    _launch_chain_conv_tloop(
+        _SYMBOL_CHAIN_F32_TLOOP,
+        hidden_states_ptr,
+        base_conv_state_ptr,
+        chain_conv_state_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        max_nodes,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_linear_attn_chain_conv_decode_fp16_tloop(
     hidden_states_ptr: int,
     base_conv_state_ptr: int,
@@ -305,6 +339,53 @@ def qwen35_linear_attn_conv_prefill_f32(
         library=library,
         runtime=runtime,
     )
+
+
+def qwen35_linear_attn_conv_prefill_f32_state_rows(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_state_rows_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch FP32 prefill convolution and materialize per-row Conv states."""
+
+    _check_conv_shape(channels, kernel_size)
+    _check_positive(tokens, "tokens")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_F32_STATE_ROWS)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_states_ptr),
+        ctypes.c_void_p(conv_state_ptr),
+        ctypes.c_void_p(conv_state_rows_ptr),
+        ctypes.c_void_p(conv_weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(channels),
+        ctypes.c_int64(kernel_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_linear_attn_conv_prefill_fp16(
@@ -419,6 +500,11 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey(backend, "linear_attn_tree_conv_decode", "w4_paro", "fp16_tloop"),
             qwen35_linear_attn_tree_conv_decode_fp16_tloop,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "linear_attn_chain_conv_decode", "gguf_qwen35", "f32_tloop"),
+            qwen35_linear_attn_chain_conv_decode_f32_tloop,
             replace=replace,
         )
 
@@ -577,8 +663,6 @@ def _launch_conv_prefill(
 ) -> None:
     _check_conv_shape(channels, kernel_size)
     _check_positive(tokens, "tokens")
-    if tokens < kernel_size:
-        raise ValueError("native prefill conv currently requires tokens >= kernel_size")
     library = library or build_qwen35_linear_attn_conv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)

@@ -1,0 +1,352 @@
+{
+  "schema": "hipengine.gguf_mtp_verifier_rocprof.v1",
+  "date": "2026-06-29",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Current GGUF MTP resident-serial-fallback target verifier host/GPU split.",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "mode": "serial_step_capture_hidden_seed_fp32",
+  "return_logits": false,
+  "steps": 8,
+  "warmup": 2,
+  "prompt_ids": [
+    760,
+    4087,
+    369,
+    220,
+    16,
+    17,
+    18,
+    19
+  ],
+  "marker_prefix": "gguf_mtp_verify_serial_",
+  "command": "python3 scripts/gguf_mtp_verifier_rocprof.py --steps 8 --warmup 2 --raw-root /tmp/hipengine-gguf-mtp-verifier-rocprof-rerun --out benchmarks/results/2026-06-29-gguf-mtp-verifier-rocprof-rerun.json",
+  "rocprof_command": "/home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/hipengine-gguf-mtp-verifier-rocprof-rerun/trace -- /home/lhl/miniforge3/envs/therock/bin/python3 /home/lhl/hipEngine/scripts/gguf_mtp_verifier_rocprof.py --child --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-ids 760,4087,369,220,16,17,18,19 --steps 8 --warmup 2 --max-seq 512 --compiler-version-file /tmp/hipengine-hipcc-version.txt --child-json /tmp/hipengine-gguf-mtp-verifier-rocprof-rerun/child.json --require-cached",
+  "raw_root": "/tmp/hipengine-gguf-mtp-verifier-rocprof-rerun",
+  "kernel_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof-rerun/trace/gfx1151/3874458_kernel_trace.csv",
+  "marker_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof-rerun/trace/gfx1151/3874458_marker_api_trace.csv",
+  "child": {
+    "schema": "hipengine.gguf_mtp_verifier_rocprof.child.v1",
+    "mode": "serial_step",
+    "steps": 8,
+    "warmup": 2,
+    "return_logits": false,
+    "host_ms": [
+      18.972549121826887,
+      18.78757099620998,
+      19.313107011839747,
+      18.852181965485215,
+      20.660646026954055,
+      19.39723500981927,
+      19.457729067653418,
+      19.490270176902413
+    ],
+    "avg_host_ms": 19.366411172086373,
+    "token_ids": [
+      23,
+      24,
+      13,
+      271,
+      760,
+      3377,
+      369,
+      421
+    ]
+  },
+  "summary": {
+    "steps": 8,
+    "kernel_calls": 5671,
+    "kernel_calls_per_step": 708.875,
+    "total_host_ms": 154.93128937669098,
+    "avg_host_ms": 19.366411172086373,
+    "total_kernel_ms": 135.584387,
+    "avg_kernel_ms": 16.948048375,
+    "kernel_time_share_of_host_wall": 0.8751259190152865,
+    "host_residual_ms_per_step": 2.418362797086374,
+    "buckets": [
+      {
+        "name": "dense_q8_0_gemv",
+        "calls": 1280,
+        "total_ms": 66.222919,
+        "pct_kernel": 48.84258465541465,
+        "ms_per_step": 8.277864875,
+        "us_per_call": 51.73665546875001
+      },
+      {
+        "name": "moe_selected_gemv",
+        "calls": 640,
+        "total_ms": 33.441358000000015,
+        "pct_kernel": 24.664608322490714,
+        "ms_per_step": 4.180169750000002,
+        "us_per_call": 52.25212187500002
+      },
+      {
+        "name": "lm_head",
+        "calls": 24,
+        "total_ms": 14.927997,
+        "pct_kernel": 11.010115051078854,
+        "ms_per_step": 1.865999625,
+        "us_per_call": 621.999875
+      },
+      {
+        "name": "moe_router",
+        "calls": 960,
+        "total_ms": 6.129731999999998,
+        "pct_kernel": 4.520971872668494,
+        "ms_per_step": 0.7662164999999997,
+        "us_per_call": 6.385137499999998
+      },
+      {
+        "name": "gdn_linear_attn",
+        "calls": 480,
+        "total_ms": 5.8542710000000024,
+        "pct_kernel": 4.317806149759709,
+        "ms_per_step": 0.7317838750000003,
+        "us_per_call": 12.196397916666673
+      },
+      {
+        "name": "rmsnorm_rope",
+        "calls": 736,
+        "total_ms": 4.453863000000004,
+        "pct_kernel": 3.2849379626579007,
+        "ms_per_step": 0.5567328750000005,
+        "us_per_call": 6.051444293478267
+      },
+      {
+        "name": "other",
+        "calls": 656,
+        "total_ms": 1.9749949999999987,
+        "pct_kernel": 1.456653707480345,
+        "ms_per_step": 0.24687437499999984,
+        "us_per_call": 3.010663109756096
+      },
+      {
+        "name": "moe_combine_silu",
+        "calls": 640,
+        "total_ms": 1.4970010000000002,
+        "pct_kernel": 1.1041101657228427,
+        "ms_per_step": 0.18712512500000003,
+        "us_per_call": 2.3390640625000003
+      },
+      {
+        "name": "attn_core",
+        "calls": 240,
+        "total_ms": 1.0424920000000009,
+        "pct_kernel": 0.7688879398776209,
+        "ms_per_step": 0.1303115000000001,
+        "us_per_call": 4.34371666666667
+      },
+      {
+        "name": "embedding",
+        "calls": 8,
+        "total_ms": 0.024093,
+        "pct_kernel": 0.017769745125594733,
+        "ms_per_step": 0.003011625,
+        "us_per_call": 3.011625
+      },
+      {
+        "name": "memcpy_fill",
+        "calls": 7,
+        "total_ms": 0.015666,
+        "pct_kernel": 0.011554427723304159,
+        "ms_per_step": 0.00195825,
+        "us_per_call": 2.238
+      }
+    ],
+    "top_kernels": [
+      {
+        "name": "q8_0_t16_dual_split_gemv",
+        "calls": 240,
+        "total_ms": 33.812439999999995,
+        "pct_kernel": 24.93829912731766,
+        "ms_per_step": 4.226554999999999,
+        "us_per_call": 140.88516666666663
+      },
+      {
+        "name": "q4_k_t16_selected_dual_silu_direct_gemv",
+        "calls": 320,
+        "total_ms": 19.609171000000003,
+        "pct_kernel": 14.46270579812409,
+        "ms_per_step": 2.4511463750000004,
+        "us_per_call": 61.278659375000004
+      },
+      {
+        "name": "q8_0_t16_gemv",
+        "calls": 640,
+        "total_ms": 18.611782000000034,
+        "pct_kernel": 13.727083487865041,
+        "ms_per_step": 2.326472750000004,
+        "us_per_call": 29.08090937500005
+      },
+      {
+        "name": "q6_k_t16_gemv",
+        "calls": 8,
+        "total_ms": 14.813630999999999,
+        "pct_kernel": 10.92576463099693,
+        "ms_per_step": 1.8517038749999999,
+        "us_per_call": 1851.703875
+      },
+      {
+        "name": "qk_t16_selected_direct_gemv",
+        "calls": 320,
+        "total_ms": 13.832186999999992,
+        "pct_kernel": 10.20190252436661,
+        "ms_per_step": 1.729023374999999,
+        "us_per_call": 43.225584374999976
+      },
+      {
+        "name": "q8_0_t16_triple_split_gemv",
+        "calls": 80,
+        "total_ms": 8.940329,
+        "pct_kernel": 6.593922204331684,
+        "ms_per_step": 1.117541125,
+        "us_per_call": 111.75411249999999
+      },
+      {
+        "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+        "calls": 240,
+        "total_ms": 4.913790000000002,
+        "pct_kernel": 3.62415622382834,
+        "ms_per_step": 0.6142237500000003,
+        "us_per_call": 20.47412500000001
+      },
+      {
+        "name": "q8_0_t16_dual_gemv",
+        "calls": 320,
+        "total_ms": 4.858368000000006,
+        "pct_kernel": 3.583279835900284,
+        "ms_per_step": 0.6072960000000007,
+        "us_per_call": 15.182400000000019
+      },
+      {
+        "name": "qwen35_router_logits",
+        "calls": 640,
+        "total_ms": 4.325824000000002,
+        "pct_kernel": 3.190503048112761,
+        "ms_per_step": 0.5407280000000002,
+        "us_per_call": 6.759100000000002
+      },
+      {
+        "name": "gguf_add_rmsnorm_bf16_f32_weight",
+        "calls": 320,
+        "total_ms": 2.2601669999999996,
+        "pct_kernel": 1.6669817594853304,
+        "ms_per_step": 0.28252087499999995,
+        "us_per_call": 7.063021874999999
+      },
+      {
+        "name": "gguf_rmsnorm_bf16_f32_weight",
+        "calls": 328,
+        "total_ms": 1.8608970000000011,
+        "pct_kernel": 1.372500950275345,
+        "ms_per_step": 0.23261212500000014,
+        "us_per_call": 5.673466463414638
+      },
+      {
+        "name": "qwen35_router_select",
+        "calls": 320,
+        "total_ms": 1.8039079999999994,
+        "pct_kernel": 1.3304688245557357,
+        "ms_per_step": 0.22548849999999993,
+        "us_per_call": 5.637212499999999
+      },
+      {
+        "name": "dense_gemv_bf16_f32w_bf16_out",
+        "calls": 480,
+        "total_ms": 1.6542400000000002,
+        "pct_kernel": 1.2200814832757996,
+        "ms_per_step": 0.20678000000000002,
+        "us_per_call": 3.446333333333334
+      },
+      {
+        "name": "weighted_sum_shared_gate_combine_residual_out",
+        "calls": 320,
+        "total_ms": 1.004742,
+        "pct_kernel": 0.7410455010575813,
+        "ms_per_step": 0.12559275,
+        "us_per_call": 3.1398187500000003
+      },
+      {
+        "name": "qwen35_linear_attn_conv_decode_lowp",
+        "calls": 240,
+        "total_ms": 0.9404809999999997,
+        "pct_kernel": 0.6936499259313683,
+        "ms_per_step": 0.11756012499999996,
+        "us_per_call": 3.9186708333333318
+      },
+      {
+        "name": "qwen35_paged_full_attn_decode_context_tensor",
+        "calls": 80,
+        "total_ms": 0.7269880000000003,
+        "pct_kernel": 0.5361885804742402,
+        "ms_per_step": 0.09087350000000004,
+        "us_per_call": 9.087350000000004
+      },
+      {
+        "name": "silu_mul_dual_out",
+        "calls": 320,
+        "total_ms": 0.49225899999999995,
+        "pct_kernel": 0.36306466466526116,
+        "ms_per_step": 0.06153237499999999,
+        "us_per_call": 1.5383093749999999
+      },
+      {
+        "name": "gguf_head_rmsnorm_partial_rotary_position_f32_weight",
+        "calls": 80,
+        "total_ms": 0.30098899999999984,
+        "pct_kernel": 0.22199384948356915,
+        "ms_per_step": 0.03762362499999998,
+        "us_per_call": 3.7623624999999983
+      },
+      {
+        "name": "qwen35_write_paged_kv_mixed_value_position_tensor",
+        "calls": 80,
+        "total_ms": 0.22144800000000006,
+        "pct_kernel": 0.1633285401806626,
+        "ms_per_step": 0.027681000000000008,
+        "us_per_call": 2.768100000000001
+      },
+      {
+        "name": "qwen35_split_qgate_bf16",
+        "calls": 80,
+        "total_ms": 0.16281199999999996,
+        "pct_kernel": 0.12008167282564766,
+        "ms_per_step": 0.020351499999999995,
+        "us_per_call": 2.0351499999999993
+      },
+      {
+        "name": "bf16_to_f32",
+        "calls": 80,
+        "total_ms": 0.129676,
+        "pct_kernel": 0.09564228070006321,
+        "ms_per_step": 0.0162095,
+        "us_per_call": 1.6209500000000001
+      },
+      {
+        "name": "argmax_stage1",
+        "calls": 8,
+        "total_ms": 0.095238,
+        "pct_kernel": 0.07024260101570545,
+        "ms_per_step": 0.01190475,
+        "us_per_call": 11.90475
+      },
+      {
+        "name": "qwen35_full_attn_gate_mul_bf16",
+        "calls": 80,
+        "total_ms": 0.09405600000000003,
+        "pct_kernel": 0.06937081922271776,
+        "ms_per_step": 0.011757000000000004,
+        "us_per_call": 1.1757000000000004
+      },
+      {
+        "name": "gguf_rmsnorm_bf16_f32_weight_out_f32",
+        "calls": 8,
+        "total_ms": 0.03181,
+        "pct_kernel": 0.02346140341365411,
+        "ms_per_step": 0.00397625,
+        "us_per_call": 3.97625
+      }
+    ]
+  }
+}

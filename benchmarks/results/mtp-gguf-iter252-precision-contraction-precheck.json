@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_precision_contraction_precheck",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 252,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "status": "diagnostic_precheck_no_runtime_math_change",
+  "tensor_count": 753,
+  "findings_count": 140,
+  "unique_slot_suffixes": [
+    "ffn_gate_inp",
+    "ffn_gate_inp_shexp",
+    "ssm_alpha",
+    "ssm_beta"
+  ],
+  "findings_sample": [
+    {
+      "slot_path": "layers.0.ffn_gate_inp",
+      "source_name": "blk.0.ffn_gate_inp.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+    },
+    {
+      "slot_path": "layers.0.ffn_gate_inp_shexp",
+      "source_name": "blk.0.ffn_gate_inp_shexp.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+    },
+    {
+      "slot_path": "layers.0.ssm_alpha",
+      "source_name": "blk.0.ssm_alpha.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+    },
+    {
+      "slot_path": "layers.0.ssm_beta",
+      "source_name": "blk.0.ssm_beta.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+    },
+    {
+      "slot_path": "layers.1.ffn_gate_inp",
+      "source_name": "blk.1.ffn_gate_inp.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+    },
+    {
+      "slot_path": "layers.1.ffn_gate_inp_shexp",
+      "source_name": "blk.1.ffn_gate_inp_shexp.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+    },
+    {
+      "slot_path": "layers.1.ssm_alpha",
+      "source_name": "blk.1.ssm_alpha.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+    },
+    {
+      "slot_path": "layers.1.ssm_beta",
+      "source_name": "blk.1.ssm_beta.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+    },
+    {
+      "slot_path": "layers.2.ffn_gate_inp",
+      "source_name": "blk.2.ffn_gate_inp.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "MoE router F32 weight is stored as BF16 for the current routed-FFN kernels"
+    },
+    {
+      "slot_path": "layers.2.ffn_gate_inp_shexp",
+      "source_name": "blk.2.ffn_gate_inp_shexp.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "shared-expert gate F32 weight is stored as BF16 for the current routed-FFN kernels"
+    },
+    {
+      "slot_path": "layers.2.ssm_alpha",
+      "source_name": "blk.2.ssm_alpha.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "GDN alpha F32 projection is stored as BF16 for the current linear-attention kernels"
+    },
+    {
+      "slot_path": "layers.2.ssm_beta",
+      "source_name": "blk.2.ssm_beta.weight",
+      "source_type": "F32",
+      "resident_layout": "dense_bf16",
+      "resident_quant_key": "bf16",
+      "llama_cpp_contract": "GGUF F32 tensor participates in llama.cpp's F32 GGML graph",
+      "hipengine_contract": "GDN beta F32 projection is stored as BF16 for the current linear-attention kernels"
+    }
+  ],
+  "summary_by_slot": {
+    "ffn_gate_inp": 40,
+    "ffn_gate_inp_shexp": 40,
+    "ssm_alpha": 30,
+    "ssm_beta": 30
+  },
+  "conclusion": "Executable materialization-plan audit now flags the GGUF F32 auxiliary weights that hipEngine contracts to BF16 residents before target-AR math changes. This does not fix the greeting mismatch; it provides a focused precheck for the next numeric boundary oracle."
+}

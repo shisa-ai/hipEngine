@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_mtp_hidden_seed_oracle_plan",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 301,
+  "status": "ready",
+  "source_dir": "/home/lhl/llama.cpp/llama.cpp-hip",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "doc_path": "docs/MTP-gguf.md",
+  "decision_path": "benchmarks/results/mtp-gguf-iter300-hidden-precision-decision-audit.json",
+  "llamacpp_oracle_api": {
+    "ready": true,
+    "facts": {
+      "declares_set_embeddings_nextn": true,
+      "declares_get_embeddings_nextn": true,
+      "declares_get_embeddings_nextn_ith": true,
+      "context_has_embd_nextn_buffer": true,
+      "implements_set_embeddings_nextn": true,
+      "implements_get_embeddings_nextn_ith": true
+    },
+    "anchors": {
+      "llama_ext_set": 96,
+      "llama_ext_get_ith": 103,
+      "context_embd_nextn": 296,
+      "context_get_ith_impl": 3716
+    }
+  },
+  "llamacpp_qwen35moe_h_nextn": {
+    "ready": true,
+    "facts": {
+      "trunk_builds_output_norm_before_h_nextn": true,
+      "trunk_labels_h_nextn": true,
+      "trunk_sets_t_h_nextn": true,
+      "mtp_graph_also_sets_h_nextn": true
+    },
+    "anchors": {
+      "trunk_output_norm": 231,
+      "trunk_h_nextn_label": 233,
+      "trunk_t_h_nextn": 234
+    }
+  },
+  "llamacpp_context_extraction": {
+    "ready": true,
+    "facts": {
+      "encode_reads_t_h_nextn_when_enabled": true,
+      "decode_reads_t_h_nextn_when_enabled": true,
+      "copies_t_h_nextn_to_embd_nextn": true,
+      "unmasked_get_ith_uses_raw_position": true,
+      "unmasked_buffer_sized_by_batch": true
+    },
+    "anchors": {
+      "encode_t_h_nextn": 1449,
+      "copy_async": 1522,
+      "unmasked_get_ith": 934,
+      "unmasked_size": 2090
+    }
+  },
+  "hipengine_fp32_seed_api": {
+    "ready": true,
+    "facts": {
+      "prefill_accepts_capture_hidden_seed_fp32": true,
+      "step_accepts_capture_hidden_seed_fp32": true,
+      "fp32_seed_ptr_guard_exists": true,
+      "mtp_draft_seed_uses_fp32_ptr": true,
+      "output_norm_can_capture_fp32": true
+    },
+    "anchors": {
+      "prefill_capture_arg": 3284,
+      "fp32_seed_ptr": 3189,
+      "mtp_draft_seed": 3207,
+      "output_norm_out_f32": 48
+    }
+  },
+  "doc_contract": {
+    "ready": true,
+    "facts": {
+      "requires_post_output_norm": true,
+      "requires_fp32": true,
+      "mentions_embd_nextn_copy": true
+    },
+    "anchors": {
+      "post_output_norm": 211,
+      "ggml_type_f32": 218,
+      "backend_tensor_get_async": 216
+    }
+  },
+  "comparison_contract": {
+    "prompt_tokens": [
+      248045,
+      846,
+      198,
+      7734,
+      264,
+      2716,
+      40719,
+      13,
+      248046,
+      198,
+      248045,
+      74455,
+      198,
+      248068,
+      271,
+      248069,
+      271
+    ],
+    "position": 16,
+    "token_id_at_position": 271,
+    "hidden_width": 2048,
+    "llamacpp_capture_api": "llama_set_embeddings_nextn(ctx, true, false) + llama_get_embeddings_nextn_ith(ctx, position)",
+    "llamacpp_row_semantics": "unmasked embeddings_nextn row indexed by raw prompt token position",
+    "hipengine_capture_api": "prefill(prompt_tokens, capture_hidden_seed_fp32=True) then fp32_hidden_seed_ptr/mtp_draft_seed",
+    "expected_known_layer0_embedding_rmse_if_bf16_seed_leaks": 4.314661795910361e-06,
+    "must_compare": [
+      "sha256 of float32 row",
+      "shape == hidden_width",
+      "max_abs_diff / mean_abs_diff / RMSE",
+      "top_abs_diff indices"
+    ]
+  },
+  "harness_plan": {
+    "source_template": "extend hidden-in capture harness with embeddings_nextn mode",
+    "required_includes": [
+      "llama.h",
+      "llama-ext.h"
+    ],
+    "required_symbols": [
+      "llama_set_embeddings_nextn",
+      "llama_get_embeddings_nextn_ith"
+    ],
+    "runtime_steps": [
+      "load model and create llama_context",
+      "call llama_set_embeddings_nextn(ctx, true, false) before decode",
+      "decode the exact prompt-token sequence",
+      "read float* row = llama_get_embeddings_nextn_ith(ctx, position)",
+      "write row as little-endian float32 plus metadata",
+      "capture hipEngine fp32 seed for the same prompt with capture_hidden_seed_fp32=True",
+      "compare llama.cpp row to hipEngine seed row numerically"
+    ],
+    "output_prefix_hint": "/tmp/hipengine-llamacpp-mtp-hidden-seed/pos16"
+  },
+  "readiness": {
+    "status": "ready",
+    "conclusion": "llamacpp_nextn_embedding_oracle_capture_ready",
+    "next_action": "compile_and_run_llamacpp_nextn_hidden_seed_capture_harness"
+  },
+  "conclusion": "llamacpp_nextn_embedding_oracle_capture_ready",
+  "external_checkout_modified": false,
+  "next_action": "compile_and_run_llamacpp_nextn_hidden_seed_capture_harness"
+}

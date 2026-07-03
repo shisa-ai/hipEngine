@@ -36,6 +36,7 @@ _SYMBOL_DUAL_OUT = "hipengine_silu_mul_dual_out_bf16"
 _SYMBOL_DUAL_OUT_FP16 = "hipengine_silu_mul_dual_out_fp16"
 _SYMBOL_SEPARATE_OUT = "hipengine_silu_mul_separate_out_bf16"
 _SYMBOL_SEPARATE_OUT_FP16 = "hipengine_silu_mul_separate_out_fp16"
+_SYMBOL_SEPARATE_OUT_F32 = "hipengine_silu_mul_separate_out_f32"
 _SYMBOL_DUAL_ROTATE_OUT = "hipengine_silu_mul_dual_rotate_out_bf16"
 _SYMBOL_DUAL_ROTATE_OUT_FP16 = "hipengine_silu_mul_dual_rotate_out_fp16"
 _SYMBOL_PAIR_ROTATE_OUT = "hipengine_silu_mul_pair_rotate_out_bf16"
@@ -213,6 +214,34 @@ def silu_mul_separate_out_fp16(
     )
 
 
+def silu_mul_separate_out_f32(
+    gate_ptr: int,
+    up_ptr: int,
+    out_ptr: int,
+    rows: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16 SiLU(gate) * up into an FP32 output buffer."""
+
+    _launch_separate(
+        _SYMBOL_SEPARATE_OUT_F32,
+        gate_ptr,
+        up_ptr,
+        out_ptr,
+        rows,
+        features,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def silu_mul_dual_rotate_out_bf16(
     gate_up_ptr: int,
     pairs_ptr: int,
@@ -374,6 +403,11 @@ def register_paro_silu_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
         register(
+            KernelKey("hip_gfx1100", "silu_mul_separate", quant, "out_f32"),
+            silu_mul_separate_out_f32,
+            replace=replace,
+        )
+        register(
             KernelKey("hip_gfx1100", "silu_mul_dual_rotate", quant, "out"),
             silu_mul_dual_rotate_out_bf16,
             replace=replace,
@@ -401,6 +435,11 @@ def register_paro_silu_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "silu_mul_separate", "fp16", "out"),
         silu_mul_separate_out_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "silu_mul_separate", "bf16", "out_f32"),
+        silu_mul_separate_out_f32,
         replace=replace,
     )
     register(

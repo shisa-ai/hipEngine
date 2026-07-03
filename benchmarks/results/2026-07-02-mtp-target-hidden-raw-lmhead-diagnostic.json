@@ -1,0 +1,554 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_hidden_raw_lmhead_diagnostic",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T02:24:09.627552+00:00",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon Pro W7900 / gfx1151 runtime env (HIPENGINE_HIP_ARCH=gfx1151)",
+  "workload": {
+    "prompt_file": "/tmp/hipengine-mtp-proposal-trace/prompt.jsonl",
+    "max_tokens": 120,
+    "mismatch": {
+      "hipengine_cycle": 12,
+      "llamacpp_cycle": 18,
+      "draft_tokens": [
+        15495,
+        539
+      ],
+      "row": 1,
+      "input_token": 15495,
+      "candidate_tokens": [
+        539,
+        26126
+      ]
+    }
+  },
+  "repo": {
+    "hipengine": {
+      "root": "/home/lhl/hipEngine",
+      "branch": "mtp-gguf",
+      "commit": "f4e87b9e10cc48cad47507f9254187917824f500",
+      "dirty": true
+    },
+    "llamacpp_instrumented_reference": {
+      "root": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "branch": "master",
+      "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "dirty": true,
+      "note": "local diagnostic instrumentation only; not a hipEngine committed dependency"
+    }
+  },
+  "commands": {
+    "hipengine_bulk": {
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "."
+      },
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --top-k 20 --candidate-token 26126 --raw-hidden-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-hiddenraw.json"
+    },
+    "hipengine_serial_exact": {
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "."
+      },
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-hidden-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-hiddenraw.json"
+    },
+    "llamacpp": {
+      "env": {
+        "LLAMA_MTP_TARGET_TRACE_CANDIDATES": "26126",
+        "LLAMA_MTP_TARGET_TRACE_TOP_K": "20",
+        "LLAMA_MTP_HIDDEN_TRACE_VALUES": "1",
+        "LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS": "verify_h",
+        "LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS": "1",
+        "PYTHONPATH": "."
+      },
+      "command": "LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 LLAMA_MTP_HIDDEN_TRACE_VALUES=1 LLAMA_MTP_HIDDEN_TRACE_VALUE_LABELS=verify_h LLAMA_MTP_HIDDEN_TRACE_VALUE_ROWS=1 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 120 --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw.json --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw-logs --server-start-timeout 180 --request-timeout 240"
+    },
+    "cpu_dequant_lm_head_probe": "Dequantized output.weight rows 539 and 26126 with hipengine.quant.gguf.dequantize_gguf_data and dotted them with row-1 hidden values from the raw traces."
+  },
+  "raw_outputs": {
+    "hipengine_bulk": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-hiddenraw.json",
+    "hipengine_serial_exact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-hiddenraw.json",
+    "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw.jsonl",
+    "llamacpp_json": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-raw.json"
+  },
+  "lm_head_weight": {
+    "tensor": "output.weight",
+    "shape": [
+      248320,
+      2048
+    ],
+    "ggml_type_name": "Q6_K",
+    "candidate_rows": [
+      539,
+      26126
+    ],
+    "candidate_row_rms": {
+      "539": 0.0188476696561683,
+      "26126": 0.017667938297181097
+    }
+  },
+  "result": {
+    "rows": [
+      {
+        "name": "hipengine_bulk",
+        "hidden": {
+          "size": 2048,
+          "mae_vs_llamacpp": 0.08066972694916785,
+          "rmse_vs_llamacpp": 0.10226004107917783,
+          "max_abs_vs_llamacpp": 0.38637757301330566,
+          "mean_delta_vs_llamacpp": -0.00025519289840758574,
+          "rms": 2.291439149635137,
+          "llamacpp_rms": 2.2857796329097297,
+          "cosine_vs_llamacpp": 0.9990048078130507,
+          "top_abs_delta_dims": [
+            {
+              "dim": 912,
+              "hipengine_bulk_value": 1.1275215148925781,
+              "llamacpp_value": 1.5138990879058838,
+              "delta": -0.38637757301330566
+            },
+            {
+              "dim": 74,
+              "hipengine_bulk_value": 1.9597909450531006,
+              "llamacpp_value": 1.609386682510376,
+              "delta": 0.3504042625427246
+            },
+            {
+              "dim": 824,
+              "hipengine_bulk_value": -0.7651423215866089,
+              "llamacpp_value": -1.0943515300750732,
+              "delta": 0.32920920848846436
+            },
+            {
+              "dim": 1392,
+              "hipengine_bulk_value": -2.801124334335327,
+              "llamacpp_value": -2.472949743270874,
+              "delta": -0.3281745910644531
+            },
+            {
+              "dim": 559,
+              "hipengine_bulk_value": -2.4803407192230225,
+              "llamacpp_value": -2.8021161556243896,
+              "delta": 0.3217754364013672
+            },
+            {
+              "dim": 52,
+              "hipengine_bulk_value": -0.08525372296571732,
+              "llamacpp_value": 0.2313740998506546,
+              "delta": -0.3166278228163719
+            },
+            {
+              "dim": 451,
+              "hipengine_bulk_value": 1.3829277753829956,
+              "llamacpp_value": 1.6969759464263916,
+              "delta": -0.314048171043396
+            },
+            {
+              "dim": 1748,
+              "hipengine_bulk_value": -0.34531688690185547,
+              "llamacpp_value": -0.04014275223016739,
+              "delta": -0.3051741346716881
+            },
+            {
+              "dim": 249,
+              "hipengine_bulk_value": -2.1515700817108154,
+              "llamacpp_value": -1.8486384153366089,
+              "delta": -0.30293166637420654
+            },
+            {
+              "dim": 646,
+              "hipengine_bulk_value": -2.0375077724456787,
+              "llamacpp_value": -2.3390798568725586,
+              "delta": 0.3015720844268799
+            }
+          ]
+        },
+        "cpu_dequant_lm_head": {
+          "tokens": [
+            539,
+            26126
+          ],
+          "logits": {
+            "539": 26.391398715714143,
+            "26126": 26.062235205492556
+          },
+          "margin_539_minus_26126": 0.3291635102215871,
+          "observed_margin_539_minus_26126": 0.33617210388183594,
+          "abs_margin_error_vs_observed": 0.007008593660248863
+        },
+        "margin_contribution_vs_llamacpp": {
+          "sum_delta_dot_weight_diff": 0.33108217676164875,
+          "llamacpp_cpu_margin": -0.0019186665400532377,
+          "top_contributing_dims": [
+            {
+              "dim": 141,
+              "hidden_delta": -0.2549096345901489,
+              "weight_539_minus_26126": 0.06766057014465332,
+              "margin_contribution": -0.017247331211734718
+            },
+            {
+              "dim": 964,
+              "hidden_delta": -0.21471989154815674,
+              "weight_539_minus_26126": -0.07597923278808594,
+              "margin_contribution": 0.016314252624169967
+            },
+            {
+              "dim": 74,
+              "hidden_delta": 0.3504042625427246,
+              "weight_539_minus_26126": 0.046367645263671875,
+              "margin_contribution": 0.0162474205444596
+            },
+            {
+              "dim": 747,
+              "hidden_delta": 0.2485700249671936,
+              "weight_539_minus_26126": 0.06009209156036377,
+              "margin_contribution": 0.014937092699490506
+            },
+            {
+              "dim": 1294,
+              "hidden_delta": 0.29125404357910156,
+              "weight_539_minus_26126": -0.05087774991989136,
+              "margin_contribution": -0.014818350392374668
+            },
+            {
+              "dim": 824,
+              "hidden_delta": 0.32920920848846436,
+              "weight_539_minus_26126": 0.042642056941986084,
+              "margin_contribution": 0.014038157814191266
+            },
+            {
+              "dim": 1686,
+              "hidden_delta": 0.17763829231262207,
+              "weight_539_minus_26126": 0.07756572961807251,
+              "margin_contribution": 0.013778643751336972
+            },
+            {
+              "dim": 1674,
+              "hidden_delta": 0.20041732490062714,
+              "weight_539_minus_26126": 0.06186121702194214,
+              "margin_contribution": 0.012398059630634783
+            },
+            {
+              "dim": 1307,
+              "hidden_delta": -0.14373093843460083,
+              "weight_539_minus_26126": 0.08568954467773438,
+              "margin_contribution": -0.012316238670564417
+            },
+            {
+              "dim": 1485,
+              "hidden_delta": -0.13936209678649902,
+              "weight_539_minus_26126": -0.08284127712249756,
+              "margin_contribution": 0.011544934080262692
+            }
+          ]
+        }
+      },
+      {
+        "name": "hipengine_serial_exact",
+        "hidden": {
+          "size": 2048,
+          "mae_vs_llamacpp": 0.07789410253357687,
+          "rmse_vs_llamacpp": 0.09815333264243725,
+          "max_abs_vs_llamacpp": 0.38062410056591034,
+          "mean_delta_vs_llamacpp": -0.0006797781940406367,
+          "rms": 2.28374932021385,
+          "llamacpp_rms": 2.2857796329097297,
+          "cosine_vs_llamacpp": 0.9990776166571999,
+          "top_abs_delta_dims": [
+            {
+              "dim": 52,
+              "hipengine_serial_exact_value": -0.14925000071525574,
+              "llamacpp_value": 0.2313740998506546,
+              "delta": -0.38062410056591034
+            },
+            {
+              "dim": 1411,
+              "hipengine_serial_exact_value": 1.3401600122451782,
+              "llamacpp_value": 0.9873223304748535,
+              "delta": 0.3528376817703247
+            },
+            {
+              "dim": 1597,
+              "hipengine_serial_exact_value": 2.966193675994873,
+              "llamacpp_value": 2.629281997680664,
+              "delta": 0.336911678314209
+            },
+            {
+              "dim": 559,
+              "hipengine_serial_exact_value": -2.487010955810547,
+              "llamacpp_value": -2.8021161556243896,
+              "delta": 0.3151051998138428
+            },
+            {
+              "dim": 1777,
+              "hipengine_serial_exact_value": 1.9766621589660645,
+              "llamacpp_value": 2.2856178283691406,
+              "delta": -0.30895566940307617
+            },
+            {
+              "dim": 1764,
+              "hipengine_serial_exact_value": -2.9264914989471436,
+              "llamacpp_value": -2.6212165355682373,
+              "delta": -0.30527496337890625
+            },
+            {
+              "dim": 451,
+              "hipengine_serial_exact_value": 1.3925776481628418,
+              "llamacpp_value": 1.6969759464263916,
+              "delta": -0.3043982982635498
+            },
+            {
+              "dim": 674,
+              "hipengine_serial_exact_value": 1.5317132472991943,
+              "llamacpp_value": 1.234640121459961,
+              "delta": 0.2970731258392334
+            },
+            {
+              "dim": 824,
+              "hipengine_serial_exact_value": -0.8032469153404236,
+              "llamacpp_value": -1.0943515300750732,
+              "delta": 0.29110461473464966
+            },
+            {
+              "dim": 278,
+              "hipengine_serial_exact_value": 0.9032581448554993,
+              "llamacpp_value": 1.1911133527755737,
+              "delta": -0.28785520792007446
+            }
+          ]
+        },
+        "cpu_dequant_lm_head": {
+          "tokens": [
+            539,
+            26126
+          ],
+          "logits": {
+            "539": 26.20965644612385,
+            "26126": 26.08615736181328
+          },
+          "margin_539_minus_26126": 0.12349908431056988,
+          "observed_margin_539_minus_26126": 0.11821746826171875,
+          "abs_margin_error_vs_observed": 0.005281616048851134
+        },
+        "margin_contribution_vs_llamacpp": {
+          "sum_delta_dot_weight_diff": 0.12541775085062778,
+          "llamacpp_cpu_margin": -0.0019186665400532377,
+          "top_contributing_dims": [
+            {
+              "dim": 964,
+              "hidden_delta": -0.24658703804016113,
+              "weight_539_minus_26126": -0.07597923278808594,
+              "margin_contribution": 0.018735493965778005
+            },
+            {
+              "dim": 141,
+              "hidden_delta": -0.24813050031661987,
+              "weight_539_minus_26126": 0.06766057014465332,
+              "margin_contribution": -0.016788651121700582
+            },
+            {
+              "dim": 1170,
+              "hidden_delta": -0.2052338682115078,
+              "weight_539_minus_26126": -0.06625509262084961,
+              "margin_contribution": 0.013597788947288691
+            },
+            {
+              "dim": 163,
+              "hidden_delta": 0.2455587387084961,
+              "weight_539_minus_26126": -0.054401397705078125,
+              "margin_contribution": -0.013358738604438258
+            },
+            {
+              "dim": 681,
+              "hidden_delta": 0.23433566093444824,
+              "weight_539_minus_26126": 0.05636441707611084,
+              "margin_contribution": 0.013208192928715334
+            },
+            {
+              "dim": 1597,
+              "hidden_delta": 0.336911678314209,
+              "weight_539_minus_26126": -0.03862154483795166,
+              "margin_contribution": -0.013012049490441768
+            },
+            {
+              "dim": 747,
+              "hidden_delta": 0.21463578939437866,
+              "weight_539_minus_26126": 0.06009209156036377,
+              "margin_contribution": 0.012897913508417957
+            },
+            {
+              "dim": 1710,
+              "hidden_delta": 0.12887310981750488,
+              "weight_539_minus_26126": 0.09684211015701294,
+              "margin_contribution": 0.012480343897223634
+            },
+            {
+              "dim": 824,
+              "hidden_delta": 0.29110461473464966,
+              "weight_539_minus_26126": 0.042642056941986084,
+              "margin_contribution": 0.012413299557589852
+            },
+            {
+              "dim": 74,
+              "hidden_delta": 0.2528371810913086,
+              "weight_539_minus_26126": 0.046367645263671875,
+              "margin_contribution": 0.011723464722308563
+            }
+          ]
+        }
+      },
+      {
+        "name": "llamacpp",
+        "hidden": {
+          "size": 2048,
+          "mae_vs_llamacpp": 0.0,
+          "rmse_vs_llamacpp": 0.0,
+          "max_abs_vs_llamacpp": 0.0,
+          "mean_delta_vs_llamacpp": 0.0,
+          "rms": 2.2857796329097297,
+          "llamacpp_rms": 2.2857796329097297,
+          "cosine_vs_llamacpp": 1.0,
+          "top_abs_delta_dims": [
+            {
+              "dim": 2047,
+              "llamacpp_value": 0.20598575472831726,
+              "delta": 0.0
+            },
+            {
+              "dim": 2046,
+              "llamacpp_value": 0.3319048583507538,
+              "delta": 0.0
+            },
+            {
+              "dim": 2045,
+              "llamacpp_value": 0.8476290702819824,
+              "delta": 0.0
+            },
+            {
+              "dim": 2044,
+              "llamacpp_value": -1.0197222232818604,
+              "delta": 0.0
+            },
+            {
+              "dim": 2043,
+              "llamacpp_value": 2.2193222045898438,
+              "delta": 0.0
+            },
+            {
+              "dim": 2042,
+              "llamacpp_value": 1.1110243797302246,
+              "delta": 0.0
+            },
+            {
+              "dim": 2041,
+              "llamacpp_value": -1.6049264669418335,
+              "delta": 0.0
+            },
+            {
+              "dim": 2040,
+              "llamacpp_value": 0.05771000683307648,
+              "delta": 0.0
+            },
+            {
+              "dim": 2039,
+              "llamacpp_value": 0.47855308651924133,
+              "delta": 0.0
+            },
+            {
+              "dim": 2038,
+              "llamacpp_value": 1.2886656522750854,
+              "delta": 0.0
+            }
+          ]
+        },
+        "cpu_dequant_lm_head": {
+          "tokens": [
+            539,
+            26126
+          ],
+          "logits": {
+            "539": 26.093879726640427,
+            "26126": 26.09579839318048
+          },
+          "margin_539_minus_26126": -0.0019186665400532377,
+          "observed_margin_539_minus_26126": -0.008962631225585938,
+          "abs_margin_error_vs_observed": 0.0070439646855327
+        },
+        "margin_contribution_vs_llamacpp": {
+          "sum_delta_dot_weight_diff": 0.0,
+          "llamacpp_cpu_margin": -0.0019186665400532377,
+          "top_contributing_dims": [
+            {
+              "dim": 2047,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": 0.0005137920379638672,
+              "margin_contribution": 0.0
+            },
+            {
+              "dim": 2046,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": -0.0121612548828125,
+              "margin_contribution": -0.0
+            },
+            {
+              "dim": 2045,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": -0.027519941329956055,
+              "margin_contribution": -0.0
+            },
+            {
+              "dim": 2044,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": -0.0021125078201293945,
+              "margin_contribution": -0.0
+            },
+            {
+              "dim": 2043,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": -0.06431198120117188,
+              "margin_contribution": -0.0
+            },
+            {
+              "dim": 2042,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": 0.0194779634475708,
+              "margin_contribution": 0.0
+            },
+            {
+              "dim": 2041,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": -0.024065613746643066,
+              "margin_contribution": -0.0
+            },
+            {
+              "dim": 2040,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": 0.012058496475219727,
+              "margin_contribution": 0.0
+            },
+            {
+              "dim": 2039,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": 0.016745924949645996,
+              "margin_contribution": 0.0
+            },
+            {
+              "dim": 2038,
+              "hidden_delta": 0.0,
+              "weight_539_minus_26126": 0.0043277740478515625,
+              "margin_contribution": 0.0
+            }
+          ]
+        }
+      }
+    ],
+    "conclusion": [
+      "CPU dequantized Q6_K lm-head scoring reproduces each engine's row-1 539-vs-26126 ranking from the raw hidden vector.",
+      "The same lm-head rows score the llama.cpp hidden vector with token 26126 above 539, while hipEngine hidden vectors score 539 above 26126.",
+      "The row-1 mismatch is therefore explained by target hidden production drift, not by a different lm-head ordering implementation.",
+      "Next split should instrument the target forward before output_norm, preferably per-layer or at least pre-output-norm residual rows for the forced prefix."
+    ]
+  }
+}

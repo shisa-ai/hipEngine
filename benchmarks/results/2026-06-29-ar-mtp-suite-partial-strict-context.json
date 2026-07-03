@@ -1,0 +1,107 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-06-29T15:00:24",
+  "scope": "partial",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "70c2666af6b01e3a13cca28a276202e09a74abaf",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 5,
+    "budgets": [
+      1,
+      3,
+      5
+    ],
+    "prompt_limit": 4,
+    "ar_decode_tokens": 30,
+    "mtp_route": "resident-strict-context",
+    "mtp_route_extra_args": [
+      "--resident-mtp-draft",
+      "--root-topk-accept",
+      "1",
+      "--sibling-topk-accept",
+      "1",
+      "--mtp-context-replay",
+      "--mtp-device-kv-cache",
+      "--no-target-block-verify"
+    ]
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.76602992695152,
+    "total_output_tokens": 120,
+    "decode_ms": 2191.13929127343,
+    "prompts": 4,
+    "per_category": {
+      "code": 54.76602992695152
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 55.19310510748503,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 39,
+      "vs_ar_ratio": 1.0078
+    },
+    "b1": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 48.694001897817515,
+      "accepted_per_output": 0.48717948717948717,
+      "draft_acceptance": 0.95,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 19,
+      "total_output_tokens": 39,
+      "vs_ar_ratio": 0.8891
+    },
+    "b3": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 45.15908313376668,
+      "accepted_per_output": 0.696969696969697,
+      "draft_acceptance": 0.7666666666666667,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 46,
+      "total_output_tokens": 66,
+      "vs_ar_ratio": 0.8246
+    },
+    "b5": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 41.94207746011521,
+      "accepted_per_output": 0.7468354430379747,
+      "draft_acceptance": 0.59,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 59,
+      "total_output_tokens": 79,
+      "vs_ar_ratio": 0.7658
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.76602992695152,
+    "best_mtp_budget": "b1",
+    "best_mtp_vs_ar_ratio": 0.8891,
+    "mtp_beats_ar": false
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-partial-1782712824/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-partial-1782712824/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope partial --mtp-route resident-strict-context --output benchmarks/results/2026-06-29-ar-mtp-suite-partial-strict-context.json"
+}

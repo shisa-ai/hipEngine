@@ -16,6 +16,7 @@ _SYMBOL_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16"
 _SYMBOL_TREE_TLOOP_BF16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_bf16"
 _SYMBOL_TREE_TLOOP_FP16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_CHAIN_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16"
+_SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16"
 _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
@@ -27,6 +28,12 @@ _SYMBOL_PREFILL_RMSNORM_GATE_FP16 = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_f
 _SYMBOL_PREFILL_RMSNORM_GATE_ROTATE_FP16 = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16"
 _SYMBOL_SEGMENTS_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16"
 _SYMBOL_PREFILL_DECODE_ORDER_BF16 = "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order"
+_SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_BF16 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows"
+)
+_SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_NO_COPY_BF16 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy"
+)
 
 
 def plan_qwen35_linear_attn_gdn_build(
@@ -369,6 +376,56 @@ def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16(
 
     _launch_gdn_chain_tloop(
         _SYMBOL_CHAIN_TLOOP_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16-gated chain GDN t-loop recurrence+FP32 finalize."""
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16,
         conv_out_ptr,
         gate_ptr,
         a_ptr,
@@ -981,6 +1038,146 @@ def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order(
     _check_launch(runtime, err)
 
 
+def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    recurrent_state_rows_ptr: int,
+    out_ptr: int,
+    eps: float,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch decode-order BF16 GDN prefill and materialize per-row states."""
+
+    _check_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(a_ptr),
+        ctypes.c_void_p(b_ptr),
+        ctypes.c_void_p(dt_bias_ptr),
+        ctypes.c_void_p(a_log_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(recurrent_state_rows_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_initial_ptr: int,
+    recurrent_state_rows_ptr: int,
+    out_ptr: int,
+    eps: float,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch decode-order BF16 GDN prefill, writing rows without mutating state."""
+
+    _check_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_NO_COPY_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(a_ptr),
+        ctypes.c_void_p(b_ptr),
+        ctypes.c_void_p(dt_bias_ptr),
+        ctypes.c_void_p(a_log_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(recurrent_state_initial_ptr),
+        ctypes.c_void_p(recurrent_state_rows_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
     conv_out_ptr: int,
     gate_ptr: int,
@@ -1144,6 +1341,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey(backend, "gdn_tree_recurrent_rmsnorm_gate", "w4_paro", "fp16_tloop"),
             qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "gdn_chain_recurrent_rmsnorm_gate", "gguf_qwen35", "bf16_c1_exact_tloop"),
+            qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
             replace=replace,
         )
 
@@ -1471,4 +1673,3 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
 
 
 register_qwen35_linear_attn_gdn_kernels()
-

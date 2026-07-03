@@ -1,0 +1,34 @@
+{
+  "schema": "hipengine-rocprof-summary-v1",
+  "status": "diagnostic-retained",
+  "timestamp": "2026-06-28",
+  "run_tag": "gguf-b3-verify-gpu-critical-path",
+  "hardware": "AMD Radeon 8060S (gfx1151)",
+  "method": "rocprofv3 --kernel-trace of the REAL resident-draft B3 path (scripts/gguf_mtp_bench.py, prefill+4 cycles) after a non-profiled warmup; durations from End-Start timestamps. rocprof inflates absolute wall (~1135 ms/cyc under profiler vs ~74 ms unprofiled) but the relative family breakdown is the signal.",
+  "gpu_busy_total_ms": 395.44,
+  "dispatches": 12803,
+  "family_pct_gpu": {
+    "dense_GEMV": 47.2,
+    "MoE_selected_GEMV": 27.4,
+    "GDN_linattn": 11.1,
+    "memcpy_copy": 4.8,
+    "router": 3.3,
+    "rmsnorm": 2.2,
+    "lm_head_sample": 1.9,
+    "full_attn": 0.8
+  },
+  "top_kernels_ms": {
+    "q8_0_t16_dual_split_gemv": 59.12,
+    "q4_k_t16_selected_dual_silu_down": 33.88,
+    "qwen35_gdn_prefill_recurrent(1.1ms/disp)": 33.15,
+    "q8_0_t16_gemv": 31.94,
+    "gguf_q4_k_t16_selected_dual_wmma": 29.44,
+    "q6_k_t16_gemv(lm-head,1.87ms/disp)": 28.06,
+    "qk_t16_selected_direct_gemv": 22.1,
+    "copyBuffer": 18.14,
+    "q8_0_t16_triple_split_gemv": 15.54,
+    "q8_0_t16_prefill_wmma": 15.15
+  },
+  "finding": "The dominant GPU cost is the DENSE Q8_0 attention projections (~35% of GPU across dual_split/gemv/triple_split/prefill_wmma) + Q6_K lm-head (~7%). dp4a targeted MoE-selected (27%); the #9 dispatch cache targeted dense-dispatch HOST cost (not GPU). Neither touched the dense Q8_0 GEMV GPU time -> both produced flat walls. NEXT target for the wall: the dense Q8_0 attention GEMVs (q8_0_t16_* family) and/or the Q6_K lm-head, plus confirm GPU-busy-vs-wall (sync-bound check) before investing.",
+  "caveat": "Absolute per-kernel us inflated by rocprof; use shares, not absolutes. GPU-busy-vs-wall split (sync stalls) not yet measured on the real path."
+}

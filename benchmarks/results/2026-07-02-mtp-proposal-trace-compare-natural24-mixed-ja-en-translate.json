@@ -1,0 +1,456 @@
+{
+  "schema": "hipengine.mtp_proposal_trace_compare.v3",
+  "compared_rows": 8,
+  "hipengine_rows": 11,
+  "llamacpp_rows": 8,
+  "exact_draft_rows": 4,
+  "exact_accepted_rows": 4,
+  "exact_output_rows": 3,
+  "accepted_count_match_rows": 6,
+  "exact_draft_rate": 0.5,
+  "exact_accepted_rate": 0.5,
+  "exact_output_rate": 0.375,
+  "accepted_count_match_rate": 0.75,
+  "hipengine_totals": {
+    "cycles": 8,
+    "visible_output_tokens": 19,
+    "accepted_draft_tokens": 11,
+    "generated_draft_tokens": 16,
+    "accepted_per_output": 0.5789473684210527,
+    "draft_acceptance": 0.6875
+  },
+  "llamacpp_totals": {
+    "cycles": 8,
+    "visible_output_tokens": 22,
+    "accepted_draft_tokens": 14,
+    "generated_draft_tokens": 16,
+    "accepted_per_output": 0.6363636363636364,
+    "draft_acceptance": 0.875
+  },
+  "output_stream": {
+    "hipengine_tokens": 19,
+    "llamacpp_tokens": 22,
+    "common_prefix_tokens": 11,
+    "exact_match": false,
+    "common_prefix_rate_vs_hip": 0.5789473684210527,
+    "common_prefix_rate_vs_llamacpp": 0.5,
+    "first_token_divergence": {
+      "token_index": 11,
+      "hipengine_token": 8940,
+      "llamacpp_token": 668,
+      "hipengine_location": {
+        "row_index": 3,
+        "cycle": 3,
+        "offset_in_row": 2,
+        "token": 8940
+      },
+      "llamacpp_location": {
+        "row_index": 3,
+        "cycle": 3,
+        "offset_in_row": 2,
+        "token": 668
+      }
+    }
+  },
+  "row_alignment": {
+    "rows_compared": 8,
+    "start_offset_match_rows": 7,
+    "output_length_match_rows": 6,
+    "row_output_prefix_match_rows": 3,
+    "start_offset_match_rate": 0.875,
+    "output_length_match_rate": 0.75,
+    "row_output_prefix_match_rate": 0.375,
+    "first_start_offset_mismatch": {
+      "pair_index": 7,
+      "hipengine": {
+        "row_index": 7,
+        "cycle": 7,
+        "stream_start": 18,
+        "stream_end": 19,
+        "output_len": 1,
+        "accepted_draft_tokens": 0,
+        "generated_draft_tokens": 2,
+        "draft_token_ids": [
+          303,
+          1433
+        ],
+        "output_token_ids": [
+          310
+        ]
+      },
+      "llamacpp": {
+        "row_index": 7,
+        "cycle": 7,
+        "stream_start": 19,
+        "stream_end": 22,
+        "output_len": 3,
+        "accepted_draft_tokens": 2,
+        "generated_draft_tokens": 2,
+        "draft_token_ids": [
+          1433,
+          2468
+        ],
+        "output_token_ids": [
+          1433,
+          2468,
+          3443
+        ]
+      },
+      "row_output_prefix_tokens": 0,
+      "start_offsets_match": false,
+      "output_lengths_match": false,
+      "row_output_match": false,
+      "row_output_prefix_match": false
+    },
+    "first_output_length_mismatch": {
+      "pair_index": 6,
+      "hipengine": {
+        "row_index": 6,
+        "cycle": 6,
+        "stream_start": 17,
+        "stream_end": 18,
+        "output_len": 1,
+        "accepted_draft_tokens": 0,
+        "generated_draft_tokens": 2,
+        "draft_token_ids": [
+          1433,
+          3443
+        ],
+        "output_token_ids": [
+          4203
+        ]
+      },
+      "llamacpp": {
+        "row_index": 6,
+        "cycle": 6,
+        "stream_start": 17,
+        "stream_end": 19,
+        "output_len": 2,
+        "accepted_draft_tokens": 1,
+        "generated_draft_tokens": 2,
+        "draft_token_ids": [
+          310,
+          1433
+        ],
+        "output_token_ids": [
+          310,
+          279
+        ]
+      },
+      "row_output_prefix_tokens": 0,
+      "start_offsets_match": true,
+      "output_lengths_match": false,
+      "row_output_match": false,
+      "row_output_prefix_match": false
+    },
+    "first_row_output_mismatch": {
+      "pair_index": 3,
+      "hipengine": {
+        "row_index": 3,
+        "cycle": 3,
+        "stream_start": 9,
+        "stream_end": 12,
+        "output_len": 3,
+        "accepted_draft_tokens": 2,
+        "generated_draft_tokens": 2,
+        "draft_token_ids": [
+          11,
+          567
+        ],
+        "output_token_ids": [
+          11,
+          567,
+          8940
+        ]
+      },
+      "llamacpp": {
+        "row_index": 3,
+        "cycle": 3,
+        "stream_start": 9,
+        "stream_end": 12,
+        "output_len": 3,
+        "accepted_draft_tokens": 2,
+        "generated_draft_tokens": 2,
+        "draft_token_ids": [
+          11,
+          567
+        ],
+        "output_token_ids": [
+          11,
+          567,
+          668
+        ]
+      },
+      "row_output_prefix_tokens": 2,
+      "start_offsets_match": true,
+      "output_lengths_match": true,
+      "row_output_match": false,
+      "row_output_prefix_match": false
+    },
+    "first_chunking_mismatch": null,
+    "offset_samples": [
+      {
+        "pair_index": 0,
+        "hipengine": {
+          "row_index": 0,
+          "cycle": 0,
+          "stream_start": 0,
+          "stream_end": 3,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 0,
+          "cycle": 0,
+          "stream_start": 0,
+          "stream_end": 3,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 3,
+        "start_offsets_match": true,
+        "output_lengths_match": true,
+        "row_output_match": true,
+        "row_output_prefix_match": true
+      },
+      {
+        "pair_index": 1,
+        "hipengine": {
+          "row_index": 1,
+          "cycle": 1,
+          "stream_start": 3,
+          "stream_end": 6,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 1,
+          "cycle": 1,
+          "stream_start": 3,
+          "stream_end": 6,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 3,
+        "start_offsets_match": true,
+        "output_lengths_match": true,
+        "row_output_match": true,
+        "row_output_prefix_match": true
+      },
+      {
+        "pair_index": 2,
+        "hipengine": {
+          "row_index": 2,
+          "cycle": 2,
+          "stream_start": 6,
+          "stream_end": 9,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 2,
+          "cycle": 2,
+          "stream_start": 6,
+          "stream_end": 9,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 3,
+        "start_offsets_match": true,
+        "output_lengths_match": true,
+        "row_output_match": true,
+        "row_output_prefix_match": true
+      },
+      {
+        "pair_index": 3,
+        "hipengine": {
+          "row_index": 3,
+          "cycle": 3,
+          "stream_start": 9,
+          "stream_end": 12,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 3,
+          "cycle": 3,
+          "stream_start": 9,
+          "stream_end": 12,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 2,
+        "start_offsets_match": true,
+        "output_lengths_match": true,
+        "row_output_match": false,
+        "row_output_prefix_match": false
+      },
+      {
+        "pair_index": 4,
+        "hipengine": {
+          "row_index": 4,
+          "cycle": 4,
+          "stream_start": 12,
+          "stream_end": 15,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 4,
+          "cycle": 4,
+          "stream_start": 12,
+          "stream_end": 15,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 0,
+        "start_offsets_match": true,
+        "output_lengths_match": true,
+        "row_output_match": false,
+        "row_output_prefix_match": false
+      },
+      {
+        "pair_index": 5,
+        "hipengine": {
+          "row_index": 5,
+          "cycle": 5,
+          "stream_start": 15,
+          "stream_end": 17,
+          "output_len": 2,
+          "accepted_draft_tokens": 1,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 5,
+          "cycle": 5,
+          "stream_start": 15,
+          "stream_end": 17,
+          "output_len": 2,
+          "accepted_draft_tokens": 1,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 0,
+        "start_offsets_match": true,
+        "output_lengths_match": true,
+        "row_output_match": false,
+        "row_output_prefix_match": false
+      },
+      {
+        "pair_index": 6,
+        "hipengine": {
+          "row_index": 6,
+          "cycle": 6,
+          "stream_start": 17,
+          "stream_end": 18,
+          "output_len": 1,
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 6,
+          "cycle": 6,
+          "stream_start": 17,
+          "stream_end": 19,
+          "output_len": 2,
+          "accepted_draft_tokens": 1,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 0,
+        "start_offsets_match": true,
+        "output_lengths_match": false,
+        "row_output_match": false,
+        "row_output_prefix_match": false
+      },
+      {
+        "pair_index": 7,
+        "hipengine": {
+          "row_index": 7,
+          "cycle": 7,
+          "stream_start": 18,
+          "stream_end": 19,
+          "output_len": 1,
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 2
+        },
+        "llamacpp": {
+          "row_index": 7,
+          "cycle": 7,
+          "stream_start": 19,
+          "stream_end": 22,
+          "output_len": 3,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 2
+        },
+        "row_output_prefix_tokens": 0,
+        "start_offsets_match": false,
+        "output_lengths_match": false,
+        "row_output_match": false,
+        "row_output_prefix_match": false
+      }
+    ]
+  },
+  "first_divergence": {
+    "pair_index": 3,
+    "divergence_type": "bonus_token_after_full_accept",
+    "draft_match": true,
+    "accepted_match": true,
+    "output_match": false,
+    "accepted_count_match": true,
+    "hipengine": {
+      "source": "hipengine",
+      "index": 3,
+      "cycle": 3,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "draft_token_ids": [
+        11,
+        567
+      ],
+      "accepted_token_ids": [
+        11,
+        567
+      ],
+      "output_token_ids": [
+        11,
+        567,
+        8940
+      ],
+      "bonus_token_id": 8940,
+      "rejected_draft_token_id": null
+    },
+    "llamacpp": {
+      "source": "llamacpp",
+      "index": 3,
+      "cycle": 3,
+      "generated_draft_tokens": 2,
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "draft_token_ids": [
+        11,
+        567
+      ],
+      "accepted_token_ids": [
+        11,
+        567
+      ],
+      "output_token_ids": [
+        11,
+        567,
+        668
+      ],
+      "bonus_token_id": 668,
+      "rejected_draft_token_id": null
+    }
+  }
+}

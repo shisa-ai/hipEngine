@@ -110,6 +110,22 @@ __global__ void record_i64_scalar_indexed_kernel(
   }
 }
 
+__global__ void record_f32_row_indexed_kernel(
+    const float* value,
+    float* out,
+    const int64_t* index,
+    int64_t cols,
+    int64_t capacity) {
+  const int64_t row = index[0];
+  if (row < 0 || row >= capacity) {
+    return;
+  }
+  const int64_t col = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (col < cols) {
+    out[row * cols + col] = value[col];
+  }
+}
+
 __global__ void set_i64_vector_kernel(int64_t* out, const int64_t* values, int64_t rows) {
   const int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (row < rows) {
@@ -400,6 +416,32 @@ extern "C" int hipengine_record_i64_scalar_indexed(
       value,
       out,
       index,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_record_f32_row_indexed(
+    const float* value,
+    float* out,
+    const int64_t* index,
+    int64_t cols,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (cols <= 0 || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((cols + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      record_f32_row_indexed_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      value,
+      out,
+      index,
+      cols,
       capacity);
   return static_cast<int>(hipGetLastError());
 }

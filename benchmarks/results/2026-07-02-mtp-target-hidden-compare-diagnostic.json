@@ -1,0 +1,537 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_hidden_compare_diagnostic",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T02:13:52.175357+00:00",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon Pro W7900 / gfx1151 runtime env (HIPENGINE_HIP_ARCH=gfx1151)",
+  "workload": {
+    "prompt_file": "/tmp/hipengine-mtp-proposal-trace/prompt.jsonl",
+    "max_tokens": 120,
+    "mismatch": {
+      "hipengine_cycle": 12,
+      "llamacpp_cycle": 18,
+      "draft_tokens": [
+        15495,
+        539
+      ],
+      "verifier_inputs": [
+        653,
+        15495,
+        539
+      ]
+    }
+  },
+  "repo": {
+    "hipengine": {
+      "root": "/home/lhl/hipEngine",
+      "branch": "mtp-gguf",
+      "commit": "18ea523ec84f68585ff0b2b035271f2bd3c88998",
+      "dirty": true
+    },
+    "llamacpp_instrumented_reference": {
+      "root": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "branch": "master",
+      "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "dirty": true,
+      "note": "local diagnostic instrumentation only; not a hipEngine committed dependency"
+    }
+  },
+  "commands": {
+    "hipengine_bulk": {
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "."
+      },
+      "argv": [
+        "scripts/gguf_mtp_forced_target_probe.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--trace",
+        "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+        "--cycle",
+        "12",
+        "--top-k",
+        "20",
+        "--candidate-token",
+        "26126",
+        "--output",
+        "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-hidden2.json"
+      ],
+      "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --top-k 20 --candidate-token 26126 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-hidden2.json"
+    },
+    "hipengine_serial_exact": {
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "."
+      },
+      "argv": [
+        "scripts/gguf_mtp_forced_target_probe.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--trace",
+        "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+        "--cycle",
+        "12",
+        "--replay-target-block-verify-mode",
+        "bulk",
+        "--target-block-verify-mode",
+        "serial-exact",
+        "--top-k",
+        "20",
+        "--candidate-token",
+        "26126",
+        "--output",
+        "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-hidden2.json"
+      ],
+      "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-hidden2.json"
+    },
+    "llamacpp": {
+      "env": {
+        "LLAMA_MTP_TARGET_TRACE_CANDIDATES": "26126",
+        "LLAMA_MTP_TARGET_TRACE_TOP_K": "20",
+        "PYTHONPATH": "."
+      },
+      "command": "LLAMA_MTP_TARGET_TRACE_CANDIDATES=26126 LLAMA_MTP_TARGET_TRACE_TOP_K=20 PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8138 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 120 --stage-timings-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh.json --log-dir /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh-logs --server-start-timeout 180 --request-timeout 240"
+    }
+  },
+  "raw_outputs": {
+    "hipengine_bulk": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-bulk-hidden2.json",
+    "hipengine_serial_exact": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-hidden2.json",
+    "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh.jsonl",
+    "llamacpp_json": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-verifyh.json"
+  },
+  "result": {
+    "pending_hidden_seed": {
+      "hipengine_cycle_pending_hidden_seed": {
+        "label": "cycle_pending_hidden_seed",
+        "size": 2048,
+        "sha256_16": "9354e352086016a4",
+        "mean": 0.07051904,
+        "rms": 2.44619634,
+        "min": -25.78580856,
+        "max": 30.23654938,
+        "first8": [
+          1.22673535,
+          -0.57442367,
+          -2.5644424,
+          -2.20504522,
+          -2.21357584,
+          1.30362189,
+          -1.74469018,
+          -2.84639692
+        ],
+        "last8": [
+          -0.07003426,
+          -0.16307791,
+          -1.41019857,
+          1.13901865,
+          2.40618157,
+          -0.6506241,
+          2.96219039,
+          1.1063242
+        ],
+        "depth": -1,
+        "token_id": 653,
+        "position": 72
+      },
+      "llamacpp_draft_seed_input": {
+        "label": "draft_seed_input",
+        "seq_id": 3,
+        "depth": -1,
+        "token_id": 653,
+        "position": 72,
+        "size": 2048,
+        "shape": [
+          2048
+        ],
+        "row_index": -1,
+        "row_count": 1,
+        "fnv1a64": 16177365395851136917,
+        "mean": 0.06870580279102967,
+        "rms": 2.4465682074377866,
+        "min": -25.96717071533203,
+        "max": 30.420398712158203,
+        "first8": [
+          1.0963119268417358,
+          -0.6484526991844177,
+          -2.441396951675415,
+          -2.168778896331787,
+          -2.3867199420928955,
+          1.3830349445343018,
+          -1.7167465686798096,
+          -2.929701805114746
+        ],
+        "last8": [
+          -0.03110840916633606,
+          -0.2845427989959717,
+          -1.2817704677581787,
+          1.0467772483825684,
+          2.535705327987671,
+          -0.6780891418457031,
+          2.9131548404693604,
+          0.9309210777282715
+        ]
+      },
+      "llamacpp_process_h_input_row0": {
+        "label": "process_h_input",
+        "seq_id": 3,
+        "depth": -2,
+        "token_id": 653,
+        "position": 72,
+        "size": 2048,
+        "shape": [
+          2048
+        ],
+        "row_index": 0,
+        "row_count": 3,
+        "fnv1a64": 16177365395851136917,
+        "mean": 0.06870580279102967,
+        "rms": 2.4465682074377866,
+        "min": -25.96717071533203,
+        "max": 30.420398712158203,
+        "first8": [
+          1.0963119268417358,
+          -0.6484526991844177,
+          -2.441396951675415,
+          -2.168778896331787,
+          -2.3867199420928955,
+          1.3830349445343018,
+          -1.7167465686798096,
+          -2.929701805114746
+        ],
+        "last8": [
+          -0.03110840916633606,
+          -0.2845427989959717,
+          -1.2817704677581787,
+          1.0467772483825684,
+          2.535705327987671,
+          -0.6780891418457031,
+          2.9131548404693604,
+          0.9309210777282715
+        ]
+      },
+      "hip_vs_llama_draft_seed_delta": {
+        "mean_delta": 0.00181324,
+        "rms_delta": -0.00037187,
+        "first8_mae": 0.09094623,
+        "last8_mae": 0.09531096,
+        "hip_sha256_16": "9354e352086016a4",
+        "llama_fnv1a64": 16177365395851136917
+      }
+    },
+    "verify_h_rows": [
+      {
+        "row": 0,
+        "position": 72,
+        "input_token": 653,
+        "hipengine_bulk_sampled_token": 15495,
+        "hipengine_serial_exact_sampled_token": 15495,
+        "llamacpp_sampled_token": 15495,
+        "hidden_summary_delta_vs_llamacpp_verify_h": {
+          "hipengine_bulk": {
+            "mean_delta": 0.00145123,
+            "rms_delta": 0.00080048,
+            "first8_mae": 0.09757206,
+            "last8_mae": 0.19219305,
+            "hip_sha256_16": "f4ad44a99add7849",
+            "llama_fnv1a64": 1315161611488289122
+          },
+          "hipengine_serial_exact": {
+            "mean_delta": 0.00158212,
+            "rms_delta": 5.973e-05,
+            "first8_mae": 0.14635472,
+            "last8_mae": 0.19362373,
+            "hip_sha256_16": "089ac9e83c690a40",
+            "llama_fnv1a64": 1315161611488289122
+          }
+        },
+        "top2": {
+          "hipengine_bulk": [
+            {
+              "rank": 1,
+              "token_id": 15495,
+              "logit": 26.82208251953125,
+              "margin_from_top": 0.0,
+              "prob": 0.9992515088254952
+            },
+            {
+              "rank": 2,
+              "token_id": 6943,
+              "logit": 18.31557273864746,
+              "margin_from_top": 8.506509780883789,
+              "prob": 0.00020199683029044
+            }
+          ],
+          "hipengine_serial_exact": [
+            {
+              "rank": 1,
+              "token_id": 15495,
+              "logit": 26.72171974182129,
+              "margin_from_top": 0.0,
+              "prob": 0.9991839418878996
+            },
+            {
+              "rank": 2,
+              "token_id": 6943,
+              "logit": 18.3887939453125,
+              "margin_from_top": 8.332925796508789,
+              "prob": 0.0002402712203783988
+            }
+          ],
+          "llamacpp": [
+            {
+              "rank": 1,
+              "token_id": 15495,
+              "logit": 26.628047943115234,
+              "margin_from_top": 0.0,
+              "prob": 0.9991000890731812
+            },
+            {
+              "rank": 2,
+              "token_id": 6943,
+              "logit": 18.421960830688477,
+              "margin_from_top": 8.206087112426758,
+              "prob": 0.00027274113381281495
+            }
+          ]
+        }
+      },
+      {
+        "row": 1,
+        "position": 73,
+        "input_token": 15495,
+        "hipengine_bulk_sampled_token": 539,
+        "hipengine_serial_exact_sampled_token": 539,
+        "llamacpp_sampled_token": 26126,
+        "hidden_summary_delta_vs_llamacpp_verify_h": {
+          "hipengine_bulk": {
+            "mean_delta": -0.0002552,
+            "rms_delta": 0.00565952,
+            "first8_mae": 0.07732884,
+            "last8_mae": 0.06087785,
+            "hip_sha256_16": "c310428e6ce78a11",
+            "llama_fnv1a64": 486063327922214834
+          },
+          "hipengine_serial_exact": {
+            "mean_delta": -0.00067978,
+            "rms_delta": -0.00203031,
+            "first8_mae": 0.07849288,
+            "last8_mae": 0.03912092,
+            "hip_sha256_16": "4d23b5bb832a5e3b",
+            "llama_fnv1a64": 486063327922214834
+          }
+        },
+        "top2": {
+          "hipengine_bulk": [
+            {
+              "rank": 1,
+              "token_id": 539,
+              "logit": 26.394495010375977,
+              "margin_from_top": 0.0,
+              "prob": 0.5829226712148646
+            },
+            {
+              "rank": 2,
+              "token_id": 26126,
+              "logit": 26.05832290649414,
+              "margin_from_top": 0.33617210388183594,
+              "prob": 0.4164983226074189
+            }
+          ],
+          "hipengine_serial_exact": [
+            {
+              "rank": 1,
+              "token_id": 539,
+              "logit": 26.202468872070312,
+              "margin_from_top": 0.0,
+              "prob": 0.5292018302407487
+            },
+            {
+              "rank": 2,
+              "token_id": 26126,
+              "logit": 26.084251403808594,
+              "margin_from_top": 0.11821746826171875,
+              "prob": 0.4701973134597651
+            }
+          ],
+          "llamacpp": [
+            {
+              "rank": 1,
+              "token_id": 26126,
+              "logit": 26.10468292236328,
+              "margin_from_top": 0.0,
+              "prob": 0.5019564628601074
+            },
+            {
+              "rank": 2,
+              "token_id": 539,
+              "logit": 26.095720291137695,
+              "margin_from_top": 0.008962631225585938,
+              "prob": 0.4974777102470398
+            }
+          ]
+        },
+        "candidate_score_compare": {
+          "539": {
+            "hipengine_bulk": {
+              "rank": 1,
+              "token_id": 539,
+              "logit": 26.394495010375977,
+              "margin_from_top": 0.0,
+              "prob": 0.5829226712148646
+            },
+            "hipengine_serial_exact": {
+              "rank": 1,
+              "token_id": 539,
+              "logit": 26.202468872070312,
+              "margin_from_top": 0.0,
+              "prob": 0.5292018302407487
+            },
+            "llamacpp": {
+              "rank": 2,
+              "token_id": 539,
+              "logit": 26.095720291137695,
+              "margin_from_top": 0.008962631225585938,
+              "prob": 0.4974777102470398
+            }
+          },
+          "26126": {
+            "hipengine_bulk": {
+              "rank": 2,
+              "token_id": 26126,
+              "logit": 26.05832290649414,
+              "margin_from_top": 0.33617210388183594,
+              "prob": 0.4164983226074189
+            },
+            "hipengine_serial_exact": {
+              "rank": 2,
+              "token_id": 26126,
+              "logit": 26.084251403808594,
+              "margin_from_top": 0.11821746826171875,
+              "prob": 0.4701973134597651
+            },
+            "llamacpp": {
+              "rank": 1,
+              "token_id": 26126,
+              "logit": 26.10468292236328,
+              "margin_from_top": 0.0,
+              "prob": 0.5019564628601074
+            }
+          }
+        }
+      },
+      {
+        "row": 2,
+        "position": 74,
+        "input_token": 539,
+        "hipengine_bulk_sampled_token": 1151,
+        "hipengine_serial_exact_sampled_token": 1151,
+        "llamacpp_sampled_token": 1151,
+        "hidden_summary_delta_vs_llamacpp_verify_h": {
+          "hipengine_bulk": {
+            "mean_delta": -0.00067191,
+            "rms_delta": 0.01513858,
+            "first8_mae": 0.17331688,
+            "last8_mae": 0.15361176,
+            "hip_sha256_16": "8a00aae42800a3ba",
+            "llama_fnv1a64": 12270469913215131784
+          },
+          "hipengine_serial_exact": {
+            "mean_delta": 0.00024332,
+            "rms_delta": 0.01791302,
+            "first8_mae": 0.17921154,
+            "last8_mae": 0.12860598,
+            "hip_sha256_16": "cbaa77843fc2002f",
+            "llama_fnv1a64": 12270469913215131784
+          }
+        },
+        "top2": {
+          "hipengine_bulk": [
+            {
+              "rank": 1,
+              "token_id": 1151,
+              "logit": 30.68711280822754,
+              "margin_from_top": 0.0,
+              "prob": 0.9902804691885232
+            },
+            {
+              "rank": 2,
+              "token_id": 279,
+              "logit": 26.033876419067383,
+              "margin_from_top": 4.653236389160156,
+              "prob": 0.009438072887618781
+            }
+          ],
+          "hipengine_serial_exact": [
+            {
+              "rank": 1,
+              "token_id": 1151,
+              "logit": 30.67966651916504,
+              "margin_from_top": 0.0,
+              "prob": 0.9892149125112394
+            },
+            {
+              "rank": 2,
+              "token_id": 279,
+              "logit": 26.132816314697266,
+              "margin_from_top": 4.546850204467773,
+              "prob": 0.010486213625487392
+            }
+          ],
+          "llamacpp": [
+            {
+              "rank": 1,
+              "token_id": 1151,
+              "logit": 30.3514404296875,
+              "margin_from_top": 0.0,
+              "prob": 0.9854924082756042
+            },
+            {
+              "rank": 2,
+              "token_id": 279,
+              "logit": 26.111330032348633,
+              "margin_from_top": 4.240110397338867,
+              "prob": 0.014197004958987236
+            }
+          ]
+        }
+      }
+    ],
+    "shifted_process_h_input_check": [
+      {
+        "hipengine_verify_row": 0,
+        "llamacpp_process_h_input_row": 1,
+        "delta": {
+          "mean_delta": 0.00145123,
+          "rms_delta": 0.00080048,
+          "first8_mae": 0.09757206,
+          "last8_mae": 0.19219305,
+          "hip_sha256_16": "f4ad44a99add7849",
+          "llama_fnv1a64": 1315161611488289122
+        },
+        "interpretation": "expected shifted alignment: process_h_input row i+1 is verify_h row i"
+      },
+      {
+        "hipengine_verify_row": 1,
+        "llamacpp_process_h_input_row": 2,
+        "delta": {
+          "mean_delta": -0.0002552,
+          "rms_delta": 0.00565952,
+          "first8_mae": 0.07732884,
+          "last8_mae": 0.06087785,
+          "hip_sha256_16": "c310428e6ce78a11",
+          "llama_fnv1a64": 486063327922214834
+        },
+        "interpretation": "expected shifted alignment: process_h_input row i+1 is verify_h row i"
+      }
+    ],
+    "conclusion": [
+      "The previous unshifted process_h_input comparison was misaligned; llama process_h_input row i+1 corresponds to verifier hidden row i.",
+      "Direct verify_h comparison shows hipEngine and llama.cpp hidden rows are close but not bit-identical at the mismatch cycle.",
+      "The semantic divergence remains the row-1 near tie: hipEngine ranks token 539 above 26126, while llama.cpp ranks 26126 above 539 by 0.008963 logits.",
+      "Bulk vs serial-exact hipEngine keeps the same branch decision, so row-bulk scheduling is not the isolated cause."
+    ]
+  }
+}

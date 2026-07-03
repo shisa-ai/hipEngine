@@ -1,0 +1,270 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-07-01T23:24:24",
+  "scope": "smoke",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "68c385dbafe3690c923a4461288322a36f5416b9",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 3,
+    "budgets": [
+      2
+    ],
+    "prompt_limit": 1,
+    "ar_decode_tokens": 9,
+    "mtp_route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm",
+    "mtp_route_extra_args": [
+      "--llama-compat",
+      "--resident-mtp-device-chain",
+      "--verify-dp4a",
+      "--resident-mtp-draft-q6-top1-dp4a",
+      "--resident-mtp-draft-q6-top1-stage1-shape",
+      "x8",
+      "--selected-down-x8-repack",
+      "q6",
+      "--verify-dense-q8-dp4a-all",
+      "--verify-dense-q8-dp4a-f32"
+    ],
+    "mtp_route_env": {},
+    "mtp_route_default_budgets": [
+      2
+    ],
+    "record_cycle_stage_timings": true
+  },
+  "ar": {
+    "decode_tok_s_weighted": 55.03593106101933,
+    "total_output_tokens": 9,
+    "decode_ms": 163.52953109890223,
+    "prompts": 1,
+    "per_category": {
+      "code": 55.03593106101933
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 89.04719501335708,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": null,
+      "cycle_wall_ms_per_output": null,
+      "cycle_wall_over_legacy_ms_total": null,
+      "cycle_wall_over_legacy_ms_per_output": null,
+      "stage_timing_totals_ms": null,
+      "stage_timing_per_output_ms": null,
+      "stage_timing_per_cycle_ms": null,
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.618
+    },
+    "b2": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 71.43424081276292,
+      "accepted_per_output": 0.6666666666666666,
+      "draft_acceptance": 1.0,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 6,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": 126.2082,
+      "cycle_wall_ms_per_output": 14.023133333333334,
+      "cycle_wall_over_legacy_ms_total": 0.21820000000001016,
+      "cycle_wall_over_legacy_ms_per_output": 0.024244444444445575,
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.0221,
+        "draft_device_chain_drain": 20.5953,
+        "draft_device_chain_ensure_embed_table": 0.0029000000000000002,
+        "draft_device_topk_gather": 0.002,
+        "draft_initial": 22.1356,
+        "draft_mtp_layer_forward": 1.0575,
+        "draft_prepare_inputs": 0.229,
+        "draft_seed_upload": 0.1248,
+        "draft_topk_d2h": 0.0534,
+        "draft_topk_readback": 20.655800000000003,
+        "mtp_context_replay_append": 0.0636,
+        "mtp_device_kv_commit": 2.7927,
+        "target_block_acceptance_accounting": 0.0199,
+        "target_block_cursor_update": 0.020499999999999997,
+        "target_block_embedding": 0.28600000000000003,
+        "target_block_forward": 99.7921,
+        "target_block_full_attn_layers": 19.934,
+        "target_block_hidden_readback": 0.0508,
+        "target_block_layer_total": 79.8494,
+        "target_block_linear_attn_layers": 59.9154,
+        "target_block_lm_head_sample": 9.2328,
+        "target_block_output_norm_hidden": 1.2602,
+        "target_block_replay_or_commit": 1.2242000000000002,
+        "target_block_setup": 8.8797,
+        "target_block_verify_total": 101.0691
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.002455555555555556,
+        "draft_device_chain_drain": 2.2883666666666667,
+        "draft_device_chain_ensure_embed_table": 0.0003222222222222222,
+        "draft_device_topk_gather": 0.00022222222222222223,
+        "draft_initial": 2.459511111111111,
+        "draft_mtp_layer_forward": 0.11750000000000001,
+        "draft_prepare_inputs": 0.025444444444444447,
+        "draft_seed_upload": 0.013866666666666666,
+        "draft_topk_d2h": 0.005933333333333334,
+        "draft_topk_readback": 2.2950888888888894,
+        "mtp_context_replay_append": 0.007066666666666667,
+        "mtp_device_kv_commit": 0.3103,
+        "target_block_acceptance_accounting": 0.002211111111111111,
+        "target_block_cursor_update": 0.0022777777777777774,
+        "target_block_embedding": 0.03177777777777778,
+        "target_block_forward": 11.088011111111111,
+        "target_block_full_attn_layers": 2.214888888888889,
+        "target_block_hidden_readback": 0.005644444444444444,
+        "target_block_layer_total": 8.872155555555556,
+        "target_block_linear_attn_layers": 6.657266666666667,
+        "target_block_lm_head_sample": 1.0258666666666665,
+        "target_block_output_norm_hidden": 0.14002222222222221,
+        "target_block_replay_or_commit": 0.13602222222222224,
+        "target_block_setup": 0.9866333333333333,
+        "target_block_verify_total": 11.2299
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.007366666666666667,
+        "draft_device_chain_drain": 6.865100000000001,
+        "draft_device_chain_ensure_embed_table": 0.0009666666666666668,
+        "draft_device_topk_gather": 0.0006666666666666666,
+        "draft_initial": 7.378533333333333,
+        "draft_mtp_layer_forward": 0.35250000000000004,
+        "draft_prepare_inputs": 0.07633333333333334,
+        "draft_seed_upload": 0.0416,
+        "draft_topk_d2h": 0.0178,
+        "draft_topk_readback": 6.885266666666667,
+        "mtp_context_replay_append": 0.0212,
+        "mtp_device_kv_commit": 0.9309,
+        "target_block_acceptance_accounting": 0.006633333333333334,
+        "target_block_cursor_update": 0.006833333333333333,
+        "target_block_embedding": 0.09533333333333334,
+        "target_block_forward": 33.26403333333334,
+        "target_block_full_attn_layers": 6.644666666666667,
+        "target_block_hidden_readback": 0.01693333333333333,
+        "target_block_layer_total": 26.616466666666668,
+        "target_block_linear_attn_layers": 19.971799999999998,
+        "target_block_lm_head_sample": 3.0776,
+        "target_block_output_norm_hidden": 0.42006666666666664,
+        "target_block_replay_or_commit": 0.40806666666666674,
+        "target_block_setup": 2.9598999999999998,
+        "target_block_verify_total": 33.6897
+      },
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.298
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 55.03593106101933,
+    "best_mtp_budget": "b2",
+    "best_mtp_vs_ar_ratio": 1.298,
+    "mtp_beats_ar": true
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-smoke-1782915864/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-smoke-1782915864/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-f32ssm-smoke.json"
+}

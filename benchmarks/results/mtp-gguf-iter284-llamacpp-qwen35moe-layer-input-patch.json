@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_qwen35moe_layer_input_patch",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 284,
+  "status": "patch_ready",
+  "reason": null,
+  "llamacpp_root": "/home/lhl/llama.cpp/llama.cpp-hip",
+  "target_relative_path": "src/models/qwen35moe.cpp",
+  "source_exists": true,
+  "reference_basis": {
+    "expected_llamacpp_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "source_is_read_only_reference": true,
+    "external_checkout_modified": false
+  },
+  "patch_output": "benchmarks/results/mtp-gguf-iter284-llamacpp-qwen35moe-layer-input.patch",
+  "patch_sha256": "00eb7f5069994f9789a3bd1f7cb7953bde30f2551ab1a0576387775657f3ec08",
+  "patch_bytes": 531,
+  "insertion_line": 182,
+  "validation": {
+    "changed": true,
+    "single_assignment_added": true,
+    "anchor_present_before_patch": true,
+    "anchor_absent_after_patch": true,
+    "patched_block_present": true,
+    "diff_has_expected_target": true,
+    "diff_has_expected_assignment": true
+  },
+  "next_action": "apply_patch_to_temporary_llamacpp_checkout_and_capture_hidden_in"
+}

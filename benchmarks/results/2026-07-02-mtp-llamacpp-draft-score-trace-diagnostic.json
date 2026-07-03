@@ -1,0 +1,463 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-02",
+  "purpose": "Align hipEngine and llama.cpp MTP draft candidate scores at the first same-prompt proposal divergence.",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD gfx1151 HIP host; W7900-class parity bench host per active tracker",
+  "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+  "source_artifacts": {
+    "prior_context_logit_ab": "benchmarks/results/2026-07-02-mtp-draft-context-logit-ab-diagnostic.json",
+    "hipengine_device_kv_score_trace_tmp": "/tmp/hipengine-mtp-kv-ab/hipengine-resident-host-q6-devicekv-topk-scores.json",
+    "hipengine_no_device_kv_score_trace_tmp": "/tmp/hipengine-mtp-kv-ab/hipengine-resident-host-q6-topk-scores.json",
+    "llamacpp_score_trace_tmp_jsonl": "/tmp/hipengine-mtp-llama-score-trace/llamacpp-stage.jsonl",
+    "llamacpp_external_artifact_tmp": "/tmp/hipengine-mtp-llama-score-trace/llamacpp.json"
+  },
+  "software": {
+    "hipengine_commit": "aa14a0f5d8e4d6f032a0c186ed4c9c4f50689ff4",
+    "hipengine_dirty": true,
+    "llama_cpp_commit": "0f7d3226704f33bb5d9c11bdd20a294a7cd3adab",
+    "llama_cpp_dirty": false,
+    "llama_cpp_diagnostic_patch": "0f7d3226704f33bb5d9c11bdd20a294a7cd3adab tools: add MTP draft score trace"
+  },
+  "commands": {
+    "llamacpp_build": "cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16",
+    "llamacpp_trace": "PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8026 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 27 --stage-timings-jsonl /tmp/hipengine-mtp-llama-score-trace/llamacpp-stage.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-llama-score-trace/llamacpp.json --log-dir /tmp/hipengine-mtp-llama-score-trace/logs",
+    "hipengine_device_kv_trace": "same as host replay, with --mtp-device-kv-cache and --record-draft-topk-scores, cycles=4",
+    "hipengine_no_device_kv_trace": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 10 --draft-n-max 2 --prompt <prompt> --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --no-mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings"
+  },
+  "aligned_rows": {
+    "hipengine_device_kv_cycle3": {
+      "cycle": 3,
+      "seq_start_position": 49,
+      "prev_token": 1103,
+      "draft_token_ids": [
+        65342,
+        18078
+      ],
+      "target_token_ids": [
+        65342,
+        18078,
+        28649
+      ],
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "output_token_ids": [
+        65342,
+        18078,
+        28649
+      ],
+      "mtp_context_rows_before_draft": 49,
+      "mtp_device_kv_cache": true,
+      "draft_top10_tokens": [
+        [
+          65342,
+          13787,
+          8,
+          18078,
+          58,
+          1590,
+          9409,
+          16793,
+          3863,
+          15050
+        ],
+        [
+          18078,
+          13787,
+          2387,
+          58,
+          92085,
+          16793,
+          9409,
+          23556,
+          65342,
+          19723
+        ]
+      ],
+      "draft_topk_scores": [
+        [
+          25.8332,
+          24.9292,
+          24.5731,
+          23.5786,
+          21.9993,
+          19.9989,
+          19.1782,
+          18.7689,
+          18.4883,
+          17.7588
+        ],
+        [
+          25.0399,
+          23.8318,
+          22.9142,
+          21.7915,
+          20.2019,
+          19.0681,
+          18.6226,
+          18.3143,
+          17.639,
+          17.3206
+        ]
+      ],
+      "draft_topk_margins": [
+        [
+          0.0,
+          0.904,
+          1.2601,
+          2.2546,
+          3.8339,
+          5.8344,
+          6.655,
+          7.0644,
+          7.3449,
+          8.0745
+        ],
+        [
+          0.0,
+          1.2081,
+          2.1257,
+          3.2484,
+          4.838,
+          5.9718,
+          6.4173,
+          6.7256,
+          7.4009,
+          7.7193
+        ]
+      ]
+    },
+    "hipengine_no_device_kv_cycle3": {
+      "cycle": 3,
+      "seq_start_position": 49,
+      "prev_token": 1103,
+      "draft_token_ids": [
+        65342,
+        18078
+      ],
+      "target_token_ids": [
+        65342,
+        18078,
+        28649
+      ],
+      "accepted_draft_tokens": 2,
+      "visible_output_tokens": 3,
+      "output_token_ids": [
+        65342,
+        18078,
+        28649
+      ],
+      "mtp_context_rows_before_draft": 1,
+      "mtp_device_kv_cache": false,
+      "draft_top10_tokens": [
+        [
+          65342,
+          13787,
+          8,
+          18078,
+          58,
+          1590,
+          9409,
+          16793,
+          1103,
+          3863
+        ],
+        [
+          18078,
+          13787,
+          2387,
+          58,
+          92085,
+          16793,
+          578,
+          9409,
+          23556,
+          65342
+        ]
+      ],
+      "draft_topk_scores": [
+        [
+          26.0703,
+          24.7507,
+          24.1943,
+          23.2419,
+          22.0778,
+          19.014,
+          18.9114,
+          18.4882,
+          18.3934,
+          17.7114
+        ],
+        [
+          25.1942,
+          23.7623,
+          22.509,
+          21.2803,
+          19.4524,
+          18.2129,
+          17.8142,
+          17.6223,
+          17.3046,
+          17.2036
+        ]
+      ],
+      "draft_topk_margins": [
+        [
+          0.0,
+          1.3196,
+          1.876,
+          2.8284,
+          3.9925,
+          7.0563,
+          7.1589,
+          7.5821,
+          7.6769,
+          8.3589
+        ],
+        [
+          0.0,
+          1.432,
+          2.6852,
+          3.9139,
+          5.7418,
+          6.9814,
+          7.38,
+          7.5719,
+          7.8896,
+          7.9906
+        ]
+      ]
+    },
+    "llamacpp_task9_cycle9": {
+      "jsonl_line": 10,
+      "cycle": 9,
+      "task_id": 9,
+      "draft_token_ids": [
+        8,
+        1411
+      ],
+      "sampled_token_ids": [
+        65342
+      ],
+      "accepted_draft_tokens": 0,
+      "visible_output_tokens": 1,
+      "output_token_ids": [
+        65342
+      ],
+      "target_verify_rows_evaluated": 3,
+      "draft_sample_trace": [
+        {
+          "seq_id": 3,
+          "depth": 0,
+          "token_ids": [
+            8,
+            65342,
+            13787,
+            18078,
+            58,
+            1590,
+            16793,
+            9409,
+            3863,
+            15050
+          ],
+          "logits": [
+            26.031524658203125,
+            25.93118667602539,
+            25.288578033447266,
+            24.959564208984375,
+            22.466480255126953,
+            21.700660705566406,
+            19.693681716918945,
+            19.38623809814453,
+            19.123559951782227,
+            18.389068603515625
+          ],
+          "probs": [
+            0.36119624972343445,
+            0.3267134428024292,
+            0.17182470858097076,
+            0.12365073710680008,
+            0.010220310650765896,
+            0.004751961678266525,
+            0.0006386354216374457,
+            0.0004696041578426957,
+            0.00036112061934545636,
+            0.00017324740474577993
+          ],
+          "logit_margins": [
+            0.0,
+            0.10033798217773438,
+            0.7429466247558594,
+            1.07196044921875,
+            3.565044403076172,
+            4.330863952636719,
+            6.33784294128418,
+            6.645286560058594,
+            6.907964706420898,
+            7.6424560546875
+          ]
+        },
+        {
+          "seq_id": 3,
+          "depth": 1,
+          "token_ids": [
+            1411,
+            535,
+            430,
+            735,
+            471,
+            11069,
+            574,
+            3716,
+            198,
+            397
+          ],
+          "logits": [
+            32.5435791015625,
+            20.374935150146484,
+            19.317115783691406,
+            19.128482818603516,
+            18.685754776000977,
+            18.660024642944336,
+            18.362640380859375,
+            17.74574851989746,
+            17.685415267944336,
+            16.920440673828125
+          ],
+          "probs": [
+            0.9999880194664001,
+            5.190627689444227e-06,
+            1.8022489030045108e-06,
+            1.492424985372054e-06,
+            9.585575071469066e-07,
+            9.342082876173663e-07,
+            6.938911951692717e-07,
+            3.7443689393512614e-07,
+            3.525138936311123e-07,
+            1.6404084135501762e-07
+          ],
+          "logit_margins": [
+            0.0,
+            12.168643951416016,
+            13.226463317871094,
+            13.415096282958984,
+            13.857824325561523,
+            13.883554458618164,
+            14.180938720703125,
+            14.797830581665039,
+            14.858163833618164,
+            15.623138427734375
+          ]
+        }
+      ]
+    }
+  },
+  "rank_comparison_depth0": {
+    "tokens": [
+      8,
+      65342,
+      13787,
+      18078
+    ],
+    "llamacpp": {
+      "8": {
+        "rank": 1,
+        "score": 26.0315,
+        "margin": 0.0
+      },
+      "65342": {
+        "rank": 2,
+        "score": 25.9312,
+        "margin": 0.1003
+      },
+      "13787": {
+        "rank": 3,
+        "score": 25.2886,
+        "margin": 0.7429
+      },
+      "18078": {
+        "rank": 4,
+        "score": 24.9596,
+        "margin": 1.072
+      }
+    },
+    "hipengine_device_kv": {
+      "8": {
+        "rank": 3,
+        "score": 24.5731,
+        "margin": 1.2601
+      },
+      "65342": {
+        "rank": 1,
+        "score": 25.8332,
+        "margin": 0.0
+      },
+      "13787": {
+        "rank": 2,
+        "score": 24.9292,
+        "margin": 0.904
+      },
+      "18078": {
+        "rank": 4,
+        "score": 23.5786,
+        "margin": 2.2546
+      }
+    },
+    "hipengine_no_device_kv": {
+      "8": {
+        "rank": 3,
+        "score": 24.1943,
+        "margin": 1.876
+      },
+      "65342": {
+        "rank": 1,
+        "score": 26.0703,
+        "margin": 0.0
+      },
+      "13787": {
+        "rank": 2,
+        "score": 24.7507,
+        "margin": 1.3196
+      },
+      "18078": {
+        "rank": 4,
+        "score": 23.2419,
+        "margin": 2.8284
+      }
+    }
+  },
+  "depth1_reading": {
+    "llamacpp_depth1_top1": {
+      "token": 1411,
+      "logit": 32.5436,
+      "next_margin": 12.1686
+    },
+    "hipengine_device_kv_depth1_top1": {
+      "token": 18078,
+      "score": 25.0399,
+      "next_margin": 1.2081
+    }
+  },
+  "results": {
+    "first_shared_prompt_cycles_match": 3,
+    "divergence_pair_index": 3,
+    "divergence_seq_position": 49,
+    "llamacpp_selects": [
+      8,
+      1411
+    ],
+    "hipengine_selects": [
+      65342,
+      18078
+    ],
+    "target_next_token": 65342,
+    "llamacpp_depth0_margin_token8_vs_65342": 0.1003,
+    "hipengine_device_kv_depth0_margin_65342_vs_token8": 1.2601,
+    "hipengine_no_device_kv_depth0_margin_65342_vs_token8": 1.876,
+    "interpretation": "The first proposal divergence is a draft-logit/context parity miss, not prompt formatting or verifier target state. llama.cpp prefers token 8 over target token 65342 by only 0.100 logit, while hipEngine with resident device KV still ranks token 8 third and 1.260 logits behind 65342. Device KV moves token 8 closer than host replay, but not enough to flip the row."
+  },
+  "next_target": "Compare hipEngine MTP draft seed/pending_h and ctx_dft row construction against llama.cpp common_speculative_process()+draft() at seq position 49; focus on hidden precision/layout and draft KV row contents before more kernel timing work."
+}

@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_layer0_final_output_reprojection",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T07:41:17.333088+00:00",
+  "command": "scripts/llamacpp_mtp_validate_final_output_projection.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --hipengine-raw /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json --llamacpp-jsonl /tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-final-output-cont-v3.jsonl --llamacpp-cycle 18 --row 1 --layer 0 --llamacpp-final-label final_output_cont_0 --output benchmarks/results/2026-07-02-mtp-target-layer0-final-output-cont-reprojection-diagnostic.json",
+  "inputs": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "hipengine_raw": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-row1-layer0-raw-linear-internals.json",
+    "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layer0-final-output-cont-v3.jsonl",
+    "llamacpp_cycle": 18,
+    "row": 1,
+    "layer": 0,
+    "llamacpp_final_label": "final_output_cont_0"
+  },
+  "hipengine": {
+    "cycle": 12,
+    "sampled_tokens": [
+      15495,
+      539,
+      1151
+    ],
+    "accepted_draft_tokens": 2,
+    "layer": 0,
+    "row": 1,
+    "position": 73,
+    "input_token": 15495,
+    "trace_target_token": 539
+  },
+  "llamacpp": {
+    "cycle": 18,
+    "accepted_draft_tokens": 1,
+    "accepted_token_ids": [
+      15495
+    ],
+    "bonus_token_id": 26126
+  },
+  "boundary_deltas": {
+    "hip_recurrent_vs_llama_final": {
+      "count": 4096,
+      "mean_abs_diff": 1.761352177709341e-05,
+      "rmse": 3.9051716157700866e-05,
+      "max_abs_diff": 0.0005803555250167847,
+      "cosine": 0.9999991655349731,
+      "reference_rms": 0.03401615470647812,
+      "candidate_rms": 0.034020449966192245
+    },
+    "hip_attn_out_vs_llama_linear": {
+      "count": 2048,
+      "mean_abs_diff": 0.00015951463137753308,
+      "rmse": 0.00020998052787035704,
+      "max_abs_diff": 0.0010168682783842087,
+      "cosine": 0.9999518990516663,
+      "reference_rms": 0.02132234536111355,
+      "candidate_rms": 0.02133886143565178
+    }
+  },
+  "reprojection_deltas": {
+    "hip_capture_attn_out_vs_llama_linear": {
+      "count": 2048,
+      "mean_abs_diff": 0.00015951463137753308,
+      "rmse": 0.00020998052787035704,
+      "max_abs_diff": 0.0010168682783842087,
+      "cosine": 0.9999518990516663,
+      "reference_rms": 0.02132234536111355,
+      "candidate_rms": 0.02133886143565178
+    },
+    "hip_recurrent_reproject_vs_hip_capture_attn_out": {
+      "count": 2048,
+      "mean_abs_diff": 0.0,
+      "rmse": 0.0,
+      "max_abs_diff": 0.0,
+      "cosine": 1.0,
+      "reference_rms": 0.02133886143565178,
+      "candidate_rms": 0.02133886143565178
+    },
+    "hip_recurrent_reproject_vs_llama_linear": {
+      "count": 2048,
+      "mean_abs_diff": 0.00015951463137753308,
+      "rmse": 0.00020998052787035704,
+      "max_abs_diff": 0.0010168682783842087,
+      "cosine": 0.9999518990516663,
+      "reference_rms": 0.02132234536111355,
+      "candidate_rms": 0.02133886143565178
+    },
+    "llama_final_reproject_vs_llama_linear": {
+      "count": 2048,
+      "mean_abs_diff": 0.00015697536582592875,
+      "rmse": 0.00020707542716991156,
+      "max_abs_diff": 0.0010168682783842087,
+      "cosine": 0.9999530911445618,
+      "reference_rms": 0.02132234536111355,
+      "candidate_rms": 0.02133866958320141
+    },
+    "llama_final_reproject_vs_hip_capture_attn_out": {
+      "count": 2048,
+      "mean_abs_diff": 3.054662374779582e-05,
+      "rmse": 5.26372496096883e-05,
+      "max_abs_diff": 0.0009765625,
+      "cosine": 0.9999970197677612,
+      "reference_rms": 0.02133886143565178,
+      "candidate_rms": 0.02133866958320141
+    }
+  },
+  "samples": {
+    "hip_reprojected": [
+      0.0125732421875,
+      0.00653076171875,
+      0.0034332275390625,
+      0.00982666015625,
+      -0.007354736328125,
+      -0.000942230224609375,
+      0.00701904296875,
+      0.00927734375
+    ],
+    "llama_final_reprojected": [
+      0.01263427734375,
+      0.0064697265625,
+      0.0034027099609375,
+      0.009765625,
+      -0.007415771484375,
+      -0.0009307861328125,
+      0.006988525390625,
+      0.00927734375
+    ],
+    "llama_final_label": "final_output_cont_0",
+    "hip_capture_attn_out": [
+      0.0125732421875,
+      0.00653076171875,
+      0.0034332275390625,
+      0.00982666015625,
+      -0.007354736328125,
+      -0.000942230224609375,
+      0.00701904296875,
+      0.00927734375
+    ],
+    "llama_linear_attn_out": [
+      0.012660594657063484,
+      0.006745148915797472,
+      0.003536426229402423,
+      0.009888115338981152,
+      -0.007449441589415073,
+      -0.0009172039572149515,
+      0.006990125402808189,
+      0.009475532919168472
+    ]
+  },
+  "assessment": {
+    "status": "projection_consistent",
+    "reason": "both pre-ssm vectors reproject consistently enough for semantic comparison",
+    "hip_reproject_mae": 0.0,
+    "llama_final_reproject_mae": 0.00015697536582592875
+  },
+  "conclusion": "projection_consistent: hip recurrent_out -> ssm_out MAE 0; llama final_output -> ssm_out MAE 0.000156975."
+}

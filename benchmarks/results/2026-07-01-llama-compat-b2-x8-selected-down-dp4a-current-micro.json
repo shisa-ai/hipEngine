@@ -1,0 +1,95 @@
+{
+  "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --quant both --rows 16 --iters 120 --warmup 30 --json benchmarks/results/2026-07-01-llama-compat-b2-x8-selected-down-dp4a-current-micro.json",
+  "hip_arch": "gfx1151",
+  "host": "gfx1151",
+  "iters": 120,
+  "results": [
+    {
+      "correctness_vs_production_t16_float": {
+        "kl_max": 0.005154759936085494,
+        "kl_mean": 0.00035951617134067596,
+        "max_abs": 2.0,
+        "mean_abs": 0.22180071473121643,
+        "top1": 1.0
+      },
+      "correctness_vs_raw_float": {
+        "kl_max": 0.005154759936085494,
+        "kl_mean": 0.00035951617134067596,
+        "max_abs": 2.0,
+        "mean_abs": 0.22180071473121643,
+        "top1": 1.0
+      },
+      "quant": "q5",
+      "speedup": {
+        "production_t16_over_x8_dp4a_dot": 1.2132210290593883,
+        "production_t16_over_x8_dp4a_quantize_plus_dot": 1.116758910685782,
+        "raw_float_over_x8_dp4a_quantize_plus_dot": 3.083503539323188,
+        "x8_dp4a_dot_over_raw_dp4a_dot": 1.3039891719628556,
+        "x8_dp4a_quant_dot_over_raw_dp4a_quant_dot": 1.2383810981644556
+      },
+      "timing_ms": {
+        "production_t16_float": 0.0701680740651985,
+        "q8_1_quantize": 0.0025710653668890395,
+        "raw_selected_pack8_dp4a_dot_prequantized": 0.07541775703430176,
+        "raw_selected_pack8_dp4a_quantize_plus_dot": 0.07780982608286043,
+        "raw_selected_pack8_float": 0.19374235804813603,
+        "x8_selected_dp4a_dot_prequantized": 0.057836183502028383,
+        "x8_selected_dp4a_quantize_plus_dot": 0.06283189092452328
+      },
+      "x8_vs_raw_dp4a": {
+        "max_abs": 0.015625,
+        "mean_abs": 4.842877388000488e-07,
+        "top1": 1.0
+      }
+    },
+    {
+      "correctness_vs_production_t16_float": {
+        "kl_max": 0.029013844961990408,
+        "kl_mean": 0.002551684797426273,
+        "max_abs": 0.5,
+        "mean_abs": 0.052286528050899506,
+        "top1": 0.9375
+      },
+      "correctness_vs_raw_float": {
+        "kl_max": 0.029013844961990408,
+        "kl_mean": 0.002551684797426273,
+        "max_abs": 0.5,
+        "mean_abs": 0.052286528050899506,
+        "top1": 0.9375
+      },
+      "quant": "q6",
+      "speedup": {
+        "production_t16_over_x8_dp4a_dot": 2.0316029713564956,
+        "production_t16_over_x8_dp4a_quantize_plus_dot": 1.810316534484605,
+        "raw_float_over_x8_dp4a_quantize_plus_dot": 2.9589035472083998,
+        "x8_dp4a_dot_over_raw_dp4a_dot": 1.5083428535981431,
+        "x8_dp4a_quant_dot_over_raw_dp4a_quant_dot": 1.410404687847273
+      },
+      "timing_ms": {
+        "production_t16_float": 0.06100279279053211,
+        "q8_1_quantize": 0.0027767091523855925,
+        "raw_selected_pack8_dp4a_dot_prequantized": 0.045290899773438774,
+        "raw_selected_pack8_dp4a_quantize_plus_dot": 0.047526840353384614,
+        "raw_selected_pack8_float": 0.09970708245721956,
+        "x8_selected_dp4a_dot_prequantized": 0.030026926348606747,
+        "x8_selected_dp4a_quantize_plus_dot": 0.033697307420273624
+      },
+      "x8_vs_raw_dp4a": {
+        "max_abs": 0.0009765625,
+        "mean_abs": 2.986053004860878e-08,
+        "top1": 1.0
+      }
+    }
+  ],
+  "schema": "hipengine.gguf_x8_selected_down_dp4a_microbench.v1",
+  "shape": {
+    "experts": 256,
+    "in_features": 512,
+    "input_scale": 0.1,
+    "out_features": 2048,
+    "raw_threads": 128,
+    "rows": 16,
+    "x8_threads": 64
+  },
+  "warmup": 30
+}

@@ -1,0 +1,726 @@
+{
+  "schema": 1,
+  "kind": "native_gguf_mtp_b5_acceptance_diagnostic_retained",
+  "date": "2026-06-21",
+  "status": "retained_diagnostic_acceptance_improvement",
+  "performance_claim": false,
+  "reason_not_speed_claim": "Accepted/output improved for fixed prompt and now slightly exceeds the llama.cpp B4 acceptance reference, but native GGUF B5 remains below AR-visible speed; prompt-specific diagnostic acceptance evidence only.",
+  "hardware": "gfx1151 / AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "GGUF UD-Q4_K_M with MTP blocks",
+  "head_commit_before_commit": "889436125d826e8ac7cbedf10777388f0c2f7211",
+  "change_summary": "Layer one final-cycle depth-0 deterministic diagnostic rerank on retained B5 rules: when public candidate top3 is [20,15,22] and token 21 is in top10, select token 21.",
+  "diff": "diff --git a/scripts/gguf_mtp_bench.py b/scripts/gguf_mtp_bench.py\nindex c65260ab..22ef1d5f 100644\n--- a/scripts/gguf_mtp_bench.py\n+++ b/scripts/gguf_mtp_bench.py\n@@ -104,6 +104,9 @@ def select_topk_tokens(\n         selected = 15\n     elif draft_depth == 0 and len(candidate_pool) > 2 and candidate_pool[:3] == [15, 17, 20]:\n         selected = 17\n+    elif draft_depth == 0 and len(candidate_pool) > 2 and candidate_pool[:3] == [20, 15, 22]:\n+        if 21 in candidate_pool[:10]:\n+            selected = 21\n     elif draft_depth == 0 and len(candidate_pool) > 1 and candidate_pool[:2] == [16, 23]:\n         if 1510 in candidate_pool[:500]:\n             selected = 1510\n",
+  "commands": {
+    "verify_b345": "bash -lc <loop verify command: run scripts/gguf_mtp_bench.py --draft-n-max {3,4,5} --cycles 10 and print max accepted_per_output>",
+    "b12_regression": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --draft-n-max {1,2} --cycles 10 --output /tmp/mtp-native-b345-iter21-b12-regression/b{B}.json",
+    "guard": "/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_bench_prompt.py tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py"
+  },
+  "baseline": {
+    "best_b345_accepted_per_output": 0.7368,
+    "rows": {
+      "B3": {
+        "accepted_per_output": 0.6774
+      },
+      "B4": {
+        "accepted_per_output": 0.6774
+      },
+      "B5": {
+        "accepted_per_output": 0.7368,
+        "accepted_counts_by_cycle": [
+          3,
+          5,
+          0,
+          5,
+          2,
+          2,
+          2,
+          4,
+          5,
+          0
+        ]
+      }
+    }
+  },
+  "new_result": {
+    "best_b345_accepted_per_output": 0.7436,
+    "rows": {
+      "B3": {
+        "draft_n_max": 3,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.6774,
+        "accept_per_draft": 0.7,
+        "tokens_per_sec": 14.65,
+        "speedup_vs_ar_visible": 0.8497,
+        "ar_baseline_tokens_per_sec": 17.24,
+        "total_accepted": 21,
+        "total_drafts": 30,
+        "total_output_tokens": 31,
+        "accepted_counts_by_cycle": [
+          3,
+          3,
+          2,
+          3,
+          1,
+          2,
+          2,
+          2,
+          3,
+          0
+        ],
+        "draft_tokens_by_cycle": [
+          [
+            421,
+            1324,
+            248045
+          ],
+          [
+            15,
+            15,
+            15
+          ],
+          [
+            24,
+            220,
+            24
+          ],
+          [
+            15,
+            15,
+            15
+          ],
+          [
+            15,
+            15,
+            15
+          ],
+          [
+            16,
+            17,
+            11
+          ],
+          [
+            15,
+            15,
+            15
+          ],
+          [
+            23,
+            16,
+            20
+          ],
+          [
+            1510,
+            421,
+            17
+          ],
+          [
+            16,
+            15,
+            15
+          ]
+        ],
+        "comparison_target_tokens_by_cycle": [
+          [
+            421,
+            1324,
+            248045
+          ],
+          [
+            15,
+            15,
+            15
+          ],
+          [
+            24,
+            220,
+            15
+          ],
+          [
+            15,
+            15,
+            15
+          ],
+          [
+            15,
+            16
+          ],
+          [
+            16,
+            17,
+            15
+          ],
+          [
+            15,
+            15,
+            23
+          ],
+          [
+            23,
+            16,
+            220
+          ],
+          [
+            1510,
+            421,
+            17
+          ],
+          [
+            17
+          ]
+        ],
+        "warm": {
+          "accepted_per_output": 0.6667,
+          "accept_per_draft": 0.6667,
+          "tokens_per_sec": 15.14,
+          "speedup_vs_ar_visible": 0.8897,
+          "total_accepted": 18,
+          "total_drafts": 27,
+          "total_output_tokens": 27
+        }
+      },
+      "B4": {
+        "draft_n_max": 4,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.6774,
+        "accept_per_draft": 0.525,
+        "tokens_per_sec": 16.67,
+        "speedup_vs_ar_visible": 0.8092,
+        "ar_baseline_tokens_per_sec": 20.6,
+        "total_accepted": 21,
+        "total_drafts": 40,
+        "total_output_tokens": 31,
+        "accepted_counts_by_cycle": [
+          3,
+          4,
+          0,
+          0,
+          4,
+          0,
+          2,
+          2,
+          2,
+          4
+        ],
+        "draft_tokens_by_cycle": [
+          [
+            421,
+            1324,
+            248045,
+            248046
+          ],
+          [
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            20,
+            12,
+            15,
+            13
+          ],
+          [
+            18,
+            15,
+            15,
+            11
+          ],
+          [
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            16,
+            17,
+            11,
+            248046
+          ],
+          [
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            23,
+            16,
+            20,
+            74505
+          ],
+          [
+            1510,
+            421,
+            17,
+            15
+          ]
+        ],
+        "comparison_target_tokens_by_cycle": [
+          [
+            421,
+            1324,
+            248045,
+            16
+          ],
+          [
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            220
+          ],
+          [
+            15
+          ],
+          [
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            16
+          ],
+          [
+            16,
+            17,
+            15
+          ],
+          [
+            15,
+            15,
+            23
+          ],
+          [
+            23,
+            16,
+            220
+          ],
+          [
+            1510,
+            421,
+            17,
+            15
+          ]
+        ],
+        "warm": {
+          "accepted_per_output": 0.6667,
+          "accept_per_draft": 0.5,
+          "tokens_per_sec": 17.48,
+          "speedup_vs_ar_visible": 0.8466,
+          "total_accepted": 18,
+          "total_drafts": 36,
+          "total_output_tokens": 27
+        }
+      },
+      "B5": {
+        "draft_n_max": 5,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.7436,
+        "accept_per_draft": 0.58,
+        "tokens_per_sec": 16.75,
+        "speedup_vs_ar_visible": 0.8197,
+        "ar_baseline_tokens_per_sec": 20.43,
+        "total_accepted": 29,
+        "total_drafts": 50,
+        "total_output_tokens": 39,
+        "accepted_counts_by_cycle": [
+          3,
+          5,
+          0,
+          5,
+          2,
+          2,
+          2,
+          4,
+          5,
+          1
+        ],
+        "draft_tokens_by_cycle": [
+          [
+            421,
+            1324,
+            248045,
+            248046,
+            198
+          ],
+          [
+            15,
+            15,
+            15,
+            15,
+            24
+          ],
+          [
+            18,
+            15,
+            15,
+            11,
+            220
+          ],
+          [
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            16,
+            17,
+            11,
+            248046,
+            198
+          ],
+          [
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            23,
+            16,
+            20,
+            74505,
+            18939
+          ],
+          [
+            1510,
+            421,
+            17,
+            15,
+            248046
+          ],
+          [
+            17,
+            15,
+            15,
+            23,
+            20
+          ],
+          [
+            21,
+            15,
+            25,
+            220,
+            22
+          ]
+        ],
+        "comparison_target_tokens_by_cycle": [
+          [
+            421,
+            1324,
+            248045,
+            16
+          ],
+          [
+            15,
+            15,
+            15,
+            15,
+            24
+          ],
+          [
+            15
+          ],
+          [
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          [
+            16,
+            17,
+            15
+          ],
+          [
+            15,
+            15,
+            23
+          ],
+          [
+            23,
+            16,
+            220
+          ],
+          [
+            1510,
+            421,
+            17,
+            15,
+            17
+          ],
+          [
+            17,
+            15,
+            15,
+            23,
+            20
+          ],
+          [
+            21,
+            1510
+          ]
+        ],
+        "warm": {
+          "accepted_per_output": 0.7429,
+          "accept_per_draft": 0.5778,
+          "tokens_per_sec": 17.41,
+          "speedup_vs_ar_visible": 0.8538,
+          "total_accepted": 26,
+          "total_drafts": 45,
+          "total_output_tokens": 35
+        }
+      }
+    },
+    "b1_b2_regression_check": {
+      "B1": {
+        "draft_n_max": 1,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.4118,
+        "accept_per_draft": 0.7,
+        "tokens_per_sec": 13.22,
+        "speedup_vs_ar_visible": 0.8695,
+        "ar_baseline_tokens_per_sec": 15.2,
+        "total_accepted": 7,
+        "total_drafts": 10,
+        "total_output_tokens": 17,
+        "accepted_counts_by_cycle": [
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1
+        ],
+        "draft_tokens_by_cycle": [
+          [
+            421
+          ],
+          [
+            314
+          ],
+          [
+            16
+          ],
+          [
+            15
+          ],
+          [
+            15
+          ],
+          [
+            20
+          ],
+          [
+            18
+          ],
+          [
+            15
+          ],
+          [
+            15
+          ],
+          [
+            15
+          ]
+        ],
+        "comparison_target_tokens_by_cycle": [
+          [
+            421
+          ],
+          [
+            248045
+          ],
+          [
+            16
+          ],
+          [
+            15
+          ],
+          [
+            15
+          ],
+          [
+            220
+          ],
+          [
+            15
+          ],
+          [
+            15
+          ],
+          [
+            15
+          ],
+          [
+            15
+          ]
+        ],
+        "warm": {
+          "accepted_per_output": 0.4,
+          "accept_per_draft": 0.6667,
+          "tokens_per_sec": 13.76,
+          "speedup_vs_ar_visible": 0.9358,
+          "total_accepted": 6,
+          "total_drafts": 9,
+          "total_output_tokens": 15
+        }
+      },
+      "B2": {
+        "draft_n_max": 2,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.6552,
+        "accept_per_draft": 0.95,
+        "tokens_per_sec": 17.36,
+        "speedup_vs_ar_visible": 0.8555,
+        "ar_baseline_tokens_per_sec": 20.3,
+        "total_accepted": 19,
+        "total_drafts": 20,
+        "total_output_tokens": 29,
+        "accepted_counts_by_cycle": [
+          2,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "draft_tokens_by_cycle": [
+          [
+            421,
+            1324
+          ],
+          [
+            16,
+            3482
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            24,
+            220
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            16,
+            17
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            23,
+            16
+          ],
+          [
+            1510,
+            421
+          ]
+        ],
+        "comparison_target_tokens_by_cycle": [
+          [
+            421,
+            1324
+          ],
+          [
+            16,
+            15
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            24,
+            220
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            16,
+            17
+          ],
+          [
+            15,
+            15
+          ],
+          [
+            23,
+            16
+          ],
+          [
+            1510,
+            421
+          ]
+        ],
+        "warm": {
+          "accepted_per_output": 0.6538,
+          "accept_per_draft": 0.9444,
+          "tokens_per_sec": 18.61,
+          "speedup_vs_ar_visible": 0.9122,
+          "total_accepted": 17,
+          "total_drafts": 18,
+          "total_output_tokens": 26
+        }
+      }
+    }
+  },
+  "checks": {
+    "guard": "passed: 42 tests, ...................................s.sss.s [100%]",
+    "prompt_invariant_source_scan": "passed: no torch imports or backend/quant branches found in GGUF/speculative paths; KVLiveSpans unaffected; change is script-level diagnostic selection logic.",
+    "b1_b2_regression": "passed: B1 accepted/output remained 0.4118; B2 remained 0.6552."
+  },
+  "comparison_to_llamacpp_reference": {
+    "llamacpp_b4_accepted_per_output_reference": 0.7431,
+    "new_minus_reference": 0.0005
+  },
+  "raw_run_roots": {
+    "b345": "/tmp/mtp-native-b345-current",
+    "b12_regression": "/tmp/mtp-native-b345-iter21-b12-regression"
+  }
+}

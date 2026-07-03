@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_output_norm_recompute_diagnostic",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T03:32:01.711530+00:00",
+  "repo": {
+    "root": "/home/lhl/hipEngine",
+    "commit": "20d22534c3441023609554c59513462358f96cd7",
+    "branch": "mtp-gguf",
+    "dirty": true
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "case": {
+    "hipengine_cycle": 12,
+    "llamacpp_cycle": 18,
+    "row": 1,
+    "position": 73,
+    "input_token": 15495,
+    "draft_tokens": [
+      15495,
+      539
+    ],
+    "hipengine_sampled_tokens": [
+      15495,
+      539,
+      1151
+    ],
+    "llamacpp_sampled_token_ids": [
+      15495,
+      26126
+    ],
+    "hipengine_accepted_draft_tokens": 2,
+    "llamacpp_accepted_draft_tokens": 1
+  },
+  "source_raw_files": {
+    "hipengine": "/tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-serial-exact-layerraw-all.json",
+    "llamacpp_jsonl": "/tmp/hipengine-mtp-proposal-trace/llamacpp-targettrace-c120-layerraw-all.jsonl"
+  },
+  "output_norm": {
+    "weight_tensor": "output_norm.weight",
+    "eps": 9.999999974752427e-07,
+    "weight_first8": [
+      2.734375,
+      2.765625,
+      2.828125,
+      2.78125,
+      2.6796875,
+      2.71875,
+      2.625,
+      2.828125
+    ],
+    "formula": "x * output_norm.weight / sqrt(mean(x^2) + eps)"
+  },
+  "comparisons": {
+    "hip_cpu_output_norm_vs_hipengine_verify_h": {
+      "size": 2048,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs": 0.0,
+      "cosine": 1.0,
+      "a_first8": [
+        -3.1743969917297363,
+        0.6138056516647339,
+        -1.5933338403701782,
+        -0.7043249011039734,
+        -1.6469517946243286,
+        4.23928689956665,
+        0.3846621811389923,
+        0.8851854205131531
+      ],
+      "b_first8": [
+        -3.1743969917297363,
+        0.6138056516647339,
+        -1.5933338403701782,
+        -0.7043249011039734,
+        -1.6469517946243286,
+        4.23928689956665,
+        0.3846621811389923,
+        0.8851854205131531
+      ]
+    },
+    "llamacpp_cpu_output_norm_vs_llamacpp_verify_h": {
+      "size": 2048,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "max_abs": 0.0,
+      "cosine": 1.0,
+      "a_first8": [
+        -3.3218178749084473,
+        0.6018202304840088,
+        -1.3846886157989502,
+        -0.6945726871490479,
+        -1.8163434267044067,
+        4.250969409942627,
+        0.37037819623947144,
+        0.9399665594100952
+      ],
+      "b_first8": [
+        -3.3218178749084473,
+        0.6018202304840088,
+        -1.3846886157989502,
+        -0.6945726871490479,
+        -1.8163434267044067,
+        4.250969409942627,
+        0.37037819623947144,
+        0.9399665594100952
+      ]
+    },
+    "hip_pre_output_norm_vs_llamacpp_pre_output_norm": {
+      "size": 2048,
+      "mae": 0.010151844471693039,
+      "rmse": 0.01273188024127443,
+      "max_abs": 0.0448162816464901,
+      "cosine": 0.9993117026553422,
+      "a_first8": [
+        -0.3984375,
+        0.076171875,
+        -0.193359375,
+        -0.0869140625,
+        -0.2109375,
+        0.53515625,
+        0.05029296875,
+        0.107421875
+      ],
+      "b_first8": [
+        -0.4167537987232208,
+        0.07465094327926636,
+        -0.1679636687040329,
+        -0.08567211776971817,
+        -0.2325282245874405,
+        0.5363898277282715,
+        0.04840363189578056,
+        0.11401858925819397
+      ]
+    },
+    "cpu_output_norm_hip_pre_vs_llamacpp_pre": {
+      "size": 2048,
+      "mae": 0.07789410650730133,
+      "rmse": 0.0981533326516322,
+      "max_abs": 0.38062411546707153,
+      "cosine": 0.9990776166571999,
+      "a_first8": [
+        -3.1743969917297363,
+        0.6138056516647339,
+        -1.5933338403701782,
+        -0.7043249011039734,
+        -1.6469517946243286,
+        4.23928689956665,
+        0.3846621811389923,
+        0.8851854205131531
+      ],
+      "b_first8": [
+        -3.3218178749084473,
+        0.6018202304840088,
+        -1.3846886157989502,
+        -0.6945726871490479,
+        -1.8163434267044067,
+        4.250969409942627,
+        0.37037819623947144,
+        0.9399665594100952
+      ]
+    },
+    "hipengine_verify_h_vs_llamacpp_verify_h": {
+      "size": 2048,
+      "mae": 0.07789410650730133,
+      "rmse": 0.0981533326516322,
+      "max_abs": 0.38062411546707153,
+      "cosine": 0.9990776166571999,
+      "a_first8": [
+        -3.1743969917297363,
+        0.6138056516647339,
+        -1.5933338403701782,
+        -0.7043249011039734,
+        -1.6469517946243286,
+        4.23928689956665,
+        0.3846621811389923,
+        0.8851854205131531
+      ],
+      "b_first8": [
+        -3.3218178749084473,
+        0.6018202304840088,
+        -1.3846886157989502,
+        -0.6945726871490479,
+        -1.8163434267044067,
+        4.250969409942627,
+        0.37037819623947144,
+        0.9399665594100952
+      ]
+    },
+    "cpu_output_norm_hip_pre_vs_bf16rounded_llamacpp_pre": {
+      "size": 2048,
+      "mae": 0.07787153869867325,
+      "rmse": 0.09822839223548166,
+      "max_abs": 0.380548357963562,
+      "cosine": 0.9990767550848874,
+      "a_first8": [
+        -3.1743969917297363,
+        0.6138056516647339,
+        -1.5933338403701782,
+        -0.7043249011039734,
+        -1.6469517946243286,
+        4.23928689956665,
+        0.3846621811389923,
+        0.8851854205131531
+      ],
+      "b_first8": [
+        -3.31685471534729,
+        0.6024395823478699,
+        -1.3851150274276733,
+        -0.6929579377174377,
+        -1.8160170316696167,
+        4.24237060546875,
+        0.36999279260635376,
+        0.9422003030776978
+      ]
+    }
+  },
+  "reading": [
+    "CPU output_norm from hipEngine pre-output_norm exactly reproduces hipEngine verify_h; CPU output_norm from llama.cpp verify_pre_output_norm exactly reproduces llama.cpp verify_h.",
+    "Therefore the output_norm implementation is not the semantic mismatch. The pre-output residual delta is deterministically amplified by the shared RMSNorm/output_norm weights.",
+    "Rounding llama.cpp pre-output_norm to BF16 barely changes the post-norm delta, so a final-boundary BF16 cast alone does not explain the mismatch.",
+    "The next fix target is residual-stream precision across target layers, not lm-head ordering or output_norm."
+  ]
+}

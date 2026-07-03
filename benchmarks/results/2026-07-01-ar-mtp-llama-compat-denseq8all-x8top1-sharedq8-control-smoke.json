@@ -1,0 +1,269 @@
+{
+  "schema": "hipengine.gguf_ar_mtp_suite.v1",
+  "timestamp": "2026-07-01T22:58:20",
+  "scope": "smoke",
+  "status": "complete",
+  "apple_to_apple_ok": true,
+  "apple_to_apple_problems": [],
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "git_commit": "d7097be8982b416d45929842a6b33c9ae723198e",
+  "host": "gfx1151",
+  "shared_config": {
+    "decode_repack": true,
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "eager_decode": true,
+    "greedy": true,
+    "prompt_reasoning": "off",
+    "warmup_decode_tokens": 1,
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "cycles": 3,
+    "budgets": [
+      2
+    ],
+    "prompt_limit": 1,
+    "ar_decode_tokens": 9,
+    "mtp_route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1",
+    "mtp_route_extra_args": [
+      "--llama-compat",
+      "--resident-mtp-device-chain",
+      "--verify-dp4a",
+      "--resident-mtp-draft-q6-top1-dp4a",
+      "--resident-mtp-draft-q6-top1-stage1-shape",
+      "x8",
+      "--selected-down-x8-repack",
+      "q6",
+      "--verify-dense-q8-dp4a-all"
+    ],
+    "mtp_route_env": {},
+    "mtp_route_default_budgets": [
+      2
+    ],
+    "record_cycle_stage_timings": true
+  },
+  "ar": {
+    "decode_tok_s_weighted": 54.92300863578566,
+    "total_output_tokens": 9,
+    "decode_ms": 163.86574995703995,
+    "prompts": 1,
+    "per_category": {
+      "code": 54.92300863578566
+    }
+  },
+  "mtp_by_budget": {
+    "off": {
+      "diagnostic_only": true,
+      "decode_tok_s_weighted": 87.89920890711984,
+      "accepted_per_output": null,
+      "draft_acceptance": null,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": null,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": null,
+      "cycle_wall_ms_per_output": null,
+      "cycle_wall_over_legacy_ms_total": null,
+      "cycle_wall_over_legacy_ms_per_output": null,
+      "stage_timing_totals_ms": null,
+      "stage_timing_per_output_ms": null,
+      "stage_timing_per_cycle_ms": null,
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.6004
+    },
+    "b2": {
+      "diagnostic_only": false,
+      "decode_tok_s_weighted": 70.63809748057453,
+      "accepted_per_output": 0.6666666666666666,
+      "draft_acceptance": 1.0,
+      "mtp_vs_true_ar_decode_ratio": null,
+      "true_ar_decode_tok_s_weighted": null,
+      "total_accepted": 6,
+      "total_output_tokens": 9,
+      "target_verify_layer_passes": 3,
+      "target_verify_rows_evaluated": 9,
+      "target_verify_serial_rows": 0,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 3,
+      "target_verify_block_rows": 9,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 3,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 0.3333333333333333,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "cycle_wall_ms_total": 127.6249,
+      "cycle_wall_ms_per_output": 14.180544444444443,
+      "cycle_wall_over_legacy_ms_total": 0.2149000000000001,
+      "cycle_wall_over_legacy_ms_per_output": 0.02387777777777779,
+      "stage_timing_totals_ms": {
+        "accept_policy_and_seed": 0.0198,
+        "draft_device_chain_drain": 20.5986,
+        "draft_device_chain_ensure_embed_table": 0.0028,
+        "draft_device_topk_gather": 0.0018999999999999998,
+        "draft_initial": 22.2356,
+        "draft_mtp_layer_forward": 1.117,
+        "draft_prepare_inputs": 0.23900000000000002,
+        "draft_seed_upload": 0.14550000000000002,
+        "draft_topk_d2h": 0.0514,
+        "draft_topk_readback": 20.657500000000002,
+        "mtp_context_replay_append": 0.0594,
+        "mtp_device_kv_commit": 2.7931999999999997,
+        "target_block_acceptance_accounting": 0.018600000000000002,
+        "target_block_cursor_update": 0.019000000000000003,
+        "target_block_embedding": 0.2632,
+        "target_block_forward": 100.96600000000001,
+        "target_block_full_attn_layers": 20.782,
+        "target_block_hidden_readback": 0.0508,
+        "target_block_layer_total": 80.2691,
+        "target_block_linear_attn_layers": 59.4872,
+        "target_block_lm_head_sample": 9.3172,
+        "target_block_output_norm_hidden": 1.0903,
+        "target_block_replay_or_commit": 1.3779,
+        "target_block_setup": 9.748999999999999,
+        "target_block_verify_total": 102.3926
+      },
+      "stage_timing_per_output_ms": {
+        "accept_policy_and_seed": 0.0022,
+        "draft_device_chain_drain": 2.2887333333333335,
+        "draft_device_chain_ensure_embed_table": 0.0003111111111111111,
+        "draft_device_topk_gather": 0.00021111111111111108,
+        "draft_initial": 2.4706222222222225,
+        "draft_mtp_layer_forward": 0.12411111111111112,
+        "draft_prepare_inputs": 0.026555555555555558,
+        "draft_seed_upload": 0.01616666666666667,
+        "draft_topk_d2h": 0.005711111111111111,
+        "draft_topk_readback": 2.295277777777778,
+        "mtp_context_replay_append": 0.0066,
+        "mtp_device_kv_commit": 0.3103555555555555,
+        "target_block_acceptance_accounting": 0.0020666666666666667,
+        "target_block_cursor_update": 0.0021111111111111113,
+        "target_block_embedding": 0.029244444444444444,
+        "target_block_forward": 11.218444444444446,
+        "target_block_full_attn_layers": 2.309111111111111,
+        "target_block_hidden_readback": 0.005644444444444444,
+        "target_block_layer_total": 8.918788888888889,
+        "target_block_linear_attn_layers": 6.609688888888889,
+        "target_block_lm_head_sample": 1.0352444444444444,
+        "target_block_output_norm_hidden": 0.12114444444444444,
+        "target_block_replay_or_commit": 0.15309999999999999,
+        "target_block_setup": 1.083222222222222,
+        "target_block_verify_total": 11.376955555555556
+      },
+      "stage_timing_per_cycle_ms": {
+        "accept_policy_and_seed": 0.006600000000000001,
+        "draft_device_chain_drain": 6.8662,
+        "draft_device_chain_ensure_embed_table": 0.0009333333333333333,
+        "draft_device_topk_gather": 0.0006333333333333333,
+        "draft_initial": 7.4118666666666675,
+        "draft_mtp_layer_forward": 0.37233333333333335,
+        "draft_prepare_inputs": 0.07966666666666668,
+        "draft_seed_upload": 0.04850000000000001,
+        "draft_topk_d2h": 0.017133333333333334,
+        "draft_topk_readback": 6.885833333333334,
+        "mtp_context_replay_append": 0.0198,
+        "mtp_device_kv_commit": 0.9310666666666666,
+        "target_block_acceptance_accounting": 0.006200000000000001,
+        "target_block_cursor_update": 0.006333333333333334,
+        "target_block_embedding": 0.08773333333333333,
+        "target_block_forward": 33.65533333333334,
+        "target_block_full_attn_layers": 6.927333333333333,
+        "target_block_hidden_readback": 0.01693333333333333,
+        "target_block_layer_total": 26.756366666666665,
+        "target_block_linear_attn_layers": 19.829066666666666,
+        "target_block_lm_head_sample": 3.1057333333333332,
+        "target_block_output_norm_hidden": 0.36343333333333333,
+        "target_block_replay_or_commit": 0.4593,
+        "target_block_setup": 3.2496666666666663,
+        "target_block_verify_total": 34.13086666666667
+      },
+      "cycle_histograms": {
+        "generated_draft_tokens": {
+          "2": 3
+        },
+        "accepted_draft_tokens": {
+          "2": 3
+        },
+        "visible_output_tokens": {
+          "3": 3
+        },
+        "target_verify_layer_passes": {
+          "1": 3
+        },
+        "target_verify_rows_evaluated": {
+          "3": 3
+        },
+        "target_verify_block_rows": {
+          "3": 3
+        },
+        "target_verify_replay_rows": {
+          "0": 3
+        },
+        "target_verify_direct_commit_rows": {
+          "1": 3
+        },
+        "target_verify_discarded_rows": {
+          "0": 3
+        },
+        "target_verify_rows_minus_visible_output": {
+          "0": 3
+        }
+      },
+      "vs_ar_ratio": 1.2861
+    }
+  },
+  "verdict": {
+    "ar_tok_s": 54.92300863578566,
+    "best_mtp_budget": "b2",
+    "best_mtp_vs_ar_ratio": 1.2861,
+    "mtp_beats_ar": true
+  },
+  "child_artifacts": {
+    "true_ar": "/tmp/hipengine-ar-mtp-suite-smoke-1782914300/true-ar-baseline.json",
+    "mtp_category": "/tmp/hipengine-ar-mtp-suite-smoke-1782914300/mtp-category.json"
+  },
+  "command": "python3 scripts/gguf_ar_mtp_suite.py --scope smoke --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-01-ar-mtp-llama-compat-denseq8all-x8top1-sharedq8-control-smoke.json"
+}

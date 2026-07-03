@@ -1,0 +1,427 @@
+{
+  "schema": "hipengine.gguf_mtp_verifier_rocprof.v1",
+  "date": "2026-07-01",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Current GGUF MTP target verifier host/GPU split.",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "mode": "block-verify",
+  "block_rows": 3,
+  "block_verify_mode": "bulk",
+  "block_wmma_prefill": false,
+  "direct_state_commit": true,
+  "return_logits": false,
+  "verify_dp4a": true,
+  "verify_dense_q8_dp4a": false,
+  "verify_dense_q8_dp4a_all": true,
+  "verify_dense_q8_dp4a_shared": false,
+  "verify_dense_q8_dp4a_f32": true,
+  "selected_down_x8_repack": "q6",
+  "selected_gate_up_x8": false,
+  "q8_t16_pair_rowtile": false,
+  "q8_t16_rowtile_all": false,
+  "steps": 4,
+  "warmup": 1,
+  "prompt_ids": [
+    760,
+    4087,
+    369,
+    220,
+    16,
+    17,
+    18,
+    19
+  ],
+  "marker_prefix": "gguf_mtp_verify_block_",
+  "command": "python3 scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --verify-dp4a --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --record-stage-timings --steps 4 --warmup 1 --require-cached --out benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all-x8top1-f32ssm.json",
+  "rocprof_command": "/home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/hipengine-gguf-mtp-verifier-rocprof/trace -- /home/lhl/miniforge3/envs/therock/bin/python3 /home/lhl/hipEngine/scripts/gguf_mtp_verifier_rocprof.py --child --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt-ids 760,4087,369,220,16,17,18,19 --steps 4 --warmup 1 --max-seq 512 --mode block-verify --block-rows 3 --block-verify-mode bulk --compiler-version-file /tmp/hipengine-hipcc-version.txt --child-json /tmp/hipengine-gguf-mtp-verifier-rocprof/child.json --no-return-logits --direct-state-commit --verify-dp4a --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --selected-down-x8-repack q6 --record-stage-timings --require-cached",
+  "raw_root": "/tmp/hipengine-gguf-mtp-verifier-rocprof",
+  "kernel_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof/trace/gfx1151/3747596_kernel_trace.csv",
+  "marker_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof/trace/gfx1151/3747596_marker_api_trace.csv",
+  "child": {
+    "schema": "hipengine.gguf_mtp_verifier_rocprof.child.v1",
+    "mode": "block-verify",
+    "steps": 4,
+    "warmup": 1,
+    "return_logits": false,
+    "block_rows": 3,
+    "block_verify_mode": "bulk",
+    "block_wmma_prefill": false,
+    "direct_state_commit": true,
+    "verify_dp4a": true,
+    "verify_dense_q8_dp4a": false,
+    "verify_dense_q8_dp4a_all": true,
+    "verify_dense_q8_dp4a_shared": false,
+    "verify_dense_q8_dp4a_f32": true,
+    "selected_down_x8_repack": "q6",
+    "selected_gate_up_x8": false,
+    "q8_t16_pair_rowtile": false,
+    "q8_t16_rowtile_all": false,
+    "host_ms": [
+      30.90712404809892,
+      30.968399019911885,
+      30.954884132370353,
+      30.914397910237312
+    ],
+    "avg_host_ms": 30.936201277654618,
+    "token_ids": [
+      20,
+      20,
+      20,
+      20
+    ],
+    "stage_timings_ms": [
+      {
+        "target_block_setup": 0.08813501335680485,
+        "target_block_embedding": 0.11304300278425217,
+        "target_block_linear_attn_layers": 20.24654159322381,
+        "target_block_layer_total": 26.871676789596677,
+        "target_block_full_attn_layers": 6.625135196372867,
+        "target_block_output_norm_hidden": 0.2379859797656536,
+        "target_block_lm_head_sample": 2.867972943931818,
+        "target_block_hidden_readback": 0.014818040654063225,
+        "target_block_cursor_update": 0.005420064553618431
+      },
+      {
+        "target_block_setup": 0.07856707088649273,
+        "target_block_embedding": 0.07905904203653336,
+        "target_block_linear_attn_layers": 20.08939953520894,
+        "target_block_layer_total": 27.100780280306935,
+        "target_block_full_attn_layers": 7.011380745097995,
+        "target_block_output_norm_hidden": 0.2323260996490717,
+        "target_block_lm_head_sample": 2.7704702224582434,
+        "target_block_hidden_readback": 0.015099067240953445,
+        "target_block_cursor_update": 0.005109934136271477
+      },
+      {
+        "target_block_setup": 0.030177179723978043,
+        "target_block_embedding": 0.060584163293242455,
+        "target_block_linear_attn_layers": 20.246607717126608,
+        "target_block_layer_total": 27.04679174348712,
+        "target_block_full_attn_layers": 6.800184026360512,
+        "target_block_output_norm_hidden": 0.27353293262422085,
+        "target_block_lm_head_sample": 2.8388281352818012,
+        "target_block_hidden_readback": 0.01563900150358677,
+        "target_block_cursor_update": 0.005270121619105339
+      },
+      {
+        "target_block_setup": 0.030657043680548668,
+        "target_block_embedding": 0.05958089604973793,
+        "target_block_linear_attn_layers": 20.272274501621723,
+        "target_block_layer_total": 27.07501407712698,
+        "target_block_full_attn_layers": 6.802739575505257,
+        "target_block_output_norm_hidden": 0.19477494060993195,
+        "target_block_lm_head_sample": 2.781250048428774,
+        "target_block_hidden_readback": 0.017593149095773697,
+        "target_block_cursor_update": 0.00702287070453167
+      }
+    ],
+    "stage_timing_totals_ms": {
+      "target_block_cursor_update": 0.022822991013526917,
+      "target_block_embedding": 0.3122671041637659,
+      "target_block_full_attn_layers": 27.23943954333663,
+      "target_block_hidden_readback": 0.06314925849437714,
+      "target_block_layer_total": 108.09426289051771,
+      "target_block_linear_attn_layers": 80.85482334718108,
+      "target_block_lm_head_sample": 11.258521350100636,
+      "target_block_output_norm_hidden": 0.9386199526488781,
+      "target_block_setup": 0.2275363076478243
+    }
+  },
+  "summary": {
+    "steps": 4,
+    "kernel_calls": 4276,
+    "kernel_calls_per_step": 1069.0,
+    "total_host_ms": 123.74480511061847,
+    "avg_host_ms": 30.936201277654618,
+    "total_kernel_ms": 91.525484,
+    "avg_kernel_ms": 22.881371,
+    "kernel_time_share_of_host_wall": 0.739630919602509,
+    "host_residual_ms_per_step": 8.054830277654617,
+    "buckets": [
+      {
+        "name": "dense_q8_0_gemv",
+        "calls": 640,
+        "total_ms": 33.27690100000004,
+        "pct_kernel": 36.35807159457363,
+        "ms_per_step": 8.31922525000001,
+        "us_per_call": 51.995157812500054
+      },
+      {
+        "name": "moe_selected_gemv",
+        "calls": 308,
+        "total_ms": 26.58982699999998,
+        "pct_kernel": 29.05182888735117,
+        "ms_per_step": 6.647456749999995,
+        "us_per_call": 86.33060714285708
+      },
+      {
+        "name": "lm_head",
+        "calls": 12,
+        "total_ms": 10.733315999999999,
+        "pct_kernel": 11.727133833020755,
+        "ms_per_step": 2.6833289999999996,
+        "us_per_call": 894.4429999999999
+      },
+      {
+        "name": "gdn_linear_attn",
+        "calls": 240,
+        "total_ms": 6.661860000000003,
+        "pct_kernel": 7.278694095734038,
+        "ms_per_step": 1.6654650000000006,
+        "us_per_call": 27.75775000000001
+      },
+      {
+        "name": "other",
+        "calls": 948,
+        "total_ms": 4.863930999999996,
+        "pct_kernel": 5.3142914819221225,
+        "ms_per_step": 1.215982749999999,
+        "us_per_call": 5.1307289029535825
+      },
+      {
+        "name": "moe_router",
+        "calls": 480,
+        "total_ms": 4.196861999999996,
+        "pct_kernel": 4.585457313724771,
+        "ms_per_step": 1.049215499999999,
+        "us_per_call": 8.74346249999999
+      },
+      {
+        "name": "rmsnorm_rope",
+        "calls": 368,
+        "total_ms": 2.229478999999999,
+        "pct_kernel": 2.435910636648476,
+        "ms_per_step": 0.5573697499999998,
+        "us_per_call": 6.058366847826084
+      },
+      {
+        "name": "memcpy_fill",
+        "calls": 676,
+        "total_ms": 1.2238199999999995,
+        "pct_kernel": 1.337135786137989,
+        "ms_per_step": 0.30595499999999987,
+        "us_per_call": 1.8103846153846146
+      },
+      {
+        "name": "moe_combine_silu",
+        "calls": 480,
+        "total_ms": 1.0655520000000003,
+        "pct_kernel": 1.1642134555661023,
+        "ms_per_step": 0.26638800000000007,
+        "us_per_call": 2.219900000000001
+      },
+      {
+        "name": "attn_core",
+        "calls": 120,
+        "total_ms": 0.6712830000000002,
+        "pct_kernel": 0.7334383503505976,
+        "ms_per_step": 0.16782075000000005,
+        "us_per_call": 5.594025000000001
+      },
+      {
+        "name": "embedding",
+        "calls": 4,
+        "total_ms": 0.012653,
+        "pct_kernel": 0.01382456497034203,
+        "ms_per_step": 0.00316325,
+        "us_per_call": 3.1632499999999997
+      }
+    ],
+    "top_kernels": [
+      {
+        "name": "q8_0_dp4a_dual_split_rowtile_gemv",
+        "calls": 120,
+        "total_ms": 16.050333,
+        "pct_kernel": 17.536463396358545,
+        "ms_per_step": 4.01258325,
+        "us_per_call": 133.75277499999999
+      },
+      {
+        "name": "q4_k_t16_selected_dual_q8_1_dp4a_direct_gemv",
+        "calls": 160,
+        "total_ms": 16.040275,
+        "pct_kernel": 17.5254741072989,
+        "ms_per_step": 4.01006875,
+        "us_per_call": 100.25171875000001
+      },
+      {
+        "name": "q6_k_t16_gemv_rowtile",
+        "calls": 4,
+        "total_ms": 10.627690000000001,
+        "pct_kernel": 11.611727723832633,
+        "ms_per_step": 2.6569225000000003,
+        "us_per_call": 2656.9225
+      },
+      {
+        "name": "qk_t16_selected_q8_1_dp4a_direct_gemv",
+        "calls": 148,
+        "total_ms": 10.549551999999995,
+        "pct_kernel": 11.52635478005229,
+        "ms_per_step": 2.6373879999999987,
+        "us_per_call": 71.28075675675672
+      },
+      {
+        "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+        "calls": 120,
+        "total_ms": 6.003051,
+        "pct_kernel": 6.558884736408495,
+        "ms_per_step": 1.50076275,
+        "us_per_call": 50.025425000000006
+      },
+      {
+        "name": "q8_0_dp4a_rowtile_gemv",
+        "calls": 120,
+        "total_ms": 5.670968999999998,
+        "pct_kernel": 6.196054642005496,
+        "ms_per_step": 1.4177422499999994,
+        "us_per_call": 47.25807499999998
+      },
+      {
+        "name": "q8_0_t16_gemv",
+        "calls": 200,
+        "total_ms": 4.631838,
+        "pct_kernel": 5.060708556318588,
+        "ms_per_step": 1.1579595,
+        "us_per_call": 23.15919
+      },
+      {
+        "name": "q8_0_dp4a_triple_split_rowtile_gemv",
+        "calls": 40,
+        "total_ms": 4.139203999999999,
+        "pct_kernel": 4.52246065150554,
+        "ms_per_step": 1.0348009999999999,
+        "us_per_call": 103.4801
+      },
+      {
+        "name": "qwen35_router_logits",
+        "calls": 320,
+        "total_ms": 3.237975999999999,
+        "pct_kernel": 3.5377862628948225,
+        "ms_per_step": 0.8094939999999997,
+        "us_per_call": 10.118674999999996
+      },
+      {
+        "name": "q8_0_t16_dual_gemv",
+        "calls": 160,
+        "total_ms": 2.7845569999999986,
+        "pct_kernel": 3.0423843483854163,
+        "ms_per_step": 0.6961392499999997,
+        "us_per_call": 17.40348124999999
+      },
+      {
+        "name": "linear_state_pair_commit_chunked_i32",
+        "calls": 4,
+        "total_ms": 2.251684,
+        "pct_kernel": 2.460171639190676,
+        "ms_per_step": 0.562921,
+        "us_per_call": 562.921
+      },
+      {
+        "name": "__amd_rocclr_copyBuffer",
+        "calls": 676,
+        "total_ms": 1.2238199999999995,
+        "pct_kernel": 1.337135786137989,
+        "ms_per_step": 0.30595499999999987,
+        "us_per_call": 1.8103846153846146
+      },
+      {
+        "name": "gguf_add_rmsnorm_bf16_f32_weight",
+        "calls": 160,
+        "total_ms": 1.0906690000000003,
+        "pct_kernel": 1.1916560856427707,
+        "ms_per_step": 0.2726672500000001,
+        "us_per_call": 6.816681250000002
+      },
+      {
+        "name": "gguf_rmsnorm_bf16_f32_weight",
+        "calls": 164,
+        "total_ms": 0.9719610000000003,
+        "pct_kernel": 1.0619566895707433,
+        "ms_per_step": 0.24299025000000007,
+        "us_per_call": 5.926591463414636
+      },
+      {
+        "name": "qwen35_router_select",
+        "calls": 160,
+        "total_ms": 0.9588860000000002,
+        "pct_kernel": 1.0476710508299525,
+        "ms_per_step": 0.23972150000000006,
+        "us_per_call": 5.993037500000002
+      },
+      {
+        "name": "dense_gemv_bf16_f32w_bf16_out",
+        "calls": 240,
+        "total_ms": 0.8707519999999996,
+        "pct_kernel": 0.9513765586861027,
+        "ms_per_step": 0.2176879999999999,
+        "us_per_call": 3.6281333333333317
+      },
+      {
+        "name": "gguf_quantize_q8_1",
+        "calls": 600,
+        "total_ms": 0.8153840000000008,
+        "pct_kernel": 0.8908819318562694,
+        "ms_per_step": 0.2038460000000002,
+        "us_per_call": 1.3589733333333347
+      },
+      {
+        "name": "gguf_x8_selected_q8_1_dp4a_gemv",
+        "calls": 12,
+        "total_ms": 0.7513199999999999,
+        "pct_kernel": 0.8208861260979509,
+        "ms_per_step": 0.18782999999999997,
+        "us_per_call": 62.609999999999985
+      },
+      {
+        "name": "qwen35_linear_attn_chain_conv_decode_lowp_tloop",
+        "calls": 120,
+        "total_ms": 0.6588089999999999,
+        "pct_kernel": 0.7198093593255402,
+        "ms_per_step": 0.16470224999999997,
+        "us_per_call": 5.490074999999999
+      },
+      {
+        "name": "weighted_sum_shared_gate_combine_residual_batch_out",
+        "calls": 160,
+        "total_ms": 0.548232,
+        "pct_kernel": 0.5989938277736943,
+        "ms_per_step": 0.137058,
+        "us_per_call": 3.4264500000000004
+      },
+      {
+        "name": "qwen35_paged_full_attn_decode_context_tensor_batch",
+        "calls": 40,
+        "total_ms": 0.49837599999999993,
+        "pct_kernel": 0.54452156734839,
+        "ms_per_step": 0.12459399999999998,
+        "us_per_call": 12.459399999999999
+      },
+      {
+        "name": "silu_mul_separate_out",
+        "calls": 160,
+        "total_ms": 0.2614049999999999,
+        "pct_kernel": 0.2856089785878651,
+        "ms_per_step": 0.06535124999999997,
+        "us_per_call": 1.633781249999999
+      },
+      {
+        "name": "silu_mul_dual_out",
+        "calls": 160,
+        "total_ms": 0.25591499999999995,
+        "pct_kernel": 0.27961064920454276,
+        "ms_per_step": 0.06397874999999999,
+        "us_per_call": 1.5994687499999996
+      },
+      {
+        "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight",
+        "calls": 40,
+        "total_ms": 0.151512,
+        "pct_kernel": 0.16554077987721977,
+        "ms_per_step": 0.037878,
+        "us_per_call": 3.7878
+      }
+    ]
+  }
+}

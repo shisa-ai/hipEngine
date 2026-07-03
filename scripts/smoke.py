@@ -3591,7 +3591,6 @@ def qwen35_linear_attn_prefill_hip_smoke(
         head_v_dim: int,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         tokens = conv_out_src.shape[0]
-        repeat = num_v_heads // num_k_heads
         key_dim = num_k_heads * head_k_dim
         query_out = np.empty((tokens, num_v_heads, head_k_dim), dtype=np.float32)
         key_out = np.empty_like(query_out)
@@ -3602,7 +3601,7 @@ def qwen35_linear_attn_prefill_hip_smoke(
         b_f32 = lowp_to_float32(b_bits)
         for token in range(tokens):
             for v_head in range(num_v_heads):
-                k_head = v_head // repeat
+                k_head = v_head % num_k_heads
                 q = conv_out_src[token, k_head * head_k_dim : (k_head + 1) * head_k_dim].astype(np.float32)
                 k = conv_out_src[
                     token,
@@ -4152,7 +4151,7 @@ def qwen35_linear_attn_gdn_hip_smoke(
     a_f32 = _bf16_bits_to_float32(a)
     b_f32 = _bf16_bits_to_float32(b)
     for v_head in range(num_v_heads):
-        k_head = v_head // (num_v_heads // num_k_heads)
+        k_head = v_head % num_k_heads
         q_base = k_head * head_k_dim
         k_base = key_dim + q_base
         q = conv_out[q_base : q_base + head_k_dim].astype(np.float32)
