@@ -1,0 +1,224 @@
+{
+  "schema": 1,
+  "kind": "mtp_acceptance_status_report",
+  "date": "2026-06-20",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "headline": {
+    "summary": "hipEngine MTP acceptance is recorded but still behind llama.cpp: the broad gfx1151 B1 row is exact yet slower than AR and far below llama.cpp B4 accepted/output; native GGUF B2 remains parity-blocked.",
+    "current_status": "behind_llamacpp_and_candidate_set_parity_incomplete",
+    "hipengine_b1_accepted_per_output": 0.3600970226539931,
+    "llamacpp_hip_b4_accepted_per_output": 0.7430555555555556,
+    "llamacpp_vulkan_b4_accepted_per_output": 0.7465277777777778,
+    "hipengine_b1_decode_tok_s": 59.559994007626024,
+    "llamacpp_hip_b4_mean_tps": 91.11111111111111,
+    "llamacpp_vulkan_b4_mean_tps": 108.96333333333334,
+    "native_gguf_b2_sweep_accept_per_draft": 0.1,
+    "native_gguf_b2_sweep_accepted_per_output": 0.16666666666666666,
+    "native_gguf_b2_mean_warm_speedup_vs_ar": 1.0191,
+    "native_gguf_b2_mean_cold_speedup_vs_ar": 0.775
+  },
+  "denominator_notes": {
+    "accept_per_draft": "accepted draft tokens / proposed draft tokens",
+    "accepted_per_output": "accepted draft tokens / visible output tokens",
+    "llamacpp_accept_rate": "llama.cpp accepted drafts / proposed drafts",
+    "decode_tok_s": "prompt-mean tok/s unless field name says wall_tps"
+  },
+  "current_broad_comparison": {
+    "source_artifact": "benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json",
+    "workload": "gfx1151 D32, 9 prompts, Qwen3.6-35B-A3B UD-Q4_K_M MTP GGUF",
+    "hipengine_paro_mtp_b1": {
+      "artifact": "/home/lhl/hipEngine/benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-hipengine-paro-mtp-b1-d32-1run.json",
+      "budget": "1",
+      "prompts": 9,
+      "exact_vs_ar": true,
+      "accepted_per_output": 0.3600970226539931,
+      "accepted_tokens_per_cycle": 0.5627369076285486,
+      "visible_tokens_per_cycle": 1.5627369076285484,
+      "mtp_decode_tok_s_prompt_mean": 59.559994007626024,
+      "ar_decode_tok_s_prompt_mean": 65.37479551743854,
+      "actual_decode_speedup_vs_ar_prompt_mean": 0.9115820665272207,
+      "actual_decode_speedup_vs_ar_total_time": 0.9040705392371463,
+      "cycle_wall_ms_per_cycle": 25.959319953200403,
+      "verify_ms_per_cycle": 22.156580075252148,
+      "proposal_update_ms_per_cycle": 3.7784076029620812,
+      "decode_tokens": 32
+    },
+    "llamacpp_hip_b4": {
+      "source_artifact": "/tmp/hipengine-mtp-gfx1151-runs/20260615-060801/llamacpp-hip-ud-q4km-mtp-d32/summary.json",
+      "mode": "b4",
+      "total_predicted": 288,
+      "mean_tps": 91.11111111111111,
+      "median_tps": 91.1,
+      "wall_tps": 52.46857351065768,
+      "base_mean_tps": 50.900000000000006,
+      "base_wall_tps": 37.14212019602786,
+      "total_draft": 234,
+      "total_accepted": 214,
+      "accept_rate": 0.9145299145299145,
+      "accepted_per_output": 0.7430555555555556,
+      "draft_per_output": 0.8125,
+      "speedup_mean_vs_base": 1.7900021829294912,
+      "speedup_wall_vs_base": 1.412643468755693
+    },
+    "llamacpp_vulkan_b4": {
+      "source_artifact": "/tmp/hipengine-mtp-gfx1151-runs/20260615-060801/llamacpp-vulkan-ud-q4km-mtp-d32/summary.json",
+      "mode": "b4",
+      "total_predicted": 288,
+      "mean_tps": 108.96333333333334,
+      "median_tps": 107.12,
+      "wall_tps": 57.69230769230769,
+      "base_mean_tps": 62.8688888888889,
+      "base_wall_tps": 42.35294117647059,
+      "total_draft": 233,
+      "total_accepted": 215,
+      "accept_rate": 0.9227467811158798,
+      "accepted_per_output": 0.7465277777777778,
+      "draft_per_output": 0.8090277777777778,
+      "speedup_mean_vs_base": 1.7331836979958288,
+      "speedup_wall_vs_base": 1.3621794871794872
+    },
+    "gaps_vs_llamacpp_b4": {
+      "hip": {
+        "accepted_per_output_abs_gap": -0.38295853290156245,
+        "accepted_per_output_ratio": 0.4846165538521029,
+        "decode_tok_s_abs_gap": -31.55111710348509,
+        "decode_tok_s_ratio": 0.6537072513032124,
+        "classification": "behind_llamacpp_b4"
+      },
+      "vulkan": {
+        "accepted_per_output_abs_gap": -0.38643075512378466,
+        "accepted_per_output_ratio": 0.4823625233690699,
+        "decode_tok_s_abs_gap": -49.403339325707314,
+        "decode_tok_s_ratio": 0.5466058368958306,
+        "classification": "behind_llamacpp_b4"
+      }
+    }
+  },
+  "native_gguf_diagnostics": {
+    "status": "candidate_set_parity_incomplete",
+    "b2_three_prompt_sweep": {
+      "source_artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json",
+      "total_accepted_draft_tokens": 3,
+      "total_generated_draft_tokens": 30,
+      "accept_per_draft": 0.1,
+      "accepted_per_output": 0.16666666666666666,
+      "mean_warm_speedup_vs_ar_visible": 1.0191,
+      "mean_cold_speedup_vs_ar_visible": 0.775,
+      "warm_positive_prompts": 2,
+      "depth2_accept_prompt_count": 1,
+      "best_warm_prompt": {
+        "slug": "count",
+        "warm_speedup_vs_ar_visible": 1.2347,
+        "warm_accept_per_draft": 0.25,
+        "accepted_per_output": 0.2857
+      }
+    },
+    "b2_count_prompt": {
+      "source_artifact": "benchmarks/results/mtp-bench-1781844300-b2-count-prompt-visible-output.json",
+      "accept_per_draft": 0.2,
+      "accepted_per_output": 0.2857,
+      "tokens_per_sec": 14.67,
+      "speedup_vs_ar_visible": 0.9093,
+      "total_accepted": 2,
+      "total_drafts": 10,
+      "warm_excluding_cycle0": {
+        "accept_per_draft": 0.25,
+        "accepted_per_output": 0.3333,
+        "tokens_per_sec": 19.2,
+        "speedup_vs_ar_visible": 1.2396,
+        "total_accepted": 2,
+        "total_drafts": 8
+      }
+    },
+    "b2_minimal_prompt": {
+      "source_artifact": "benchmarks/results/mtp-bench-1781843600-b2-minimal-visible-output.json",
+      "accept_per_draft": 0.1,
+      "accepted_per_output": 0.1667,
+      "tokens_per_sec": 13.06,
+      "speedup_vs_ar_visible": 0.7847,
+      "total_accepted": 1,
+      "total_drafts": 10,
+      "warm_excluding_cycle0": {
+        "accept_per_draft": 0.125,
+        "accepted_per_output": 0.2,
+        "tokens_per_sec": 16.41,
+        "speedup_vs_ar_visible": 1.0299,
+        "total_accepted": 1,
+        "total_drafts": 8
+      }
+    },
+    "b1_visible_output": {
+      "source_artifact": "benchmarks/results/mtp-bench-1781842600-b1-cycles20-visible-output.json",
+      "accept_per_draft": 0.15,
+      "accepted_per_output": 0.1304,
+      "tokens_per_sec": 17.46,
+      "speedup_vs_ar_visible": 0.9372,
+      "total_accepted": 3,
+      "total_drafts": 20,
+      "warm_excluding_cycle0": {
+        "accept_per_draft": 0.1579,
+        "accepted_per_output": 0.1364,
+        "tokens_per_sec": 19.2,
+        "speedup_vs_ar_visible": 1.0213,
+        "total_accepted": 3,
+        "total_drafts": 19
+      }
+    },
+    "greeting_blocker": {
+      "source_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-native-vs-llamacpp-topk-comparison.json",
+      "finding": "llama.cpp trace is not directly comparable to native diagnostic yet: llama-server chat template/reasoning path emits reasoning_content tokens (e.g. Process/:/1) and reports 3/3 accepted drafts, while native target/draft token stream for the same user text uses different target ids (20 then 220) with 0 accepts. Next parity step is to align chat template/reasoning mode/prompt formatting before judging native MTP logits.",
+      "native_artifact": "benchmarks/results/mtp-bench-1781845600-b2-greeting-topk-diagnostic.json",
+      "llamacpp_trace": "benchmarks/results/llamacpp-mtp-greeting-b2-draft-trace.json",
+      "llamacpp_draft_acceptance": 1.0,
+      "llamacpp_draft_n_accepted": 3,
+      "llamacpp_response_reasoning_content": "Thinking Process:\n\n1."
+    }
+  },
+  "hipengine_budget_diagnostics": {
+    "source_artifact": "benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-summary.json",
+    "exact_b1_decode_batched": {
+      "mtp_decode_tok_s_prompt_mean": 59.717547309059746,
+      "ar_decode_tok_s_prompt_mean": 65.21285460626999,
+      "speedup_prompt_mean": 0.9161775614592931,
+      "accepted_total": 99,
+      "accepted_per_output_aggregate": 0.34375,
+      "accept_per_active_budget_aggregate": 0.5439560439560439,
+      "accepted_tokens_per_cycle_aggregate": 0.5439560439560439
+    },
+    "exact_b3_decode_batched": {
+      "mtp_decode_tok_s_prompt_mean": 47.64411727909955,
+      "ar_decode_tok_s_prompt_mean": 65.29188605156168,
+      "speedup_prompt_mean": 0.7296998287012,
+      "accepted_total": 131,
+      "accepted_per_output_aggregate": 0.4548611111111111,
+      "accept_per_active_budget_aggregate": 0.29772727272727273,
+      "accepted_tokens_per_cycle_aggregate": 0.8675496688741722
+    },
+    "exact_b1_c1_loop": {
+      "mtp_decode_tok_s_prompt_mean": 57.59283284768742,
+      "ar_decode_tok_s_prompt_mean": 65.24549280984911,
+      "speedup_prompt_mean": 0.8830982339718547,
+      "accepted_total": 99,
+      "accepted_per_output_aggregate": 0.34375,
+      "accept_per_active_budget_aggregate": 0.5439560439560439,
+      "accepted_tokens_per_cycle_aggregate": 0.5439560439560439
+    }
+  },
+  "sources": {
+    "compare_summary": "benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json",
+    "diagnostics_summary": "benchmarks/results/2026-06-15-gfx1151-mtp-diagnostics-20260615-081020-summary.json",
+    "llamacpp_hip_summary": "/tmp/hipengine-mtp-gfx1151-runs/20260615-060801/llamacpp-hip-ud-q4km-mtp-d32/summary.json",
+    "llamacpp_vulkan_summary": "/tmp/hipengine-mtp-gfx1151-runs/20260615-060801/llamacpp-vulkan-ud-q4km-mtp-d32/summary.json",
+    "b2_sweep": "benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json",
+    "b2_count": "benchmarks/results/mtp-bench-1781844300-b2-count-prompt-visible-output.json",
+    "b2_minimal": "benchmarks/results/mtp-bench-1781843600-b2-minimal-visible-output.json",
+    "b1_visible": "benchmarks/results/mtp-bench-1781842600-b1-cycles20-visible-output.json",
+    "greeting_comparison": "benchmarks/results/mtp-bench-1781845600-b2-greeting-native-vs-llamacpp-topk-comparison.json"
+  },
+  "next_actions": [
+    "Continue correctness-first GGUF MTP parity bisection through layer-17 MoE.",
+    "Do not promote acceptance-rate claims until native GGUF candidate sets match llama.cpp.",
+    "Use accepted_per_output for hipEngine-vs-llama.cpp status comparisons."
+  ]
+}

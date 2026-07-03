@@ -1,0 +1,59 @@
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -80,2 +80,13 @@
+             (std::strncmp(name, "attn_norm_", 10) == 0 ||
++             std::strncmp(name, "linear_attn_qkv_mixed_", 22) == 0 ||
++             std::strncmp(name, "z_", 2) == 0 ||
++             std::strncmp(name, "beta_", 5) == 0 ||
++             std::strncmp(name, "alpha_", 6) == 0 ||
++             std::strncmp(name, "a_softplus_", 11) == 0 ||
++             std::strncmp(name, "gate_", 5) == 0 ||
++             std::strncmp(name, "conv_output_raw_", 16) == 0 ||
++             std::strncmp(name, "conv_output_silu_", 17) == 0 ||
++             std::strncmp(name, "q_conv_", 7) == 0 ||
++             std::strncmp(name, "k_conv_", 7) == 0 ||
++             std::strncmp(name, "v_conv_", 7) == 0 ||
+              std::strncmp(name, "attn_pregate_", 13) == 0 ||
+@@ -1014,2 +1025,13 @@
+          std::strncmp(name, "attn_norm_", 10) == 0 ||
++         std::strncmp(name, "linear_attn_qkv_mixed_", 22) == 0 ||
++         std::strncmp(name, "z_", 2) == 0 ||
++         std::strncmp(name, "beta_", 5) == 0 ||
++         std::strncmp(name, "alpha_", 6) == 0 ||
++         std::strncmp(name, "a_softplus_", 11) == 0 ||
++         std::strncmp(name, "gate_", 5) == 0 ||
++         std::strncmp(name, "conv_output_raw_", 16) == 0 ||
++         std::strncmp(name, "conv_output_silu_", 17) == 0 ||
++         std::strncmp(name, "q_conv_", 7) == 0 ||
++         std::strncmp(name, "k_conv_", 7) == 0 ||
++         std::strncmp(name, "v_conv_", 7) == 0 ||
+          std::strncmp(name, "attn_pregate_", 13) == 0 ||
+@@ -1240,2 +1262,17 @@
+             (std::strcmp(name, "attn_norm") == 0 ||
++             std::strcmp(name, "linear_attn_qkv_mixed") == 0 ||
++             std::strcmp(name, "z") == 0 ||
++             std::strcmp(name, "beta") == 0 ||
++             std::strcmp(name, "beta_sigmoid") == 0 ||
++             std::strcmp(name, "alpha") == 0 ||
++             std::strcmp(name, "a_softplus") == 0 ||
++             std::strcmp(name, "gate") == 0 ||
++             std::strcmp(name, "conv_output_raw") == 0 ||
++             std::strcmp(name, "conv_output_silu") == 0 ||
++             std::strcmp(name, "q_conv") == 0 ||
++             std::strcmp(name, "k_conv") == 0 ||
++             std::strcmp(name, "v_conv") == 0 ||
++             std::strcmp(name, "q_conv_predelta") == 0 ||
++             std::strcmp(name, "k_conv_predelta") == 0 ||
++             std::strcmp(name, "v_conv_predelta") == 0 ||
+              std::strcmp(name, "attn_pregate") == 0 ||
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -204,2 +204,8 @@
+             label == "mtp_Vcur") {
++        return 2;
++    }
++    if (label.rfind("beta_", 0) == 0 ||
++            label.rfind("q_conv_", 0) == 0 ||
++            label.rfind("k_conv_", 0) == 0 ||
++            label.rfind("v_conv_", 0) == 0) {
+         return 2;

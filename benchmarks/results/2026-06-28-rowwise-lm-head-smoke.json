@@ -1,0 +1,88 @@
+{
+  "category": [],
+  "decision": {
+    "best_e2e_candidate": {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-rowwise-lm-head-smoke/e2e/2026-06-28-rowwise-lm-head-smoke-default-b3-c1.json",
+      "candidate": "default",
+      "tokens_per_sec": 47.71
+    },
+    "promote_candidate": null,
+    "promotion_blocker": "A candidate must beat default on same-protocol E2E and clear full-suite validation before promotion."
+  },
+  "e2e": [
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-rowwise-lm-head-smoke/e2e/2026-06-28-rowwise-lm-head-smoke-default-b3-c1.json",
+      "candidate": "default",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt 'Write a Python function that implements merge sort:' --prompt-reasoning off --cycles 1 --draft-n-max 3 --root-topk-accept 1 --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-rowwise-lm-head-smoke/e2e/2026-06-28-rowwise-lm-head-smoke-default-b3-c1.json --mtp-context-replay --mtp-device-kv-cache --target-block-verify",
+        "env": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-rowwise-lm-head-smoke/logs/e2e-default.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 49.292633841978386
+      },
+      "description": "Production T16 decode-repack route.",
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "/home/lhl/hipEngine"
+      },
+      "extra_args": [],
+      "metrics": {
+        "ar_baseline_tokens_per_sec": 58.26,
+        "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-rowwise-lm-head-smoke/e2e/2026-06-28-rowwise-lm-head-smoke-default-b3-c1.json",
+        "avg_ar_decode_ms": 68.66,
+        "avg_cycle_ms": 83.84,
+        "avg_mtp_draft_ms": 15.18,
+        "speedup_vs_ar_visible": 0.8189,
+        "status": "ok",
+        "tokens_per_sec": 47.71,
+        "total_accepted": 3,
+        "total_drafts": 3,
+        "total_output_tokens": 4,
+        "warm_avg_ar_decode_ms": null,
+        "warm_avg_cycle_ms": null,
+        "warm_avg_mtp_draft_ms": null,
+        "warm_tokens_per_sec": null
+      }
+    }
+  ],
+  "generated_at": "2026-06-27T16:46:27.473140+00:00",
+  "host": "gfx1151",
+  "notes": [
+    "Diagnostic workbench only; not a retained speed claim.",
+    "E2E commands use the B3/C5 llama.cpp-parity smoke shape with context replay, device MTP KV, block verify, and 32k draft vocab cap.",
+    "Per-piece commands measure selected-MoE q8_1+sudot4 slices outside the production runtime."
+  ],
+  "performance_claim": false,
+  "pieces": [],
+  "protocol": {
+    "candidates": [
+      "default"
+    ],
+    "cycles": 1,
+    "draft_n_max": 3,
+    "hip_arch": "gfx1151",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "mtp_draft_vocab_cap": 32768,
+    "prompt": "Write a Python function that implements merge sort:",
+    "prompt_reasoning": "off",
+    "raw_root": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-rowwise-lm-head-smoke",
+    "root_topk_accept": 1,
+    "stages": [
+      "e2e"
+    ]
+  },
+  "repo": {
+    "git_branch": "mtp-gguf",
+    "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+    "git_tracked_dirty": true,
+    "git_untracked_count": 4,
+    "repo_root": "/home/lhl/hipEngine"
+  },
+  "rocprof": [],
+  "schema": "hipengine.gguf_mtp_parity_workbench.v1",
+  "status": "complete"
+}

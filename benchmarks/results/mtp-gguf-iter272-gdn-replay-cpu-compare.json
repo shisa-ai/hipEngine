@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_gdn_replay_cpu_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 272,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_capture": "benchmarks/results/mtp-gguf-iter271-gdn-replay-window-capture.json",
+  "source_iteration": 271,
+  "layer_id": 0,
+  "positions": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
+  ],
+  "token_ids": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "shape": {
+    "num_k_heads": 16,
+    "num_v_heads": 32,
+    "head_k_dim": 128,
+    "head_v_dim": 128,
+    "qkv_width": 8192,
+    "value_dim": 4096
+  },
+  "recurrent_out_vs_cpu": {
+    "count": 69632,
+    "max_abs_diff": 2.384185791015625e-07,
+    "rms_abs_diff": 2.4474007265240516e-09,
+    "mean_abs_diff": 4.926603569543886e-10,
+    "reference_rms": 0.03165224567055702,
+    "candidate_rms": 0.03165224939584732
+  },
+  "recurrent_bf16_vs_cpu_bf16": {
+    "count": 69632,
+    "max_abs_diff": 1.52587890625e-05,
+    "rms_abs_diff": 5.7832195921037055e-08,
+    "mean_abs_diff": 2.2332106996980627e-10,
+    "reference_rms": 0.03165755793452263,
+    "candidate_rms": 0.03165755793452263
+  },
+  "cpu_f32_vs_cpu_bf16": {
+    "count": 69632,
+    "max_abs_diff": 0.006863117218017578,
+    "rms_abs_diff": 6.0472357290564105e-05,
+    "mean_abs_diff": 5.540392976399744e-06,
+    "reference_rms": 0.03165224567055702,
+    "candidate_rms": 0.03165755793452263
+  },
+  "samples": {
+    "cpu_recurrent_out_final": [
+      -0.00048448960296809673,
+      -0.00062609399901703,
+      -0.0009937239810824394,
+      -0.0008716332959011197,
+      -0.0006116693839430809,
+      -0.0006132686394266784,
+      -0.0017723697237670422,
+      -0.0006292707985267043
+    ],
+    "device_recurrent_out_final": [
+      -0.0004844895447604358,
+      -0.0006260940572246909,
+      -0.0009937239810824394,
+      -0.0008716332959011197,
+      -0.0006116696167737246,
+      -0.0006132685812190175,
+      -0.0017723694909363985,
+      -0.0006292707403190434
+    ],
+    "cpu_recurrent_bf16_final": [
+      -0.000484466552734375,
+      -0.0006256103515625,
+      -0.0009918212890625,
+      -0.0008697509765625,
+      -0.0006103515625,
+      -0.000614166259765625,
+      -0.00177001953125,
+      -0.000629425048828125
+    ],
+    "device_recurrent_bf16_final": [
+      -0.000484466552734375,
+      -0.0006256103515625,
+      -0.0009918212890625,
+      -0.0008697509765625,
+      -0.0006103515625,
+      -0.000614166259765625,
+      -0.00177001953125,
+      -0.000629425048828125
+    ]
+  },
+  "within_tolerance": true,
+  "conclusion": "CPU GDN recurrent replay matches device recurrent_out/recurrent_bf16 over the captured prompt; recurrent max_abs=2.38419e-07, bf16 max_abs=1.52588e-05. Layer-0 attention branch is now explained through attn_out, so mismatch search should move outside this branch."
+}

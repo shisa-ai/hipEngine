@@ -1,0 +1,822 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_category_matrix",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "true_ar_comparison_available": true,
+  "objective_metrics_available": true,
+  "objective_metrics_blocker": null,
+  "objectives": {
+    "b3": {
+      "budget": "b3",
+      "true_ar_comparison_available": true,
+      "speed_claim_eligible": false,
+      "performance_claim": false,
+      "summary_artifact": {
+        "schema": 1,
+        "kind": "hipengine_gguf_mtp_category_matrix"
+      },
+      "true_ar_artifact": {
+        "schema": 1,
+        "kind": "hipengine_gguf_true_ar_category_baseline"
+      },
+      "true_ar_source": "benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json",
+      "summary_repo": {
+        "repo_root": "/home/lhl/hipEngine",
+        "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+        "git_branch": "mtp-gguf",
+        "git_tracked_dirty": true,
+        "git_untracked_count": 34
+      },
+      "true_ar_repo": {
+        "repo_root": "/home/lhl/hipEngine",
+        "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+        "git_branch": "mtp-gguf",
+        "git_tracked_dirty": true,
+        "git_untracked_count": 34
+      },
+      "summary_prompts": {
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "prompt_hashes": {
+          "code_merge_intervals": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+          "code_topological_sort": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+          "code_lru_cache": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+          "code_markdown_table": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+          "general_en_plan": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+          "general_en_explain": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+          "general_ja_plan": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+          "general_ja_explain": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+          "mixed_ja_en_translate": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+          "mixed_ja_en_review": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476"
+        },
+        "prompt_categories": {
+          "code_merge_intervals": "code",
+          "code_topological_sort": "code",
+          "code_lru_cache": "code",
+          "code_markdown_table": "code",
+          "general_en_plan": "general_en",
+          "general_en_explain": "general_en",
+          "general_ja_plan": "general_ja",
+          "general_ja_explain": "general_ja",
+          "mixed_ja_en_translate": "mixed_ja_en",
+          "mixed_ja_en_review": "mixed_ja_en"
+        },
+        "prompt_chars": {
+          "code_merge_intervals": 161,
+          "code_topological_sort": 184,
+          "code_lru_cache": 147,
+          "code_markdown_table": 214,
+          "general_en_plan": 158,
+          "general_en_explain": 158,
+          "general_ja_plan": 68,
+          "general_ja_explain": 56,
+          "mixed_ja_en_translate": 153,
+          "mixed_ja_en_review": 202
+        },
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "category_counts": {
+          "code": 4,
+          "general_en": 2,
+          "general_ja": 2,
+          "mixed_ja_en": 2
+        }
+      },
+      "summary_categories": {
+        "code": 4,
+        "general_en": 2,
+        "general_ja": 2,
+        "mixed_ja_en": 2
+      },
+      "category_metrics": {
+        "code": {
+          "accepted_per_output": 0.5833333333333334,
+          "draft_acceptance": 0.6666666666666666,
+          "decode_tok_s_weighted": 47.18882411348912,
+          "mtp_vs_true_ar_decode_ratio": 2.401339865135874,
+          "prompts": 4,
+          "total_output_tokens": 48,
+          "total_accepted": 28,
+          "total_drafts": 42,
+          "decode_ms": 1017.19
+        },
+        "general_en": {
+          "accepted_per_output": 0.0,
+          "draft_acceptance": 0.0,
+          "decode_tok_s_weighted": 49.855419284076184,
+          "mtp_vs_true_ar_decode_ratio": 2.5427330653674876,
+          "prompts": 2,
+          "total_output_tokens": 10,
+          "total_accepted": 0,
+          "total_drafts": 6,
+          "decode_ms": 200.57999999999998
+        },
+        "general_ja": {
+          "accepted_per_output": 0.0,
+          "draft_acceptance": 0.0,
+          "decode_tok_s_weighted": 49.89522003792036,
+          "mtp_vs_true_ar_decode_ratio": 2.513438141567409,
+          "prompts": 2,
+          "total_output_tokens": 10,
+          "total_accepted": 0,
+          "total_drafts": 6,
+          "decode_ms": 200.42000000000002
+        },
+        "mixed_ja_en": {
+          "accepted_per_output": 0.5238095238095238,
+          "draft_acceptance": 0.6111111111111112,
+          "decode_tok_s_weighted": 46.586951216806796,
+          "mtp_vs_true_ar_decode_ratio": 2.3775339467834606,
+          "prompts": 2,
+          "total_output_tokens": 21,
+          "total_accepted": 11,
+          "total_drafts": 18,
+          "decode_ms": 450.77
+        }
+      },
+      "true_ar_totals": {
+        "prompts": 10,
+        "total_output_tokens": 200,
+        "decode_ms": 10167.463467922062,
+        "decode_tok_s_weighted": 19.67058948684615
+      },
+      "summary_commands": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_merge_intervals.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_topological_sort.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_lru_cache.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_markdown_table.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_en_plan.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_en_explain.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt '\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_ja_plan.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt '\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_ja_explain.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n\u6765\u9031\u306e\u30ea\u30ea\u30fc\u30b9\u3067\u306f\u3001\u30ed\u30b0\u51fa\u529b\u306e\u5f62\u5f0f\u5909\u66f4\u3001\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u7121\u52b9\u5316\u30aa\u30d7\u30b7\u30e7\u30f3\u3001\u305d\u3057\u3066API\u30ec\u30b9\u30dd\u30f3\u30b9\u306e\u5f8c\u65b9\u4e92\u63db\u6027\u3092\u91cd\u70b9\u7684\u306b\u78ba\u8a8d\u3057\u305f\u3044\u3067\u3059\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/mixed_ja_en_translate.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+        "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n\u65b0\u3057\u3044\u63a8\u8ad6\u30e2\u30fc\u30c9\u3067\u306f MTP \u3092\u6709\u52b9\u306b\u3059\u308b\u3068\u751f\u6210\u901f\u5ea6\u304c\u5411\u4e0a\u3057\u307e\u3059\u3002\u305f\u3060\u3057\u3001\u9577\u3044\u30b3\u30f3\u30c6\u30ad\u30b9\u30c8\u3067\u306f KV cache \u306e\u4f7f\u7528\u91cf\u304c\u5897\u3048\u308b\u305f\u3081\u3001\u30e1\u30e2\u30ea\u76e3\u8996\u3092\u63a8\u5968\u3057\u307e\u3059\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/mixed_ja_en_review.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify"
+      ],
+      "true_ar_commands": [
+        "scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --decode-tokens 20 --warmup-decode-tokens 1 --no-graph-replay-decode --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-true-ar-eager-b3-c5/raw --output benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json"
+      ],
+      "true_ar_protocol": {
+        "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "model_normalized": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "quant": "UD-Q4_K_M GGUF",
+        "quant_normalized": "UD-Q4_K_M GGUF",
+        "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_file_normalized": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "decode_tokens": 20,
+        "warmup_decode_tokens": 1,
+        "prompt_count": 10
+      },
+      "true_ar_timing_protocol": {
+        "decode_path": "eager_step",
+        "graph_replay_decode": false,
+        "graph_steps_per_replay": 0,
+        "decode_repack": true,
+        "effective_decode_repack": true,
+        "use_gemv_decode": true,
+        "effective_use_gemv_decode": true,
+        "use_wmma_prefill": true,
+        "effective_use_wmma_prefill": true
+      },
+      "heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "train_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "general_en_plan",
+        "general_ja_plan",
+        "mixed_ja_en_translate"
+      ],
+      "full": {
+        "accepted_per_output": 0.43820224719101125,
+        "draft_acceptance": 0.5416666666666666,
+        "decode_tok_s_weighted": 47.62006677510487,
+        "mtp_vs_true_ar_decode_ratio": 2.4208764463794394,
+        "prompts": 10,
+        "decode_ms": 1868.96
+      },
+      "train": {
+        "accepted_per_output": 0.5522388059701493,
+        "draft_acceptance": 0.6491228070175439,
+        "decode_tok_s_weighted": 47.18243405022464,
+        "mtp_vs_true_ar_decode_ratio": 2.392118256469105,
+        "prompts": 6,
+        "decode_ms": 1420.02
+      },
+      "heldout": {
+        "accepted_per_output": 0.09090909090909091,
+        "draft_acceptance": 0.13333333333333333,
+        "decode_tok_s_weighted": 49.00432129015013,
+        "mtp_vs_true_ar_decode_ratio": 2.5013904760158905,
+        "prompts": 4,
+        "decode_ms": 448.94
+      },
+      "summary_totals": {
+        "prompts": 10,
+        "total_output_tokens": 89,
+        "total_accepted": 39,
+        "total_drafts": 72,
+        "decode_ms": 1868.96,
+        "decode_tok_s_weighted": 47.62006677510487,
+        "accepted_per_output": 0.43820224719101125,
+        "draft_acceptance": 0.5416666666666666,
+        "mtp_vs_true_ar_decode_ratio": 2.4208764463794394,
+        "true_ar_decode_tok_s_weighted": 19.67058948684615
+      }
+    }
+  },
+  "promotion_blocker": "true_ar_baseline is attached and mtp_vs_true_ar_decode_ratio is available, but this diagnostic category artifact is not a retained speed claim. Promotion still requires the retained benchmark protocol: full validation shape, hermetic/warm timing, and benchmark rollup evidence.",
+  "ar_baseline_contract": {
+    "required_for_speed_claims": "true_no_mtp_autoregressive_generation",
+    "current_off_kind": "verifier_derived_from_b1_target_ar",
+    "current_off_true_autoregressive_path": false
+  },
+  "true_ar_baseline": {
+    "available": true,
+    "true_autoregressive_path": true,
+    "same_prompt_suite": true,
+    "same_timing_protocol": true,
+    "source": "benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json",
+    "artifact_schema": 1,
+    "artifact_kind": "hipengine_gguf_true_ar_category_baseline",
+    "repo": {
+      "repo_root": "/home/lhl/hipEngine",
+      "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+      "git_branch": "mtp-gguf",
+      "git_tracked_dirty": true,
+      "git_untracked_count": 34
+    },
+    "commands": [
+      "scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --decode-tokens 20 --warmup-decode-tokens 1 --no-graph-replay-decode --raw-root /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-true-ar-eager-b3-c5/raw --output benchmarks/results/2026-06-28-true-ar-eager-b3-c5.json"
+    ],
+    "protocol": {
+      "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "model_normalized": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "UD-Q4_K_M GGUF",
+      "quant_normalized": "UD-Q4_K_M GGUF",
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_file_normalized": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "decode_tokens": 20,
+      "warmup_decode_tokens": 1,
+      "prompt_count": 10
+    },
+    "timing_protocol": {
+      "decode_path": "eager_step",
+      "graph_replay_decode": false,
+      "graph_steps_per_replay": 0,
+      "decode_repack": true,
+      "effective_decode_repack": true,
+      "use_gemv_decode": true,
+      "effective_use_gemv_decode": true,
+      "use_wmma_prefill": true,
+      "effective_use_wmma_prefill": true
+    },
+    "prompt_count": 10,
+    "totals": {
+      "prompts": 10,
+      "total_output_tokens": 200,
+      "decode_ms": 10167.463467922062,
+      "decode_tok_s_weighted": 19.67058948684615
+    },
+    "categories": {
+      "code": {
+        "prompts": 4,
+        "total_output_tokens": 80,
+        "decode_ms": 4071.0314956959337,
+        "decode_tok_s_weighted": 19.651039321257862
+      },
+      "general_en": {
+        "prompts": 2,
+        "total_output_tokens": 40,
+        "decode_ms": 2040.0855930056423,
+        "decode_tok_s_weighted": 19.60702047852233
+      },
+      "general_ja": {
+        "prompts": 2,
+        "total_output_tokens": 40,
+        "decode_ms": 2014.973089331761,
+        "decode_tok_s_weighted": 19.851381743894887
+      },
+      "mixed_ja_en": {
+        "prompts": 2,
+        "total_output_tokens": 40,
+        "decode_ms": 2041.3732898887247,
+        "decode_tok_s_weighted": 19.59465238333769
+      }
+    },
+    "splits": {
+      "full": {
+        "prompts": 10,
+        "total_output_tokens": 200,
+        "decode_ms": 10167.463467922062,
+        "decode_tok_s_weighted": 19.67058948684615
+      },
+      "train": {
+        "prompts": 6,
+        "total_output_tokens": 120,
+        "decode_ms": 6083.920775912702,
+        "decode_tok_s_weighted": 19.724122719529948
+      },
+      "heldout": {
+        "prompts": 4,
+        "total_output_tokens": 80,
+        "decode_ms": 4083.5426920093596,
+        "decode_tok_s_weighted": 19.590832283091665
+      }
+    }
+  },
+  "diagnostic_notes": [
+    "Native GGUF-MTP category wrapper around scripts/gguf_mtp_bench.py.",
+    "Each prompt/budget is a separate process and model load; tok/s metrics use child JSON cycle timings only, not wrapper subprocess wall time.",
+    "off/AR row is derived from B1 target-AR verifier timing and is not a true no-MTP autoregressive baseline.",
+    "MTP-vs-AR speed claims are blocked until this harness measures a true AR/no-MTP path over the same prompt suite and timing protocol.",
+    "cycles is verify-cycle count, not llama.cpp max_tokens; accepted drafts add visible output tokens.",
+    "A true no-MTP AR baseline artifact was attached; mtp_vs_true_ar_decode_ratio is available for same-protocol diagnostics, but speed_claim_eligible remains false until the retained benchmark protocol is satisfied."
+  ],
+  "timestamp": "2026-06-27T18:32:40.546855+00:00",
+  "repo": {
+    "repo_root": "/home/lhl/hipEngine",
+    "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+    "git_branch": "mtp-gguf",
+    "git_tracked_dirty": true,
+    "git_untracked_count": 34
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "cycles": 5,
+  "budgets": [
+    3
+  ],
+  "raw_root": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback",
+  "commands": [
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_merge_intervals.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_topological_sort.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_lru_cache.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/code_markdown_table.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_en_plan.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_en_explain.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt '\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_ja_plan.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt '\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/general_ja_explain.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n\u6765\u9031\u306e\u30ea\u30ea\u30fc\u30b9\u3067\u306f\u3001\u30ed\u30b0\u51fa\u529b\u306e\u5f62\u5f0f\u5909\u66f4\u3001\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u7121\u52b9\u5316\u30aa\u30d7\u30b7\u30e7\u30f3\u3001\u305d\u3057\u3066API\u30ec\u30b9\u30dd\u30f3\u30b9\u306e\u5f8c\u65b9\u4e92\u63db\u6027\u3092\u91cd\u70b9\u7684\u306b\u78ba\u8a8d\u3057\u305f\u3044\u3067\u3059\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/mixed_ja_en_translate.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 5 --prompt 'Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n\u65b0\u3057\u3044\u63a8\u8ad6\u30e2\u30fc\u30c9\u3067\u306f MTP \u3092\u6709\u52b9\u306b\u3059\u308b\u3068\u751f\u6210\u901f\u5ea6\u304c\u5411\u4e0a\u3057\u307e\u3059\u3002\u305f\u3060\u3057\u3001\u9577\u3044\u30b3\u30f3\u30c6\u30ad\u30b9\u30c8\u3067\u306f KV cache \u306e\u4f7f\u7528\u91cf\u304c\u5897\u3048\u308b\u305f\u3081\u3001\u30e1\u30e2\u30ea\u76e3\u8996\u3092\u63a8\u5968\u3057\u307e\u3059\u3002' --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-resident-serial-fallback-category-b3-c5/category/resident-serial-fallback/b3/mixed_ja_en_review.json --prompt-reasoning off --root-topk-accept 1 --mtp-context-replay --mtp-device-kv-cache --target-block-verify --mtp-draft-vocab-cap 32768 --resident-mtp-draft --adaptive-ar-fallback --no-target-block-verify"
+  ],
+  "totals": {
+    "off": {
+      "label": "off",
+      "budget": 0,
+      "prompts": 10,
+      "total_output_tokens": 89,
+      "decode_ms": 1625.32,
+      "decode_tok_s_weighted": 54.7584475672483,
+      "source": "B1 native target-AR verifier time over the same prompt rows",
+      "baseline_kind": "verifier_derived_from_b1_target_ar",
+      "true_autoregressive_path": false,
+      "mtp_vs_ar_decode_ratio": 1.0,
+      "true_ar_decode_tok_s_weighted": 19.67058948684615
+    },
+    "b3": {
+      "label": "b3",
+      "budget": 3,
+      "prompts": 10,
+      "total_output_tokens": 89,
+      "total_accepted": 39,
+      "total_drafts": 72,
+      "decode_ms": 1868.96,
+      "decode_tok_s_weighted": 47.62006677510487,
+      "ar_baseline_tok_s_weighted_for_this_budget": 54.7584475672483,
+      "mtp_vs_ar_decode_ratio": 0.8696387295608252,
+      "draft_acceptance": 0.5416666666666666,
+      "accepted_per_output": 0.43820224719101125,
+      "avg_output_tokens_per_prompt": 8.9,
+      "true_ar_decode_tok_s_weighted": 19.67058948684615,
+      "mtp_vs_true_ar_decode_ratio": 2.4208764463794394
+    }
+  },
+  "categories": {
+    "code": {
+      "off": {
+        "label": "off",
+        "budget": 0,
+        "prompts": 4,
+        "total_output_tokens": 48,
+        "decode_ms": 875.48,
+        "decode_tok_s_weighted": 54.827066295060995,
+        "source": "B1 native target-AR verifier time over the same prompt rows",
+        "baseline_kind": "verifier_derived_from_b1_target_ar",
+        "true_autoregressive_path": false,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "true_ar_decode_tok_s_weighted": 19.651039321257862
+      },
+      "b3": {
+        "label": "b3",
+        "budget": 3,
+        "prompts": 4,
+        "total_output_tokens": 48,
+        "total_accepted": 28,
+        "total_drafts": 42,
+        "decode_ms": 1017.19,
+        "decode_tok_s_weighted": 47.18882411348912,
+        "ar_baseline_tok_s_weighted_for_this_budget": 54.827066295060995,
+        "mtp_vs_ar_decode_ratio": 0.8606848278099469,
+        "draft_acceptance": 0.6666666666666666,
+        "accepted_per_output": 0.5833333333333334,
+        "avg_output_tokens_per_prompt": 12.0,
+        "true_ar_decode_tok_s_weighted": 19.651039321257862,
+        "mtp_vs_true_ar_decode_ratio": 2.401339865135874
+      }
+    },
+    "general_en": {
+      "off": {
+        "label": "off",
+        "budget": 0,
+        "prompts": 2,
+        "total_output_tokens": 10,
+        "decode_ms": 182.29000000000002,
+        "decode_tok_s_weighted": 54.85764441274891,
+        "source": "B1 native target-AR verifier time over the same prompt rows",
+        "baseline_kind": "verifier_derived_from_b1_target_ar",
+        "true_autoregressive_path": false,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "true_ar_decode_tok_s_weighted": 19.60702047852233
+      },
+      "b3": {
+        "label": "b3",
+        "budget": 3,
+        "prompts": 2,
+        "total_output_tokens": 10,
+        "total_accepted": 0,
+        "total_drafts": 6,
+        "decode_ms": 200.57999999999998,
+        "decode_tok_s_weighted": 49.855419284076184,
+        "ar_baseline_tok_s_weighted_for_this_budget": 54.85764441274891,
+        "mtp_vs_ar_decode_ratio": 0.9088144381294249,
+        "draft_acceptance": 0.0,
+        "accepted_per_output": 0.0,
+        "avg_output_tokens_per_prompt": 5.0,
+        "true_ar_decode_tok_s_weighted": 19.60702047852233,
+        "mtp_vs_true_ar_decode_ratio": 2.5427330653674876
+      }
+    },
+    "general_ja": {
+      "off": {
+        "label": "off",
+        "budget": 0,
+        "prompts": 2,
+        "total_output_tokens": 10,
+        "decode_ms": 182.19,
+        "decode_tok_s_weighted": 54.88775454196169,
+        "source": "B1 native target-AR verifier time over the same prompt rows",
+        "baseline_kind": "verifier_derived_from_b1_target_ar",
+        "true_autoregressive_path": false,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "true_ar_decode_tok_s_weighted": 19.851381743894887
+      },
+      "b3": {
+        "label": "b3",
+        "budget": 3,
+        "prompts": 2,
+        "total_output_tokens": 10,
+        "total_accepted": 0,
+        "total_drafts": 6,
+        "decode_ms": 200.42000000000002,
+        "decode_tok_s_weighted": 49.89522003792036,
+        "ar_baseline_tok_s_weighted_for_this_budget": 54.88775454196169,
+        "mtp_vs_ar_decode_ratio": 0.909041013870871,
+        "draft_acceptance": 0.0,
+        "accepted_per_output": 0.0,
+        "avg_output_tokens_per_prompt": 5.0,
+        "true_ar_decode_tok_s_weighted": 19.851381743894887,
+        "mtp_vs_true_ar_decode_ratio": 2.513438141567409
+      }
+    },
+    "mixed_ja_en": {
+      "off": {
+        "label": "off",
+        "budget": 0,
+        "prompts": 2,
+        "total_output_tokens": 21,
+        "decode_ms": 385.35999999999996,
+        "decode_tok_s_weighted": 54.49449865061242,
+        "source": "B1 native target-AR verifier time over the same prompt rows",
+        "baseline_kind": "verifier_derived_from_b1_target_ar",
+        "true_autoregressive_path": false,
+        "mtp_vs_ar_decode_ratio": 1.0,
+        "true_ar_decode_tok_s_weighted": 19.59465238333769
+      },
+      "b3": {
+        "label": "b3",
+        "budget": 3,
+        "prompts": 2,
+        "total_output_tokens": 21,
+        "total_accepted": 11,
+        "total_drafts": 18,
+        "decode_ms": 450.77,
+        "decode_tok_s_weighted": 46.586951216806796,
+        "ar_baseline_tok_s_weighted_for_this_budget": 54.49449865061242,
+        "mtp_vs_ar_decode_ratio": 0.8548927390908888,
+        "draft_acceptance": 0.6111111111111112,
+        "accepted_per_output": 0.5238095238095238,
+        "avg_output_tokens_per_prompt": 10.5,
+        "true_ar_decode_tok_s_weighted": 19.59465238333769,
+        "mtp_vs_true_ar_decode_ratio": 2.3775339467834606
+      }
+    }
+  },
+  "splits": {
+    "contract": {
+      "strategy": "fixed_category_heldout_v1",
+      "purpose": "Detect train-only acceptance/speed gains before resuming MTP optimization.",
+      "default_full_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "default_heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "train_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "general_en_plan",
+        "general_ja_plan",
+        "mixed_ja_en_translate"
+      ],
+      "heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "full_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "heldout_categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "heldout_has_all_present_categories": true,
+      "full_suite_matches_default": true,
+      "missing_default_heldout_ids": [],
+      "missing_default_full_ids": [],
+      "extra_vs_default_full_ids": [],
+      "required_for_keep_decisions": true,
+      "regression_rule": "Train improvements are not wins if heldout or full-suite acceptance/true-AR speed ratio regresses."
+    },
+    "full": {
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "metrics": {
+        "off": {
+          "label": "off",
+          "budget": 0,
+          "prompts": 10,
+          "total_output_tokens": 89,
+          "decode_ms": 1625.32,
+          "decode_tok_s_weighted": 54.7584475672483,
+          "source": "B1 native target-AR verifier time over the same prompt rows",
+          "baseline_kind": "verifier_derived_from_b1_target_ar",
+          "true_autoregressive_path": false,
+          "mtp_vs_ar_decode_ratio": 1.0,
+          "true_ar_decode_tok_s_weighted": 19.67058948684615
+        },
+        "b3": {
+          "label": "b3",
+          "budget": 3,
+          "prompts": 10,
+          "total_output_tokens": 89,
+          "total_accepted": 39,
+          "total_drafts": 72,
+          "decode_ms": 1868.96,
+          "decode_tok_s_weighted": 47.62006677510487,
+          "ar_baseline_tok_s_weighted_for_this_budget": 54.7584475672483,
+          "mtp_vs_ar_decode_ratio": 0.8696387295608252,
+          "draft_acceptance": 0.5416666666666666,
+          "accepted_per_output": 0.43820224719101125,
+          "avg_output_tokens_per_prompt": 8.9,
+          "true_ar_decode_tok_s_weighted": 19.67058948684615,
+          "mtp_vs_true_ar_decode_ratio": 2.4208764463794394
+        }
+      }
+    },
+    "train": {
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "general_en_plan",
+        "general_ja_plan",
+        "mixed_ja_en_translate"
+      ],
+      "metrics": {
+        "off": {
+          "label": "off",
+          "budget": 0,
+          "prompts": 6,
+          "total_output_tokens": 67,
+          "decode_ms": 1223.95,
+          "decode_tok_s_weighted": 54.74079823522202,
+          "source": "B1 native target-AR verifier time over the same prompt rows",
+          "baseline_kind": "verifier_derived_from_b1_target_ar",
+          "true_autoregressive_path": false,
+          "mtp_vs_ar_decode_ratio": 1.0,
+          "true_ar_decode_tok_s_weighted": 19.724122719529948
+        },
+        "b3": {
+          "label": "b3",
+          "budget": 3,
+          "prompts": 6,
+          "total_output_tokens": 67,
+          "total_accepted": 37,
+          "total_drafts": 57,
+          "decode_ms": 1420.02,
+          "decode_tok_s_weighted": 47.18243405022464,
+          "ar_baseline_tok_s_weighted_for_this_budget": 54.74079823522202,
+          "mtp_vs_ar_decode_ratio": 0.8619244799369024,
+          "draft_acceptance": 0.6491228070175439,
+          "accepted_per_output": 0.5522388059701493,
+          "avg_output_tokens_per_prompt": 11.166666666666666,
+          "true_ar_decode_tok_s_weighted": 19.724122719529948,
+          "mtp_vs_true_ar_decode_ratio": 2.392118256469105
+        }
+      }
+    },
+    "heldout": {
+      "prompt_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "metrics": {
+        "off": {
+          "label": "off",
+          "budget": 0,
+          "prompts": 4,
+          "total_output_tokens": 22,
+          "decode_ms": 401.37,
+          "decode_tok_s_weighted": 54.812267982161096,
+          "source": "B1 native target-AR verifier time over the same prompt rows",
+          "baseline_kind": "verifier_derived_from_b1_target_ar",
+          "true_autoregressive_path": false,
+          "mtp_vs_ar_decode_ratio": 1.0,
+          "true_ar_decode_tok_s_weighted": 19.590832283091665
+        },
+        "b3": {
+          "label": "b3",
+          "budget": 3,
+          "prompts": 4,
+          "total_output_tokens": 22,
+          "total_accepted": 2,
+          "total_drafts": 15,
+          "decode_ms": 448.94,
+          "decode_tok_s_weighted": 49.00432129015013,
+          "ar_baseline_tok_s_weighted_for_this_budget": 54.812267982161096,
+          "mtp_vs_ar_decode_ratio": 0.8940392925557982,
+          "draft_acceptance": 0.13333333333333333,
+          "accepted_per_output": 0.09090909090909091,
+          "avg_output_tokens_per_prompt": 5.5,
+          "true_ar_decode_tok_s_weighted": 19.590832283091665,
+          "mtp_vs_true_ar_decode_ratio": 2.5013904760158905
+        }
+      }
+    }
+  },
+  "best": {
+    "total_by_decode_tok_s": "b3",
+    "total_by_accepted_per_output": "b3",
+    "categories_by_decode_tok_s": {
+      "code": "b3",
+      "general_en": "b3",
+      "general_ja": "b3",
+      "mixed_ja_en": "b3"
+    },
+    "categories_by_accepted_per_output": {
+      "code": "b3",
+      "general_en": "b3",
+      "general_ja": "b3",
+      "mixed_ja_en": "b3"
+    }
+  },
+  "prompts": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "prompt_chars": 161,
+      "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6"
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "prompt_chars": 184,
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b"
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "prompt_chars": 147,
+      "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8"
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "prompt_chars": 214,
+      "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9"
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "prompt_chars": 158,
+      "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7"
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "prompt_chars": 158,
+      "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834"
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "prompt_chars": 68,
+      "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099"
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "prompt_chars": 56,
+      "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "prompt_chars": 153,
+      "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "prompt_chars": 202,
+      "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476"
+    }
+  ]
+}

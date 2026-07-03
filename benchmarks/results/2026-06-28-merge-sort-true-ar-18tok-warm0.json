@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_true_ar_category_baseline",
+  "status": "complete",
+  "performance_claim": false,
+  "true_autoregressive_path": true,
+  "same_timing_protocol": true,
+  "same_prompt_suite": true,
+  "timestamp": "2026-06-27T17:22:33.729790+00:00",
+  "repo": {
+    "repo_root": "/home/lhl/hipEngine",
+    "git_commit": "8e3687c06562a401a6f8e95d8e9ae792595610c3",
+    "git_branch": "mtp-gguf",
+    "git_tracked_dirty": true,
+    "git_untracked_count": 13
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF",
+  "prompt_file": "/tmp/hipengine-merge-sort-prompt.jsonl",
+  "decode_tokens": 18,
+  "warmup_decode_tokens": 0,
+  "timing_protocol": {
+    "decode_path": "graph_replay",
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "decode_repack": true,
+    "decode_repack_env": "1",
+    "use_gemv_decode": true,
+    "use_wmma_prefill": true,
+    "force_bulk_prefill": false,
+    "no_bulk_prefill": false,
+    "bulk_prefill_attention_mode": "bulk",
+    "attn_aotriton_min_tokens": 512,
+    "effective_decode_repack": true,
+    "effective_use_wmma_prefill": true,
+    "effective_use_gemv_decode": true,
+    "fastpath_safety": {
+      "is_qwen35moe": true,
+      "allow_unsafe_qwen35moe_fastpaths": false,
+      "requested_wmma_prefill": true,
+      "requested_gemv_decode": true,
+      "effective_wmma_prefill": true,
+      "effective_gemv_decode": true,
+      "disabled_wmma_prefill": false,
+      "disabled_gemv_decode": false,
+      "reason": null
+    }
+  },
+  "prompt_count": 1,
+  "prompt_ids": [
+    "merge_sort_single"
+  ],
+  "prompt_hashes": {
+    "merge_sort_single": "06e8c0be06cf5e9d036b3a0e185888bc810a24fa95227d48f3dc67de348f940f"
+  },
+  "commands": [
+    "scripts/gguf_true_ar_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts /tmp/hipengine-merge-sort-prompt.jsonl --decode-tokens 18 --warmup-decode-tokens 0 --decode-repack --use-wmma-prefill --use-gemv-decode --graph-replay-decode --output benchmarks/results/2026-06-28-merge-sort-true-ar-18tok-warm0.json --raw-root /tmp/hipengine-merge-sort-true-ar-18tok-warm0"
+  ],
+  "totals": {
+    "prompts": 1,
+    "total_output_tokens": 18,
+    "decode_ms": 324.1172721609473,
+    "decode_tok_s_weighted": 55.53545443595402
+  },
+  "categories": {
+    "code": {
+      "prompts": 1,
+      "total_output_tokens": 18,
+      "decode_ms": 324.1172721609473,
+      "decode_tok_s_weighted": 55.53545443595402
+    }
+  },
+  "prompt_metrics": [
+    {
+      "id": "merge_sort_single",
+      "category": "code",
+      "prompt_chars": 51,
+      "prompt_sha256": "06e8c0be06cf5e9d036b3a0e185888bc810a24fa95227d48f3dc67de348f940f",
+      "prompt_tokens": 21,
+      "output_tokens": 18,
+      "decode_ms": 324.1172721609473,
+      "decode_tok_s": 55.53545443595402,
+      "prefill_ms": 175.1519979443401,
+      "warmup_decode_ms": 0.0024640467017889023,
+      "warmup_decode_tokens": 0,
+      "graph_replay_decode": true,
+      "graph_steps_per_replay": 1,
+      "graph_capture_ms_excluded": 50.90517993085086,
+      "finite_final_logits": true,
+      "final_token_id": 17,
+      "generated_preview_token_ids": [
+        71093,
+        12305,
+        198,
+        21882,
+        10562,
+        39914,
+        2784,
+        25,
+        359,
+        27379,
+        504,
+        220,
+        21,
+        21,
+        13,
+        15
+      ],
+      "generated_tail_token_ids": [
+        21882,
+        10562,
+        39914,
+        2784,
+        25,
+        359,
+        27379,
+        504,
+        220,
+        21,
+        21,
+        13,
+        15,
+        24,
+        12,
+        17
+      ]
+    }
+  ],
+  "notes": [
+    "True no-MTP autoregressive resident GGUF path; no draft/proposal/MTP kernels are invoked.",
+    "Prompt tokens use scripts.gguf_mtp_bench.build_chat_prompt() so the prompt suite matches GGUF-MTP diagnostics.",
+    "Default timing mirrors the retained production GGUF benchmark path: GEMV decode enabled and measured decode via HIP graph replay with graph capture excluded.",
+    "decode_ms measures the autoregressive decode loop after prefill and optional warmup; model load, prefill, warmup, and graph capture are excluded.",
+    "Use as --true-ar-baseline-json input for scripts/gguf_mtp_category_bench.py."
+  ]
+}

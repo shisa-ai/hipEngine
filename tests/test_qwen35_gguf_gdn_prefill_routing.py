@@ -5,13 +5,13 @@ These tests cover the registry-only dispatch added in task #17:
 * ``_resolve_gguf_gdn_prefill_plan()`` returns a complete chain (prepare +
   recurrent + rmsnorm_gate) when the new ``gguf_qwen35`` registry aliases are
   registered.
-* ``Qwen35GGUFFullStackRunner._run_gdn_prefill(...)`` calls the chain in the
-  correct order at single-segment prefill row counts.
-* The same helper falls back to the legacy fused ``decode_order_bf16`` kernel
-  when the chain is incomplete (so behaviour matches the pre-P9 path until the
-  k2 chain is registered).
+* ``Qwen35GGUFFullStackRunner._run_gdn_prefill(...)`` prefers the legacy fused
+  ``decode_order_bf16`` kernel while the split k2 chain is parity-blocked on the
+  real GGUF target trace.
+* The helper still calls the chain in the correct order when the fused fallback
+  is unavailable, preserving registry-only fallback coverage.
 * The ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` env var controls whether
-  the segments_k2 kernel is dispatched, when one is registered.
+  the segments_k2 kernel is dispatched, when the chain fallback is used.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     assert plan.fused_decode_order is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
 
 
-def test_run_gdn_prefill_uses_chain_under_threshold() -> None:
+def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:
     runner = _new_runner()
     calls: list[tuple[str, object]] = []
     runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
@@ -57,6 +57,36 @@ def test_run_gdn_prefill_uses_chain_under_threshold() -> None:
         recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
         rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
         fused_decode_order=_recorder(calls, "fused_decode_order"),
+    )
+    scratch = _make_scratch()
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=scratch,
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == ["fused_decode_order"]
+    fused_args = calls[0][1]
+    assert fused_args[0] == scratch.conv_out.ptr
+    assert fused_args[1] == scratch.linear_z.ptr
+    assert fused_args[8] == scratch.recurrent_bf16.ptr
+    assert fused_args[10] == 64
+
+
+def test_run_gdn_prefill_uses_chain_under_threshold_when_fused_missing() -> None:
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "prepare"),
+        recurrent=_recorder(calls, "recurrent_k2"),
+        recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=None,
     )
     layer = _make_layer()
     scratch = _make_scratch()
@@ -104,7 +134,7 @@ def test_run_gdn_prefill_uses_segments_above_threshold(monkeypatch: pytest.Monke
         recurrent=_recorder(calls, "recurrent_k2"),
         recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
         rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
-        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        fused_decode_order=None,
     )
 
     runner._run_gdn_prefill(
@@ -137,7 +167,7 @@ def test_run_gdn_prefill_skips_segments_when_scratch_missing() -> None:
         recurrent=_recorder(calls, "recurrent_k2"),
         recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
         rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
-        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        fused_decode_order=None,
     )
     scratch = _make_scratch(include_gdn_segment_fields=False)
 

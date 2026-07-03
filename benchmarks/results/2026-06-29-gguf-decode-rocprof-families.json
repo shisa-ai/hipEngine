@@ -1,0 +1,292 @@
+{
+  "total_kernels": 21152,
+  "total_gpu_us": 535677.6,
+  "buckets": [
+    {
+      "name": "dense_q8_0_gemv",
+      "calls": 4640,
+      "total_us": 250514.1,
+      "pct": 46.77,
+      "us_per_call": 53.99
+    },
+    {
+      "name": "moe_selected_gemv",
+      "calls": 2320,
+      "total_us": 137977.1,
+      "pct": 25.76,
+      "us_per_call": 59.473
+    },
+    {
+      "name": "lm_head",
+      "calls": 87,
+      "total_us": 53933.1,
+      "pct": 10.07,
+      "us_per_call": 619.92
+    },
+    {
+      "name": "gdn_linear_attn",
+      "calls": 1770,
+      "total_us": 33800.8,
+      "pct": 6.31,
+      "us_per_call": 19.096
+    },
+    {
+      "name": "moe_router",
+      "calls": 3480,
+      "total_us": 23564.8,
+      "pct": 4.4,
+      "us_per_call": 6.771
+    },
+    {
+      "name": "rmsnorm_rope",
+      "calls": 2639,
+      "total_us": 16015.1,
+      "pct": 2.99,
+      "us_per_call": 6.069
+    },
+    {
+      "name": "dense_gemv_bf16",
+      "calls": 1740,
+      "total_us": 5926.7,
+      "pct": 1.11,
+      "us_per_call": 3.406
+    },
+    {
+      "name": "moe_combine_silu",
+      "calls": 2360,
+      "total_us": 5369.3,
+      "pct": 1.0,
+      "us_per_call": 2.275
+    },
+    {
+      "name": "attn_core",
+      "calls": 860,
+      "total_us": 4599.9,
+      "pct": 0.86,
+      "us_per_call": 5.349
+    },
+    {
+      "name": "memcpy_fill",
+      "calls": 560,
+      "total_us": 2648.3,
+      "pct": 0.49,
+      "us_per_call": 4.729
+    },
+    {
+      "name": "other:qwen35_split_qgate_bf16",
+      "calls": 290,
+      "total_us": 583.2,
+      "pct": 0.11,
+      "us_per_call": 2.011
+    },
+    {
+      "name": "other:bf16_to_f32",
+      "calls": 320,
+      "total_us": 559.4,
+      "pct": 0.1,
+      "us_per_call": 1.748
+    },
+    {
+      "name": "embedding",
+      "calls": 29,
+      "total_us": 96.2,
+      "pct": 0.02,
+      "us_per_call": 3.317
+    },
+    {
+      "name": "other:set_decode_position_i64",
+      "calls": 29,
+      "total_us": 53.9,
+      "pct": 0.01,
+      "us_per_call": 1.86
+    },
+    {
+      "name": "other:set_i64_scalar",
+      "calls": 28,
+      "total_us": 35.7,
+      "pct": 0.01,
+      "us_per_call": 1.275
+    }
+  ],
+  "top_kernels": [
+    {
+      "name": "q8_0_t16_dual_split_gemv",
+      "calls": 870,
+      "total_us": 128163.6,
+      "pct": 23.93,
+      "us_per_call": 147.314
+    },
+    {
+      "name": "q8_0_t16_gemv",
+      "calls": 2320,
+      "total_us": 69821.5,
+      "pct": 13.03,
+      "us_per_call": 30.095
+    },
+    {
+      "name": "q4_k_t16_selected_dual_silu_direct_gemv",
+      "calls": 1120,
+      "total_us": 67400.2,
+      "pct": 12.58,
+      "us_per_call": 60.179
+    },
+    {
+      "name": "qk_t16_selected_direct_gemv",
+      "calls": 1160,
+      "total_us": 57317.0,
+      "pct": 10.7,
+      "us_per_call": 49.411
+    },
+    {
+      "name": "q6_k_t16_gemv",
+      "calls": 29,
+      "total_us": 53518.4,
+      "pct": 9.99,
+      "us_per_call": 1845.463
+    },
+    {
+      "name": "q8_0_t16_triple_split_gemv",
+      "calls": 290,
+      "total_us": 33679.5,
+      "pct": 6.29,
+      "us_per_call": 116.136
+    },
+    {
+      "name": "q8_0_t16_dual_gemv",
+      "calls": 1160,
+      "total_us": 18849.5,
+      "pct": 3.52,
+      "us_per_call": 16.25
+    },
+    {
+      "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+      "calls": 840,
+      "total_us": 16930.1,
+      "pct": 3.16,
+      "us_per_call": 20.155
+    },
+    {
+      "name": "qwen35_router_logits",
+      "calls": 2240,
+      "total_us": 15818.4,
+      "pct": 2.95,
+      "us_per_call": 7.062
+    },
+    {
+      "name": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order",
+      "calls": 30,
+      "total_us": 13288.6,
+      "pct": 2.48,
+      "us_per_call": 442.955
+    },
+    {
+      "name": "q4_k_t16_selected_dual_direct_gemv",
+      "calls": 40,
+      "total_us": 13259.9,
+      "pct": 2.48,
+      "us_per_call": 331.499
+    },
+    {
+      "name": "gguf_add_rmsnorm_bf16_f32_weight",
+      "calls": 1160,
+      "total_us": 8235.8,
+      "pct": 1.54,
+      "us_per_call": 7.1
+    },
+    {
+      "name": "qwen35_router_select",
+      "calls": 1160,
+      "total_us": 6782.7,
+      "pct": 1.27,
+      "us_per_call": 5.847
+    },
+    {
+      "name": "gguf_rmsnorm_bf16_f32_weight",
+      "calls": 1189,
+      "total_us": 6707.3,
+      "pct": 1.25,
+      "us_per_call": 5.641
+    },
+    {
+      "name": "dense_gemv_bf16_f32w_bf16_out",
+      "calls": 1740,
+      "total_us": 5926.7,
+      "pct": 1.11,
+      "us_per_call": 3.406
+    },
+    {
+      "name": "weighted_sum_shared_gate_combine_residual_out",
+      "calls": 1120,
+      "total_us": 3394.3,
+      "pct": 0.63,
+      "us_per_call": 3.031
+    },
+    {
+      "name": "qwen35_paged_full_attn_decode_context_tensor",
+      "calls": 280,
+      "total_us": 3315.5,
+      "pct": 0.62,
+      "us_per_call": 11.841
+    },
+    {
+      "name": "qwen35_linear_attn_conv_decode_lowp",
+      "calls": 840,
+      "total_us": 3283.5,
+      "pct": 0.61,
+      "us_per_call": 3.909
+    },
+    {
+      "name": "__amd_rocclr_copyBuffer",
+      "calls": 440,
+      "total_us": 2014.1,
+      "pct": 0.38,
+      "us_per_call": 4.577
+    },
+    {
+      "name": "silu_mul_dual_out",
+      "calls": 1160,
+      "total_us": 1680.0,
+      "pct": 0.31,
+      "us_per_call": 1.448
+    },
+    {
+      "name": "gguf_head_rmsnorm_partial_rotary_position_f32_weight",
+      "calls": 280,
+      "total_us": 1026.8,
+      "pct": 0.19,
+      "us_per_call": 3.667
+    },
+    {
+      "name": "qwen35_router_logits_token_tile",
+      "calls": 80,
+      "total_us": 963.7,
+      "pct": 0.18,
+      "us_per_call": 12.046
+    },
+    {
+      "name": "qwen35_write_paged_kv_mixed_value_position_tensor",
+      "calls": 280,
+      "total_us": 717.5,
+      "pct": 0.13,
+      "us_per_call": 2.563
+    },
+    {
+      "name": "__amd_rocclr_fillBufferAligned",
+      "calls": 120,
+      "total_us": 634.3,
+      "pct": 0.12,
+      "us_per_call": 5.286
+    }
+  ],
+  "schema": "hipengine.gguf_decode_rocprof.v1",
+  "date": "2026-06-29",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+  "passes": {
+    "prefill": 1,
+    "warmup_steps": 4,
+    "timed_steps": 24
+  },
+  "note": "Whole-process trace (prefill + warmup + timed decode). Family percentages are of total GPU time across all passes; the decode families dominate. Diagnostic only.",
+  "command": "python3 scripts/gguf_decode_rocprof.py --steps 24 --warmup 4 --out benchmarks/results/2026-06-29-gguf-decode-rocprof-families.json"
+}

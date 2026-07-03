@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "name": "native GGUF MTP B2 prompt sweep",
+  "run_id": "1781845000-b2-sweep",
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "gfx1151/Radeon 8060S",
+  "draft_n_max": 2,
+  "cycles_per_prompt": 5,
+  "prompts": [
+    {
+      "slug": "capital",
+      "prompt": "What is the capital of France?",
+      "artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-capital.json",
+      "accept_per_draft": 0.1,
+      "accepted_per_output": 0.1667,
+      "visible_tokens_per_cycle": 1.2,
+      "tokens_per_sec": 11.96,
+      "speedup_vs_ar_visible": 0.7957,
+      "warm_tokens_per_sec": 14.68,
+      "warm_speedup_vs_ar_visible": 1.0357,
+      "warm_accept_per_draft": 0.125,
+      "depth2_accept_cycles": [],
+      "accepted_draft_tokens": 1,
+      "generated_draft_tokens": 10
+    },
+    {
+      "slug": "count",
+      "prompt": "Count from one to five.",
+      "artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-count.json",
+      "accept_per_draft": 0.2,
+      "accepted_per_output": 0.2857,
+      "visible_tokens_per_cycle": 1.4,
+      "tokens_per_sec": 14.9,
+      "speedup_vs_ar_visible": 0.9196,
+      "warm_tokens_per_sec": 19.45,
+      "warm_speedup_vs_ar_visible": 1.2347,
+      "warm_accept_per_draft": 0.25,
+      "depth2_accept_cycles": [
+        2
+      ],
+      "accepted_draft_tokens": 2,
+      "generated_draft_tokens": 10
+    },
+    {
+      "slug": "greeting",
+      "prompt": "Write a short greeting.",
+      "artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-greeting.json",
+      "accept_per_draft": 0.0,
+      "accepted_per_output": 0.0,
+      "visible_tokens_per_cycle": 1.0,
+      "tokens_per_sec": 12.2,
+      "speedup_vs_ar_visible": 0.6098,
+      "warm_tokens_per_sec": 15.7,
+      "warm_speedup_vs_ar_visible": 0.7869,
+      "warm_accept_per_draft": 0.0,
+      "depth2_accept_cycles": [],
+      "accepted_draft_tokens": 0,
+      "generated_draft_tokens": 10
+    }
+  ],
+  "aggregate": {
+    "prompt_count": 3,
+    "warm_positive_prompts": 2,
+    "depth2_accept_prompt_count": 1,
+    "mean_warm_speedup_vs_ar_visible": 1.0191,
+    "mean_cold_speedup_vs_ar_visible": 0.775,
+    "total_accepted_draft_tokens": 3,
+    "total_generated_draft_tokens": 30
+  }
+}

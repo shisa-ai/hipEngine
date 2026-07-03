@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "kind": "hipengine_hidden_seed_shared_path_audit",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 305,
+  "status": "audited",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "qwen35moe_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp",
+  "context_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp",
+  "mode_sweep_path": "benchmarks/results/mtp-gguf-iter304-hidden-seed-mode-sweep.json",
+  "mode_evidence": {
+    "source_artifact_status": "mismatched",
+    "source_conclusion": "hipengine_seed_modes_diverge_and_mismatch_llamacpp",
+    "native_serial_step_exact": true,
+    "native_serial_step_sha256": "e4c47dff146c9e0c530a92c236c13442a6ff7834ec97cb4c8de5b797e79b76ae",
+    "bulk_sha256": "d3b436a35c1e5535aba0515987dbe020e4f193ca67f7de0b47da6f74ee37f326",
+    "bulk_differs_from_native": true,
+    "native_vs_llamacpp_rmse": 3.1126764923274637,
+    "native_vs_llamacpp_max_abs": 14.318409442901611,
+    "bulk_vs_llamacpp_rmse": 3.1180099001747528,
+    "bulk_vs_llamacpp_max_abs": 14.284552574157715,
+    "bulk_vs_native_rmse": 0.03580982600551289,
+    "bulk_vs_native_max_abs": 0.17240047454833984,
+    "all_modes_exact_vs_llamacpp": false
+  },
+  "hipengine_shared_seed_path": {
+    "ready": true,
+    "facts": {
+      "prefill_serial_captures_only_final_token": true,
+      "step_serial_calls_token_to_final_hidden": true,
+      "token_path_sets_position_and_embedding": true,
+      "serial_path_loops_all_layers_before_output_norm": true,
+      "bulk_native_and_bulk_share_output_norm_call": true,
+      "output_norm_writes_bf16_logits_path": true,
+      "hidden_seed_f32_recomputed_from_same_bf16_source": true,
+      "fp32_seed_not_source_for_logits": true
+    },
+    "anchors": {
+      "prefill": 3277,
+      "prefill_final_index_capture": 3327,
+      "bulk_output_norm_call": 3443,
+      "step": 3502,
+      "token_to_final": 3531,
+      "current_to_final": 3803,
+      "output_norm": 3835,
+      "out_f32_kernel": 48
+    }
+  },
+  "llamacpp_h_nextn_path": {
+    "ready": true,
+    "facts": {
+      "qwen_trunk_h_nextn_after_output_norm": true,
+      "context_unmasked_rows_by_raw_position": true,
+      "decode_copies_unmasked_rows_with_token_offset": true,
+      "buffer_sized_by_batch_when_unmasked": true
+    },
+    "anchors": {
+      "qwen_output_norm": 231,
+      "qwen_h_nextn": 233,
+      "qwen_t_h_nextn": 234,
+      "context_unmasked_get_ith": 934,
+      "context_decode_nextn_copy": 1522
+    }
+  },
+  "decision": {
+    "status": "audited",
+    "conclusion": "shared_serial_path_mismatch_before_or_at_output_norm",
+    "secondary_issue": "prefill_bulk_differs_from_serial",
+    "reason": "prefill-native, prefill-serial, and step-serial produce identical FP32 seeds but all are far from the llama.cpp post-output_norm h_nextn row; therefore row/mode mixups are unlikely and the next bisection should compare the final layer output before output_norm versus the output_norm result.",
+    "next_action": "capture_pre_output_norm_rows_in_llamacpp_and_hipengine_serial_path"
+  },
+  "conclusion": "shared_serial_path_mismatch_before_or_at_output_norm",
+  "external_checkout_modified": false,
+  "next_action": "capture_pre_output_norm_rows_in_llamacpp_and_hipengine_serial_path"
+}

@@ -1,0 +1,357 @@
+{
+  "schema": 1,
+  "kind": "layer0_bisection_conclusion",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 330,
+  "status": "ready",
+  "classification": "layer0_runtime_matches_bf16_oracle_chain_after_llamacpp_f32_split",
+  "artifact_paths": {
+    "layer_compare": "benchmarks/results/mtp-gguf-iter316-layer0-compare.json",
+    "input_compare": "benchmarks/results/mtp-gguf-iter318-input-embed-compare.json",
+    "attn_norm": "benchmarks/results/mtp-gguf-iter321-layer0-attn-norm-formula-audit.json",
+    "projection": "benchmarks/results/mtp-gguf-iter323-layer0-bf16-projection-oracle.json",
+    "conv_gdn": "benchmarks/results/mtp-gguf-iter326-layer0-warm-conv-gdn-oracle.json",
+    "post_attn": "benchmarks/results/mtp-gguf-iter327-layer0-post-attn-residual-oracle.json",
+    "router": "benchmarks/results/mtp-gguf-iter328-layer0-moe-router-oracle.json",
+    "experts": "benchmarks/results/mtp-gguf-iter329-layer0-moe-expert-outputs-oracle.json"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "layer_id": 0,
+  "position": 16,
+  "token_id": 271,
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "prerequisites": {
+    "layer_compare": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "classification": true
+      },
+      "kind": "llamacpp_vs_hipengine_layer_boundary_compare",
+      "status": "mismatched",
+      "classification": "layer_boundary_mismatch",
+      "conclusion": null,
+      "iteration": 316,
+      "next_action": "inspect_initial_embedding_or_token_capture"
+    },
+    "input_compare": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "classification": true
+      },
+      "kind": "llamacpp_vs_hipengine_input_embed_compare",
+      "status": "mismatched",
+      "classification": "input_embed_matches_after_bf16_roundtrip",
+      "conclusion": null,
+      "iteration": 318,
+      "next_action": "investigate_layer0_implementation_after_embedding"
+    },
+    "attn_norm": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "conclusion": true
+      },
+      "kind": "layer0_attn_norm_formula_audit",
+      "status": "ready",
+      "classification": null,
+      "conclusion": "attn_norm_mismatch_explained_by_input_activation_bf16_contraction",
+      "iteration": 321,
+      "next_action": "decide_whether_to_add_f32_activation_path_or_adjust_llamacpp_oracle_dtype"
+    },
+    "projection": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "classification": true
+      },
+      "kind": "layer0_bf16_contracted_projection_oracle",
+      "status": "ready",
+      "classification": "layer0_projections_match_bf16_oracle_within_rounding",
+      "conclusion": null,
+      "iteration": 323,
+      "next_action": "continue_layer0_bf16_bisection_at_conv_or_gdn_state"
+    },
+    "conv_gdn": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "classification": true
+      },
+      "kind": "layer0_warm_bf16_contracted_conv_gdn_oracle",
+      "status": "ready",
+      "classification": "layer0_warm_conv_gdn_matches_oracle_within_tolerance",
+      "conclusion": null,
+      "iteration": 326,
+      "next_action": "continue_layer0_bisection_after_attn_out_or_residual"
+    },
+    "post_attn": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "classification": true
+      },
+      "kind": "layer0_post_attn_residual_oracle",
+      "status": "ready",
+      "classification": "layer0_post_attn_residual_matches_oracle_exactly",
+      "conclusion": null,
+      "iteration": 327,
+      "next_action": "audit_layer0_moe_router_from_post_norm"
+    },
+    "router": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "classification": true
+      },
+      "kind": "layer0_moe_router_oracle",
+      "status": "ready",
+      "classification": "layer0_moe_router_matches_oracle_within_tolerance",
+      "conclusion": null,
+      "iteration": 328,
+      "next_action": "audit_layer0_moe_selected_and_shared_expert_outputs"
+    },
+    "experts": {
+      "ready": true,
+      "facts": {
+        "kind": true,
+        "status": true,
+        "classification": true
+      },
+      "kind": "layer0_moe_expert_outputs_oracle",
+      "status": "ready",
+      "classification": "layer0_moe_expert_outputs_match_oracle_exactly",
+      "conclusion": null,
+      "iteration": 329,
+      "next_action": "continue_layer0_bisection_after_moe_ffn_or_compare_layer_out"
+    }
+  },
+  "boundary_consistency": {
+    "ready": true,
+    "reference": {
+      "layer_id": 0,
+      "position": 16,
+      "token_id": 271
+    },
+    "per_doc": {
+      "layer_compare": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      },
+      "input_compare": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      },
+      "attn_norm": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      },
+      "projection": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      },
+      "conv_gdn": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      },
+      "post_attn": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      },
+      "router": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      },
+      "experts": {
+        "layer_id": 0,
+        "position": 16,
+        "token_id": 271
+      }
+    },
+    "same_layer_position_token": {
+      "layer_compare": true,
+      "input_compare": true,
+      "attn_norm": true,
+      "projection": true,
+      "conv_gdn": true,
+      "post_attn": true,
+      "router": true,
+      "experts": true
+    },
+    "same_prompt_tokens": {
+      "layer_compare": true,
+      "input_compare": true,
+      "attn_norm": true,
+      "projection": true,
+      "conv_gdn": true,
+      "post_attn": true,
+      "router": true,
+      "experts": true
+    }
+  },
+  "layer_out_llamacpp_vs_hipengine": {
+    "source_artifact_iteration": 316,
+    "status": "mismatched",
+    "classification": "layer_boundary_mismatch",
+    "llamacpp_effective_tap": "h_nextn_layer_out",
+    "hipengine_provenance": "capture_attention_layer.layer_out_f32",
+    "shape_match": true,
+    "exact_match": false,
+    "count": 2048,
+    "max_abs_diff": 0.045740051893517375,
+    "mean_abs_diff": 0.009691874419019086,
+    "rmse": 0.012114962719327636,
+    "llamacpp_sha256": "9321263b6a72127990374a064373d74941ab3a493cde35c286019bf4318b2777",
+    "hipengine_sha256": "fb2002cf1d115ce11d365d2632f48606c6623a353299215354fe938bbdc77001",
+    "best_all_rows_rmse_row": 16,
+    "best_all_rows_rmse": 0.012114962719327636
+  },
+  "input_and_attn_norm_dtype_finding": {
+    "input_classification": "input_embed_matches_after_bf16_roundtrip",
+    "input_exact_rmse": 4.314661795910361e-06,
+    "input_bf16_exact_match": true,
+    "attn_norm_conclusion": "attn_norm_mismatch_explained_by_input_activation_bf16_contraction",
+    "llamacpp_attn_norm_best_candidate": "input_f32_weight_f32_eps_model_f32_out",
+    "hipengine_attn_norm_best_candidate": "input_bf16_weight_f32_eps_model_bf16_out",
+    "hipengine_attn_norm_delta_exact": true
+  },
+  "internal_bf16_oracle_chain": {
+    "projection_classification": "layer0_projections_match_bf16_oracle_within_rounding",
+    "conv_gdn_classification": "layer0_warm_conv_gdn_matches_oracle_within_tolerance",
+    "post_attn_classification": "layer0_post_attn_residual_matches_oracle_exactly",
+    "router_classification": "layer0_moe_router_matches_oracle_within_tolerance",
+    "router_selected_experts": [
+      200,
+      140,
+      67,
+      81,
+      192,
+      177,
+      194,
+      86
+    ],
+    "experts_classification": "layer0_moe_expert_outputs_match_oracle_exactly",
+    "final_layer_out_classification": "expert_output_matches_oracle_exactly",
+    "final_layer_out_delta": {
+      "available": true,
+      "shape_match": true,
+      "count": 2048,
+      "actual_sha256": "fb2002cf1d115ce11d365d2632f48606c6623a353299215354fe938bbdc77001",
+      "reference_sha256": "fb2002cf1d115ce11d365d2632f48606c6623a353299215354fe938bbdc77001",
+      "max_abs_diff": 0.0,
+      "mean_abs_diff": 0.0,
+      "rmse": 0.0,
+      "diff_samples": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "top_abs_diff": [
+        {
+          "index": 0,
+          "actual": 0.0006752,
+          "reference": 0.0006752,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        },
+        {
+          "index": 1,
+          "actual": -0.01251221,
+          "reference": -0.01251221,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        },
+        {
+          "index": 2,
+          "actual": 0.03344727,
+          "reference": 0.03344727,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        },
+        {
+          "index": 3,
+          "actual": 0.00198364,
+          "reference": 0.00198364,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        },
+        {
+          "index": 4,
+          "actual": -0.01190186,
+          "reference": -0.01190186,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        },
+        {
+          "index": 5,
+          "actual": -0.00543213,
+          "reference": -0.00543213,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        },
+        {
+          "index": 6,
+          "actual": -0.01281738,
+          "reference": -0.01281738,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        },
+        {
+          "index": 7,
+          "actual": 0.01141357,
+          "reference": 0.01141357,
+          "diff": 0.0,
+          "abs_diff": 0.0
+        }
+      ],
+      "exact_match": true
+    },
+    "expert_layer_out_sha256": "fb2002cf1d115ce11d365d2632f48606c6623a353299215354fe938bbdc77001"
+  },
+  "conclusion": "The direct layer-0 llama.cpp layer_out capture still mismatches hipEngine, but every hipEngine sub-boundary from BF16-contracted input through MoE combine now matches a torch-free CPU/raw-GGUF oracle. The retained layer-0 mismatch is therefore the known llama.cpp F32 activation versus hipEngine resident-BF16 activation split, not an uncovered layer-0 runtime arithmetic error in the audited chain.",
+  "limitations": [
+    "The direct llama.cpp layer_out comparison remains an F32 llama.cpp boundary versus hipEngine resident-BF16 boundary comparison.",
+    "This artifact summarizes correctness evidence only; it is not a performance claim."
+  ],
+  "external_checkout_modified": false,
+  "next_action": "advance_bisection_to_layer1_or_next_layer_boundary_under_bf16_contract"
+}

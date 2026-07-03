@@ -1,0 +1,375 @@
+{
+  "category": [],
+  "decision": {
+    "best_e2e_candidate": {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-both-b3-c5.json",
+      "candidate": "x8-both",
+      "tokens_per_sec": 50.49
+    },
+    "promote_candidate": null,
+    "promotion_blocker": "A candidate must beat default on same-protocol E2E and clear full-suite validation before promotion."
+  },
+  "e2e": [
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-default-b3-c5.json",
+      "candidate": "default",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt 'Write a Python function that implements merge sort:' --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-default-b3-c5.json --mtp-context-replay --mtp-device-kv-cache --target-block-verify",
+        "env": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/logs/e2e-default.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 50.11353353201412
+      },
+      "description": "Production T16 decode-repack route.",
+      "env": {
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "/home/lhl/hipEngine"
+      },
+      "extra_args": [],
+      "metrics": {
+        "ar_baseline_tokens_per_sec": 57.7,
+        "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-default-b3-c5.json",
+        "avg_ar_decode_ms": 69.32,
+        "avg_cycle_ms": 86.59,
+        "avg_mtp_draft_ms": 17.27,
+        "speedup_vs_ar_visible": 0.8006,
+        "status": "ok",
+        "tokens_per_sec": 46.19,
+        "total_accepted": 15,
+        "total_drafts": 15,
+        "total_output_tokens": 20,
+        "warm_avg_ar_decode_ms": 69.19,
+        "warm_avg_cycle_ms": 86.86,
+        "warm_avg_mtp_draft_ms": 17.67,
+        "warm_tokens_per_sec": 46.05
+      }
+    },
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-q6-b3-c5.json",
+      "candidate": "x8-q6",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt 'Write a Python function that implements merge sort:' --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-q6-b3-c5.json --mtp-context-replay --mtp-device-kv-cache --target-block-verify",
+        "env": {
+          "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/logs/e2e-x8-q6.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 47.983121461002156
+      },
+      "description": "Sidecar-free X8 selected-down Q6_K diagnostic route.",
+      "env": {
+        "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "/home/lhl/hipEngine"
+      },
+      "extra_args": [],
+      "metrics": {
+        "ar_baseline_tokens_per_sec": 62.4,
+        "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-q6-b3-c5.json",
+        "avg_ar_decode_ms": 64.11,
+        "avg_cycle_ms": 80.42,
+        "avg_mtp_draft_ms": 16.31,
+        "speedup_vs_ar_visible": 0.7972,
+        "status": "ok",
+        "tokens_per_sec": 49.74,
+        "total_accepted": 15,
+        "total_drafts": 15,
+        "total_output_tokens": 20,
+        "warm_avg_ar_decode_ms": 63.64,
+        "warm_avg_cycle_ms": 80.13,
+        "warm_avg_mtp_draft_ms": 16.48,
+        "warm_tokens_per_sec": 49.92
+      }
+    },
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-both-b3-c5.json",
+      "candidate": "x8-both",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompt 'Write a Python function that implements merge sort:' --prompt-reasoning off --cycles 5 --draft-n-max 3 --root-topk-accept 1 --mtp-draft-vocab-cap 32768 --output /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-both-b3-c5.json --mtp-context-replay --mtp-device-kv-cache --target-block-verify",
+        "env": {
+          "HIPENGINE_GGUF_SELECTED_X8_REPACK": "both",
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/logs/e2e-x8-both.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 30.822528693126515
+      },
+      "description": "Sidecar-free X8 selected-down Q5_K and Q6_K diagnostic route.",
+      "env": {
+        "HIPENGINE_GGUF_SELECTED_X8_REPACK": "both",
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "PYTHONPATH": "/home/lhl/hipEngine"
+      },
+      "extra_args": [],
+      "metrics": {
+        "ar_baseline_tokens_per_sec": 62.58,
+        "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/e2e/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-both-b3-c5.json",
+        "avg_ar_decode_ms": 63.92,
+        "avg_cycle_ms": 79.23,
+        "avg_mtp_draft_ms": 15.31,
+        "speedup_vs_ar_visible": 0.8068,
+        "status": "ok",
+        "tokens_per_sec": 50.49,
+        "total_accepted": 15,
+        "total_drafts": 15,
+        "total_output_tokens": 20,
+        "warm_avg_ar_decode_ms": 62.84,
+        "warm_avg_cycle_ms": 78.1,
+        "warm_avg_mtp_draft_ms": 15.26,
+        "warm_tokens_per_sec": 51.22
+      }
+    }
+  ],
+  "generated_at": "2026-06-27T16:14:12.399752+00:00",
+  "host": "gfx1151",
+  "notes": [
+    "Diagnostic workbench only; not a retained speed claim.",
+    "E2E commands use the B3/C5 llama.cpp-parity smoke shape with context replay, device MTP KV, block verify, and 32k draft vocab cap.",
+    "Per-piece commands measure selected-MoE q8_1+sudot4 slices outside the production runtime."
+  ],
+  "performance_claim": false,
+  "pieces": [
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-q4-selected-dual-dp4a.json",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_q4_k_selected_dual_dp4a_microbench.py --iters 80 --warmup 20 --json /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-q4-selected-dual-dp4a.json",
+        "env": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/logs/piece-q4-selected-dual.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 0.5555163200479001
+      },
+      "metrics": {
+        "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-q4-selected-dual-dp4a.json",
+        "correctness": {
+          "gate": {
+            "kl_max": 0.012451213693840456,
+            "kl_mean": 0.003112803423460114,
+            "max_abs": 2.0,
+            "mean_abs": 0.23107124865055084,
+            "top1": 1.0
+          },
+          "up": {
+            "kl_max": 0.012451213693840456,
+            "kl_mean": 0.0031128034234601133,
+            "max_abs": 2.0,
+            "mean_abs": 0.23107124865055084,
+            "top1": 1.0
+          }
+        },
+        "schema": "hipengine.gguf_q4_k_selected_dual_dp4a_microbench.v1",
+        "shape": {
+          "experts": 256,
+          "in_features": 2048,
+          "out_features": 512,
+          "rows": 32,
+          "threads": 256,
+          "x_rows": 4
+        },
+        "speedup": {
+          "raw_over_dp4a_dot": 2.702208597298519,
+          "raw_over_dp4a_quantize_plus_dot": 2.725830014622367
+        },
+        "timing_ms": {
+          "dp4a_dot_prequantized": 0.348734314320609,
+          "dp4a_quantize_plus_dot": 0.34571226278785616,
+          "q8_1_quantize": 0.002413787296973169,
+          "raw_selected_dual": 0.9423528623301536
+        }
+      },
+      "piece": "q4_selected_dual"
+    },
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-raw-selected-down-q5-q6-dp4a.json",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_k_selected_pack8_dp4a_microbench.py --iters 80 --warmup 20 --json /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-raw-selected-down-q5-q6-dp4a.json",
+        "env": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/logs/piece-raw-selected-down.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 0.9752549498807639
+      },
+      "metrics": {
+        "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-raw-selected-down-q5-q6-dp4a.json",
+        "results": [
+          {
+            "correctness": {
+              "kl_max": 0.0008899395703602117,
+              "kl_mean": 0.00011124245307870405,
+              "max_abs": 3.0,
+              "mean_abs": 0.33373337984085083,
+              "top1": 1.0
+            },
+            "quant": "q5",
+            "speedup": {
+              "float_over_dp4a_dot": 2.4453857681739692,
+              "float_over_dp4a_quantize_plus_dot": 2.189369154556517
+            },
+            "timing_ms": {
+              "q8_1_quantize": 0.002532248618081212,
+              "selected_pack8_dp4a_dot_prequantized": 0.039089261554181576,
+              "selected_pack8_dp4a_quantize_plus_dot": 0.043660213123075664,
+              "selected_pack8_float": 0.09558832389302552
+            }
+          },
+          {
+            "correctness": {
+              "kl_max": 0.025760348875160044,
+              "kl_mean": 0.0051206798509333094,
+              "max_abs": 0.5,
+              "mean_abs": 0.05255468934774399,
+              "top1": 1.0
+            },
+            "quant": "q6",
+            "speedup": {
+              "float_over_dp4a_dot": 1.7753536517947506,
+              "float_over_dp4a_quantize_plus_dot": 1.5819537379863096
+            },
+            "timing_ms": {
+              "q8_1_quantize": 0.002494550426490605,
+              "selected_pack8_dp4a_dot_prequantized": 0.023600811255164444,
+              "selected_pack8_dp4a_quantize_plus_dot": 0.02648610097821802,
+              "selected_pack8_float": 0.04189978644717485
+            }
+          }
+        ],
+        "schema": "hipengine.gguf_k_selected_pack8_dp4a_microbench.v1",
+        "shape": {
+          "experts": 256,
+          "in_features": 512,
+          "input_scale": 0.1,
+          "out_features": 2048,
+          "rows": 8
+        }
+      },
+      "piece": "raw_selected_down_q5_q6"
+    },
+    {
+      "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-selected-down-q5-q6-dp4a.json",
+      "command": {
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --iters 80 --warmup 20 --json /tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-selected-down-q5-q6-dp4a.json",
+        "env": {
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "PYTHONPATH": "/home/lhl/hipEngine"
+        },
+        "log": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/logs/piece-x8-selected-down.log",
+        "returncode": 0,
+        "status": "passed",
+        "wall_seconds": 2.240832092007622
+      },
+      "metrics": {
+        "artifact": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current/pieces/2026-06-28-gguf-mtp-parity-workbench-b3-current-x8-selected-down-q5-q6-dp4a.json",
+        "results": [
+          {
+            "correctness": {
+              "kl_max": 0.005154759936085494,
+              "kl_mean": 0.0007142716814922277,
+              "max_abs": 2.0,
+              "mean_abs": 0.22446765005588531,
+              "top1": 1.0
+            },
+            "quant": "q5",
+            "speedup": {
+              "production_t16_over_x8_dp4a_dot": 1.1006741947756853,
+              "production_t16_over_x8_dp4a_quantize_plus_dot": 1.001339080244813,
+              "raw_float_over_x8_dp4a_quantize_plus_dot": 2.7727820845902196,
+              "x8_dp4a_dot_over_raw_dp4a_dot": 1.1919464630889143,
+              "x8_dp4a_quant_dot_over_raw_dp4a_quant_dot": 1.1797250748551873
+            },
+            "timing_ms": {
+              "production_t16_float": 0.033426249865442514,
+              "q8_1_quantize": 0.0023947504814714193,
+              "raw_selected_pack8_dp4a_dot_prequantized": 0.03619808703660965,
+              "raw_selected_pack8_dp4a_quantize_plus_dot": 0.0393810507375747,
+              "raw_selected_pack8_float": 0.09255976183339953,
+              "x8_selected_dp4a_dot_prequantized": 0.030368886655196548,
+              "x8_selected_dp4a_quantize_plus_dot": 0.03338154929224402
+            }
+          },
+          {
+            "correctness": {
+              "kl_max": 0.005789996658669243,
+              "kl_mean": 0.00136927413482377,
+              "max_abs": 0.5,
+              "mean_abs": 0.05207815021276474,
+              "top1": 1.0
+            },
+            "quant": "q6",
+            "speedup": {
+              "production_t16_over_x8_dp4a_dot": 1.960264377972665,
+              "production_t16_over_x8_dp4a_quantize_plus_dot": 1.6773969005904388,
+              "raw_float_over_x8_dp4a_quantize_plus_dot": 2.2383098271937416,
+              "x8_dp4a_dot_over_raw_dp4a_dot": 1.416883245807181,
+              "x8_dp4a_quant_dot_over_raw_dp4a_quant_dot": 1.349512255045054
+            },
+            "timing_ms": {
+              "production_t16_float": 0.03252793685533106,
+              "q8_1_quantize": 0.0033595511922612786,
+              "raw_selected_pack8_dp4a_dot_prequantized": 0.02351126167923212,
+              "raw_selected_pack8_dp4a_quantize_plus_dot": 0.026169625925831497,
+              "raw_selected_pack8_float": 0.0434051122283563,
+              "x8_selected_dp4a_dot_prequantized": 0.016593647887930274,
+              "x8_selected_dp4a_quantize_plus_dot": 0.01939191424753517
+            }
+          }
+        ],
+        "schema": "hipengine.gguf_x8_selected_down_dp4a_microbench.v1",
+        "shape": {
+          "experts": 256,
+          "in_features": 512,
+          "input_scale": 0.1,
+          "out_features": 2048,
+          "raw_threads": 128,
+          "rows": 8,
+          "x8_threads": 64
+        }
+      },
+      "piece": "x8_selected_down_q5_q6"
+    }
+  ],
+  "protocol": {
+    "candidates": [
+      "default",
+      "x8-q6",
+      "x8-both"
+    ],
+    "cycles": 5,
+    "draft_n_max": 3,
+    "hip_arch": "gfx1151",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "mtp_draft_vocab_cap": 32768,
+    "prompt": "Write a Python function that implements merge sort:",
+    "prompt_reasoning": "off",
+    "raw_root": "/tmp/hipengine-gguf-mtp-parity-workbench/2026-06-28-gguf-mtp-parity-workbench-b3-current",
+    "root_topk_accept": 1,
+    "stages": [
+      "e2e",
+      "pieces"
+    ]
+  },
+  "repo": {
+    "git_branch": "mtp-gguf",
+    "git_commit": "d45aabd62fab59aa433681b4eaed2535835a1a71",
+    "git_tracked_dirty": false,
+    "git_untracked_count": 0,
+    "repo_root": "/home/lhl/hipEngine"
+  },
+  "rocprof": [],
+  "schema": "hipengine.gguf_mtp_parity_workbench.v1",
+  "status": "complete"
+}

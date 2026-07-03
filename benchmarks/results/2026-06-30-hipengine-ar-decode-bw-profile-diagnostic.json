@@ -1,0 +1,26 @@
+{
+ "schema": 1,
+ "status": "diagnostic_retained",
+ "performance_claim": false,
+ "date": "2026-06-30",
+ "hardware": "AMD Radeon 8060S / gfx1151 (Strix Halo, ~220 GB/s achievable LPDDR5X)",
+ "backend": "hip_gfx1100",
+ "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+ "purpose": "AR decode profile - the untouched multiplier (MTP tok/s = AR x uplift). Identifies where AR decode bandwidth headroom is, as a correctness-preserving path to lift absolute MTP tok/s toward llama parity.",
+ "ar_decode": {
+  "per_token_ms": 18.2,
+  "tok_s": 54.85,
+  "est_active_bytes_per_token_gb": 2.1,
+  "est_effective_bw_gb_s": 115,
+  "est_peak_bw_gb_s": 220,
+  "est_bw_utilization_pct": 52
+ },
+ "kernel_breakdown_pct": {
+  "q8_0_attention_projections_total": 42,
+  "moe_selected_gate_up_down": 21,
+  "q6_k_lm_head": 9.6,
+  "gdn_recurrent": 8
+ },
+ "finding": "lm-head q6_k GEMV is already near peak BW (~217 GB/s; 413MB/1.9ms) - efficient. The q8_0 attention-projection GEMVs aggregate ~42% of AR at only ~53 GB/s (~25% of peak): small-output (256-2048), latency-bound, under-parallelized single-token GEMVs. This is the real correctness-preserving AR headroom.",
+ "path_to_parity": "AR 54.6 x uplift 1.114 = 60.8 (current). Matching llama 67.3 needs AR ~60.4 (a ~10.6% AR speedup) at constant uplift, since faster AR kernels also speed the verify. Optimizing the latency-bound q8_0 attention-projection GEMVs (split-K / higher occupancy / q/k/v fusion) is the target. CAVEAT: small-batch GEMV is latency-floored; hipEngine AR already beats llama AR (54.6 vs 50.1), so this is hard central kernel R&D, not config. Realistic gain uncertain (10-20% on those kernels -> ~5-8% AR)."
+}

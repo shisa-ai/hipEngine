@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "kind": "mtp_gguf_linear_projection_cpu_compare",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 268,
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_capture": "benchmarks/results/mtp-gguf-iter265-extended-linear-boundary-full-arrays.json",
+  "source_iteration": 265,
+  "layer_id": 0,
+  "input_shape": [
+    2048
+  ],
+  "projections": {
+    "attn_qkv": {
+      "device_vs_cpu_bf16": {
+        "count": 8192,
+        "max_abs_diff": 0.000244140625,
+        "rms_abs_diff": 2.6973982585332124e-06,
+        "mean_abs_diff": 2.9802322387695312e-08,
+        "reference_rms": 2.397266149520874,
+        "candidate_rms": 2.397266149520874
+      },
+      "cpu_f32_vs_cpu_bf16": {
+        "count": 8192,
+        "max_abs_diff": 0.0924530029296875,
+        "rms_abs_diff": 0.004091715440154076,
+        "mean_abs_diff": 0.0018365815049037337,
+        "reference_rms": 2.397625684738159,
+        "candidate_rms": 2.397266149520874
+      },
+      "samples": {
+        "cpu_bf16": [
+          0.283203125,
+          -0.546875,
+          0.18359375,
+          0.1748046875,
+          -0.373046875,
+          0.287109375,
+          0.033447265625,
+          0.7421875
+        ],
+        "device_output": [
+          0.283203125,
+          -0.546875,
+          0.18359375,
+          0.1748046875,
+          -0.373046875,
+          0.287109375,
+          0.033447265625,
+          0.7421875
+        ]
+      },
+      "weight_name": "blk.0.attn_qkv.weight",
+      "array_key": "linear_qkv_f32",
+      "weight_shape": [
+        8192,
+        2048
+      ]
+    },
+    "attn_gate": {
+      "device_vs_cpu_bf16": {
+        "count": 4096,
+        "max_abs_diff": 0.0,
+        "rms_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "reference_rms": 2.5856070518493652,
+        "candidate_rms": 2.5856070518493652
+      },
+      "cpu_f32_vs_cpu_bf16": {
+        "count": 4096,
+        "max_abs_diff": 0.0311279296875,
+        "rms_abs_diff": 0.004254237748682499,
+        "mean_abs_diff": 0.0027302000671625137,
+        "reference_rms": 2.58571457862854,
+        "candidate_rms": 2.5856070518493652
+      },
+      "samples": {
+        "cpu_bf16": [
+          -4.6875,
+          -4.15625,
+          -3.625,
+          0.1435546875,
+          -3.9375,
+          -0.2431640625,
+          -2.78125,
+          -4.125
+        ],
+        "device_output": [
+          -4.6875,
+          -4.15625,
+          -3.625,
+          0.1435546875,
+          -3.9375,
+          -0.2431640625,
+          -2.78125,
+          -4.125
+        ]
+      },
+      "weight_name": "blk.0.attn_gate.weight",
+      "array_key": "linear_z_f32",
+      "weight_shape": [
+        4096,
+        2048
+      ]
+    },
+    "ssm_alpha": {
+      "device_vs_cpu_bf16": {
+        "count": 32,
+        "max_abs_diff": 0.0,
+        "rms_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "reference_rms": 3.1589462757110596,
+        "candidate_rms": 3.1589462757110596
+      },
+      "cpu_f32_vs_cpu_bf16": {
+        "count": 32,
+        "max_abs_diff": 0.022449493408203125,
+        "rms_abs_diff": 0.005792479962110519,
+        "mean_abs_diff": 0.003001474542543292,
+        "reference_rms": 3.1579694747924805,
+        "candidate_rms": 3.1589462757110596
+      },
+      "samples": {
+        "cpu_bf16": [
+          -1.015625,
+          2.390625,
+          -2.171875,
+          -1.359375,
+          -0.82421875,
+          1.1796875,
+          5.0625,
+          4.625
+        ],
+        "device_output": [
+          -1.015625,
+          2.390625,
+          -2.171875,
+          -1.359375,
+          -0.82421875,
+          1.1796875,
+          5.0625,
+          4.625
+        ]
+      },
+      "weight_name": "blk.0.ssm_alpha.weight",
+      "array_key": "ssm_alpha_f32",
+      "weight_shape": [
+        32,
+        2048
+      ]
+    },
+    "ssm_beta": {
+      "device_vs_cpu_bf16": {
+        "count": 32,
+        "max_abs_diff": 0.0,
+        "rms_abs_diff": 0.0,
+        "mean_abs_diff": 0.0,
+        "reference_rms": 1.1960530281066895,
+        "candidate_rms": 1.1960530281066895
+      },
+      "cpu_f32_vs_cpu_bf16": {
+        "count": 32,
+        "max_abs_diff": 0.007657527923583984,
+        "rms_abs_diff": 0.0021229132544249296,
+        "mean_abs_diff": 0.001137032639235258,
+        "reference_rms": 1.1966420412063599,
+        "candidate_rms": 1.1960530281066895
+      },
+      "samples": {
+        "cpu_bf16": [
+          -1.15625,
+          -0.6796875,
+          1.03125,
+          0.3125,
+          -0.330078125,
+          -0.1884765625,
+          0.6796875,
+          2.296875
+        ],
+        "device_output": [
+          -1.15625,
+          -0.6796875,
+          1.03125,
+          0.3125,
+          -0.330078125,
+          -0.1884765625,
+          0.6796875,
+          2.296875
+        ]
+      },
+      "weight_name": "blk.0.ssm_beta.weight",
+      "array_key": "ssm_beta_f32",
+      "weight_shape": [
+        32,
+        2048
+      ]
+    }
+  },
+  "within_bf16_tolerance": true,
+  "conclusion": "Layer-0 linear projections from attn_norm match CPU GGUF GEMV BF16 outputs; worst max_abs=0.000244141. Remaining search moves into conv/GDN recurrent math or the state entering layer 0."
+}

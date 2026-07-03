@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-02",
+  "purpose": "Compare hipEngine and llama.cpp MTP hidden seed summaries at the first same-prompt draft-logit divergence.",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "hardware": "AMD gfx1151 HIP host; W7900-class parity bench host per active tracker",
+  "software": {
+    "hipengine_commit": "6190fd08c7e79d078028079f9cdbedaa6046e64c",
+    "hipengine_dirty": true,
+    "llama_cpp_commit": "c0f7506045970f3586d879570086083128c6c77a",
+    "llama_cpp_dirty": false,
+    "llama_cpp_hidden_trace_patch": "c0f7506045970f3586d879570086083128c6c77a tools: add MTP hidden state trace"
+  },
+  "source_artifacts": {
+    "hipengine_hidden_trace_tmp": "/tmp/hipengine-mtp-hidden-trace/hipengine-devicekv-hidden.json",
+    "llamacpp_hidden_trace_tmp_jsonl": "/tmp/hipengine-mtp-hidden-trace/llamacpp-stage-hidden.jsonl",
+    "llamacpp_wrapper_tmp": "/tmp/hipengine-mtp-hidden-trace/llamacpp-hidden.json",
+    "draft_score_artifact": "benchmarks/results/2026-07-02-mtp-llamacpp-draft-score-trace-diagnostic.json"
+  },
+  "commands": {
+    "hipengine_hidden_trace": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL=1 PYTHONPATH=. python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 4 --draft-n-max 2 --prompt \"Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.\" --prompt-reasoning off --resident-mtp-draft --verify-dp4a --resident-mtp-draft-q6-top1-dp4a --resident-mtp-draft-q6-top1-stage1-shape x8 --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --resident-mtp-draft-router-row-parallel --mtp-context-replay --mtp-device-kv-cache --target-block-verify --target-block-verify-mode bulk --target-block-min-rows 2 --target-block-direct-state-commit --root-topk-accept 1 --sibling-topk-accept 1 --draft-p-min 0.0 --record-cycle-stage-timings --record-draft-topk-scores --record-draft-hidden-stats --output /tmp/hipengine-mtp-hidden-trace/hipengine-devicekv-hidden.json",
+    "llamacpp_build": "cmake --build /home/lhl/llama.cpp/llama.cpp-hip/build --target llama-server -j 16",
+    "llamacpp_hidden_trace": "PYTHONPATH=. python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --alias qwen36-35b --port 8027 --ctx-size 8192 --gpu-layers 99 --draft-max 2 --mode mtp --protocol natural --prompts /tmp/hipengine-mtp-proposal-trace/prompt.jsonl --max-tokens 27 --stage-timings-jsonl /tmp/hipengine-mtp-hidden-trace/llamacpp-stage-hidden.jsonl --stage-token-trace --server-extra-arg=--reasoning --server-extra-arg=off --output /tmp/hipengine-mtp-hidden-trace/llamacpp-hidden.json --log-dir /tmp/hipengine-mtp-hidden-trace/logs"
+  },
+  "aligned_rows": {
+    "hipengine_cycle3": {
+      "cycle": 3,
+      "seq_position": 49,
+      "draft_token_ids": [
+        65342,
+        18078
+      ],
+      "target_token_ids": [
+        65342,
+        18078,
+        28649
+      ],
+      "accepted_draft_tokens": 2,
+      "output_token_ids": [
+        65342,
+        18078,
+        28649
+      ]
+    },
+    "llamacpp_task9_cycle9": {
+      "jsonl_line": 10,
+      "cycle": 9,
+      "task_id": 9,
+      "draft_token_ids": [
+        8,
+        1411
+      ],
+      "sampled_token_ids": [
+        65342
+      ],
+      "accepted_draft_tokens": 0,
+      "output_token_ids": [
+        65342
+      ]
+    }
+  },
+  "hidden_comparison": {
+    "draft_seed_input_depth_minus1": {
+      "hipengine": {
+        "label": "draft_seed_input",
+        "depth": -1,
+        "token_id": 1103,
+        "position": 49,
+        "size": 2048,
+        "hash": "3f86eb9441f1e5c9",
+        "mean": -0.07736239,
+        "rms": 2.57825612,
+        "min": -13.33978748,
+        "max": 17.58372879,
+        "first8": [
+          1.96737909,
+          -5.07458591,
+          -0.7330727,
+          0.61169165,
+          -1.63335419,
+          4.32229376,
+          -4.20623922,
+          -1.91043186
+        ],
+        "last8": [
+          -6.11141872,
+          1.33163214,
+          -1.84982717,
+          0.63564873,
+          0.2692413,
+          4.9210248,
+          -0.58940369,
+          -1.84560525
+        ]
+      },
+      "llamacpp": {
+        "label": "draft_seed_input",
+        "depth": -1,
+        "token_id": 1103,
+        "position": 49,
+        "size": 2048,
+        "hash": 14791648600723153527,
+        "mean": -0.07758,
+        "rms": 2.5736966,
+        "min": -13.94824505,
+        "max": 18.07958412,
+        "first8": [
+          1.91551507,
+          -4.9165554,
+          -0.71201688,
+          0.56670743,
+          -1.62462509,
+          4.31481075,
+          -3.99530125,
+          -1.77532172
+        ],
+        "last8": [
+          -6.10911179,
+          1.47122943,
+          -1.90186417,
+          0.71881539,
+          0.40435418,
+          4.93323421,
+          -0.60179007,
+          -1.88484859
+        ]
+      },
+      "delta": {
+        "mean_abs": 0.00021761,
+        "rms_abs": 0.00455952,
+        "first8_abs_max": 0.21093797,
+        "first8_abs_mean": 0.07977435,
+        "first8_abs": [
+          0.05186402,
+          0.15803051,
+          0.02105582,
+          0.04498422,
+          0.0087291,
+          0.00748301,
+          0.21093797,
+          0.13511014
+        ]
+      }
+    },
+    "draft_next_seed_depth0": {
+      "hipengine": {
+        "label": "draft_next_seed",
+        "depth": 0,
+        "token_id": 1103,
+        "position": 49,
+        "size": 2048,
+        "hash": "2a994e7d2cdf4d60",
+        "mean": -0.06048107,
+        "rms": 2.81341253,
+        "min": -13.0819931,
+        "max": 11.51257133,
+        "first8": [
+          4.76348734,
+          -4.42836761,
+          -0.54214031,
+          3.42526031,
+          -2.06191063,
+          6.36395693,
+          -2.41243553,
+          -4.47564936
+        ],
+        "last8": [
+          -8.56925297,
+          -1.0191052,
+          -3.58630252,
+          -0.14006217,
+          1.03747284,
+          3.58440661,
+          0.90652966,
+          -0.55452359
+        ]
+      },
+      "llamacpp": {
+        "label": "draft_next_seed",
+        "depth": 0,
+        "token_id": 1103,
+        "position": 49,
+        "size": 2048,
+        "hash": 17749408421597006664,
+        "mean": -0.06765654,
+        "rms": 2.82799662,
+        "min": -13.6599226,
+        "max": 14.14922619,
+        "first8": [
+          4.19894457,
+          -3.35006309,
+          -0.63742137,
+          2.05009437,
+          -1.39993036,
+          5.36798334,
+          -2.35596013,
+          -3.45559144
+        ],
+        "last8": [
+          -7.64704752,
+          -0.99583697,
+          -3.4310782,
+          0.54358155,
+          0.3677949,
+          2.86577535,
+          0.89107019,
+          -1.30629039
+        ]
+      },
+      "delta": {
+        "mean_abs": 0.00717547,
+        "rms_abs": 0.01458409,
+        "first8_abs_max": 1.37516594,
+        "first8_abs_mean": 0.73097268,
+        "first8_abs": [
+          0.56454277,
+          1.07830452,
+          0.09528106,
+          1.37516594,
+          0.66198027,
+          0.99597359,
+          0.0564754,
+          1.02005792
+        ]
+      }
+    }
+  },
+  "results": {
+    "divergence_seq_position": 49,
+    "seed_input_rms_delta": 0.00455952,
+    "seed_input_first8_abs_mean": 0.07977435,
+    "draft_next_seed_depth0_rms_delta": 0.01458409,
+    "draft_next_seed_depth0_first8_abs_mean": 0.73097268,
+    "interpretation": "The pending/draft input seed is already very close across engines, but the first ctx_dft/MTP draft output hidden row diverges before token selection. That narrows the semantic mismatch from target pending_h handoff to the draft decode state: MTP attention/KV row contents, rope/context position handling, or draft decode math around the first draft row."
+  },
+  "next_target": "Dump or checksum draft-attention inputs/KV rows for depth 0 at seq position 49 in hipEngine and llama.cpp ctx_dft; the initial pending_h seed is not the primary mismatch."
+}

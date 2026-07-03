@@ -73,6 +73,7 @@ from hipengine.loading.qwen35_gguf_expert_sidecar import (
 )
 from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DECODE_REPACK_ENV,
+    HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,
     LAYOUT_GGUF_Q4_K_T16,
@@ -87,6 +88,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFResidentWeights,
     Qwen35GGUFWeightSpec,
     gguf_decode_repack_enabled,
+    gguf_lm_head_q6_x8_sidecar_enabled,
     materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_materialization,
 )
@@ -160,6 +162,7 @@ __all__ = [
     "FULL_ATTENTION",
     "LINEAR_ATTENTION",
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",
+    "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV",
     "LAYOUT_DENSE_F32",
     "EXPERT_SIDECAR_LAYOUT",
     "GGUFExpertPackedTensor",
@@ -181,6 +184,7 @@ __all__ = [
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
     "gguf_decode_repack_enabled",
+    "gguf_lm_head_q6_x8_sidecar_enabled",
     "Qwen35ParoConfig",
     "Qwen35ParoLayerDeviceWeights",
     "Qwen35ParoLayoutValidation",

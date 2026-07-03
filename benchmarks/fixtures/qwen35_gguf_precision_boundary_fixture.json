@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "kind": "qwen35_gguf_precision_boundary_fixture",
+  "description": "Small synthetic oracle for GGUF early F32-vs-BF16 boundary math; no full GGUF model required.",
+  "source": "synthetic_hidden_row_and_aux_projection_weights",
+  "rms_norm_eps": 1e-06,
+  "token_embedding": [
+    0.25,
+    -1.5,
+    3.0,
+    -0.75,
+    0.125,
+    2.25,
+    -4.0,
+    0.5
+  ],
+  "attn_norm_weight": [
+    1.0,
+    -0.5,
+    0.75,
+    1.25,
+    -2.0,
+    0.5,
+    1.5,
+    -1.0
+  ],
+  "ssm_alpha": [
+    [
+      0.1,
+      -0.2,
+      0.3,
+      -0.4,
+      0.05,
+      0.25,
+      -0.125,
+      0.5
+    ],
+    [
+      -0.6,
+      0.125,
+      0.75,
+      -0.25,
+      0.375,
+      -0.5,
+      0.625,
+      -0.875
+    ],
+    [
+      1.0,
+      -1.25,
+      0.5,
+      0.25,
+      -0.75,
+      0.875,
+      -0.375,
+      0.125
+    ]
+  ],
+  "ssm_beta": [
+    [
+      -0.25,
+      0.5,
+      -0.75,
+      1.0,
+      -1.25,
+      1.5,
+      -1.75,
+      2.0
+    ],
+    [
+      0.03125,
+      -0.0625,
+      0.125,
+      -0.25,
+      0.5,
+      -1.0,
+      1.25,
+      -1.5
+    ]
+  ],
+  "expected": {
+    "attn_norm_boundary": {
+      "shape": [
+        8
+      ],
+      "max_abs_diff": 0.007645130157470703,
+      "rms_abs_diff": 0.0029655699618160725,
+      "max_rel_diff": 0.0025958954356610775,
+      "mean_abs_reference": 0.7401211261749268,
+      "mean_abs_candidate": 0.738525390625,
+      "cosine_similarity": 0.9999997507024249
+    },
+    "projections": {
+      "ssm_alpha": {
+        "shape": [
+          3
+        ],
+        "max_abs_diff": 0.00649261474609375,
+        "rms_abs_diff": 0.003818460274487734,
+        "max_rel_diff": 0.0037128659896552563,
+        "mean_abs_reference": 1.2041349411010742,
+        "mean_abs_candidate": 1.2018228769302368,
+        "cosine_similarity": 0.9999985161980673,
+        "rows": 3,
+        "cols": 8,
+        "llama_sample": [
+          0.8313899040222168,
+          -1.0323346853256226,
+          1.7486801147460938
+        ],
+        "hipengine_sample": [
+          0.83203125,
+          -1.03125,
+          1.7421875
+        ]
+      },
+      "ssm_beta": {
+        "shape": [
+          2
+        ],
+        "max_abs_diff": 0.009753227233886719,
+        "rms_abs_diff": 0.007895325310528278,
+        "max_rel_diff": 0.0021626963280141354,
+        "mean_abs_reference": 4.101344585418701,
+        "mean_abs_candidate": 4.09375,
+        "cosine_similarity": 0.9999999854096646,
+        "rows": 2,
+        "cols": 8,
+        "llama_sample": [
+          4.509753227233887,
+          -3.6929357051849365
+        ],
+        "hipengine_sample": [
+          4.5,
+          -3.6875
+        ]
+      }
+    }
+  }
+}

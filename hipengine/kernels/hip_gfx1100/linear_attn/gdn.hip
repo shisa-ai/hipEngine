@@ -85,6 +85,12 @@ __device__ inline float scalar_to_float_qwen35(scalar_t value) {
   return static_cast<float>(value);
 }
 
+__device__ inline int64_t qwen35_gdn_k_head_from_v_head(int64_t v_head, int64_t num_k_heads) {
+  // llama.cpp Qwen3.5 interleaves K groups across V heads
+  // ([k0_v0, k1_v1, k0_v2, ...]), unlike Qwen3Next's grouped repeat.
+  return v_head % num_k_heads;
+}
+
 template <>
 __device__ inline float scalar_to_float_qwen35<uint16_t>(uint16_t value) {
   return bf16_bits_to_float(value);
@@ -118,8 +124,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
   if (v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_offset = 2 * key_dim + v_head * head_v_dim;
 
@@ -183,8 +188,8 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
     __syncthreads();
   }
 
-  const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-  const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+  const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+  const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
   const float beta = sigmoid_f32(scalar_to_float_qwen35(b[v_head]));
   const float decay = expf(-expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[v_head]) + dt_bias[v_head]));
 
@@ -315,8 +320,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
   if (v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t conv_stride = (2 * key_dim) + value_dim;
@@ -394,8 +398,8 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
       __syncthreads();
     }
 
-    const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
     const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
 
@@ -742,8 +746,7 @@ __global__ void qwen35_linear_attn_prefill_prepare_kernel(
   if (token >= tokens || v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t qkv_width = 2 * key_dim + value_dim;
@@ -771,8 +774,8 @@ __global__ void qwen35_linear_attn_prefill_prepare_kernel(
     __syncthreads();
   }
 
-  const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-  const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+  const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+  const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
   const int64_t head_base = (token * num_v_heads + v_head) * head_k_dim;
   for (int64_t idx = threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
     query[head_base + idx] = conv_out[q_base + idx] * q_scale;
@@ -980,8 +983,7 @@ __global__ void qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel(
   if (v_head >= num_v_heads || dv_idx >= head_v_dim) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t conv_stride = (2 * key_dim) + value_dim;
@@ -1047,8 +1049,8 @@ __global__ void qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel(
     const float k_sum = partial[0];
     __syncthreads();
 
-    const float q_scale = rsqrtf(q_sum + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_sum + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_sum), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_sum), 1.0e-6f);
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
     const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
 
@@ -1137,8 +1139,7 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
   if (v_head >= num_v_heads || dv_base + VTILE > head_v_dim) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t value_dim = num_v_heads * head_v_dim;
   const int64_t conv_stride = (2 * key_dim) + value_dim;
@@ -1189,8 +1190,8 @@ __global__ void qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel(
     const float q_sum = block_all_reduce_sum(q_sum_local, lds, tid, BLOCK);
     const float k_sum = block_all_reduce_sum(k_sum_local, lds, tid, BLOCK);
 
-    const float q_scale = rsqrtf(q_sum + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_sum + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_sum), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_sum), 1.0e-6f);
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[t * num_v_heads + v_head]));
     const float decay = expf(-expf(a_log_v) * softplus_f32(scalar_to_float_qwen35(a[t * num_v_heads + v_head]) + dt_bias_v));
 
@@ -1272,8 +1273,15 @@ bool valid_prefill_shape(int64_t tokens, int64_t num_k_heads, int64_t num_v_head
       head_k_dim > 0 && head_v_dim > 0;
 }
 
+template <bool mutate_state>
+__device__ __forceinline__ float qwen35_gdn_state_read(
+    const float* state_read_base,
+    volatile float* recurrent_state_v,
+    int64_t offset) {
+  return mutate_state ? recurrent_state_v[offset] : state_read_base[offset];
+}
 
-template <typename scalar_t>
+template <typename scalar_t, bool mutate_state>
 __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
     const float* conv_out,
     const scalar_t* gate,
@@ -1282,7 +1290,9 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
     const float* dt_bias,
     const float* a_log,
     const float* norm_weight,
-    float* recurrent_state,
+    const float* recurrent_state_initial,
+    float* recurrent_state_mutable,
+    float* recurrent_state_rows,
     uint16_t* out,
     float eps,
     int64_t tokens,
@@ -1302,12 +1312,12 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
   if (v_head >= num_v_heads) {
     return;
   }
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t qkv_width = 2 * key_dim + num_v_heads * head_v_dim;
+  const int64_t state_stride = num_v_heads * head_k_dim * head_v_dim;
   const int64_t value_idx = threadIdx.x;
-  volatile float* recurrent_state_v = recurrent_state;
+  volatile float* recurrent_state_v = recurrent_state_mutable;
 
   for (int64_t token = 0; token < tokens; ++token) {
     const int64_t conv_base = token * qkv_width;
@@ -1373,8 +1383,8 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
       __syncthreads();
     }
 
-    const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
     const int64_t scalar_idx = token * num_v_heads + v_head;
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
     const float decay = expf(-expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[v_head]));
@@ -1382,25 +1392,29 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
     float out_acc = 0.0f;
     if (value_idx < head_v_dim) {
       const int64_t state_col = v_head * head_k_dim * head_v_dim + value_idx;
+      const float* state_read_base = mutate_state
+          ? recurrent_state_initial
+          : (token == 0 ? recurrent_state_initial : recurrent_state_rows + (token - 1) * state_stride);
       float kv_mem = 0.0f;
       for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
-        kv_mem += k_shared[idx + 0] * k_scale * recurrent_state_v[state_col + (idx + 0) * head_v_dim] * decay;
-        kv_mem += k_shared[idx + 1] * k_scale * recurrent_state_v[state_col + (idx + 1) * head_v_dim] * decay;
-        kv_mem += k_shared[idx + 2] * k_scale * recurrent_state_v[state_col + (idx + 2) * head_v_dim] * decay;
-        kv_mem += k_shared[idx + 3] * k_scale * recurrent_state_v[state_col + (idx + 3) * head_v_dim] * decay;
-        kv_mem += k_shared[idx + 4] * k_scale * recurrent_state_v[state_col + (idx + 4) * head_v_dim] * decay;
-        kv_mem += k_shared[idx + 5] * k_scale * recurrent_state_v[state_col + (idx + 5) * head_v_dim] * decay;
-        kv_mem += k_shared[idx + 6] * k_scale * recurrent_state_v[state_col + (idx + 6) * head_v_dim] * decay;
-        kv_mem += k_shared[idx + 7] * k_scale * recurrent_state_v[state_col + (idx + 7) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 0] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 0) * head_v_dim) * decay;
+        kv_mem += k_shared[idx + 1] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 1) * head_v_dim) * decay;
+        kv_mem += k_shared[idx + 2] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 2) * head_v_dim) * decay;
+        kv_mem += k_shared[idx + 3] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 3) * head_v_dim) * decay;
+        kv_mem += k_shared[idx + 4] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 4) * head_v_dim) * decay;
+        kv_mem += k_shared[idx + 5] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 5) * head_v_dim) * decay;
+        kv_mem += k_shared[idx + 6] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 6) * head_v_dim) * decay;
+        kv_mem += k_shared[idx + 7] * k_scale * qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + (idx + 7) * head_v_dim) * decay;
       }
       for (int64_t idx = (head_k_dim & ~7); idx < head_k_dim; ++idx) {
         const float k_norm = k_shared[idx] * k_scale;
-        const float state_value = recurrent_state_v[state_col + idx * head_v_dim] * decay;
+        const float state_value = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_col + idx * head_v_dim) * decay;
         kv_mem += k_norm * state_value;
       }
 
       const float value = conv_out[value_offset + value_idx];
       const float delta = (value - kv_mem) * beta;
+      const int64_t row_state_base = token * state_stride;
       for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
         const float q_norm0 = q_shared[idx + 0] * q_scale;
         const float q_norm1 = q_shared[idx + 1] * q_scale;
@@ -1426,22 +1440,34 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
         const int64_t so5 = state_col + (idx + 5) * head_v_dim;
         const int64_t so6 = state_col + (idx + 6) * head_v_dim;
         const int64_t so7 = state_col + (idx + 7) * head_v_dim;
-        const float ns0 = recurrent_state_v[so0] * decay + k_norm0 * delta;
-        const float ns1 = recurrent_state_v[so1] * decay + k_norm1 * delta;
-        const float ns2 = recurrent_state_v[so2] * decay + k_norm2 * delta;
-        const float ns3 = recurrent_state_v[so3] * decay + k_norm3 * delta;
-        const float ns4 = recurrent_state_v[so4] * decay + k_norm4 * delta;
-        const float ns5 = recurrent_state_v[so5] * decay + k_norm5 * delta;
-        const float ns6 = recurrent_state_v[so6] * decay + k_norm6 * delta;
-        const float ns7 = recurrent_state_v[so7] * decay + k_norm7 * delta;
-        recurrent_state_v[so0] = ns0;
-        recurrent_state_v[so1] = ns1;
-        recurrent_state_v[so2] = ns2;
-        recurrent_state_v[so3] = ns3;
-        recurrent_state_v[so4] = ns4;
-        recurrent_state_v[so5] = ns5;
-        recurrent_state_v[so6] = ns6;
-        recurrent_state_v[so7] = ns7;
+        const float ns0 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so0) * decay + k_norm0 * delta;
+        const float ns1 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so1) * decay + k_norm1 * delta;
+        const float ns2 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so2) * decay + k_norm2 * delta;
+        const float ns3 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so3) * decay + k_norm3 * delta;
+        const float ns4 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so4) * decay + k_norm4 * delta;
+        const float ns5 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so5) * decay + k_norm5 * delta;
+        const float ns6 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so6) * decay + k_norm6 * delta;
+        const float ns7 = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, so7) * decay + k_norm7 * delta;
+        if (mutate_state) {
+          recurrent_state_v[so0] = ns0;
+          recurrent_state_v[so1] = ns1;
+          recurrent_state_v[so2] = ns2;
+          recurrent_state_v[so3] = ns3;
+          recurrent_state_v[so4] = ns4;
+          recurrent_state_v[so5] = ns5;
+          recurrent_state_v[so6] = ns6;
+          recurrent_state_v[so7] = ns7;
+        }
+        if (recurrent_state_rows != nullptr) {
+          recurrent_state_rows[row_state_base + so0] = ns0;
+          recurrent_state_rows[row_state_base + so1] = ns1;
+          recurrent_state_rows[row_state_base + so2] = ns2;
+          recurrent_state_rows[row_state_base + so3] = ns3;
+          recurrent_state_rows[row_state_base + so4] = ns4;
+          recurrent_state_rows[row_state_base + so5] = ns5;
+          recurrent_state_rows[row_state_base + so6] = ns6;
+          recurrent_state_rows[row_state_base + so7] = ns7;
+        }
         out_acc += q_norm0 * ns0 + q_norm1 * ns1 + q_norm2 * ns2 + q_norm3 * ns3
                  + q_norm4 * ns4 + q_norm5 * ns5 + q_norm6 * ns6 + q_norm7 * ns7;
       }
@@ -1449,8 +1475,13 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel(
         const float q_norm = q_shared[idx] * q_scale;
         const float k_norm = k_shared[idx] * k_scale;
         const int64_t state_offset = state_col + idx * head_v_dim;
-        const float new_state = recurrent_state_v[state_offset] * decay + k_norm * delta;
-        recurrent_state_v[state_offset] = new_state;
+        const float new_state = qwen35_gdn_state_read<mutate_state>(state_read_base, recurrent_state_v, state_offset) * decay + k_norm * delta;
+        if (mutate_state) {
+          recurrent_state_v[state_offset] = new_state;
+        }
+        if (recurrent_state_rows != nullptr) {
+          recurrent_state_rows[row_state_base + state_offset] = new_state;
+        }
         out_acc += q_norm * new_state;
       }
       out_shared[value_idx] = out_acc;
@@ -1517,8 +1548,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
     return;
   }
   const int64_t state_slot = state_indices[segment];
-  const int64_t repeat = num_v_heads / num_k_heads;
-  const int64_t k_head = v_head / repeat;
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
   const int64_t key_dim = num_k_heads * head_k_dim;
   const int64_t qkv_width = 2 * key_dim + num_v_heads * head_v_dim;
   const int64_t value_idx = threadIdx.x;
@@ -1589,8 +1619,8 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
       __syncthreads();
     }
 
-    const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
-    const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
     const int64_t scalar_idx = token * num_v_heads + v_head;
     const float beta = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
     const float decay = expf(-expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[v_head]));
@@ -2112,6 +2142,57 @@ extern "C" int hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16
       stream);
 }
 
+extern "C" int hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* leaf_recurrent_state,
+    float* /* acc_buf */,
+    float* out,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (max_nodes <= 0 || !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim) ||
+      head_k_dim > 256 || (head_k_dim % 64) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      leaf_recurrent_state,
+      nullptr,
+      out,
+      eps,
+      max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16(
     const float* conv_out,
     const half_t* gate,
@@ -2542,7 +2623,7 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_o
   const int threads = 128;
   const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
   hipLaunchKernelGGL(
-      (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<uint16_t>),
+      (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<uint16_t, true>),
       dim3(static_cast<unsigned int>(num_v_heads)),
       dim3(threads),
       shared_bytes,
@@ -2555,6 +2636,112 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_o
       a_log,
       norm_weight,
       recurrent_state,
+      recurrent_state,
+      nullptr,
+      out,
+      eps,
+      tokens,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    float* recurrent_state,
+    float* recurrent_state_rows,
+    uint16_t* out,
+    float eps,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (recurrent_state_rows == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<uint16_t, true>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state,
+      recurrent_state,
+      recurrent_state_rows,
+      out,
+      eps,
+      tokens,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* recurrent_state_initial,
+    float* recurrent_state_rows,
+    uint16_t* out,
+    float eps,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (recurrent_state_initial == nullptr || recurrent_state_rows == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel<uint16_t, false>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state_initial,
+      nullptr,
+      recurrent_state_rows,
       out,
       eps,
       tokens,

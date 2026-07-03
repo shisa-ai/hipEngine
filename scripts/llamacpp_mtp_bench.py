@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import signal
 import statistics
 import subprocess
@@ -52,6 +53,23 @@ def main() -> int:
     parser.add_argument("--min-p", type=float, default=0.0)
     parser.add_argument("--token-id", type=int, default=9707)
     parser.add_argument("--shapes", nargs="+", default=["512/128", "4096/128"])
+    parser.add_argument(
+        "--server-extra-arg",
+        action="append",
+        default=[],
+        help="Extra llama-server argument. Repeat for multiple argv entries, e.g. --server-extra-arg=--reasoning --server-extra-arg=off.",
+    )
+    parser.add_argument(
+        "--stage-timings-jsonl",
+        type=Path,
+        default=None,
+        help="Set LLAMA_MTP_STAGE_TIMINGS to this JSONL path for the MTP server process.",
+    )
+    parser.add_argument(
+        "--stage-token-trace",
+        action="store_true",
+        help="When stage timings are enabled, also set LLAMA_MTP_TOKEN_TRACE=1.",
+    )
     parser.add_argument("--server-start-timeout", type=float, default=600.0)
     parser.add_argument("--request-timeout", type=float, default=900.0)
     parser.add_argument("--output", type=Path, required=True)
@@ -90,6 +108,7 @@ def main() -> int:
         },
         "runs": {},
         "summary": {},
+        "stage_timing_summary": None,
         "notes": [
             "External comparison diagnostic; no hipEngine correctness gate is implied.",
             "Natural prompt MTP can produce different output hashes from base even at "
@@ -104,13 +123,23 @@ def main() -> int:
         for mode in modes:
             log_path = logs_dir / f"server-{mode}.log"
             command = _server_command(args, mode)
+            env = os.environ.copy()
+            stage_timing_path: Path | None = None
+            if mode == "mtp" and args.stage_timings_jsonl is not None:
+                stage_timing_path = args.stage_timings_jsonl
+                stage_timing_path.parent.mkdir(parents=True, exist_ok=True)
+                stage_timing_path.unlink(missing_ok=True)
+                env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_timing_path)
+                if args.stage_token_trace:
+                    env["LLAMA_MTP_TOKEN_TRACE"] = "1"
             with log_path.open("wb") as log:
-                server_process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+                server_process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env)
             try:
                 _wait_for_health(args.host, args.port, args.server_start_timeout)
                 mode_payload: dict[str, Any] = {
                     "server_command": command,
                     "server_log": str(log_path),
+                    "stage_timings_jsonl": str(stage_timing_path) if stage_timing_path is not None else None,
                     "protocols": {},
                 }
                 if "natural" in protocols:
@@ -121,6 +150,8 @@ def main() -> int:
             finally:
                 _terminate(server_process)
                 server_process = None
+                if mode == "mtp" and stage_timing_path is not None:
+                    artifact["stage_timing_summary"] = _summarize_stage_timings(stage_timing_path)
     finally:
         if server_process is not None:
             _terminate(server_process)
@@ -160,6 +191,7 @@ def _server_command(args: argparse.Namespace, mode: str) -> list[str]:
     ]
     if mode == "mtp":
         cmd.extend(["--spec-type", "draft-mtp", "--spec-draft-n-max", str(args.draft_max)])
+    cmd.extend(args.server_extra_arg)
     return cmd
 
 
@@ -210,6 +242,7 @@ def _run_natural(args: argparse.Namespace) -> dict[str, Any]:
                 "content_chars": len(content),
                 "timings": timings,
                 "draft_acceptance": _draft_acceptance(timings),
+                "accepted_per_output": _accepted_per_output(timings),
             }
         )
     return {
@@ -250,6 +283,7 @@ def _run_token_repeat(args: argparse.Namespace) -> dict[str, Any]:
                 "draft_n": timings.get("draft_n"),
                 "draft_n_accepted": timings.get("draft_n_accepted"),
                 "draft_acceptance": _draft_acceptance(timings),
+                "accepted_per_output": _accepted_per_output(timings),
                 "wall_s": wall_s,
                 "stop_type": resp.get("stop_type"),
                 "truncated": resp.get("truncated"),
@@ -355,6 +389,12 @@ def _draft_acceptance(timings: dict[str, Any]) -> float | None:
     return (draft_accepted / draft_n) if draft_n else None
 
 
+def _accepted_per_output(timings: dict[str, Any]) -> float | None:
+    output_tokens = timings.get("predicted_n") or 0
+    draft_accepted = timings.get("draft_n_accepted") or 0
+    return (draft_accepted / output_tokens) if output_tokens else None
+
+
 def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     pred_n = sum((row.get("timings", {}).get("predicted_n") or 0) for row in rows)
     pred_ms = sum((row.get("timings", {}).get("predicted_ms") or 0.0) for row in rows)
@@ -372,6 +412,11 @@ def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "draft_n": draft_n,
         "draft_n_accepted": draft_acc,
         "draft_acceptance": (draft_acc / draft_n) if draft_n else None,
+        "accepted_per_output": (draft_acc / pred_n) if pred_n else None,
+        "denominators": {
+            "draft_acceptance": "draft_n_accepted / draft_n",
+            "accepted_per_output": "draft_n_accepted / predicted_n",
+        },
     }
 
 
@@ -383,11 +428,18 @@ def _summarize_by_category(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _summarize_token_repeat(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total_predicted = sum((row.get("tokens_predicted") or 0) for row in rows)
+    total_accepted = sum((row.get("draft_n_accepted") or 0) for row in rows)
     return {
         "rows": len(rows),
         "weighted_predicted_per_second": _weighted_tps(rows, "tokens_predicted", "predicted_ms"),
         "weighted_prompt_per_second": _weighted_tps(rows, "tokens_evaluated", "prompt_ms"),
         "draft_acceptance": _weighted_draft_acceptance(rows),
+        "accepted_per_output": (total_accepted / total_predicted) if total_predicted else None,
+        "denominators": {
+            "draft_acceptance": "draft_n_accepted / draft_n",
+            "accepted_per_output": "draft_n_accepted / tokens_predicted",
+        },
     }
 
 
@@ -418,8 +470,130 @@ def _summarize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
                     "mtp_weighted_predicted_per_second": mtp_tps,
                     "speedup": (mtp_tps / base_tps) if base_tps and mtp_tps else None,
                     "mtp_draft_acceptance": mtp["summary"].get("draft_acceptance"),
+                    "mtp_accepted_per_output": mtp["summary"].get("accepted_per_output"),
                 }
     return summary
+
+
+def _summarize_stage_timings(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"available": False, "path": str(path), "reason": "file not found"}
+
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not rows:
+        return {"available": False, "path": str(path), "reason": "no rows"}
+
+    task_ids = sorted({row.get("task_id") for row in rows if row.get("task_id") is not None})
+    warmup_task_id = task_ids[0] if len(task_ids) > 1 else None
+    measured_rows = [row for row in rows if warmup_task_id is None or row.get("task_id") != warmup_task_id]
+    return {
+        "available": True,
+        "path": str(path),
+        "rows_total": len(rows),
+        "rows_measured": len(measured_rows),
+        "warmup_task_id_excluded": warmup_task_id,
+        "all": _summarize_stage_rows(rows),
+        "measured_excluding_first_task": _summarize_stage_rows(measured_rows),
+    }
+
+
+def _summarize_stage_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total_output = sum(int(row.get("visible_output_tokens") or 0) for row in rows)
+    total_accepted = sum(int(row.get("accepted_draft_tokens") or 0) for row in rows)
+    total_drafts = sum(int(row.get("generated_draft_tokens") or 0) for row in rows)
+    total_wall_ms = sum(float(row.get("cycle_wall_ms") or 0.0) for row in rows)
+    target_passes = sum(int(row.get("target_verify_layer_passes") or 0) for row in rows)
+    target_rows = sum(int(row.get("target_verify_rows_evaluated") or 0) for row in rows)
+    discarded_rows = sum(int(row.get("target_verify_discarded_rows") or 0) for row in rows)
+    stage_totals: dict[str, float] = {}
+    for row in rows:
+        stages = row.get("stage_timings_ms") or {}
+        for name, value in stages.items():
+            stage_totals[name] = stage_totals.get(name, 0.0) + float(value)
+    cycle_histograms: dict[str, dict[str, int]] = {
+        "generated_draft_tokens": {},
+        "accepted_draft_tokens": {},
+        "visible_output_tokens": {},
+        "target_verify_layer_passes": {},
+        "target_verify_rows_evaluated": {},
+        "target_verify_block_rows": {},
+        "target_verify_discarded_rows": {},
+        "target_verify_rows_minus_visible_output": {},
+    }
+    for row in rows:
+        visible = int(row.get("visible_output_tokens") or 0)
+        _bump_hist(cycle_histograms["generated_draft_tokens"], int(row.get("generated_draft_tokens") or 0))
+        _bump_hist(cycle_histograms["accepted_draft_tokens"], int(row.get("accepted_draft_tokens") or 0))
+        _bump_hist(cycle_histograms["visible_output_tokens"], visible)
+        _bump_hist(cycle_histograms["target_verify_layer_passes"], int(row.get("target_verify_layer_passes") or 0))
+        target_row_count = int(row.get("target_verify_rows_evaluated") or 0)
+        _bump_hist(cycle_histograms["target_verify_rows_evaluated"], target_row_count)
+        _bump_hist(cycle_histograms["target_verify_block_rows"], int(row.get("target_verify_block_rows") or 0))
+        _bump_hist(cycle_histograms["target_verify_discarded_rows"], int(row.get("target_verify_discarded_rows") or 0))
+        if "target_verify_rows_evaluated" in row:
+            _bump_hist(cycle_histograms["target_verify_rows_minus_visible_output"], target_row_count - visible)
+
+    proposal_trace_sample = [
+        trace
+        for trace in (_stage_token_trace(row) for row in rows)
+        if trace is not None
+    ][:32]
+
+    return {
+        "cycles": len(rows),
+        "total_output_tokens": total_output,
+        "total_accepted": total_accepted,
+        "total_drafts": total_drafts,
+        "accepted_per_output": (total_accepted / total_output) if total_output else None,
+        "draft_acceptance": (total_accepted / total_drafts) if total_drafts else None,
+        "cycle_wall_ms_total": total_wall_ms,
+        "cycle_wall_ms_per_output": (total_wall_ms / total_output) if total_output else None,
+        "target_verify_layer_passes_per_output": (target_passes / total_output) if total_output else None,
+        "target_verify_rows_per_output": (target_rows / total_output) if total_output else None,
+        "target_verify_discarded_rows_per_output": (discarded_rows / total_output) if total_output else None,
+        "cycle_histograms": cycle_histograms,
+        "token_trace_rows": len([row for row in rows if _stage_token_trace(row) is not None]),
+        "proposal_trace_sample": proposal_trace_sample,
+        "stage_timing_totals_ms": dict(sorted(stage_totals.items())),
+        "stage_timing_per_output_ms": (
+            {name: value / total_output for name, value in sorted(stage_totals.items())}
+            if total_output else {}
+        ),
+        "stage_timing_per_cycle_ms": (
+            {name: value / len(rows) for name, value in sorted(stage_totals.items())}
+            if rows else {}
+        ),
+    }
+
+
+def _bump_hist(hist: dict[str, int], value: int) -> None:
+    key = str(int(value))
+    hist[key] = hist.get(key, 0) + 1
+
+
+def _stage_token_trace(row: dict[str, Any]) -> dict[str, Any] | None:
+    token_keys = (
+        "draft_token_ids",
+        "sampled_token_ids",
+        "accepted_token_ids",
+        "output_token_ids",
+        "bonus_token_id",
+        "rejected_draft_token_id",
+    )
+    if not any(key in row for key in token_keys):
+        return None
+    trace: dict[str, Any] = {
+        "task_id": row.get("task_id"),
+        "cycle": row.get("cycle"),
+        "checkpoint_restore": bool(row.get("checkpoint_restore", False)),
+        "generated_draft_tokens": int(row.get("generated_draft_tokens") or 0),
+        "accepted_draft_tokens": int(row.get("accepted_draft_tokens") or 0),
+        "visible_output_tokens": int(row.get("visible_output_tokens") or 0),
+    }
+    for key in token_keys:
+        if key in row:
+            trace[key] = row[key]
+    return trace
 
 
 def _summary_tps(summary: dict[str, Any], protocol: str) -> float | None:
@@ -433,10 +607,11 @@ def _summary_text(artifact: dict[str, Any]) -> str:
     for protocol, row in artifact.get("summary", {}).items():
         speedup = row.get("speedup")
         acc = _fmt(row.get("mtp_draft_acceptance"), 3) if speedup else "-"
+        acc_out = _fmt(row.get("mtp_accepted_per_output"), 3) if speedup else "-"
         lines.append(
             f"{protocol}: base={_fmt(row.get('base_weighted_predicted_per_second'))} "
             f"mtp={_fmt(row.get('mtp_weighted_predicted_per_second'))} "
-            f"speedup={speedup:.3f}x acc={acc}"
+            f"speedup={speedup:.3f}x acc={acc} accepted/output={acc_out}"
         )
     return "\n".join(lines)
 
@@ -482,6 +657,9 @@ def _config_json(args: argparse.Namespace) -> dict[str, Any]:
         "min_p": args.min_p,
         "token_id": args.token_id,
         "shapes": args.shapes,
+        "server_extra_arg": args.server_extra_arg,
+        "stage_timings_jsonl": str(args.stage_timings_jsonl) if args.stage_timings_jsonl is not None else None,
+        "stage_token_trace": bool(args.stage_token_trace),
     }
 
 

@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_hipengine_layer0_subboundary_plan",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 319,
+  "status": "ready",
+  "qwen35moe_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp",
+  "context_path": "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp",
+  "runner_path": "hipengine/runtime/qwen35_gguf_runner.py",
+  "input_artifact_path": "benchmarks/results/mtp-gguf-iter318-input-embed-compare.json",
+  "layer0_artifact_path": "benchmarks/results/mtp-gguf-iter316-layer0-compare.json",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "prompt_tokens": [
+    248045,
+    846,
+    198,
+    7734,
+    264,
+    2716,
+    40719,
+    13,
+    248046,
+    198,
+    248045,
+    74455,
+    198,
+    248068,
+    271,
+    248069,
+    271
+  ],
+  "position": 16,
+  "token_id": 271,
+  "llamacpp_attn_norm_patch": {
+    "ready": true,
+    "capture_label": "h_nextn_layer0_attn_norm",
+    "patch_scope": "temporary copied llama.cpp source tree only",
+    "attn_norm_anchor_count": 1,
+    "attn_norm_capture_old_text": "        cur = build_norm(inpL, model.layers[il].attn_norm, nullptr, LLM_NORM_RMS, il);\n        cb(cur, \"attn_norm\", il);\n\n        ggml_build_forward_expand(gf, cur);",
+    "attn_norm_capture_new_text": "        cur = build_norm(inpL, model.layers[il].attn_norm, nullptr, LLM_NORM_RMS, il);\n        cb(cur, \"attn_norm\", il);\n\n        if (il == 0) {\n            cb(cur, \"h_nextn_layer0_attn_norm\", il);\n            res->t_h_nextn = cur;\n        }\n\n        ggml_build_forward_expand(gf, cur);",
+    "post_output_preserve_state": "needs_patch",
+    "post_output_old_count": 1,
+    "post_output_new_count": 0,
+    "post_output_preserve_old_text": "    cb(cur, \"h_nextn\", -1);\n    res->t_h_nextn = cur;\n\n    if (!cparams.embeddings_nextn_masked && inp_out_ids) {",
+    "post_output_preserve_new_text": "    cb(cur, \"h_nextn_post_output_norm\", -1);\n    // PRE-output_norm diagnostic: keep res->t_h_nextn from before output_norm.\n\n    if (!cparams.embeddings_nextn_masked && inp_out_ids) {",
+    "input_capture_patch_must_be_absent": true,
+    "input_capture_patch_count": 0,
+    "layer_capture_patch_must_be_absent": true,
+    "layer_capture_patch_count": 0,
+    "final_pre_output_patch_must_be_absent": true,
+    "final_pre_output_patch_count": 0,
+    "expected_shape": "hidden_size",
+    "anchors": {
+      "layer_loop": 181,
+      "attn_norm_build": 184,
+      "attn_norm_cb": 185,
+      "linear_attn_branch": 192,
+      "post_output_h_nextn": 233,
+      "context_unmasked_get_ith": 934
+    },
+    "notes": [
+      "Use a clean base source without input/layer/final diagnostic taps so the attn_norm tap cannot be overwritten.",
+      "Apply the post-output preserve patch so the later h_nextn assignment cannot overwrite the selected attn_norm tensor."
+    ]
+  },
+  "hipengine_linear_boundary_capture": {
+    "ready": true,
+    "facts": {
+      "capture_linear_attention_boundary_available": true,
+      "requires_linear_attention_layer": true,
+      "sets_token_id_device": true,
+      "runs_attn_only": true,
+      "captures_attn_norm_f32": true,
+      "attn_norm_copied_from_bf16_norm_scratch": true,
+      "captures_linear_qkv_f32": true,
+      "captures_linear_z_f32": true,
+      "captures_attn_out_f32": true
+    },
+    "capture_strategy": "Warm prior prompt tokens with session.step(...). Then call session.capture_linear_attention_boundary(token_id, position=position, layer_id=0) and compare capture.attn_norm_f32 to the patched llama.cpp h_nextn_layer0_attn_norm row.",
+    "first_value_field": "attn_norm_f32",
+    "later_value_fields": [
+      "linear_qkv_f32",
+      "linear_z_f32",
+      "conv_out_f32",
+      "recurrent_out_f32",
+      "attn_out_f32"
+    ],
+    "dtype_note": "hipEngine attn_norm_f32 copies the BF16 scratch norm back to F32. The next comparison should report both exact F32 delta and a BF16-rounded llama.cpp attn_norm row delta, matching the input-embedding diagnostic.",
+    "anchors": {
+      "capture_linear_attention_boundary": 3549,
+      "run_attn_only": 1595,
+      "attn_norm_f32": 3612,
+      "linear_qkv_f32": 3615,
+      "attn_out_f32": 3632
+    }
+  },
+  "prior_input_embed_result": {
+    "ready": true,
+    "status": "mismatched",
+    "classification": "input_embed_matches_after_bf16_roundtrip",
+    "exact_rmse": 4.314661795910361e-06,
+    "exact_max_abs_diff": 8.296966552734375e-05,
+    "bf16_exact_match": true,
+    "bf16_rmse": 0.0,
+    "bf16_max_abs_diff": 0.0,
+    "llamacpp_input_sha256": "ce69511d7a54dec1a77cb3097923d71999d5f408690e377cec3bb39285dffa46",
+    "hipengine_hidden_in_sha256": "5b3464efb0fb72d5dbbe522b63b26531401d460e2667e971d2f2b8226fc1b9b3",
+    "llamacpp_bf16_roundtrip_sha256": "5b3464efb0fb72d5dbbe522b63b26531401d460e2667e971d2f2b8226fc1b9b3"
+  },
+  "prior_layer0_result": {
+    "ready": true,
+    "status": "mismatched",
+    "classification": "layer_boundary_mismatch",
+    "layer_id": 0,
+    "rmse": 0.012114962719327636,
+    "max_abs_diff": 0.045740051893517375,
+    "mean_abs_diff": 0.009691874419019086,
+    "next_action": "inspect_initial_embedding_or_token_capture"
+  },
+  "comparison_plan": {
+    "first_probe": "layer0_attn_norm_vs_linear_boundary_attn_norm_f32",
+    "llamacpp_effective_tap": "h_nextn_layer0_attn_norm",
+    "hipengine_value_field": "attn_norm_f32",
+    "expected_artifacts": [
+      "mtp-gguf-iter320-layer0-attn-norm-harness-build.json",
+      "mtp-gguf-iter320-layer0-attn-norm-llamacpp-build-result.json",
+      "mtp-gguf-iter320-layer0-attn-norm-harness-compile.json",
+      "mtp-gguf-iter320-layer0-attn-norm-compare.json"
+    ],
+    "interpretation": {
+      "bf16_rounded_match": "attn_norm is aligned; continue inside linear attention at qkv/z projections",
+      "mismatch": "the first layer-0 difference is the attention RMSNorm output"
+    }
+  },
+  "decision": {
+    "status": "ready",
+    "conclusion": "layer0_attn_norm_capture_plan_ready",
+    "next_action": "build_layer0_attn_norm_capture_and_compare"
+  },
+  "conclusion": "layer0_attn_norm_capture_plan_ready",
+  "external_checkout_modified": false,
+  "next_action": "build_layer0_attn_norm_capture_and_compare"
+}

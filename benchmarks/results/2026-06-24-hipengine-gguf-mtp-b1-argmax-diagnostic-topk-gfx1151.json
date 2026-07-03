@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_b1_argmax_timed_diagnostic_topk_untimed",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-24",
+  "source_commit_before_commit": "8ddd26b7",
+  "source_dirty": true,
+  "hardware": "gfx1151/Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "change": {
+    "summary": "Time only the active proposal width for B1 greedy MTP decoding: use pure argmax for k=1 proposals and compute the unused diagnostic top-10 after draft_ms timing while preserving the reported top-10 artifact fields.",
+    "proposal_topk_candidate_count": "max(1, root_topk_accept, sibling_topk_accept)",
+    "diagnostic_topk_candidate_count": "max(10, proposal_topk_candidate_count)",
+    "rationale": "B1 acceptance only consumes the greedy draft token. The previous default timed a CPU argpartition top-10 over the full vocabulary every draft only for diagnostics, inflating MTP draft_ms without changing proposals, target verification, or acceptance.",
+    "anti_gaming": "No prompt text, token IDs, candidate ranks, fixture IDs, benchmark-detection branches, target-token rescue logic, prompt-suite edits, accepted/output policy changes, or true-AR denominator games. The selected k=1 token is np.argmax(logits_row) for every row/depth."
+  },
+  "true_ar_baseline": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json",
+    "decode_tokens": 128,
+    "weighted_decode_tok_s": 56.49617664099023,
+    "timing_protocol": {
+      "decode_path": "graph_replay",
+      "graph_replay_decode": true,
+      "graph_steps_per_replay": 1,
+      "decode_repack": true,
+      "decode_repack_env": "1",
+      "use_gemv_decode": true,
+      "use_wmma_prefill": true,
+      "bulk_prefill_attention_mode": "bulk"
+    },
+    "repo_commit": "8ddd26b7"
+  },
+  "previous_retained_b1_target_graph": {
+    "artifact": "benchmarks/results/2026-06-23-hipengine-gguf-mtp-b1-linear-target-graph-gfx1151.json",
+    "raw_summary": "/tmp/hipengine-mtp-gguf-final/run-20260623-235743/summary.json",
+    "full": {
+      "decode_tok_s_weighted": 42.42242041620737,
+      "mtp_vs_true_ar_decode_ratio": 0.7510349576460698,
+      "draft_acceptance": 0.27,
+      "accepted_per_output": 0.2125984251968504,
+      "total_output_tokens": 127,
+      "total_accepted": 27,
+      "total_drafts": 100,
+      "decode_ms": 2993.7
+    }
+  },
+  "candidate_b1_argmax_timed_diagnostic_topk_untimed": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/run-20260624-085142/summary.json",
+    "policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 1,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "mtp_draft_warmup": true,
+      "target_graph_verify": true,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 42.99313463960243,
+      "mtp_vs_true_ar_decode_ratio": 0.760991932477236,
+      "draft_acceptance": 0.27,
+      "accepted_per_output": 0.2125984251968504,
+      "total_output_tokens": 127,
+      "total_accepted": 27,
+      "total_drafts": 100,
+      "decode_ms": 2953.96
+    },
+    "train": {
+      "decode_tok_s_weighted": 42.589934773223185,
+      "mtp_vs_true_ar_decode_ratio": 0.7537684646385132,
+      "draft_acceptance": 0.21666666666666667,
+      "accepted_per_output": 0.1780821917808219,
+      "total_output_tokens": 73,
+      "total_accepted": 13,
+      "total_drafts": 60,
+      "decode_ms": 1714.02
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 43.55049437876026,
+      "mtp_vs_true_ar_decode_ratio": 0.770990363568964,
+      "draft_acceptance": 0.35,
+      "accepted_per_output": 0.25925925925925924,
+      "total_output_tokens": 54,
+      "total_accepted": 14,
+      "total_drafts": 40,
+      "decode_ms": 1239.94
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 42.69036417494336,
+        "mtp_vs_true_ar_decode_ratio": 0.75550585276068,
+        "draft_acceptance": 0.225,
+        "accepted_per_output": 0.1836734693877551,
+        "total_output_tokens": 49,
+        "total_accepted": 9,
+        "total_drafts": 40,
+        "decode_ms": 1147.8000000000002
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 42.96640027498497,
+        "mtp_vs_true_ar_decode_ratio": 0.7605743479794873,
+        "draft_acceptance": 0.25,
+        "accepted_per_output": 0.2,
+        "total_output_tokens": 25,
+        "total_accepted": 5,
+        "total_drafts": 20,
+        "decode_ms": 581.8499999999999
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 41.90809372836267,
+        "mtp_vs_true_ar_decode_ratio": 0.7420114847129208,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.13043478260869565,
+        "total_output_tokens": 23,
+        "total_accepted": 3,
+        "total_drafts": 20,
+        "decode_ms": 548.8199999999999
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 44.412204473789394,
+        "mtp_vs_true_ar_decode_ratio": 0.7860779876527497,
+        "draft_acceptance": 0.5,
+        "accepted_per_output": 0.3333333333333333,
+        "total_output_tokens": 30,
+        "total_accepted": 10,
+        "total_drafts": 20,
+        "decode_ms": 675.49
+      }
+    },
+    "graph_effective_all_prompts": true,
+    "graph_fallback_reasons": [],
+    "target_graph_context_cap": {
+      "min": 59,
+      "max": 91
+    },
+    "timing_ms": {
+      "target_verify_avg": 22.98,
+      "draft_avg": 6.559,
+      "target_verify_total": 2298.0,
+      "draft_total": 655.9,
+      "draft_warmup_avg": 98.389
+    },
+    "diagnostic_top10_lengths": [10]
+  },
+  "deltas_vs_previous_retained": {
+    "decode_tok_s_weighted_abs": 0.5707142233950583,
+    "decode_tok_s_weighted_pct": 1.345313321755093,
+    "mtp_vs_true_ar_decode_ratio_abs": 0.009956974831166223,
+    "mtp_vs_true_ar_decode_ratio_pct": 1.3257662195235099,
+    "decode_ms_abs": -39.73999999999978,
+    "decode_ms_pct": -1.3274544003473851,
+    "draft_acceptance_abs": 0.0,
+    "accepted_per_output_abs": 0.0
+  },
+  "validation": {
+    "commands": [
+      "python3 -m py_compile scripts/gguf_mtp_bench.py",
+      "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py",
+      "python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 2 --draft-n-max 1 --prompt 'Write a short greeting.' --output /tmp/hipengine-mtp-argmax-diagnostic-topk-smoke-20260624-084910.json",
+      "mtp-gguf-final verify command -> /tmp/hipengine-mtp-gguf-final/run-20260624-085142/summary.json",
+      "configured guard: py_compile selected MTP scripts/runtime + pytest MTP guard suite (437 passed)"
+    ],
+    "default_smoke_artifact": "/tmp/hipengine-mtp-argmax-diagnostic-topk-smoke-20260624-084910.json",
+    "default_smoke": {
+      "target_graph_verify": true,
+      "target_graph_verify_effective": true,
+      "target_graph_verify_fallback_reason": null,
+      "cycle_target_tokens": [[148368], [248068]],
+      "cycle_draft_tokens": [[248045], [1710]],
+      "avg_ar_decode_ms": 17.98,
+      "avg_mtp_draft_ms": 7.01,
+      "tokens_per_sec": 40.02,
+      "diagnostic_top10_lengths": [10]
+    },
+    "prompt_verifier": "PASS: generic proposal-width timing cleanup only; no prompt-specific, token-ID, candidate-rank, fixture-ID, benchmark-detection, target-rescue, true-AR denominator, or accepted/output policy changes."
+  },
+  "notes": [
+    "This remains diagnostic progress, not a true speedup claim: 42.99 tok/s is 0.761x the production true no-MTP AR baseline.",
+    "Draft acceptance and accepted/output are unchanged by construction; only timed CPU proposal selection overhead changed for B1.",
+    "Diagnostic top-10 tokens remain present in child artifacts, but their computation is outside draft_ms because B1 greedy proposals do not consume them."
+  ]
+}

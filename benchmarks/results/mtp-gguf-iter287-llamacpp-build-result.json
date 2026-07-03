@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_mtp_build_result",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 287,
+  "status": "configure_failed",
+  "plan_path": "benchmarks/results/mtp-gguf-iter286-llamacpp-build-plan.json",
+  "source_dir": "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+  "build_dir": "/tmp/hipengine-llamacpp-mtp-iter286-build",
+  "log_dir": "/tmp/hipengine-llamacpp-mtp-iter287-build-logs",
+  "source_manifest_summary": {
+    "status": "prepared",
+    "observed_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "commit_matches_expected": true,
+    "external_checkout_modified": false,
+    "patch_sha256": "00eb7f5069994f9789a3bd1f7cb7953bde30f2551ab1a0576387775657f3ec08",
+    "patch_applied": true,
+    "assignment_line": 182
+  },
+  "build_plan_summary": {
+    "generator": "Unix Makefiles",
+    "arch": "gfx1151",
+    "target": "llama"
+  },
+  "commands": {
+    "configure": {
+      "command": [
+        "cmake",
+        "-S",
+        "/tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input",
+        "-B",
+        "/tmp/hipengine-llamacpp-mtp-iter286-build",
+        "-G",
+        "Unix Makefiles",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DGGML_HIP=ON",
+        "-DAMDGPU_TARGETS=gfx1151",
+        "-DLLAMA_BUILD_TESTS=OFF",
+        "-DLLAMA_BUILD_TOOLS=OFF",
+        "-DLLAMA_BUILD_EXAMPLES=OFF",
+        "-DLLAMA_BUILD_SERVER=OFF",
+        "-DLLAMA_BUILD_APP=OFF",
+        "-DLLAMA_BUILD_COMMON=OFF",
+        "-DLLAMA_CURL=OFF",
+        "-DBUILD_SHARED_LIBS=ON",
+        "-DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/hipcc",
+        "-DCMAKE_PREFIX_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel;/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake"
+      ],
+      "command_shell": "cmake -S /tmp/hipengine-llamacpp-mtp-iter285-qwen35moe-layer-input -B /tmp/hipengine-llamacpp-mtp-iter286-build -G \"Unix Makefiles\" -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1151 -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_COMMON=OFF -DLLAMA_CURL=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_HIP_COMPILER=/home/lhl/miniforge3/envs/therock/bin/hipcc -DCMAKE_PREFIX_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel;/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake",
+      "returncode": 1,
+      "timed_out": false,
+      "elapsed_seconds": 0.64,
+      "stdout_log": "/tmp/hipengine-llamacpp-mtp-iter287-build-logs/configure.stdout.log",
+      "stderr_log": "/tmp/hipengine-llamacpp-mtp-iter287-build-logs/configure.stderr.log",
+      "stdout_tail": "-- The C compiler identification is GNU 16.1.1\n-- The CXX compiler identification is GNU 16.1.1\n-- Detecting C compiler ABI info\n-- Detecting C compiler ABI info - done\n-- Check for working C compiler: /usr/bin/cc - skipped\n-- Detecting C compile features\n-- Detecting C compile features - done\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: /usr/bin/c++ - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Git: /usr/bin/git (found version \"2.54.0\")\n-- The ASM compiler identification is GNU\n-- Found assembler: /usr/bin/cc\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\n-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success\n-- Found Threads: TRUE\n-- ccache found, compilation results will be cached. Disable with GGML_CCACHE=OFF.\n-- CMAKE_SYSTEM_PROCESSOR: x86_64\n-- GGML_SYSTEM_ARCH: x86\n-- Found OpenMP_C: -fopenmp (found version \"5.2\")\n-- Found OpenMP_CXX: -fopenmp (found version \"5.2\")\n-- Found OpenMP: TRUE (found version \"5.2\")\n-- Including CPU backend\n-- x86 detected\n-- Adding CPU backend variant ggml-cpu: -march=native \n-- Configuring incomplete, errors occurred!\n",
+      "stderr_tail": "CMAKE_BUILD_TYPE=Release\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nfatal: not a git repository (or any parent up to mount point /)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\nCMake Error at /usr/share/cmake/Modules/CMakeDetermineHIPCompiler.cmake:75 (message):\n  CMAKE_HIP_COMPILER is set to the hipcc wrapper:\n\n   /home/lhl/miniforge3/envs/therock/bin/hipcc\n\n  This is not supported.  Use Clang directly, or let CMake pick a default.\nCall Stack (most recent call first):\n  ggml/src/ggml-hip/CMakeLists.txt:43 (enable_language)\n\n\n"
+    },
+    "build": {
+      "command": [
+        "cmake",
+        "--build",
+        "/tmp/hipengine-llamacpp-mtp-iter286-build",
+        "--target",
+        "llama",
+        "-j",
+        "8"
+      ],
+      "command_shell": "cmake --build /tmp/hipengine-llamacpp-mtp-iter286-build --target llama -j 8",
+      "returncode": null,
+      "elapsed_seconds": 0.0,
+      "stdout_log": null,
+      "stderr_log": null,
+      "stdout_tail": "",
+      "stderr_tail": "configure_failed"
+    }
+  },
+  "outputs": {
+    "cmake_cache_exists": true,
+    "build_sentinel_exists": true,
+    "libraries": [],
+    "library_count": 0
+  },
+  "diagnostics": {
+    "kind": "cmake_hip_compiler_wrapper_rejected",
+    "suggestion": "remove CMAKE_HIP_COMPILER=hipcc or set it to amdclang++/clang++",
+    "candidate_hip_compiler": "/home/lhl/miniforge3/envs/therock/bin/amdclang++"
+  },
+  "external_checkout_modified": false,
+  "next_action": "regenerate_build_plan_with_amdclangpp_or_without_cmake_hip_compiler"
+}

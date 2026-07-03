@@ -1,0 +1,502 @@
+{
+  "schema": 1,
+  "kind": "mtp_target_layer0_linear_attn_cross_engine_compare",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T15:24:49.261937+00:00",
+  "inputs": {
+    "hipengine_raw": "benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-raw-layer14-boundary-cycle3.json",
+    "llamacpp_jsonl": "/tmp/hipengine-llamacpp-layer14-gate-task9-cycle3.jsonl",
+    "llamacpp_cycle": 3,
+    "row": 2,
+    "layer": 14
+  },
+  "hipengine": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "source_trace": "/tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json",
+    "command": {
+      "argv": [
+        "scripts/gguf_mtp_forced_target_probe.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--trace",
+        "/tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json",
+        "--cycle",
+        "3",
+        "--target-block-verify-mode",
+        "bulk",
+        "--replay-target-block-verify-mode",
+        "bulk",
+        "--target-block-direct-partial-replay-mode",
+        "direct-commit",
+        "--capture-linear-state-rows",
+        "--candidate-token",
+        "668,8940",
+        "--top-k",
+        "20",
+        "--raw-layer-boundary-row",
+        "14:2",
+        "--output",
+        "benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-raw-layer14-boundary-cycle3.json"
+      ],
+      "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json --cycle 3 --target-block-verify-mode bulk --replay-target-block-verify-mode bulk --target-block-direct-partial-replay-mode direct-commit --capture-linear-state-rows --candidate-token 668,8940 --top-k 20 --raw-layer-boundary-row 14:2 --output benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-raw-layer14-boundary-cycle3.json"
+    },
+    "cycle": 3,
+    "sampled_tokens": [
+      11,
+      567,
+      8940
+    ],
+    "accepted_draft_tokens": 2,
+    "layer": 14,
+    "row": 2,
+    "position": 75,
+    "input_token": 567,
+    "trace_target_token": 8940
+  },
+  "llamacpp": {
+    "cycle": 3,
+    "accepted_draft_tokens": 2,
+    "accepted_token_ids": [
+      11,
+      567
+    ],
+    "bonus_token_id": 668,
+    "cycle_wall_ms": 224.42,
+    "duplicate_value_labels": {
+      "ffn_moe_out_14": {
+        "count": 2,
+        "max_abs_vs_first": 0.0
+      },
+      "ffn_out_14": {
+        "count": 2,
+        "max_abs_vs_first": 0.0
+      }
+    }
+  },
+  "pre_ssm_stable_deltas": {
+    "z_projection": {
+      "status": "missing",
+      "hipengine_key": "linear_z",
+      "llamacpp_label": "z_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    },
+    "beta_projection": {
+      "status": "missing",
+      "hipengine_key": "ssm_beta",
+      "llamacpp_label": "beta_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    },
+    "conv_output_silu": {
+      "status": "missing",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "conv_output_silu_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    }
+  },
+  "conv_view_deltas": {
+    "q_conv": {
+      "status": "missing",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "q_conv_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    },
+    "k_conv": {
+      "status": "missing",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "k_conv_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    },
+    "v_conv": {
+      "status": "missing",
+      "hipengine_key": "conv_out",
+      "llamacpp_label": "v_conv_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    },
+    "coverage": {
+      "status": "partial",
+      "hipengine_key": "conv_out",
+      "covered_values": 0,
+      "hipengine_count": 8192
+    }
+  },
+  "pre_ssm_ambiguous_deltas": {
+    "qkv_mixed_vs_linear_qkv": {
+      "status": "missing",
+      "hipengine_key": "linear_qkv",
+      "llamacpp_label": "linear_attn_qkv_mixed_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    },
+    "alpha_vs_ssm_alpha": {
+      "status": "missing",
+      "hipengine_key": "ssm_alpha",
+      "llamacpp_label": "alpha_14",
+      "missing": [
+        "llama.cpp"
+      ]
+    }
+  },
+  "trace_label_caveats": {},
+  "tensor_deltas": {
+    "linear_attn_out": {
+      "count": 2048,
+      "mean_abs_diff": 0.0006119837053120136,
+      "rmse": 0.000792310165707022,
+      "max_abs_diff": 0.0032570608891546726,
+      "cosine": 0.9986551403999329,
+      "llamacpp_rms": 0.015258346684277058,
+      "hipengine_rms": 0.015282168984413147,
+      "llamacpp_sample": [
+        -0.024119289591908455,
+        -0.013494087383151054,
+        -0.0047759246081113815,
+        0.016504479572176933,
+        -0.011749181896448135,
+        0.0014275242574512959,
+        0.009476535022258759,
+        0.00041961669921875
+      ],
+      "hipengine_sample": [
+        -0.02490234375,
+        -0.013427734375,
+        -0.00506591796875,
+        0.01708984375,
+        -0.01214599609375,
+        0.00148773193359375,
+        0.0101318359375,
+        0.000698089599609375
+      ],
+      "diff_sample": [
+        -0.0007830541580915451,
+        6.635300815105438e-05,
+        -0.00028999336063861847,
+        0.0005853641778230667,
+        -0.0003968141973018646,
+        6.020767614245415e-05,
+        0.0006553009152412415,
+        0.000278472900390625
+      ]
+    },
+    "attn_residual": {
+      "count": 2048,
+      "mean_abs_diff": 0.0009623411460779607,
+      "rmse": 0.001229426939971745,
+      "max_abs_diff": 0.006559967994689941,
+      "cosine": 0.9996713995933533,
+      "llamacpp_rms": 0.047224804759025574,
+      "hipengine_rms": 0.047423020005226135,
+      "llamacpp_sample": [
+        0.019079772755503654,
+        0.011966388672590256,
+        -0.016206635162234306,
+        -0.010432420298457146,
+        -0.0023985998705029488,
+        -0.006674889009445906,
+        -0.021236807107925415,
+        -0.005147071555256844
+      ],
+      "hipengine_sample": [
+        0.019775390625,
+        0.0125732421875,
+        -0.01708984375,
+        -0.00830078125,
+        -0.00244140625,
+        -0.006072998046875,
+        -0.0223388671875,
+        -0.005950927734375
+      ],
+      "diff_sample": [
+        0.0006956178694963455,
+        0.0006068535149097443,
+        -0.0008832085877656937,
+        0.0021316390484571457,
+        -4.280637949705124e-05,
+        0.0006018909625709057,
+        -0.001102060079574585,
+        -0.0008038561791181564
+      ]
+    },
+    "attn_post_norm": {
+      "count": 2048,
+      "mean_abs_diff": 0.02478497102856636,
+      "rmse": 0.03181440755724907,
+      "max_abs_diff": 0.12108895927667618,
+      "cosine": 0.9993101358413696,
+      "llamacpp_rms": 0.8563068509101868,
+      "hipengine_rms": 0.854934811592102,
+      "llamacpp_sample": [
+        0.6137836575508118,
+        0.3829716145992279,
+        -0.5005829334259033,
+        -0.26982051134109497,
+        -0.05212483927607536,
+        -0.17663899064064026,
+        -0.662977397441864,
+        -0.12173593789339066
+      ],
+      "hipengine_sample": [
+        0.6328125,
+        0.400390625,
+        -0.5234375,
+        -0.2138671875,
+        -0.052734375,
+        -0.16015625,
+        -0.6953125,
+        -0.140625
+      ],
+      "diff_sample": [
+        0.019028842449188232,
+        0.017419010400772095,
+        -0.02285456657409668,
+        0.05595332384109497,
+        -0.0006095357239246368,
+        0.01648274064064026,
+        -0.032335102558135986,
+        -0.018889062106609344
+      ]
+    },
+    "ffn_out": {
+      "count": 2048,
+      "mean_abs_diff": 0.002265333430841565,
+      "rmse": 0.0028649899177253246,
+      "max_abs_diff": 0.011770161800086498,
+      "cosine": 0.9941152334213257,
+      "llamacpp_rms": 0.02644050307571888,
+      "hipengine_rms": 0.0262205321341753,
+      "llamacpp_sample": [
+        0.002460668794810772,
+        0.014724175445735455,
+        0.008124679327011108,
+        -0.007194005884230137,
+        -0.015411910600960255,
+        0.011143079027533531,
+        0.01629328913986683,
+        0.007847934029996395
+      ],
+      "hipengine_sample": [
+        -0.0013308590278029442,
+        0.009875868447124958,
+        0.009232381358742714,
+        -0.0052034505642950535,
+        -0.012798693962395191,
+        0.015629693865776062,
+        0.01208793930709362,
+        0.0070275189355015755
+      ],
+      "diff_sample": [
+        -0.003791527822613716,
+        -0.0048483069986104965,
+        0.0011077020317316055,
+        0.0019905553199350834,
+        0.0026132166385650635,
+        0.004486614838242531,
+        -0.004205349832773209,
+        -0.0008204150944948196
+      ]
+    },
+    "post_moe": {
+      "count": 2048,
+      "mean_abs_diff": 0.002451098756864667,
+      "rmse": 0.003095482476055622,
+      "max_abs_diff": 0.010692245326936245,
+      "cosine": 0.998822808265686,
+      "llamacpp_rms": 0.06378044933080673,
+      "hipengine_rms": 0.06380663812160492,
+      "llamacpp_sample": [
+        0.021540440618991852,
+        0.026690565049648285,
+        -0.008081955835223198,
+        -0.017626427114009857,
+        -0.017810510471463203,
+        0.0044681900180876255,
+        -0.004943517968058586,
+        0.0027008624747395515
+      ],
+      "hipengine_sample": [
+        0.0184326171875,
+        0.0224609375,
+        -0.00787353515625,
+        -0.01348876953125,
+        -0.0152587890625,
+        0.00958251953125,
+        -0.01025390625,
+        0.00107574462890625
+      ],
+      "diff_sample": [
+        -0.003107823431491852,
+        -0.004229627549648285,
+        0.00020842067897319794,
+        0.004137657582759857,
+        0.0025517214089632034,
+        0.0051143295131623745,
+        -0.005310388281941414,
+        -0.0016251178458333015
+      ]
+    },
+    "layer_out": {
+      "count": 2048,
+      "mean_abs_diff": 0.002451098756864667,
+      "rmse": 0.003095482476055622,
+      "max_abs_diff": 0.010692245326936245,
+      "cosine": 0.998822808265686,
+      "llamacpp_rms": 0.06378044933080673,
+      "hipengine_rms": 0.06380663812160492,
+      "llamacpp_sample": [
+        0.021540440618991852,
+        0.026690565049648285,
+        -0.008081955835223198,
+        -0.017626427114009857,
+        -0.017810510471463203,
+        0.0044681900180876255,
+        -0.004943517968058586,
+        0.0027008624747395515
+      ],
+      "hipengine_sample": [
+        0.0184326171875,
+        0.0224609375,
+        -0.00787353515625,
+        -0.01348876953125,
+        -0.0152587890625,
+        0.00958251953125,
+        -0.01025390625,
+        0.00107574462890625
+      ],
+      "diff_sample": [
+        -0.003107823431491852,
+        -0.004229627549648285,
+        0.00020842067897319794,
+        0.004137657582759857,
+        0.0025517214089632034,
+        0.0051143295131623745,
+        -0.005310388281941414,
+        -0.0016251178458333015
+      ]
+    }
+  },
+  "pre_ssm_out_deltas": {
+    "recurrent_out_vs_final_output": {
+      "status": "complete",
+      "hipengine_key": "recurrent_out",
+      "llamacpp_label": "final_output_14",
+      "count": 4096,
+      "mean_abs_diff": 0.0005133980885148048,
+      "rmse": 0.0008045384893193841,
+      "max_abs_diff": 0.007092863321304321,
+      "cosine": 0.9987410306930542,
+      "llamacpp_rms": 0.01596708782017231,
+      "hipengine_rms": 0.016022751107811928,
+      "llamacpp_sample": [
+        0.0008287376258522272,
+        -0.00198002508841455,
+        -0.0010932866716757417,
+        0.002337611513212323,
+        0.0006924548652023077,
+        0.007713580969721079,
+        0.0008022792753763497,
+        0.007686128839850426
+      ],
+      "hipengine_sample": [
+        0.000521076493896544,
+        -0.0015816411469131708,
+        -0.0009182996000163257,
+        0.002258405787870288,
+        0.0007676617242395878,
+        0.007661428302526474,
+        0.0008541171555407345,
+        0.007232509087771177
+      ],
+      "diff_sample": [
+        -0.00030766113195568323,
+        0.000398383941501379,
+        0.00017498707165941596,
+        -7.92057253420353e-05,
+        7.520685903728008e-05,
+        -5.2152667194604874e-05,
+        5.183788016438484e-05,
+        -0.00045361975207924843
+      ]
+    },
+    "recurrent_bf16_vs_final_output": {
+      "status": "complete",
+      "hipengine_key": "recurrent_bf16",
+      "llamacpp_label": "final_output_14",
+      "count": 4096,
+      "mean_abs_diff": 0.009170538745820522,
+      "rmse": 0.01596708782017231,
+      "max_abs_diff": 0.25976675748825073,
+      "cosine": null,
+      "llamacpp_rms": 0.01596708782017231,
+      "hipengine_rms": 0.0,
+      "llamacpp_sample": [
+        0.0008287376258522272,
+        -0.00198002508841455,
+        -0.0010932866716757417,
+        0.002337611513212323,
+        0.0006924548652023077,
+        0.007713580969721079,
+        0.0008022792753763497,
+        0.007686128839850426
+      ],
+      "hipengine_sample": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "diff_sample": [
+        -0.0008287376258522272,
+        0.00198002508841455,
+        0.0010932866716757417,
+        -0.002337611513212323,
+        -0.0006924548652023077,
+        -0.007713580969721079,
+        -0.0008022792753763497,
+        -0.007686128839850426
+      ]
+    }
+  },
+  "pre_ssm_out_label_assessment": {
+    "status": "usable",
+    "reason": "pre-ssm and post-ssm deltas are directionally consistent",
+    "linear_attn_out_mae": 0.0006119837053120136,
+    "recurrent_out_vs_final_output_mae": 0.0005133980885148048
+  },
+  "final_output_summary": {
+    "label": "final_output_14",
+    "count": 4096,
+    "rms": 0.01596708782017231,
+    "sample": [
+      0.0008287376258522272,
+      -0.00198002508841455,
+      -0.0010932866716757417,
+      0.002337611513212323,
+      0.0006924548652023077,
+      0.007713580969721079,
+      0.0008022792753763497,
+      0.007686128839850426
+    ]
+  },
+  "stable_split_assessment": {
+    "status": "incomplete",
+    "reason": "one or more stable pre-ssm labels are missing from the trace"
+  },
+  "conclusion": "Layer-0 drift is already present at the linear-attention output: linear_attn_out MAE 0.000611984, attention residual MAE 0.000962341, ffn_out MAE 0.00226533, post_moe MAE 0.0024511. The next semantic target is a valid projectable llama.cpp post-GDN/pre-ssm_out tap to separate recurrent/GDN drift from ssm_out projection drift."
+}

@@ -1,0 +1,418 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_category_matrix",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "true_ar_comparison_available": false,
+  "objective_metrics_available": false,
+  "objective_metrics_blocker": "true AR comparison is not attached",
+  "objectives": {},
+  "promotion_blocker": "off/AR is derived from B1 target-verifier timing, not a true no-MTP autoregressive generation path. MTP speed promotion requires a separate true AR baseline measured by the benchmark script over the same prompt suite.",
+  "ar_baseline_contract": {
+    "required_for_speed_claims": "true_no_mtp_autoregressive_generation",
+    "current_off_kind": "verifier_derived_from_b1_target_ar",
+    "current_off_true_autoregressive_path": false
+  },
+  "true_ar_baseline": {
+    "available": false,
+    "true_autoregressive_path": false,
+    "same_prompt_suite": false,
+    "same_timing_protocol": false,
+    "source": null
+  },
+  "diagnostic_notes": [
+    "Native GGUF-MTP category wrapper around scripts/gguf_mtp_bench.py.",
+    "Each prompt/budget is a separate process and model load; tok/s metrics use child JSON cycle timings only, not wrapper subprocess wall time.",
+    "off/AR row is derived from B1 target-AR verifier timing and is not a true no-MTP autoregressive baseline.",
+    "MTP-vs-AR speed claims are blocked until this harness measures a true AR/no-MTP path over the same prompt suite and timing protocol.",
+    "cycles is verify-cycle count, not llama.cpp max_tokens; accepted drafts add visible output tokens."
+  ],
+  "timestamp": "2026-06-29T16:35:19.578642+00:00",
+  "repo": {
+    "repo_root": "/home/lhl/hipEngine",
+    "git_commit": "c67cd813f94dc809810c7fe141e1a6c71b325e91",
+    "git_branch": "mtp-gguf",
+    "git_tracked_dirty": false,
+    "git_untracked_count": 40
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "prompt_file": "scratchpad/ja-only-prompts.jsonl",
+  "cycles": 40,
+  "budgets": [
+    3
+  ],
+  "raw_root": "scratchpad/ja-diag/mtp",
+  "commands": [
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 40 --prompt '\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002' --output scratchpad/ja-diag/mtp/b3/general_ja_plan.json --prompt-reasoning off --resident-mtp-draft --root-topk-accept 1 --sibling-topk-accept 1 --record-draft-confidence  [in-process load-once]",
+    "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max 3 --cycles 40 --prompt '\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002' --output scratchpad/ja-diag/mtp/b3/general_ja_explain.json --prompt-reasoning off --resident-mtp-draft --root-topk-accept 1 --sibling-topk-accept 1 --record-draft-confidence  [in-process load-once]"
+  ],
+  "totals": {
+    "off": {
+      "label": "off",
+      "budget": 0,
+      "prompts": 2,
+      "total_output_tokens": 147,
+      "decode_ms": 2710.65,
+      "decode_tok_s_weighted": 54.23053511150462,
+      "target_verify_layer_passes": 147,
+      "target_verify_rows_evaluated": 147,
+      "target_verify_serial_rows": 147,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 0,
+      "target_verify_block_rows": 0,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 0,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 1.0,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0,
+      "source": "B1 native target-AR verifier time over the same prompt rows",
+      "baseline_kind": "verifier_derived_from_b1_target_ar",
+      "true_autoregressive_path": false,
+      "mtp_vs_ar_decode_ratio": 1.0
+    },
+    "b3": {
+      "label": "b3",
+      "budget": 3,
+      "prompts": 2,
+      "total_output_tokens": 147,
+      "total_accepted": 67,
+      "total_drafts": 240,
+      "decode_ms": 3687.0600000000004,
+      "decode_tok_s_weighted": 39.869164049405214,
+      "ar_baseline_tok_s_weighted_for_this_budget": 54.23053511150462,
+      "mtp_vs_ar_decode_ratio": 0.7351792485069404,
+      "draft_acceptance": 0.2791666666666667,
+      "accepted_per_output": 0.4557823129251701,
+      "avg_output_tokens_per_prompt": 73.5,
+      "target_verify_layer_passes": 147,
+      "target_verify_rows_evaluated": 147,
+      "target_verify_serial_rows": 147,
+      "target_verify_graph_rows": 0,
+      "target_verify_block_passes": 0,
+      "target_verify_block_rows": 0,
+      "target_verify_replay_rows": 0,
+      "target_verify_direct_commit_rows": 0,
+      "target_verify_discarded_rows": 0,
+      "target_verify_layer_passes_per_output": 1.0,
+      "target_verify_rows_per_output": 1.0,
+      "target_verify_replay_rows_per_output": 0.0
+    }
+  },
+  "categories": {
+    "general_ja": {
+      "off": {
+        "label": "off",
+        "budget": 0,
+        "prompts": 2,
+        "total_output_tokens": 147,
+        "decode_ms": 2710.65,
+        "decode_tok_s_weighted": 54.23053511150462,
+        "target_verify_layer_passes": 147,
+        "target_verify_rows_evaluated": 147,
+        "target_verify_serial_rows": 147,
+        "target_verify_graph_rows": 0,
+        "target_verify_block_passes": 0,
+        "target_verify_block_rows": 0,
+        "target_verify_replay_rows": 0,
+        "target_verify_direct_commit_rows": 0,
+        "target_verify_discarded_rows": 0,
+        "target_verify_layer_passes_per_output": 1.0,
+        "target_verify_rows_per_output": 1.0,
+        "target_verify_replay_rows_per_output": 0.0,
+        "source": "B1 native target-AR verifier time over the same prompt rows",
+        "baseline_kind": "verifier_derived_from_b1_target_ar",
+        "true_autoregressive_path": false,
+        "mtp_vs_ar_decode_ratio": 1.0
+      },
+      "b3": {
+        "label": "b3",
+        "budget": 3,
+        "prompts": 2,
+        "total_output_tokens": 147,
+        "total_accepted": 67,
+        "total_drafts": 240,
+        "decode_ms": 3687.0600000000004,
+        "decode_tok_s_weighted": 39.869164049405214,
+        "ar_baseline_tok_s_weighted_for_this_budget": 54.23053511150462,
+        "mtp_vs_ar_decode_ratio": 0.7351792485069404,
+        "draft_acceptance": 0.2791666666666667,
+        "accepted_per_output": 0.4557823129251701,
+        "avg_output_tokens_per_prompt": 73.5,
+        "target_verify_layer_passes": 147,
+        "target_verify_rows_evaluated": 147,
+        "target_verify_serial_rows": 147,
+        "target_verify_graph_rows": 0,
+        "target_verify_block_passes": 0,
+        "target_verify_block_rows": 0,
+        "target_verify_replay_rows": 0,
+        "target_verify_direct_commit_rows": 0,
+        "target_verify_discarded_rows": 0,
+        "target_verify_layer_passes_per_output": 1.0,
+        "target_verify_rows_per_output": 1.0,
+        "target_verify_replay_rows_per_output": 0.0
+      }
+    }
+  },
+  "splits": {
+    "contract": {
+      "strategy": "fixed_category_heldout_v1",
+      "purpose": "Detect train-only acceptance/speed gains before resuming MTP optimization.",
+      "default_full_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "default_heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "train_ids": [
+        "general_ja_plan"
+      ],
+      "heldout_ids": [
+        "general_ja_explain"
+      ],
+      "full_ids": [
+        "general_ja_plan",
+        "general_ja_explain"
+      ],
+      "categories": [
+        "general_ja"
+      ],
+      "heldout_categories": [
+        "general_ja"
+      ],
+      "heldout_has_all_present_categories": true,
+      "full_suite_matches_default": false,
+      "missing_default_heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "mixed_ja_en_review"
+      ],
+      "missing_default_full_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "extra_vs_default_full_ids": [],
+      "required_for_keep_decisions": true,
+      "regression_rule": "Train improvements are not wins if heldout or full-suite acceptance/true-AR speed ratio regresses."
+    },
+    "full": {
+      "prompt_ids": [
+        "general_ja_plan",
+        "general_ja_explain"
+      ],
+      "metrics": {
+        "off": {
+          "label": "off",
+          "budget": 0,
+          "prompts": 2,
+          "total_output_tokens": 147,
+          "decode_ms": 2710.65,
+          "decode_tok_s_weighted": 54.23053511150462,
+          "target_verify_layer_passes": 147,
+          "target_verify_rows_evaluated": 147,
+          "target_verify_serial_rows": 147,
+          "target_verify_graph_rows": 0,
+          "target_verify_block_passes": 0,
+          "target_verify_block_rows": 0,
+          "target_verify_replay_rows": 0,
+          "target_verify_direct_commit_rows": 0,
+          "target_verify_discarded_rows": 0,
+          "target_verify_layer_passes_per_output": 1.0,
+          "target_verify_rows_per_output": 1.0,
+          "target_verify_replay_rows_per_output": 0.0,
+          "source": "B1 native target-AR verifier time over the same prompt rows",
+          "baseline_kind": "verifier_derived_from_b1_target_ar",
+          "true_autoregressive_path": false,
+          "mtp_vs_ar_decode_ratio": 1.0
+        },
+        "b3": {
+          "label": "b3",
+          "budget": 3,
+          "prompts": 2,
+          "total_output_tokens": 147,
+          "total_accepted": 67,
+          "total_drafts": 240,
+          "decode_ms": 3687.0600000000004,
+          "decode_tok_s_weighted": 39.869164049405214,
+          "ar_baseline_tok_s_weighted_for_this_budget": 54.23053511150462,
+          "mtp_vs_ar_decode_ratio": 0.7351792485069404,
+          "draft_acceptance": 0.2791666666666667,
+          "accepted_per_output": 0.4557823129251701,
+          "avg_output_tokens_per_prompt": 73.5,
+          "target_verify_layer_passes": 147,
+          "target_verify_rows_evaluated": 147,
+          "target_verify_serial_rows": 147,
+          "target_verify_graph_rows": 0,
+          "target_verify_block_passes": 0,
+          "target_verify_block_rows": 0,
+          "target_verify_replay_rows": 0,
+          "target_verify_direct_commit_rows": 0,
+          "target_verify_discarded_rows": 0,
+          "target_verify_layer_passes_per_output": 1.0,
+          "target_verify_rows_per_output": 1.0,
+          "target_verify_replay_rows_per_output": 0.0
+        }
+      }
+    },
+    "train": {
+      "prompt_ids": [
+        "general_ja_plan"
+      ],
+      "metrics": {
+        "off": {
+          "label": "off",
+          "budget": 0,
+          "prompts": 1,
+          "total_output_tokens": 72,
+          "decode_ms": 1353.67,
+          "decode_tok_s_weighted": 53.1887387620321,
+          "target_verify_layer_passes": 72,
+          "target_verify_rows_evaluated": 72,
+          "target_verify_serial_rows": 72,
+          "target_verify_graph_rows": 0,
+          "target_verify_block_passes": 0,
+          "target_verify_block_rows": 0,
+          "target_verify_replay_rows": 0,
+          "target_verify_direct_commit_rows": 0,
+          "target_verify_discarded_rows": 0,
+          "target_verify_layer_passes_per_output": 1.0,
+          "target_verify_rows_per_output": 1.0,
+          "target_verify_replay_rows_per_output": 0.0,
+          "source": "B1 native target-AR verifier time over the same prompt rows",
+          "baseline_kind": "verifier_derived_from_b1_target_ar",
+          "true_autoregressive_path": false,
+          "mtp_vs_ar_decode_ratio": 1.0
+        },
+        "b3": {
+          "label": "b3",
+          "budget": 3,
+          "prompts": 1,
+          "total_output_tokens": 72,
+          "total_accepted": 32,
+          "total_drafts": 120,
+          "decode_ms": 1848.72,
+          "decode_tok_s_weighted": 38.945865247306244,
+          "ar_baseline_tok_s_weighted_for_this_budget": 53.1887387620321,
+          "mtp_vs_ar_decode_ratio": 0.7322201306850146,
+          "draft_acceptance": 0.26666666666666666,
+          "accepted_per_output": 0.4444444444444444,
+          "avg_output_tokens_per_prompt": 72.0,
+          "target_verify_layer_passes": 72,
+          "target_verify_rows_evaluated": 72,
+          "target_verify_serial_rows": 72,
+          "target_verify_graph_rows": 0,
+          "target_verify_block_passes": 0,
+          "target_verify_block_rows": 0,
+          "target_verify_replay_rows": 0,
+          "target_verify_direct_commit_rows": 0,
+          "target_verify_discarded_rows": 0,
+          "target_verify_layer_passes_per_output": 1.0,
+          "target_verify_rows_per_output": 1.0,
+          "target_verify_replay_rows_per_output": 0.0
+        }
+      }
+    },
+    "heldout": {
+      "prompt_ids": [
+        "general_ja_explain"
+      ],
+      "metrics": {
+        "off": {
+          "label": "off",
+          "budget": 0,
+          "prompts": 1,
+          "total_output_tokens": 75,
+          "decode_ms": 1356.98,
+          "decode_tok_s_weighted": 55.26979026956919,
+          "target_verify_layer_passes": 75,
+          "target_verify_rows_evaluated": 75,
+          "target_verify_serial_rows": 75,
+          "target_verify_graph_rows": 0,
+          "target_verify_block_passes": 0,
+          "target_verify_block_rows": 0,
+          "target_verify_replay_rows": 0,
+          "target_verify_direct_commit_rows": 0,
+          "target_verify_discarded_rows": 0,
+          "target_verify_layer_passes_per_output": 1.0,
+          "target_verify_rows_per_output": 1.0,
+          "target_verify_replay_rows_per_output": 0.0,
+          "source": "B1 native target-AR verifier time over the same prompt rows",
+          "baseline_kind": "verifier_derived_from_b1_target_ar",
+          "true_autoregressive_path": false,
+          "mtp_vs_ar_decode_ratio": 1.0
+        },
+        "b3": {
+          "label": "b3",
+          "budget": 3,
+          "prompts": 1,
+          "total_output_tokens": 75,
+          "total_accepted": 35,
+          "total_drafts": 120,
+          "decode_ms": 1838.3400000000001,
+          "decode_tok_s_weighted": 40.797676164365676,
+          "ar_baseline_tok_s_weighted_for_this_budget": 55.26979026956919,
+          "mtp_vs_ar_decode_ratio": 0.7381550746869457,
+          "draft_acceptance": 0.2916666666666667,
+          "accepted_per_output": 0.4666666666666667,
+          "avg_output_tokens_per_prompt": 75.0,
+          "target_verify_layer_passes": 75,
+          "target_verify_rows_evaluated": 75,
+          "target_verify_serial_rows": 75,
+          "target_verify_graph_rows": 0,
+          "target_verify_block_passes": 0,
+          "target_verify_block_rows": 0,
+          "target_verify_replay_rows": 0,
+          "target_verify_direct_commit_rows": 0,
+          "target_verify_discarded_rows": 0,
+          "target_verify_layer_passes_per_output": 1.0,
+          "target_verify_rows_per_output": 1.0,
+          "target_verify_replay_rows_per_output": 0.0
+        }
+      }
+    }
+  },
+  "best": {
+    "total_by_decode_tok_s": "b3",
+    "total_by_accepted_per_output": "b3",
+    "categories_by_decode_tok_s": {
+      "general_ja": "b3"
+    },
+    "categories_by_accepted_per_output": {
+      "general_ja": "b3"
+    }
+  },
+  "prompts": [
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "prompt_chars": 68,
+      "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099"
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "prompt_chars": 56,
+      "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0"
+    }
+  ]
+}

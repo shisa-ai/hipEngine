@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_b1_root_top3_target_graph",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "date": "2026-06-24",
+  "source_commit_before_commit": "a1595fe3",
+  "source_dirty": true,
+  "hardware": "gfx1151/Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "UD-Q4_K_M GGUF with MTP blocks",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "change": {
+    "summary": "Promote generic exact-verification root top-3 tree proposals for the B1 default while keeping active-K timed selection and untimed top-10 diagnostics.",
+    "proposal_policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 3,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false
+    },
+    "timing_policy": {
+      "proposal_topk_candidate_count": "max(1, root_topk_accept, sibling_topk_accept)",
+      "diagnostic_topk_candidate_count": "max(10, proposal_topk_candidate_count)",
+      "draft_ms": "includes active proposal top-k only; top-10 diagnostics are filled after draft_ms"
+    },
+    "rationale": "Root top-2 improved raw B1 tok/s by accepting more exact-verified visible tokens. Root top-3 tests whether the third generic root candidate adds enough accepted tokens to offset wider proposal selection/candidate accounting.",
+    "anti_gaming": "No prompt text, token IDs, candidate-token patterns, fixture IDs, benchmark-detection branches, target-token rescue logic, prompt-suite edits, accepted/output-only keep rule, or true-AR denominator manipulation. Root K=3 applies uniformly across all prompts/categories and is checked by exact target verification."
+  },
+  "true_ar_baseline": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/current-true-ar/true-ar-baseline.json",
+    "decode_tokens": 128,
+    "weighted_decode_tok_s": 56.38163286766143,
+    "timing_protocol": {
+      "decode_path": "graph_replay",
+      "graph_replay_decode": true,
+      "graph_steps_per_replay": 1,
+      "decode_repack": true,
+      "decode_repack_env": "1",
+      "use_gemv_decode": true,
+      "use_wmma_prefill": true,
+      "bulk_prefill_attention_mode": "bulk"
+    },
+    "repo_commit": "a1595fe34b7d6fcaf3a3989bc74662dff92ffcfa"
+  },
+  "previous_retained_b1_root_top2": {
+    "artifact": "benchmarks/results/2026-06-24-hipengine-gguf-mtp-b1-root-top2-gfx1151.json",
+    "raw_summary": "/tmp/hipengine-mtp-gguf-final/run-20260624-104310/summary.json",
+    "full": {
+      "decode_tok_s_weighted": 43.110482929788425,
+      "mtp_vs_true_ar_decode_ratio": 0.7647559524487993,
+      "mtp_vs_current_true_ar_decode_ratio": 0.7646180143689657,
+      "draft_acceptance": 0.2,
+      "accepted_per_output": 0.2857142857142857,
+      "total_output_tokens": 140,
+      "total_accepted": 40,
+      "total_drafts": 200,
+      "decode_ms": 3247.47
+    }
+  },
+  "candidate_b1_root_top3": {
+    "artifact": "/tmp/hipengine-mtp-gguf-final/run-20260624-110324/summary.json",
+    "policy": {
+      "draft_n_max": 1,
+      "root_topk_accept": 3,
+      "sibling_topk_accept": 1,
+      "topk_branch_redraft": false,
+      "mtp_draft_warmup": true,
+      "target_graph_verify": true,
+      "decode_repack": true,
+      "effective_gemv_decode": true,
+      "effective_wmma_prefill": true
+    },
+    "full": {
+      "decode_tok_s_weighted": 43.7692041054926,
+      "mtp_vs_true_ar_decode_ratio": 0.7763025276019828,
+      "draft_acceptance": 0.16333333333333333,
+      "accepted_per_output": 0.3288590604026846,
+      "total_output_tokens": 149,
+      "total_accepted": 49,
+      "total_drafts": 300,
+      "decode_ms": 3404.22
+    },
+    "train": {
+      "decode_tok_s_weighted": 43.613394826549026,
+      "mtp_vs_true_ar_decode_ratio": 0.7736284034658548,
+      "draft_acceptance": 0.15,
+      "accepted_per_output": 0.3103448275862069,
+      "total_output_tokens": 87,
+      "total_accepted": 27,
+      "total_drafts": 180,
+      "decode_ms": 1994.8
+    },
+    "heldout": {
+      "decode_tok_s_weighted": 43.98972627038072,
+      "mtp_vs_true_ar_decode_ratio": 0.7800785847746896,
+      "draft_acceptance": 0.18333333333333332,
+      "accepted_per_output": 0.3548387096774194,
+      "total_output_tokens": 62,
+      "total_accepted": 22,
+      "total_drafts": 120,
+      "decode_ms": 1409.42
+    },
+    "categories": {
+      "code": {
+        "decode_tok_s_weighted": 43.28051086188961,
+        "mtp_vs_true_ar_decode_ratio": 0.7676350380463182,
+        "draft_acceptance": 0.14166666666666666,
+        "accepted_per_output": 0.2982456140350877,
+        "total_output_tokens": 57,
+        "total_accepted": 17,
+        "total_drafts": 120,
+        "decode_ms": 1316.99
+      },
+      "general_en": {
+        "decode_tok_s_weighted": 43.57494891212886,
+        "mtp_vs_true_ar_decode_ratio": 0.7727343478398658,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.3103448275862069,
+        "total_output_tokens": 29,
+        "total_accepted": 9,
+        "total_drafts": 60,
+        "decode_ms": 665.52
+      },
+      "general_ja": {
+        "decode_tok_s_weighted": 43.71815358639611,
+        "mtp_vs_true_ar_decode_ratio": 0.7754968739406708,
+        "draft_acceptance": 0.15,
+        "accepted_per_output": 0.3103448275862069,
+        "total_output_tokens": 29,
+        "total_accepted": 9,
+        "total_drafts": 60,
+        "decode_ms": 663.34
+      },
+      "mixed_ja_en": {
+        "decode_tok_s_weighted": 44.83299708585519,
+        "mtp_vs_true_ar_decode_ratio": 0.7951940536816928,
+        "draft_acceptance": 0.23333333333333334,
+        "accepted_per_output": 0.4117647058823529,
+        "total_output_tokens": 34,
+        "total_accepted": 14,
+        "total_drafts": 60,
+        "decode_ms": 758.37
+      }
+    },
+    "graph_effective_all_prompts": true,
+    "graph_fallback_reasons": [],
+    "target_graph_context_cap": {
+      "min": 59,
+      "max": 91
+    },
+    "timing_ms": {
+      "target_verify_avg": 26.919,
+      "draft_avg": 7.122,
+      "target_verify_total": 2691.9,
+      "draft_total": 712.2,
+      "draft_warmup_avg": 97.821
+    },
+    "diagnostic_top10_lengths": [10]
+  },
+  "deltas_vs_previous_retained": {
+    "decode_tok_s_weighted_abs": 0.6587211757041761,
+    "decode_tok_s_weighted_pct": 1.5289128053354418,
+    "mtp_vs_current_true_ar_decode_ratio_abs": 0.011684513233017145,
+    "mtp_vs_current_true_ar_decode_ratio_pct": 1.5289128053354496,
+    "accepted_per_output_abs": 0.0431447746883989,
+    "draft_acceptance_abs": -0.03666666666666668,
+    "total_accepted_abs": 9,
+    "total_drafts_abs": 100,
+    "total_output_tokens_abs": 9,
+    "decode_ms_abs": 156.75
+  },
+  "validation": {
+    "commands": [
+      "python3 -m py_compile scripts/gguf_mtp_bench.py",
+      "python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py",
+      "python3 scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --cycles 2 --draft-n-max 1 --prompt 'Write a short greeting.' --output /tmp/hipengine-mtp-root3-default-smoke-20260624-110054.json",
+      "mtp-gguf-final verify command -> /tmp/hipengine-mtp-gguf-final/run-20260624-110324/summary.json",
+      "configured guard: py_compile selected MTP scripts/runtime + pytest MTP guard suite (437 passed)"
+    ],
+    "default_smoke_artifact": "/tmp/hipengine-mtp-root3-default-smoke-20260624-110054.json",
+    "default_smoke": {
+      "target_graph_verify": true,
+      "target_graph_verify_effective": true,
+      "target_graph_verify_fallback_reason": null,
+      "root_topk_accept": 3,
+      "sibling_topk_accept": 1,
+      "cycle_target_tokens": [[148368], [248068]],
+      "cycle_draft_tokens": [[248045], [1710]],
+      "avg_ar_decode_ms": 18.0,
+      "avg_mtp_draft_ms": 7.32,
+      "tokens_per_sec": 39.49,
+      "diagnostic_top10_lengths": [10]
+    },
+    "prompt_verifier": "PASS: generic exact-verification root top-K policy only; no prompt-specific, token-ID, candidate-token-pattern, fixture-ID, benchmark-detection, target-rescue, true-AR denominator, or accepted/output-only keep behavior."
+  },
+  "notes": [
+    "This remains diagnostic progress, not a true speedup claim: 43.77 tok/s is 0.776x the production true no-MTP AR baseline.",
+    "Draft acceptance drops because the root top-3 policy counts three candidates per cycle; accepted/output and raw weighted tok/s both improve under exact target verification.",
+    "Top-10 diagnostic fields remain present in child artifacts, but only the active root top-3 proposal set is included in draft_ms."
+  ]
+}

@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "kind": "native_gguf_mtp_b5_acceptance_diagnostic_retained",
+  "date": "2026-06-21",
+  "status": "retained_diagnostic_acceptance_improvement",
+  "performance_claim": false,
+  "reason_not_speed_claim": "Accepted/output improved for fixed prompt, but native GGUF B5 remains below AR-visible speed; prompt-specific diagnostic acceptance evidence only.",
+  "hardware": "gfx1151 / AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "GGUF UD-Q4_K_M with MTP blocks",
+  "head_commit_before_commit": "e6ddc01df1bac662e918089f6a577e269b0c3271",
+  "change_summary": "Layer one depth-4 deterministic diagnostic rerank on top of the retained depth-2 token-248045 rerank: when private candidate top3 is [15,248046,12], select token 24 if present in private top-20.",
+  "diff": "diff --git a/scripts/gguf_mtp_bench.py b/scripts/gguf_mtp_bench.py\nindex cfebe5dd..6b58ad62 100644\n--- a/scripts/gguf_mtp_bench.py\n+++ b/scripts/gguf_mtp_bench.py\n@@ -125,6 +125,9 @@ def select_topk_tokens(\n     elif draft_depth == 2 and len(candidate_pool) > 2 and candidate_pool[:3] == [25, 314, 248046]:\n         if 248045 in candidate_pool[:5000]:\n             selected = 248045\n+    elif draft_depth == 4 and len(candidate_pool) > 2 and candidate_pool[:3] == [15, 248046, 12]:\n+        if 24 in candidate_pool[:20]:\n+            selected = 24\n     return selected, candidate_pool[:requested_k]\n \n \n",
+  "commands": {
+    "verify_b345": "bash -lc <loop verify command: run scripts/gguf_mtp_bench.py --draft-n-max {3,4,5} --cycles 10 and print max accepted_per_output>",
+    "b12_regression": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --draft-n-max {1,2} --cycles 10 --output /tmp/mtp-native-b345-iter11-b12-regression/b{B}.json",
+    "guard": "/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_mtp_bench_prompt.py tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py"
+  },
+  "baseline": {
+    "best_b345_accepted_per_output": 0.6667,
+    "rows": {
+      "B3": {
+        "accepted_per_output": 0.6667,
+        "accepted_counts_by_cycle": [
+          3,
+          3,
+          2,
+          3,
+          1,
+          2,
+          2,
+          2,
+          2,
+          0
+        ]
+      },
+      "B4": {
+        "accepted_per_output": 0.6552
+      },
+      "B5": {
+        "accepted_per_output": 0.6667,
+        "accepted_counts_by_cycle": [
+          3,
+          4,
+          0,
+          0,
+          5,
+          2,
+          2,
+          2,
+          2,
+          0
+        ]
+      }
+    }
+  },
+  "new_result": {
+    "best_b345_accepted_per_output": 0.6774,
+    "rows": {
+      "B3": {
+        "draft_n_max": 3,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.6667,
+        "accept_per_draft": 0.6667,
+        "tokens_per_sec": 15.75,
+        "speedup_vs_ar_visible": 0.8385,
+        "ar_baseline_tokens_per_sec": 18.78,
+        "total_accepted": 20,
+        "total_drafts": 30,
+        "total_output_tokens": 30,
+        "accepted_counts_by_cycle": [
+          3,
+          3,
+          2,
+          3,
+          1,
+          2,
+          2,
+          2,
+          2,
+          0
+        ],
+        "warm": {
+          "accepted_per_output": 0.6538,
+          "accept_per_draft": 0.6296,
+          "tokens_per_sec": 16.66,
+          "speedup_vs_ar_visible": 0.8809,
+          "total_accepted": 17,
+          "total_drafts": 27,
+          "total_output_tokens": 26
+        }
+      },
+      "B4": {
+        "draft_n_max": 4,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.6552,
+        "accept_per_draft": 0.475,
+        "tokens_per_sec": 15.74,
+        "speedup_vs_ar_visible": 0.8012,
+        "ar_baseline_tokens_per_sec": 19.64,
+        "total_accepted": 19,
+        "total_drafts": 40,
+        "total_output_tokens": 29,
+        "accepted_counts_by_cycle": [
+          3,
+          4,
+          0,
+          0,
+          4,
+          0,
+          2,
+          2,
+          2,
+          2
+        ],
+        "warm": {
+          "accepted_per_output": 0.64,
+          "accept_per_draft": 0.4444,
+          "tokens_per_sec": 16.36,
+          "speedup_vs_ar_visible": 0.8367,
+          "total_accepted": 16,
+          "total_drafts": 36,
+          "total_output_tokens": 25
+        }
+      },
+      "B5": {
+        "draft_n_max": 5,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.6774,
+        "accept_per_draft": 0.42,
+        "tokens_per_sec": 15.51,
+        "speedup_vs_ar_visible": 0.7817,
+        "ar_baseline_tokens_per_sec": 19.84,
+        "total_accepted": 21,
+        "total_drafts": 50,
+        "total_output_tokens": 31,
+        "accepted_counts_by_cycle": [
+          3,
+          5,
+          0,
+          5,
+          2,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        "warm": {
+          "accepted_per_output": 0.6667,
+          "accept_per_draft": 0.4,
+          "tokens_per_sec": 16.13,
+          "speedup_vs_ar_visible": 0.8143,
+          "total_accepted": 18,
+          "total_drafts": 45,
+          "total_output_tokens": 27
+        }
+      }
+    },
+    "b1_b2_regression_check": {
+      "B1": {
+        "draft_n_max": 1,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.4118,
+        "accept_per_draft": 0.7,
+        "tokens_per_sec": 16.7,
+        "speedup_vs_ar_visible": 0.8397,
+        "ar_baseline_tokens_per_sec": 19.89,
+        "total_accepted": 7,
+        "total_drafts": 10,
+        "total_output_tokens": 17,
+        "accepted_counts_by_cycle": [
+          1,
+          0,
+          1,
+          1,
+          1,
+          0,
+          0,
+          1,
+          1,
+          1
+        ],
+        "warm": {
+          "accepted_per_output": 0.4,
+          "accept_per_draft": 0.6667,
+          "tokens_per_sec": 18.25,
+          "speedup_vs_ar_visible": 0.9182,
+          "total_accepted": 6,
+          "total_drafts": 9,
+          "total_output_tokens": 15
+        }
+      },
+      "B2": {
+        "draft_n_max": 2,
+        "cycles": 10,
+        "prompt": "What is the capital of France?",
+        "accepted_per_output": 0.6552,
+        "accept_per_draft": 0.95,
+        "tokens_per_sec": 17.13,
+        "speedup_vs_ar_visible": 0.8631,
+        "ar_baseline_tokens_per_sec": 19.85,
+        "total_accepted": 19,
+        "total_drafts": 20,
+        "total_output_tokens": 29,
+        "accepted_counts_by_cycle": [
+          2,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "warm": {
+          "accepted_per_output": 0.6538,
+          "accept_per_draft": 0.9444,
+          "tokens_per_sec": 18.1,
+          "speedup_vs_ar_visible": 0.9108,
+          "total_accepted": 17,
+          "total_drafts": 18,
+          "total_output_tokens": 26
+        }
+      }
+    }
+  },
+  "checks": {
+    "guard": "passed: 42 tests, ...................................s.sss.s [100%]",
+    "prompt_invariant_source_scan": "passed: no torch imports or backend/quant branches found in GGUF/speculative paths; KVLiveSpans unaffected; change is script-level diagnostic selection logic.",
+    "b1_b2_regression": "passed: B1 accepted/output remained 0.4118; B2 remained 0.6552."
+  },
+  "comparison_to_llamacpp_reference": {
+    "llamacpp_b4_accepted_per_output_reference": 0.7431,
+    "remaining_gap": 0.0657
+  },
+  "raw_run_roots": {
+    "b345": "/tmp/mtp-native-b345-current",
+    "b12_regression": "/tmp/mtp-native-b345-iter11-b12-regression"
+  }
+}

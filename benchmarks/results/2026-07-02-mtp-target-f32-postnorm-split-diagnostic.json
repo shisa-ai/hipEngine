@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_target_f32_postnorm_split_diagnostic",
+  "status": "complete",
+  "performance_claim": false,
+  "date": "2026-07-02",
+  "hardware": "AMD Radeon Pro W7900 / gfx1151",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_trace": "/tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json",
+  "repo": {
+    "branch": "mtp-gguf",
+    "base_commit": "8fb9f8f254b7a122c8baa8f2e951178df8644d1a",
+    "dirty": true
+  },
+  "diagnostic_flags": {
+    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM": "1",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER": "split",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8": "split",
+    "HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8": "split"
+  },
+  "commands": {
+    "cycle7_control": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=0 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 7 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 413,4071 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle7-f32residual-attnnorm-control.json",
+    "cycle7_router_only": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8=0 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8=0 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 7 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 413,4071 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle7-f32postnorm-routeronly.json",
+    "cycle7_selected_only": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER=0 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8=0 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 7 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 413,4071 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle7-f32postnorm-selectedonly.json",
+    "cycle7_combined": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 7 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 413,4071 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle7-f32residual-postnorm.json",
+    "cycle12_router_only": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER=1 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8=0 HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8=0 PYTHONPATH=. python3 scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-mtp-proposal-trace/hipengine-active-draftdenseq8-draftonly-c32.json --cycle 12 --replay-target-block-verify-mode bulk --target-block-verify-mode serial-exact --top-k 20 --candidate-token 26126 --raw-hidden-row 1 --raw-pre-output-norm-row 1 --output /tmp/hipengine-mtp-proposal-trace/hipengine-forced-target-cycle12-f32postnorm-routeronly.json"
+  },
+  "cycle7_row1_margin_413_minus_4071": [
+    {
+      "slice": "control_f32_residual_attention_norm",
+      "sampled_token": 413,
+      "accepted_draft_tokens": 1,
+      "logit_413": 27.33568572998047,
+      "logit_4071": 27.205154418945312,
+      "margin": 0.13053131103515625
+    },
+    {
+      "slice": "f32_postnorm_router_only",
+      "sampled_token": 413,
+      "accepted_draft_tokens": 1,
+      "logit_413": 27.431222915649414,
+      "logit_4071": 27.343387603759766,
+      "margin": 0.08783531188964844
+    },
+    {
+      "slice": "f32_postnorm_selected_q8_only",
+      "sampled_token": 4071,
+      "accepted_draft_tokens": 2,
+      "logit_413": 27.281761169433594,
+      "logit_4071": 27.42634391784668,
+      "margin": -0.14458274841308594
+    },
+    {
+      "slice": "f32_postnorm_router_and_selected_q8",
+      "sampled_token": 4071,
+      "accepted_draft_tokens": 2,
+      "logit_413": 27.42729377746582,
+      "logit_4071": 27.460189819335938,
+      "margin": -0.03289604187011719
+    }
+  ],
+  "cycle12_router_only": {
+    "sampled_tokens": [15495, 539, 1151],
+    "accepted_draft_tokens": 2,
+    "row1_logit_539": 26.330270767211914,
+    "row1_logit_26126": 25.995067596435547,
+    "row1_margin_539_minus_26126": 0.3352031707763672,
+    "control_margin_539_minus_26126": 0.14308547973632812,
+    "llamacpp_margin_539_minus_26126": -0.00896
+  },
+  "conclusion": "FP32 post-attention RMSNorm consumer plumbing is semantically active but not a parity fix. Selected q8_1 consumption from FP32 post-norm breaks the retained trace early; router-only reaches the old pair-12 branch but worsens the 539-vs-26126 margin. Remaining suspect is the true GGML-like F32 projection/output contract rather than only post-norm/router/input-q8 precision."
+}

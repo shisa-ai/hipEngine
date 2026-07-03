@@ -1,0 +1,952 @@
+{
+  "schema": 1,
+  "kind": "llamacpp_mtp_numeric_checkpoint_tap_plan",
+  "date": "2026-06-20",
+  "loop": "mtp-gguf/run-20260615-103738",
+  "iteration": 283,
+  "status": "tap_plan_ready",
+  "llamacpp_root": "/home/lhl/llama.cpp/llama.cpp-hip",
+  "reference_basis": {
+    "expected_llamacpp_commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+    "source_is_read_only_reference": true
+  },
+  "checkpoint_summary_path": "benchmarks/results/mtp-gguf-iter281-layer3-actual-checkpoint-summary.json",
+  "trace_inventory_path": "benchmarks/results/mtp-gguf-iter282-llamacpp-trace-inventory.json",
+  "checkpoint_target": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "position": 16,
+    "token_id": 271,
+    "layer_id": 3,
+    "layer_type": "full_attention",
+    "run_preceding_layers": true,
+    "preceding_layer_count": 3,
+    "hidden_size": 2048,
+    "array_keys": [
+      "attn_out_f32",
+      "ffn_or_moe_down_f32",
+      "hidden_in_f32",
+      "layer_out_f32",
+      "moe_routing_weights_f32",
+      "moe_selected_experts_i64",
+      "moe_shared_gate_f32",
+      "moe_shared_out_f32",
+      "post_norm_f32",
+      "residual_f32"
+    ],
+    "array_hashes": {
+      "hidden_in_f32": "f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07",
+      "attn_out_f32": "3fd2762e24382812c2189197ae53c7fd98c8b6cbb7164a31c9d73e16f150292a",
+      "post_norm_f32": "bf4006483b59054c2ae788add307c580498b70789079ec10d671bf2faca19caa",
+      "residual_f32": "9b79665b816ce3b3315228d382446b5d091fe24a7abd0e2454a1f09cc80d33f9",
+      "ffn_or_moe_down_f32": "05d2e465fc520669c7ebe109316281dc607d97cef5bc2a231888a145b6d8f40c",
+      "moe_shared_out_f32": "06c28d6b785763778a8ad1bb0020b4b661bc62f88ab814cca64f49656ce68556",
+      "moe_routing_weights_f32": "c89cadf11835a4af251eb63bb0a45cf5b86f92fb37cf3c69ae134372ea9b1cfb",
+      "moe_shared_gate_f32": "656c05fbf54a4a78cc6fddec77b7975a7eb392360cede29d7e4722c32f1ca07b",
+      "moe_selected_experts_i64": "cda6f74823da7ceae400dd8107145ec5551578c641607cb87a62febf2366f3ef",
+      "layer_out_f32": "699e26e72ea2ed31f3a99cb0387e3834b4e79d39d875ab0785f8b85d1014368d"
+    },
+    "has_moe_arrays": true
+  },
+  "trace_inventory_summary": {
+    "status": "inventory_complete",
+    "prompt_tokens_match": true,
+    "has_numeric_layer_checkpoints": false,
+    "supports_token_draft_alignment": true,
+    "next_action": "capture_llamacpp_numeric_layer_checkpoint_or_add_llama_trace_tap"
+  },
+  "preferred_arch_source": "qwen35moe",
+  "source_inventory": {
+    "architectures": {
+      "qwen35": {
+        "arch": "qwen35",
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35.cpp",
+        "exists": true,
+        "has_mtp_graph": true,
+        "has_main_layer_loop": true,
+        "has_layer_input_assignment": false,
+        "layer_input_assignment_line": null,
+        "main_callback_count": 40,
+        "mtp_callback_count": 20,
+        "main_callbacks": [
+          {
+            "name": "model.input_embed",
+            "layer_expr": "-1",
+            "line": 150
+          },
+          {
+            "name": "attn_norm",
+            "layer_expr": "il",
+            "line": 162
+          },
+          {
+            "name": "attn_residual",
+            "layer_expr": "il",
+            "line": 182
+          },
+          {
+            "name": "attn_post_norm",
+            "layer_expr": "il",
+            "line": 189
+          },
+          {
+            "name": "ffn_out",
+            "layer_expr": "il",
+            "line": 193
+          },
+          {
+            "name": "post_ffn",
+            "layer_expr": "il",
+            "line": 197
+          },
+          {
+            "name": "l_out",
+            "layer_expr": "il",
+            "line": 200
+          },
+          {
+            "name": "h_nextn",
+            "layer_expr": "-1",
+            "line": 209
+          },
+          {
+            "name": "result_norm",
+            "layer_expr": "-1",
+            "line": 216
+          },
+          {
+            "name": "result_output",
+            "layer_expr": "-1",
+            "line": 222
+          },
+          {
+            "name": "linear_attn_qkv_mixed",
+            "layer_expr": "il",
+            "line": 236
+          },
+          {
+            "name": "z",
+            "layer_expr": "il",
+            "line": 239
+          },
+          {
+            "name": "Qcur_full",
+            "layer_expr": "il",
+            "line": 268
+          },
+          {
+            "name": "Qcur_reshaped",
+            "layer_expr": "il",
+            "line": 273
+          },
+          {
+            "name": "Qcur_normed",
+            "layer_expr": "il",
+            "line": 277
+          },
+          {
+            "name": "Kcur",
+            "layer_expr": "il",
+            "line": 280
+          },
+          {
+            "name": "Vcur",
+            "layer_expr": "il",
+            "line": 283
+          },
+          {
+            "name": "Kcur_normed",
+            "layer_expr": "il",
+            "line": 288
+          },
+          {
+            "name": "gate_reshaped",
+            "layer_expr": "il",
+            "line": 295
+          },
+          {
+            "name": "Qcur",
+            "layer_expr": "il",
+            "line": 312
+          },
+          {
+            "name": "attn_pregate",
+            "layer_expr": "il",
+            "line": 322
+          },
+          {
+            "name": "gate_sigmoid",
+            "layer_expr": "il",
+            "line": 325
+          },
+          {
+            "name": "attn_gated",
+            "layer_expr": "il",
+            "line": 328
+          },
+          {
+            "name": "attn_output",
+            "layer_expr": "il",
+            "line": 331
+          },
+          {
+            "name": "beta",
+            "layer_expr": "il",
+            "line": 361
+          },
+          {
+            "name": "beta_sigmoid",
+            "layer_expr": "il",
+            "line": 364
+          },
+          {
+            "name": "alpha",
+            "layer_expr": "il",
+            "line": 368
+          },
+          {
+            "name": "a_softplus",
+            "layer_expr": "il",
+            "line": 372
+          },
+          {
+            "name": "gate",
+            "layer_expr": "il",
+            "line": 375
+          },
+          {
+            "name": "state_predelta",
+            "layer_expr": "il",
+            "line": 390
+          },
+          {
+            "name": "conv_output_raw",
+            "layer_expr": "il",
+            "line": 393
+          },
+          {
+            "name": "conv_output_silu",
+            "layer_expr": "il",
+            "line": 396
+          },
+          {
+            "name": "q_conv",
+            "layer_expr": "il",
+            "line": 423
+          },
+          {
+            "name": "k_conv",
+            "layer_expr": "il",
+            "line": 424
+          },
+          {
+            "name": "v_conv",
+            "layer_expr": "il",
+            "line": 425
+          },
+          {
+            "name": "q_conv_predelta",
+            "layer_expr": "il",
+            "line": 444
+          },
+          {
+            "name": "k_conv_predelta",
+            "layer_expr": "il",
+            "line": 445
+          },
+          {
+            "name": "v_conv_predelta",
+            "layer_expr": "il",
+            "line": 446
+          },
+          {
+            "name": "final_output",
+            "layer_expr": "il",
+            "line": 458
+          },
+          {
+            "name": "linear_attn_out",
+            "layer_expr": "il",
+            "line": 462
+          }
+        ],
+        "mtp_callbacks": [
+          {
+            "name": "mtp_tok_embd",
+            "layer_expr": "il",
+            "line": 41
+          },
+          {
+            "name": "mtp_hnorm",
+            "layer_expr": "il",
+            "line": 57
+          },
+          {
+            "name": "mtp_enorm",
+            "layer_expr": "il",
+            "line": 60
+          },
+          {
+            "name": "mtp_concat",
+            "layer_expr": "il",
+            "line": 63
+          },
+          {
+            "name": "mtp_eh_proj",
+            "layer_expr": "il",
+            "line": 66
+          },
+          {
+            "name": "mtp_attn_norm",
+            "layer_expr": "il",
+            "line": 71
+          },
+          {
+            "name": "mtp_Qcur_full",
+            "layer_expr": "il",
+            "line": 74
+          },
+          {
+            "name": "mtp_Qcur_normed",
+            "layer_expr": "il",
+            "line": 82
+          },
+          {
+            "name": "mtp_gate",
+            "layer_expr": "il",
+            "line": 90
+          },
+          {
+            "name": "mtp_Kcur_normed",
+            "layer_expr": "il",
+            "line": 95
+          },
+          {
+            "name": "mtp_Vcur",
+            "layer_expr": "il",
+            "line": 99
+          },
+          {
+            "name": "mtp_attn_pregate",
+            "layer_expr": "il",
+            "line": 114
+          },
+          {
+            "name": "mtp_attn_out",
+            "layer_expr": "il",
+            "line": 118
+          },
+          {
+            "name": "mtp_attn_residual",
+            "layer_expr": "il",
+            "line": 121
+          },
+          {
+            "name": "mtp_attn_post_norm",
+            "layer_expr": "il",
+            "line": 125
+          },
+          {
+            "name": "mtp_ffn_out",
+            "layer_expr": "il",
+            "line": 133
+          },
+          {
+            "name": "mtp_post_ffn",
+            "layer_expr": "il",
+            "line": 136
+          },
+          {
+            "name": "h_nextn",
+            "layer_expr": "-1",
+            "line": 144
+          },
+          {
+            "name": "mtp_shared_head_norm",
+            "layer_expr": "-1",
+            "line": 148
+          },
+          {
+            "name": "result_output",
+            "layer_expr": "-1",
+            "line": 154
+          }
+        ],
+        "anchor_lines": {
+          "main_layer_loop": 158,
+          "attn_output_cb": 331,
+          "ffn_moe_out_cb": null,
+          "ffn_shexp_gated_cb": null,
+          "post_moe_cb": null,
+          "l_out_cb": 200,
+          "h_nextn_assignment": 210,
+          "mtp_graph": 131
+        }
+      },
+      "qwen35moe": {
+        "arch": "qwen35moe",
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/src/models/qwen35moe.cpp",
+        "exists": true,
+        "has_mtp_graph": true,
+        "has_main_layer_loop": true,
+        "has_layer_input_assignment": false,
+        "layer_input_assignment_line": null,
+        "main_callback_count": 45,
+        "mtp_callback_count": 24,
+        "main_callbacks": [
+          {
+            "name": "model.input_embed",
+            "layer_expr": "-1",
+            "line": 173
+          },
+          {
+            "name": "attn_norm",
+            "layer_expr": "il",
+            "line": 185
+          },
+          {
+            "name": "attn_residual",
+            "layer_expr": "il",
+            "line": 205
+          },
+          {
+            "name": "attn_post_norm",
+            "layer_expr": "il",
+            "line": 212
+          },
+          {
+            "name": "ffn_out",
+            "layer_expr": "il",
+            "line": 216
+          },
+          {
+            "name": "post_moe",
+            "layer_expr": "il",
+            "line": 220
+          },
+          {
+            "name": "l_out",
+            "layer_expr": "il",
+            "line": 223
+          },
+          {
+            "name": "h_nextn",
+            "layer_expr": "-1",
+            "line": 233
+          },
+          {
+            "name": "result_norm",
+            "layer_expr": "-1",
+            "line": 240
+          },
+          {
+            "name": "result_output",
+            "layer_expr": "-1",
+            "line": 246
+          },
+          {
+            "name": "linear_attn_qkv_mixed",
+            "layer_expr": "il",
+            "line": 260
+          },
+          {
+            "name": "z",
+            "layer_expr": "il",
+            "line": 263
+          },
+          {
+            "name": "Qcur_full",
+            "layer_expr": "il",
+            "line": 292
+          },
+          {
+            "name": "Qcur_reshaped",
+            "layer_expr": "il",
+            "line": 297
+          },
+          {
+            "name": "Qcur_normed",
+            "layer_expr": "il",
+            "line": 301
+          },
+          {
+            "name": "Kcur",
+            "layer_expr": "il",
+            "line": 304
+          },
+          {
+            "name": "Vcur",
+            "layer_expr": "il",
+            "line": 307
+          },
+          {
+            "name": "Kcur_normed",
+            "layer_expr": "il",
+            "line": 312
+          },
+          {
+            "name": "gate_reshaped",
+            "layer_expr": "il",
+            "line": 319
+          },
+          {
+            "name": "Qcur",
+            "layer_expr": "il",
+            "line": 336
+          },
+          {
+            "name": "attn_pregate",
+            "layer_expr": "il",
+            "line": 346
+          },
+          {
+            "name": "gate_sigmoid",
+            "layer_expr": "il",
+            "line": 349
+          },
+          {
+            "name": "attn_gated",
+            "layer_expr": "il",
+            "line": 352
+          },
+          {
+            "name": "attn_output",
+            "layer_expr": "il",
+            "line": 355
+          },
+          {
+            "name": "beta",
+            "layer_expr": "il",
+            "line": 385
+          },
+          {
+            "name": "beta_sigmoid",
+            "layer_expr": "il",
+            "line": 388
+          },
+          {
+            "name": "alpha",
+            "layer_expr": "il",
+            "line": 392
+          },
+          {
+            "name": "a_softplus",
+            "layer_expr": "il",
+            "line": 396
+          },
+          {
+            "name": "gate",
+            "layer_expr": "il",
+            "line": 399
+          },
+          {
+            "name": "state_predelta",
+            "layer_expr": "il",
+            "line": 414
+          },
+          {
+            "name": "conv_output_raw",
+            "layer_expr": "il",
+            "line": 417
+          },
+          {
+            "name": "conv_output_silu",
+            "layer_expr": "il",
+            "line": 420
+          },
+          {
+            "name": "q_conv",
+            "layer_expr": "il",
+            "line": 447
+          },
+          {
+            "name": "k_conv",
+            "layer_expr": "il",
+            "line": 448
+          },
+          {
+            "name": "v_conv",
+            "layer_expr": "il",
+            "line": 449
+          },
+          {
+            "name": "q_conv_predelta",
+            "layer_expr": "il",
+            "line": 468
+          },
+          {
+            "name": "k_conv_predelta",
+            "layer_expr": "il",
+            "line": 469
+          },
+          {
+            "name": "v_conv_predelta",
+            "layer_expr": "il",
+            "line": 470
+          },
+          {
+            "name": "final_output",
+            "layer_expr": "il",
+            "line": 482
+          },
+          {
+            "name": "linear_attn_out",
+            "layer_expr": "il",
+            "line": 486
+          },
+          {
+            "name": "ffn_moe_out",
+            "layer_expr": "il",
+            "line": 513
+          },
+          {
+            "name": "ffn_shexp",
+            "layer_expr": "il",
+            "line": 524
+          },
+          {
+            "name": "shared_expert_gate",
+            "layer_expr": "il",
+            "line": 530
+          },
+          {
+            "name": "shared_expert_gate_sigmoid",
+            "layer_expr": "il",
+            "line": 534
+          },
+          {
+            "name": "ffn_shexp_gated",
+            "layer_expr": "il",
+            "line": 539
+          }
+        ],
+        "mtp_callbacks": [
+          {
+            "name": "mtp_tok_embd",
+            "layer_expr": "il",
+            "line": 40
+          },
+          {
+            "name": "mtp_hnorm",
+            "layer_expr": "il",
+            "line": 56
+          },
+          {
+            "name": "mtp_enorm",
+            "layer_expr": "il",
+            "line": 59
+          },
+          {
+            "name": "mtp_concat",
+            "layer_expr": "il",
+            "line": 62
+          },
+          {
+            "name": "mtp_eh_proj",
+            "layer_expr": "il",
+            "line": 65
+          },
+          {
+            "name": "mtp_attn_norm",
+            "layer_expr": "il",
+            "line": 70
+          },
+          {
+            "name": "mtp_Qcur_full",
+            "layer_expr": "il",
+            "line": 73
+          },
+          {
+            "name": "mtp_Qcur_normed",
+            "layer_expr": "il",
+            "line": 81
+          },
+          {
+            "name": "mtp_gate",
+            "layer_expr": "il",
+            "line": 89
+          },
+          {
+            "name": "mtp_Kcur_normed",
+            "layer_expr": "il",
+            "line": 94
+          },
+          {
+            "name": "mtp_Vcur",
+            "layer_expr": "il",
+            "line": 98
+          },
+          {
+            "name": "mtp_attn_pregate",
+            "layer_expr": "il",
+            "line": 113
+          },
+          {
+            "name": "mtp_attn_out",
+            "layer_expr": "il",
+            "line": 117
+          },
+          {
+            "name": "mtp_attn_residual",
+            "layer_expr": "il",
+            "line": 120
+          },
+          {
+            "name": "mtp_attn_post_norm",
+            "layer_expr": "il",
+            "line": 124
+          },
+          {
+            "name": "mtp_ffn_moe_out",
+            "layer_expr": "il",
+            "line": 142
+          },
+          {
+            "name": "mtp_ffn_shexp",
+            "layer_expr": "il",
+            "line": 152
+          },
+          {
+            "name": "mtp_shared_expert_gate_sigmoid",
+            "layer_expr": "il",
+            "line": 156
+          },
+          {
+            "name": "mtp_ffn_shexp_gated",
+            "layer_expr": "il",
+            "line": 159
+          },
+          {
+            "name": "mtp_ffn_out",
+            "layer_expr": "il",
+            "line": 165
+          },
+          {
+            "name": "mtp_post_ffn",
+            "layer_expr": "il",
+            "line": 168
+          },
+          {
+            "name": "h_nextn",
+            "layer_expr": "-1",
+            "line": 176
+          },
+          {
+            "name": "mtp_shared_head_norm",
+            "layer_expr": "-1",
+            "line": 180
+          },
+          {
+            "name": "result_output",
+            "layer_expr": "-1",
+            "line": 186
+          }
+        ],
+        "anchor_lines": {
+          "main_layer_loop": 181,
+          "attn_output_cb": 355,
+          "ffn_moe_out_cb": 513,
+          "ffn_shexp_gated_cb": 539,
+          "post_moe_cb": 220,
+          "l_out_cb": 223,
+          "h_nextn_assignment": 234,
+          "mtp_graph": 154
+        }
+      }
+    },
+    "support_files": {
+      "llama_ext_header": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-ext.h",
+        "exists": true,
+        "symbols": {
+          "llama_set_embeddings_layer_inp": {
+            "present": true,
+            "line": 106
+          },
+          "llama_get_embeddings_layer_inp": {
+            "present": true,
+            "line": 110
+          },
+          "llama_set_embeddings_nextn": {
+            "present": true,
+            "line": 96
+          },
+          "llama_get_embeddings_nextn": {
+            "present": true,
+            "line": 100
+          }
+        }
+      },
+      "llama_context": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-context.cpp",
+        "exists": true,
+        "symbols": {
+          "set_embeddings_layer_inp": {
+            "present": true,
+            "line": 1148
+          },
+          "get_embeddings_layer_inp": {
+            "present": true,
+            "line": 953
+          },
+          "extract_layer_inputs": {
+            "present": true,
+            "line": 1960
+          },
+          "ggml_backend_tensor_get_async": {
+            "present": true,
+            "line": 1457
+          },
+          "graph_get_cb": {
+            "present": true,
+            "line": 2412
+          }
+        }
+      },
+      "llama_graph": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/src/llama-graph.cpp",
+        "exists": true,
+        "symbols": {
+          "t_layer_inp": {
+            "present": true,
+            "line": 908
+          },
+          "ggml_set_output(t_layer_inp": {
+            "present": true,
+            "line": 957
+          },
+          "t_h_nextn": {
+            "present": true,
+            "line": 949
+          }
+        }
+      },
+      "common_speculative": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-hip/common/speculative.cpp",
+        "exists": true,
+        "symbols": {
+          "llama_set_embeddings_layer_inp": {
+            "present": true,
+            "line": 481
+          },
+          "llama_get_embeddings_layer_inp": {
+            "present": true,
+            "line": 557
+          }
+        }
+      }
+    }
+  },
+  "extraction_support": {
+    "existing_layer_input_api_present": true,
+    "common_speculative_uses_layer_input_api": true,
+    "preferred_arch_wires_layer_input": false,
+    "needs_preferred_arch_layer_input_patch": true,
+    "graph_callback_names_tensors_only": true,
+    "backend_tensor_copy_available": true
+  },
+  "checkpoint_mapping": [
+    {
+      "hipengine_key": "hidden_in_f32",
+      "llamacpp_tensor": "layer_inp-3",
+      "source_anchor": "res->t_layer_inp[il] = inpL before layer body",
+      "status": "source_patch_needed_for_layer_input",
+      "sha256": "f6a6539866a1153c0d2e684a69d4004deabe83c1da4721225e78dd1a2ee74e07"
+    },
+    {
+      "hipengine_key": "attn_out_f32",
+      "llamacpp_tensor": "attn_output-3",
+      "candidate_callbacks": [
+        "attn_output"
+      ],
+      "callback_line": 355,
+      "status": "named_callback_present_but_output_copy_patch_needed",
+      "sha256": "3fd2762e24382812c2189197ae53c7fd98c8b6cbb7164a31c9d73e16f150292a"
+    },
+    {
+      "hipengine_key": "residual_f32",
+      "llamacpp_tensor": "attn_residual-3",
+      "candidate_callbacks": [
+        "attn_residual"
+      ],
+      "callback_line": 205,
+      "status": "named_callback_present_but_output_copy_patch_needed",
+      "sha256": "9b79665b816ce3b3315228d382446b5d091fe24a7abd0e2454a1f09cc80d33f9"
+    },
+    {
+      "hipengine_key": "post_norm_f32",
+      "llamacpp_tensor": "attn_post_norm-3",
+      "candidate_callbacks": [
+        "attn_post_norm"
+      ],
+      "callback_line": 212,
+      "status": "named_callback_present_but_output_copy_patch_needed",
+      "sha256": "bf4006483b59054c2ae788add307c580498b70789079ec10d671bf2faca19caa"
+    },
+    {
+      "hipengine_key": "ffn_or_moe_down_f32",
+      "llamacpp_tensor": "ffn_out-3",
+      "candidate_callbacks": [
+        "ffn_out",
+        "ffn_moe_out"
+      ],
+      "callback_line": 216,
+      "status": "named_callback_present_but_output_copy_patch_needed",
+      "sha256": "05d2e465fc520669c7ebe109316281dc607d97cef5bc2a231888a145b6d8f40c"
+    },
+    {
+      "hipengine_key": "moe_shared_out_f32",
+      "llamacpp_tensor": "ffn_shexp_gated-3",
+      "candidate_callbacks": [
+        "ffn_shexp_gated"
+      ],
+      "callback_line": 539,
+      "status": "named_callback_present_but_output_copy_patch_needed",
+      "sha256": "06c28d6b785763778a8ad1bb0020b4b661bc62f88ab814cca64f49656ce68556"
+    },
+    {
+      "hipengine_key": "moe_shared_gate_f32",
+      "llamacpp_tensor": "shared_expert_gate_sigmoid-3",
+      "candidate_callbacks": [
+        "shared_expert_gate_sigmoid"
+      ],
+      "callback_line": 534,
+      "status": "named_callback_present_but_output_copy_patch_needed",
+      "sha256": "656c05fbf54a4a78cc6fddec77b7975a7eb392360cede29d7e4722c32f1ca07b"
+    },
+    {
+      "hipengine_key": "layer_out_f32",
+      "llamacpp_tensor": "l_out-3",
+      "candidate_callbacks": [
+        "l_out"
+      ],
+      "callback_line": 223,
+      "status": "named_callback_present_but_output_copy_patch_needed",
+      "sha256": "699e26e72ea2ed31f3a99cb0387e3834b4e79d39d875ab0785f8b85d1014368d"
+    }
+  ],
+  "patch_plan": [
+    {
+      "step": 1,
+      "scope": "src/models/qwen35moe.cpp",
+      "action": "wire_existing_layer_input_output",
+      "details": "Inside the main `for (int il = 0; il < n_layer; ++il)` loop, insert `res->t_layer_inp[il] = inpL;` before `ggml_tensor * inpSA = inpL;` so the existing llama-ext layer-input API can return hipEngine hidden_in_f32 for layer 3.",
+      "needed": true
+    },
+    {
+      "step": 2,
+      "scope": "src/llama-graph.* and src/llama-context.cpp",
+      "action": "add_temporary_named_checkpoint_outputs",
+      "details": "Add a debug-only selected tensor output/copy path for named graph callbacks such as attn_output, attn_residual, attn_post_norm, ffn_moe_out, ffn_shexp_gated, shared_expert_gate_sigmoid, and l_out. Use ggml_set_output plus ggml_backend_tensor_get_async, mirroring extract_layer_inputs, rather than relying on log text.",
+      "needed": true
+    },
+    {
+      "step": 3,
+      "scope": "trace harness / artifact parser",
+      "action": "capture_prompt_layer_checkpoint",
+      "details": "Run the greeting request, capture layer 3 row at prompt position 16, and emit float32 arrays plus sha256 hashes with the same keys as the hipEngine compact checkpoint summary.",
+      "needed": true
+    }
+  ],
+  "next_action": "prepare_llamacpp_qwen35moe_layer_input_patch_then_capture_hidden_in",
+  "conclusion": "llama.cpp already has layer-input extraction APIs, but qwen35moe does not wire res->t_layer_inp in its main graph. Patch that first; then add output copies for 7 named callbacks to align the hipEngine layer checkpoint numerically."
+}

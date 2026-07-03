@@ -1,0 +1,396 @@
+{
+  "schema": 1,
+  "kind": "gguf_mtp_before_after_acceptance_diagnostic",
+  "date": "2026-06-21",
+  "status": "diagnostic_recorded",
+  "performance_claim": false,
+  "reason_not_performance_claim": "GGUF MTP acceptance improved, but current harness verifies accepted draft tokens with serial target steps plus draft overhead; speedup_vs_ar_visible remains <1.0 and B3-B5 are unsupported.",
+  "hardware": {
+    "env_snapshot": "/tmp/hipengine-mtp-compare-20260621-155344/env.txt",
+    "observed": "gfx1151 / AMD RYZEN AI MAX+ 395 w/ Radeon 8060S from gguf_mtp_bench artifacts"
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "GGUF Q4_K_M / output Q6_K as loaded by script",
+  "worktree_policy": "Measurements used detached clean worktrees; main worktree had paused-loop scratch edits and was not used for benchmark execution.",
+  "commits": {
+    "before_fixed_prompt": "9e81f7a5b00c06cea04b0789058e6f36620ed78d",
+    "after_retained": "95b5b16b5472c7125b38638bfdfdf1c32ffef1c8",
+    "note": "The older ~0.17 baseline comes from the 2026-06-20 three-prompt B2 sweep artifact, not from the fixed-prompt rerank-loop baseline."
+  },
+  "commands": {
+    "worktree_setup": [
+      "git worktree add --detach /tmp/hipengine-mtp-compare-20260621-155344/before 9e81f7a5b00c06cea04b0789058e6f36620ed78d",
+      "git worktree add --detach /tmp/hipengine-mtp-compare-20260621-155344/after 95b5b16b5472c7125b38638bfdfdf1c32ffef1c8"
+    ],
+    "fixed_prompt_matrix": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max {1,2} --cycles 10 --output <json>",
+    "three_prompt_sweep_current": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max {1,2} --cycles 5 --prompt <capital|count|greeting> --output <json>",
+    "unsupported_probe": "/home/lhl/miniforge3/envs/therock/bin/python scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --draft-n-max {3,4,5} --cycles 10 --output <json>",
+    "guard": "/home/lhl/miniforge3/envs/therock/bin/python -m pytest -q tests/test_qwen35_gguf_mtp_mapping.py tests/test_gguf_reader.py tests/test_qwen35_gguf_tokenizer.py"
+  },
+  "correctness_guard": {
+    "passed": true,
+    "log": "/tmp/hipengine-mtp-compare-20260621-155344/logs/after-guard.log",
+    "summary": "......................s.sss.s                                            [100%]"
+  },
+  "fixed_prompt_cycles10": {
+    "before": {
+      "commit": "9e81f7a5b00c06cea04b0789058e6f36620ed78d",
+      "rows": {
+        "b1": {
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/before-b1-cycles10.json",
+          "commit": "9e81f7a5b00c06cea04b0789058e6f36620ed78d",
+          "draft_n_max": 1,
+          "cycles": 10,
+          "prompt": "What is the capital of France?",
+          "accept_per_draft": 0.5,
+          "accepted_per_output": 0.3333,
+          "visible_tokens_per_cycle": 1.5,
+          "tokens_per_sec": 14.26,
+          "ar_baseline_tokens_per_sec": 17.13,
+          "speedup_vs_ar_visible": 0.8323,
+          "avg_ar_decode_ms": 87.55,
+          "avg_mtp_draft_ms": 17.65,
+          "total_accepted": 5,
+          "total_drafts": 10,
+          "total_output_tokens": 15,
+          "warm_excluding_cycle0": {
+            "accept_per_draft": 0.5556,
+            "accepted_per_output": 0.3571,
+            "visible_tokens_per_cycle": 1.5556,
+            "tokens_per_sec": 15.7,
+            "speedup_vs_ar_visible": 0.926,
+            "total_accepted": 5,
+            "total_drafts": 9,
+            "total_output_tokens": 14
+          }
+        },
+        "b2": {
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/before-b2-cycles10.json",
+          "commit": "9e81f7a5b00c06cea04b0789058e6f36620ed78d",
+          "draft_n_max": 2,
+          "cycles": 10,
+          "prompt": "What is the capital of France?",
+          "accept_per_draft": 0.35,
+          "accepted_per_output": 0.4118,
+          "visible_tokens_per_cycle": 1.7,
+          "tokens_per_sec": 15.6,
+          "ar_baseline_tokens_per_sec": 20.08,
+          "speedup_vs_ar_visible": 0.7769,
+          "avg_ar_decode_ms": 84.65,
+          "avg_mtp_draft_ms": 24.31,
+          "total_accepted": 7,
+          "total_drafts": 20,
+          "total_output_tokens": 17,
+          "warm_excluding_cycle0": {
+            "accept_per_draft": 0.3889,
+            "accepted_per_output": 0.4375,
+            "visible_tokens_per_cycle": 1.7778,
+            "tokens_per_sec": 17.4,
+            "speedup_vs_ar_visible": 0.8657,
+            "total_accepted": 7,
+            "total_drafts": 18,
+            "total_output_tokens": 16
+          }
+        }
+      }
+    },
+    "after": {
+      "commit": "95b5b16b5472c7125b38638bfdfdf1c32ffef1c8",
+      "rows": {
+        "b1": {
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-b1-cycles10.json",
+          "commit": "95b5b16b5472c7125b38638bfdfdf1c32ffef1c8",
+          "draft_n_max": 1,
+          "cycles": 10,
+          "prompt": "What is the capital of France?",
+          "accept_per_draft": 0.7,
+          "accepted_per_output": 0.4118,
+          "visible_tokens_per_cycle": 1.7,
+          "tokens_per_sec": 15.06,
+          "ar_baseline_tokens_per_sec": 17.71,
+          "speedup_vs_ar_visible": 0.8503,
+          "avg_ar_decode_ms": 95.97,
+          "avg_mtp_draft_ms": 16.9,
+          "total_accepted": 7,
+          "total_drafts": 10,
+          "total_output_tokens": 17,
+          "warm_excluding_cycle0": {
+            "accept_per_draft": 0.6667,
+            "accepted_per_output": 0.4,
+            "visible_tokens_per_cycle": 1.6667,
+            "tokens_per_sec": 16.88,
+            "speedup_vs_ar_visible": 0.9213,
+            "total_accepted": 6,
+            "total_drafts": 9,
+            "total_output_tokens": 15
+          }
+        },
+        "b2": {
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-b2-cycles10.json",
+          "commit": "95b5b16b5472c7125b38638bfdfdf1c32ffef1c8",
+          "draft_n_max": 2,
+          "cycles": 10,
+          "prompt": "What is the capital of France?",
+          "accept_per_draft": 0.95,
+          "accepted_per_output": 0.6552,
+          "visible_tokens_per_cycle": 2.9,
+          "tokens_per_sec": 17.25,
+          "ar_baseline_tokens_per_sec": 19.96,
+          "speedup_vs_ar_visible": 0.8646,
+          "avg_ar_decode_ms": 145.32,
+          "avg_mtp_draft_ms": 22.76,
+          "total_accepted": 19,
+          "total_drafts": 20,
+          "total_output_tokens": 29,
+          "warm_excluding_cycle0": {
+            "accept_per_draft": 0.9444,
+            "accepted_per_output": 0.6538,
+            "visible_tokens_per_cycle": 2.8889,
+            "tokens_per_sec": 18.21,
+            "speedup_vs_ar_visible": 0.9143,
+            "total_accepted": 17,
+            "total_drafts": 18,
+            "total_output_tokens": 26
+          }
+        }
+      }
+    }
+  },
+  "three_prompt_sweep": {
+    "before_source_artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-summary.json",
+    "before_b2": {
+      "cycles_per_prompt": 5,
+      "prompts": [
+        {
+          "slug": "capital",
+          "prompt": "What is the capital of France?",
+          "artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-capital.json",
+          "accept_per_draft": 0.1,
+          "accepted_per_output": 0.1667,
+          "visible_tokens_per_cycle": 1.2,
+          "tokens_per_sec": 11.96,
+          "speedup_vs_ar_visible": 0.7957,
+          "warm_tokens_per_sec": 14.68,
+          "warm_speedup_vs_ar_visible": 1.0357,
+          "warm_accept_per_draft": 0.125,
+          "depth2_accept_cycles": [],
+          "accepted_draft_tokens": 1,
+          "generated_draft_tokens": 10
+        },
+        {
+          "slug": "count",
+          "prompt": "Count from one to five.",
+          "artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-count.json",
+          "accept_per_draft": 0.2,
+          "accepted_per_output": 0.2857,
+          "visible_tokens_per_cycle": 1.4,
+          "tokens_per_sec": 14.9,
+          "speedup_vs_ar_visible": 0.9196,
+          "warm_tokens_per_sec": 19.45,
+          "warm_speedup_vs_ar_visible": 1.2347,
+          "warm_accept_per_draft": 0.25,
+          "depth2_accept_cycles": [
+            2
+          ],
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 10
+        },
+        {
+          "slug": "greeting",
+          "prompt": "Write a short greeting.",
+          "artifact": "benchmarks/results/mtp-bench-1781845000-b2-sweep-greeting.json",
+          "accept_per_draft": 0.0,
+          "accepted_per_output": 0.0,
+          "visible_tokens_per_cycle": 1.0,
+          "tokens_per_sec": 12.2,
+          "speedup_vs_ar_visible": 0.6098,
+          "warm_tokens_per_sec": 15.7,
+          "warm_speedup_vs_ar_visible": 0.7869,
+          "warm_accept_per_draft": 0.0,
+          "depth2_accept_cycles": [],
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 10
+        }
+      ],
+      "aggregate": {
+        "prompt_count": 3,
+        "warm_positive_prompts": 2,
+        "depth2_accept_prompt_count": 1,
+        "mean_warm_speedup_vs_ar_visible": 1.0191,
+        "mean_cold_speedup_vs_ar_visible": 0.775,
+        "total_accepted_draft_tokens": 3,
+        "total_generated_draft_tokens": 30,
+        "accept_per_draft": 0.1,
+        "accepted_per_output": 0.16666666666666666
+      }
+    },
+    "after_summary_artifact": "/tmp/hipengine-mtp-compare-20260621-155344/current-three-prompt-sweep-summary.json",
+    "after_b1": {
+      "cycles_per_prompt": 5,
+      "prompts": [
+        {
+          "slug": "capital",
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-sweep/after-capital-b1-cycles5.json",
+          "prompt": "What is the capital of France?",
+          "accept_per_draft": 0.8,
+          "accepted_per_output": 0.4444,
+          "visible_tokens_per_cycle": 1.8,
+          "tokens_per_sec": 15.48,
+          "speedup_vs_ar_visible": 0.7646,
+          "accepted_draft_tokens": 4,
+          "generated_draft_tokens": 5,
+          "total_output_tokens": 9,
+          "warm_accept_per_draft": 0.75,
+          "warm_accepted_per_output": 0.4286,
+          "warm_tokens_per_sec": 18.64,
+          "warm_speedup_vs_ar_visible": 0.9205
+        },
+        {
+          "slug": "count",
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-sweep/after-count-b1-cycles5.json",
+          "prompt": "Count from one to five.",
+          "accept_per_draft": 0.4,
+          "accepted_per_output": 0.2857,
+          "visible_tokens_per_cycle": 1.4,
+          "tokens_per_sec": 14.21,
+          "speedup_vs_ar_visible": 0.7473,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 5,
+          "total_output_tokens": 7,
+          "warm_accept_per_draft": 0.5,
+          "warm_accepted_per_output": 0.3333,
+          "warm_tokens_per_sec": 17.25,
+          "warm_speedup_vs_ar_visible": 0.9145
+        },
+        {
+          "slug": "greeting",
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-sweep/after-greeting-b1-cycles5.json",
+          "prompt": "Write a short greeting.",
+          "accept_per_draft": 0.0,
+          "accepted_per_output": 0.0,
+          "visible_tokens_per_cycle": 1.0,
+          "tokens_per_sec": 10.33,
+          "speedup_vs_ar_visible": 0.7263,
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 5,
+          "total_output_tokens": 5,
+          "warm_accept_per_draft": 0.0,
+          "warm_accepted_per_output": 0.0,
+          "warm_tokens_per_sec": 11.94,
+          "warm_speedup_vs_ar_visible": 0.8995
+        }
+      ],
+      "aggregate": {
+        "prompt_count": 3,
+        "total_accepted_draft_tokens": 6,
+        "total_generated_draft_tokens": 15,
+        "total_output_tokens": 21,
+        "accept_per_draft": 0.4,
+        "accepted_per_output": 0.2857142857142857,
+        "mean_warm_speedup_vs_ar_visible": 0.9115,
+        "mean_cold_speedup_vs_ar_visible": 0.7460666666666667
+      }
+    },
+    "after_b2": {
+      "cycles_per_prompt": 5,
+      "prompts": [
+        {
+          "slug": "capital",
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-sweep/after-capital-b2-cycles5.json",
+          "prompt": "What is the capital of France?",
+          "accept_per_draft": 0.9,
+          "accepted_per_output": 0.6429,
+          "visible_tokens_per_cycle": 2.8,
+          "tokens_per_sec": 16.33,
+          "speedup_vs_ar_visible": 0.814,
+          "accepted_draft_tokens": 9,
+          "generated_draft_tokens": 10,
+          "total_output_tokens": 14,
+          "warm_accept_per_draft": 0.875,
+          "warm_accepted_per_output": 0.6364,
+          "warm_tokens_per_sec": 18.19,
+          "warm_speedup_vs_ar_visible": 0.9074
+        },
+        {
+          "slug": "count",
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-sweep/after-count-b2-cycles5.json",
+          "prompt": "Count from one to five.",
+          "accept_per_draft": 0.2,
+          "accepted_per_output": 0.2857,
+          "visible_tokens_per_cycle": 1.4,
+          "tokens_per_sec": 13.42,
+          "speedup_vs_ar_visible": 0.6927,
+          "accepted_draft_tokens": 2,
+          "generated_draft_tokens": 10,
+          "total_output_tokens": 7,
+          "warm_accept_per_draft": 0.25,
+          "warm_accepted_per_output": 0.3333,
+          "warm_tokens_per_sec": 16.3,
+          "warm_speedup_vs_ar_visible": 0.8445
+        },
+        {
+          "slug": "greeting",
+          "artifact": "/tmp/hipengine-mtp-compare-20260621-155344/raw/after-sweep/after-greeting-b2-cycles5.json",
+          "prompt": "Write a short greeting.",
+          "accept_per_draft": 0.0,
+          "accepted_per_output": 0.0,
+          "visible_tokens_per_cycle": 1.0,
+          "tokens_per_sec": 12.2,
+          "speedup_vs_ar_visible": 0.6134,
+          "accepted_draft_tokens": 0,
+          "generated_draft_tokens": 10,
+          "total_output_tokens": 5,
+          "warm_accept_per_draft": 0.0,
+          "warm_accepted_per_output": 0.0,
+          "warm_tokens_per_sec": 15.6,
+          "warm_speedup_vs_ar_visible": 0.7851
+        }
+      ],
+      "aggregate": {
+        "prompt_count": 3,
+        "total_accepted_draft_tokens": 11,
+        "total_generated_draft_tokens": 30,
+        "total_output_tokens": 26,
+        "accept_per_draft": 0.36666666666666664,
+        "accepted_per_output": 0.4230769230769231,
+        "mean_warm_speedup_vs_ar_visible": 0.8456666666666667,
+        "mean_cold_speedup_vs_ar_visible": 0.7067
+      }
+    }
+  },
+  "unsupported_current_budgets": {
+    "b3": {
+      "status": "unsupported",
+      "returncode": 2,
+      "log": "/tmp/hipengine-mtp-compare-20260621-155344/logs/after-b3-probe.log",
+      "message_tail": "usage: gguf_mtp_bench.py [-h] [--model MODEL] [--cycles CYCLES]\n                         [--draft-n-max DRAFT_N_MAX] [--prompt PROMPT]\n                         [--output OUTPUT] [--mtp-context-replay]\ngguf_mtp_bench.py: error: scripts/gguf_mtp_bench.py currently implements only B1/B2 (draft_n_max=1 or 2); B3-B4 target-attached GGUF MTP is not wired yet"
+    },
+    "b4": {
+      "status": "unsupported",
+      "returncode": 2,
+      "log": "/tmp/hipengine-mtp-compare-20260621-155344/logs/after-b4-probe.log",
+      "message_tail": "usage: gguf_mtp_bench.py [-h] [--model MODEL] [--cycles CYCLES]\n                         [--draft-n-max DRAFT_N_MAX] [--prompt PROMPT]\n                         [--output OUTPUT] [--mtp-context-replay]\ngguf_mtp_bench.py: error: scripts/gguf_mtp_bench.py currently implements only B1/B2 (draft_n_max=1 or 2); B3-B4 target-attached GGUF MTP is not wired yet"
+    },
+    "b5": {
+      "status": "unsupported",
+      "returncode": 2,
+      "log": "/tmp/hipengine-mtp-compare-20260621-155344/logs/after-b5-probe.log",
+      "message_tail": "usage: gguf_mtp_bench.py [-h] [--model MODEL] [--cycles CYCLES]\n                         [--draft-n-max DRAFT_N_MAX] [--prompt PROMPT]\n                         [--output OUTPUT] [--mtp-context-replay]\ngguf_mtp_bench.py: error: scripts/gguf_mtp_bench.py currently implements only B1/B2 (draft_n_max=1 or 2); B3-B4 target-attached GGUF MTP is not wired yet"
+    }
+  },
+  "headline_results": {
+    "fixed_prompt_b2_accepted_per_output": {
+      "before": 0.4118,
+      "after": 0.6552,
+      "relative_improvement": 0.5910636231180184
+    },
+    "three_prompt_b2_accepted_per_output": {
+      "before": 0.16666666666666666,
+      "after": 0.4230769230769231,
+      "relative_improvement": 1.5384615384615388
+    },
+    "current_fixed_prompt_b2_speedup_vs_ar_visible": 0.8646,
+    "current_three_prompt_b2_mean_cold_speedup_vs_ar_visible": 0.7067
+  },
+  "raw_run_root": "/tmp/hipengine-mtp-compare-20260621-155344"
+}

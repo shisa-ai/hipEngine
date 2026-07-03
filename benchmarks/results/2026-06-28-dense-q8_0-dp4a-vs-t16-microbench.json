@@ -1,0 +1,23 @@
+{
+  "schema": "hipengine-microbench-v1",
+  "status": "diagnostic-retained",
+  "timestamp": "2026-06-28",
+  "run_tag": "dense-q8_0-dp4a-vs-t16-microbench",
+  "hardware": "AMD Radeon 8060S (gfx1151)",
+  "shape": {
+    "rows": 4,
+    "in_features": 2048,
+    "out_features": 2048
+  },
+  "results_us_per_call": {
+    "t16_gemv": 26.47,
+    "quantize_plus_dp4a": 24.3,
+    "dp4a_alone_quantize_amortized": 22.13
+  },
+  "speedup_vs_t16": {
+    "quantize_plus_dp4a": 1.09,
+    "dp4a_alone": 1.2
+  },
+  "finding": "Dense Q8_0 dp4a is only ~1.2x over the existing t16 GEMV at the verifier shape, NOT the 2-3x the 4-bit MoE dp4a achieved. Q8_0 is already int8 (1 byte/weight) so the dense GEMV is bandwidth-bound on the weight read; dp4a is a compute optimization and does not reduce bytes read. At rows=4 launch overhead also dominates the per-call wall. Conclusion: dp4a is the right lever for 4-bit MoE weights (#7, deferred) but NOT for dense Q8_0. The verifier wall is launch/dispatch-count-bound (ROOFLINE 5.3 hidden bucket) + bandwidth, not dense-GEMV compute. The real lever is launch-count reduction (kernel FUSION / graph replay), not per-kernel GPU dp4a.",
+  "decision": "Keep the correct single-output q8_0 dp4a kernel (committed, validated) as a registered option, but do NOT pursue the full dual/triple-split + raw-Q8_0 materialization + dispatch integration -- poor ROI (1.2x, likely flat at the wall). Pivot to fusion."
+}

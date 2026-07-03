@@ -81,6 +81,93 @@ def gguf_rmsnorm_bf16_f32_weight(
     )
 
 
+def gguf_rmsnorm_bf16_f32_weight_out_f32(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(hidden_size, "hidden_size")
+    _check_threads(threads)
+    _launch_rmsnorm(
+        "hipengine_gguf_rmsnorm_bf16_f32_weight_out_f32",
+        (x_ptr, weight_ptr, out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_rmsnorm_f32_f32_weight(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(hidden_size, "hidden_size")
+    _check_threads(threads)
+    _launch_rmsnorm(
+        "hipengine_gguf_rmsnorm_f32_f32_weight",
+        (x_ptr, weight_ptr, out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_rmsnorm_f32_f32_weight_out_f32(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(hidden_size, "hidden_size")
+    _check_threads(threads)
+    _launch_rmsnorm(
+        "hipengine_gguf_rmsnorm_f32_f32_weight_out_f32",
+        (x_ptr, weight_ptr, out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_add_rmsnorm_bf16_f32_weight(
     x_ptr: int,
     add_ptr: int,
@@ -112,6 +199,68 @@ def gguf_add_rmsnorm_bf16_f32_weight(
     )
 
 
+def gguf_add_rmsnorm_f32_bf16_f32_weight(
+    x_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(hidden_size, "hidden_size")
+    _check_threads(threads)
+    _launch_add_rmsnorm(
+        "hipengine_gguf_add_rmsnorm_f32_bf16_f32_weight",
+        (x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_add_rmsnorm_f32_f32_f32_weight(
+    x_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(hidden_size, "hidden_size")
+    _check_threads(threads)
+    _launch_add_rmsnorm(
+        "hipengine_gguf_add_rmsnorm_f32_f32_f32_weight",
+        (x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_bf16_add(
     a_ptr: int,
     b_ptr: int,
@@ -127,6 +276,29 @@ def gguf_bf16_add(
     _check_threads(threads)
     _launch(
         "hipengine_gguf_bf16_add",
+        (a_ptr, b_ptr, out_ptr, n),
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_f32_bf16_add_out_f32(
+    a_ptr: int,
+    b_ptr: int,
+    out_ptr: int,
+    n: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_positive(n, "n")
+    _check_threads(threads)
+    _launch(
+        "hipengine_gguf_f32_bf16_add_out_f32",
         (a_ptr, b_ptr, out_ptr, n),
         threads=threads,
         stream=stream,
@@ -353,8 +525,33 @@ def register_gguf_ops(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "rmsnorm", "gguf_f32_weight", "f32_out"),
+        gguf_rmsnorm_bf16_f32_weight_out_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "rmsnorm", "gguf_f32_weight", "f32_in_bf16_out"),
+        gguf_rmsnorm_f32_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "rmsnorm", "gguf_f32_weight", "f32_in_f32_out"),
+        gguf_rmsnorm_f32_f32_weight_out_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "add_rmsnorm", "gguf_f32_weight", "bf16_out"),
         gguf_add_rmsnorm_bf16_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "add_rmsnorm", "gguf_f32_weight", "f32_residual_bf16_norm_out"),
+        gguf_add_rmsnorm_f32_bf16_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "add_rmsnorm", "gguf_f32_weight", "f32_residual_f32_add_bf16_norm_out"),
+        gguf_add_rmsnorm_f32_f32_f32_weight,
         replace=replace,
     )
     register(
@@ -671,9 +868,15 @@ register_gguf_ops()
 __all__ = [
     "build_gguf_ops",
     "gguf_add_rmsnorm_bf16_f32_weight",
+    "gguf_add_rmsnorm_f32_bf16_f32_weight",
+    "gguf_add_rmsnorm_f32_f32_f32_weight",
     "gguf_bf16_add",
+    "gguf_f32_bf16_add_out_f32",
     "gguf_gate_mul_bf16",
     "gguf_rmsnorm_bf16_f32_weight",
+    "gguf_rmsnorm_bf16_f32_weight_out_f32",
+    "gguf_rmsnorm_f32_f32_weight",
+    "gguf_rmsnorm_f32_f32_weight_out_f32",
     "gguf_gate_repeat_value_bf16",
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
     "gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight",

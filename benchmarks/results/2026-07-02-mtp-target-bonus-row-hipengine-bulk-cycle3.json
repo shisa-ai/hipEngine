@@ -1,0 +1,1025 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gguf_mtp_forced_target_probe",
+  "status": "complete",
+  "performance_claim": false,
+  "timestamp": "2026-07-02T14:53:05.541636+00:00",
+  "repo": {
+    "root": "/home/lhl/hipEngine",
+    "commit": "0450e6b066e9c786e6420325ad326fb3646fb08c",
+    "branch": "mtp-gguf",
+    "dirty": true
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "source_trace": "/tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json",
+  "command": {
+    "argv": [
+      "scripts/gguf_mtp_forced_target_probe.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--trace",
+      "/tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json",
+      "--cycle",
+      "3",
+      "--target-block-verify-mode",
+      "bulk",
+      "--replay-target-block-verify-mode",
+      "bulk",
+      "--target-block-direct-partial-replay-mode",
+      "direct-commit",
+      "--capture-linear-state-rows",
+      "--candidate-token",
+      "668,8940",
+      "--top-k",
+      "20",
+      "--pre-output-norm-row",
+      "2",
+      "--layer-output-row",
+      "0:2",
+      "--layer-output-row",
+      "1:2",
+      "--layer-output-row",
+      "39:2",
+      "--output",
+      "benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-cycle3.json"
+    ],
+    "command": "scripts/gguf_mtp_forced_target_probe.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --trace /tmp/hipengine-ar-mtp-suite-full-1783002329/mtp/b2/mixed_ja_en_translate.json --cycle 3 --target-block-verify-mode bulk --replay-target-block-verify-mode bulk --target-block-direct-partial-replay-mode direct-commit --capture-linear-state-rows --candidate-token 668,8940 --top-k 20 --pre-output-norm-row 2 --layer-output-row 0:2 --layer-output-row 1:2 --layer-output-row 39:2 --output benchmarks/results/2026-07-02-mtp-target-bonus-row-hipengine-bulk-cycle3.json"
+  },
+  "route_env": {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A": "0",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED": "0",
+    "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR": "0",
+    "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A": "1",
+    "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR": "1",
+    "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW": "0",
+    "HIPENGINE_GGUF_SELECTED_GATE_UP_X8": "0",
+    "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+    "HIPENGINE_GGUF_T16_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A": "0"
+  },
+  "probe": {
+    "cycle": 3,
+    "cycle_index": 3,
+    "prompt": "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n来週のリリースでは、ログ出力の形式変更、キャッシュの無効化オプション、そしてAPIレスポンスの後方互換性を重点的に確認したいです。",
+    "prompt_reasoning": "off",
+    "prompt_tokens": 64,
+    "initial_prev_token": 332,
+    "initial_prev_position": 64,
+    "prefix_visible_output_tokens": [
+      21874,
+      20858,
+      64700,
+      198,
+      2381,
+      1727,
+      1936,
+      725,
+      4722
+    ],
+    "consumed_prefix_tokens": [
+      332,
+      21874,
+      20858,
+      64700,
+      198,
+      2381,
+      1727,
+      1936,
+      725
+    ],
+    "cycle_prev_token": 4722,
+    "cycle_start_seq_position": 73,
+    "verifier_input_tokens": [
+      4722,
+      11,
+      567
+    ],
+    "trace_draft_tokens": [
+      11,
+      567
+    ],
+    "trace_target_tokens": [
+      11,
+      567,
+      8940
+    ],
+    "trace_output_tokens": [
+      11,
+      567,
+      8940
+    ],
+    "candidate_tokens": [
+      11,
+      567,
+      8940,
+      668
+    ]
+  },
+  "result": {
+    "target_block_verify_mode": "bulk",
+    "replay_target_block_verify_mode": "bulk",
+    "target_block_wmma_prefill": false,
+    "capture_linear_state_rows": true,
+    "prior_cycle_replay": [
+      {
+        "cycle": 0,
+        "start_position": 64,
+        "verifier_input_tokens": [
+          332,
+          21874,
+          20858
+        ],
+        "sampled_tokens": [
+          21874,
+          20858,
+          64700
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 67,
+        "next_prev_token": 64700
+      },
+      {
+        "cycle": 1,
+        "start_position": 67,
+        "verifier_input_tokens": [
+          64700,
+          198,
+          2381
+        ],
+        "sampled_tokens": [
+          198,
+          2381,
+          1727
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 70,
+        "next_prev_token": 1727
+      },
+      {
+        "cycle": 2,
+        "start_position": 70,
+        "verifier_input_tokens": [
+          1727,
+          1936,
+          725
+        ],
+        "sampled_tokens": [
+          1936,
+          725,
+          4722
+        ],
+        "accepted_draft_tokens": 2,
+        "consumed_rows": 3,
+        "committed_position": 73,
+        "next_prev_token": 4722
+      }
+    ],
+    "cycle_pending_hidden_seed_summary": {
+      "label": "cycle_pending_hidden_seed",
+      "size": 2048,
+      "sha256_16": "3a457113b81b2b51",
+      "mean": -0.02064628,
+      "rms": 2.55765176,
+      "min": -13.42621326,
+      "max": 14.66651726,
+      "first8": [
+        3.24550509,
+        -0.18014249,
+        -0.04477412,
+        0.48561013,
+        7.25330782,
+        -2.00701118,
+        -0.47732672,
+        3.09069347
+      ],
+      "last8": [
+        1.21943915,
+        -2.75076342,
+        -3.3355763,
+        3.30385637,
+        3.90139103,
+        -0.32640225,
+        1.0772928,
+        -0.23951147
+      ],
+      "depth": -1,
+      "token_id": 4722,
+      "position": 73
+    },
+    "sampled_tokens": [
+      11,
+      567,
+      8940
+    ],
+    "accepted_draft_tokens": 2,
+    "rows": [
+      {
+        "row": 0,
+        "position": 73,
+        "input_token": 4722,
+        "sampled_token": 11,
+        "trace_target_token": 11,
+        "trace_output_token": 11,
+        "draft_token_at_depth": 11,
+        "hidden_seed_summary": {
+          "label": "target_verify_hidden_seed",
+          "size": 2048,
+          "sha256_16": "9f7c0fbb82bb0239",
+          "mean": -0.0758716,
+          "rms": 2.53801079,
+          "min": -14.47772789,
+          "max": 16.39762115,
+          "first8": [
+            2.23729324,
+            1.8530525,
+            -1.43030739,
+            0.62266713,
+            10.56566143,
+            -4.62417555,
+            -2.24927235,
+            -2.66018939
+          ],
+          "last8": [
+            -1.50233364,
+            -1.92900479,
+            -5.42366171,
+            3.59275556,
+            -0.21234153,
+            -1.68479002,
+            -0.09031592,
+            -3.0737741
+          ],
+          "depth": 0,
+          "token_id": 4722,
+          "position": 73
+        },
+        "top_k": [
+          {
+            "rank": 1,
+            "token_id": 11,
+            "logit": 27.555665969848633,
+            "margin_from_top": 0.0,
+            "prob": 0.9997813865834018
+          },
+          {
+            "rank": 2,
+            "token_id": 3286,
+            "logit": 17.916698455810547,
+            "margin_from_top": 9.638967514038086,
+            "prob": 6.512603592143911e-05
+          },
+          {
+            "rank": 3,
+            "token_id": 5077,
+            "logit": 17.02733612060547,
+            "margin_from_top": 10.528329849243164,
+            "prob": 2.676144069402291e-05
+          },
+          {
+            "rank": 4,
+            "token_id": 43195,
+            "logit": 16.546688079833984,
+            "margin_from_top": 11.008977890014648,
+            "prob": 1.6548807264796197e-05
+          },
+          {
+            "rank": 5,
+            "token_id": 10304,
+            "logit": 16.48747444152832,
+            "margin_from_top": 11.068191528320312,
+            "prob": 1.5597340084724006e-05
+          },
+          {
+            "rank": 6,
+            "token_id": 2560,
+            "logit": 15.730461120605469,
+            "margin_from_top": 11.825204849243164,
+            "prob": 7.316170763845328e-06
+          },
+          {
+            "rank": 7,
+            "token_id": 22188,
+            "logit": 15.68912124633789,
+            "margin_from_top": 11.866544723510742,
+            "prob": 7.019887534181624e-06
+          },
+          {
+            "rank": 8,
+            "token_id": 4722,
+            "logit": 15.611921310424805,
+            "margin_from_top": 11.943744659423828,
+            "prob": 6.498343259272155e-06
+          },
+          {
+            "rank": 9,
+            "token_id": 8871,
+            "logit": 15.544167518615723,
+            "margin_from_top": 12.01149845123291,
+            "prob": 6.0726402005907956e-06
+          },
+          {
+            "rank": 10,
+            "token_id": 7262,
+            "logit": 15.471414566040039,
+            "margin_from_top": 12.084251403808594,
+            "prob": 5.646526158364541e-06
+          },
+          {
+            "rank": 11,
+            "token_id": 6830,
+            "logit": 15.189837455749512,
+            "margin_from_top": 12.365828514099121,
+            "prob": 4.260827569474706e-06
+          },
+          {
+            "rank": 12,
+            "token_id": 8129,
+            "logit": 15.158628463745117,
+            "margin_from_top": 12.397037506103516,
+            "prob": 4.129905042363285e-06
+          },
+          {
+            "rank": 13,
+            "token_id": 567,
+            "logit": 15.021117210388184,
+            "margin_from_top": 12.53454875946045,
+            "prob": 3.5993136020574847e-06
+          },
+          {
+            "rank": 14,
+            "token_id": 16543,
+            "logit": 14.550239562988281,
+            "margin_from_top": 13.005426406860352,
+            "prob": 2.247605694373786e-06
+          },
+          {
+            "rank": 15,
+            "token_id": 5020,
+            "logit": 14.502439498901367,
+            "margin_from_top": 13.053226470947266,
+            "prob": 2.142697286650292e-06
+          },
+          {
+            "rank": 16,
+            "token_id": 18944,
+            "logit": 14.392937660217285,
+            "margin_from_top": 13.162728309631348,
+            "prob": 1.9204578305332528e-06
+          },
+          {
+            "rank": 17,
+            "token_id": 3019,
+            "logit": 14.246308326721191,
+            "margin_from_top": 13.309357643127441,
+            "prob": 1.6585343281804306e-06
+          },
+          {
+            "rank": 18,
+            "token_id": 22449,
+            "logit": 14.12563705444336,
+            "margin_from_top": 13.430028915405273,
+            "prob": 1.4700008885452395e-06
+          },
+          {
+            "rank": 19,
+            "token_id": 13,
+            "logit": 14.030460357666016,
+            "margin_from_top": 13.525205612182617,
+            "prob": 1.3365428380092013e-06
+          },
+          {
+            "rank": 20,
+            "token_id": 10206,
+            "logit": 13.951845169067383,
+            "margin_from_top": 13.60382080078125,
+            "prob": 1.2354942838742534e-06
+          }
+        ],
+        "candidate_scores": [
+          {
+            "token_id": 11,
+            "in_vocab": true,
+            "rank": 1,
+            "logit": 27.555665969848633,
+            "margin_from_top": 0.0,
+            "prob": 0.9997813865834018
+          },
+          {
+            "token_id": 567,
+            "in_vocab": true,
+            "rank": 13,
+            "logit": 15.021117210388184,
+            "margin_from_top": 12.53454875946045,
+            "prob": 3.5993136020574847e-06
+          },
+          {
+            "token_id": 8940,
+            "in_vocab": true,
+            "rank": 201,
+            "logit": 10.047338485717773,
+            "margin_from_top": 17.50832748413086,
+            "prob": 2.489631288253511e-08
+          },
+          {
+            "token_id": 668,
+            "in_vocab": true,
+            "rank": 66,
+            "logit": 11.999883651733398,
+            "margin_from_top": 15.555782318115234,
+            "prob": 1.7543434695910792e-07
+          }
+        ]
+      },
+      {
+        "row": 1,
+        "position": 74,
+        "input_token": 11,
+        "sampled_token": 567,
+        "trace_target_token": 567,
+        "trace_output_token": 567,
+        "draft_token_at_depth": 567,
+        "hidden_seed_summary": {
+          "label": "target_verify_hidden_seed",
+          "size": 2048,
+          "sha256_16": "bcaed1ae5e13227e",
+          "mean": -0.0031485,
+          "rms": 2.58949851,
+          "min": -12.8127861,
+          "max": 23.98371315,
+          "first8": [
+            -1.84070063,
+            3.6522119,
+            -1.30260706,
+            -2.83077884,
+            8.21674633,
+            -2.95981646,
+            0.90467358,
+            -3.02423453
+          ],
+          "last8": [
+            -2.16163421,
+            -4.54450512,
+            -2.71150422,
+            5.41354752,
+            2.08541441,
+            -1.87376523,
+            0.71258897,
+            1.04815507
+          ],
+          "depth": 1,
+          "token_id": 11,
+          "position": 74
+        },
+        "top_k": [
+          {
+            "rank": 1,
+            "token_id": 567,
+            "logit": 26.238170623779297,
+            "margin_from_top": 0.0,
+            "prob": 0.5236621418662881
+          },
+          {
+            "rank": 2,
+            "token_id": 279,
+            "logit": 26.097978591918945,
+            "margin_from_top": 0.14019203186035156,
+            "prob": 0.4551625814878714
+          },
+          {
+            "rank": 3,
+            "token_id": 10304,
+            "logit": 21.925363540649414,
+            "margin_from_top": 4.312807083129883,
+            "prob": 0.007014922219893543
+          },
+          {
+            "rank": 4,
+            "token_id": 353,
+            "logit": 21.619407653808594,
+            "margin_from_top": 4.618762969970703,
+            "prob": 0.005165922739400708
+          },
+          {
+            "rank": 5,
+            "token_id": 1004,
+            "logit": 21.449996948242188,
+            "margin_from_top": 4.788173675537109,
+            "prob": 0.004360876343594923
+          },
+          {
+            "rank": 6,
+            "token_id": 5077,
+            "logit": 20.31237030029297,
+            "margin_from_top": 5.925800323486328,
+            "prob": 0.0013980052308231155
+          },
+          {
+            "rank": 7,
+            "token_id": 4338,
+            "logit": 19.98587417602539,
+            "margin_from_top": 6.252296447753906,
+            "prob": 0.0010085869190713213
+          },
+          {
+            "rank": 8,
+            "token_id": 1328,
+            "logit": 19.548105239868164,
+            "margin_from_top": 6.690065383911133,
+            "prob": 0.0006510175523689529
+          },
+          {
+            "rank": 9,
+            "token_id": 28539,
+            "logit": 19.48131561279297,
+            "margin_from_top": 6.756855010986328,
+            "prob": 0.0006089565854651417
+          },
+          {
+            "rank": 10,
+            "token_id": 488,
+            "logit": 18.72918701171875,
+            "margin_from_top": 7.508983612060547,
+            "prob": 0.0002870390806093504
+          },
+          {
+            "rank": 11,
+            "token_id": 424,
+            "logit": 17.79326629638672,
+            "margin_from_top": 8.444904327392578,
+            "prob": 0.00011258378055527233
+          },
+          {
+            "rank": 12,
+            "token_id": 23877,
+            "logit": 17.655914306640625,
+            "margin_from_top": 8.582256317138672,
+            "prob": 9.813515594093774e-05
+          },
+          {
+            "rank": 13,
+            "token_id": 60445,
+            "logit": 17.205970764160156,
+            "margin_from_top": 9.03219985961914,
+            "prob": 6.257727094950233e-05
+          },
+          {
+            "rank": 14,
+            "token_id": 43195,
+            "logit": 17.059911727905273,
+            "margin_from_top": 9.178258895874023,
+            "prob": 5.407343834776394e-05
+          },
+          {
+            "rank": 15,
+            "token_id": 5839,
+            "logit": 16.643423080444336,
+            "margin_from_top": 9.594747543334961,
+            "prob": 3.56537540615489e-05
+          },
+          {
+            "rank": 16,
+            "token_id": 8601,
+            "logit": 16.63603973388672,
+            "margin_from_top": 9.602130889892578,
+            "prob": 3.5391479462824736e-05
+          },
+          {
+            "rank": 17,
+            "token_id": 1017,
+            "logit": 16.60292625427246,
+            "margin_from_top": 9.635244369506836,
+            "prob": 3.423873544223049e-05
+          },
+          {
+            "rank": 18,
+            "token_id": 7262,
+            "logit": 16.509580612182617,
+            "margin_from_top": 9.72859001159668,
+            "prob": 3.1187331675656685e-05
+          },
+          {
+            "rank": 19,
+            "token_id": 264,
+            "logit": 15.891478538513184,
+            "margin_from_top": 10.346692085266113,
+            "prob": 1.680892344195588e-05
+          },
+          {
+            "rank": 20,
+            "token_id": 821,
+            "logit": 15.858746528625488,
+            "margin_from_top": 10.379424095153809,
+            "prob": 1.6267640557984153e-05
+          }
+        ],
+        "candidate_scores": [
+          {
+            "token_id": 11,
+            "in_vocab": true,
+            "rank": 1054,
+            "logit": 7.661880970001221,
+            "margin_from_top": 18.576289653778076,
+            "prob": 4.481992101583838e-09
+          },
+          {
+            "token_id": 567,
+            "in_vocab": true,
+            "rank": 1,
+            "logit": 26.238170623779297,
+            "margin_from_top": 0.0,
+            "prob": 0.5236621418662881
+          },
+          {
+            "token_id": 8940,
+            "in_vocab": true,
+            "rank": 67,
+            "logit": 12.626731872558594,
+            "margin_from_top": 13.611438751220703,
+            "prob": 6.422120311045391e-07
+          },
+          {
+            "token_id": 668,
+            "in_vocab": true,
+            "rank": 52,
+            "logit": 13.412276268005371,
+            "margin_from_top": 12.825894355773926,
+            "prob": 1.4087568265017119e-06
+          }
+        ]
+      },
+      {
+        "row": 2,
+        "position": 75,
+        "input_token": 567,
+        "sampled_token": 8940,
+        "trace_target_token": 8940,
+        "trace_output_token": 8940,
+        "draft_token_at_depth": null,
+        "hidden_seed_summary": {
+          "label": "target_verify_hidden_seed",
+          "size": 2048,
+          "sha256_16": "b5ad63cdd8c205e6",
+          "mean": -0.02255636,
+          "rms": 2.58293229,
+          "min": -12.40806484,
+          "max": 17.17161942,
+          "first8": [
+            0.47027054,
+            2.82138753,
+            -0.15778151,
+            0.49233231,
+            5.39549446,
+            -3.17500472,
+            0.38539246,
+            3.24579096
+          ],
+          "last8": [
+            -1.87998116,
+            -3.85392451,
+            -3.05749941,
+            5.3269105,
+            2.96909499,
+            -2.40275168,
+            -2.31282663,
+            1.23087013
+          ],
+          "depth": 2,
+          "token_id": 567,
+          "position": 75
+        },
+        "top_k": [
+          {
+            "rank": 1,
+            "token_id": 8940,
+            "logit": 25.841197967529297,
+            "margin_from_top": 0.0,
+            "prob": 0.2817069179622407
+          },
+          {
+            "rank": 2,
+            "token_id": 3019,
+            "logit": 25.432903289794922,
+            "margin_from_top": 0.408294677734375,
+            "prob": 0.18727395686596576
+          },
+          {
+            "rank": 3,
+            "token_id": 1318,
+            "logit": 25.359066009521484,
+            "margin_from_top": 0.4821319580078125,
+            "prob": 0.1739443246053147
+          },
+          {
+            "rank": 4,
+            "token_id": 668,
+            "logit": 25.321857452392578,
+            "margin_from_top": 0.5193405151367188,
+            "prob": 0.1675910385506907
+          },
+          {
+            "rank": 5,
+            "token_id": 1144,
+            "logit": 24.838199615478516,
+            "margin_from_top": 1.0029983520507812,
+            "prob": 0.10332391716366619
+          },
+          {
+            "rank": 6,
+            "token_id": 1220,
+            "logit": 24.111759185791016,
+            "margin_from_top": 1.7294387817382812,
+            "prob": 0.04997028110166983
+          },
+          {
+            "rank": 7,
+            "token_id": 28663,
+            "logit": 23.359880447387695,
+            "margin_from_top": 2.4813175201416016,
+            "prob": 0.02355998476993098
+          },
+          {
+            "rank": 8,
+            "token_id": 60445,
+            "logit": 22.05936050415039,
+            "margin_from_top": 3.7818374633789062,
+            "prob": 0.006417507286081633
+          },
+          {
+            "rank": 9,
+            "token_id": 5077,
+            "logit": 20.722341537475586,
+            "margin_from_top": 5.118856430053711,
+            "prob": 0.0016854132777639299
+          },
+          {
+            "rank": 10,
+            "token_id": 43195,
+            "logit": 20.589292526245117,
+            "margin_from_top": 5.25190544128418,
+            "prob": 0.0014754481751562709
+          },
+          {
+            "rank": 11,
+            "token_id": 15048,
+            "logit": 20.362173080444336,
+            "margin_from_top": 5.479024887084961,
+            "prob": 0.0011756748761598665
+          },
+          {
+            "rank": 12,
+            "token_id": 513,
+            "logit": 19.511245727539062,
+            "margin_from_top": 6.329952239990234,
+            "prob": 0.000502035217432537
+          },
+          {
+            "rank": 13,
+            "token_id": 1000,
+            "logit": 19.278778076171875,
+            "margin_from_top": 6.562419891357422,
+            "prob": 0.00039790075707671276
+          },
+          {
+            "rank": 14,
+            "token_id": 97556,
+            "logit": 18.62440299987793,
+            "margin_from_top": 7.216794967651367,
+            "prob": 0.00020681559355266996
+          },
+          {
+            "rank": 15,
+            "token_id": 4548,
+            "logit": 17.997297286987305,
+            "margin_from_top": 7.843900680541992,
+            "prob": 0.00011046755201669327
+          },
+          {
+            "rank": 16,
+            "token_id": 10419,
+            "logit": 17.95330047607422,
+            "margin_from_top": 7.887897491455078,
+            "prob": 0.00010571269820117918
+          },
+          {
+            "rank": 17,
+            "token_id": 14156,
+            "logit": 17.949115753173828,
+            "margin_from_top": 7.892082214355469,
+            "prob": 0.00010527124417776017
+          },
+          {
+            "rank": 18,
+            "token_id": 1902,
+            "logit": 17.89179039001465,
+            "margin_from_top": 7.949407577514648,
+            "prob": 9.940624453318178e-05
+          },
+          {
+            "rank": 19,
+            "token_id": 20878,
+            "logit": 17.01425552368164,
+            "margin_from_top": 8.826942443847656,
+            "prob": 4.133377935071014e-05
+          },
+          {
+            "rank": 20,
+            "token_id": 6440,
+            "logit": 17.011926651000977,
+            "margin_from_top": 8.82927131652832,
+            "prob": 4.1237630244162006e-05
+          }
+        ],
+        "candidate_scores": [
+          {
+            "token_id": 11,
+            "in_vocab": true,
+            "rank": 250,
+            "logit": 9.440893173217773,
+            "margin_from_top": 16.400304794311523,
+            "prob": 2.124396799763363e-08
+          },
+          {
+            "token_id": 567,
+            "in_vocab": true,
+            "rank": 100,
+            "logit": 11.760429382324219,
+            "margin_from_top": 14.080768585205078,
+            "prob": 2.160714640928671e-07
+          },
+          {
+            "token_id": 8940,
+            "in_vocab": true,
+            "rank": 1,
+            "logit": 25.841197967529297,
+            "margin_from_top": 0.0,
+            "prob": 0.2817069179622407
+          },
+          {
+            "token_id": 668,
+            "in_vocab": true,
+            "rank": 4,
+            "logit": 25.321857452392578,
+            "margin_from_top": 0.5193405151367188,
+            "prob": 0.1675910385506907
+          }
+        ],
+        "pre_output_norm_hidden_summary": {
+          "label": "target_verify_pre_output_norm_hidden",
+          "size": 2048,
+          "sha256_16": "98df57ad7527ce90",
+          "mean": -0.00180426,
+          "rms": 0.2910058,
+          "min": -1.359375,
+          "max": 1.859375,
+          "first8": [
+            0.05004883,
+            0.296875,
+            -0.01623535,
+            0.05151367,
+            0.5859375,
+            -0.33984375,
+            0.04272461,
+            0.33398438
+          ],
+          "last8": [
+            -0.19238281,
+            -0.41015625,
+            -0.33398438,
+            0.59765625,
+            0.29492188,
+            -0.25,
+            -0.33007812,
+            0.12988281
+          ],
+          "depth": 2,
+          "token_id": 567,
+          "position": 75
+        },
+        "layer_output_hidden_summaries": {
+          "0": {
+            "label": "target_verify_layer_output_0",
+            "size": 2048,
+            "sha256_16": "06ae008f204950c1",
+            "mean": 0.00049522,
+            "rms": 0.01746553,
+            "min": -0.15234375,
+            "max": 0.5390625,
+            "first8": [
+              -0.00384521,
+              -0.00119781,
+              -0.00026512,
+              0.00714111,
+              0.00442505,
+              0.01019287,
+              0.00299072,
+              0.02514648
+            ],
+            "last8": [
+              -0.00582886,
+              -0.00601196,
+              -0.01068115,
+              -0.01263428,
+              0.00210571,
+              -0.01269531,
+              0.02270508,
+              -0.0018692
+            ],
+            "depth": 2,
+            "token_id": 567,
+            "position": 75
+          },
+          "1": {
+            "label": "target_verify_layer_output_1",
+            "size": 2048,
+            "sha256_16": "ab238876b2888754",
+            "mean": 0.00064114,
+            "rms": 0.02125832,
+            "min": -0.19042969,
+            "max": 0.671875,
+            "first8": [
+              -0.00386047,
+              -0.00531006,
+              -0.00823975,
+              0.00448608,
+              0.00236511,
+              -0.00088501,
+              0.00334167,
+              0.02575684
+            ],
+            "last8": [
+              -0.00756836,
+              -0.00512695,
+              -0.01245117,
+              0.00138092,
+              -0.00717163,
+              -0.01275635,
+              0.02941895,
+              -0.00019646
+            ],
+            "depth": 2,
+            "token_id": 567,
+            "position": 75
+          },
+          "39": {
+            "label": "target_verify_layer_output_39",
+            "size": 2048,
+            "sha256_16": "98df57ad7527ce90",
+            "mean": -0.00180426,
+            "rms": 0.2910058,
+            "min": -1.359375,
+            "max": 1.859375,
+            "first8": [
+              0.05004883,
+              0.296875,
+              -0.01623535,
+              0.05151367,
+              0.5859375,
+              -0.33984375,
+              0.04272461,
+              0.33398438
+            ],
+            "last8": [
+              -0.19238281,
+              -0.41015625,
+              -0.33398438,
+              0.59765625,
+              0.29492188,
+              -0.25,
+              -0.33007812,
+              0.12988281
+            ],
+            "depth": 2,
+            "token_id": 567,
+            "position": 75
+          }
+        }
+      }
+    ],
+    "layer_boundary_captures": [],
+    "router_trace_captures": []
+  },
+  "notes": [
+    "Diagnostic only: forced-prefix target verifier score capture, not a performance run.",
+    "Prefix replay consumes initial_prev_token plus prior visible outputs except the final cycle_prev_token, matching scripts/gguf_mtp_bench.py block verifier state.",
+    "The verifier direct Q6 top-1 path is forced off so full row logits are available.",
+    "cycle_pending_hidden_seed_summary is the seed row that starts the MTP draft for this cycle.",
+    "hidden_seed_summary is the FP32 post-output_norm verifier row used as the MTP draft seed.",
+    "hidden_seed_values is emitted only for --raw-hidden-row diagnostics.",
+    "pre_output_norm_hidden_summary is emitted only for requested --pre-output-norm-row or --raw-pre-output-norm-row diagnostics.",
+    "pre_output_norm_hidden_values is emitted only for --raw-pre-output-norm-row diagnostics.",
+    "layer_output_hidden_summaries is emitted only for requested --layer-output-row or --raw-layer-output-row LAYER:ROW diagnostics.",
+    "layer_output_hidden_values is emitted only for --raw-layer-output-row LAYER:ROW diagnostics.",
+    "layer_boundary_captures is emitted only for requested --layer-boundary-row or --raw-layer-boundary-row LAYER:ROW diagnostics.",
+    "Layer boundary captures run in isolated replay sessions so diagnostic sub-layer taps do not perturb the scored verifier probe.",
+    "Layer boundary captures include attn_norm and, for MoE layers, router logits, selected SwigLU/down/weighted sums, shared intermediate/out/gated contribution, host-reconstructed ffn_out_combined_from_components, and post_moe_rounded_from_components.",
+    "router_trace_captures is emitted only for requested --router-trace-row ROW diagnostics and runs one isolated row replay through all layers, capturing per-layer router logits/top-k without perturbing the scored verifier probe.",
+    "post_moe_delta_from_residual is derived as layer_out - attn_residual and is an approximate bridge to llama.cpp post_moe/ffn residual comparisons after BF16 output rounding."
+  ]
+}

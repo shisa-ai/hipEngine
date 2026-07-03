@@ -1,0 +1,89 @@
+{
+  "schema": "hipengine.gguf_q8_0_t16_pair_microbench.v1",
+  "host": "gfx1151",
+  "hip_arch": "gfx1151",
+  "peak_gbs": 256.0,
+  "iters": 80,
+  "warmup": 20,
+  "results": [
+    {
+      "rows": 2,
+      "threads": 64,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096,
+      "us": 197.77,
+      "matrix_MB": 26.739,
+      "pool_copies": 3,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 270.4,
+      "pct_peak": 105.6
+    },
+    {
+      "rows": 2,
+      "threads": 128,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096,
+      "us": 179.26,
+      "matrix_MB": 26.739,
+      "pool_copies": 3,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 298.3,
+      "pct_peak": 116.5
+    },
+    {
+      "rows": 3,
+      "threads": 64,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096,
+      "us": 224.8,
+      "matrix_MB": 26.739,
+      "pool_copies": 3,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 356.8,
+      "pct_peak": 139.4
+    },
+    {
+      "rows": 3,
+      "threads": 128,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096,
+      "us": 207.05,
+      "matrix_MB": 26.739,
+      "pool_copies": 3,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 387.4,
+      "pct_peak": 151.3
+    },
+    {
+      "rows": 4,
+      "threads": 64,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096,
+      "us": 251.96,
+      "matrix_MB": 26.739,
+      "pool_copies": 3,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 424.5,
+      "pct_peak": 165.8
+    },
+    {
+      "rows": 4,
+      "threads": 128,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096,
+      "us": 237.02,
+      "matrix_MB": 26.739,
+      "pool_copies": 3,
+      "pool_MB": 80.2,
+      "achieved_read_bw_gbs": 451.2,
+      "pct_peak": 176.3
+    }
+  ],
+  "command": "python3 scripts/gguf_q8_0_t16_pair_microbench.py --rows 2,3,4 --threads 64,128 --iters 80 --warmup 20 --json benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json"
+}
