@@ -39,6 +39,22 @@ probes all sample **8940** with `8940` ahead by **0.413-0.519 logits**.
 Current exact default fastest row also uses the shared parallel attention
 kernel, **AR 54.79 tok/s; best MTP B5 61.98 tok/s = 1.1312× AR**; exact cycle
 wall moved **16.496 -> 16.162 ms/output** with unchanged acc/output **0.535**.
+A separate natural24 token-cap c=1/c=4/c=8 serving diagnostic now includes
+llama.cpp HIP as well as Vulkan. For hipEngine exact c=1 under the 24-token cap,
+the budget sweep finds **B1 52.13 tok/s** as fastest, with **B2 52.04** and
+**B5 50.65** versus AR **54.80**; B2 is faster than B5, but neither should be
+used as a speed path for that token-cap protocol because B1 is fastest and all
+exact MTP budgets are below AR. hipEngine c=4/c=8 MTP remains unmeasured until a
+real serving route or concurrent direct resident-session harness exists; flipping
+`speculative_mtp.serving_route=false` alone would only misadvertise capability.
+Natural24 diagnostic artifacts:
+`results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`,
+`results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json`,
+`results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json`,
+`results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json`,
+`results/2026-07-03-llamacpp-vulkan-mtp-natural24-c1.json`,
+`results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`, and
+`results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`.
 Refreshed natural24 cyclecap24 compat artifact (filename contains `f32head`, but
 the route did not enable verifier-head top-1)
 `results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`;
@@ -419,6 +435,33 @@ git diff --check
 | Qwen3.5-0.8B GGUF | gguf_q4_k_m | `hip_gfx1100` GGUF resident session | 4K/128 | 3599.717 | 85.702 | 1.608 | public E2E fixture passed, finite logits, no torch import | [`2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json`](results/2026-05-17-hipengine-gguf-bulk-prefill-q4km-accepted.json) | 2026-05-17 | Bulk prefill + graph decode, capture excluded; same resident path is used by public GGUF `LLM.generate()`. Prefill is +35.0% vs Qwen3.6 packed PARO comparison row (`2666.7 tok/s`); cross-model threshold, not a 35B/PARO equivalence claim. |
 
 ## MTP / DFlash Speculative Decode
+
+### Natural24 MTP vs AR concurrency diagnostic
+
+These rows use Qwen3.6-35B-A3B GGUF Q4_K_M on gfx1151/Radeon 8060S,
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, reasoning off, greedy
+sampling, `max_tokens=24`, and aggregate decode throughput for c>1. They are
+diagnostic server/economics rows, not replacements for the retained exact
+full-suite speed row above.
+
+| Engine / path | c | AR aggregate decode tok/s | MTP aggregate decode tok/s | Ratio | Budget / route | Artifact / status |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json); diagnostic, does not supersede retained 10-cycle B5 row |
+| hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
+| hipEngine exact / `llama-compat` server MTP | 4, 8 | n/a | n/a | n/a | n/a | Not measured: `speculative_mtp.serving_route=false`; current GGUF MTP harness is serial/direct |
+| llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); external diagnostic |
+| llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); aggregate decode loses vs AR |
+| llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); aggregate decode loses vs AR |
+| llama.cpp Vulkan server B2 | 1 | 64.15 | **91.48** | 1.426x | same | [`2026-07-03-llamacpp-vulkan-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-vulkan-mtp-natural24-c1.json); external diagnostic |
+| llama.cpp Vulkan server B2 | 4 | 124.68 | **92.19** | 0.739x | same | [`2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json); aggregate decode loses vs AR |
+| llama.cpp Vulkan server B2 | 8 | 139.71 | **103.57** | 0.741x | same | [`2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json); aggregate decode loses vs AR |
+
+For serving capability, `speculative_mtp.serving_route=false` is intentional:
+the OpenAI server path does not currently call the GGUF direct MTP harness or own
+per-request MTP draft contexts, MTP K/V commit/rollback state, and greedy-only
+guards. Changing the advertised flag before implementing that route would make
+clients believe MTP serving exists when requests still run through normal
+`LLM.generate()`/scheduler code.
 
 | Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
 | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
