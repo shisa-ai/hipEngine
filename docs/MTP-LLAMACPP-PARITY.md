@@ -56,6 +56,52 @@ acc/output **0.596**, draft acceptance **0.777**, and target rows/output
 **1.171**. Do not attribute the retained 71.52 tok/s row to the verifier-head
 path.
 
+### NATURAL24 c=1/c=4/c=8 serving diagnostic - llama.cpp HIP added
+
+This table is separate from the stage-wall parity tracker above. The hipEngine
+rows are direct GGUF suites, while the llama.cpp rows are server aggregate decode
+diagnostics from `scripts/llamacpp_mtp_bench.py` with `max_tokens=24`,
+reasoning off, greedy sampling, f16 KV, flash-attn on, and B2
+`--spec-type draft-mtp --spec-draft-n-max 2`. The llama.cpp HIP server binary was
+`/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server` at commit
+`1ebf790cda38d827559548f67b0469189690cc8c` with local dirty state recorded in
+the artifacts; use these as diagnostics, not as a replacement for the clean
+instrumented HIP stage target.
+
+| engine / path | c | AR aggregate decode tok/s | MTP aggregate decode tok/s | ratio | budget / route | reading |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | Under the natural24 token cap, B2 is faster than B5, but B1 is fastest and no exact budget beats AR. This does not supersede the retained 10-cycle exact B5 row **61.98 tok/s / 1.131x AR**. |
+| hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
+| hipEngine exact / `llama-compat` server MTP | 4, 8 | n/a | n/a | n/a | n/a | Not measured: `speculative_mtp.serving_route=false`; the current GGUF MTP path is a serial direct harness. |
+| llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | B2 | Untraced server aggregate diagnostic; faster than the earlier instrumented HIP stage-timing run. |
+| llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
+| llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
+| llama.cpp Vulkan server B2 | 1 | 64.15 | **91.48** | 1.426x | B2 | External backend-ceiling diagnostic. |
+| llama.cpp Vulkan server B2 | 4 | 124.68 | **92.19** | 0.739x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
+| llama.cpp Vulkan server B2 | 8 | 139.71 | **103.57** | 0.741x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
+
+Artifacts:
+
+- `benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`
+- `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
+- `benchmarks/results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json`
+- `benchmarks/results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json`
+- `benchmarks/results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json`
+- `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c1.json`
+- `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`
+- `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`
+
+Serving-route flag status: `speculative_mtp.serving_route=false` is correct
+today. The server metadata lives in `hipengine/server/api.py`, but the actual
+OpenAI request path still routes through normal `LLM.generate()` / scheduler
+serving and does not call the GGUF MTP direct harness. Flipping the flag alone
+would only advertise a non-existent serving path. To make it true, implement a
+real greedy-only MTP serving route with per-request resident MTP draft context,
+target verifier state capture/commit semantics, MTP K/V lifecycle ownership, and
+the existing sampling-incompatibility guards. A true concurrent direct resident
+session harness is a reasonable benchmark stepping stone; parallel child
+processes are not comparable to c=N serving.
+
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 
 Decision: close the speed-gap sprint. The current `llama-compat` replication
