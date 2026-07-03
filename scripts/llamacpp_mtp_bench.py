@@ -10,12 +10,14 @@ diagnostic rows.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
 import signal
 import statistics
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -37,6 +39,12 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8011)
     parser.add_argument("--ctx-size", type=int, default=8192)
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Concurrent natural prompt requests; llama-server gets -np N and -c ctx-size*N.",
+    )
     parser.add_argument("--gpu-layers", type=int, default=99)
     parser.add_argument("--flash-attn", default="on")
     parser.add_argument("--cache-type-k", default="f16")
@@ -180,7 +188,9 @@ def _server_command(args: argparse.Namespace, mode: str) -> list[str]:
         "-ctv",
         args.cache_type_v,
         "-c",
-        str(args.ctx_size),
+        str(args.ctx_size * args.concurrency),
+        "-np",
+        str(args.concurrency),
         "--host",
         args.host,
         "--port",
@@ -197,6 +207,8 @@ def _server_command(args: argparse.Namespace, mode: str) -> list[str]:
 
 def _run_natural(args: argparse.Namespace) -> dict[str, Any]:
     prompts = _read_prompts(args.prompts)
+    if args.concurrency < 1:
+        raise ValueError("--concurrency must be >= 1")
     _post_json(
         args,
         "/v1/chat/completions",
@@ -215,42 +227,73 @@ def _run_natural(args: argparse.Namespace) -> dict[str, Any]:
         timeout=args.request_timeout,
     )
     rows = []
-    for prompt in prompts:
-        payload = {
-            "model": args.alias,
-            "messages": prompt["messages"],
-            "temperature": args.temperature,
-            "top_k": args.top_k,
-            "top_p": args.top_p,
-            "min_p": args.min_p,
-            "max_tokens": args.max_tokens,
-            "seed": args.seed,
-            "stream": False,
-            "cache_prompt": False,
-        }
-        t0 = time.perf_counter()
-        resp = _post_json(args, "/v1/chat/completions", payload, timeout=args.request_timeout)
-        wall_s = time.perf_counter() - t0
-        content = _chat_content(resp)
-        timings = resp.get("timings") or {}
-        rows.append(
-            {
-                "id": prompt["id"],
-                "category": prompt.get("category", "uncategorized"),
-                "wall_s": wall_s,
-                "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
-                "content_chars": len(content),
-                "timings": timings,
-                "draft_acceptance": _draft_acceptance(timings),
-                "accepted_per_output": _accepted_per_output(timings),
-            }
-        )
+    client_wall_s = 0.0
+    indexed_prompts = list(enumerate(prompts))
+    for offset in range(0, len(indexed_prompts), args.concurrency):
+        batch = indexed_prompts[offset : offset + args.concurrency]
+        batch_size = len(batch)
+        if batch_size == 1:
+            batch_start = time.perf_counter()
+            _, prompt = batch[0]
+            rows.append(_run_natural_prompt(args, prompt))
+            client_wall_s += time.perf_counter() - batch_start
+            continue
+
+        barrier = threading.Barrier(batch_size + 1)
+        batch_rows: list[tuple[int, dict[str, Any]]] = []
+        batch_start = time.perf_counter()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as pool:
+            futures = [
+                (index, pool.submit(_run_natural_prompt, args, prompt, barrier))
+                for index, prompt in batch
+            ]
+            barrier.wait()
+            for index, future in futures:
+                batch_rows.append((index, future.result()))
+        client_wall_s += time.perf_counter() - batch_start
+        rows.extend(row for _, row in sorted(batch_rows, key=lambda item: item[0]))
     return {
         "prompt_file": str(args.prompts),
         "request_count": len(rows),
         "rows": rows,
-        "summary": _summarize_rows(rows),
+        "summary": _summarize_rows(rows, client_wall_s=client_wall_s, concurrency=args.concurrency),
         "category_summary": _summarize_by_category(rows),
+    }
+
+
+def _run_natural_prompt(
+    args: argparse.Namespace,
+    prompt: dict[str, Any],
+    barrier: threading.Barrier | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "model": args.alias,
+        "messages": prompt["messages"],
+        "temperature": args.temperature,
+        "top_k": args.top_k,
+        "top_p": args.top_p,
+        "min_p": args.min_p,
+        "max_tokens": args.max_tokens,
+        "seed": args.seed,
+        "stream": False,
+        "cache_prompt": False,
+    }
+    if barrier is not None:
+        barrier.wait()
+    t0 = time.perf_counter()
+    resp = _post_json(args, "/v1/chat/completions", payload, timeout=args.request_timeout)
+    wall_s = time.perf_counter() - t0
+    content = _chat_content(resp)
+    timings = resp.get("timings") or {}
+    return {
+        "id": prompt["id"],
+        "category": prompt.get("category", "uncategorized"),
+        "wall_s": wall_s,
+        "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "content_chars": len(content),
+        "timings": timings,
+        "draft_acceptance": _draft_acceptance(timings),
+        "accepted_per_output": _accepted_per_output(timings),
     }
 
 
@@ -395,9 +438,16 @@ def _accepted_per_output(timings: dict[str, Any]) -> float | None:
     return (draft_accepted / output_tokens) if output_tokens else None
 
 
-def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _summarize_rows(
+    rows: list[dict[str, Any]],
+    *,
+    client_wall_s: float | None = None,
+    concurrency: int = 1,
+) -> dict[str, Any]:
     pred_n = sum((row.get("timings", {}).get("predicted_n") or 0) for row in rows)
     pred_ms = sum((row.get("timings", {}).get("predicted_ms") or 0.0) for row in rows)
+    request_wall_s = sum(float(row.get("wall_s") or 0.0) for row in rows)
+    aggregate_wall_s = float(client_wall_s) if client_wall_s is not None else request_wall_s
     pred = [
         row.get("timings", {}).get("predicted_per_second")
         for row in rows
@@ -407,8 +457,12 @@ def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     draft_acc = sum((row.get("timings", {}).get("draft_n_accepted") or 0) for row in rows)
     return {
         "requests": len(rows),
+        "concurrency": int(concurrency),
         "predicted_per_second_median": statistics.median(pred) if pred else None,
         "predicted_per_second_weighted": (1000.0 * pred_n / pred_ms) if pred_ms else None,
+        "client_wall_s_total": aggregate_wall_s,
+        "request_wall_s_total": request_wall_s,
+        "client_aggregate_predicted_per_second": (pred_n / aggregate_wall_s) if aggregate_wall_s else None,
         "draft_n": draft_n,
         "draft_n_accepted": draft_acc,
         "draft_acceptance": (draft_acc / draft_n) if draft_n else None,
@@ -465,10 +519,17 @@ def _summarize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
             if base and mtp:
                 base_tps = _summary_tps(base["summary"], protocol)
                 mtp_tps = _summary_tps(mtp["summary"], protocol)
+                base_client_tps = base["summary"].get("client_aggregate_predicted_per_second")
+                mtp_client_tps = mtp["summary"].get("client_aggregate_predicted_per_second")
                 summary[protocol] = {
                     "base_weighted_predicted_per_second": base_tps,
                     "mtp_weighted_predicted_per_second": mtp_tps,
                     "speedup": (mtp_tps / base_tps) if base_tps and mtp_tps else None,
+                    "base_client_aggregate_predicted_per_second": base_client_tps,
+                    "mtp_client_aggregate_predicted_per_second": mtp_client_tps,
+                    "client_aggregate_speedup": (
+                        mtp_client_tps / base_client_tps
+                    ) if base_client_tps and mtp_client_tps else None,
                     "mtp_draft_acceptance": mtp["summary"].get("draft_acceptance"),
                     "mtp_accepted_per_output": mtp["summary"].get("accepted_per_output"),
                 }
@@ -611,7 +672,11 @@ def _summary_text(artifact: dict[str, Any]) -> str:
         lines.append(
             f"{protocol}: base={_fmt(row.get('base_weighted_predicted_per_second'))} "
             f"mtp={_fmt(row.get('mtp_weighted_predicted_per_second'))} "
-            f"speedup={speedup:.3f}x acc={acc} accepted/output={acc_out}"
+            f"speedup={speedup:.3f}x "
+            f"client_base={_fmt(row.get('base_client_aggregate_predicted_per_second'))} "
+            f"client_mtp={_fmt(row.get('mtp_client_aggregate_predicted_per_second'))} "
+            f"client_speedup={_fmt(row.get('client_aggregate_speedup'), 3)}x "
+            f"acc={acc} accepted/output={acc_out}"
         )
     return "\n".join(lines)
 
@@ -641,7 +706,9 @@ def _config_json(args: argparse.Namespace) -> dict[str, Any]:
         "alias": args.alias,
         "host": args.host,
         "port": args.port,
-        "ctx_size": args.ctx_size,
+        "ctx_size_per_sequence": args.ctx_size,
+        "server_ctx_size": args.ctx_size * args.concurrency,
+        "concurrency": args.concurrency,
         "gpu_layers": args.gpu_layers,
         "flash_attn": args.flash_attn,
         "cache_type_k": args.cache_type_k,

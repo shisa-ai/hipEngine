@@ -139080,3 +139080,19 @@ python3 scripts/gguf_mtp_bench.py \
   refreshed **71.52 tok/s / 14.005 ms/output** artifact, keeping the prior run
   as historical provenance. No benchmark rerun was performed; this was a docs
   consistency and closure pass over already-retained artifacts.
+
+## 2026-07-03 - MTP server-bench concurrency harness
+
+- Added client-side concurrent request batching to `scripts/mtp-bench.py` server
+  mode and to `scripts/llamacpp_mtp_bench.py` natural-prompt mode. Both now
+  report aggregate client-wall throughput separately from the summed
+  per-request wall times, so c=4/c=8 rows do not undercount overlapping
+  requests.
+- Plumbed `--concurrency` through `scripts/llamacpp_vulkan_mtp_sweep.py`; the
+  wrapper now starts llama-server with `-np N` and `-c ctx_size*N`.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/mtp-bench.py scripts/llamacpp_vulkan_mtp_sweep.py scripts/llamacpp_mtp_bench.py tests/test_mtp_bench_tool.py tests/test_llamacpp_mtp_bench_metrics.py
+  PYTHONPATH=. pytest -q tests/test_mtp_bench_tool.py tests/test_llamacpp_mtp_bench_metrics.py
+  ```
+  Pycompile passed and focused tests passed (`12 passed`).

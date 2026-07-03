@@ -48,6 +48,31 @@ def test_record_from_llamacpp_timing_payload_matches_pr_columns() -> None:
     )
 
 
+def test_concurrent_aggregate_uses_client_wall_not_request_wall_sum() -> None:
+    tool = _load_tool()
+
+    agg = tool.aggregate(
+        [
+            {"predicted_n": 24, "draft_n": 20, "draft_n_accepted": 12, "wall_s": 0.8},
+            {"predicted_n": 24, "draft_n": 22, "draft_n_accepted": 13, "wall_s": 0.9},
+        ],
+        client_wall_s=0.95,
+        concurrency=2,
+    )
+
+    assert agg == {
+        "n_requests": 2,
+        "concurrency": 2,
+        "total_predicted": 48,
+        "total_draft": 42,
+        "total_draft_accepted": 25,
+        "aggregate_accept_rate": 0.5952,
+        "wall_s_total": 0.95,
+        "request_wall_s_total": 1.7,
+        "aggregate_predicted_per_second": 50.53,
+    }
+
+
 def test_cli_lists_llamacpp_prompt_suite() -> None:
     completed = subprocess.run(
         [sys.executable, str(TOOL_PATH), "--list-prompts"],

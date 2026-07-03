@@ -26,10 +26,12 @@ https://gist.github.com/am17an/228edfb84ed082aa88e3865d6fa27090
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -208,19 +210,49 @@ def format_result_line(record: dict[str, Any]) -> str:
     )
 
 
-def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
+def aggregate(
+    results: list[dict[str, Any]],
+    *,
+    client_wall_s: float | None = None,
+    concurrency: int = 1,
+) -> dict[str, Any]:
     total_draft = sum(int(x.get("draft_n") or 0) for x in results)
     total_accepted = sum(int(x.get("draft_n_accepted") or 0) for x in results)
     total_predicted = sum(int(x.get("predicted_n") or 0) for x in results)
-    total_wall = sum(float(x.get("wall_s") or 0.0) for x in results)
+    request_wall = sum(float(x.get("wall_s") or 0.0) for x in results)
+    aggregate_wall = float(client_wall_s) if client_wall_s is not None else request_wall
     return {
         "n_requests": len(results),
+        "concurrency": int(concurrency),
         "total_predicted": total_predicted,
         "total_draft": total_draft,
         "total_draft_accepted": total_accepted,
         "aggregate_accept_rate": round(total_accepted / total_draft, 4) if total_draft else None,
-        "wall_s_total": round(total_wall, 2),
+        "wall_s_total": round(aggregate_wall, 2),
+        "request_wall_s_total": round(request_wall, 2),
+        "aggregate_predicted_per_second": round(total_predicted / aggregate_wall, 2) if aggregate_wall > 0 else None,
     }
+
+
+def iter_batches(items: list[dict[str, str]], batch_size: int) -> list[list[tuple[int, dict[str, str]]]]:
+    indexed = list(enumerate(items))
+    return [indexed[i : i + batch_size] for i in range(0, len(indexed), batch_size)]
+
+
+def run_prompt_request(
+    prompt: dict[str, str],
+    args: argparse.Namespace,
+    url: str,
+    *,
+    barrier: threading.Barrier | None = None,
+) -> dict[str, Any]:
+    payload = make_payload(prompt["prompt"], args)
+    if barrier is not None:
+        barrier.wait()
+    start = time.perf_counter()
+    response = post_json(url, payload, timeout=args.timeout, api_key=args.api_key)
+    wall_s = time.perf_counter() - start
+    return record_from_response(prompt["name"], response, wall_s)
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -230,23 +262,45 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     endpoint = args.endpoint if args.endpoint.startswith("/") else f"/{args.endpoint}"
     url = f"{base_url}{endpoint}"
 
-    out: dict[str, Any] = {"results": []}
-    for prompt in prompts:
-        payload = make_payload(prompt["prompt"], args)
-        if args.print_payload:
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
-            continue
-        start = time.perf_counter()
-        response = post_json(url, payload, timeout=args.timeout, api_key=args.api_key)
-        wall_s = time.perf_counter() - start
-        record = record_from_response(prompt["name"], response, wall_s)
-        out["results"].append(record)
-        print(format_result_line(record))
+    if args.concurrency < 1:
+        raise BenchError("--concurrency must be >= 1")
 
+    out: dict[str, Any] = {"results": [], "concurrency": int(args.concurrency)}
     if args.print_payload:
+        for prompt in prompts:
+            payload = make_payload(prompt["prompt"], args)
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
         return out
 
-    out["aggregate"] = aggregate(out["results"])
+    client_wall_s = 0.0
+    for batch in iter_batches(prompts, args.concurrency):
+        batch_size = len(batch)
+        if batch_size == 1:
+            batch_start = time.perf_counter()
+            _, prompt = batch[0]
+            record = run_prompt_request(prompt, args, url)
+            client_wall_s += time.perf_counter() - batch_start
+            out["results"].append(record)
+            print(format_result_line(record))
+            continue
+
+        barrier = threading.Barrier(batch_size + 1)
+        batch_start = time.perf_counter()
+        records_by_index: list[tuple[int, dict[str, Any]]] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as pool:
+            futures = [
+                (index, pool.submit(run_prompt_request, prompt, args, url, barrier=barrier))
+                for index, prompt in batch
+            ]
+            barrier.wait()
+            for index, future in futures:
+                records_by_index.append((index, future.result()))
+        client_wall_s += time.perf_counter() - batch_start
+        for _, record in sorted(records_by_index, key=lambda item: item[0]):
+            out["results"].append(record)
+            print(format_result_line(record))
+
+    out["aggregate"] = aggregate(out["results"], client_wall_s=client_wall_s, concurrency=args.concurrency)
     print("\nAggregate:", json.dumps(out["aggregate"], indent=2))
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -444,6 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--extra-payload", help="JSON object merged into each server request payload")
     parser.add_argument("--api-key", help="Bearer token for servers requiring OpenAI-style auth")
     parser.add_argument("--timeout", type=float, default=300.0, help="per-request timeout in seconds")
+    parser.add_argument("--concurrency", type=int, default=1, help="server-mode concurrent request count")
     parser.add_argument("--print-payload", action="store_true", help="print server request payloads instead of posting")
 
     # hipEngine current verifier-economics mode.  Defaults are the W7900/gfx1100
