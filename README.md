@@ -235,34 +235,27 @@ correctness status, source-lineage targets, and external comparison baselines.
 
 ## Speculative decode (DFlash / MTP)
 
-Speculative decode is active but split by model class. Dense 27B DFlash has a
-retained exact speedup; 35B-A3B MTP now has its first exact break-even row, with
-more policy/kernel margin work still active because the MoE target AR path is
-cheap.
+Speculative decode is active in two tracks. Dense 27B DFlash has a retained
+exact W7900 speedup. Qwen3.6-35B-A3B GGUF MTP now has a correctness-preserving
+hipEngine default lane plus an accuracy-traded `llama-compat` lane that mirrors
+llama.cpp's B2/no-probe lifecycle and closes the HIP stage-wall speed gap. Older
+PARO+MTP-BF16 sidecar rows remain in the benchmark rollup, but current parity
+work is on the MTP-bearing `UD-Q4_K_M` GGUF.
 
-### gfx1100 (W7900)
-
-| Path | Model / workload | W7900 result | Status |
+| Path | Model / workload | Result | Status |
 | --- | --- | ---: | --- |
-| DFlash B=4 online-gated | Qwen3.6-27B-PARO dense target + z-lab Qwen3.6-27B-DFlash drafter, 9-prompt D64 | **1.231x AR** (`40.10` vs `32.57 tok/s`) | Exact `9/9`, deployable retained row; artifact: [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json). |
-| MTP B=3 persistent chain, locked sprint baseline | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, graph-auto verifier, draft vocab cap 32768 | **0.758x AR** (`83.4` vs `~110 tok/s`), `27.8 ms/cycle` | Exact but below AR; retained as the sprint baseline. Artifacts: [`baseline`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-baseline.json) / [`rocprof`](benchmarks/results/2026-06-11-hipengine-mtp-b3-locked-rocprof.json). |
-| MTP B=1 persistent chain, current best | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, `decode_batched`, graph off, draft vocab cap 65536 default | **1.023x prompt-mean / 1.014x total-time AR**, `14.134 ms/cycle` | Exact `9/9`, 3-run retained break-even row. B=3 remains higher-density but just short (`0.968x` same-session); full vocab was exact but no-held (`0.880x`). See [`docs/MTP.md`](docs/MTP.md) and [`B=1 artifact`](benchmarks/results/2026-06-13-hipengine-mtp-b1-current-default-3run-retained.json). |
+| DFlash B=4 online-gated | Qwen3.6-27B-PARO dense target + z-lab Qwen3.6-27B-DFlash drafter, W7900, 9-prompt D64 | **1.231x AR** (`40.10` vs `32.57 tok/s`) | Exact `9/9`, deployable retained row; artifact: [`2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json). |
+| GGUF MTP exact default B5 | Qwen3.6-35B-A3B `UD-Q4_K_M`, gfx1151/Radeon 8060S, full `mtpbench-code-general-ja` 10-cycle suite | **61.98 tok/s**, **1.1312x AR** (`54.79` AR), `16.162 ms/output` | Correctness-preserving default suite route after the shared parallel MTP-attention fix; artifact: [`2026-07-02-ar-mtp-default-parallelattn-full.json`](benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json). |
+| GGUF MTP `llama-compat` B2 | Same model/suite, natural24 cyclecap24, no-copy verifier capture + llama-style direct partial commit | **71.52 tok/s**, **1.3055x AR**, `14.005 ms/output` | Active llama.cpp replication lane. Stage wall is slightly faster than the llama.cpp HIP rerun (`14.269 ms/output`), while request throughput is within `0.39 tok/s` (`71.52` vs `71.91`). This lane is accuracy-traded and not serial-prefix-equivalent; artifact: [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json). |
+| GGUF MTP exact natural24 c=1 | Same model, direct suite, `max_tokens=24` | **52.13 tok/s** B1 vs **54.80 tok/s** AR (`0.951x`) | Token-cap diagnostic: B1 is fastest; B2 `52.04`, B5 `50.65`. This does not supersede the retained exact B5 full-suite row; artifact: [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json). |
+| llama.cpp MTP server diagnostics | Same GGUF/model on gfx1151, B2, HIP/Vulkan, c=1/4/8 | HIP: c=1 `75.56` (`1.448x`), c=4 `78.21` (`0.722x`), c=8 `78.56` (`0.630x`). Vulkan: c=1 `91.48` (`1.426x`), c=4 `92.19` (`0.739x`), c=8 `103.57` (`0.741x`) | Cross-engine diagnostics: MTP wins c=1 but loses aggregate decode under c=4/c=8 on this prompt suite. See [`benchmarks/README.md`](benchmarks/README.md#natural24-mtp-vs-ar-concurrency-diagnostic). |
 
-### gfx1151 (Radeon 8060S diagnostic)
-
-The gfx1151 MTP rows are diagnostics, not retained wins. The hipEngine row used
-the public PARO packed trunk plus copied BF16 MTP sidecar with exact fallback
-flags to pass the D32 prompt suite; it remained below AR speed. The llama.cpp
-rows use the MTP-bearing `UD-Q4_K_M` GGUF and are cross-engine comparison
-baselines.
-
-| Path | Model / workload | gfx1151 result | Status |
-| --- | --- | ---: | --- |
-| hipEngine MTP B=1 | Qwen3.6-35B-A3B-PARO packed trunk + MTP-BF16 sidecar, D32, 9 prompts | `0.912x` prompt-mean / `0.904x` total-time AR (`59.56` vs `65.37 tok/s`) | Exact `9/9` with exact fallbacks; diagnostic, no retained performance claim. |
-| llama.cpp HIP MTP B=4 | Qwen3.6-35B-A3B `UD-Q4_K_M` MTP GGUF, D32, 9 prompts | mean `91.11 tok/s`, wall `52.47 tok/s`, `1.79x` mean vs base | Cross-engine diagnostic; accept rate `91.5%`. |
-| llama.cpp Vulkan MTP B=4 | Qwen3.6-35B-A3B `UD-Q4_K_M` MTP GGUF, D32, 9 prompts | mean `108.96 tok/s`, wall `57.69 tok/s`, `1.73x` mean vs base | Cross-engine diagnostic; accept rate `92.3%`. |
-
-Source artifact: [`gfx1151 MTP comparison`](benchmarks/results/2026-06-15-gfx1151-mtp-compare-20260615-060801-summary.json).
+Serving MTP is not advertised yet: `speculative_mtp.serving_route=false` is
+intentional because the OpenAI server path does not currently call the GGUF
+direct MTP harness or own per-request MTP draft contexts, verifier
+capture/commit state, MTP K/V lifecycle state, and greedy-only guards. The
+implementation target and stage attribution are tracked in
+[`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
 
 ## Concurrency (batched decode)
 
