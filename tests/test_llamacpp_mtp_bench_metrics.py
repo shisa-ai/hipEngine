@@ -38,6 +38,40 @@ def test_llamacpp_mtp_natural_summary_reports_accepted_per_output() -> None:
     }
 
 
+def test_llamacpp_mtp_natural_summary_reports_concurrent_client_wall() -> None:
+    rows = [
+        {
+            "wall_s": 0.8,
+            "timings": {
+                "predicted_n": 24,
+                "predicted_ms": 300.0,
+                "predicted_per_second": 80.0,
+                "draft_n": 16,
+                "draft_n_accepted": 12,
+            },
+        },
+        {
+            "wall_s": 0.9,
+            "timings": {
+                "predicted_n": 24,
+                "predicted_ms": 320.0,
+                "predicted_per_second": 75.0,
+                "draft_n": 18,
+                "draft_n_accepted": 13,
+            },
+        },
+    ]
+
+    summary = bench._summarize_rows(rows, client_wall_s=0.95, concurrency=2, aggregate_decode_ms=320.0)
+
+    assert summary["concurrency"] == 2
+    assert summary["aggregate_decode_ms_total"] == 320.0
+    assert summary["aggregate_decode_predicted_per_second"] == 150.0
+    assert summary["client_wall_s_total"] == 0.95
+    assert summary["request_wall_s_total"] == 1.7000000000000002
+    assert summary["client_aggregate_predicted_per_second"] == 48 / 0.95
+
+
 def test_llamacpp_mtp_token_repeat_summary_reports_accepted_per_output() -> None:
     rows = [
         {"tokens_predicted": 10, "predicted_ms": 100.0, "draft_n": 8, "draft_n_accepted": 4},
@@ -62,6 +96,8 @@ def test_llamacpp_mtp_artifact_summary_and_text_include_accepted_per_output() ->
                     "natural": {
                         "summary": {
                             "predicted_per_second_weighted": 50.0,
+                            "aggregate_decode_predicted_per_second": 100.0,
+                            "client_aggregate_predicted_per_second": 45.0,
                             "accepted_per_output": None,
                         }
                     },
@@ -78,6 +114,8 @@ def test_llamacpp_mtp_artifact_summary_and_text_include_accepted_per_output() ->
                     "natural": {
                         "summary": {
                             "predicted_per_second_weighted": 75.0,
+                            "aggregate_decode_predicted_per_second": 180.0,
+                            "client_aggregate_predicted_per_second": 90.0,
                             "draft_acceptance": 0.5,
                             "accepted_per_output": 0.25,
                         }
@@ -98,7 +136,11 @@ def test_llamacpp_mtp_artifact_summary_and_text_include_accepted_per_output() ->
     text = bench._summary_text(artifact)
 
     assert artifact["summary"]["natural"]["mtp_accepted_per_output"] == 0.25
+    assert artifact["summary"]["natural"]["aggregate_decode_speedup"] == 1.8
+    assert artifact["summary"]["natural"]["client_aggregate_speedup"] == 2.0
     assert artifact["summary"]["token_repeat"]["mtp_accepted_per_output"] == 0.5
+    assert "agg_decode_speedup=1.800x" in text
+    assert "client_speedup=2.000x" in text
     assert "accepted/output=0.250" in text
     assert "accepted/output=0.500" in text
 
@@ -220,6 +262,7 @@ def test_llamacpp_mtp_server_command_passes_extra_args_after_mtp_flags() -> None
         cache_type_k="f16",
         cache_type_v="f16",
         ctx_size=8192,
+        concurrency=4,
         host="127.0.0.1",
         port=8013,
         alias="qwen",
@@ -229,6 +272,8 @@ def test_llamacpp_mtp_server_command_passes_extra_args_after_mtp_flags() -> None
 
     cmd = bench._server_command(args, "mtp")
 
+    assert cmd[cmd.index("-c") + 1] == str(8192 * 4)
+    assert cmd[cmd.index("-np") + 1] == "4"
     assert cmd[-6:] == [
         "--spec-type",
         "draft-mtp",

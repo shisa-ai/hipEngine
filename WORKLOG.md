@@ -142679,3 +142679,90 @@ python3 scripts/gguf_mtp_bench.py \
   refreshed **71.52 tok/s / 14.005 ms/output** artifact, keeping the prior run
   as historical provenance. No benchmark rerun was performed; this was a docs
   consistency and closure pass over already-retained artifacts.
+
+## 2026-07-03 - MTP server-bench concurrency harness
+
+- Added client-side concurrent request batching to `scripts/mtp-bench.py` server
+  mode and to `scripts/llamacpp_mtp_bench.py` natural-prompt mode. Both now
+  report aggregate client-wall throughput separately from the summed
+  per-request wall times, so c=4/c=8 rows do not undercount overlapping
+  requests.
+- Plumbed `--concurrency` through `scripts/llamacpp_vulkan_mtp_sweep.py`; the
+  wrapper now starts llama-server with `-np N` and `-c ctx_size*N`.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/mtp-bench.py scripts/llamacpp_vulkan_mtp_sweep.py scripts/llamacpp_mtp_bench.py tests/test_mtp_bench_tool.py tests/test_llamacpp_mtp_bench_metrics.py
+  PYTHONPATH=. pytest -q tests/test_mtp_bench_tool.py tests/test_llamacpp_mtp_bench_metrics.py
+  ```
+  Pycompile passed and focused tests passed (`12 passed`).
+
+## 2026-07-03 - llama.cpp MTP concurrent decode metric fix
+
+- Corrected `scripts/llamacpp_mtp_bench.py` concurrency summaries to include
+  `aggregate_decode_predicted_per_second`, computed as total predicted tokens
+  over the sum of max `predicted_ms` per concurrent batch. This is the
+  decode-only aggregate metric for c=N; the earlier client aggregate remains
+  recorded separately because it includes prompt eval and HTTP wall.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/llamacpp_mtp_bench.py tests/test_llamacpp_mtp_bench_metrics.py
+  PYTHONPATH=. pytest -q tests/test_llamacpp_mtp_bench_metrics.py
+  ```
+  Pycompile passed and focused tests passed (`7 passed`).
+
+## 2026-07-03 - mtpbench MTP vs AR c=1/4/8 diagnostic
+
+- Measured hipEngine exact default natural24 c=1 on AMD Radeon 8060S / gfx1151:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --budgets 5 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-03-ar-mtp-default-natural24-c1.json
+  ```
+  Result: AR **54.93 tok/s**, exact MTP B5 **50.16 tok/s** (**0.913x**),
+  acc/output **0.467**, draft acceptance **0.667**. This is a natural24
+  token-cap diagnostic and does not supersede the retained 10-cycle exact row
+  (**61.98 tok/s**, **1.131x AR**).
+- Measured llama.cpp Vulkan B2 natural24 on the same gfx1151 host with
+  `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server`,
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, f16 KV, `--reasoning off`,
+  `--max-tokens 24`, `--spec-type draft-mtp --spec-draft-n-max 2`, and
+  `--concurrency {1,4,8}` / `-np {1,4,8}`:
+  c=1 AR **64.15**, MTP **91.48** tok/s (**1.426x**);
+  c=4 AR **124.68**, MTP **92.19** tok/s (**0.739x**);
+  c=8 AR **139.71**, MTP **103.57** tok/s (**0.741x**). These are aggregate
+  decode rows using total predicted tokens over max `predicted_ms` per
+  concurrent batch. Artifacts:
+  `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c1.json`,
+  `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`, and
+  `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`.
+- hipEngine exact/compat c=4/c=8 MTP remains not directly measurable: the
+  OpenAI server advertises `speculative_mtp.serving_route=false`, and the
+  current GGUF exact/compat MTP harness is a direct serial suite. Measuring c>N
+  for hipEngine MTP needs an MTP serving route or a true concurrent direct
+  resident-session harness; parallel child processes would not be the same
+  protocol.
+
+## 2026-07-03 - natural24 HIP concurrency and exact budget correction
+
+- Added the llama.cpp HIP server side of the natural24 c=1/c=4/c=8 MTP-vs-AR
+  diagnostic using `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`,
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, f16 KV, flash-attn on,
+  `--reasoning off`, `--max-tokens 24`, `--spec-type draft-mtp
+  --spec-draft-n-max 2`, and `-np {1,4,8}` / `-c {8192,32768,65536}`. Artifacts
+  record llama.cpp commit `1ebf790cda38d827559548f67b0469189690cc8c` with local
+  dirty state. Aggregate decode results: c=1 AR **52.19**, MTP **75.56 tok/s**
+  (**1.448x**); c=4 AR **108.33**, MTP **78.21 tok/s** (**0.722x**); c=8 AR
+  **124.71**, MTP **78.56 tok/s** (**0.630x**). These are diagnostic server
+  aggregate rows, separate from the clean instrumented stage-wall target.
+- Re-ran hipEngine exact natural24 c=1 as a B1-B5 budget sweep with:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --budgets 1,2,3,4,5 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json
+  ```
+  Result: AR **54.80 tok/s**; B1 **52.13** (**0.951x**), B2 **52.04**
+  (**0.950x**), B3 **51.17**, B4 **49.75**, B5 **50.65** (**0.924x**). B2 is
+  faster than B5 under the natural24 cap, but B1 is fastest and no exact budget
+  beats AR. This does not supersede the retained 10-cycle exact B5 row
+  (**61.98 tok/s**, **1.131x AR**).
+- Documented the serving-route conclusion: `speculative_mtp.serving_route=false`
+  should stay false until server request handling actually owns a greedy-only MTP
+  route with resident draft context, MTP K/V lifecycle, verifier state
+  capture/commit, and sampling incompatibility guards. Flipping the capability
+  flag alone would misadvertise MTP serving.

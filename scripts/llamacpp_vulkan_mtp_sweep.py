@@ -39,6 +39,12 @@ def main() -> int:
     parser.add_argument("--gpu", default="0", help="GGML_VK_VISIBLE_DEVICES value")
     parser.add_argument("--vulkan-icd", type=Path, default=DEFAULT_ICD)
     parser.add_argument("--ctx-size", type=int, default=8192)
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Concurrent mtp-bench requests; llama-server gets -np N and -c ctx-size*N.",
+    )
     parser.add_argument("--gpu-layers", default="99")
     parser.add_argument("--cache-type-k", default="f16")
     parser.add_argument("--cache-type-v", default="f16")
@@ -88,7 +94,9 @@ def main() -> int:
         "gpu": str(args.gpu),
         "vulkan_icd": str(args.vulkan_icd),
         "max_tokens": int(args.max_tokens),
-        "ctx_size": int(args.ctx_size),
+        "ctx_size_per_sequence": int(args.ctx_size),
+        "server_ctx_size": int(args.ctx_size) * int(args.concurrency),
+        "concurrency": int(args.concurrency),
         "gpu_layers": str(args.gpu_layers),
         "cache_type_k": str(args.cache_type_k),
         "cache_type_v": str(args.cache_type_v),
@@ -135,7 +143,8 @@ def run_one(
         "-fa", "on",
         "-ctk", str(args.cache_type_k),
         "-ctv", str(args.cache_type_v),
-        "-c", str(args.ctx_size),
+        "-c", str(args.ctx_size * args.concurrency),
+        "-np", str(args.concurrency),
         "--host", str(args.host),
         "--port", str(port),
         "--alias", str(args.alias),
@@ -164,6 +173,7 @@ def run_one(
             "--no-cache-prompt",
             "--max-tokens", str(args.max_tokens),
             "--timeout", str(args.timeout),
+            "--concurrency", str(args.concurrency),
             "--out", str(result_json),
         ]
         if not args.no_ignore_eos:
@@ -202,8 +212,12 @@ def summarize(out_dir: Path, modes: list[str]) -> dict[str, Any]:
     for mode in modes:
         payload = json.loads((out_dir / f"{mode}.json").read_text(encoding="utf-8"))
         results = payload.get("results") or []
+        aggregate = payload.get("aggregate") or {}
+        if not isinstance(aggregate, dict):
+            aggregate = {}
         total_pred = sum(int(row.get("predicted_n") or 0) for row in results)
-        total_wall = sum(float(row.get("wall_s") or 0.0) for row in results)
+        total_wall = float(aggregate.get("wall_s_total") or sum(float(row.get("wall_s") or 0.0) for row in results))
+        request_wall = float(aggregate.get("request_wall_s_total") or sum(float(row.get("wall_s") or 0.0) for row in results))
         per_request = [float(row.get("predicted_per_second") or 0.0) for row in results]
         total_draft = sum(int(row.get("draft_n") or 0) for row in results)
         total_accepted = sum(int(row.get("draft_n_accepted") or 0) for row in results)
@@ -220,6 +234,8 @@ def summarize(out_dir: Path, modes: list[str]) -> dict[str, Any]:
             "mode": mode,
             "total_predicted": total_pred,
             "total_wall_s": total_wall,
+            "request_wall_s_total": request_wall,
+            "concurrency": int(aggregate.get("concurrency") or 1),
             "wall_tps": wall_tps,
             "mean_tps": mean_tps,
             "median_tps": median_tps,
