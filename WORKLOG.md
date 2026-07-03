@@ -139140,3 +139140,30 @@ python3 scripts/gguf_mtp_bench.py \
   for hipEngine MTP needs an MTP serving route or a true concurrent direct
   resident-session harness; parallel child processes would not be the same
   protocol.
+
+## 2026-07-03 - natural24 HIP concurrency and exact budget correction
+
+- Added the llama.cpp HIP server side of the natural24 c=1/c=4/c=8 MTP-vs-AR
+  diagnostic using `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`,
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, f16 KV, flash-attn on,
+  `--reasoning off`, `--max-tokens 24`, `--spec-type draft-mtp
+  --spec-draft-n-max 2`, and `-np {1,4,8}` / `-c {8192,32768,65536}`. Artifacts
+  record llama.cpp commit `1ebf790cda38d827559548f67b0469189690cc8c` with local
+  dirty state. Aggregate decode results: c=1 AR **52.19**, MTP **75.56 tok/s**
+  (**1.448x**); c=4 AR **108.33**, MTP **78.21 tok/s** (**0.722x**); c=8 AR
+  **124.71**, MTP **78.56 tok/s** (**0.630x**). These are diagnostic server
+  aggregate rows, separate from the clean instrumented stage-wall target.
+- Re-ran hipEngine exact natural24 c=1 as a B1-B5 budget sweep with:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --budgets 1,2,3,4,5 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json
+  ```
+  Result: AR **54.80 tok/s**; B1 **52.13** (**0.951x**), B2 **52.04**
+  (**0.950x**), B3 **51.17**, B4 **49.75**, B5 **50.65** (**0.924x**). B2 is
+  faster than B5 under the natural24 cap, but B1 is fastest and no exact budget
+  beats AR. This does not supersede the retained 10-cycle exact B5 row
+  (**61.98 tok/s**, **1.131x AR**).
+- Documented the serving-route conclusion: `speculative_mtp.serving_route=false`
+  should stay false until server request handling actually owns a greedy-only MTP
+  route with resident draft context, MTP K/V lifecycle, verifier state
+  capture/commit, and sampling incompatibility guards. Flipping the capability
+  flag alone would misadvertise MTP serving.
