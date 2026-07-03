@@ -228,6 +228,7 @@ def _run_natural(args: argparse.Namespace) -> dict[str, Any]:
     )
     rows = []
     client_wall_s = 0.0
+    aggregate_decode_ms = 0.0
     indexed_prompts = list(enumerate(prompts))
     for offset in range(0, len(indexed_prompts), args.concurrency):
         batch = indexed_prompts[offset : offset + args.concurrency]
@@ -235,7 +236,9 @@ def _run_natural(args: argparse.Namespace) -> dict[str, Any]:
         if batch_size == 1:
             batch_start = time.perf_counter()
             _, prompt = batch[0]
-            rows.append(_run_natural_prompt(args, prompt))
+            row = _run_natural_prompt(args, prompt)
+            rows.append(row)
+            aggregate_decode_ms += _row_predicted_ms(row)
             client_wall_s += time.perf_counter() - batch_start
             continue
 
@@ -251,12 +254,19 @@ def _run_natural(args: argparse.Namespace) -> dict[str, Any]:
             for index, future in futures:
                 batch_rows.append((index, future.result()))
         client_wall_s += time.perf_counter() - batch_start
-        rows.extend(row for _, row in sorted(batch_rows, key=lambda item: item[0]))
+        sorted_batch_rows = [row for _, row in sorted(batch_rows, key=lambda item: item[0])]
+        rows.extend(sorted_batch_rows)
+        aggregate_decode_ms += max((_row_predicted_ms(row) for row in sorted_batch_rows), default=0.0)
     return {
         "prompt_file": str(args.prompts),
         "request_count": len(rows),
         "rows": rows,
-        "summary": _summarize_rows(rows, client_wall_s=client_wall_s, concurrency=args.concurrency),
+        "summary": _summarize_rows(
+            rows,
+            client_wall_s=client_wall_s,
+            concurrency=args.concurrency,
+            aggregate_decode_ms=aggregate_decode_ms,
+        ),
         "category_summary": _summarize_by_category(rows),
     }
 
@@ -438,14 +448,26 @@ def _accepted_per_output(timings: dict[str, Any]) -> float | None:
     return (draft_accepted / output_tokens) if output_tokens else None
 
 
+def _row_predicted_ms(row: dict[str, Any]) -> float:
+    value = (row.get("timings") or {}).get("predicted_ms")
+    if isinstance(value, bool) or value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _summarize_rows(
     rows: list[dict[str, Any]],
     *,
     client_wall_s: float | None = None,
     concurrency: int = 1,
+    aggregate_decode_ms: float | None = None,
 ) -> dict[str, Any]:
     pred_n = sum((row.get("timings", {}).get("predicted_n") or 0) for row in rows)
     pred_ms = sum((row.get("timings", {}).get("predicted_ms") or 0.0) for row in rows)
+    decode_ms = float(aggregate_decode_ms) if aggregate_decode_ms is not None else float(pred_ms)
     request_wall_s = sum(float(row.get("wall_s") or 0.0) for row in rows)
     aggregate_wall_s = float(client_wall_s) if client_wall_s is not None else request_wall_s
     pred = [
@@ -460,6 +482,8 @@ def _summarize_rows(
         "concurrency": int(concurrency),
         "predicted_per_second_median": statistics.median(pred) if pred else None,
         "predicted_per_second_weighted": (1000.0 * pred_n / pred_ms) if pred_ms else None,
+        "aggregate_decode_ms_total": decode_ms,
+        "aggregate_decode_predicted_per_second": (1000.0 * pred_n / decode_ms) if decode_ms else None,
         "client_wall_s_total": aggregate_wall_s,
         "request_wall_s_total": request_wall_s,
         "client_aggregate_predicted_per_second": (pred_n / aggregate_wall_s) if aggregate_wall_s else None,
@@ -521,10 +545,17 @@ def _summarize_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
                 mtp_tps = _summary_tps(mtp["summary"], protocol)
                 base_client_tps = base["summary"].get("client_aggregate_predicted_per_second")
                 mtp_client_tps = mtp["summary"].get("client_aggregate_predicted_per_second")
+                base_agg_decode_tps = base["summary"].get("aggregate_decode_predicted_per_second")
+                mtp_agg_decode_tps = mtp["summary"].get("aggregate_decode_predicted_per_second")
                 summary[protocol] = {
                     "base_weighted_predicted_per_second": base_tps,
                     "mtp_weighted_predicted_per_second": mtp_tps,
                     "speedup": (mtp_tps / base_tps) if base_tps and mtp_tps else None,
+                    "base_aggregate_decode_predicted_per_second": base_agg_decode_tps,
+                    "mtp_aggregate_decode_predicted_per_second": mtp_agg_decode_tps,
+                    "aggregate_decode_speedup": (
+                        mtp_agg_decode_tps / base_agg_decode_tps
+                    ) if base_agg_decode_tps and mtp_agg_decode_tps else None,
                     "base_client_aggregate_predicted_per_second": base_client_tps,
                     "mtp_client_aggregate_predicted_per_second": mtp_client_tps,
                     "client_aggregate_speedup": (
@@ -673,6 +704,9 @@ def _summary_text(artifact: dict[str, Any]) -> str:
             f"{protocol}: base={_fmt(row.get('base_weighted_predicted_per_second'))} "
             f"mtp={_fmt(row.get('mtp_weighted_predicted_per_second'))} "
             f"speedup={speedup:.3f}x "
+            f"agg_decode_base={_fmt(row.get('base_aggregate_decode_predicted_per_second'))} "
+            f"agg_decode_mtp={_fmt(row.get('mtp_aggregate_decode_predicted_per_second'))} "
+            f"agg_decode_speedup={_fmt(row.get('aggregate_decode_speedup'), 3)}x "
             f"client_base={_fmt(row.get('base_client_aggregate_predicted_per_second'))} "
             f"client_mtp={_fmt(row.get('mtp_client_aggregate_predicted_per_second'))} "
             f"client_speedup={_fmt(row.get('client_aggregate_speedup'), 3)}x "
