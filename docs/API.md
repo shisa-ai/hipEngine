@@ -76,9 +76,11 @@ routes compatible greedy requests through MTP automatically and falls back to AR
 for incompatible requests. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
 and the loaded engine exposes a real MTP hook. With a positive
-`--generation-batch-window-ms` and `--max-active-requests 2`, two compatible
-non-streaming MTP requests can coalesce into one backend MTP call; the current
-GGUF hook still executes those prompts serially inside that call.
+`--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
+non-streaming MTP requests can coalesce into one backend MTP call. The GGUF hook
+uses one shared target-weight runner plus per-request resident target/MTP slot
+state; c=2 is the implementation target and c=4/c=8 have functional smoke
+coverage.
 
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
@@ -1076,11 +1078,11 @@ in local, non-sensitive debugging sessions.
   `compatibility_guard: "supports_speculative_mtp_sampling"`. When
   `--speculative-mtp-serving opt_in` or `auto` is set and the loaded GGUF engine
   has NextN tensors, non-streaming greedy-fast requests can use the
-  llama-compat MTP server hook. Functional c=2 request coalescing is supported
-  through the generation batcher when the batch window and active-request cap
-  allow it, but streaming MTP, true concurrent c>N resident-slot MTP scheduling,
-  and the exact/default MTP server route are not implemented yet. Current MTP
-  serving compatibility is greedy-fast only; `logit_bias`,
+  llama-compat MTP server hook. Resident-slot c=N serving is supported through
+  the generation batcher when the batch window and active-request cap allow it;
+  c=2 is the target path and c=4/c=8 have functional smoke coverage. Streaming
+  MTP and the exact/default MTP server route are not implemented yet. Current
+  MTP serving compatibility is greedy-fast only; `logit_bias`,
   penalties, token suppressions, min-token/EOS policy, explicit EOS finish
   policy, token stops, `ignore_eos=true`, pending forced-token queues,
   post-thinking forced-token queues, token-sequence completion repair, JSON

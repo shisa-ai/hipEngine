@@ -6338,6 +6338,7 @@ class Qwen35GGUFResidentSession:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
+    shared_runner: Qwen35GGUFFullStackRunner | None = None
     max_sequence_length: int | None = None
     use_expert_sidecar: bool = False
     expert_sidecar_cache_dir: str | Path | None = None
@@ -6411,6 +6412,7 @@ class Qwen35GGUFResidentSession:
     _host_token_embedding_cache: dict[int, np.ndarray] = field(default_factory=dict, init=False)
     host_token_embedding_enabled: bool = field(default=False, init=False)
     host_token_embedding_reason: str | None = field(default=None, init=False)
+    _owns_runner: bool = field(default=True, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
@@ -6430,12 +6432,18 @@ class Qwen35GGUFResidentSession:
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
-        self.runner = Qwen35GGUFFullStackRunner(
-            self.model_path,
-            runtime=self.runtime,
-            compiler_version=self.compiler_version,
-            require_cached_build=self.require_cached_build,
-        )
+        if self.shared_runner is None:
+            self.runner = Qwen35GGUFFullStackRunner(
+                self.model_path,
+                runtime=self.runtime,
+                compiler_version=self.compiler_version,
+                require_cached_build=self.require_cached_build,
+            )
+            self._owns_runner = True
+        else:
+            self.runner = self.shared_runner
+            self.runtime = self.runner.runtime or self.runtime
+            self._owns_runner = False
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
         self.fastpath_safety = resolve_qwen35moe_fastpath_safety(
@@ -9721,9 +9729,9 @@ class Qwen35GGUFResidentSession:
             for buffer in reversed(self.scratch.buffers):
                 free(buffer, runtime=runtime)
             self.scratch = None
-        if self.runner is not None:
+        if self.runner is not None and self._owns_runner:
             self.runner.close()
-            self.runner = None
+        self.runner = None
         self._token_buf = None
         self._hidden_a = None
         self._hidden_b = None

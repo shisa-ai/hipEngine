@@ -142869,3 +142869,55 @@ python3 scripts/gguf_mtp_bench.py \
   prompt lengths were `[10, 10]`, `total_draft_tokens=2`,
   `total_accepted_draft_tokens=0`, and both request IDs had
   `llama_compat_direct_commit` plus `ar_tail` cycle metadata.
+
+## 2026-07-04 - MTP serving resident-slot scheduler
+
+- Replaced the c>1 GGUF MTP serving path's single target-session reset loop with
+  shared-weight resident slots. `Qwen35GGUFResidentSession` now accepts an
+  optional shared `Qwen35GGUFFullStackRunner`, so serving can materialize target
+  weights once while each request owns separate target scratch/KV/recurrent
+  state. The GGUF MTP hook keeps the existing c=1 path and uses the new
+  `resident_slots_round_robin` scheduler for c>1.
+- Each MTP slot owns its target session, MTP draft runner, dense MTP K/V buffers,
+  pending MTP context, generated IDs, and per-request cycle metadata. The
+  scheduler advances live slots round-robin until all finish, preserving
+  per-request cancellation/deadline checks through the batch request token.
+- Added a mocked c=2 generator regression proving two resident sessions are
+  opened against one shared runner, both verify through the llama-compat block
+  path, and metadata reports `resident_slot_count=2`,
+  `scheduler=resident_slots_round_robin`, and `serial_decode_fallback=false`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k speculative_mtp
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_coalesces_speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  git diff --check
+  ```
+  Pycompile passed, mocked GGUF speculative MTP tests passed (`2 passed`), and
+  focused server MTP tests passed (`5 passed`). Full GGUF sampling tests passed
+  (`23 passed`), full server API tests passed (`464 passed`), and
+  `git diff --check` passed.
+- Real direct c=2 smoke on AMD Radeon 8060S / gfx1151 with
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `backend='hip_gfx1100'`,
+  `quant='gguf_q4_k_m'`, two prompts, and greedy `max_tokens=3`: two outputs,
+  path `gguf_llama_compat_mtp_server`, `batch_size=2`,
+  `serial_decode_fallback=false`, `resident_slot_count=2`,
+  `scheduler=resident_slots_round_robin`, and per-request cycles present.
+- Real HTTP c=2 smoke with `speculative_mtp_serving='opt_in'`,
+  `generation_batch_window_ms=100`, `max_active_requests=2`, warmed server, and
+  two concurrent `speculative_mtp=true` requests returned two HTTP **200**
+  responses and the same resident-slot metadata: `batch_size=2`,
+  `resident_slot_count=2`, `scheduler=resident_slots_round_robin`.
+- Real direct sanity smokes for c=4 and c=8 passed with the same model and
+  greedy `max_tokens=3`: c=4 reported `resident_slot_count=4`,
+  `total_draft_tokens=4`, `total_accepted_draft_tokens=2`; c=8 reported
+  `resident_slot_count=8`, `total_draft_tokens=8`,
+  `total_accepted_draft_tokens=0`.
+- Real HTTP c=4/c=8 serving sanity on the same warmed server with
+  `max_active_requests=8` passed: c=4 returned four HTTP **200** responses with
+  `batch_size=4`, `resident_slot_count=4`, cycle request IDs `0..3`; c=8
+  returned eight HTTP **200** responses with `batch_size=8`,
+  `resident_slot_count=8`, cycle request IDs `0..7`. These are functional
+  smoke checks, not retained throughput claims.

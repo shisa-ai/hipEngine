@@ -73,8 +73,8 @@ instrumented HIP stage target.
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | Under the natural24 token cap, B2 is faster than B5, but B1 is fastest and no exact budget beats AR. This does not supersede the retained 10-cycle exact B5 row **61.98 tok/s / 1.131x AR**. |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | functional smoke only | functional smoke only | n/a | B2 llama-compat hook | Guarded OpenAI route: `--speculative-mtp-serving opt_in` plus request `speculative_mtp=true` calls the GGUF llama-compat MTP hook for non-streaming greedy requests. No retained throughput claim yet; HTTP smoke verified the route and cycle metadata. |
-| hipEngine `llama-compat` server MTP | 2 | functional smoke only | functional smoke only | n/a | coalesced B2 llama-compat hook | Two concurrent compatible HTTP requests coalesce into one MTP backend call when `--generation-batch-window-ms` and `--max-active-requests 2` allow batching. Real smoke: two 200 responses, `last_batch_generation.batch_size=2`, per-request MTP cycles present. Execution inside the hook is still serial per prompt. |
-| hipEngine exact / `llama-compat` server MTP | 4, 8 | n/a | n/a | n/a | n/a | Not measured: the server now has guarded c=1/c=2 MTP request coalescing, but true c=4/c=8 resident-slot MTP scheduling is still not implemented. |
+| hipEngine `llama-compat` server MTP | 2 | functional smoke only | functional smoke only | n/a | resident slots round-robin | Two concurrent compatible HTTP requests coalesce into one MTP backend call when `--generation-batch-window-ms` and `--max-active-requests 2` allow batching. Real smoke: two 200 responses, `last_batch_generation.batch_size=2`, `resident_slot_count=2`, `scheduler=resident_slots_round_robin`, per-request MTP cycles present. |
+| hipEngine `llama-compat` server MTP | 4, 8 | functional smoke only | functional smoke only | n/a | resident slots round-robin | Sanity-only serving smokes passed with `max_active_requests=8`: c=4 and c=8 returned all 200s, matching `batch_size`, `resident_slot_count`, and per-request MTP cycle IDs. No throughput claim yet. |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | B2 | Untraced server aggregate diagnostic; faster than the earlier instrumented HIP stage-timing run. |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
@@ -101,19 +101,18 @@ use `"speculative_mtp": true`; `auto` routes only compatible greedy-fast
 requests. The route is guarded by the existing sampling-incompatibility checks
 and rejects streaming, non-greedy sampling, and unsupported engines.
 
-What landed is the c=1/c=2 llama-compat server milestone, not full concurrent
-MTP serving. The OpenAI path now calls
-`LLM.generate_speculative_mtp_detailed()`, which enters a GGUF llama-compat MTP
-hook with per-request resident target state, draft K/V state, verifier
-hidden-state capture/commit, and MTP K/V lifecycle ownership. The c=2 milestone
-means two compatible HTTP requests can coalesce through the generation batcher
-into one MTP backend call; it does **not** mean the hook advances two resident
-MTP slots in parallel. Short prompts that cannot safely build the shifted
-context-replay rows fall back to ordinary GGUF greedy AR under the same request.
-The exact default MTP route, streaming MTP, and true c=4/c=8 resident-slot
-scheduling remain unclaimed. Parallel child processes are still not comparable
-to c=N serving; the next concurrency milestone is a single-process multi-slot
-resident MTP scheduler.
+What landed is the c=N llama-compat resident-slot server milestone. The OpenAI
+path calls `LLM.generate_speculative_mtp_detailed()`, which enters a GGUF
+llama-compat MTP hook with one shared target-weight runner and per-request
+resident target sessions, draft runners, draft K/V state, verifier
+hidden-state capture/commit, and MTP K/V lifecycle ownership. Slots are advanced
+round-robin in one process; this is true resident state isolation, not parallel
+child processes and not the old single-session reset loop. Short prompts that
+cannot safely build the shifted context-replay rows still fall back to ordinary
+GGUF greedy AR under the same request. The exact default MTP route and streaming
+MTP remain unclaimed. Next work is retained c=2/c=4/c=8 throughput measurement
+and then batched/fused slot advancement where the round-robin scheduler still
+serializes kernel launches.
 
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 

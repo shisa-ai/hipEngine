@@ -22,7 +22,14 @@ class _FakeTokenizer:
     eos_token_id = 99
 
     def encode(self, prompt: str) -> list[int]:
-        return {"first": [10, 11], "second": [20], "long": [10, 11, 12, 13], "{": [5], "}": [4]}[prompt]
+        return {
+            "first": [10, 11],
+            "second": [20],
+            "long": [10, 11, 12, 13],
+            "long2": [20, 21, 22, 23],
+            "{": [5],
+            "}": [4],
+        }[prompt]
 
     def decode(self, ids) -> str:
         table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>"}
@@ -204,6 +211,161 @@ def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) 
     assert generator.last_batch_generation["path"] == "gguf_llama_compat_mtp_server"
     assert generator.last_batch_generation["speculative_mtp"]["total_draft_tokens"] == 1
     assert generator.last_batch_generation["speculative_mtp"]["total_accepted_draft_tokens"] == 1
+
+
+def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        def memcpy(self, dst, src, nbytes, kind):
+            calls.append(("memcpy", int(nbytes)))
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path):
+            self.model_path = str(model_path)
+            self.runtime = FakeRuntime()
+            self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
+            calls.append(("shared_runner_init", self.model_path))
+
+        def __enter__(self):
+            calls.append(("shared_runner_enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
+        def close(self):
+            calls.append(("shared_runner_close",))
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            calls.append(("session_init", self.slot_id, str(model_path), kwargs["shared_runner"]))
+
+        def prefill(self, token_ids, **kwargs):
+            calls.append(("prefill", self.slot_id, tuple(token_ids), dict(kwargs)))
+            self.position = len(token_ids)
+            return SimpleNamespace(token_id=1)
+
+        def mtp_draft_seed(self, *, token_id: int, position: int):
+            return SimpleNamespace(
+                token_id=int(token_id),
+                position=int(position),
+                hidden_ptr=0xABC0 + self.slot_id * 0x100,
+                hidden_contract=SimpleNamespace(
+                    ready_for_mtp=True,
+                    rows=1,
+                    hidden_size=2,
+                ),
+            )
+
+        def verify_target_block(self, input_token_ids, **kwargs):
+            calls.append(("verify_block", self.slot_id, tuple(input_token_ids), dict(kwargs)))
+            return SimpleNamespace(
+                token_ids=[2, 3],
+                hidden_seeds=np.ones((2, 2), dtype=np.float32),
+                linear_state_rows_captured=True,
+            )
+
+        def _commit_verify_linear_state_row(self, row_index: int, *, position: int):
+            calls.append(("commit_row", self.slot_id, int(row_index), int(position)))
+            self.position = int(position)
+
+        def fp32_verify_hidden_seed_ptr(self, row_index: int = 0) -> int:
+            return 0xD000 + self.slot_id * 0x100 + int(row_index) * 8
+
+        def close(self):
+            calls.append(("session_close", self.slot_id))
+
+    class FakeDraft:
+        def __init__(self):
+            self.draft_id = len([call for call in calls if call and call[0] == "draft_init"])
+            calls.append(("draft_init", self.draft_id))
+
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            calls.append(("draft", self.draft_id, int(hidden_seed_ptr), dict(kwargs)))
+            return [2], [[2]], int(kwargs["dense_cache_len"]) + 2
+
+        def write_kv_rows(self, hidden_rows, token_ids, **kwargs):
+            calls.append(("write_context_kv", self.draft_id, tuple(int(token) for token in token_ids)))
+            return len(token_ids)
+
+        def write_kv_rows_from_device_seed_base(self, hidden_seed_ptr, token_ids, **kwargs):
+            calls.append(
+                (
+                    "write_commit_kv",
+                    self.draft_id,
+                    int(hidden_seed_ptr),
+                    tuple(int(token) for token in token_ids.tolist()),
+                    tuple(int(pos) for pos in kwargs["positions"].tolist()),
+                    int(kwargs["dense_cache_len"]),
+                )
+            )
+            return int(kwargs["dense_cache_len"]) + len(token_ids)
+
+        def close(self):
+            calls.append(("draft_close", self.draft_id))
+
+    assets = qwen35_gguf._GGUFMTPServingAssets(
+        weights={
+            "blk.40.attn_q_norm.weight": (np.zeros((2,), dtype=np.float32), 0, (2,)),
+            "output.weight": (np.zeros((8, 1), dtype=np.uint8), 0, (8, 1)),
+        },
+        token_embd_f32=np.zeros((8, 2), dtype=np.float32),
+        rope_cos=np.ones((16, 2), dtype=np.float32),
+        rope_sin=np.zeros((16, 2), dtype=np.float32),
+    )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_load_mtp_serving_assets",
+        lambda self: assets,
+    )
+    monkeypatch.setattr(qwen35_gguf, "_new_mtp_draft_runner", lambda assets, *, runtime: FakeDraft())
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "_allocate_mtp_dense_kv",
+        lambda **kwargs: (SimpleNamespace(ptr=0x1000), SimpleNamespace(ptr=0x2000), []),
+    )
+    monkeypatch.setattr(qwen35_gguf, "_free_mtp_buffers", lambda buffers, *, runtime: calls.append(("free_kv", len(buffers))))
+
+    generator = _generator()
+    generator.weight_index = _mtp_capable_weight_index()
+    outputs = generator.generate_speculative_mtp_detailed(_request(prompts=("long", "long2"), max_tokens=3))
+
+    assert [output.text for output in outputs] == ["BCD", "BCD"]
+    assert [call[0] for call in calls].count("shared_runner_init") == 1
+    session_inits = [call for call in calls if call and call[0] == "session_init"]
+    assert len(session_inits) == 2
+    assert session_inits[0][3] is session_inits[1][3]
+    assert [call for call in calls if call and call[0] == "verify_block"] == [
+        ("verify_block", 0, (1, 2), {
+            "bulk_attention_mode": "bulk",
+            "use_wmma_prefill": True,
+            "capture_linear_state_rows": True,
+            "defer_linear_state_commit": True,
+        }),
+        ("verify_block", 1, (1, 2), {
+            "bulk_attention_mode": "bulk",
+            "use_wmma_prefill": True,
+            "capture_linear_state_rows": True,
+            "defer_linear_state_commit": True,
+        }),
+    ]
+    assert generator.last_batch_generation is not None
+    mtp = generator.last_batch_generation["speculative_mtp"]
+    assert generator.last_batch_generation["batch_size"] == 2
+    assert generator.last_batch_generation["serial_decode_fallback"] is False
+    assert mtp["resident_slot_count"] == 2
+    assert mtp["scheduler"] == "resident_slots_round_robin"
+    assert mtp["total_draft_tokens"] == 2
+    assert mtp["total_accepted_draft_tokens"] == 2
+    assert sorted(mtp["cycles_by_request"]) == ["0", "1"]
 
 
 def test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos(monkeypatch) -> None:
