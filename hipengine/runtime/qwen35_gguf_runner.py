@@ -7866,7 +7866,13 @@ class Qwen35GGUFResidentSession:
                             )
                         elif layer_type == FULL_ATTENTION:
                             key_cache, value_cache = self.scratch.full_cache(layer_id)
-                            layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
+                            layer_scratch = replace(
+                                bulk_scratch,
+                                key_cache=key_cache,
+                                value_cache=value_cache,
+                                cos_table=self.scratch.cos_table,
+                                sin_table=self.scratch.sin_table,
+                            )
                             if end < 1024:
                                 self.runner._run_full_attention_decode_batch_layer_rows(
                                     layer_id,
@@ -9841,6 +9847,8 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_rows_capacity: int
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
+    cos_table: object | None = None
+    sin_table: object | None = None
     int8_kv_value_bf16: bool = False
     start: int = 0
 

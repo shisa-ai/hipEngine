@@ -179,6 +179,9 @@ class LLM:
         if not prompt_tuple:
             return []
         generator = self._get_text_generator()
+        supports = getattr(generator, "supports_speculative_mtp", None)
+        if supports is not None and not bool(supports):
+            raise NotImplementedError("speculative MTP generation is not supported by this generator")
         detailed = getattr(generator, "generate_speculative_mtp_detailed", None)
         if not callable(detailed):
             raise NotImplementedError("speculative MTP generation is not supported by this generator")
@@ -194,6 +197,9 @@ class LLM:
 
         generator = self._text_generator
         if generator is None:
+            return False
+        supports = getattr(generator, "supports_speculative_mtp", None)
+        if supports is not None and not bool(supports):
             return False
         return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
 

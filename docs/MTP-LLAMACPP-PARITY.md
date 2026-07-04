@@ -72,7 +72,8 @@ instrumented HIP stage target.
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | Under the natural24 token cap, B2 is faster than B5, but B1 is fastest and no exact budget beats AR. This does not supersede the retained 10-cycle exact B5 row **61.98 tok/s / 1.131x AR**. |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
-| hipEngine exact / `llama-compat` server MTP | 4, 8 | n/a | n/a | n/a | n/a | Not measured: `speculative_mtp.serving_route=false`; the current GGUF MTP path is a serial direct harness. |
+| hipEngine `llama-compat` server MTP | 1 | functional smoke only | functional smoke only | n/a | B2 llama-compat hook | New guarded OpenAI route: `--speculative-mtp-serving opt_in` plus request `speculative_mtp=true` calls the GGUF llama-compat MTP hook for non-streaming greedy requests. No retained throughput claim yet; HTTP smoke verified the route and cycle metadata. |
+| hipEngine exact / `llama-compat` server MTP | 4, 8 | n/a | n/a | n/a | n/a | Not measured: the server now has a c=1 guarded MTP hook, but true c=4/c=8 resident-slot MTP scheduling is still not implemented. |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | B2 | Untraced server aggregate diagnostic; faster than the earlier instrumented HIP stage-timing run. |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
@@ -91,16 +92,24 @@ Artifacts:
 - `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`
 - `benchmarks/results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`
 
-Serving-route flag status: `speculative_mtp.serving_route=false` is correct
-today. The server metadata lives in `hipengine/server/api.py`, but the actual
-OpenAI request path still routes through normal `LLM.generate()` / scheduler
-serving and does not call the GGUF MTP direct harness. Flipping the flag alone
-would only advertise a non-existent serving path. To make it true, implement a
-real greedy-only MTP serving route with per-request resident MTP draft context,
-target verifier state capture/commit semantics, MTP K/V lifecycle ownership, and
-the existing sampling-incompatibility guards. A true concurrent direct resident
-session harness is a reasonable benchmark stepping stone; parallel child
-processes are not comparable to c=N serving.
+Serving-route flag status: the default remains
+`speculative_mtp.serving_route=false`, but the flag can now truthfully become
+true when the server is started with `--speculative-mtp-serving opt_in` or
+`auto` and the loaded GGUF engine exposes the NextN tensors. Explicit requests
+use `"speculative_mtp": true`; `auto` routes only compatible greedy-fast
+requests. The route is guarded by the existing sampling-incompatibility checks
+and rejects streaming, non-greedy sampling, and unsupported engines.
+
+What landed is the c=1 llama-compat server milestone, not full concurrent MTP
+serving. The OpenAI path now calls `LLM.generate_speculative_mtp_detailed()`,
+which enters a GGUF llama-compat MTP hook with per-request resident target state,
+draft K/V state, verifier hidden-state capture/commit, and MTP K/V lifecycle
+ownership. Short prompts that cannot safely build the shifted context-replay
+rows fall back to ordinary GGUF greedy AR under the same request. The exact
+default MTP route, streaming MTP, and true c=4/c=8 resident-slot scheduling
+remain unclaimed. Parallel child processes are still not comparable to c=N
+serving; the next concurrency milestone is a single-process multi-slot resident
+MTP scheduler.
 
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 

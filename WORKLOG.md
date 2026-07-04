@@ -142790,3 +142790,45 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused tests passed (`4 passed`), and the full server API
   suite passed (`463 passed`).
+
+## 2026-07-04 - GGUF llama-compat MTP serving hook
+
+- Added the real GGUF server-visible MTP generator hook behind the guarded
+  serving policy. `Qwen35GGUFBringupGenerator.supports_speculative_mtp` now
+  requires the Qwen NextN tensors, and
+  `generate_speculative_mtp_detailed()` runs a serial c=1 llama-compat serving
+  loop for non-streaming greedy-fast requests. The route owns a resident target
+  session, resident MTP draft runner, shifted prompt catch-up rows, dense MTP
+  K/V buffers, bulk target verification, verifier hidden-state capture/commit,
+  accepted-row MTP K/V commit, and MTP cycle metadata. Short prompts that cannot
+  safely build context-replay rows fall back to the normal GGUF greedy AR path.
+- Tightened `LLM.supports_speculative_mtp` so a generator method alone is not
+  enough to advertise support when the resolved model inventory lacks MTP
+  tensors. Fixed reusable full-attention verifier scratch to carry the resident
+  RoPE tables into decode-batch layer rows.
+- Updated `README.md`, `docs/API.md`, and `docs/MTP-LLAMACPP-PARITY.md`: MTP
+  serving can now be advertised only for `--speculative-mtp-serving opt_in` or
+  `auto` with a loaded MTP-capable GGUF engine. The docs still explicitly do
+  not claim streaming MTP, exact/default MTP serving, or true c=4/c=8
+  resident-slot MTP scheduling.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py hipengine/llm.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_keeps_speculative_mtp or capabilities_endpoint_reports_speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  git diff --check
+  ```
+  Pycompile passed, GGUF sampling tests passed (`22 passed`), focused server
+  MTP tests passed (`4 passed`), full server API passed (`463 passed`), and
+  `git diff --check` passed.
+- Real HTTP smoke on AMD Radeon 8060S / gfx1151 with
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `backend='hip_gfx1100'`,
+  `quant='gguf_q4_k_m'`, `speculative_mtp_serving='opt_in'`, and request
+  `speculative_mtp=true`, `temperature=0.0`, `top_p=1.0`, `max_tokens=3`:
+  HTTP status **200**, output text `'\n\n<think>\n'`, backend path
+  `gguf_llama_compat_mtp_server`, metadata
+  `serving_route='llama_compat'`, `draft_n_max=2`, `device_chain=True`,
+  `device_kv_cache=True`, `total_draft_tokens=1`,
+  `total_accepted_draft_tokens=0`, and cycle modes
+  `llama_compat_direct_commit` then `ar_tail`.
