@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import os
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, ClassVar, Iterator
+
+import numpy as np
 
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -27,9 +31,228 @@ from hipengine.generation.sampling import (
     select_token,
     thinking_budget_state_from_params,
 )
-from hipengine.loading.gguf import GGUFModelInfo
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
+from hipengine.quant.gguf import dequantize_gguf_data
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, _rope_tables as _gguf_rope_tables
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+
+
+_GGUF_MTP_REQUIRED_TENSORS = (
+    "token_embd.weight",
+    "output.weight",
+    "blk.40.nextn.eh_proj.weight",
+    "blk.40.nextn.hnorm.weight",
+    "blk.40.nextn.enorm.weight",
+    "blk.40.nextn.shared_head_norm.weight",
+    "blk.40.attn_norm.weight",
+    "blk.40.attn_q.weight",
+    "blk.40.attn_k.weight",
+    "blk.40.attn_v.weight",
+    "blk.40.attn_output.weight",
+    "blk.40.attn_q_norm.weight",
+    "blk.40.attn_k_norm.weight",
+    "blk.40.post_attention_norm.weight",
+    "blk.40.ffn_gate_inp.weight",
+    "blk.40.ffn_gate_exps.weight",
+    "blk.40.ffn_up_exps.weight",
+    "blk.40.ffn_down_exps.weight",
+    "blk.40.ffn_gate_inp_shexp.weight",
+    "blk.40.ffn_gate_shexp.weight",
+    "blk.40.ffn_up_shexp.weight",
+    "blk.40.ffn_down_shexp.weight",
+)
+
+_LLAMA_COMPAT_MTP_ENV = {
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A": "1",
+    "HIPENGINE_GGUF_T16_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
+    "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL": "1",
+    "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32": "1",
+    "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+    "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A": "1",
+    "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE": "x8",
+    "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL": "1",
+    "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A": "1",
+    "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES": "draft",
+}
+_GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
+
+
+@dataclass(frozen=True)
+class _GGUFMTPServingAssets:
+    weights: dict[str, tuple[np.ndarray, int, tuple[int, ...]]]
+    token_embd_f32: np.ndarray
+    rope_cos: np.ndarray
+    rope_sin: np.ndarray
+
+
+@dataclass(frozen=True)
+class _GGUFMTPServingRun:
+    generated_ids: list[int]
+    cycles: list[dict[str, Any]]
+
+
+@contextmanager
+def _temporary_env(updates: dict[str, str]):
+    previous = {name: os.environ.get(name) for name in updates}
+    try:
+        for name, value in updates.items():
+            os.environ[name] = value
+        yield previous
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+@contextmanager
+def _exact_env(values: dict[str, str | None]):
+    previous = {name: os.environ.get(name) for name in values}
+    try:
+        for name, value in values.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _gguf_info_has_mtp_tensors(info: Any) -> bool:
+    try:
+        by_name = {tensor.name for tensor in info.tensors}
+    except Exception:
+        return False
+    return all(name in by_name for name in _GGUF_MTP_REQUIRED_TENSORS)
+
+
+def _llama_cpp_mtp_catchup_rows(
+    prompt_tokens: list[int] | tuple[int, ...],
+    prompt_hidden_seeds: np.ndarray,
+) -> tuple[list[int], np.ndarray]:
+    tokens = [int(token) for token in prompt_tokens]
+    hidden = np.ascontiguousarray(prompt_hidden_seeds, dtype=np.float32)
+    if hidden.ndim != 2:
+        raise ValueError("prompt_hidden_seeds must have shape [prompt_tokens, hidden_size]")
+    if len(tokens) != int(hidden.shape[0]):
+        raise ValueError("prompt_tokens and prompt_hidden_seeds must have the same length")
+    if not tokens:
+        raise ValueError("prompt_tokens must be non-empty")
+    zero = np.zeros((1, hidden.shape[1]), dtype=np.float32)
+    shifted = zero if hidden.shape[0] == 1 else np.concatenate([zero, hidden[:-1]], axis=0)
+    return tokens, np.ascontiguousarray(shifted, dtype=np.float32)
+
+
+def _llama_cpp_acceptance_from_target_samples(
+    draft_tokens: list[int],
+    target_samples: list[int],
+) -> dict[str, object]:
+    if not draft_tokens:
+        raise ValueError("draft_tokens must be non-empty")
+    if not target_samples:
+        raise ValueError("target_samples must be non-empty")
+
+    drafts = [int(token) for token in draft_tokens]
+    targets = [int(token) for token in target_samples]
+    accepted = 0
+    for draft_token, target_token in zip(drafts, targets, strict=False):
+        if draft_token != target_token:
+            break
+        accepted += 1
+        if accepted == len(drafts):
+            break
+    if len(targets) <= accepted:
+        raise ValueError("target_samples must include the corrective target token")
+    output_tokens = targets[:accepted] + [targets[accepted]]
+    return {
+        "accepted_draft_tokens": accepted,
+        "visible_output_tokens": len(output_tokens),
+        "output_tokens": output_tokens,
+        "pending_hidden_row_index": accepted,
+    }
+
+
+def _new_mtp_context(target_session: Any, *, token_id: int, position: int, mtp_block: Any):
+    from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPContext
+
+    return Qwen35GGUFMTPContext.from_target_seed(
+        target_session,
+        token_id=int(token_id),
+        position=int(position),
+        mtp_block=mtp_block,
+    )
+
+
+def _new_mtp_seed_row(
+    *,
+    token_id: int,
+    position: int,
+    hidden_ptr: int,
+    hidden_size: int,
+    source: str,
+):
+    from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPSeedRow
+
+    return Qwen35GGUFMTPSeedRow(
+        token_id=int(token_id),
+        position=int(position),
+        hidden_ptr=int(hidden_ptr),
+        hidden_size=int(hidden_size),
+        source=str(source),
+    )
+
+
+def _new_mtp_draft_runner(
+    assets: _GGUFMTPServingAssets,
+    *,
+    runtime: Any,
+    require_cached_build: bool = False,
+):
+    from hipengine.speculative.mtp_resident_draft import Qwen35GGUFResidentMTPDraftRunner
+
+    return Qwen35GGUFResidentMTPDraftRunner(
+        assets.weights,
+        assets.token_embd_f32,
+        runtime=runtime,
+        vocab_cap=int(assets.weights["output.weight"][0].shape[0]),
+        device_chain_enabled=True,
+        prewarm_device_chain=True,
+        require_cached_build=bool(require_cached_build),
+    )
+
+
+def _allocate_mtp_dense_kv(
+    *,
+    runtime: Any,
+    capacity: int,
+    qk_head_dim: int,
+    kv_heads: int = 2,
+) -> tuple[Any, Any, list[Any]]:
+    from hipengine.core.memory import malloc
+
+    rows = int(capacity)
+    key_nbytes = rows * int(kv_heads) * int(qk_head_dim) * 4
+    value_nbytes = key_nbytes
+    key_cache = malloc(key_nbytes, runtime=runtime)
+    value_cache = malloc(value_nbytes, runtime=runtime)
+    return key_cache, value_cache, [key_cache, value_cache]
+
+
+def _free_mtp_buffers(buffers: list[Any], *, runtime: Any) -> None:
+    from hipengine.core.memory import free
+
+    for buffer in reversed(buffers):
+        free(buffer, runtime=runtime)
 
 
 @dataclass
@@ -42,6 +265,8 @@ class Qwen35GGUFBringupGenerator:
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
+    _mtp_serving_assets: _GGUFMTPServingAssets | None = field(default=None, init=False, repr=False)
+    _mtp_serving_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
@@ -52,6 +277,12 @@ class Qwen35GGUFBringupGenerator:
 
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
+
+    @property
+    def supports_speculative_mtp(self) -> bool:
+        """Whether this GGUF inventory has the NextN tensors required for MTP."""
+
+        return _gguf_info_has_mtp_tensors(self.weight_index)
 
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
@@ -170,6 +401,382 @@ class Qwen35GGUFBringupGenerator:
             outputs=self.last_generation_outputs,
         )
         return outputs
+
+    def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
+        """Generate through the llama.cpp-compatible GGUF MTP route.
+
+        This is the server-visible c=1/correctness milestone for MTP serving:
+        requests are handled serially, but the hot loop mirrors the retained
+        llama-compat direct harness shape instead of the public AR path.
+        """
+
+        if request.max_tokens < 0:
+            raise ValueError("max_tokens must be non-negative")
+        raise_if_generation_deadline_expired(request)
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError("GGUF speculative MTP requires Qwen NextN tensors")
+        plan = _gguf_sampler_plan(request)
+        if plan.mode is not SamplingMode.GREEDY_FAST:
+            raise NotImplementedError("GGUF speculative MTP currently supports only greedy-fast sampling")
+        if request.max_tokens == 0:
+            return self.generate_detailed(request)
+
+        encoded_prompts = {
+            row_index: self.tokenizer.encode(prompt)
+            for row_index, prompt in enumerate(request.prompts)
+        }
+        if any(
+            len(prompt_ids) < _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS
+            for prompt_ids in encoded_prompts.values()
+        ):
+            with _temporary_env({"HIPENGINE_GGUF_DECODE_REPACK": "1"}):
+                return self.generate_detailed(request)
+
+        outputs: list[GenerationOutput] = []
+        prompt_rows_by_request: dict[int, list[int]] = {}
+        generated_ids_by_request: dict[int, list[int]] = {}
+        token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
+        mtp_cycles_by_request: dict[int, list[dict[str, Any]]] = {}
+
+        with self._mtp_serving_lock, _temporary_env(_LLAMA_COMPAT_MTP_ENV) as base_env:
+            assets = self._load_mtp_serving_assets()
+            with Qwen35GGUFResidentSession(
+                self.model_path,
+                use_wmma_prefill=True,
+                use_gemv_decode=True,
+            ) as session:
+                runtime = session.runtime
+                resident_draft = _new_mtp_draft_runner(assets, runtime=runtime)
+                try:
+                    for row_index, prompt in enumerate(request.prompts):
+                        raise_if_generation_deadline_expired(request)
+                        prompt_ids = encoded_prompts[row_index]
+                        prompt_rows_by_request[row_index] = prompt_ids
+                        if not prompt_ids:
+                            raise ValueError("GGUF prompt tokenization produced no token IDs")
+                        run = self._generate_speculative_mtp_llama_compat(
+                            session,
+                            resident_draft,
+                            assets,
+                            prompt_ids,
+                            request,
+                            base_env=base_env,
+                        )
+                        generated_ids = list(run.generated_ids)
+                        generated_ids_by_request[row_index] = generated_ids
+                        mtp_cycles_by_request[row_index] = list(run.cycles)
+                        outputs.append(
+                            GenerationOutput(
+                                text=self.tokenizer.decode(generated_ids),
+                                finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
+                                telemetry=_gguf_telemetry(
+                                    prompt_ids,
+                                    generated_ids,
+                                    request,
+                                    row_index=row_index,
+                                    execution_path="gguf_llama_compat_mtp_server",
+                                    native_compact_prefill=False,
+                                    native_caware_decode=False,
+                                    serial_decode_fallback=len(request.prompts) > 1,
+                                    native_sampler_rows=False,
+                                ),
+                            )
+                        )
+                finally:
+                    close = getattr(resident_draft, "close", None)
+                    if callable(close):
+                        close()
+
+        self.last_generation_outputs = tuple(outputs)
+        self.last_batch_generation = _gguf_mtp_last_batch_generation(
+            self.tokenizer,
+            request,
+            plan,
+            prompt_rows_by_request,
+            generated_ids_by_request,
+            token_logprobs_by_request,
+            outputs=self.last_generation_outputs,
+            cycles_by_request=mtp_cycles_by_request,
+        )
+        return outputs
+
+    def _load_mtp_serving_assets(self) -> _GGUFMTPServingAssets:
+        cached = self._mtp_serving_assets
+        if cached is not None:
+            return cached
+        reader = GGUFReader(self.model_path)
+        weights: dict[str, tuple[np.ndarray, int, tuple[int, ...]]] = {}
+        required = set(_GGUF_MTP_REQUIRED_TENSORS)
+        for tensor in reader.info.tensors:
+            if tensor.name in required:
+                weights[tensor.name] = (
+                    reader.tensor_data(tensor.name),
+                    int(tensor.ggml_type),
+                    tuple(tensor.shape),
+                )
+        missing = sorted(required.difference(weights))
+        if missing:
+            raise NotImplementedError(
+                "GGUF speculative MTP requires missing tensor(s): " + ", ".join(missing[:8])
+            )
+        token_embd_f32 = dequantize_gguf_data(
+            weights["token_embd.weight"][0],
+            weights["token_embd.weight"][1],
+        ).astype(np.float32, copy=False)
+        meta = reader.info.metadata
+        rope_dim = int(meta.get("qwen35moe.rope.dimension_count", 64))
+        rope_base = float(meta.get("qwen35moe.rope.freq_base", 10000000.0))
+        rope_cos, rope_sin = _gguf_rope_tables(
+            max_positions=262144,
+            rotary_dim=rope_dim,
+            base=rope_base,
+        )
+        assets = _GGUFMTPServingAssets(
+            weights=weights,
+            token_embd_f32=np.ascontiguousarray(token_embd_f32, dtype=np.float32),
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+        )
+        self._mtp_serving_assets = assets
+        return assets
+
+    def _generate_speculative_mtp_llama_compat(
+        self,
+        session: Qwen35GGUFResidentSession,
+        resident_draft: Any,
+        assets: _GGUFMTPServingAssets,
+        prompt_ids: list[int],
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+    ) -> "_GGUFMTPServingRun":
+        from hipengine.core.hip import HipMemcpyKind
+
+        runtime = session.runtime
+        hidden_size = int(assets.token_embd_f32.shape[1])
+        min_bulk_tokens = int(getattr(session.runner.weights.config, "ssm_conv_kernel", 4))
+        if len(prompt_ids) >= min_bulk_tokens:
+            prefill_result = session.prefill(
+                prompt_ids,
+                use_bulk=True,
+                bulk_attention_mode="bulk",
+                return_logits=False,
+                capture_hidden_seed_fp32=True,
+            )
+            prompt_hidden_rows = np.empty((len(prompt_ids), hidden_size), dtype=np.float32)
+            runtime.memcpy(
+                prompt_hidden_rows.ctypes.data,
+                session.fp32_verify_hidden_seed_ptr(0),
+                prompt_hidden_rows.nbytes,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
+            mtp_context_tokens, mtp_context_hidden_rows = _llama_cpp_mtp_catchup_rows(
+                prompt_ids,
+                prompt_hidden_rows,
+            )
+        else:
+            prefill_result = session.prefill(
+                prompt_ids,
+                return_logits=False,
+                capture_hidden_seed_fp32=True,
+            )
+            mtp_context_tokens = []
+            mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
+
+        prev_token = int(prefill_result.token_id)
+        generated_ids = [prev_token]
+        if _gguf_finished(generated_ids, self.tokenizer, request):
+            return _GGUFMTPServingRun(generated_ids=generated_ids, cycles=[])
+
+        seq_position = int(session.position)
+        resident_context = _new_mtp_context(
+            session,
+            token_id=prev_token,
+            position=int(session.position) - 1,
+            mtp_block=resident_draft,
+        )
+        qk_head_dim = int(np.asarray(assets.weights["blk.40.attn_q_norm.weight"][0]).shape[0])
+        max_cycles = max(1, int(request.max_tokens))
+        mtp_device_kv_capacity = max(
+            1,
+            len(mtp_context_tokens) + max_cycles * (2 * 2 + 2) + 4,
+        )
+        mtp_key_cache, mtp_value_cache, mtp_buffers = _allocate_mtp_dense_kv(
+            runtime=runtime,
+            capacity=mtp_device_kv_capacity,
+            qk_head_dim=qk_head_dim,
+            kv_heads=2,
+        )
+        cycles: list[dict[str, Any]] = []
+        mtp_device_kv_len = 0
+        try:
+            if mtp_context_tokens:
+                context_positions = np.asarray(range(len(mtp_context_tokens)), dtype=np.int64)
+                context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
+                mtp_device_kv_len = resident_draft.write_kv_rows(
+                    mtp_context_hidden_rows,
+                    context_tokens,
+                    positions=context_positions,
+                    rope_cos=assets.rope_cos,
+                    rope_sin=assets.rope_sin,
+                    dense_key_cache=mtp_key_cache,
+                    dense_value_cache=mtp_value_cache,
+                    dense_cache_len=0,
+                )
+
+            while len(generated_ids) < int(request.max_tokens):
+                raise_if_generation_deadline_expired(request)
+                remaining = int(request.max_tokens) - len(generated_ids)
+                if remaining <= 1:
+                    with _exact_env(base_env):
+                        step = session.step(
+                            prev_token,
+                            return_logits=False,
+                            capture_hidden_seed_fp32=True,
+                        )
+                    token = int(step.token_id)
+                    generated_ids.append(token)
+                    cycles.append(
+                        {
+                            "mode": "ar_tail",
+                            "generated_draft_tokens": 0,
+                            "accepted_draft_tokens": 0,
+                            "visible_output_tokens": 1,
+                        }
+                    )
+                    break
+
+                draft_n_max = min(2, remaining - 1)
+                if resident_context.pending_seed is None:
+                    raise RuntimeError("resident MTP context has no pending seed")
+                cycle_mtp_kv_base_len = int(mtp_device_kv_len)
+                draft_tokens, _draft_topk, mtp_device_kv_len = resident_draft.propose_chain_from_device_seed(
+                    int(resident_context.pending_seed.hidden_ptr),
+                    start_token=prev_token,
+                    start_position=seq_position,
+                    draft_n_max=draft_n_max,
+                    top_k=1,
+                    rope_cos=assets.rope_cos,
+                    rope_sin=assets.rope_sin,
+                    dense_key_cache=mtp_key_cache,
+                    dense_value_cache=mtp_value_cache,
+                    dense_cache_len=mtp_device_kv_len,
+                    draft_p_min=0.0,
+                )
+                draft_tokens = [int(token) for token in draft_tokens]
+                if not draft_tokens:
+                    step = session.step(
+                        prev_token,
+                        return_logits=False,
+                        capture_hidden_seed_fp32=True,
+                    )
+                    token = int(step.token_id)
+                    generated_ids.append(token)
+                    prev_token = token
+                    seq_position += 1
+                    continue
+
+                block_inputs = [int(prev_token)] + draft_tokens
+                block_start = int(seq_position)
+                direct_commit_exact = block_start + len(block_inputs) < 1024
+                snapshot = None if direct_commit_exact else session._linear_state_snapshot()
+                try:
+                    block_result = session.verify_target_block(
+                        block_inputs,
+                        bulk_attention_mode="bulk",
+                        use_wmma_prefill=True,
+                        capture_linear_state_rows=True,
+                        defer_linear_state_commit=True,
+                    )
+                    block_target_tokens = [int(token) for token in block_result.token_ids]
+                    acceptance = _llama_cpp_acceptance_from_target_samples(
+                        draft_tokens,
+                        block_target_tokens,
+                    )
+                    accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
+                    consumed_rows = accepted_draft_tokens + 1
+                    if consumed_rows < len(block_inputs):
+                        if not bool(getattr(block_result, "linear_state_rows_captured", False)):
+                            raise RuntimeError("direct MTP partial commit requested without captured state rows")
+                        session._commit_verify_linear_state_row(
+                            consumed_rows - 1,
+                            position=block_start + consumed_rows,
+                        )
+                    elif direct_commit_exact:
+                        if not bool(getattr(block_result, "linear_state_rows_captured", False)):
+                            raise RuntimeError("direct MTP full commit requested without captured state rows")
+                        session._commit_verify_linear_state_row(
+                            len(block_inputs) - 1,
+                            position=block_start + len(block_inputs),
+                        )
+                    else:
+                        if snapshot is None:
+                            raise RuntimeError("MTP full-block replay requested without a linear-state snapshot")
+                        session._restore_linear_state_snapshot(snapshot, position=block_start)
+                        replay_result = session.verify_target_block_serial_exact(block_inputs)
+                        replay_tokens = [int(token) for token in replay_result.token_ids]
+                        if replay_tokens != block_target_tokens:
+                            raise RuntimeError("MTP serial-exact replay diverged from block verifier rows")
+                    target_verify_seed_rows = [
+                        _new_mtp_seed_row(
+                            token_id=block_target_tokens[row],
+                            position=block_start + row,
+                            hidden_ptr=session.fp32_verify_hidden_seed_ptr(row),
+                            hidden_size=hidden_size,
+                            source=f"verify[{row}]",
+                        )
+                        for row in range(len(block_target_tokens))
+                    ]
+                finally:
+                    if snapshot is not None:
+                        session._free_linear_state_snapshot(snapshot)
+
+                output_tokens = [int(token) for token in acceptance["output_tokens"]]
+                resident_context.record_verify_seeds(target_verify_seed_rows)
+                resident_context.accept(accepted_draft_tokens)
+                mtp_device_kv_len = min(mtp_device_kv_len, cycle_mtp_kv_base_len + 1)
+                if accepted_draft_tokens > 0:
+                    commit_tokens = np.asarray(output_tokens[:accepted_draft_tokens], dtype=np.int64)
+                    commit_positions = np.arange(
+                        seq_position + 1,
+                        seq_position + 1 + accepted_draft_tokens,
+                        dtype=np.int64,
+                    )
+                    mtp_device_kv_len = resident_draft.write_kv_rows_from_device_seed_base(
+                        int(target_verify_seed_rows[0].hidden_ptr),
+                        commit_tokens,
+                        positions=commit_positions,
+                        rope_cos=assets.rope_cos,
+                        rope_sin=assets.rope_sin,
+                        dense_key_cache=mtp_key_cache,
+                        dense_value_cache=mtp_value_cache,
+                        dense_cache_len=mtp_device_kv_len,
+                    )
+
+                cycles.append(
+                    {
+                        "mode": "llama_compat_direct_commit",
+                        "generated_draft_tokens": len(draft_tokens),
+                        "accepted_draft_tokens": accepted_draft_tokens,
+                        "visible_output_tokens": len(output_tokens),
+                    }
+                )
+                prev_token = int(output_tokens[-1])
+                seq_position += len(output_tokens)
+                stop = False
+                for token in output_tokens:
+                    if len(generated_ids) >= int(request.max_tokens):
+                        break
+                    generated_ids.append(int(token))
+                    if _gguf_finished(generated_ids, self.tokenizer, request):
+                        stop = True
+                        break
+                if stop:
+                    break
+        finally:
+            _free_mtp_buffers(mtp_buffers, runtime=runtime)
+
+        return _GGUFMTPServingRun(generated_ids=generated_ids, cycles=cycles)
 
     def _generate_greedy(
         self,
@@ -553,6 +1160,78 @@ def _gguf_last_batch_generation(
         "native_caware_decode": False,
         "native_sampler_rows": False,
         "throughput_claim_eligible": False,
+        "sampler_plan_metadata": [
+            {
+                "active_processors": list(plan.active_processors),
+                "sampler_fast_path_blockers": list(plan.fast_path_blockers),
+                "native_gpu_available": False,
+                **(
+                    {"sampler_fallback_reason": plan.fallback_reason}
+                    if plan.fallback_reason is not None
+                    else {}
+                ),
+                "sampler_mode": plan.mode.value,
+            }
+            for _request_id in request_ids
+        ],
+    }
+    payload["scheduler_token_chunks"] = _gguf_scheduler_token_chunks(
+        request_ids,
+        prompt_rows_by_request,
+        generated_ids_by_request,
+        token_logprobs_by_request,
+        tokenizer=tokenizer,
+        request=request,
+        plan=plan,
+        execution_path=path,
+    )
+    return payload
+
+
+def _gguf_mtp_last_batch_generation(
+    tokenizer: Qwen35GGUFTokenizer,
+    request: GenerationRequest,
+    plan: Any,
+    prompt_rows_by_request: dict[int, list[int]],
+    generated_ids_by_request: dict[int, list[int]],
+    token_logprobs_by_request: dict[int, list[TokenLogprob]],
+    *,
+    outputs: tuple[GenerationOutput, ...],
+    cycles_by_request: dict[int, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    request_ids = tuple(range(len(outputs)))
+    path = "gguf_llama_compat_mtp_server"
+    cycles = [cycle for request_id in request_ids for cycle in cycles_by_request.get(request_id, ())]
+    total_drafts = sum(int(cycle.get("generated_draft_tokens", 0)) for cycle in cycles)
+    total_accepted = sum(int(cycle.get("accepted_draft_tokens", 0)) for cycle in cycles)
+    visible_from_cycles = sum(int(cycle.get("visible_output_tokens", 0)) for cycle in cycles)
+    payload: dict[str, Any] = {
+        "path": path,
+        "batch_size": len(request_ids),
+        "request_ids": list(request_ids),
+        "prompt_lengths": [len(prompt_rows_by_request.get(request_id, ())) for request_id in request_ids],
+        "decode_steps": max((len(generated_ids_by_request.get(request_id, ())) for request_id in request_ids), default=0),
+        "native_decode_steps": 0,
+        "serial_decode_fallback": len(request_ids) > 1,
+        "native_compact_prefill": False,
+        "native_caware_decode": False,
+        "native_sampler_rows": False,
+        "throughput_claim_eligible": False,
+        "speculative_mtp": {
+            "serving_route": "llama_compat",
+            "draft_n_max": 2,
+            "target_verify": "bulk_direct_commit",
+            "device_chain": True,
+            "device_kv_cache": True,
+            "total_draft_tokens": total_drafts,
+            "total_accepted_draft_tokens": total_accepted,
+            "accept_per_draft": (total_accepted / total_drafts if total_drafts > 0 else 0.0),
+            "visible_output_tokens_from_cycles": visible_from_cycles,
+            "cycles_by_request": {
+                str(request_id): list(cycles_by_request.get(request_id, ()))
+                for request_id in request_ids
+            },
+        },
         "sampler_plan_metadata": [
             {
                 "active_processors": list(plan.active_processors),

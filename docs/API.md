@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-06-15
+Last updated: 2026-07-04
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -67,6 +67,15 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 `--request-timeout-ms` or `HIPENGINE_REQUEST_TIMEOUT_MS` to apply a default
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
+
+GGUF MTP serving is guarded and default-off. Start with
+`--speculative-mtp-serving opt_in` or
+`HIPENGINE_SPECULATIVE_MTP_SERVING=opt_in`, then pass
+`"speculative_mtp": true` on a non-streaming greedy request. The `auto` policy
+routes compatible greedy requests through MTP automatically and falls back to AR
+for incompatible requests. The capabilities manifest reports
+`sampling.speculative_mtp.serving_route=true` only when this policy is enabled
+and the loaded engine exposes a real MTP hook.
 
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
@@ -1061,13 +1070,17 @@ in local, non-sensitive debugging sessions.
   `post_selection_controls` such as stop token ids and stop token sequences,
   which PARO c=1 native sampling checks after each selected token.
 - The capabilities manifest reports `sampling.speculative_mtp` with
-  `compatibility_guard: "supports_speculative_mtp_sampling"`. Current MTP
-  serving compatibility is greedy-fast only; `logit_bias`, penalties, token
-  suppressions, min-token/EOS policy, explicit EOS finish policy, token stops,
-  `ignore_eos=true`, pending forced-token queues, post-thinking forced-token queues,
-  token-sequence completion repair, JSON object close forcing, temperature
-  sampling, and requested logprobs require autoregressive fallback. The
-  manifest also includes
+  `compatibility_guard: "supports_speculative_mtp_sampling"`. When
+  `--speculative-mtp-serving opt_in` or `auto` is set and the loaded GGUF engine
+  has NextN tensors, non-streaming greedy-fast requests can use the
+  llama-compat MTP server hook. Streaming MTP, true concurrent c>N resident-slot
+  MTP scheduling, and the exact/default MTP server route are not implemented
+  yet. Current MTP serving compatibility is greedy-fast only; `logit_bias`,
+  penalties, token suppressions, min-token/EOS policy, explicit EOS finish
+  policy, token stops, `ignore_eos=true`, pending forced-token queues,
+  post-thinking forced-token queues, token-sequence completion repair, JSON
+  object close forcing, temperature sampling, and requested logprobs require
+  autoregressive fallback. The manifest also includes
   `incompatible_conditions`, for example `temperature > 0` and
   `eos_token_id set` and `ignore_eos=true`, so inert greedy `top_p` / `top_k` /
   `min_p` settings are not mistaken for MTP blockers.

@@ -250,12 +250,16 @@ work is on the MTP-bearing `UD-Q4_K_M` GGUF.
 | GGUF MTP exact natural24 c=1 | Same model, direct suite, `max_tokens=24` | **52.13 tok/s** B1 vs **54.80 tok/s** AR (`0.951x`) | Token-cap diagnostic: B1 is fastest; B2 `52.04`, B5 `50.65`. This does not supersede the retained exact B5 full-suite row; artifact: [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json). |
 | llama.cpp MTP server diagnostics | Same GGUF/model on gfx1151, B2, HIP/Vulkan, c=1/4/8 | HIP: c=1 `75.56` (`1.448x`), c=4 `78.21` (`0.722x`), c=8 `78.56` (`0.630x`). Vulkan: c=1 `91.48` (`1.426x`), c=4 `92.19` (`0.739x`), c=8 `103.57` (`0.741x`) | Cross-engine diagnostics: MTP wins c=1 but loses aggregate decode under c=4/c=8 on this prompt suite. See [`benchmarks/README.md`](benchmarks/README.md#natural24-mtp-vs-ar-concurrency-diagnostic). |
 
-Serving MTP is not advertised yet: `speculative_mtp.serving_route=false` is
-intentional because the OpenAI server path does not currently call the GGUF
-direct MTP harness or own per-request MTP draft contexts, verifier
-capture/commit state, MTP K/V lifecycle state, and greedy-only guards. The
-implementation target and stage attribution are tracked in
-[`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
+Server MTP is available as a guarded, default-off GGUF llama-compat route. Start
+the OpenAI server with `--speculative-mtp-serving opt_in` and pass
+`"speculative_mtp": true` on a non-streaming greedy request, or use
+`--speculative-mtp-serving auto` to route compatible greedy requests through MTP
+automatically. The capabilities manifest reports
+`sampling.speculative_mtp.serving_route=true` only when the policy is enabled and
+the loaded engine exposes the GGUF NextN tensors. Current serving support is
+c=1/non-streaming/greedy-fast; true c=4/c=8 resident-slot MTP scheduling,
+streaming MTP, and the exact/default MTP server route remain future work tracked
+in [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
 
 ## Concurrency (batched decode)
 
