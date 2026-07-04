@@ -33,7 +33,11 @@ from hipengine.generation.sampling import (
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
 from hipengine.quant.gguf import dequantize_gguf_data
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, _rope_tables as _gguf_rope_tables
+from hipengine.runtime.qwen35_gguf_runner import (
+    Qwen35GGUFFullStackRunner,
+    Qwen35GGUFResidentSession,
+    _rope_tables as _gguf_rope_tables,
+)
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
 
@@ -93,6 +97,25 @@ class _GGUFMTPServingAssets:
 class _GGUFMTPServingRun:
     generated_ids: list[int]
     cycles: list[dict[str, Any]]
+
+
+@dataclass
+class _GGUFMTPServingSlot:
+    request_id: int
+    prompt_ids: list[int]
+    session: Qwen35GGUFResidentSession
+    resident_draft: Any
+    resident_context: Any
+    mtp_key_cache: Any
+    mtp_value_cache: Any
+    mtp_buffers: list[Any]
+    hidden_size: int
+    prev_token: int
+    seq_position: int
+    generated_ids: list[int]
+    cycles: list[dict[str, Any]] = field(default_factory=list)
+    mtp_device_kv_len: int = 0
+    done: bool = False
 
 
 @contextmanager
@@ -405,9 +428,9 @@ class Qwen35GGUFBringupGenerator:
     def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         """Generate through the llama.cpp-compatible GGUF MTP route.
 
-        This is the server-visible c=1/correctness milestone for MTP serving:
-        requests are handled serially, but the hot loop mirrors the retained
-        llama-compat direct harness shape instead of the public AR path.
+        The c=1 path keeps the retained direct llama-compat hot loop. Coalesced
+        c>1 requests use shared-weight resident slots with isolated target/MTP
+        state and a round-robin scheduler inside the server process.
         """
 
         if request.max_tokens < 0:
@@ -440,52 +463,73 @@ class Qwen35GGUFBringupGenerator:
 
         with self._mtp_serving_lock, _temporary_env(_LLAMA_COMPAT_MTP_ENV) as base_env:
             assets = self._load_mtp_serving_assets()
-            with Qwen35GGUFResidentSession(
-                self.model_path,
-                use_wmma_prefill=True,
-                use_gemv_decode=True,
-            ) as session:
-                runtime = session.runtime
-                resident_draft = _new_mtp_draft_runner(assets, runtime=runtime)
-                try:
-                    for row_index, prompt in enumerate(request.prompts):
-                        raise_if_generation_deadline_expired(request)
-                        prompt_ids = encoded_prompts[row_index]
-                        prompt_rows_by_request[row_index] = prompt_ids
-                        if not prompt_ids:
-                            raise ValueError("GGUF prompt tokenization produced no token IDs")
-                        run = self._generate_speculative_mtp_llama_compat(
-                            session,
-                            resident_draft,
-                            assets,
-                            prompt_ids,
-                            request,
-                            base_env=base_env,
-                        )
-                        generated_ids = list(run.generated_ids)
-                        generated_ids_by_request[row_index] = generated_ids
-                        mtp_cycles_by_request[row_index] = list(run.cycles)
-                        outputs.append(
-                            GenerationOutput(
-                                text=self.tokenizer.decode(generated_ids),
-                                finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
-                                telemetry=_gguf_telemetry(
+            if len(request.prompts) == 1:
+                with Qwen35GGUFResidentSession(
+                    self.model_path,
+                    use_wmma_prefill=True,
+                    use_gemv_decode=True,
+                ) as session:
+                    runtime = session.runtime
+                    resident_draft = _new_mtp_draft_runner(assets, runtime=runtime)
+                    try:
+                        for row_index, prompt in enumerate(request.prompts):
+                            raise_if_generation_deadline_expired(request)
+                            prompt_ids = encoded_prompts[row_index]
+                            prompt_rows_by_request[row_index] = prompt_ids
+                            if not prompt_ids:
+                                raise ValueError("GGUF prompt tokenization produced no token IDs")
+                            run = self._generate_speculative_mtp_llama_compat(
+                                session,
+                                resident_draft,
+                                assets,
+                                prompt_ids,
+                                request,
+                                base_env=base_env,
+                            )
+                            generated_ids = list(run.generated_ids)
+                            generated_ids_by_request[row_index] = generated_ids
+                            mtp_cycles_by_request[row_index] = list(run.cycles)
+                            outputs.append(
+                                self._mtp_generation_output(
                                     prompt_ids,
                                     generated_ids,
                                     request,
                                     row_index=row_index,
-                                    execution_path="gguf_llama_compat_mtp_server",
-                                    native_compact_prefill=False,
-                                    native_caware_decode=False,
-                                    serial_decode_fallback=len(request.prompts) > 1,
-                                    native_sampler_rows=False,
-                                ),
+                                    resident_slot_count=1,
+                                )
                             )
-                        )
-                finally:
-                    close = getattr(resident_draft, "close", None)
-                    if callable(close):
-                        close()
+                    finally:
+                        close = getattr(resident_draft, "close", None)
+                        if callable(close):
+                            close()
+                resident_slot_count = 1
+            else:
+                with Qwen35GGUFFullStackRunner(self.model_path) as shared_runner:
+                    slots = self._open_mtp_serving_slots(
+                        shared_runner,
+                        assets,
+                        encoded_prompts,
+                        request,
+                    )
+                    resident_slot_count = len(slots)
+                    try:
+                        self._run_mtp_serving_slots(slots, assets, request, base_env=base_env)
+                        for slot in slots:
+                            prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
+                            generated_ids = list(slot.generated_ids)
+                            generated_ids_by_request[slot.request_id] = generated_ids
+                            mtp_cycles_by_request[slot.request_id] = list(slot.cycles)
+                            outputs.append(
+                                self._mtp_generation_output(
+                                    slot.prompt_ids,
+                                    generated_ids,
+                                    request,
+                                    row_index=slot.request_id,
+                                    resident_slot_count=resident_slot_count,
+                                )
+                            )
+                    finally:
+                        self._close_mtp_serving_slots(slots)
 
         self.last_generation_outputs = tuple(outputs)
         self.last_batch_generation = _gguf_mtp_last_batch_generation(
@@ -497,8 +541,34 @@ class Qwen35GGUFBringupGenerator:
             token_logprobs_by_request,
             outputs=self.last_generation_outputs,
             cycles_by_request=mtp_cycles_by_request,
+            resident_slot_count=resident_slot_count,
         )
         return outputs
+
+    def _mtp_generation_output(
+        self,
+        prompt_ids: list[int],
+        generated_ids: list[int],
+        request: GenerationRequest,
+        *,
+        row_index: int,
+        resident_slot_count: int,
+    ) -> GenerationOutput:
+        return GenerationOutput(
+            text=self.tokenizer.decode(generated_ids),
+            finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
+            telemetry=_gguf_telemetry(
+                prompt_ids,
+                generated_ids,
+                request,
+                row_index=row_index,
+                execution_path="gguf_llama_compat_mtp_server",
+                native_compact_prefill=False,
+                native_caware_decode=False,
+                serial_decode_fallback=False,
+                native_sampler_rows=False,
+            ),
+        )
 
     def _load_mtp_serving_assets(self) -> _GGUFMTPServingAssets:
         cached = self._mtp_serving_assets
@@ -539,6 +609,341 @@ class Qwen35GGUFBringupGenerator:
         )
         self._mtp_serving_assets = assets
         return assets
+
+    def _open_mtp_serving_slots(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        assets: _GGUFMTPServingAssets,
+        encoded_prompts: dict[int, list[int]],
+        request: GenerationRequest,
+    ) -> list[_GGUFMTPServingSlot]:
+        slots: list[_GGUFMTPServingSlot] = []
+        try:
+            for row_index in range(len(request.prompts)):
+                raise_if_generation_deadline_expired(request)
+                prompt_ids = encoded_prompts[row_index]
+                if not prompt_ids:
+                    raise ValueError("GGUF prompt tokenization produced no token IDs")
+                slots.append(
+                    self._open_mtp_serving_slot(
+                        shared_runner,
+                        assets,
+                        prompt_ids,
+                        request,
+                        request_id=row_index,
+                    )
+                )
+        except Exception:
+            self._close_mtp_serving_slots(slots)
+            raise
+        return slots
+
+    def _open_mtp_serving_slot(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        assets: _GGUFMTPServingAssets,
+        prompt_ids: list[int],
+        request: GenerationRequest,
+        *,
+        request_id: int,
+    ) -> _GGUFMTPServingSlot:
+        from hipengine.core.hip import HipMemcpyKind
+
+        session: Qwen35GGUFResidentSession | None = None
+        resident_draft: Any | None = None
+        mtp_buffers: list[Any] = []
+        try:
+            session = Qwen35GGUFResidentSession(
+                self.model_path,
+                runtime=shared_runner.runtime,
+                shared_runner=shared_runner,
+                use_wmma_prefill=True,
+                use_gemv_decode=True,
+            )
+            runtime = session.runtime
+            resident_draft = _new_mtp_draft_runner(assets, runtime=runtime)
+            hidden_size = int(assets.token_embd_f32.shape[1])
+            min_bulk_tokens = int(getattr(session.runner.weights.config, "ssm_conv_kernel", 4))
+            if len(prompt_ids) >= min_bulk_tokens:
+                prefill_result = session.prefill(
+                    prompt_ids,
+                    use_bulk=True,
+                    bulk_attention_mode="bulk",
+                    return_logits=False,
+                    capture_hidden_seed_fp32=True,
+                )
+                prompt_hidden_rows = np.empty((len(prompt_ids), hidden_size), dtype=np.float32)
+                runtime.memcpy(
+                    prompt_hidden_rows.ctypes.data,
+                    session.fp32_verify_hidden_seed_ptr(0),
+                    prompt_hidden_rows.nbytes,
+                    HipMemcpyKind.DEVICE_TO_HOST,
+                )
+                mtp_context_tokens, mtp_context_hidden_rows = _llama_cpp_mtp_catchup_rows(
+                    prompt_ids,
+                    prompt_hidden_rows,
+                )
+            else:
+                prefill_result = session.prefill(
+                    prompt_ids,
+                    return_logits=False,
+                    capture_hidden_seed_fp32=True,
+                )
+                mtp_context_tokens = []
+                mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
+
+            prev_token = int(prefill_result.token_id)
+            generated_ids = [prev_token]
+            seq_position = int(session.position)
+            resident_context = _new_mtp_context(
+                session,
+                token_id=prev_token,
+                position=int(session.position) - 1,
+                mtp_block=resident_draft,
+            )
+            qk_head_dim = int(np.asarray(assets.weights["blk.40.attn_q_norm.weight"][0]).shape[0])
+            max_cycles = max(1, int(request.max_tokens))
+            mtp_device_kv_capacity = max(
+                1,
+                len(mtp_context_tokens) + max_cycles * (2 * 2 + 2) + 4,
+            )
+            mtp_key_cache, mtp_value_cache, mtp_buffers = _allocate_mtp_dense_kv(
+                runtime=runtime,
+                capacity=mtp_device_kv_capacity,
+                qk_head_dim=qk_head_dim,
+                kv_heads=2,
+            )
+            slot = _GGUFMTPServingSlot(
+                request_id=int(request_id),
+                prompt_ids=list(prompt_ids),
+                session=session,
+                resident_draft=resident_draft,
+                resident_context=resident_context,
+                mtp_key_cache=mtp_key_cache,
+                mtp_value_cache=mtp_value_cache,
+                mtp_buffers=mtp_buffers,
+                hidden_size=hidden_size,
+                prev_token=prev_token,
+                seq_position=seq_position,
+                generated_ids=generated_ids,
+                done=(
+                    len(generated_ids) >= int(request.max_tokens)
+                    or _gguf_finished(generated_ids, self.tokenizer, request)
+                ),
+            )
+            if mtp_context_tokens:
+                context_positions = np.asarray(range(len(mtp_context_tokens)), dtype=np.int64)
+                context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
+                slot.mtp_device_kv_len = resident_draft.write_kv_rows(
+                    mtp_context_hidden_rows,
+                    context_tokens,
+                    positions=context_positions,
+                    rope_cos=assets.rope_cos,
+                    rope_sin=assets.rope_sin,
+                    dense_key_cache=mtp_key_cache,
+                    dense_value_cache=mtp_value_cache,
+                    dense_cache_len=0,
+                )
+            return slot
+        except Exception:
+            if mtp_buffers and session is not None:
+                _free_mtp_buffers(mtp_buffers, runtime=session.runtime)
+            if resident_draft is not None:
+                close = getattr(resident_draft, "close", None)
+                if callable(close):
+                    close()
+            if session is not None:
+                session.close()
+            raise
+
+    def _run_mtp_serving_slots(
+        self,
+        slots: list[_GGUFMTPServingSlot],
+        assets: _GGUFMTPServingAssets,
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+    ) -> None:
+        while any(not slot.done for slot in slots):
+            for slot in slots:
+                if slot.done:
+                    continue
+                raise_if_generation_deadline_expired(request)
+                self._advance_mtp_serving_slot(slot, assets, request, base_env=base_env)
+
+    def _advance_mtp_serving_slot(
+        self,
+        slot: _GGUFMTPServingSlot,
+        assets: _GGUFMTPServingAssets,
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+    ) -> None:
+        remaining = int(request.max_tokens) - len(slot.generated_ids)
+        if remaining <= 0:
+            slot.done = True
+            return
+        if remaining <= 1:
+            with _exact_env(base_env):
+                step = slot.session.step(
+                    slot.prev_token,
+                    return_logits=False,
+                    capture_hidden_seed_fp32=True,
+                )
+            token = int(step.token_id)
+            slot.generated_ids.append(token)
+            slot.prev_token = token
+            slot.seq_position += 1
+            slot.cycles.append(
+                {
+                    "mode": "ar_tail",
+                    "generated_draft_tokens": 0,
+                    "accepted_draft_tokens": 0,
+                    "visible_output_tokens": 1,
+                }
+            )
+            slot.done = True
+            return
+
+        draft_n_max = min(2, remaining - 1)
+        if slot.resident_context.pending_seed is None:
+            raise RuntimeError("resident MTP context has no pending seed")
+        cycle_mtp_kv_base_len = int(slot.mtp_device_kv_len)
+        draft_tokens, _draft_topk, slot.mtp_device_kv_len = slot.resident_draft.propose_chain_from_device_seed(
+            int(slot.resident_context.pending_seed.hidden_ptr),
+            start_token=slot.prev_token,
+            start_position=slot.seq_position,
+            draft_n_max=draft_n_max,
+            top_k=1,
+            rope_cos=assets.rope_cos,
+            rope_sin=assets.rope_sin,
+            dense_key_cache=slot.mtp_key_cache,
+            dense_value_cache=slot.mtp_value_cache,
+            dense_cache_len=slot.mtp_device_kv_len,
+            draft_p_min=0.0,
+        )
+        draft_tokens = [int(token) for token in draft_tokens]
+        if not draft_tokens:
+            with _exact_env(base_env):
+                step = slot.session.step(
+                    slot.prev_token,
+                    return_logits=False,
+                    capture_hidden_seed_fp32=True,
+                )
+            token = int(step.token_id)
+            slot.generated_ids.append(token)
+            slot.prev_token = token
+            slot.seq_position += 1
+            slot.done = (
+                len(slot.generated_ids) >= int(request.max_tokens)
+                or _gguf_finished(slot.generated_ids, self.tokenizer, request)
+            )
+            return
+
+        block_inputs = [int(slot.prev_token)] + draft_tokens
+        block_start = int(slot.seq_position)
+        direct_commit_exact = block_start + len(block_inputs) < 1024
+        snapshot = None if direct_commit_exact else slot.session._linear_state_snapshot()
+        try:
+            block_result = slot.session.verify_target_block(
+                block_inputs,
+                bulk_attention_mode="bulk",
+                use_wmma_prefill=True,
+                capture_linear_state_rows=True,
+                defer_linear_state_commit=True,
+            )
+            block_target_tokens = [int(token) for token in block_result.token_ids]
+            acceptance = _llama_cpp_acceptance_from_target_samples(
+                draft_tokens,
+                block_target_tokens,
+            )
+            accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
+            consumed_rows = accepted_draft_tokens + 1
+            if consumed_rows < len(block_inputs):
+                if not bool(getattr(block_result, "linear_state_rows_captured", False)):
+                    raise RuntimeError("direct MTP partial commit requested without captured state rows")
+                slot.session._commit_verify_linear_state_row(
+                    consumed_rows - 1,
+                    position=block_start + consumed_rows,
+                )
+            elif direct_commit_exact:
+                if not bool(getattr(block_result, "linear_state_rows_captured", False)):
+                    raise RuntimeError("direct MTP full commit requested without captured state rows")
+                slot.session._commit_verify_linear_state_row(
+                    len(block_inputs) - 1,
+                    position=block_start + len(block_inputs),
+                )
+            else:
+                if snapshot is None:
+                    raise RuntimeError("MTP full-block replay requested without a linear-state snapshot")
+                slot.session._restore_linear_state_snapshot(snapshot, position=block_start)
+                replay_result = slot.session.verify_target_block_serial_exact(block_inputs)
+                replay_tokens = [int(token) for token in replay_result.token_ids]
+                if replay_tokens != block_target_tokens:
+                    raise RuntimeError("MTP serial-exact replay diverged from block verifier rows")
+            target_verify_seed_rows = [
+                _new_mtp_seed_row(
+                    token_id=block_target_tokens[row],
+                    position=block_start + row,
+                    hidden_ptr=slot.session.fp32_verify_hidden_seed_ptr(row),
+                    hidden_size=slot.hidden_size,
+                    source=f"verify[{row}]",
+                )
+                for row in range(len(block_target_tokens))
+            ]
+        finally:
+            if snapshot is not None:
+                slot.session._free_linear_state_snapshot(snapshot)
+
+        output_tokens = [int(token) for token in acceptance["output_tokens"]]
+        slot.resident_context.record_verify_seeds(target_verify_seed_rows)
+        slot.resident_context.accept(accepted_draft_tokens)
+        slot.mtp_device_kv_len = min(slot.mtp_device_kv_len, cycle_mtp_kv_base_len + 1)
+        if accepted_draft_tokens > 0:
+            commit_tokens = np.asarray(output_tokens[:accepted_draft_tokens], dtype=np.int64)
+            commit_positions = np.arange(
+                slot.seq_position + 1,
+                slot.seq_position + 1 + accepted_draft_tokens,
+                dtype=np.int64,
+            )
+            slot.mtp_device_kv_len = slot.resident_draft.write_kv_rows_from_device_seed_base(
+                int(target_verify_seed_rows[0].hidden_ptr),
+                commit_tokens,
+                positions=commit_positions,
+                rope_cos=assets.rope_cos,
+                rope_sin=assets.rope_sin,
+                dense_key_cache=slot.mtp_key_cache,
+                dense_value_cache=slot.mtp_value_cache,
+                dense_cache_len=slot.mtp_device_kv_len,
+            )
+
+        slot.cycles.append(
+            {
+                "mode": "llama_compat_direct_commit",
+                "generated_draft_tokens": len(draft_tokens),
+                "accepted_draft_tokens": accepted_draft_tokens,
+                "visible_output_tokens": len(output_tokens),
+            }
+        )
+        slot.prev_token = int(output_tokens[-1])
+        slot.seq_position += len(output_tokens)
+        stop = False
+        for token in output_tokens:
+            if len(slot.generated_ids) >= int(request.max_tokens):
+                break
+            slot.generated_ids.append(int(token))
+            if _gguf_finished(slot.generated_ids, self.tokenizer, request):
+                stop = True
+                break
+        slot.done = stop or len(slot.generated_ids) >= int(request.max_tokens)
+
+    def _close_mtp_serving_slots(self, slots: list[_GGUFMTPServingSlot]) -> None:
+        for slot in reversed(slots):
+            _free_mtp_buffers(slot.mtp_buffers, runtime=slot.session.runtime)
+            close = getattr(slot.resident_draft, "close", None)
+            if callable(close):
+                close()
+            slot.session.close()
 
     def _generate_speculative_mtp_llama_compat(
         self,
@@ -1198,6 +1603,7 @@ def _gguf_mtp_last_batch_generation(
     *,
     outputs: tuple[GenerationOutput, ...],
     cycles_by_request: dict[int, list[dict[str, Any]]],
+    resident_slot_count: int = 1,
 ) -> dict[str, Any]:
     request_ids = tuple(range(len(outputs)))
     path = "gguf_llama_compat_mtp_server"
@@ -1212,7 +1618,7 @@ def _gguf_mtp_last_batch_generation(
         "prompt_lengths": [len(prompt_rows_by_request.get(request_id, ())) for request_id in request_ids],
         "decode_steps": max((len(generated_ids_by_request.get(request_id, ())) for request_id in request_ids), default=0),
         "native_decode_steps": 0,
-        "serial_decode_fallback": len(request_ids) > 1,
+        "serial_decode_fallback": len(request_ids) > int(resident_slot_count),
         "native_compact_prefill": False,
         "native_caware_decode": False,
         "native_sampler_rows": False,
@@ -1223,6 +1629,12 @@ def _gguf_mtp_last_batch_generation(
             "target_verify": "bulk_direct_commit",
             "device_chain": True,
             "device_kv_cache": True,
+            "resident_slot_count": int(resident_slot_count),
+            "scheduler": (
+                "resident_slots_round_robin"
+                if int(resident_slot_count) > 1
+                else "single_resident_slot"
+            ),
             "total_draft_tokens": total_drafts,
             "total_accepted_draft_tokens": total_accepted,
             "accept_per_draft": (total_accepted / total_drafts if total_drafts > 0 else 0.0),
