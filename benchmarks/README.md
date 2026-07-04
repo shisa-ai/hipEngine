@@ -4,9 +4,10 @@ Last updated: 2026-07-05 (hipEngine server MTP natural24 diagnostic: zero
 batch-window timing plus persistent target-session / MTP draft-runner pools move
 server AR to **41.24 usage tok/s** and warmed c=1 MTP to **34.44 tok/s**
 (**0.835× AR**), but c=8 MTP is still **32.55 vs 41.27 tok/s** because
-resident slots remain round-robin/serialized. Timing buckets show server AR's
-direct-suite gap is mostly prompt prefill, while MTP is dominated by target
-verify; see
+resident slots remain per-slot serialized. The scheduler is now phase-serial
+(`draft -> verify -> commit`) but still lacks llama.cpp-style fused/batched
+target verify. Timing buckets show server AR's direct-suite gap is mostly prompt
+prefill, while MTP is dominated by target verify; see
 [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json) and
 [`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
@@ -493,8 +494,8 @@ full-suite speed row above.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.41** | 0.834x | same | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json); still below AR |
-| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json); `slots_run_ms` shows round-robin serialization |
-| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json); true batched/fused slot advancement is the next blocker |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json); `slots_run_ms` shows per-slot serialization |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json); true batched/fused target verify is the next blocker |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); external diagnostic |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); aggregate decode loses vs AR |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); aggregate decode loses vs AR |
@@ -507,8 +508,8 @@ only with `--speculative-mtp-serving opt_in` or `auto` and a GGUF model exposing
 NextN tensors. The first measured server row is **not** a retained perf win:
 the initial throughput probe exposed per-request GGUF weight rematerialization,
 which was fixed by sharing prepared target weights across server requests, but
-the current resident-slot MTP scheduler still advances slots round-robin and
-loses to ordinary AR on this natural24 server protocol.
+the current resident-slot MTP scheduler still verifies target blocks per slot
+and loses to ordinary AR on this natural24 server protocol.
 
 | Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
 | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |

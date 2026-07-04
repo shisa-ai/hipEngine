@@ -74,8 +74,8 @@ instrumented HIP stage target.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | Diagnostic blocked: zero batch window and persistent target-session / MTP draft-runner pools remove the deliberate 100 ms queue delay plus draft-open tax, but warmed c=1 MTP still loses to AR. Timing buckets show AR server-vs-direct is mostly prompt prefill, while MTP is dominated by target verify. |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.41** | 0.834x | same | Request coalescing and resident slots work, but aggregate server throughput is still below AR. |
-| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | Slots are isolated but advanced round-robin; `slots_run_ms` shows serialized kernel work. |
-| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | Best evidence for the next blocker: true batched/fused slot advancement is required. |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | Slots are isolated but target verify is still per-slot serialized; `slots_run_ms` shows the missing fused/batched verifier work. |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | Best evidence for the next blocker: true batched/fused slot advancement is required. The current code is phase-serial (`draft -> verify -> commit`) but not target-batched. |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | B2 | Untraced server aggregate diagnostic; faster than the earlier instrumented HIP stage-timing run. |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
@@ -112,20 +112,24 @@ path calls `LLM.generate_speculative_mtp_detailed()`, which enters a GGUF
 llama-compat MTP hook with one shared target-weight runner, pooled target
 sessions, pooled MTP draft runners, per-request draft K/V state, verifier
 hidden-state capture/commit, and MTP K/V lifecycle ownership. Slots are advanced
-round-robin in one process; this is true resident state isolation, not parallel
-child processes and not the old single-session reset loop. Short prompts that
-cannot safely build the shifted context-replay rows still fall back to ordinary
-GGUF greedy AR under the same request. The exact default MTP route and streaming
-MTP remain unclaimed. The c=1/c=2/c=4/c=8 throughput measurement is still
-diagnostic-blocked rather than retained. The sequence of fixes is now measured:
-shared prepared target weights removed the catastrophic per-request GGUF
-rematerialization, zero batch window removed the intentional 100 ms/request
-coalescing delay, and pooled target/draft state moved warmed c=1 MTP
-**30.09 -> 34.44 usage tok/s** by eliminating draft-open cost. Server AR moved
-only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is prompt
-prefill, not session construction. The remaining MTP serving blocker is
-batched/fused slot advancement: c=4/c=8 timing buckets expose `slots_run_ms` as
-serialized round-robin kernel work, so the server still loses to AR.
+in one process; this is true resident state isolation, not parallel child
+processes and not the old single-session reset loop. The current c>N loop is now
+phase-serial (`draft -> target verify -> commit`) to mirror llama.cpp's lifecycle
+and expose `slots_draft_phase_ms`, `slots_verify_phase_ms`, and
+`slots_commit_phase_ms`, but the target verifier is still invoked once per slot.
+Short prompts that cannot safely build the shifted context-replay rows still
+fall back to ordinary GGUF greedy AR under the same request. The exact default
+MTP route and streaming MTP remain unclaimed. The c=1/c=2/c=4/c=8 throughput
+measurement is still diagnostic-blocked rather than retained. The sequence of
+fixes is now measured: shared prepared target weights removed the catastrophic
+per-request GGUF rematerialization, zero batch window removed the intentional
+100 ms/request coalescing delay, and pooled target/draft state moved warmed c=1
+MTP **30.09 -> 34.44 usage tok/s** by eliminating draft-open cost. Server AR
+moved only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is
+prompt prefill, not session construction. The remaining MTP serving blocker is a
+GGUF target session/runner primitive that can verify a packed multi-slot
+`[slot][B+1]` slab in one target forward like llama.cpp's single `llama_decode()`
+batch. Until that exists, c>N serving still loses to AR.
 
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 
