@@ -161,6 +161,56 @@ class FakeLLM:
         return " ".join(f"T{int(token)}" for token in token_ids)
 
 
+class SpeculativeMTPFakeLLM(FakeLLM):
+    supports_speculative_mtp = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.mtp_calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+
+    def generate_speculative_mtp_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        self.mtp_calls.append((prompt_tuple, sampling_params))
+        self.last_batch_generation = {
+            "path": "speculative_mtp_server",
+            "scheduler_token_chunks": [
+                {
+                    "request_id": request_id,
+                    "token_index": 0,
+                    "token_id": 900 + request_id,
+                    "finished": True,
+                    "chunk": {
+                        "text": f"mtp:{prompt}",
+                        "telemetry": GenerationTelemetry.from_decode_counts(
+                            prompt_tokens=1,
+                            generated_tokens=1,
+                            row_index=request_id,
+                            request_id=str(request_id),
+                            phase="answer",
+                            sampler_mode="greedy_fast",
+                            execution_path="speculative_mtp_server",
+                        ).to_json_dict(),
+                    },
+                }
+                for request_id, prompt in enumerate(prompt_tuple)
+            ],
+        }
+        return [
+            GenerationOutput(
+                text=f"mtp:{prompt}",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=1,
+                    row_index=index,
+                    phase="done",
+                    sampler_mode="greedy_fast",
+                    execution_path="speculative_mtp_server",
+                ),
+            )
+            for index, prompt in enumerate(prompt_tuple)
+        ]
+
+
 class SchedulerChunkRowsFakeLLM(FakeLLM):
     def __init__(
         self,
@@ -1358,6 +1408,38 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "guided_json" in body["features"]["grammars"]["result_validation_only"]
     assert "guided_patch" not in body["unsupported_fields"]
     assert "guided_diff" not in body["unsupported_fields"]
+
+
+def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_support() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    body = client.get("/v1/hipengine/capabilities").json()
+
+    assert body["sampling"]["speculative_mtp"] == {
+        "serving_route": True,
+        "sampling_compatible": True,
+        "compatibility_guard": "supports_speculative_mtp_sampling",
+        "allowed_execution_modes": ["greedy_fast"],
+        "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
+        "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
+        "processed_target_verification": False,
+        "policy": "opt_in",
+        "request_field": "speculative_mtp",
+        "default_enabled": False,
+        "streaming_compatible": False,
+        "batch_route": "speculative_mtp",
+    }
+    assert client.get("/v1/models").json()["data"][0]["hipengine"]["capabilities"]["speculative_mtp"] is True
 
 
 def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata() -> None:
@@ -3722,6 +3804,28 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_keeps_speculative_mtp_and_default_routes_separate() -> None:
+    async def run() -> None:
+        fake = SpeculativeMTPFakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        default_result, mtp_result = await asyncio.gather(
+            batcher.submit(("one",), sampling),
+            batcher.submit(("two", "three"), sampling, route="speculative_mtp"),
+        )
+
+        assert default_result == ["generated:one"]
+        assert mtp_result == ["mtp:two", "mtp:three"]
+        assert fake.calls == [(("one",), sampling)]
+        assert fake.mtp_calls == [(("two", "three"), sampling)]
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_returns_scheduler_chunks_for_single_metadata_submission() -> None:
     class SchedulerChunkFakeLLM(FakeLLM):
         def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
@@ -4152,6 +4256,74 @@ def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
             ),
         )
     ]
+
+
+def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": ["one", "two"],
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["text"] for choice in body["choices"]] == ["mtp:one", "mtp:two"]
+    assert fake.calls == []
+    assert len(fake.mtp_calls) == 1
+    prompts, sampling = fake.mtp_calls[0]
+    assert prompts == ("one", "two")
+    assert sampling.max_tokens == 3
+    assert sampling.temperature == 0.0
+    assert sampling.top_p == 1.0
+
+
+def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampling() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "one",
+            "max_tokens": 3,
+            "temperature": 0.4,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert body["error"]["param"] == "speculative_mtp"
+    assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["temperature"]
+    assert fake.calls == []
+    assert fake.mtp_calls == []
 
 
 def test_completions_preserve_structured_finish_details() -> None:
