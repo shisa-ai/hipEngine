@@ -142921,3 +142921,66 @@ python3 scripts/gguf_mtp_bench.py \
   returned eight HTTP **200** responses with `batch_size=8`,
   `resident_slot_count=8`, cycle request IDs `0..7`. These are functional
   smoke checks, not retained throughput claims.
+
+## 2026-07-05 - MTP serving throughput diagnostic
+
+- Ran the first OpenAI server natural24 throughput probe for the new
+  resident-slot MTP serving path on AMD Ryzen AI MAX+ 395 / Radeon 8060S
+  (`gfx1151`) with `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`,
+  `backend=hip_gfx1100`, `quant=gguf_q4_k_m`,
+  `--speculative-mtp-serving opt_in`, `--generation-batch-window-ms 100`,
+  `--max-active-requests 8`, and env
+  `HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1
+  HIPENGINE_GGUF_GEMV_DECODE=1`.
+- Initial short c=1 requests exposed a serious server-path issue: both AR and
+  MTP took about **46 s** for a `max_tokens=3` request because the GGUF server
+  generator rematerialized target weights for each request/batch. Fixed this by
+  adding `Qwen35GGUFBringupGenerator.prepare()` and a persistent prepared
+  `Qwen35GGUFFullStackRunner`; AR sessions and MTP target sessions now borrow
+  the prepared runner when server startup has materialized it. Standalone
+  unprepared direct calls keep the previous local-session fallback.
+- Post-fix short sanity on the same server shape: AR `max_tokens=3` request
+  **0.39 s / 17.9 usage tok/s**; MTP opt-in **1.46 s / 4.8 usage tok/s**.
+  A metadata probe with `stream_options.include_hipengine=true` confirmed the
+  MTP route was `execution_path=gguf_llama_compat_mtp_server` and
+  `serial_decode_fallback=false`.
+- Full natural24 server sweep used a temporary JSON wrapper around
+  `benchmarks/prompts/mtpbench-code-general-ja.jsonl` because
+  `scripts/mtp-bench.py` expects a `{"prompts": ...}` JSON suite:
+  ```bash
+  python3 scripts/mtp-bench.py \
+    --url http://127.0.0.1:18080 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 \
+    --concurrency C --timeout 1200 \
+    --out benchmarks/results/2026-07-05-hipengine-server-ar-natural24-cC.json
+
+  python3 scripts/mtp-bench.py \
+    --url http://127.0.0.1:18080 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 \
+    --concurrency C --timeout 1200 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-cC.json
+  ```
+- Result using OpenAI `usage.completion_tokens` as recorded by
+  `scripts/mtp-bench.py`: c=1 AR/MTP **35.21/27.00 tok/s** (`0.767x`), c=2
+  **35.21/28.54** (`0.811x`), c=4 **35.16/29.06** (`0.827x`), c=8
+  **35.14/29.28** (`0.833x`). Using the generated max-token denominator
+  (`10 prompts * 24`), c=8 is AR **30.77** vs MTP **25.64 tok/s**.
+- Conclusion: not decent yet. The resident-slot server path is now functional
+  and no longer pays request-time weight rematerialization, but MTP serving is a
+  diagnostic blocked path, not a retained perf win. Current blockers are the
+  round-robin slot scheduler serializing kernel launches and missing
+  backend-authored MTP cycle counters in the HTTP benchmark artifact path.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'prepare_reuses or speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_coalesces_speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  ```
+  Pycompile passed; focused prepared/MTP GGUF tests passed (`3 passed`), full
+  GGUF sampling tests passed (`24 passed`), focused server MTP tests passed
+  (`5 passed`), and full server API tests passed (`464 passed`).

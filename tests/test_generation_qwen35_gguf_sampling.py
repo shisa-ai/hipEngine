@@ -336,6 +336,7 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
 
     generator = _generator()
     generator.weight_index = _mtp_capable_weight_index()
+    generator.prepare()
     outputs = generator.generate_speculative_mtp_detailed(_request(prompts=("long", "long2"), max_tokens=3))
 
     assert [output.text for output in outputs] == ["BCD", "BCD"]
@@ -366,6 +367,54 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert mtp["total_draft_tokens"] == 2
     assert mtp["total_accepted_draft_tokens"] == 2
     assert sorted(mtp["cycles_by_request"]) == ["0", "1"]
+
+
+def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        pass
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path):
+            self.model_path = str(model_path)
+            self.runtime = FakeRuntime()
+            self.weights = SimpleNamespace(config=SimpleNamespace())
+            calls.append(("runner_init", self.model_path))
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            calls.append(("session_init", str(model_path), kwargs["shared_runner"]))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("session_close",))
+
+        def prefill(self, token_ids, *, return_logits=False):
+            calls.append(("prefill", tuple(token_ids), return_logits))
+            return SimpleNamespace(token_id=1)
+
+        def step(self, token_id: int, *, return_logits=False):
+            calls.append(("step", int(token_id), return_logits))
+            return SimpleNamespace(token_id=2)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+    assert generator.prepare() is None
+    outputs = generator.generate_detailed(_request(max_tokens=2))
+
+    assert outputs[0].text == "BC"
+    runner_inits = [call for call in calls if call[0] == "runner_init"]
+    assert len(runner_inits) == 1
+    session_inits = [call for call in calls if call[0] == "session_init"]
+    assert len(session_inits) == 1
+    assert session_inits[0][2] is generator._shared_runner
 
 
 def test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos(monkeypatch) -> None:
