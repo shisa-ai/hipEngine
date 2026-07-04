@@ -169,6 +169,33 @@ def first_number(*values: Any) -> int | float | None:
     return None
 
 
+def choice_hipengine_payloads(response: dict[str, Any]) -> list[dict[str, Any]]:
+    choices = response.get("choices")
+    if not isinstance(choices, list):
+        return []
+    payloads: list[dict[str, Any]] = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        payload = choice.get("hipengine")
+        if isinstance(payload, dict):
+            payloads.append(payload)
+    return payloads
+
+
+def numeric_mapping(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, raw in value.items():
+        if isinstance(raw, bool) or raw is None:
+            continue
+        if not isinstance(raw, (int, float)):
+            continue
+        out[str(key)] = float(raw)
+    return out
+
+
 def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> dict[str, Any]:
     usage = response.get("usage") or {}
     timings = response.get("timings") or {}
@@ -195,6 +222,25 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
         "draft_n": int(draft_n),
         "draft_n_accepted": int(draft_n_accepted),
     }
+    hipengine_payloads = choice_hipengine_payloads(response)
+    if hipengine_payloads:
+        record["hipengine"] = hipengine_payloads
+        timing = numeric_mapping(hipengine_payloads[0].get("timing"))
+        if timing:
+            record["backend_timing_ms"] = {key: round(value, 3) for key, value in timing.items()}
+        decode_state = hipengine_payloads[0].get("decode_state")
+        if isinstance(decode_state, dict):
+            record["backend_decode_state"] = {
+                key: decode_state[key]
+                for key in (
+                    "execution_path",
+                    "serial_decode_fallback",
+                    "generated_tokens",
+                    "prompt_tokens",
+                    "sampler_mode",
+                )
+                if key in decode_state
+            }
     record["accept_rate"] = (
         round(record["draft_n_accepted"] / record["draft_n"], 4) if record["draft_n"] else None
     )
@@ -221,7 +267,18 @@ def aggregate(
     total_predicted = sum(int(x.get("predicted_n") or 0) for x in results)
     request_wall = sum(float(x.get("wall_s") or 0.0) for x in results)
     aggregate_wall = float(client_wall_s) if client_wall_s is not None else request_wall
-    return {
+    backend_timing_totals: dict[str, float] = {}
+    backend_timing_counts: dict[str, int] = {}
+    for row in results:
+        timing = row.get("backend_timing_ms")
+        if not isinstance(timing, dict):
+            continue
+        for key, raw_value in timing.items():
+            if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+                continue
+            backend_timing_totals[key] = backend_timing_totals.get(key, 0.0) + float(raw_value)
+            backend_timing_counts[key] = backend_timing_counts.get(key, 0) + 1
+    payload = {
         "n_requests": len(results),
         "concurrency": int(concurrency),
         "total_predicted": total_predicted,
@@ -232,6 +289,16 @@ def aggregate(
         "request_wall_s_total": round(request_wall, 2),
         "aggregate_predicted_per_second": round(total_predicted / aggregate_wall, 2) if aggregate_wall > 0 else None,
     }
+    if backend_timing_totals:
+        payload["backend_timing_totals_ms"] = {
+            key: round(value, 3)
+            for key, value in sorted(backend_timing_totals.items())
+        }
+        payload["backend_timing_mean_ms"] = {
+            key: round(backend_timing_totals[key] / max(1, backend_timing_counts[key]), 3)
+            for key in sorted(backend_timing_totals)
+        }
+    return payload
 
 
 def iter_batches(items: list[dict[str, str]], batch_size: int) -> list[list[tuple[int, dict[str, str]]]]:

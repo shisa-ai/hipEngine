@@ -1,10 +1,14 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-05 (hipEngine server MTP natural24 diagnostic: prepared
-shared-runner reuse removes per-request GGUF target-weight rematerialization,
-but current resident-slot MTP serving remains slower than server AR, best c=8
-row **29.28 vs 35.14 usage tok/s**, **0.833× AR**; see
-[`2026-07-05-hipengine-server-mtp-natural24-sweep.json`](results/2026-07-05-hipengine-server-mtp-natural24-sweep.json).
+Last updated: 2026-07-05 (hipEngine server MTP natural24 diagnostic: zero
+batch-window timing plus persistent target-session / MTP draft-runner pools move
+server AR to **41.24 usage tok/s** and warmed c=1 MTP to **34.44 tok/s**
+(**0.835× AR**), but c=8 MTP is still **32.55 vs 41.27 tok/s** because
+resident slots remain round-robin/serialized. Timing buckets show server AR's
+direct-suite gap is mostly prompt prefill, while MTP is dominated by target
+verify; see
+[`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json) and
+[`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
 the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`
@@ -487,10 +491,10 @@ full-suite speed row above.
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json); diagnostic, does not supersede retained 10-cycle B5 row |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
-| hipEngine `llama-compat` server MTP | 1 | 35.21 | **27.00** | 0.767x | B2 resident slots round-robin | [`2026-07-05-hipengine-server-mtp-natural24-sweep.json`](results/2026-07-05-hipengine-server-mtp-natural24-sweep.json); diagnostic blocked, MTP slower than AR |
-| hipEngine `llama-compat` server MTP | 2 | 35.21 | **28.54** | 0.811x | same | same; request coalescing works but remains slower than AR |
-| hipEngine `llama-compat` server MTP | 4 | 35.16 | **29.06** | 0.827x | same | same; round-robin slots serialize kernel work |
-| hipEngine `llama-compat` server MTP | 8 | 35.14 | **29.28** | 0.833x | same | same; generated-token denominator is AR `30.8` tok/s vs MTP `25.6` tok/s at c=8 |
+| hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
+| hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.41** | 0.834x | same | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json); still below AR |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json); `slots_run_ms` shows round-robin serialization |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json); true batched/fused slot advancement is the next blocker |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); external diagnostic |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); aggregate decode loses vs AR |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); aggregate decode loses vs AR |

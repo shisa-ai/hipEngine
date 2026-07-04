@@ -142984,3 +142984,57 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile passed; focused prepared/MTP GGUF tests passed (`3 passed`), full
   GGUF sampling tests passed (`24 passed`), focused server MTP tests passed
   (`5 passed`), and full server API tests passed (`464 passed`).
+
+## 2026-07-05 - Server MTP zero-window timing and pooled resident state
+
+- Re-ran the hipEngine OpenAI server natural24 probe with
+  `--generation-batch-window-ms 0` on AMD Ryzen AI MAX+ 395 / Radeon 8060S
+  (`gfx1151`) using `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`,
+  `backend=hip_gfx1100`, `quant=gguf_q4_k_m`, `--speculative-mtp-serving opt_in`,
+  `--max-active-requests 8`, and env
+  `HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1
+  HIPENGINE_GGUF_GEMV_DECODE=1`.
+- Sequential zero-window pre-pool baseline:
+  c=1 AR **40.44 tok/s**, MTP **30.12 tok/s**; c=2 AR/MTP
+  **40.44/30.17**, c=4 **40.46/30.11**, c=8 **40.39/30.02**. This confirmed
+  the prior 100 ms batch window cost but did not make MTP competitive.
+- Added backend timing buckets to `GenerationTelemetry.timing` for GGUF server
+  AR and llama-compat MTP, and taught `scripts/mtp-bench.py` to preserve
+  `choices[].hipengine.timing` as `backend_timing_ms` plus aggregate timing
+  totals/means. The c=1 timing split showed server AR's direct-suite gap is
+  mostly prompt prefill: pooled c=1 AR totals are `prefill_ms=2337.782`,
+  `decode_ms=4219.291`, `session_open_ms=12.948`, wall **6.64 s**.
+- Added prepared-server pools for target `Qwen35GGUFResidentSession` objects and
+  resident MTP draft runners. Standalone/unprepared direct calls still create
+  and close sessions normally. Pooled target sessions call `reset()` before
+  reuse/release; c>N MTP slots return their target session and draft runner to
+  the pool after freeing per-request dense MTP K/V scratch.
+- Pooled zero-window results:
+  c=1 AR **41.24 tok/s** and warmed MTP **34.44 tok/s**;
+  c=2 **41.27/34.41**, c=4 **41.35/33.44**, c=8 **41.27/32.55**. Pooling
+  mostly helped MTP by removing draft-open cost: warmed c=1 MTP has
+  `draft_open_ms=0.022` total vs pre-pool warmed `828.422`, while
+  `target_verify_ms=4837.012`, `prefill_ms=2332.370`, and
+  `draft_propose_ms=450.548` remain. c=4/c=8 timing exposes the next blocker:
+  `slots_run_ms` is serialized round-robin work (`9876.780` total at c=4,
+  `26933.340` at c=8).
+- Artifact set:
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c1-bw0-timing-pooled.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw0-timing-pooled.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw0-timing-pooled.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw0-timing-pooled.json`,
+  and `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`.
+- Validation so far:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py scripts/mtp-bench.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'prepare_reuses or speculative_mtp or generate_detailed'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'telemetry or speculative_mtp or generation_batcher_coalesces_speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  ```
+  Pycompile passed, focused GGUF tests passed (`4 passed`), and focused server
+  tests passed (`8 passed`). Full GGUF sampling tests passed (`24 passed`) and
+  full server API tests passed (`464 passed`).
