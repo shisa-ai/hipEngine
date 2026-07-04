@@ -123,6 +123,26 @@ class _GGUFMTPServingSlot:
     done: bool = False
 
 
+@dataclass
+class _GGUFMTPDraftedCycle:
+    slot: _GGUFMTPServingSlot
+    advance_start: float
+    cycle_mtp_kv_base_len: int
+    draft_tokens: list[int]
+    block_inputs: list[int]
+    block_start: int
+    direct_commit_exact: bool
+    snapshot: Any | None = None
+
+
+@dataclass
+class _GGUFMTPVerifiedCycle:
+    drafted: _GGUFMTPDraftedCycle
+    block_result: Any
+    block_target_tokens: list[int]
+    acceptance: dict[str, Any]
+
+
 @contextmanager
 def _temporary_env(updates: dict[str, str]):
     previous = {name: os.environ.get(name) for name in updates}
@@ -170,6 +190,10 @@ def _timing_ms_since(start: float) -> float:
 
 def _timing_add(timing: dict[str, float], key: str, start: float) -> None:
     timing[key] = round(float(timing.get(key, 0.0)) + _timing_ms_since(start), 3)
+
+
+def _timing_add_ms(timing: dict[str, float], key: str, ms: float) -> None:
+    timing[key] = round(float(timing.get(key, 0.0)) + max(0.0, float(ms)), 3)
 
 
 def _timing_set(timing: dict[str, float], key: str, start: float) -> None:
@@ -632,7 +656,7 @@ class Qwen35GGUFBringupGenerator:
 
         The c=1 path keeps the retained direct llama-compat hot loop. Coalesced
         c>1 requests use shared-weight resident slots with isolated target/MTP
-        state and a round-robin scheduler inside the server process.
+        state and a phase-serial scheduler inside the server process.
         """
 
         if request.max_tokens < 0:
@@ -1093,11 +1117,48 @@ class Qwen35GGUFBringupGenerator:
         base_env: dict[str, str | None],
     ) -> None:
         while any(not slot.done for slot in slots):
-            for slot in slots:
+            live_slots = [slot for slot in slots if not slot.done]
+            cycle_start = time.perf_counter()
+            drafted_cycles: list[_GGUFMTPDraftedCycle] = []
+
+            draft_phase_start = time.perf_counter()
+            for slot in live_slots:
                 if slot.done:
                     continue
                 raise_if_generation_deadline_expired(request)
-                self._advance_mtp_serving_slot(slot, assets, request, base_env=base_env)
+                drafted = self._draft_mtp_serving_slot(slot, assets, request, base_env=base_env)
+                if drafted is not None:
+                    drafted_cycles.append(drafted)
+            draft_phase_ms = _timing_ms_since(draft_phase_start)
+            for slot in live_slots:
+                _timing_add_ms(slot.timing, "slots_draft_phase_ms", draft_phase_ms)
+
+            verify_phase_start = time.perf_counter()
+            verified_cycles: list[_GGUFMTPVerifiedCycle] = []
+            try:
+                for drafted in drafted_cycles:
+                    verified_cycles.append(self._verify_mtp_serving_cycle(drafted, request))
+            except Exception:
+                for verified in verified_cycles:
+                    self._free_mtp_serving_cycle_snapshot(verified.drafted)
+                raise
+            verify_phase_ms = _timing_ms_since(verify_phase_start)
+            for slot in live_slots:
+                _timing_add_ms(slot.timing, "slots_verify_phase_ms", verify_phase_ms)
+
+            commit_phase_start = time.perf_counter()
+            commit_index = 0
+            try:
+                for commit_index, verified in enumerate(verified_cycles):
+                    self._commit_mtp_serving_cycle(verified, assets, request)
+            except Exception:
+                for verified in verified_cycles[commit_index + 1:]:
+                    self._free_mtp_serving_cycle_snapshot(verified.drafted)
+                raise
+            commit_phase_ms = _timing_ms_since(commit_phase_start)
+            for slot in live_slots:
+                _timing_add_ms(slot.timing, "slots_commit_phase_ms", commit_phase_ms)
+                _timing_add(slot.timing, "slots_cycle_wall_ms", cycle_start)
 
     def _advance_mtp_serving_slot(
         self,
@@ -1107,12 +1168,26 @@ class Qwen35GGUFBringupGenerator:
         *,
         base_env: dict[str, str | None],
     ) -> None:
+        drafted = self._draft_mtp_serving_slot(slot, assets, request, base_env=base_env)
+        if drafted is None:
+            return
+        verified = self._verify_mtp_serving_cycle(drafted, request)
+        self._commit_mtp_serving_cycle(verified, assets, request)
+
+    def _draft_mtp_serving_slot(
+        self,
+        slot: _GGUFMTPServingSlot,
+        assets: _GGUFMTPServingAssets,
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+    ) -> _GGUFMTPDraftedCycle | None:
         advance_start = time.perf_counter()
         remaining = int(request.max_tokens) - len(slot.generated_ids)
         if remaining <= 0:
             slot.done = True
             _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
-            return
+            return None
         if remaining <= 1:
             ar_tail_start = time.perf_counter()
             with _exact_env(base_env):
@@ -1136,7 +1211,7 @@ class Qwen35GGUFBringupGenerator:
             )
             slot.done = True
             _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
-            return
+            return None
 
         draft_n_max = min(2, remaining - 1)
         if slot.resident_context.pending_seed is None:
@@ -1176,19 +1251,37 @@ class Qwen35GGUFBringupGenerator:
                 or _gguf_finished(slot.generated_ids, self.tokenizer, request)
             )
             _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
-            return
+            return None
 
         block_inputs = [int(slot.prev_token)] + draft_tokens
         block_start = int(slot.seq_position)
         direct_commit_exact = block_start + len(block_inputs) < 1024
+        return _GGUFMTPDraftedCycle(
+            slot=slot,
+            advance_start=advance_start,
+            cycle_mtp_kv_base_len=cycle_mtp_kv_base_len,
+            draft_tokens=draft_tokens,
+            block_inputs=block_inputs,
+            block_start=block_start,
+            direct_commit_exact=direct_commit_exact,
+        )
+
+    def _verify_mtp_serving_cycle(
+        self,
+        drafted: _GGUFMTPDraftedCycle,
+        request: GenerationRequest,
+    ) -> _GGUFMTPVerifiedCycle:
+        _ = request
+        slot = drafted.slot
         snapshot_start = time.perf_counter()
-        snapshot = None if direct_commit_exact else slot.session._linear_state_snapshot()
+        snapshot = None if drafted.direct_commit_exact else slot.session._linear_state_snapshot()
+        drafted.snapshot = snapshot
         if snapshot is not None:
             _timing_add(slot.timing, "linear_state_snapshot_ms", snapshot_start)
         try:
             verify_start = time.perf_counter()
             block_result = slot.session.verify_target_block(
-                block_inputs,
+                drafted.block_inputs,
                 bulk_attention_mode="bulk",
                 use_wmma_prefill=True,
                 capture_linear_state_rows=True,
@@ -1197,21 +1290,45 @@ class Qwen35GGUFBringupGenerator:
             _timing_add(slot.timing, "target_verify_ms", verify_start)
             block_target_tokens = [int(token) for token in block_result.token_ids]
             acceptance = _llama_cpp_acceptance_from_target_samples(
-                draft_tokens,
+                drafted.draft_tokens,
                 block_target_tokens,
             )
-            accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
-            consumed_rows = accepted_draft_tokens + 1
+            return _GGUFMTPVerifiedCycle(
+                drafted=drafted,
+                block_result=block_result,
+                block_target_tokens=block_target_tokens,
+                acceptance=acceptance,
+            )
+        except Exception:
+            self._free_mtp_serving_cycle_snapshot(drafted)
+            raise
+
+    def _commit_mtp_serving_cycle(
+        self,
+        verified: _GGUFMTPVerifiedCycle,
+        assets: _GGUFMTPServingAssets,
+        request: GenerationRequest,
+    ) -> None:
+        drafted = verified.drafted
+        slot = drafted.slot
+        snapshot = drafted.snapshot
+        block_inputs = drafted.block_inputs
+        block_start = drafted.block_start
+        block_target_tokens = verified.block_target_tokens
+        acceptance = verified.acceptance
+        accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
+        consumed_rows = accepted_draft_tokens + 1
+        try:
             state_commit_start = time.perf_counter()
             if consumed_rows < len(block_inputs):
-                if not bool(getattr(block_result, "linear_state_rows_captured", False)):
+                if not bool(getattr(verified.block_result, "linear_state_rows_captured", False)):
                     raise RuntimeError("direct MTP partial commit requested without captured state rows")
                 slot.session._commit_verify_linear_state_row(
                     consumed_rows - 1,
                     position=block_start + consumed_rows,
                 )
-            elif direct_commit_exact:
-                if not bool(getattr(block_result, "linear_state_rows_captured", False)):
+            elif drafted.direct_commit_exact:
+                if not bool(getattr(verified.block_result, "linear_state_rows_captured", False)):
                     raise RuntimeError("direct MTP full commit requested without captured state rows")
                 slot.session._commit_verify_linear_state_row(
                     len(block_inputs) - 1,
@@ -1237,15 +1354,12 @@ class Qwen35GGUFBringupGenerator:
                 for row in range(len(block_target_tokens))
             ]
         finally:
-            if snapshot is not None:
-                snapshot_free_start = time.perf_counter()
-                slot.session._free_linear_state_snapshot(snapshot)
-                _timing_add(slot.timing, "linear_state_snapshot_free_ms", snapshot_free_start)
+            self._free_mtp_serving_cycle_snapshot(drafted)
 
         output_tokens = [int(token) for token in acceptance["output_tokens"]]
         slot.resident_context.record_verify_seeds(target_verify_seed_rows)
         slot.resident_context.accept(accepted_draft_tokens)
-        slot.mtp_device_kv_len = min(slot.mtp_device_kv_len, cycle_mtp_kv_base_len + 1)
+        slot.mtp_device_kv_len = min(slot.mtp_device_kv_len, drafted.cycle_mtp_kv_base_len + 1)
         if accepted_draft_tokens > 0:
             commit_tokens = np.asarray(output_tokens[:accepted_draft_tokens], dtype=np.int64)
             commit_positions = np.arange(
@@ -1269,7 +1383,7 @@ class Qwen35GGUFBringupGenerator:
         slot.cycles.append(
             {
                 "mode": "llama_compat_direct_commit",
-                "generated_draft_tokens": len(draft_tokens),
+                "generated_draft_tokens": len(drafted.draft_tokens),
                 "accepted_draft_tokens": accepted_draft_tokens,
                 "visible_output_tokens": len(output_tokens),
             }
@@ -1285,7 +1399,17 @@ class Qwen35GGUFBringupGenerator:
                 stop = True
                 break
         slot.done = stop or len(slot.generated_ids) >= int(request.max_tokens)
-        _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
+        _timing_add(slot.timing, "slot_advance_total_ms", drafted.advance_start)
+
+    def _free_mtp_serving_cycle_snapshot(self, drafted: _GGUFMTPDraftedCycle) -> None:
+        snapshot = drafted.snapshot
+        if snapshot is None:
+            return
+        slot = drafted.slot
+        snapshot_free_start = time.perf_counter()
+        slot.session._free_linear_state_snapshot(snapshot)
+        drafted.snapshot = None
+        _timing_add(slot.timing, "linear_state_snapshot_free_ms", snapshot_free_start)
 
     def _close_mtp_serving_slots(self, slots: list[_GGUFMTPServingSlot], *, reuse: bool = True) -> None:
         for slot in reversed(slots):
@@ -2020,11 +2144,16 @@ def _gguf_mtp_last_batch_generation(
             "serving_route": "llama_compat",
             "draft_n_max": 2,
             "target_verify": "bulk_direct_commit",
+            "target_verify_batching": (
+                "per_slot_serial"
+                if int(resident_slot_count) > 1
+                else "single_slot"
+            ),
             "device_chain": True,
             "device_kv_cache": True,
             "resident_slot_count": int(resident_slot_count),
             "scheduler": (
-                "resident_slots_round_robin"
+                "resident_slots_phase_serial"
                 if int(resident_slot_count) > 1
                 else "single_resident_slot"
             ),

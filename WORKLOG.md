@@ -143038,3 +143038,38 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile passed, focused GGUF tests passed (`4 passed`), and focused server
   tests passed (`8 passed`). Full GGUF sampling tests passed (`24 passed`) and
   full server API tests passed (`464 passed`).
+
+## 2026-07-05 - Server MTP phase-serial scheduler boundary
+
+- Audited the local llama.cpp HIP server path at
+  `/home/lhl/llama.cpp/llama.cpp-hip` (`1ebf790cd`, dirty local
+  instrumentation). llama.cpp builds one `llama_batch` containing each active
+  speculative slot's sampled token plus draft tokens, calls `llama_decode()` once
+  for the target verifier batch, then does per-slot acceptance/rollback. The
+  hipEngine GGUF MTP server path still owns one target resident session per
+  request and calls `verify_target_block()` once per slot, so c=2 already doubles
+  target verifier launches.
+- Refactored the c>N GGUF MTP serving scheduler from monolithic round-robin
+  `_advance_mtp_serving_slot()` calls into explicit phase buckets:
+  `_draft_mtp_serving_slot()`, `_verify_mtp_serving_cycle()`, and
+  `_commit_mtp_serving_cycle()`. Per-slot behavior is unchanged; the scheduler
+  now runs `draft -> verify -> commit` phases across live slots and records
+  `slots_draft_phase_ms`, `slots_verify_phase_ms`, `slots_commit_phase_ms`, and
+  `slots_cycle_wall_ms`.
+- Added long-context snapshot cleanup guards for phase execution: if a later
+  slot verify or commit fails before earlier/later snapshots are committed, the
+  pending linear-state snapshots are freed rather than leaked.
+- Updated metadata from `resident_slots_round_robin` to
+  `resident_slots_phase_serial` and added `target_verify_batching` with
+  `per_slot_serial` for c>N. This is instrumentation/scaffolding, not a perf
+  claim; the remaining required primitive is a GGUF multi-slot target verifier
+  that runs a packed `[slot][B+1]` slab in one target forward like llama.cpp's
+  `llama_decode()` batch.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_coalesces_speculative_mtp'
+  ```
+  Pycompile passed; focused GGUF MTP tests passed (`2 passed`); focused server
+  speculative MTP tests passed (`5 passed`).

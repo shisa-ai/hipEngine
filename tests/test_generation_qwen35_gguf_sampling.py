@@ -363,10 +363,15 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert generator.last_batch_generation["batch_size"] == 2
     assert generator.last_batch_generation["serial_decode_fallback"] is False
     assert mtp["resident_slot_count"] == 2
-    assert mtp["scheduler"] == "resident_slots_round_robin"
+    assert mtp["scheduler"] == "resident_slots_phase_serial"
+    assert mtp["target_verify_batching"] == "per_slot_serial"
     assert mtp["total_draft_tokens"] == 2
     assert mtp["total_accepted_draft_tokens"] == 2
     assert sorted(mtp["cycles_by_request"]) == ["0", "1"]
+    timing = outputs[0].telemetry.to_json_dict()["timing"]
+    assert "slots_draft_phase_ms" in timing
+    assert "slots_verify_phase_ms" in timing
+    assert "slots_commit_phase_ms" in timing
 
 
 def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
