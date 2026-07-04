@@ -166,6 +166,37 @@ class LLM:
             raise RuntimeError(f"generator returned {len(outputs)} outputs for {len(prompt_tuple)} prompts")
         return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
 
+    def generate_speculative_mtp_detailed(
+        self,
+        prompts: str | Iterable[str],
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Return generated text through a model-owned speculative MTP route."""
+
+        from hipengine.generation import GenerationOutput
+
+        prompt_tuple = _normalize_prompts(prompts)
+        if not prompt_tuple:
+            return []
+        generator = self._get_text_generator()
+        detailed = getattr(generator, "generate_speculative_mtp_detailed", None)
+        if not callable(detailed):
+            raise NotImplementedError("speculative MTP generation is not supported by this generator")
+        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        outputs = list(detailed(request))
+        if len(outputs) != len(prompt_tuple):
+            raise RuntimeError(f"generator returned {len(outputs)} MTP outputs for {len(prompt_tuple)} prompts")
+        return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
+
+    @property
+    def supports_speculative_mtp(self) -> bool:
+        """Whether the resolved generator exposes public speculative MTP generation."""
+
+        generator = self._text_generator
+        if generator is None:
+            return False
+        return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
+
     def stream(
         self,
         prompt: str,

@@ -142766,3 +142766,27 @@ python3 scripts/gguf_mtp_bench.py \
   route with resident draft context, MTP K/V lifecycle, verifier state
   capture/commit, and sampling incompatibility guards. Flipping the capability
   flag alone would misadvertise MTP serving.
+
+## 2026-07-04 - guarded MTP server route plumbing
+
+- Added guarded speculative-MTP serving plumbing on `mtp-server`: server config
+  now accepts `speculative_mtp_serving={off,opt_in,auto}`, CLI/env wiring exposes
+  `--speculative-mtp-serving` / `HIPENGINE_SPECULATIVE_MTP_SERVING`, completion
+  and chat requests accept `speculative_mtp`, and capability metadata reports a
+  true serving route only when config enables it and the loaded engine exposes a
+  real `generate_speculative_mtp_detailed` hook.
+- Added request gating for the non-streaming greedy-fast route. Explicit MTP
+  requests reject disabled servers, unsupported engines, streaming, and
+  non-greedy sampling with concrete blockers; `auto` falls back to AR when the
+  request is incompatible.
+- Split the generation batcher route key so AR and MTP requests cannot coalesce
+  into the wrong backend call while compatible MTP requests can still batch
+  together.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/server/__main__.py hipengine/llm.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_keeps_speculative_mtp or capabilities_endpoint_reports_speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  ```
+  Pycompile passed, focused tests passed (`4 passed`), and the full server API
+  suite passed (`463 passed`).

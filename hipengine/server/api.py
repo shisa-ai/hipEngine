@@ -56,6 +56,8 @@ from hipengine.generation import (
     ThinkingBudgetState,
     TokenLogprob,
     derive_row_seed,
+    speculative_mtp_sampling_blockers,
+    supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState
 from hipengine.kvcache import resolve_prefix_cache_mode
@@ -226,6 +228,9 @@ _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
 )
 _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
 _CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
+_SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto")
+_SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
+_SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
 _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
     "guided_grammar",
@@ -288,7 +293,17 @@ class ServerConfig:
     max_active_requests: int | None = None
     max_chat_sessions: int | None = None
     queue_retry_after_seconds: int = 1
+    speculative_mtp_serving: str = "off"
     created: int = field(default_factory=lambda: int(time.time()))
+
+    def __post_init__(self) -> None:
+        mode = str(self.speculative_mtp_serving).strip().lower().replace("-", "_")
+        if mode not in _SPECULATIVE_MTP_SERVING_MODES:
+            raise ValueError(
+                "speculative_mtp_serving must be one of: "
+                + ", ".join(_SPECULATIVE_MTP_SERVING_MODES)
+            )
+        object.__setattr__(self, "speculative_mtp_serving", mode)
 
     @property
     def model_id(self) -> str:
@@ -1068,6 +1083,34 @@ def _scheduler_fairness_capability() -> dict[str, Any]:
     }
 
 
+def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
+    serving_route = (
+        str(config.speculative_mtp_serving) != "off"
+        and _engine_supports_speculative_mtp(engine)
+    )
+    payload = {
+        "serving_route": bool(serving_route),
+        "sampling_compatible": bool(serving_route),
+        "compatibility_guard": "supports_speculative_mtp_sampling",
+        "allowed_execution_modes": ["greedy_fast"],
+        "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
+        "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
+        "processed_target_verification": False,
+    }
+    if not serving_route:
+        return payload
+    payload.update(
+        {
+            "policy": str(config.speculative_mtp_serving),
+            "request_field": "speculative_mtp",
+            "default_enabled": str(config.speculative_mtp_serving) == "auto",
+            "streaming_compatible": False,
+            "batch_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+        }
+    )
+    return payload
+
+
 def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
     tokenizer_caps = _tokenizer_capability_flags(engine)
     tokenizer_backed = tokenizer_caps["tokenize"]
@@ -1134,15 +1177,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
                 "n",
                 "stop",
             ],
-            "speculative_mtp": {
-                "serving_route": False,
-                "sampling_compatible": False,
-                "compatibility_guard": "supports_speculative_mtp_sampling",
-                "allowed_execution_modes": ["greedy_fast"],
-                "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
-                "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
-                "processed_target_verification": False,
-            },
+            "speculative_mtp": _speculative_mtp_capability(config, engine=engine),
         },
         "cache": {
             "prefix_cache": config.prefix_cache,
@@ -1251,7 +1286,7 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
     }
 
 
-def _model_capability_summary() -> dict[str, Any]:
+def _model_capability_summary(config: ServerConfig | None = None, *, engine: Any | None = None) -> dict[str, Any]:
     return {
         "completions": True,
         "chat_completions": True,
@@ -1262,7 +1297,11 @@ def _model_capability_summary() -> dict[str, Any]:
         "continuations": True,
         "sessions": True,
         "grammars": False,
-        "speculative_mtp": False,
+        "speculative_mtp": (
+            False
+            if config is None
+            else bool(_speculative_mtp_capability(config, engine=engine)["serving_route"])
+        ),
         "tensor_parallel": False,
         "multiple_models": False,
     }
@@ -1418,6 +1457,7 @@ class CompletionRequest(_OpenAIBaseModel):
     guided_diff: Any | None = None
     continuation_id: Any | None = None
     session: Any | None = None
+    speculative_mtp: bool | dict[str, Any] | None = None
 
 
 class ChatMessage(_OpenAIBaseModel):
@@ -1479,6 +1519,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     guided_diff: Any | None = None
     continuation_id: Any | None = None
     session: Any | None = None
+    speculative_mtp: bool | dict[str, Any] | None = None
 
 
 class SessionForkRequest(_OpenAIBaseModel):
@@ -1759,6 +1800,7 @@ class _QueuedGeneration:
     stream_queue: asyncio.Queue[object] | None = None
     detailed: bool = False
     include_batch_metadata: bool = False
+    route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
     cancelled: bool = False
 
 
@@ -1826,6 +1868,7 @@ class _GenerationBatcher:
         *,
         detailed: bool = False,
         include_batch_metadata: bool = False,
+        route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         error_extra: Mapping[str, Any] | None = None,
     ) -> list[Any] | _QueuedBatchResult:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
@@ -1839,6 +1882,7 @@ class _GenerationBatcher:
                 future=future,
                 detailed=bool(detailed),
                 include_batch_metadata=bool(include_batch_metadata),
+                route=str(route),
             )
         )
         if self._worker is None or self._worker.done():
@@ -1885,14 +1929,14 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
-                key = _sampling_key(first.sampling)
+                key = (str(first.route), _sampling_key(first.sampling))
                 group = [first]
                 deferred: deque[_QueuedGeneration] = deque()
                 while self._queue:
                     item = self._queue.popleft()
                     if _queued_generation_cancelled(item):
                         continue
-                    if _sampling_key(item.sampling) == key and self._group_has_capacity(group):
+                    if (str(item.route), _sampling_key(item.sampling)) == key and self._group_has_capacity(group):
                         group.append(item)
                     else:
                         deferred.append(item)
@@ -1925,7 +1969,7 @@ class _GenerationBatcher:
                 prompts.extend(item.prompts)
                 slices.append((item, start, len(prompts)))
             try:
-                batch_result = await self._generate_prompts(tuple(prompts), group[0].sampling)
+                batch_result = await self._generate_prompts(tuple(prompts), group[0].sampling, route=group[0].route)
             except Exception as exc:
                 for item in group:
                     _finish_queued_generation(item, exception=exc)
@@ -1953,9 +1997,18 @@ class _GenerationBatcher:
         finally:
             self._active_requests = 0
 
-    async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> _QueuedBatchResult:
+    async def _generate_prompts(
+        self,
+        prompts: tuple[str, ...],
+        sampling: SamplingParams,
+        *,
+        route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
+    ) -> _QueuedBatchResult:
         engine = self._engine_factory()
-        raw_outputs = await _generate_detailed(engine, prompts, sampling)
+        if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
+            raw_outputs = await _generate_speculative_mtp_detailed(engine, prompts, sampling)
+        else:
+            raw_outputs = await _generate_detailed(engine, prompts, sampling)
         outputs = list(raw_outputs)
         if len(outputs) != len(prompts):
             raise RuntimeError(
@@ -3429,6 +3482,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         }
                     },
                 )
+                generation_route = _speculative_mtp_route_for_request(
+                    config,
+                    request,
+                    engine=engine,
+                    sampling=sampling,
+                )
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
                 scheduler_token_chunks = _backend_scheduler_token_chunks(engine)
@@ -3438,6 +3497,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     sampling,
                     detailed=True,
                     include_batch_metadata=True,
+                    route=generation_route,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -4234,7 +4294,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "scale_granularity": config.kv_scale_granularity,
                             "estimate": _kv_capacity_estimate_payload(engine),
                         },
-                        "capabilities": _model_capability_summary(),
+                        "capabilities": _model_capability_summary(config, engine=engine),
                         "capabilities_url": "/v1/hipengine/capabilities",
                         "routing": {
                             "loaded_model_count": 0 if engine is None else 1,
@@ -4477,15 +4537,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ],
                     "unsupported": list(NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES),
                 },
-                "speculative_mtp": {
-                    "serving_route": False,
-                    "sampling_compatible": False,
-                    "compatibility_guard": "supports_speculative_mtp_sampling",
-                    "allowed_execution_modes": ["greedy_fast"],
-                    "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
-                    "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
-                    "processed_target_verification": False,
-                },
+                "speculative_mtp": _speculative_mtp_capability(config, engine=engine),
             },
             "cache": {
                 "prefix_cache": prefix_cache_mode,
@@ -7623,6 +7675,22 @@ def _engine_supports_stream_many(engine: Any | None) -> bool:
     return False
 
 
+def _engine_speculative_mtp_callable(engine: Any | None) -> Callable[[tuple[str, ...], SamplingParams], Any] | None:
+    if engine is None:
+        return None
+    supports = getattr(engine, "supports_speculative_mtp", None)
+    if supports is not None and not bool(supports):
+        return None
+    runner = getattr(engine, "generate_speculative_mtp_detailed", None)
+    if callable(runner):
+        return runner
+    return None
+
+
+def _engine_supports_speculative_mtp(engine: Any | None) -> bool:
+    return _engine_speculative_mtp_callable(engine) is not None
+
+
 def _chat_live_many_streaming_allowed(request: ChatCompletionRequest) -> bool:
     return (
         _request_n(request) > 1
@@ -7658,6 +7726,17 @@ async def _generate_detailed(
     if callable(detailed):
         return list(await run_in_threadpool(detailed, prompts, sampling))
     return [_coerce_generation_output(item) for item in await run_in_threadpool(engine.generate, prompts, sampling)]
+
+
+async def _generate_speculative_mtp_detailed(
+    engine: Any,
+    prompts: tuple[str, ...],
+    sampling: SamplingParams,
+) -> list[Any]:
+    runner = _engine_speculative_mtp_callable(engine)
+    if runner is None:
+        raise NotImplementedError("speculative MTP serving is not supported by this engine")
+    return list(await run_in_threadpool(runner, prompts, sampling))
 
 
 def _coerce_generation_output(value: Any) -> GenerationOutput:
@@ -8615,6 +8694,95 @@ def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
     if n < 1:
         raise OpenAIHTTPError(400, "n must be at least 1", code="invalid_request", param="n")
     return n
+
+
+def _request_speculative_mtp_enabled(request: CompletionRequest | ChatCompletionRequest) -> bool | None:
+    raw = getattr(request, "speculative_mtp", None)
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, Mapping):
+        enabled = raw.get("enabled", True)
+        if isinstance(enabled, bool):
+            return enabled
+        raise OpenAIHTTPError(
+            400,
+            "speculative_mtp.enabled must be a boolean",
+            code="unsupported_parameter",
+            param="speculative_mtp",
+        )
+    raise OpenAIHTTPError(
+        400,
+        "speculative_mtp must be a boolean or object",
+        code="unsupported_parameter",
+        param="speculative_mtp",
+    )
+
+
+def _speculative_mtp_route_for_request(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    engine: Any | None,
+    sampling: SamplingParams,
+) -> str:
+    explicit = _request_speculative_mtp_enabled(request)
+    configured_mode = str(config.speculative_mtp_serving)
+    if explicit is False:
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if explicit is None and configured_mode != "auto":
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    explicit_requested = explicit is True
+    if configured_mode == "off":
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "speculative_mtp is disabled for this server",
+                code="unsupported_parameter",
+                param="speculative_mtp",
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if bool(getattr(request, "stream", False)):
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "speculative_mtp does not support streaming requests yet",
+                code="unsupported_parameter",
+                param="speculative_mtp",
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if not _engine_supports_speculative_mtp(engine):
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                501,
+                "speculative_mtp is not supported by this model/backend",
+                error_type="unsupported_feature",
+                code="unsupported_feature",
+                param="speculative_mtp",
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    blockers = speculative_mtp_sampling_blockers(sampling)
+    if blockers:
+        if explicit_requested:
+            raise OpenAIHTTPError(
+                400,
+                "speculative_mtp requires raw greedy-fast sampling",
+                code="unsupported_parameter",
+                param="speculative_mtp",
+                extra={
+                    "hipengine": {
+                        "speculative_mtp": {
+                            "blockers": list(blockers),
+                            "compatibility_guard": "supports_speculative_mtp_sampling",
+                        }
+                    }
+                },
+            )
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if not supports_speculative_mtp_sampling(sampling):
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    return _SPECULATIVE_MTP_BATCH_ROUTE
 
 
 def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:

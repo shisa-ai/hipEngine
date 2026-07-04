@@ -79,6 +79,12 @@ def _env_optional_nonnegative_float(name: str) -> float | None:
     return _nonnegative_float(raw)
 
 
+def _env_speculative_mtp_serving(name: str, default: str = "off") -> str:
+    raw = os.environ.get(name)
+    mode = default if raw is None or raw == "" else raw
+    return mode.strip().lower().replace("-", "_")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the hipEngine OpenAI-compatible server")
     parser.add_argument("--model", required=True, help="Path or model id served by hipEngine")
@@ -215,6 +221,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Default request deadline in milliseconds; omitted disables the default (env HIPENGINE_REQUEST_TIMEOUT_MS)",
     )
     parser.add_argument(
+        "--speculative-mtp-serving",
+        choices=("off", "opt_in", "auto"),
+        default=_env_speculative_mtp_serving("HIPENGINE_SPECULATIVE_MTP_SERVING"),
+        help=(
+            "GGUF MTP serving policy: off, opt_in via request speculative_mtp=true, "
+            "or auto for compatible greedy requests (env HIPENGINE_SPECULATIVE_MTP_SERVING; default: off)"
+        ),
+    )
+    parser.add_argument(
         "--metrics",
         choices=("off", "prometheus"),
         default=os.environ.get("HIPENGINE_METRICS", "off"),
@@ -284,6 +299,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_queued_requests=args.max_queued_requests,
         max_active_requests=args.max_active_requests,
         max_chat_sessions=args.max_chat_sessions,
+        speculative_mtp_serving=args.speculative_mtp_serving,
     )
     app = create_app(config)
     try:
