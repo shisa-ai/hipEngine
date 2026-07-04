@@ -290,10 +290,43 @@ class Qwen35GGUFBringupGenerator:
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
     _mtp_serving_assets: _GGUFMTPServingAssets | None = field(default=None, init=False, repr=False)
     _mtp_serving_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    _shared_runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False, repr=False)
+    _shared_runner_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
+
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: Any | None = None,
+    ) -> int | None:
+        """Materialize shared GGUF weights for server resident-session reuse."""
+
+        if max_sequence_length is not None and int(max_sequence_length) <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        self._get_shared_runner()
+        return None if max_sequence_length is None else int(max_sequence_length)
+
+    def _get_shared_runner(self) -> Qwen35GGUFFullStackRunner:
+        runner = getattr(self, "_shared_runner", None)
+        if runner is not None:
+            return runner
+        lock = getattr(self, "_shared_runner_lock", None)
+        if lock is None:
+            self._shared_runner_lock = threading.Lock()
+            lock = self._shared_runner_lock
+        with lock:
+            runner = getattr(self, "_shared_runner", None)
+            if runner is None:
+                runner = Qwen35GGUFFullStackRunner(self.model_path)
+                self._shared_runner = runner
+            return runner
+
+    def _prepared_shared_runner(self) -> Qwen35GGUFFullStackRunner | None:
+        return getattr(self, "_shared_runner", None)
 
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(int(token) for token in self.tokenizer.encode(str(text)))
@@ -329,7 +362,13 @@ class Qwen35GGUFBringupGenerator:
         if not prompt_ids:
             raise ValueError("GGUF prompt tokenization produced no token IDs")
         plan = _gguf_sampler_plan(request)
-        with Qwen35GGUFResidentSession(self.model_path) as session:
+        shared_runner = self._prepared_shared_runner()
+        session_kwargs = (
+            {"runtime": shared_runner.runtime, "shared_runner": shared_runner}
+            if shared_runner is not None
+            else {}
+        )
+        with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
             if plan.mode is SamplingMode.GREEDY_FAST:
                 yield from self._stream_greedy(session, prompt_ids, request)
                 return
@@ -377,7 +416,13 @@ class Qwen35GGUFBringupGenerator:
         prompt_rows_by_request: dict[int, list[int]] = {}
         generated_ids_by_request: dict[int, list[int]] = {}
         token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
-        with Qwen35GGUFResidentSession(self.model_path) as session:
+        shared_runner = self._prepared_shared_runner()
+        session_kwargs = (
+            {"runtime": shared_runner.runtime, "shared_runner": shared_runner}
+            if shared_runner is not None
+            else {}
+        )
+        with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
             for row_index, prompt in enumerate(request.prompts):
                 raise_if_generation_deadline_expired(request)
                 prompt_ids = self.tokenizer.encode(prompt)
@@ -464,10 +509,17 @@ class Qwen35GGUFBringupGenerator:
         with self._mtp_serving_lock, _temporary_env(_LLAMA_COMPAT_MTP_ENV) as base_env:
             assets = self._load_mtp_serving_assets()
             if len(request.prompts) == 1:
+                shared_runner = self._prepared_shared_runner()
+                session_kwargs = (
+                    {"runtime": shared_runner.runtime, "shared_runner": shared_runner}
+                    if shared_runner is not None
+                    else {}
+                )
                 with Qwen35GGUFResidentSession(
                     self.model_path,
                     use_wmma_prefill=True,
                     use_gemv_decode=True,
+                    **session_kwargs,
                 ) as session:
                     runtime = session.runtime
                     resident_draft = _new_mtp_draft_runner(assets, runtime=runtime)
@@ -504,32 +556,32 @@ class Qwen35GGUFBringupGenerator:
                             close()
                 resident_slot_count = 1
             else:
-                with Qwen35GGUFFullStackRunner(self.model_path) as shared_runner:
-                    slots = self._open_mtp_serving_slots(
+                shared_runner = self._prepared_shared_runner()
+                if shared_runner is None:
+                    with Qwen35GGUFFullStackRunner(self.model_path) as local_runner:
+                        resident_slot_count = self._generate_prepared_mtp_serving_slots(
+                            local_runner,
+                            assets,
+                            encoded_prompts,
+                            request,
+                            base_env=base_env,
+                            prompt_rows_by_request=prompt_rows_by_request,
+                            generated_ids_by_request=generated_ids_by_request,
+                            mtp_cycles_by_request=mtp_cycles_by_request,
+                            outputs=outputs,
+                        )
+                else:
+                    resident_slot_count = self._generate_prepared_mtp_serving_slots(
                         shared_runner,
                         assets,
                         encoded_prompts,
                         request,
+                        base_env=base_env,
+                        prompt_rows_by_request=prompt_rows_by_request,
+                        generated_ids_by_request=generated_ids_by_request,
+                        mtp_cycles_by_request=mtp_cycles_by_request,
+                        outputs=outputs,
                     )
-                    resident_slot_count = len(slots)
-                    try:
-                        self._run_mtp_serving_slots(slots, assets, request, base_env=base_env)
-                        for slot in slots:
-                            prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
-                            generated_ids = list(slot.generated_ids)
-                            generated_ids_by_request[slot.request_id] = generated_ids
-                            mtp_cycles_by_request[slot.request_id] = list(slot.cycles)
-                            outputs.append(
-                                self._mtp_generation_output(
-                                    slot.prompt_ids,
-                                    generated_ids,
-                                    request,
-                                    row_index=slot.request_id,
-                                    resident_slot_count=resident_slot_count,
-                                )
-                            )
-                    finally:
-                        self._close_mtp_serving_slots(slots)
 
         self.last_generation_outputs = tuple(outputs)
         self.last_batch_generation = _gguf_mtp_last_batch_generation(
@@ -544,6 +596,46 @@ class Qwen35GGUFBringupGenerator:
             resident_slot_count=resident_slot_count,
         )
         return outputs
+
+    def _generate_prepared_mtp_serving_slots(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        assets: _GGUFMTPServingAssets,
+        encoded_prompts: dict[int, list[int]],
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+        prompt_rows_by_request: dict[int, list[int]],
+        generated_ids_by_request: dict[int, list[int]],
+        mtp_cycles_by_request: dict[int, list[dict[str, Any]]],
+        outputs: list[GenerationOutput],
+    ) -> int:
+        slots = self._open_mtp_serving_slots(
+            shared_runner,
+            assets,
+            encoded_prompts,
+            request,
+        )
+        resident_slot_count = len(slots)
+        try:
+            self._run_mtp_serving_slots(slots, assets, request, base_env=base_env)
+            for slot in slots:
+                prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
+                generated_ids = list(slot.generated_ids)
+                generated_ids_by_request[slot.request_id] = generated_ids
+                mtp_cycles_by_request[slot.request_id] = list(slot.cycles)
+                outputs.append(
+                    self._mtp_generation_output(
+                        slot.prompt_ids,
+                        generated_ids,
+                        request,
+                        row_index=slot.request_id,
+                        resident_slot_count=resident_slot_count,
+                    )
+                )
+        finally:
+            self._close_mtp_serving_slots(slots)
+        return resident_slot_count
 
     def _mtp_generation_output(
         self,

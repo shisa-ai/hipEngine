@@ -1,6 +1,11 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-03 (llama.cpp replication lane verifier-head attribution correction:
+Last updated: 2026-07-05 (hipEngine server MTP natural24 diagnostic: prepared
+shared-runner reuse removes per-request GGUF target-weight rematerialization,
+but current resident-slot MTP serving remains slower than server AR, best c=8
+row **29.28 vs 35.14 usage tok/s**, **0.833× AR**; see
+[`2026-07-05-hipengine-server-mtp-natural24-sweep.json`](results/2026-07-05-hipengine-server-mtp-natural24-sweep.json).
+Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
 the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`
 B2 full-suite row now matches llama.cpp's normal MTP accept lifecycle and
@@ -482,7 +487,10 @@ full-suite speed row above.
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json); diagnostic, does not supersede retained 10-cycle B5 row |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
-| hipEngine exact / `llama-compat` server MTP | 4, 8 | n/a | n/a | n/a | n/a | Not measured: `speculative_mtp.serving_route=false`; current GGUF MTP harness is serial/direct |
+| hipEngine `llama-compat` server MTP | 1 | 35.21 | **27.00** | 0.767x | B2 resident slots round-robin | [`2026-07-05-hipengine-server-mtp-natural24-sweep.json`](results/2026-07-05-hipengine-server-mtp-natural24-sweep.json); diagnostic blocked, MTP slower than AR |
+| hipEngine `llama-compat` server MTP | 2 | 35.21 | **28.54** | 0.811x | same | same; request coalescing works but remains slower than AR |
+| hipEngine `llama-compat` server MTP | 4 | 35.16 | **29.06** | 0.827x | same | same; round-robin slots serialize kernel work |
+| hipEngine `llama-compat` server MTP | 8 | 35.14 | **29.28** | 0.833x | same | same; generated-token denominator is AR `30.8` tok/s vs MTP `25.6` tok/s at c=8 |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); external diagnostic |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); aggregate decode loses vs AR |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); aggregate decode loses vs AR |
@@ -490,12 +498,13 @@ full-suite speed row above.
 | llama.cpp Vulkan server B2 | 4 | 124.68 | **92.19** | 0.739x | same | [`2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json); aggregate decode loses vs AR |
 | llama.cpp Vulkan server B2 | 8 | 139.71 | **103.57** | 0.741x | same | [`2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json); aggregate decode loses vs AR |
 
-For serving capability, `speculative_mtp.serving_route=false` is intentional:
-the OpenAI server path does not currently call the GGUF direct MTP harness or own
-per-request MTP draft contexts, MTP K/V commit/rollback state, and greedy-only
-guards. Changing the advertised flag before implementing that route would make
-clients believe MTP serving exists when requests still run through normal
-`LLM.generate()`/scheduler code.
+For serving capability, `speculative_mtp.serving_route=true` is now available
+only with `--speculative-mtp-serving opt_in` or `auto` and a GGUF model exposing
+NextN tensors. The first measured server row is **not** a retained perf win:
+the initial throughput probe exposed per-request GGUF weight rematerialization,
+which was fixed by sharing prepared target weights across server requests, but
+the current resident-slot MTP scheduler still advances slots round-robin and
+loses to ordinary AR on this natural24 server protocol.
 
 | Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
 | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
