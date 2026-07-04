@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -97,6 +98,7 @@ class _GGUFMTPServingAssets:
 class _GGUFMTPServingRun:
     generated_ids: list[int]
     cycles: list[dict[str, Any]]
+    timing: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -114,6 +116,9 @@ class _GGUFMTPServingSlot:
     seq_position: int
     generated_ids: list[int]
     cycles: list[dict[str, Any]] = field(default_factory=list)
+    timing: dict[str, float] = field(default_factory=dict)
+    session_pool_key: tuple[str, bool | None, bool | None] | None = None
+    draft_pool_key: int | None = None
     mtp_device_kv_len: int = 0
     done: bool = False
 
@@ -157,6 +162,18 @@ def _gguf_info_has_mtp_tensors(info: Any) -> bool:
     except Exception:
         return False
     return all(name in by_name for name in _GGUF_MTP_REQUIRED_TENSORS)
+
+
+def _timing_ms_since(start: float) -> float:
+    return round(max(0.0, time.perf_counter() - start) * 1000.0, 3)
+
+
+def _timing_add(timing: dict[str, float], key: str, start: float) -> None:
+    timing[key] = round(float(timing.get(key, 0.0)) + _timing_ms_since(start), 3)
+
+
+def _timing_set(timing: dict[str, float], key: str, start: float) -> None:
+    timing[key] = _timing_ms_since(start)
 
 
 def _llama_cpp_mtp_catchup_rows(
@@ -292,6 +309,13 @@ class Qwen35GGUFBringupGenerator:
     _mtp_serving_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     _shared_runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False, repr=False)
     _shared_runner_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    _shared_session_pool: dict[
+        tuple[str, bool | None, bool | None],
+        list[Qwen35GGUFResidentSession],
+    ] = field(default_factory=dict, init=False, repr=False)
+    _shared_session_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    _shared_mtp_draft_pool: dict[int, list[Any]] = field(default_factory=dict, init=False, repr=False)
+    _shared_mtp_draft_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
@@ -327,6 +351,125 @@ class Qwen35GGUFBringupGenerator:
 
     def _prepared_shared_runner(self) -> Qwen35GGUFFullStackRunner | None:
         return getattr(self, "_shared_runner", None)
+
+    def _ensure_shared_pools(self) -> None:
+        if not hasattr(self, "_shared_session_pool"):
+            self._shared_session_pool = {}
+        if not hasattr(self, "_shared_session_pool_lock"):
+            self._shared_session_pool_lock = threading.Lock()
+        if not hasattr(self, "_shared_mtp_draft_pool"):
+            self._shared_mtp_draft_pool = {}
+        if not hasattr(self, "_shared_mtp_draft_pool_lock"):
+            self._shared_mtp_draft_pool_lock = threading.Lock()
+
+    def _acquire_shared_session(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        pool_name: str,
+        use_wmma_prefill: bool | None = None,
+        use_gemv_decode: bool | None = None,
+    ) -> tuple[Qwen35GGUFResidentSession, tuple[str, bool | None, bool | None], bool]:
+        self._ensure_shared_pools()
+        key = (str(pool_name), use_wmma_prefill, use_gemv_decode)
+        with self._shared_session_pool_lock:
+            pool = self._shared_session_pool.get(key)
+            session = pool.pop() if pool else None
+        if session is not None:
+            reset = getattr(session, "reset", None)
+            if callable(reset):
+                reset()
+            return session, key, True
+        return (
+            Qwen35GGUFResidentSession(
+                self.model_path,
+                runtime=shared_runner.runtime,
+                shared_runner=shared_runner,
+                use_wmma_prefill=use_wmma_prefill,
+                use_gemv_decode=use_gemv_decode,
+            ),
+            key,
+            False,
+        )
+
+    def _release_shared_session(
+        self,
+        key: tuple[str, bool | None, bool | None] | None,
+        session: Qwen35GGUFResidentSession,
+    ) -> None:
+        self._ensure_shared_pools()
+        if key is None:
+            session.close()
+            return
+        try:
+            reset = getattr(session, "reset", None)
+            if callable(reset):
+                reset()
+        except Exception:
+            session.close()
+            raise
+        with self._shared_session_pool_lock:
+            self._shared_session_pool.setdefault(key, []).append(session)
+
+    @contextmanager
+    def _resident_session_scope(
+        self,
+        *,
+        shared_runner: Qwen35GGUFFullStackRunner | None,
+        pool_name: str,
+        use_wmma_prefill: bool | None = None,
+        use_gemv_decode: bool | None = None,
+    ):
+        if shared_runner is None:
+            session_kwargs: dict[str, bool] = {}
+            if use_wmma_prefill is not None:
+                session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
+            if use_gemv_decode is not None:
+                session_kwargs["use_gemv_decode"] = bool(use_gemv_decode)
+            with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
+                yield session, False
+            return
+        session, key, reused = self._acquire_shared_session(
+            shared_runner,
+            pool_name=pool_name,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+        )
+        try:
+            yield session, reused
+        except Exception:
+            session.close()
+            raise
+        else:
+            self._release_shared_session(key, session)
+
+    def _acquire_mtp_draft_runner(
+        self,
+        assets: _GGUFMTPServingAssets,
+        *,
+        runtime: Any,
+        pool_enabled: bool,
+    ) -> tuple[Any, int | None, bool]:
+        self._ensure_shared_pools()
+        if not pool_enabled:
+            return _new_mtp_draft_runner(assets, runtime=runtime), None, False
+        key = int(id(runtime))
+        with self._shared_mtp_draft_pool_lock:
+            pool = self._shared_mtp_draft_pool.get(key)
+            draft = pool.pop() if pool else None
+        if draft is not None:
+            return draft, key, True
+        return _new_mtp_draft_runner(assets, runtime=runtime), key, False
+
+    def _release_mtp_draft_runner(self, key: int | None, draft: Any) -> None:
+        self._ensure_shared_pools()
+        if key is None:
+            close = getattr(draft, "close", None)
+            if callable(close):
+                close()
+            return
+        with self._shared_mtp_draft_pool_lock:
+            self._shared_mtp_draft_pool.setdefault(int(key), []).append(draft)
 
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(int(token) for token in self.tokenizer.encode(str(text)))
@@ -417,32 +560,46 @@ class Qwen35GGUFBringupGenerator:
         generated_ids_by_request: dict[int, list[int]] = {}
         token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
         shared_runner = self._prepared_shared_runner()
-        session_kwargs = (
-            {"runtime": shared_runner.runtime, "shared_runner": shared_runner}
-            if shared_runner is not None
-            else {}
-        )
-        with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
+        session_open_start = time.perf_counter()
+        with self._resident_session_scope(
+            shared_runner=shared_runner,
+            pool_name="ar",
+        ) as (session, _session_reused):
+            session_open_ms = _timing_ms_since(session_open_start)
             for row_index, prompt in enumerate(request.prompts):
+                row_start = time.perf_counter()
+                row_timing: dict[str, float] = {"session_open_ms": session_open_ms}
                 raise_if_generation_deadline_expired(request)
+                tokenize_start = time.perf_counter()
                 prompt_ids = self.tokenizer.encode(prompt)
+                _timing_set(row_timing, "tokenize_ms", tokenize_start)
                 prompt_rows_by_request[row_index] = prompt_ids
                 raise_if_generation_deadline_expired(request)
                 if not prompt_ids:
                     raise ValueError("GGUF prompt tokenization produced no token IDs")
                 if plan.mode is SamplingMode.GREEDY_FAST:
-                    generated_ids = self._generate_greedy(session, prompt_ids, request)
+                    generated_ids = self._generate_greedy(
+                        session,
+                        prompt_ids,
+                        request,
+                        timing=row_timing,
+                    )
                     generated_ids_by_request[row_index] = list(generated_ids)
                     finish_details = _gguf_finish_details(generated_ids, self.tokenizer, request)
+                    decode_text_start = time.perf_counter()
+                    text = self.tokenizer.decode(generated_ids)
+                    _timing_set(row_timing, "decode_text_ms", decode_text_start)
+                    _timing_set(row_timing, "request_total_ms", row_start)
                     outputs.append(
                         GenerationOutput(
-                            text=self.tokenizer.decode(generated_ids),
+                            text=text,
                             finish_details=finish_details,
                             telemetry=_gguf_telemetry(
                                 prompt_ids,
                                 generated_ids,
                                 request,
                                 row_index=row_index,
+                                timing=row_timing,
                             ),
                         )
                     )
@@ -489,10 +646,13 @@ class Qwen35GGUFBringupGenerator:
         if request.max_tokens == 0:
             return self.generate_detailed(request)
 
-        encoded_prompts = {
-            row_index: self.tokenizer.encode(prompt)
-            for row_index, prompt in enumerate(request.prompts)
-        }
+        request_start = time.perf_counter()
+        encoded_prompts: dict[int, list[int]] = {}
+        tokenize_ms_by_request: dict[int, float] = {}
+        for row_index, prompt in enumerate(request.prompts):
+            tokenize_start = time.perf_counter()
+            encoded_prompts[row_index] = self.tokenizer.encode(prompt)
+            tokenize_ms_by_request[row_index] = _timing_ms_since(tokenize_start)
         if any(
             len(prompt_ids) < _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS
             for prompt_ids in encoded_prompts.values()
@@ -507,22 +667,28 @@ class Qwen35GGUFBringupGenerator:
         mtp_cycles_by_request: dict[int, list[dict[str, Any]]] = {}
 
         with self._mtp_serving_lock, _temporary_env(_LLAMA_COMPAT_MTP_ENV) as base_env:
+            assets_load_start = time.perf_counter()
             assets = self._load_mtp_serving_assets()
+            assets_load_ms = _timing_ms_since(assets_load_start)
             if len(request.prompts) == 1:
                 shared_runner = self._prepared_shared_runner()
-                session_kwargs = (
-                    {"runtime": shared_runner.runtime, "shared_runner": shared_runner}
-                    if shared_runner is not None
-                    else {}
-                )
-                with Qwen35GGUFResidentSession(
-                    self.model_path,
+                session_open_start = time.perf_counter()
+                with self._resident_session_scope(
+                    shared_runner=shared_runner,
+                    pool_name="mtp_target",
                     use_wmma_prefill=True,
                     use_gemv_decode=True,
-                    **session_kwargs,
-                ) as session:
+                ) as (session, _session_reused):
+                    session_open_ms = _timing_ms_since(session_open_start)
                     runtime = session.runtime
-                    resident_draft = _new_mtp_draft_runner(assets, runtime=runtime)
+                    draft_open_start = time.perf_counter()
+                    resident_draft, draft_pool_key, _draft_reused = self._acquire_mtp_draft_runner(
+                        assets,
+                        runtime=runtime,
+                        pool_enabled=shared_runner is not None,
+                    )
+                    draft_open_ms = _timing_ms_since(draft_open_start)
+                    release_draft_to_pool = False
                     try:
                         for row_index, prompt in enumerate(request.prompts):
                             raise_if_generation_deadline_expired(request)
@@ -541,6 +707,12 @@ class Qwen35GGUFBringupGenerator:
                             generated_ids = list(run.generated_ids)
                             generated_ids_by_request[row_index] = generated_ids
                             mtp_cycles_by_request[row_index] = list(run.cycles)
+                            timing = dict(run.timing)
+                            timing["session_open_ms"] = session_open_ms
+                            timing["draft_open_ms"] = draft_open_ms
+                            timing["assets_load_ms"] = assets_load_ms
+                            timing["tokenize_ms"] = tokenize_ms_by_request.get(row_index, 0.0)
+                            _timing_set(timing, "request_total_ms", request_start)
                             outputs.append(
                                 self._mtp_generation_output(
                                     prompt_ids,
@@ -548,12 +720,15 @@ class Qwen35GGUFBringupGenerator:
                                     request,
                                     row_index=row_index,
                                     resident_slot_count=1,
+                                    timing=timing,
                                 )
                             )
+                        release_draft_to_pool = True
                     finally:
-                        close = getattr(resident_draft, "close", None)
-                        if callable(close):
-                            close()
+                        self._release_mtp_draft_runner(
+                            draft_pool_key if release_draft_to_pool else None,
+                            resident_draft,
+                        )
                 resident_slot_count = 1
             else:
                 shared_runner = self._prepared_shared_runner()
@@ -568,6 +743,9 @@ class Qwen35GGUFBringupGenerator:
                             prompt_rows_by_request=prompt_rows_by_request,
                             generated_ids_by_request=generated_ids_by_request,
                             mtp_cycles_by_request=mtp_cycles_by_request,
+                            tokenize_ms_by_request=tokenize_ms_by_request,
+                            assets_load_ms=assets_load_ms,
+                            pool_sessions=False,
                             outputs=outputs,
                         )
                 else:
@@ -580,6 +758,9 @@ class Qwen35GGUFBringupGenerator:
                         prompt_rows_by_request=prompt_rows_by_request,
                         generated_ids_by_request=generated_ids_by_request,
                         mtp_cycles_by_request=mtp_cycles_by_request,
+                        tokenize_ms_by_request=tokenize_ms_by_request,
+                        assets_load_ms=assets_load_ms,
+                        pool_sessions=True,
                         outputs=outputs,
                     )
 
@@ -608,22 +789,36 @@ class Qwen35GGUFBringupGenerator:
         prompt_rows_by_request: dict[int, list[int]],
         generated_ids_by_request: dict[int, list[int]],
         mtp_cycles_by_request: dict[int, list[dict[str, Any]]],
+        tokenize_ms_by_request: dict[int, float],
+        assets_load_ms: float,
+        pool_sessions: bool,
         outputs: list[GenerationOutput],
     ) -> int:
+        slots_open_start = time.perf_counter()
         slots = self._open_mtp_serving_slots(
             shared_runner,
             assets,
             encoded_prompts,
             request,
+            pool_sessions=pool_sessions,
         )
+        slots_open_ms = _timing_ms_since(slots_open_start)
         resident_slot_count = len(slots)
+        release_slots_to_pool = False
         try:
+            slots_run_start = time.perf_counter()
             self._run_mtp_serving_slots(slots, assets, request, base_env=base_env)
+            slots_run_ms = _timing_ms_since(slots_run_start)
             for slot in slots:
                 prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
                 generated_ids = list(slot.generated_ids)
                 generated_ids_by_request[slot.request_id] = generated_ids
                 mtp_cycles_by_request[slot.request_id] = list(slot.cycles)
+                timing = dict(slot.timing)
+                timing["tokenize_ms"] = tokenize_ms_by_request.get(slot.request_id, 0.0)
+                timing["assets_load_ms"] = assets_load_ms
+                timing["slots_open_ms"] = slots_open_ms
+                timing["slots_run_ms"] = slots_run_ms
                 outputs.append(
                     self._mtp_generation_output(
                         slot.prompt_ids,
@@ -631,10 +826,12 @@ class Qwen35GGUFBringupGenerator:
                         request,
                         row_index=slot.request_id,
                         resident_slot_count=resident_slot_count,
+                        timing=timing,
                     )
                 )
+            release_slots_to_pool = True
         finally:
-            self._close_mtp_serving_slots(slots)
+            self._close_mtp_serving_slots(slots, reuse=release_slots_to_pool)
         return resident_slot_count
 
     def _mtp_generation_output(
@@ -645,6 +842,7 @@ class Qwen35GGUFBringupGenerator:
         *,
         row_index: int,
         resident_slot_count: int,
+        timing: dict[str, float] | None = None,
     ) -> GenerationOutput:
         return GenerationOutput(
             text=self.tokenizer.decode(generated_ids),
@@ -659,6 +857,7 @@ class Qwen35GGUFBringupGenerator:
                 native_caware_decode=False,
                 serial_decode_fallback=False,
                 native_sampler_rows=False,
+                timing=timing,
             ),
         )
 
@@ -708,6 +907,8 @@ class Qwen35GGUFBringupGenerator:
         assets: _GGUFMTPServingAssets,
         encoded_prompts: dict[int, list[int]],
         request: GenerationRequest,
+        *,
+        pool_sessions: bool,
     ) -> list[_GGUFMTPServingSlot]:
         slots: list[_GGUFMTPServingSlot] = []
         try:
@@ -723,10 +924,11 @@ class Qwen35GGUFBringupGenerator:
                         prompt_ids,
                         request,
                         request_id=row_index,
+                        pool_sessions=pool_sessions,
                     )
                 )
         except Exception:
-            self._close_mtp_serving_slots(slots)
+            self._close_mtp_serving_slots(slots, reuse=False)
             raise
         return slots
 
@@ -738,25 +940,46 @@ class Qwen35GGUFBringupGenerator:
         request: GenerationRequest,
         *,
         request_id: int,
+        pool_sessions: bool,
     ) -> _GGUFMTPServingSlot:
         from hipengine.core.hip import HipMemcpyKind
 
+        slot_open_start = time.perf_counter()
+        timing: dict[str, float] = {}
         session: Qwen35GGUFResidentSession | None = None
         resident_draft: Any | None = None
         mtp_buffers: list[Any] = []
         try:
-            session = Qwen35GGUFResidentSession(
-                self.model_path,
-                runtime=shared_runner.runtime,
-                shared_runner=shared_runner,
+            session_open_start = time.perf_counter()
+            session, session_pool_key, _session_reused = self._acquire_shared_session(
+                shared_runner,
+                pool_name="mtp_target",
                 use_wmma_prefill=True,
                 use_gemv_decode=True,
+            ) if pool_sessions else (
+                Qwen35GGUFResidentSession(
+                    self.model_path,
+                    runtime=shared_runner.runtime,
+                    shared_runner=shared_runner,
+                    use_wmma_prefill=True,
+                    use_gemv_decode=True,
+                ),
+                None,
+                False,
             )
+            _timing_set(timing, "session_open_ms", session_open_start)
             runtime = session.runtime
-            resident_draft = _new_mtp_draft_runner(assets, runtime=runtime)
+            draft_open_start = time.perf_counter()
+            resident_draft, draft_pool_key, _draft_reused = self._acquire_mtp_draft_runner(
+                assets,
+                runtime=runtime,
+                pool_enabled=pool_sessions,
+            )
+            _timing_set(timing, "draft_open_ms", draft_open_start)
             hidden_size = int(assets.token_embd_f32.shape[1])
             min_bulk_tokens = int(getattr(session.runner.weights.config, "ssm_conv_kernel", 4))
             if len(prompt_ids) >= min_bulk_tokens:
+                prefill_start = time.perf_counter()
                 prefill_result = session.prefill(
                     prompt_ids,
                     use_bulk=True,
@@ -764,23 +987,28 @@ class Qwen35GGUFBringupGenerator:
                     return_logits=False,
                     capture_hidden_seed_fp32=True,
                 )
+                _timing_add(timing, "prefill_ms", prefill_start)
                 prompt_hidden_rows = np.empty((len(prompt_ids), hidden_size), dtype=np.float32)
+                hidden_d2h_start = time.perf_counter()
                 runtime.memcpy(
                     prompt_hidden_rows.ctypes.data,
                     session.fp32_verify_hidden_seed_ptr(0),
                     prompt_hidden_rows.nbytes,
                     HipMemcpyKind.DEVICE_TO_HOST,
                 )
+                _timing_add(timing, "prompt_hidden_d2h_ms", hidden_d2h_start)
                 mtp_context_tokens, mtp_context_hidden_rows = _llama_cpp_mtp_catchup_rows(
                     prompt_ids,
                     prompt_hidden_rows,
                 )
             else:
+                prefill_start = time.perf_counter()
                 prefill_result = session.prefill(
                     prompt_ids,
                     return_logits=False,
                     capture_hidden_seed_fp32=True,
                 )
+                _timing_add(timing, "prefill_ms", prefill_start)
                 mtp_context_tokens = []
                 mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
 
@@ -799,12 +1027,14 @@ class Qwen35GGUFBringupGenerator:
                 1,
                 len(mtp_context_tokens) + max_cycles * (2 * 2 + 2) + 4,
             )
+            mtp_kv_alloc_start = time.perf_counter()
             mtp_key_cache, mtp_value_cache, mtp_buffers = _allocate_mtp_dense_kv(
                 runtime=runtime,
                 capacity=mtp_device_kv_capacity,
                 qk_head_dim=qk_head_dim,
                 kv_heads=2,
             )
+            _timing_set(timing, "mtp_kv_alloc_ms", mtp_kv_alloc_start)
             slot = _GGUFMTPServingSlot(
                 request_id=int(request_id),
                 prompt_ids=list(prompt_ids),
@@ -818,6 +1048,9 @@ class Qwen35GGUFBringupGenerator:
                 prev_token=prev_token,
                 seq_position=seq_position,
                 generated_ids=generated_ids,
+                timing=timing,
+                session_pool_key=session_pool_key,
+                draft_pool_key=draft_pool_key,
                 done=(
                     len(generated_ids) >= int(request.max_tokens)
                     or _gguf_finished(generated_ids, self.tokenizer, request)
@@ -826,6 +1059,7 @@ class Qwen35GGUFBringupGenerator:
             if mtp_context_tokens:
                 context_positions = np.asarray(range(len(mtp_context_tokens)), dtype=np.int64)
                 context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
+                context_write_start = time.perf_counter()
                 slot.mtp_device_kv_len = resident_draft.write_kv_rows(
                     mtp_context_hidden_rows,
                     context_tokens,
@@ -836,6 +1070,8 @@ class Qwen35GGUFBringupGenerator:
                     dense_value_cache=mtp_value_cache,
                     dense_cache_len=0,
                 )
+                _timing_add(slot.timing, "mtp_context_write_ms", context_write_start)
+            _timing_set(slot.timing, "slot_open_total_ms", slot_open_start)
             return slot
         except Exception:
             if mtp_buffers and session is not None:
@@ -871,17 +1107,21 @@ class Qwen35GGUFBringupGenerator:
         *,
         base_env: dict[str, str | None],
     ) -> None:
+        advance_start = time.perf_counter()
         remaining = int(request.max_tokens) - len(slot.generated_ids)
         if remaining <= 0:
             slot.done = True
+            _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
             return
         if remaining <= 1:
+            ar_tail_start = time.perf_counter()
             with _exact_env(base_env):
                 step = slot.session.step(
                     slot.prev_token,
                     return_logits=False,
                     capture_hidden_seed_fp32=True,
                 )
+            _timing_add(slot.timing, "ar_tail_ms", ar_tail_start)
             token = int(step.token_id)
             slot.generated_ids.append(token)
             slot.prev_token = token
@@ -895,12 +1135,14 @@ class Qwen35GGUFBringupGenerator:
                 }
             )
             slot.done = True
+            _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
             return
 
         draft_n_max = min(2, remaining - 1)
         if slot.resident_context.pending_seed is None:
             raise RuntimeError("resident MTP context has no pending seed")
         cycle_mtp_kv_base_len = int(slot.mtp_device_kv_len)
+        draft_start = time.perf_counter()
         draft_tokens, _draft_topk, slot.mtp_device_kv_len = slot.resident_draft.propose_chain_from_device_seed(
             int(slot.resident_context.pending_seed.hidden_ptr),
             start_token=slot.prev_token,
@@ -914,14 +1156,17 @@ class Qwen35GGUFBringupGenerator:
             dense_cache_len=slot.mtp_device_kv_len,
             draft_p_min=0.0,
         )
+        _timing_add(slot.timing, "draft_propose_ms", draft_start)
         draft_tokens = [int(token) for token in draft_tokens]
         if not draft_tokens:
+            ar_tail_start = time.perf_counter()
             with _exact_env(base_env):
                 step = slot.session.step(
                     slot.prev_token,
                     return_logits=False,
                     capture_hidden_seed_fp32=True,
                 )
+            _timing_add(slot.timing, "ar_tail_ms", ar_tail_start)
             token = int(step.token_id)
             slot.generated_ids.append(token)
             slot.prev_token = token
@@ -930,13 +1175,18 @@ class Qwen35GGUFBringupGenerator:
                 len(slot.generated_ids) >= int(request.max_tokens)
                 or _gguf_finished(slot.generated_ids, self.tokenizer, request)
             )
+            _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
             return
 
         block_inputs = [int(slot.prev_token)] + draft_tokens
         block_start = int(slot.seq_position)
         direct_commit_exact = block_start + len(block_inputs) < 1024
+        snapshot_start = time.perf_counter()
         snapshot = None if direct_commit_exact else slot.session._linear_state_snapshot()
+        if snapshot is not None:
+            _timing_add(slot.timing, "linear_state_snapshot_ms", snapshot_start)
         try:
+            verify_start = time.perf_counter()
             block_result = slot.session.verify_target_block(
                 block_inputs,
                 bulk_attention_mode="bulk",
@@ -944,6 +1194,7 @@ class Qwen35GGUFBringupGenerator:
                 capture_linear_state_rows=True,
                 defer_linear_state_commit=True,
             )
+            _timing_add(slot.timing, "target_verify_ms", verify_start)
             block_target_tokens = [int(token) for token in block_result.token_ids]
             acceptance = _llama_cpp_acceptance_from_target_samples(
                 draft_tokens,
@@ -951,6 +1202,7 @@ class Qwen35GGUFBringupGenerator:
             )
             accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
             consumed_rows = accepted_draft_tokens + 1
+            state_commit_start = time.perf_counter()
             if consumed_rows < len(block_inputs):
                 if not bool(getattr(block_result, "linear_state_rows_captured", False)):
                     raise RuntimeError("direct MTP partial commit requested without captured state rows")
@@ -973,6 +1225,7 @@ class Qwen35GGUFBringupGenerator:
                 replay_tokens = [int(token) for token in replay_result.token_ids]
                 if replay_tokens != block_target_tokens:
                     raise RuntimeError("MTP serial-exact replay diverged from block verifier rows")
+            _timing_add(slot.timing, "target_state_commit_ms", state_commit_start)
             target_verify_seed_rows = [
                 _new_mtp_seed_row(
                     token_id=block_target_tokens[row],
@@ -985,7 +1238,9 @@ class Qwen35GGUFBringupGenerator:
             ]
         finally:
             if snapshot is not None:
+                snapshot_free_start = time.perf_counter()
                 slot.session._free_linear_state_snapshot(snapshot)
+                _timing_add(slot.timing, "linear_state_snapshot_free_ms", snapshot_free_start)
 
         output_tokens = [int(token) for token in acceptance["output_tokens"]]
         slot.resident_context.record_verify_seeds(target_verify_seed_rows)
@@ -998,6 +1253,7 @@ class Qwen35GGUFBringupGenerator:
                 slot.seq_position + 1 + accepted_draft_tokens,
                 dtype=np.int64,
             )
+            kv_commit_start = time.perf_counter()
             slot.mtp_device_kv_len = slot.resident_draft.write_kv_rows_from_device_seed_base(
                 int(target_verify_seed_rows[0].hidden_ptr),
                 commit_tokens,
@@ -1008,6 +1264,7 @@ class Qwen35GGUFBringupGenerator:
                 dense_value_cache=slot.mtp_value_cache,
                 dense_cache_len=slot.mtp_device_kv_len,
             )
+            _timing_add(slot.timing, "mtp_kv_commit_ms", kv_commit_start)
 
         slot.cycles.append(
             {
@@ -1028,14 +1285,19 @@ class Qwen35GGUFBringupGenerator:
                 stop = True
                 break
         slot.done = stop or len(slot.generated_ids) >= int(request.max_tokens)
+        _timing_add(slot.timing, "slot_advance_total_ms", advance_start)
 
-    def _close_mtp_serving_slots(self, slots: list[_GGUFMTPServingSlot]) -> None:
+    def _close_mtp_serving_slots(self, slots: list[_GGUFMTPServingSlot], *, reuse: bool = True) -> None:
         for slot in reversed(slots):
             _free_mtp_buffers(slot.mtp_buffers, runtime=slot.session.runtime)
-            close = getattr(slot.resident_draft, "close", None)
-            if callable(close):
-                close()
-            slot.session.close()
+            self._release_mtp_draft_runner(
+                slot.draft_pool_key if reuse else None,
+                slot.resident_draft,
+            )
+            if reuse:
+                self._release_shared_session(slot.session_pool_key, slot.session)
+            else:
+                slot.session.close()
 
     def _generate_speculative_mtp_llama_compat(
         self,
@@ -1049,10 +1311,13 @@ class Qwen35GGUFBringupGenerator:
     ) -> "_GGUFMTPServingRun":
         from hipengine.core.hip import HipMemcpyKind
 
+        run_start = time.perf_counter()
+        timing: dict[str, float] = {}
         runtime = session.runtime
         hidden_size = int(assets.token_embd_f32.shape[1])
         min_bulk_tokens = int(getattr(session.runner.weights.config, "ssm_conv_kernel", 4))
         if len(prompt_ids) >= min_bulk_tokens:
+            prefill_start = time.perf_counter()
             prefill_result = session.prefill(
                 prompt_ids,
                 use_bulk=True,
@@ -1060,30 +1325,36 @@ class Qwen35GGUFBringupGenerator:
                 return_logits=False,
                 capture_hidden_seed_fp32=True,
             )
+            _timing_add(timing, "prefill_ms", prefill_start)
             prompt_hidden_rows = np.empty((len(prompt_ids), hidden_size), dtype=np.float32)
+            hidden_d2h_start = time.perf_counter()
             runtime.memcpy(
                 prompt_hidden_rows.ctypes.data,
                 session.fp32_verify_hidden_seed_ptr(0),
                 prompt_hidden_rows.nbytes,
                 HipMemcpyKind.DEVICE_TO_HOST,
             )
+            _timing_add(timing, "prompt_hidden_d2h_ms", hidden_d2h_start)
             mtp_context_tokens, mtp_context_hidden_rows = _llama_cpp_mtp_catchup_rows(
                 prompt_ids,
                 prompt_hidden_rows,
             )
         else:
+            prefill_start = time.perf_counter()
             prefill_result = session.prefill(
                 prompt_ids,
                 return_logits=False,
                 capture_hidden_seed_fp32=True,
             )
+            _timing_add(timing, "prefill_ms", prefill_start)
             mtp_context_tokens = []
             mtp_context_hidden_rows = np.empty((0, hidden_size), dtype=np.float32)
 
         prev_token = int(prefill_result.token_id)
         generated_ids = [prev_token]
         if _gguf_finished(generated_ids, self.tokenizer, request):
-            return _GGUFMTPServingRun(generated_ids=generated_ids, cycles=[])
+            _timing_set(timing, "mtp_run_total_ms", run_start)
+            return _GGUFMTPServingRun(generated_ids=generated_ids, cycles=[], timing=timing)
 
         seq_position = int(session.position)
         resident_context = _new_mtp_context(
@@ -1098,18 +1369,21 @@ class Qwen35GGUFBringupGenerator:
             1,
             len(mtp_context_tokens) + max_cycles * (2 * 2 + 2) + 4,
         )
+        mtp_kv_alloc_start = time.perf_counter()
         mtp_key_cache, mtp_value_cache, mtp_buffers = _allocate_mtp_dense_kv(
             runtime=runtime,
             capacity=mtp_device_kv_capacity,
             qk_head_dim=qk_head_dim,
             kv_heads=2,
         )
+        _timing_set(timing, "mtp_kv_alloc_ms", mtp_kv_alloc_start)
         cycles: list[dict[str, Any]] = []
         mtp_device_kv_len = 0
         try:
             if mtp_context_tokens:
                 context_positions = np.asarray(range(len(mtp_context_tokens)), dtype=np.int64)
                 context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
+                context_write_start = time.perf_counter()
                 mtp_device_kv_len = resident_draft.write_kv_rows(
                     mtp_context_hidden_rows,
                     context_tokens,
@@ -1120,17 +1394,20 @@ class Qwen35GGUFBringupGenerator:
                     dense_value_cache=mtp_value_cache,
                     dense_cache_len=0,
                 )
+                _timing_add(timing, "mtp_context_write_ms", context_write_start)
 
             while len(generated_ids) < int(request.max_tokens):
                 raise_if_generation_deadline_expired(request)
                 remaining = int(request.max_tokens) - len(generated_ids)
                 if remaining <= 1:
+                    ar_tail_start = time.perf_counter()
                     with _exact_env(base_env):
                         step = session.step(
                             prev_token,
                             return_logits=False,
                             capture_hidden_seed_fp32=True,
                         )
+                    _timing_add(timing, "ar_tail_ms", ar_tail_start)
                     token = int(step.token_id)
                     generated_ids.append(token)
                     cycles.append(
@@ -1147,6 +1424,7 @@ class Qwen35GGUFBringupGenerator:
                 if resident_context.pending_seed is None:
                     raise RuntimeError("resident MTP context has no pending seed")
                 cycle_mtp_kv_base_len = int(mtp_device_kv_len)
+                draft_start = time.perf_counter()
                 draft_tokens, _draft_topk, mtp_device_kv_len = resident_draft.propose_chain_from_device_seed(
                     int(resident_context.pending_seed.hidden_ptr),
                     start_token=prev_token,
@@ -1160,13 +1438,16 @@ class Qwen35GGUFBringupGenerator:
                     dense_cache_len=mtp_device_kv_len,
                     draft_p_min=0.0,
                 )
+                _timing_add(timing, "draft_propose_ms", draft_start)
                 draft_tokens = [int(token) for token in draft_tokens]
                 if not draft_tokens:
+                    ar_tail_start = time.perf_counter()
                     step = session.step(
                         prev_token,
                         return_logits=False,
                         capture_hidden_seed_fp32=True,
                     )
+                    _timing_add(timing, "ar_tail_ms", ar_tail_start)
                     token = int(step.token_id)
                     generated_ids.append(token)
                     prev_token = token
@@ -1176,8 +1457,12 @@ class Qwen35GGUFBringupGenerator:
                 block_inputs = [int(prev_token)] + draft_tokens
                 block_start = int(seq_position)
                 direct_commit_exact = block_start + len(block_inputs) < 1024
+                snapshot_start = time.perf_counter()
                 snapshot = None if direct_commit_exact else session._linear_state_snapshot()
+                if snapshot is not None:
+                    _timing_add(timing, "linear_state_snapshot_ms", snapshot_start)
                 try:
+                    verify_start = time.perf_counter()
                     block_result = session.verify_target_block(
                         block_inputs,
                         bulk_attention_mode="bulk",
@@ -1185,6 +1470,7 @@ class Qwen35GGUFBringupGenerator:
                         capture_linear_state_rows=True,
                         defer_linear_state_commit=True,
                     )
+                    _timing_add(timing, "target_verify_ms", verify_start)
                     block_target_tokens = [int(token) for token in block_result.token_ids]
                     acceptance = _llama_cpp_acceptance_from_target_samples(
                         draft_tokens,
@@ -1192,6 +1478,7 @@ class Qwen35GGUFBringupGenerator:
                     )
                     accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
                     consumed_rows = accepted_draft_tokens + 1
+                    state_commit_start = time.perf_counter()
                     if consumed_rows < len(block_inputs):
                         if not bool(getattr(block_result, "linear_state_rows_captured", False)):
                             raise RuntimeError("direct MTP partial commit requested without captured state rows")
@@ -1214,6 +1501,7 @@ class Qwen35GGUFBringupGenerator:
                         replay_tokens = [int(token) for token in replay_result.token_ids]
                         if replay_tokens != block_target_tokens:
                             raise RuntimeError("MTP serial-exact replay diverged from block verifier rows")
+                    _timing_add(timing, "target_state_commit_ms", state_commit_start)
                     target_verify_seed_rows = [
                         _new_mtp_seed_row(
                             token_id=block_target_tokens[row],
@@ -1226,7 +1514,9 @@ class Qwen35GGUFBringupGenerator:
                     ]
                 finally:
                     if snapshot is not None:
+                        snapshot_free_start = time.perf_counter()
                         session._free_linear_state_snapshot(snapshot)
+                        _timing_add(timing, "linear_state_snapshot_free_ms", snapshot_free_start)
 
                 output_tokens = [int(token) for token in acceptance["output_tokens"]]
                 resident_context.record_verify_seeds(target_verify_seed_rows)
@@ -1239,6 +1529,7 @@ class Qwen35GGUFBringupGenerator:
                         seq_position + 1 + accepted_draft_tokens,
                         dtype=np.int64,
                     )
+                    kv_commit_start = time.perf_counter()
                     mtp_device_kv_len = resident_draft.write_kv_rows_from_device_seed_base(
                         int(target_verify_seed_rows[0].hidden_ptr),
                         commit_tokens,
@@ -1249,6 +1540,7 @@ class Qwen35GGUFBringupGenerator:
                         dense_value_cache=mtp_value_cache,
                         dense_cache_len=mtp_device_kv_len,
                     )
+                    _timing_add(timing, "mtp_kv_commit_ms", kv_commit_start)
 
                 cycles.append(
                     {
@@ -1273,17 +1565,23 @@ class Qwen35GGUFBringupGenerator:
         finally:
             _free_mtp_buffers(mtp_buffers, runtime=runtime)
 
-        return _GGUFMTPServingRun(generated_ids=generated_ids, cycles=cycles)
+        _timing_set(timing, "mtp_run_total_ms", run_start)
+        return _GGUFMTPServingRun(generated_ids=generated_ids, cycles=cycles, timing=timing)
 
     def _generate_greedy(
         self,
         session: Qwen35GGUFResidentSession,
         prompt_ids: list[int],
         request: GenerationRequest,
+        *,
+        timing: dict[str, float] | None = None,
     ) -> list[int]:
         generated_ids: list[int] = []
         raise_if_generation_deadline_expired(request)
+        prefill_start = time.perf_counter()
         result = session.prefill(prompt_ids, return_logits=False)
+        if timing is not None:
+            _timing_add(timing, "prefill_ms", prefill_start)
         raise_if_generation_deadline_expired(request)
         generated_ids.append(int(result.token_id))
         if request.ignore_eos or int(result.token_id) != self.tokenizer.eos_token_id:
@@ -1294,6 +1592,7 @@ class Qwen35GGUFBringupGenerator:
                 # Python tax (~61 us -> ~12 us); eager == single-launch graph and
                 # avoids the graph's 3rd-relaunch GDN corruption entirely. See
                 # WORKLOG 2026-06-28 "#8 moot".
+                decode_start = time.perf_counter()
                 for _ in range(remaining):
                     raise_if_generation_deadline_expired(request)
                     step = session.step(generated_ids[-1], return_logits=False)
@@ -1304,6 +1603,8 @@ class Qwen35GGUFBringupGenerator:
                         and int(step.token_id) == self.tokenizer.eos_token_id
                     ):
                         break
+                if timing is not None:
+                    _timing_add(timing, "decode_ms", decode_start)
         return generated_ids
 
     def _generate_sampled(
@@ -1889,6 +2190,7 @@ def _gguf_telemetry(
     native_caware_decode: bool | None = None,
     serial_decode_fallback: bool | None = None,
     native_sampler_rows: bool | None = None,
+    timing: dict[str, float] | None = None,
 ) -> GenerationTelemetry:
     plan = _gguf_sampler_plan(request)
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
@@ -1924,6 +2226,7 @@ def _gguf_telemetry(
         native_caware_decode=native_caware_decode,
         serial_decode_fallback=serial_decode_fallback,
         native_sampler_rows=native_sampler_rows,
+        timing=timing,
     )
 
 

@@ -72,10 +72,10 @@ instrumented HIP stage target.
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | Under the natural24 token cap, B2 is faster than B5, but B1 is fastest and no exact budget beats AR. This does not supersede the retained 10-cycle exact B5 row **61.98 tok/s / 1.131x AR**. |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
-| hipEngine `llama-compat` server MTP | 1 | 35.21 | **27.00** | 0.767x | B2 resident slots round-robin | Diagnostic blocked: after fixing per-request GGUF weight rematerialization, server MTP still loses to AR. Generated-token denominator is AR **30.85** vs MTP **23.65** tok/s. |
-| hipEngine `llama-compat` server MTP | 2 | 35.21 | **28.54** | 0.811x | same | Request coalescing and resident slots work, but aggregate server throughput is still below AR. |
-| hipEngine `llama-compat` server MTP | 4 | 35.16 | **29.06** | 0.827x | same | Slots are isolated but advanced round-robin; kernel work is still serialized. |
-| hipEngine `llama-compat` server MTP | 8 | 35.14 | **29.28** | 0.833x | same | Best measured server MTP row so far, still below AR and far below llama.cpp HIP/Vulkan server rows. |
+| hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | Diagnostic blocked: zero batch window and persistent target-session / MTP draft-runner pools remove the deliberate 100 ms queue delay plus draft-open tax, but warmed c=1 MTP still loses to AR. Timing buckets show AR server-vs-direct is mostly prompt prefill, while MTP is dominated by target verify. |
+| hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.41** | 0.834x | same | Request coalescing and resident slots work, but aggregate server throughput is still below AR. |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | Slots are isolated but advanced round-robin; `slots_run_ms` shows serialized kernel work. |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | Best evidence for the next blocker: true batched/fused slot advancement is required. |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | B2 | Untraced server aggregate diagnostic; faster than the earlier instrumented HIP stage-timing run. |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
@@ -85,6 +85,10 @@ instrumented HIP stage target.
 
 Artifacts:
 
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-sweep.json`
 - `benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`
 - `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
@@ -105,19 +109,23 @@ streaming, non-greedy sampling, and unsupported engines.
 
 What landed is the c=N llama-compat resident-slot server milestone. The OpenAI
 path calls `LLM.generate_speculative_mtp_detailed()`, which enters a GGUF
-llama-compat MTP hook with one shared target-weight runner and per-request
-resident target sessions, draft runners, draft K/V state, verifier
+llama-compat MTP hook with one shared target-weight runner, pooled target
+sessions, pooled MTP draft runners, per-request draft K/V state, verifier
 hidden-state capture/commit, and MTP K/V lifecycle ownership. Slots are advanced
 round-robin in one process; this is true resident state isolation, not parallel
 child processes and not the old single-session reset loop. Short prompts that
 cannot safely build the shifted context-replay rows still fall back to ordinary
 GGUF greedy AR under the same request. The exact default MTP route and streaming
-MTP remain unclaimed. The c=1/c=2/c=4/c=8 throughput measurement is now
-diagnostic-blocked rather than retained: sharing the prepared target-weight
-runner removed the per-request GGUF rematerialization cost, but the round-robin
-slot scheduler still serializes kernel launches and loses to server AR. Next
-work is batched/fused slot advancement plus backend MTP cycle counters in the
-HTTP artifact path.
+MTP remain unclaimed. The c=1/c=2/c=4/c=8 throughput measurement is still
+diagnostic-blocked rather than retained. The sequence of fixes is now measured:
+shared prepared target weights removed the catastrophic per-request GGUF
+rematerialization, zero batch window removed the intentional 100 ms/request
+coalescing delay, and pooled target/draft state moved warmed c=1 MTP
+**30.09 -> 34.44 usage tok/s** by eliminating draft-open cost. Server AR moved
+only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is prompt
+prefill, not session construction. The remaining MTP serving blocker is
+batched/fused slot advancement: c=4/c=8 timing buckets expose `slots_run_ms` as
+serialized round-robin kernel work, so the server still loses to AR.
 
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 
