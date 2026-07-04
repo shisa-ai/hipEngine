@@ -257,9 +257,12 @@ the OpenAI server with `--speculative-mtp-serving opt_in` and pass
 automatically. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when the policy is enabled and
 the loaded engine exposes the GGUF NextN tensors. Current serving support is
-c=1/non-streaming/greedy-fast; true c=4/c=8 resident-slot MTP scheduling,
-streaming MTP, and the exact/default MTP server route remain future work tracked
-in [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
+non-streaming/greedy-fast with functional c=2 request coalescing when
+`--generation-batch-window-ms` and `--max-active-requests 2` allow batching. The
+GGUF hook still executes the coalesced prompts serially inside one MTP call; true
+c=4/c=8 resident-slot MTP scheduling, streaming MTP, and the exact/default MTP
+server route remain future work tracked in
+[`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
 
 ## Concurrency (batched decode)
 

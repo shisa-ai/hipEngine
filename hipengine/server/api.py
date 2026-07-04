@@ -1804,6 +1804,32 @@ class _QueuedGeneration:
     cancelled: bool = False
 
 
+class _CompositeGenerationCancellationToken:
+    """Cancellation view that trips when any grouped request token trips."""
+
+    def __init__(self, tokens: Sequence[GenerationCancellationToken]) -> None:
+        self._tokens = tuple(tokens)
+
+    @property
+    def cancelled(self) -> bool:
+        return any(bool(token.cancelled) for token in self._tokens)
+
+    @property
+    def finish_details(self) -> FinishDetails:
+        for token in self._tokens:
+            if token.cancelled:
+                return token.finish_details
+        return FinishDetails(reason="cancelled", cancelled=True)
+
+    def cancel(self, finish_details: FinishDetails | None = None) -> None:
+        for token in self._tokens:
+            token.cancel(finish_details)
+
+    def raise_if_cancelled(self) -> None:
+        if self.cancelled:
+            raise GenerationCancelled(self.finish_details)
+
+
 class _GenerationBatcher:
     """Coalesce compatible HTTP generations into prompt-list calls."""
 
@@ -1846,6 +1872,33 @@ class _GenerationBatcher:
 
     def _group_has_capacity(self, group: Sequence[_QueuedGeneration]) -> bool:
         return self._max_active_requests is None or len(group) < self._max_active_requests
+
+    def _group_key(self, item: _QueuedGeneration) -> tuple[str, tuple[Any, ...]]:
+        route = str(item.route)
+        return (
+            route,
+            _sampling_key(
+                item.sampling,
+                include_cancellation_token=route != _SPECULATIVE_MTP_BATCH_ROUTE,
+            ),
+        )
+
+    @staticmethod
+    def _sampling_for_group(group: Sequence[_QueuedGeneration]) -> SamplingParams:
+        sampling = group[0].sampling
+        if len(group) <= 1 or str(group[0].route) != _SPECULATIVE_MTP_BATCH_ROUTE:
+            return sampling
+        tokens = [
+            item.sampling.cancellation_token
+            for item in group
+            if item.sampling.cancellation_token is not None
+        ]
+        if not tokens:
+            return sampling
+        return replace(
+            sampling,
+            cancellation_token=_CompositeGenerationCancellationToken(tokens),
+        )
 
     def _raise_if_full(self, *, error_extra: Mapping[str, Any] | None = None) -> None:
         if self._max_queue_size is None:
@@ -1929,14 +1982,14 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
-                key = (str(first.route), _sampling_key(first.sampling))
+                key = self._group_key(first)
                 group = [first]
                 deferred: deque[_QueuedGeneration] = deque()
                 while self._queue:
                     item = self._queue.popleft()
                     if _queued_generation_cancelled(item):
                         continue
-                    if (str(item.route), _sampling_key(item.sampling)) == key and self._group_has_capacity(group):
+                    if self._group_key(item) == key and self._group_has_capacity(group):
                         group.append(item)
                     else:
                         deferred.append(item)
@@ -1969,7 +2022,11 @@ class _GenerationBatcher:
                 prompts.extend(item.prompts)
                 slices.append((item, start, len(prompts)))
             try:
-                batch_result = await self._generate_prompts(tuple(prompts), group[0].sampling, route=group[0].route)
+                batch_result = await self._generate_prompts(
+                    tuple(prompts),
+                    self._sampling_for_group(group),
+                    route=group[0].route,
+                )
             except Exception as exc:
                 for item in group:
                     _finish_queued_generation(item, exception=exc)
@@ -10462,7 +10519,11 @@ def _stop_tokens_from_stop(
     return tuple(token_ids), tuple(sequences)
 
 
-def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
+def _sampling_key(
+    sampling: SamplingParams,
+    *,
+    include_cancellation_token: bool = True,
+) -> tuple[Any, ...]:
     return (
         int(sampling.max_tokens),
         float(sampling.temperature),
@@ -10485,7 +10546,11 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         None if sampling.seed is None else int(sampling.seed),
         tuple(int(seed) for seed in sampling.row_seeds),
         None if sampling.deadline_at is None else float(sampling.deadline_at),
-        None if sampling.cancellation_token is None else id(sampling.cancellation_token),
+        (
+            None
+            if not include_cancellation_token or sampling.cancellation_token is None
+            else id(sampling.cancellation_token)
+        ),
         bool(sampling.logprobs),
         int(sampling.top_logprobs),
     )

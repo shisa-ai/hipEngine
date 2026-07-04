@@ -142832,3 +142832,40 @@ python3 scripts/gguf_mtp_bench.py \
   `device_kv_cache=True`, `total_draft_tokens=1`,
   `total_accepted_draft_tokens=0`, and cycle modes
   `llama_compat_direct_commit` then `ar_tail`.
+
+## 2026-07-04 - MTP serving c=2 request coalescing
+
+- Fixed the blocker that kept HTTP requests from coalescing through the
+  speculative-MTP batch route. The server creates a per-request cancellation
+  token for disconnect/deadline handling, and `_sampling_key()` included that
+  token id, so two otherwise identical HTTP MTP requests never shared a batch.
+  The MTP route now ignores the cancellation token only for grouping and passes
+  a composite cancellation token into the backend call; default AR batching keeps
+  the previous stricter cancellation-token key behavior.
+- Added a regression test proving two `speculative_mtp` submissions with
+  distinct request tokens coalesce into one backend MTP call and that cancelling
+  either source token trips the composite token received by the backend.
+- Updated `README.md`, `docs/API.md`, and `docs/MTP-LLAMACPP-PARITY.md` to
+  mark c=2 as functional request coalescing, while explicitly not claiming
+  parallel resident-slot execution, streaming MTP, exact/default MTP serving, or
+  c=4/c=8 scheduling.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_coalesces_speculative_mtp or generation_batcher_keeps_speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  git diff --check
+  ```
+  Pycompile passed, focused server tests passed (`5 passed`), the full server
+  API suite passed (`464 passed`), and `git diff --check` passed.
+- Real HTTP c=2 smoke on AMD Radeon 8060S / gfx1151 with
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `backend='hip_gfx1100'`,
+  `quant='gguf_q4_k_m'`, `speculative_mtp_serving='opt_in'`,
+  `generation_batch_window_ms=100`, `max_active_requests=2`, warmed server, and
+  two concurrent `speculative_mtp=true`, `temperature=0.0`, `top_p=1.0`,
+  `max_tokens=3` completion requests: both HTTP responses were **200**, both
+  returned `'\n\n<think>\n'`, backend path was
+  `gguf_llama_compat_mtp_server`, `last_batch_generation.batch_size=2`,
+  prompt lengths were `[10, 10]`, `total_draft_tokens=2`,
+  `total_accepted_draft_tokens=0`, and both request IDs had
+  `llama_compat_direct_commit` plus `ar_tail` cycle metadata.
