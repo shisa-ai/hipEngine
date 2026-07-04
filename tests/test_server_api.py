@@ -3826,6 +3826,41 @@ def test_generation_batcher_keeps_speculative_mtp_and_default_routes_separate() 
     asyncio.run(run())
 
 
+def test_generation_batcher_coalesces_speculative_mtp_with_request_tokens() -> None:
+    async def run() -> None:
+        fake = SpeculativeMTPFakeLLM()
+        first_token = GenerationCancellationToken()
+        second_token = GenerationCancellationToken()
+        first_sampling = SamplingParams(max_tokens=2, cancellation_token=first_token)
+        second_sampling = SamplingParams(max_tokens=2, cancellation_token=second_token)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), first_sampling, route="speculative_mtp"),
+            batcher.submit(("two",), second_sampling, route="speculative_mtp"),
+        )
+
+        assert first == ["mtp:one"]
+        assert second == ["mtp:two"]
+        assert fake.calls == []
+        assert len(fake.mtp_calls) == 1
+        prompts, grouped_sampling = fake.mtp_calls[0]
+        assert prompts == ("one", "two")
+        assert grouped_sampling.cancellation_token is not first_token
+        assert grouped_sampling.cancellation_token is not second_token
+        assert grouped_sampling.cancellation_token is not None
+        assert grouped_sampling.cancellation_token.cancelled is False
+        second_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert grouped_sampling.cancellation_token.cancelled is True
+        with pytest.raises(GenerationCancelled):
+            grouped_sampling.cancellation_token.raise_if_cancelled()
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_returns_scheduler_chunks_for_single_metadata_submission() -> None:
     class SchedulerChunkFakeLLM(FakeLLM):
         def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
