@@ -144768,3 +144768,22 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Result: py_compile passed; generation sampling tests passed; server API
   tests passed.
+
+## 2026-07-06 - Rejected MTP serving final-state verifier fastpath probe
+
+- Tried `HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH=1` to skip
+  packed-verifier per-row linear-state capture and commit packed final state
+  directly, with rejected/partial cycles falling back through snapshot replay.
+- Result was rejected and not retained: c=4 natural24 server MTP collapsed to
+  **11.06 tok/s** in
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-finalstate-fastpath-probe.json`.
+  Acceptance fell from the retained **0.8545** to **0.5183**, draft cycles rose
+  from **89** to **117**, `prefill_batch_ms` ballooned to **75395.974**, and
+  `target_partial_replay_ms` added **2528.151 ms**.
+- Interpretation: using `linear_state_rows=None` selects a different
+  non-capture linear-attention path, so the no-capture verifier is not
+  semantically equivalent to the current prefill-GDN no-copy row-capture path.
+  Any future row-state optimization should keep the prefill-GDN math and change
+  what rows are recorded, not bypass row capture wholesale.
+- Reverted the experimental code and left the retained MTP serving verifier on
+  captured-row direct commit.
