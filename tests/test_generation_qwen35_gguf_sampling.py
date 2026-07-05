@@ -1198,6 +1198,152 @@ def test_gguf_ar_stream_prefill_reuses_decode_streams(monkeypatch) -> None:
     ]
 
 
+def test_gguf_ar_packed_prefill_uses_batch_prompt_path(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        pass
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path):
+            self.runtime = FakeRuntime()
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            calls.append(("session_init", self.slot_id))
+
+        def reset(self):
+            self.position = 0
+
+        def close(self):
+            calls.append(("close", self.slot_id))
+
+        def prefill(self, token_ids, *, return_logits=False):  # pragma: no cover - must not be used
+            raise AssertionError("packed prompt prefill should bypass synchronous prefill")
+
+        def prefill_async_top1(self, token_ids, *, stream: int, **kwargs):  # pragma: no cover - must not be used
+            raise AssertionError("packed prompt prefill should bypass stream prefill")
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False):
+            calls.append(
+                (
+                    "prefill_batch",
+                    self.slot_id,
+                    tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                    return_logits,
+                )
+            )
+            for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+                session.position = len(prompt)
+            return [SimpleNamespace(token_id=1) for _session in sessions]
+
+        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False, scatter_state=True):
+            calls.append(
+                (
+                    "step_batch",
+                    self.slot_id,
+                    tuple((session.slot_id, int(token), int(position)) for session, token, position in zip(sessions, token_ids, positions, strict=True)),
+                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                    return_logits,
+                    scatter_state,
+                )
+            )
+            for session in sessions:
+                session.position += 1
+            return [SimpleNamespace(token_id=int(token) + 1) for token in token_ids]
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    generator = _generator()
+    generator.prepare()
+    outputs = generator.generate_detailed(_request(prompts=("long", "long2"), max_tokens=2))
+
+    assert [output.text for output in outputs] == ["BC", "BC"]
+    assert [call for call in calls if call[0] == "prefill_batch"] == [
+        (
+            "prefill_batch",
+            0,
+            ((10, 11, 12, 13), (20, 21, 22, 23)),
+            (0, 1),
+            "1",
+            False,
+        )
+    ]
+    assert [call for call in calls if call[0] == "step_batch"] == [
+        ("step_batch", 0, ((0, 1, 4), (1, 1, 4)), "1", False, False)
+    ]
+    assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
+    assert generator.last_batch_generation is not None
+    assert generator.last_batch_generation["native_caware_decode"] is True
+
+
+def test_gguf_ar_packed_prefill_notimplemented_falls_back(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        pass
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path):
+            self.runtime = FakeRuntime()
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            calls.append(("session_init", self.slot_id))
+
+        def reset(self):
+            self.position = 0
+
+        def close(self):
+            pass
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False):
+            calls.append(("prefill_batch", self.slot_id))
+            raise NotImplementedError("shape unsupported")
+
+        def prefill(self, token_ids, *, return_logits=False):
+            calls.append(("prefill", self.slot_id, tuple(token_ids), return_logits))
+            self.position = len(token_ids)
+            return SimpleNamespace(token_id=1)
+
+        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False, scatter_state=True):
+            calls.append(("step_batch", tuple(session.slot_id for session in sessions)))
+            for session in sessions:
+                session.position += 1
+            return [SimpleNamespace(token_id=int(token) + 1) for token in token_ids]
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    generator = _generator()
+    generator.prepare()
+    outputs = generator.generate_detailed(_request(prompts=("long", "long2"), max_tokens=2))
+
+    assert [output.text for output in outputs] == ["BC", "BC"]
+    assert [call for call in calls if call[0] == "prefill_batch"] == [("prefill_batch", 0)]
+    assert [call for call in calls if call[0] == "prefill"] == [
+        ("prefill", 0, (10, 11, 12, 13), False),
+        ("prefill", 1, (20, 21, 22, 23), False),
+    ]
+
+
 def test_gguf_ar_batch_decode_notimplemented_falls_back_to_step(monkeypatch) -> None:
     calls: list[tuple] = []
 

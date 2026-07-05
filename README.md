@@ -261,11 +261,11 @@ the loaded engine exposes the GGUF NextN tensors. Current serving support is
 non-streaming/greedy-fast with shared-weight resident-slot scheduling for
 coalesced c=N requests and a packed target verifier. c=2/c=4/c=8 are throughput
 positive versus the earlier phase-serial server rows, but still below the
-current same-server packed AR rows (`50.89/56.79/59.17 tok/s`). c=8 works in
-warm steady-state with a four-slot target-verifier cap and beats llama.cpp HIP
-full-request MTP, but remains below llama.cpp Vulkan full-request MTP. Streaming
-MTP, the exact/default MTP server route, draft-side c=8 batching, and lifting
-the four-slot verifier cap remain future work tracked in
+current same-server packed AR prefill/decode rows (`66.15/67.68/61.72 tok/s`).
+c=8 works in warm steady-state with a four-slot target-verifier cap and beats
+llama.cpp HIP full-request MTP, but remains below llama.cpp Vulkan full-request
+MTP. Streaming MTP, the exact/default MTP server route, draft-side c=8 batching,
+and lifting the four-slot verifier cap remain future work tracked in
 [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
 
 ## Concurrency (batched decode)
