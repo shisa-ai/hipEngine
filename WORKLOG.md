@@ -144083,3 +144083,60 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused pytest passed (`7 passed`), and JSON artifact
   checks passed.
+
+## 2026-07-06 - GGUF MTP server c=8 route-cap fix
+
+- Fixed the MTP c=8 serving scheduler shape. The previous AR fix proved that
+  width-8 backend groups were the wrong shape for GGUF serving, but MTP had been
+  intentionally left uncapped. A direct control with global
+  `--max-active-requests 4` showed the same lesson applies to MTP: c=8 MTP
+  recovered to **64.45/63.21 tok/s** instead of the retained uncapped
+  **54.88 tok/s** row. The retained implementation keeps global
+  `--max-active-requests 8` but adds a speculative-MTP route group cap of 4.
+- Code change: `hipengine/server/api.py` now sets route-specific active group
+  limits for both GGUF default AR and GGUF speculative MTP routes. The HTTP
+  endpoint can still accept eight concurrent requests; the batcher schedules the
+  backend as two proven four-slot MTP groups instead of one bad eight-slot group.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  `/ready` reported `max_active_requests=8`, MTP warmup widths `[2,4]`, and
+  `scratch_probe_s=7.641151`.
+- Client command shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' --out <artifact>
+  ```
+- Retained route-cap results: c=2 validation **57.68 tok/s**, c=4 validation
+  **64.86 tok/s**, c=8 retained **65.79 tok/s**. Against same-session
+  pre-change retries (**57.26/65.75/54.93 tok/s**), c=2/c=4 are flat within
+  run noise and c=8 improves **+19.8%**. Against the previous retained c=8 MTP
+  row **54.88 tok/s**, c=8 improves **+19.9%**. Packed verifier total drops
+  **11777.715 -> 7661.600 ms** and `slots_verify_phase_ms` drops
+  **12659.043 -> 7842.676 ms**. Same-server AR c=8 sanity remains
+  **82.02 tok/s**.
+- One c=8 route-cap run after a c=2/c=4 sequence hit a rejected transient
+  linear-attention outlier (**5.90 tok/s**,
+  `target_packed_verify_linear_attn_layers_ms=173027.704`); the immediate rerun
+  recovered to **65.79 tok/s**. Do not retain the outlier as a speed row.
+- Retained artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-routecap4-rerun2.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap4-rerun2.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap4-rerun2.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py::test_generation_batcher_applies_route_specific_group_limit tests/test_server_api.py::test_generation_batcher_applies_mtp_route_group_limit tests/test_server_api.py::test_generation_batcher_keeps_speculative_mtp_and_default_routes_separate tests/test_server_api.py::test_generation_batcher_coalesces_speculative_mtp_with_request_tokens
+  ```
+  Pycompile passed, focused pytest passed (`4 passed`), artifact JSON checks
+  passed, and the benchmark server was stopped after the retained reruns.

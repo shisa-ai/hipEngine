@@ -232,6 +232,7 @@ _SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
 _SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
 _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS = 4
+_GGUF_MTP_MAX_ACTIVE_REQUESTS = 4
 _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
     "guided_grammar",
@@ -2946,7 +2947,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         max_queue_size=config.max_queued_requests,
         max_active_requests=config.max_active_requests,
         route_max_active_requests=(
-            {_SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS}
+            {
+                _SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
+                _SPECULATIVE_MTP_BATCH_ROUTE: _GGUF_MTP_MAX_ACTIVE_REQUESTS,
+            }
             if str(config.quant).startswith("gguf_")
             else None
         ),

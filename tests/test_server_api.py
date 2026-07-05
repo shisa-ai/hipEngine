@@ -4246,7 +4246,7 @@ def test_generation_batcher_applies_route_specific_group_limit() -> None:
     asyncio.run(run())
 
 
-def test_generation_batcher_route_limit_does_not_cap_mtp_route() -> None:
+def test_generation_batcher_applies_mtp_route_group_limit() -> None:
     async def run() -> None:
         class FakeMTPLLM(FakeLLM):
             supports_speculative_mtp = True
@@ -4260,7 +4260,10 @@ def test_generation_batcher_route_limit_does_not_cap_mtp_route() -> None:
             engine_factory=lambda: fake,
             batch_window_seconds=0.01,
             max_active_requests=8,
-            route_max_active_requests={_SPECULATIVE_MTP_DEFAULT_ROUTE: 4},
+            route_max_active_requests={
+                _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
+                _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+            },
         )
 
         results = await asyncio.gather(
@@ -4273,16 +4276,11 @@ def test_generation_batcher_route_limit_does_not_cap_mtp_route() -> None:
         assert results == [[f"generated:prompt-{index}"] for index in range(8)]
         assert fake.calls == [
             (
-                (
-                    "prompt-0",
-                    "prompt-1",
-                    "prompt-2",
-                    "prompt-3",
-                    "prompt-4",
-                    "prompt-5",
-                    "prompt-6",
-                    "prompt-7",
-                ),
+                ("prompt-0", "prompt-1", "prompt-2", "prompt-3"),
+                sampling,
+            ),
+            (
+                ("prompt-4", "prompt-5", "prompt-6", "prompt-7"),
                 sampling,
             )
         ]
