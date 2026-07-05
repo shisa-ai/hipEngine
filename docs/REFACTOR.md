@@ -744,3 +744,25 @@ should be boring.
 - Remove when: broader server/API validation and another defaults-on c=2/c=4/c=8
   server rerun show no regression. Then collapse the env opt-out and keep only
   unsupported-shape or long-context fallback paths.
+
+## `HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH`
+- Added 2026-07-06 as a default-off MTP serving diagnostic after the first
+  no-capture packed-verifier probe changed MTP economy. The corrected version
+  keeps packed slot segments through Conv/GDN prefill, mutates per-slot packed
+  final linear state directly, and falls back to accepted-prefix replay for
+  partial/reject cycles.
+- Purpose: test whether skipping per-row linear-state capture can beat the
+  retained captured-row verifier once the no-capture path is semantically
+  equivalent for packed c>N serving.
+- Result: rejected on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
+  Qwen3.6-35B-A3B `UD-Q4_K_M`, natural24 `max_tokens=24`, 5 ms server batch
+  window. c=4 measured **66.75 tok/s** in
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-finalstate-fastpath2.json`
+  versus retained **76.83 tok/s** for
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify.json`.
+  Acceptance stayed identical (**0.8545**, draft **165**, accepted **141**), but
+  `target_state_commit_ms` rose **10.443 -> 405.559 ms** because
+  partial/reject cycles must replay the consumed prefix without captured rows.
+- Remove when: a compact selected-row capture path exists, or if no follow-up
+  uses the segment-aware no-capture kernel. The flag must stay default-off and
+  must not be used for retained timing claims.

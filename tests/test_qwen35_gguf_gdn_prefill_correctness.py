@@ -58,6 +58,7 @@ from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
@@ -509,6 +510,67 @@ def _run_decode_order_segments_state_rows(
             buf.free()
 
 
+def _run_decode_order_segments_mutating(
+    inputs: _GDNInputs,
+    rms_norm_eps: float,
+    *,
+    cu_seqlens_arr: np.ndarray,
+    state_indices_arr: np.ndarray,
+    init_state_slots: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    conv_out = _to_device(inputs.conv_out_f32)
+    gate = _to_device(inputs.gate_u16)
+    a = _to_device(inputs.a_u16)
+    b = _to_device(inputs.b_u16)
+    dt_bias = _to_device(inputs.dt_bias_f32)
+    a_log = _to_device(inputs.a_log_f32)
+    norm_weight = _to_device(inputs.norm_weight_f32)
+    state = _to_device(init_state_slots)
+    cu = _to_device(np.ascontiguousarray(cu_seqlens_arr, dtype=np.int32))
+    state_indices = _to_device(np.ascontiguousarray(state_indices_arr, dtype=np.int64))
+    out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    out = _Buf(int(np.prod(out_shape)) * np.dtype(np.uint16).itemsize)
+    try:
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments(
+            conv_out.ptr,
+            gate.ptr,
+            a.ptr,
+            b.ptr,
+            dt_bias.ptr,
+            a_log.ptr,
+            norm_weight.ptr,
+            state.ptr,
+            out.ptr,
+            cu.ptr,
+            state_indices.ptr,
+            rms_norm_eps,
+            inputs.tokens,
+            int(len(cu_seqlens_arr) - 1),
+            inputs.num_k_heads,
+            inputs.num_v_heads,
+            inputs.head_k_dim,
+            inputs.head_v_dim,
+        )
+        out_u16 = _from_device(out, out_shape, np.uint16)
+        state_after = _from_device(state, init_state_slots.shape, np.float32)
+        return _bf16_u16_to_f32(out_u16), state_after
+    finally:
+        for buf in (
+            conv_out,
+            gate,
+            a,
+            b,
+            dt_bias,
+            a_log,
+            norm_weight,
+            state,
+            cu,
+            state_indices,
+            out,
+        ):
+            buf.free()
+
+
 def _run_chain(
     inputs: _GDNInputs, rms_norm_eps: float, *, use_segments: bool
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -658,6 +720,15 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="decode_order_bf16",
         )
         is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_qwen35",
+            variant="decode_order_bf16_segments",
+        )
+        is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments
     )
     assert (
         resolve(
@@ -817,6 +888,49 @@ def test_gdn_prefill_segments_state_rows_no_copy_matches_per_segment_capture() -
     _assert_output_close(packed_out, expected_out, label="packed segments output")
     _assert_state_close(packed_rows, expected_rows, label="packed segments state rows")
     np.testing.assert_array_equal(packed_state_after, init_slots)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_gdn_prefill_segments_mutating_matches_per_segment_decode_order() -> None:
+    inputs = _GDNInputs(
+        tokens=7,
+        num_k_heads=1,
+        num_v_heads=2,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=23,
+    )
+    rng = np.random.default_rng(2323)
+    init_slots = rng.normal(
+        0.0,
+        0.05,
+        size=(2, inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim),
+    ).astype(np.float32)
+    cu_seqlens = np.asarray([0, 4, 7], dtype=np.int32)
+    state_indices = np.asarray([0, 1], dtype=np.int64)
+
+    packed_out, packed_state_after = _run_decode_order_segments_mutating(
+        inputs,
+        _RMS_EPS,
+        cu_seqlens_arr=cu_seqlens,
+        state_indices_arr=state_indices,
+        init_state_slots=init_slots,
+    )
+
+    expected_out = np.empty_like(packed_out)
+    expected_state_after = np.empty_like(init_slots)
+    for segment, (start, end) in enumerate(zip(cu_seqlens[:-1], cu_seqlens[1:], strict=True)):
+        sliced = _slice_gdn_inputs(inputs, int(start), int(end), init_slots[segment])
+        seg_out, seg_state_after = _run_decode_order_bf16(sliced, _RMS_EPS)
+        expected_out[int(start) : int(end)] = seg_out
+        expected_state_after[segment] = seg_state_after
+
+    _assert_output_close(packed_out, expected_out, label="packed mutating segments output")
+    _assert_state_close(
+        packed_state_after,
+        expected_state_after,
+        label="packed mutating segments final state",
+    )
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
