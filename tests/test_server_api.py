@@ -4174,11 +4174,13 @@ def test_generation_batcher_keeps_different_deadlines_separate() -> None:
     asyncio.run(run())
 
 
-def test_generation_batcher_keeps_different_cancellation_tokens_separate() -> None:
+def test_generation_batcher_coalesces_default_route_with_request_tokens() -> None:
     async def run() -> None:
         fake = FakeLLM()
-        first_sampling = SamplingParams(max_tokens=2, cancellation_token=GenerationCancellationToken())
-        second_sampling = SamplingParams(max_tokens=2, cancellation_token=GenerationCancellationToken())
+        first_token = GenerationCancellationToken()
+        second_token = GenerationCancellationToken()
+        first_sampling = SamplingParams(max_tokens=2, cancellation_token=first_token)
+        second_sampling = SamplingParams(max_tokens=2, cancellation_token=second_token)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
             batch_window_seconds=0.001,
@@ -4191,7 +4193,17 @@ def test_generation_batcher_keeps_different_cancellation_tokens_separate() -> No
 
         assert first == ["generated:one"]
         assert second == ["generated:two"]
-        assert fake.calls == [(("one",), first_sampling), (("two",), second_sampling)]
+        assert len(fake.calls) == 1
+        prompts, grouped_sampling = fake.calls[0]
+        assert prompts == ("one", "two")
+        assert grouped_sampling.cancellation_token is not first_token
+        assert grouped_sampling.cancellation_token is not second_token
+        assert grouped_sampling.cancellation_token is not None
+        assert grouped_sampling.cancellation_token.cancelled is False
+        first_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert grouped_sampling.cancellation_token.cancelled is True
+        with pytest.raises(GenerationCancelled):
+            grouped_sampling.cancellation_token.raise_if_cancelled()
 
     asyncio.run(run())
 

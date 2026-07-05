@@ -1879,25 +1879,26 @@ class _GenerationBatcher:
             route,
             _sampling_key(
                 item.sampling,
-                include_cancellation_token=route != _SPECULATIVE_MTP_BATCH_ROUTE,
+                include_cancellation_token=False,
             ),
         )
 
     @staticmethod
     def _sampling_for_group(group: Sequence[_QueuedGeneration]) -> SamplingParams:
         sampling = group[0].sampling
-        if len(group) <= 1 or str(group[0].route) != _SPECULATIVE_MTP_BATCH_ROUTE:
+        if len(group) <= 1:
             return sampling
         tokens = [
             item.sampling.cancellation_token
             for item in group
             if item.sampling.cancellation_token is not None
         ]
-        if not tokens:
+        unique_tokens = tuple(dict.fromkeys(tokens))
+        if len(unique_tokens) <= 1:
             return sampling
         return replace(
             sampling,
-            cancellation_token=_CompositeGenerationCancellationToken(tokens),
+            cancellation_token=_CompositeGenerationCancellationToken(unique_tokens),
         )
 
     def _raise_if_full(self, *, error_extra: Mapping[str, Any] | None = None) -> None:

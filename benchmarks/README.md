@@ -497,9 +497,9 @@ full-suite speed row above.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
-| hipEngine `llama-compat` server MTP | 2 | 41.27 | **45.57** | 1.104x | B2, 5 ms batch window, packed target verify | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json); forced c=2 coalescing improves old forced c=2 **33.60 -> 45.57 tok/s** |
-| hipEngine `llama-compat` server MTP | 4 | 41.35 | **47.48** | 1.148x | B2, 5 ms batch window, packed target verify | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json); improves old phase-serial c=4 **33.30 -> 47.48 tok/s** |
-| hipEngine `llama-compat` server MTP | 8 | 41.27 | **47.18** | 1.143x | B2, 5 ms batch window, packed target verify chunked at 4 slots | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json); warm steady-state c=8 row. A single 8-slot packed verifier batch was rejected (**11.58 tok/s**) |
+| hipEngine `llama-compat` server MTP | 2 | 41.17 | **45.57** | 1.107x | B2, 5 ms batch window, packed target verify | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json); forced c=2 coalescing improves old forced c=2 **33.60 -> 45.57 tok/s**; AR denominator [`after-batcher`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-default-after-batcher.json) |
+| hipEngine `llama-compat` server MTP | 4 | 41.45 | **47.48** | 1.146x | B2, 5 ms batch window, packed target verify | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json); improves old phase-serial c=4 **33.30 -> 47.48 tok/s**; AR denominator [`after-batcher`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-default-after-batcher.json) |
+| hipEngine `llama-compat` server MTP | 8 | 41.42 | **47.18** | 1.139x | B2, 5 ms batch window, packed target verify chunked at 4 slots | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json); warm steady-state c=8 row. A single 8-slot packed verifier batch was rejected (**11.58 tok/s**); AR denominator [`after-batcher`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-default-after-batcher.json) |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); external diagnostic |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); aggregate decode loses vs AR |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); aggregate decode loses vs AR |
@@ -516,6 +516,13 @@ coalescing protocol. It is still diagnostic rather than a retained production
 claim: c=8 needs draft-side row-count scaling, rows>=16 packed verifier tuning
 before lifting the four-slot cap, and prompt-prefill overhead reduction so
 server AR approaches the direct GGUF suite.
+The default-route batcher now coalesces compatible AR requests with composite
+cancellation tokens, but default AR remains flat at c=2/c=4/c=8
+**41.17/41.45/41.42 tok/s**. An opt-in one-token packed AR verifier diagnostic
+(`HIPENGINE_GGUF_AR_PACKED_DECODE=1`) was rejected at
+**32.12/41.32/41.22 tok/s** because `target_verify_batch_ms` dominates; the next
+AR scaling primitive must avoid verifier state import/scatter and row-capture
+overhead.
 
 | Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
 | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |

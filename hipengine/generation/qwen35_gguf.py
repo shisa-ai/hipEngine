@@ -85,6 +85,11 @@ _LLAMA_COMPAT_MTP_ENV = {
 }
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
+_GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
+
+
+def _gguf_ar_packed_decode_enabled() -> bool:
+    return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -122,6 +127,21 @@ class _GGUFMTPServingSlot:
     draft_pool_key: int | None = None
     mtp_device_kv_len: int = 0
     done: bool = False
+
+
+@dataclass
+class _GGUFARServingSlot:
+    request_id: int
+    prompt_ids: list[int]
+    session: Qwen35GGUFResidentSession
+    prev_token: int
+    seq_position: int
+    generated_ids: list[int]
+    timing: dict[str, float] = field(default_factory=dict)
+    session_pool_key: tuple[str, bool | None, bool | None] | None = None
+    done: bool = False
+    native_decode_steps: int = 0
+    serial_decode_steps: int = 0
 
 
 @dataclass
@@ -585,6 +605,13 @@ class Qwen35GGUFBringupGenerator:
         generated_ids_by_request: dict[int, list[int]] = {}
         token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
         shared_runner = self._prepared_shared_runner()
+        if (
+            plan.mode is SamplingMode.GREEDY_FAST
+            and len(request.prompts) > 1
+            and shared_runner is not None
+            and _gguf_ar_packed_decode_enabled()
+        ):
+            return self._generate_ar_serving_slots(shared_runner, request, plan=plan)
         session_open_start = time.perf_counter()
         with self._resident_session_scope(
             shared_runner=shared_runner,
@@ -651,6 +678,257 @@ class Qwen35GGUFBringupGenerator:
             outputs=self.last_generation_outputs,
         )
         return outputs
+
+    def _generate_ar_serving_slots(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        request: GenerationRequest,
+        *,
+        plan: Any,
+    ) -> list[GenerationOutput]:
+        encoded_prompts: dict[int, list[int]] = {}
+        tokenize_ms_by_request: dict[int, float] = {}
+        for row_index, prompt in enumerate(request.prompts):
+            raise_if_generation_deadline_expired(request)
+            tokenize_start = time.perf_counter()
+            prompt_ids = self.tokenizer.encode(prompt)
+            tokenize_ms_by_request[row_index] = _timing_ms_since(tokenize_start)
+            if not prompt_ids:
+                raise ValueError("GGUF prompt tokenization produced no token IDs")
+            encoded_prompts[row_index] = prompt_ids
+
+        slots: list[_GGUFARServingSlot] = []
+        try:
+            slots = self._open_ar_serving_slots(
+                shared_runner,
+                encoded_prompts,
+                tokenize_ms_by_request,
+                request,
+            )
+            self._run_ar_serving_slots(slots, request)
+            outputs: list[GenerationOutput] = []
+            prompt_rows_by_request: dict[int, list[int]] = {}
+            generated_ids_by_request: dict[int, list[int]] = {}
+            token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
+            for slot in sorted(slots, key=lambda item: item.request_id):
+                row_timing = dict(slot.timing)
+                generated_ids = list(slot.generated_ids)
+                prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
+                generated_ids_by_request[slot.request_id] = generated_ids
+                token_logprobs_by_request[slot.request_id] = []
+                decode_text_start = time.perf_counter()
+                text = self.tokenizer.decode(generated_ids)
+                _timing_set(row_timing, "decode_text_ms", decode_text_start)
+                outputs.append(
+                    GenerationOutput(
+                        text=text,
+                        finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
+                        telemetry=_gguf_telemetry(
+                            slot.prompt_ids,
+                            generated_ids,
+                            request,
+                            row_index=slot.request_id,
+                            timing=row_timing,
+                            execution_path="gguf_packed_ar_server_decode",
+                            native_compact_prefill=False,
+                            native_caware_decode=slot.native_decode_steps > 0,
+                            serial_decode_fallback=slot.serial_decode_steps > 0,
+                            native_sampler_rows=False,
+                        ),
+                    )
+                )
+            self.last_generation_outputs = tuple(outputs)
+            native_decode_steps = max((slot.native_decode_steps for slot in slots), default=0)
+            serial_decode_fallback = any(slot.serial_decode_steps > 0 for slot in slots)
+            self.last_batch_generation = _gguf_last_batch_generation(
+                self.tokenizer,
+                request,
+                plan,
+                prompt_rows_by_request,
+                generated_ids_by_request,
+                token_logprobs_by_request,
+                outputs=self.last_generation_outputs,
+                execution_path="gguf_packed_ar_server_decode",
+                native_decode_steps=native_decode_steps,
+                native_caware_decode=native_decode_steps > 0,
+                serial_decode_fallback=serial_decode_fallback,
+            )
+            self._close_ar_serving_slots(slots, reuse=True)
+            slots = []
+            return outputs
+        except Exception:
+            if slots:
+                self._close_ar_serving_slots(slots, reuse=False)
+            raise
+
+    def _open_ar_serving_slots(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        encoded_prompts: dict[int, list[int]],
+        tokenize_ms_by_request: dict[int, float],
+        request: GenerationRequest,
+    ) -> list[_GGUFARServingSlot]:
+        slots: list[_GGUFARServingSlot] = []
+        try:
+            for row_index in range(len(request.prompts)):
+                raise_if_generation_deadline_expired(request)
+                prompt_ids = encoded_prompts[row_index]
+                timing: dict[str, float] = {
+                    "tokenize_ms": float(tokenize_ms_by_request.get(row_index, 0.0))
+                }
+                session_open_start = time.perf_counter()
+                session, session_pool_key, _session_reused = self._acquire_shared_session(
+                    shared_runner,
+                    pool_name="ar_batch",
+                    use_wmma_prefill=True,
+                    use_gemv_decode=True,
+                )
+                _timing_set(timing, "session_open_ms", session_open_start)
+                prefill_start = time.perf_counter()
+                prefill_result = session.prefill(prompt_ids, return_logits=False)
+                _timing_add(timing, "prefill_ms", prefill_start)
+                prev_token = int(prefill_result.token_id)
+                generated_ids = [prev_token]
+                slot = _GGUFARServingSlot(
+                    request_id=row_index,
+                    prompt_ids=list(prompt_ids),
+                    session=session,
+                    prev_token=prev_token,
+                    seq_position=int(session.position),
+                    generated_ids=generated_ids,
+                    timing=timing,
+                    session_pool_key=session_pool_key,
+                    done=(
+                        len(generated_ids) >= int(request.max_tokens)
+                        or _gguf_finished(generated_ids, self.tokenizer, request)
+                    ),
+                )
+                slots.append(slot)
+        except Exception:
+            self._close_ar_serving_slots(slots, reuse=False)
+            raise
+        return slots
+
+    def _run_ar_serving_slots(
+        self,
+        slots: list[_GGUFARServingSlot],
+        request: GenerationRequest,
+    ) -> None:
+        while any(not slot.done for slot in slots):
+            live_slots = [slot for slot in slots if not slot.done]
+            cycle_start = time.perf_counter()
+            handled = self._try_step_ar_serving_slots_batch(live_slots, request)
+            if not handled:
+                for slot in live_slots:
+                    self._step_ar_serving_slot_serial(slot, request)
+            cycle_ms = _timing_ms_since(cycle_start)
+            for slot in live_slots:
+                _timing_add_ms(slot.timing, "slots_decode_phase_ms", cycle_ms)
+
+    def _try_step_ar_serving_slots_batch(
+        self,
+        live_slots: list[_GGUFARServingSlot],
+        request: GenerationRequest,
+    ) -> bool:
+        if len(live_slots) <= 1:
+            return False
+        index = 0
+        while index < len(live_slots):
+            remaining = len(live_slots) - index
+            take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
+            if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                take -= 1
+            chunk = live_slots[index:index + take]
+            index += take
+            if len(chunk) <= 1:
+                for slot in chunk:
+                    self._step_ar_serving_slot_serial(slot, request)
+                continue
+            first_session = chunk[0].session
+            verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
+            if not callable(verify_batch):
+                for slot in chunk:
+                    self._step_ar_serving_slot_serial(slot, request)
+                continue
+            jobs = [
+                {
+                    "session": slot.session,
+                    "input_token_ids": (int(slot.prev_token),),
+                    "bulk_attention_mode": "bulk",
+                    "use_wmma_prefill": True,
+                    "capture_linear_state_rows": True,
+                    "defer_linear_state_commit": True,
+                }
+                for slot in chunk
+            ]
+            verify_start = time.perf_counter()
+            try:
+                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                    batch_result = verify_batch(jobs)
+            except NotImplementedError:
+                for slot in chunk:
+                    self._step_ar_serving_slot_serial(slot, request)
+                continue
+            if batch_result is None:
+                for slot in chunk:
+                    self._step_ar_serving_slot_serial(slot, request)
+                continue
+            block_results = list(batch_result)
+            if len(block_results) != len(chunk):
+                raise RuntimeError(
+                    f"GGUF AR target batch verifier returned {len(block_results)} result(s) "
+                    f"for {len(chunk)} live slot(s)"
+                )
+            verify_ms = _timing_ms_since(verify_start)
+            for slot, block_result in zip(chunk, block_results, strict=True):
+                _timing_add_ms(slot.timing, "target_verify_ms", verify_ms)
+                _timing_add_ms(slot.timing, "target_verify_batch_ms", verify_ms)
+                token_ids = [int(token) for token in getattr(block_result, "token_ids", ())]
+                if len(token_ids) != 1:
+                    raise RuntimeError("GGUF AR packed verifier must return exactly one token per slot")
+                if not bool(getattr(block_result, "linear_state_rows_captured", False)):
+                    raise RuntimeError("GGUF AR packed verifier returned without captured state rows")
+                old_position = int(slot.seq_position)
+                slot.session._commit_verify_linear_state_row(0, position=old_position + 1)
+                self._record_ar_serving_token(slot, token_ids[0], request)
+                slot.native_decode_steps += 1
+        return True
+
+    def _step_ar_serving_slot_serial(
+        self,
+        slot: _GGUFARServingSlot,
+        request: GenerationRequest,
+    ) -> None:
+        if slot.done:
+            return
+        raise_if_generation_deadline_expired(request)
+        decode_start = time.perf_counter()
+        step = slot.session.step(slot.prev_token, return_logits=False)
+        _timing_add(slot.timing, "decode_ms", decode_start)
+        self._record_ar_serving_token(slot, int(step.token_id), request)
+        slot.serial_decode_steps += 1
+
+    def _record_ar_serving_token(
+        self,
+        slot: _GGUFARServingSlot,
+        token_id: int,
+        request: GenerationRequest,
+    ) -> None:
+        token = int(token_id)
+        slot.generated_ids.append(token)
+        slot.prev_token = token
+        slot.seq_position += 1
+        slot.done = (
+            len(slot.generated_ids) >= int(request.max_tokens)
+            or _gguf_finished(slot.generated_ids, self.tokenizer, request)
+        )
+
+    def _close_ar_serving_slots(self, slots: list[_GGUFARServingSlot], *, reuse: bool = True) -> None:
+        for slot in reversed(slots):
+            if reuse:
+                self._release_shared_session(slot.session_pool_key, slot.session)
+            else:
+                slot.session.close()
 
     def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         """Generate through the llama.cpp-compatible GGUF MTP route.
@@ -2141,21 +2419,26 @@ def _gguf_last_batch_generation(
     token_logprobs_by_request: dict[int, list[TokenLogprob]],
     *,
     outputs: tuple[GenerationOutput, ...],
+    execution_path: str | None = None,
+    native_decode_steps: int = 0,
+    native_caware_decode: bool = False,
+    serial_decode_fallback: bool | None = None,
 ) -> dict[str, Any]:
     request_ids = tuple(range(len(outputs)))
-    path = _gguf_execution_path(plan)
+    path = execution_path or _gguf_execution_path(plan)
     prompt_lengths = [len(prompt_rows_by_request.get(request_id, ())) for request_id in request_ids]
     decode_steps = max((len(generated_ids_by_request.get(request_id, ())) for request_id in request_ids), default=0)
+    serial_fallback = len(request_ids) > 1 if serial_decode_fallback is None else bool(serial_decode_fallback)
     payload: dict[str, Any] = {
         "path": path,
         "batch_size": len(request_ids),
         "request_ids": list(request_ids),
         "prompt_lengths": prompt_lengths,
         "decode_steps": decode_steps,
-        "native_decode_steps": 0,
-        "serial_decode_fallback": len(request_ids) > 1,
+        "native_decode_steps": int(native_decode_steps),
+        "serial_decode_fallback": serial_fallback,
         "native_compact_prefill": False,
-        "native_caware_decode": False,
+        "native_caware_decode": bool(native_caware_decode),
         "native_sampler_rows": False,
         "throughput_claim_eligible": False,
         "sampler_plan_metadata": [
@@ -2182,6 +2465,8 @@ def _gguf_last_batch_generation(
         request=request,
         plan=plan,
         execution_path=path,
+        native_caware_decode=bool(native_caware_decode),
+        serial_decode_fallback=serial_fallback,
     )
     return payload
 
@@ -2287,8 +2572,11 @@ def _gguf_scheduler_token_chunks(
     request: GenerationRequest,
     plan: Any,
     execution_path: str,
+    native_caware_decode: bool = False,
+    serial_decode_fallback: bool | None = None,
 ) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
+    serial_fallback = len(request_ids) > 1 if serial_decode_fallback is None else bool(serial_decode_fallback)
     for request_id in request_ids:
         generated_ids = generated_ids_by_request.get(request_id, [])
         token_logprobs = token_logprobs_by_request.get(request_id, [])
@@ -2323,8 +2611,8 @@ def _gguf_scheduler_token_chunks(
                     phase="answer",
                     execution_path=execution_path,
                     native_compact_prefill=False,
-                    native_caware_decode=False,
-                    serial_decode_fallback=len(request_ids) > 1,
+                    native_caware_decode=bool(native_caware_decode),
+                    serial_decode_fallback=serial_fallback,
                     native_sampler_rows=False,
                 ),
             )
