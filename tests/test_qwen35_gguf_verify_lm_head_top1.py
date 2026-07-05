@@ -7,6 +7,51 @@ import pytest
 import hipengine.runtime.qwen35_gguf_runner as runner_mod
 
 
+def test_small_b_rowtile_chunks_avoid_single_row_tail() -> None:
+    assert runner_mod._small_b_rowtile_chunks(6) == (6,)
+    assert runner_mod._small_b_rowtile_chunks(7) == (5, 2)
+    assert runner_mod._small_b_rowtile_chunks(8) == (6, 2)
+    assert runner_mod._small_b_rowtile_chunks(12) == (6, 6)
+    assert runner_mod._small_b_rowtile_chunks(13) == (6, 5, 2)
+
+
+def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128)
+    runtime = SimpleNamespace()
+    calls: list[tuple[int, int, int, int, object]] = []
+
+    def fake_rowtile(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
+        calls.append((int(hidden_ptr), int(out_ptr), int(rows), int(stream), runtime))
+        return True
+
+    monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+
+    handled = session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12, stream=3, runtime=runtime)
+
+    assert handled is True
+    hidden_stride = 64 * runner_mod.DType.BF16.itemsize
+    logits_stride = 128 * runner_mod.DType.FP32.itemsize
+    assert calls == [
+        (0x100000, 0x200000, 6, 3, runtime),
+        (0x100000 + 6 * hidden_stride, 0x200000 + 6 * logits_stride, 6, 3, runtime),
+    ]
+
+
+def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128)
+
+    def fake_rowtile(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
+        return False
+
+    monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12) is False
+
+
 def _session_with_lm_head_x8() -> SimpleNamespace:
     weight = SimpleNamespace(
         allocation=lambda name="raw": SimpleNamespace(tensor=SimpleNamespace(ptr=0x2200))

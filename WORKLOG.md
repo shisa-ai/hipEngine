@@ -144218,3 +144218,83 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused pytest passed (`5 passed`), and artifact JSON
   checks passed.
+
+## 2026-07-06 - GGUF MTP server packed rowtile LM-head chunks
+
+- Fixed the remaining packed verifier LM-head fallback exposed by the no-WMMA
+  verifier row. The Q6_K T16 rowtile LM-head path only handles rows 2-6
+  directly; packed c=4/c=8 verifier jobs can present 7/8/12 rows and were
+  falling through to the generic body. `Qwen35GGUFResidentSession` now chunks
+  packed LM-head rows into 2-6 row rowtile launches (`7 -> 5+2`,
+  `8 -> 6+2`, `12 -> 6+6`) before falling back.
+- Code/tests:
+  - `hipengine/runtime/qwen35_gguf_runner.py`: added
+    `_small_b_rowtile_chunks()` and `_verify_lm_head_rowtile_chunked()`, then
+    routed verifier LM-head sampling through the chunked helper.
+  - `tests/test_qwen35_gguf_verify_lm_head_top1.py`: added chunk planner,
+    pointer-offset, and unsupported-chunk fallback coverage.
+  - `tests/test_gguf_q6_k_t16_rowtile_gemv.py`: expanded the HIP correctness
+    gate from rows 2-6 to rows 2/3/4/5/6/7/8/12 by chunking rowtile launches
+    and comparing bit-exactly against per-row decode.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- Client command shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' --out <artifact>
+  ```
+- Retained warm natural24 MTP results: c=2 **70.06 tok/s**, c=4
+  **77.29 tok/s**, c=8 **76.46 tok/s**. This moves retained MTP
+  **69.78/72.56/68.83 -> 70.06/77.29/76.46 tok/s** at c=2/c=4/c=8.
+  The first c=8 pass also measured **77.52 tok/s**.
+- Same-server AR remains **66.39/82.46/81.94 tok/s**, so MTP now beats AR at
+  c=2 and trails by roughly **5 tok/s** at c=4/c=8. The c=4/c=8 rows are now
+  close to llama.cpp HIP decode-only MTP c=4/c=8 (**78.21/78.56 tok/s**), but
+  still below hipEngine AR.
+- Warm rerun economy/buckets:
+  - c=2: `draft=165`, `accepted=141`, accept rate **0.8545**, target rows
+    **250**, `slots_verify_phase_ms=3712.187`,
+    `target_packed_verify_total_ms=3680.460`,
+    `target_packed_verify_lm_head_sample_ms=2436.210`.
+  - c=4: `draft=165`, `accepted=141`, accept rate **0.8545**, target rows
+    **250**, `slots_verify_phase_ms=5943.199`,
+    `target_packed_verify_total_ms=5870.712`,
+    `target_packed_verify_lm_head_sample_ms=4239.592`.
+  - c=8: `draft=165`, `accepted=141`, accept rate **0.8545**, target rows
+    **250**, `slots_verify_phase_ms=6035.985`,
+    `target_packed_verify_total_ms=5923.988`,
+    `target_packed_verify_lm_head_sample_ms=4277.118`.
+  Versus the no-WMMA row, c=8 `slots_verify_phase_ms` drops
+  **7236.054 -> 6035.985 ms**, packed verifier total
+  **7142.328 -> 5923.988 ms**, and LM-head/sample
+  **5202.328 -> 4277.118 ms**.
+- Retained artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json`.
+  Same-session first-pass c=8 reference:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify.json`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_verify_lm_head_top1.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_qwen35_gguf_verify_lm_head_top1.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_verify_lm_head_top1.py tests/test_gguf_q6_k_t16_rowtile_gemv.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_qwen35_gguf_verify_lm_head_top1.py tests/test_gguf_q6_k_t16_rowtile_gemv.py
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json >/dev/null
+  ```
+  Pycompile passed, focused pytest passed (`6 passed`, `3 passed`,
+  `7 passed`), artifact JSON checks passed, and the benchmark server was
+  stopped after the retained reruns.
