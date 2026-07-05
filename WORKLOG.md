@@ -144787,3 +144787,44 @@ python3 scripts/gguf_mtp_bench.py \
   what rows are recorded, not bypass row capture wholesale.
 - Reverted the experimental code and left the retained MTP serving verifier on
   captured-row direct commit.
+
+## 2026-07-06 - GGUF MTP serving packed-verifier GPU-stage refresh
+
+- Reran the retained MTP serving route after reverting the rejected final-state
+  fastpath, with packed verifier GPU event timings enabled. Server:
+  ```bash
+  HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-gpustage-current.json
+  ```
+- Instrumented results, not retained as speed rows because event timing adds
+  wall overhead: c=4 **68.33 tok/s**, c=8 **69.67 tok/s**. Economy stayed
+  unchanged at `draft=165`, `accepted=141`, accept rate **0.8545**, target
+  verify rows **250**.
+- Real GPU leaves are distributed rather than concentrated in the host
+  `target_packed_verify_lm_head_sample_ms` drain bucket. c=8 totals:
+  full attention **1022.048 ms**, linear-attn QKV/gate **1080.596 ms**, MoE
+  gate/up **941.140 ms**, MoE down **582.182 ms**, SSM out **399.808 ms**,
+  LM-head/sample **515.524 ms**, GDN state rows **319.432 ms**, Conv state rows
+  **67.706 ms**.
+- Row telemetry still shows **250** linear-state rows captured for **85**
+  committed rows (**165** extra rows), but this is not a host-only fix:
+  the segment GDN state-row kernel uses the dense row slab as its recurrent
+  working state (`token - 1` reads the previous row). A valid selected-row
+  capture path needs a kernel/API change that keeps the prefill-GDN no-copy math
+  while separating dense recurrent work state from compact commit-row capture.
+  Reusing `linear_state_rows=None` is invalid because it takes the older
+  non-capture prefill/GDN path and changed MTP economy in the rejected probe.
+- The diagnostic server was stopped after the c=4/c=8 runs.
