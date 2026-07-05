@@ -144699,3 +144699,19 @@ python3 scripts/gguf_mtp_bench.py \
   **41.13 -> 66.39 -> 82.46 -> 81.94 tok/s** (**1.99x**). The stale
   zero-window pooled c=1/c=2 rows remain historical diagnostics only and no
   longer describe the retained MTP server route.
+
+## 2026-07-06 - Server readiness scratch-probe test refresh
+
+- While validating the AR serving state, `tests/test_server_api.py` failed only
+  in `test_ready_reports_startup_failure_diagnostics_without_payload_text`:
+  the implementation now reports `probe_prompt_tokens` and `context_unknown` in
+  scratch-probe diagnostics, but the failure-path assertion still expected the
+  older exact dictionary.
+- Updated the assertion to include the current diagnostics fields. No server
+  behavior changed.
+- Validation:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  ```
+  Result: server API tests passed; generation sampling tests passed.

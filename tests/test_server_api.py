@@ -2682,6 +2682,8 @@ def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> Non
         "enabled": True,
         "status": "failed",
         "max_prompt_tokens": 131071,
+        "probe_prompt_tokens": 131071,
+        "context_unknown": False,
         "exception_type": "RuntimeError",
     }
     assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
