@@ -248,7 +248,7 @@ work is on the MTP-bearing `UD-Q4_K_M` GGUF.
 | GGUF MTP exact default B5 | Qwen3.6-35B-A3B `UD-Q4_K_M`, gfx1151/Radeon 8060S, full `mtpbench-code-general-ja` 10-cycle suite | **61.98 tok/s**, **1.1312x AR** (`54.79` AR), `16.162 ms/output` | Correctness-preserving default suite route after the shared parallel MTP-attention fix; artifact: [`2026-07-02-ar-mtp-default-parallelattn-full.json`](benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json). |
 | GGUF MTP `llama-compat` B2 | Same model/suite, natural24 cyclecap24, no-copy verifier capture + llama-style direct partial commit | **71.52 tok/s**, **1.3055x AR**, `14.005 ms/output` | Active llama.cpp replication lane. Stage wall is slightly faster than the llama.cpp HIP rerun (`14.269 ms/output`), while request throughput is within `0.39 tok/s` (`71.52` vs `71.91`). This lane is accuracy-traded and not serial-prefix-equivalent; artifact: [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json). |
 | GGUF MTP exact natural24 c=1 | Same model, direct suite, `max_tokens=24` | **52.13 tok/s** B1 vs **54.80 tok/s** AR (`0.951x`) | Token-cap diagnostic: B1 is fastest; B2 `52.04`, B5 `50.65`. This does not supersede the retained exact B5 full-suite row; artifact: [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json). |
-| GGUF MTP `llama-compat` server natural24 | Same GGUF/model on gfx1151, B2, OpenAI server, `--speculative-mtp-serving opt_in`, 5 ms coalescing window | c=2 **45.57 tok/s**, c=4 **47.48 tok/s**, warm c=8 **47.18 tok/s** | Packed target verifier serving diagnostic. c=8 currently chunks target verify 4+4 because one 8-slot packed verifier batch is rejected at `11.58 tok/s`; artifacts: [`c2`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json), [`c4`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json), [`c8`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json). |
+| GGUF MTP `llama-compat` server natural24 | Same GGUF/model on gfx1151, B2, OpenAI server, `--speculative-mtp-serving opt_in`, 5 ms coalescing window | c=2 **46.75 tok/s**, c=4 **49.65 tok/s**, warm c=8 **52.18 tok/s** | Packed target verifier plus stream-draft/stream-verify serving diagnostic. c=8 still chunks target verify 4+4 because one 8-slot packed verifier batch is rejected at `11.58 tok/s`; artifacts: [`c2`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json), [`c4`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json), [`c8`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json), [`packed-stage`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json). |
 | llama.cpp MTP server diagnostics | Same GGUF/model on gfx1151, B2, HIP/Vulkan, c=1/4/8 | HIP: c=1 `75.56` (`1.448x`), c=4 `78.21` (`0.722x`), c=8 `78.56` (`0.630x`). Vulkan: c=1 `91.48` (`1.426x`), c=4 `92.19` (`0.739x`), c=8 `103.57` (`0.741x`) | Cross-engine diagnostics: MTP wins c=1 but loses aggregate decode under c=4/c=8 on this prompt suite. See [`benchmarks/README.md`](benchmarks/README.md#natural24-mtp-vs-ar-concurrency-diagnostic). |
 
 Server MTP is available as a guarded, default-off GGUF llama-compat route. Start
@@ -259,11 +259,13 @@ automatically. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when the policy is enabled and
 the loaded engine exposes the GGUF NextN tensors. Current serving support is
 non-streaming/greedy-fast with shared-weight resident-slot scheduling for
-coalesced c=N requests and a packed target verifier. c=2/c=4 are throughput
-positive versus the earlier phase-serial server rows; c=8 works in warm
-steady-state with a four-slot target-verifier cap. Streaming MTP, the
-exact/default MTP server route, draft-side c=8 batching, and lifting the
-four-slot verifier cap remain future work tracked in
+coalesced c=N requests and a packed target verifier. c=2/c=4/c=8 are throughput
+positive versus the earlier phase-serial server rows, but still below the
+current same-server packed AR rows (`50.90/57.00/56.35 tok/s`). c=8 works in
+warm steady-state with a four-slot target-verifier cap and beats llama.cpp HIP
+full-request MTP, but remains below llama.cpp Vulkan full-request MTP. Streaming
+MTP, the exact/default MTP server route, draft-side c=8 batching, and lifting
+the four-slot verifier cap remain future work tracked in
 [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
 
 ## Concurrency (batched decode)

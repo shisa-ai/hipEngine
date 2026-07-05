@@ -14,6 +14,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFPackedTargetState,
     _GGUFPackedVerifySlotBlock,
     _GGUFFullAttentionPrefillScratch,
+    _HipEventStageRecorder,
     _build_gguf_packed_verify_layout,
 )
 
@@ -268,3 +269,61 @@ def test_gguf_packed_target_state_rejects_invalid_inputs(monkeypatch) -> None:
             block_size=0,
             runtime=SimpleNamespace(),
         )
+
+
+def test_hip_event_stage_recorder_accumulates_aliases_and_closes() -> None:
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.next_event = 100
+            self.records: list[tuple[int, int]] = []
+            self.synced: list[int] = []
+            self.destroyed: list[int] = []
+
+        def event_create(self) -> int:
+            event = self.next_event
+            self.next_event += 1
+            return event
+
+        def event_record(self, event: int, stream: int = 0) -> None:
+            self.records.append((int(event), int(stream)))
+
+        def event_synchronize(self, event: int) -> None:
+            self.synced.append(int(event))
+
+        def event_elapsed_time_ms(self, start: int, stop: int) -> float:
+            return float(int(stop) - int(start))
+
+        def event_destroy(self, event: int) -> None:
+            self.destroyed.append(int(event))
+
+    runtime = FakeRuntime()
+    recorder = _HipEventStageRecorder(runtime, enabled=True, stream=7)
+    recorder.start()
+    recorder.mark("first", "total")
+    recorder.mark("second")
+    timings: dict[str, float] = {}
+
+    recorder.resolve_into(timings)
+
+    assert timings == {"first": 1.0, "total": 1.0, "second": 1.0}
+    assert runtime.records == [(100, 7), (101, 7), (102, 7)]
+    assert runtime.synced == [101, 102]
+    assert sorted(runtime.destroyed) == [100, 101, 102]
+
+    class NegativeElapsedRuntime(FakeRuntime):
+        def event_elapsed_time_ms(self, start: int, stop: int) -> float:
+            return -0.25
+
+    negative_runtime = NegativeElapsedRuntime()
+    negative_recorder = _HipEventStageRecorder(negative_runtime, enabled=True, stream=3)
+    negative_recorder.start()
+    negative_recorder.mark("bad_interval")
+    negative_timings: dict[str, float] = {}
+
+    negative_recorder.resolve_into(negative_timings)
+
+    assert negative_timings == {
+        "bad_interval_negative_event_elapsed": 0.25,
+        "packed_verify_gpu_negative_event_elapsed": 0.25,
+        "bad_interval": 0.0,
+    }

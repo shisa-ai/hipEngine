@@ -143612,3 +143612,37 @@ python3 scripts/gguf_mtp_bench.py \
   `docs/MTP-LLAMACPP-PARITY.md` with the new packed-stage artifacts and the
   next target: packed verifier linear-attention rows plus sampling/drain, not
   B1 budget or smaller verifier chunks.
+
+## 2026-07-05 - GGUF server packed-verifier follow-up probes
+
+- Added a default-off HIP-event recorder for packed target verifier GPU-stage
+  timing (`HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS=1`). It records queued
+  intervals without synchronizing each leaf, aliases aggregate buckets, destroys
+  events after resolution, and clamps negative elapsed intervals into explicit
+  diagnostic counters. Focused unit coverage:
+  `tests/test_gguf_packed_verify_layout.py::test_hip_event_stage_recorder_accumulates_aliases_and_closes`.
+  The c=8 event run is diagnostic-only and slower (**47.17 tok/s**) but exposes
+  the actual queued GPU hot leaves: compact-WMMA selected gate/up **1860.286
+  ms**, verifier LM-head/sample **2049.108 ms**, full-attention layers
+  **1984.223 ms**, QKV/gate projection **1295.096 ms**, selected down
+  **805.975 ms**, and `wmma_total` read **163.563 ms**. Artifact:
+  `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-gpustage-compactwmma-warm.json`.
+- Added a default-off compact-WMMA no-read diagnostic:
+  `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=N`. When selected rows
+  are bounded, the compact WMMA path can skip the `wmma_total` host scalar read
+  and launch with the conservative `selected_rows * 16` padded row count. This
+  remains rejected/default-off: c=8 natural24 reruns measured **52.05/51.96
+  tok/s** versus retained **52.18 tok/s**.
+- Rejected selected-WMMA launch-bounds tuning as a default. Server commands used
+  the same gfx1151 natural24 c>N protocol with
+  `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS={2,4}` and
+  `--speculative-mtp-serving opt_in`.
+  - `=2` c=8 warm reruns: **52.55/52.23 tok/s**, flat versus retained.
+  - `=4` c=8 warm reruns: **53.22/53.44 tok/s**, but c=4 regressed to
+    **49.20/49.04 tok/s** versus retained **49.65 tok/s**.
+  Do not promote this build flag; it is not non-regressive across c>N.
+- Updated `README.md`, `docs/MTP-LLAMACPP-PARITY.md`, `docs/ENVS.md`,
+  `docs/REFACTOR.md`, and `benchmarks/CHANGELOG.md` with the current server
+  rows and rejected-probe evidence. The next verifier work remains a real
+  packed-verifier kernel/body improvement in linear-attention rows or sampling
+  drain, not B1 budget, chunk-size, no-read, or launch-bounds tuning.
