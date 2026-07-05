@@ -143352,3 +143352,66 @@ python3 scripts/gguf_mtp_bench.py \
   MTP packed verifier is not the GGUF AR c>N primitive. Next implementation work
   needs a true resident batched target decode path that avoids per-token packed
   verifier state import/scatter and row-capture overhead.
+
+## 2026-07-05 - GGUF server AR stream decode and MTP stream draft
+
+- Added default-on per-slot HIP stream decode for GGUF AR server c>N:
+  `HIPENGINE_GGUF_AR_STREAM_DECODE=1` routes live resident slots through
+  `Qwen35GGUFResidentSession.step_async_top1(..., stream=slot_stream)` and then
+  reads the sampled top-1 after synchronizing each slot stream. The rejected
+  packed AR path remains behind `HIPENGINE_GGUF_AR_PACKED_DECODE=1`.
+- Added default-on per-slot HIP stream draft for GGUF MTP server c>N:
+  `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT=1` gives each resident MTP slot a
+  draft stream, passes that stream through the resident device-chain draft path,
+  stream-orders the draft kernels/D2D copies, and synchronizes only that stream
+  at the chain drain. Streams are destroyed with their serving slots.
+- Server benchmark setup on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_AR_STREAM_DECODE=1 HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  PYTHONPATH=. python3 scripts/mtp-bench.py --url http://127.0.0.1:18082 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --timeout 1200 \
+    --concurrency C --out benchmarks/results/2026-07-05-hipengine-server-*-streamdraft*.json
+  ```
+- Retained AR stream reruns: c=2 **44.20 tok/s**
+  (`benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json`),
+  c=4 **46.69 tok/s**
+  (`benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json`),
+  c=8 **47.70 tok/s**
+  (`benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json`).
+  This improves the prior scalar AR c=2/c=4/c=8 **41.17/41.45/41.42 tok/s**.
+- Retained MTP stream-draft reruns: c=2 **46.75 tok/s**
+  (`benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json`),
+  c=4 **49.65 tok/s**
+  (`benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json`),
+  c=8 **48.72 tok/s**
+  (`benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamdraft-rerun2.json`).
+  Versus current same-server AR these are **1.058x/1.063x/1.021x**. The c=8
+  bucket remains verifier-dominated:
+  `slots_verify_phase_ms=15354.902`, `slots_draft_phase_ms=3275.134`,
+  `slots_commit_phase_ms=569.736`.
+- Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+  `docs/MTP-LLAMACPP-PARITY.md`, and `docs/REFACTOR.md` so the current topline
+  uses the stream reruns and the packed verifier rows are retained as
+  superseded provenance.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/speculative/mtp_resident_draft.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamdraft-rerun2.json >/dev/null
+  git diff --check
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_coalesces_speculative_mtp or generation_batcher'
+  ```
+  Pycompile, JSON validation, and diff check passed; focused GGUF tests passed
+  (`41 passed`); focused server API tests passed (`17 passed`, one Starlette
+  deprecation warning).

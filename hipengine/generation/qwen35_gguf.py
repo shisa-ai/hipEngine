@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import threading
 import time
@@ -86,10 +87,20 @@ _LLAMA_COMPAT_MTP_ENV = {
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
+_GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
+_GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 
 
 def _gguf_ar_packed_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_ar_stream_decode_enabled() -> bool:
+    return os.environ.get(_GGUF_AR_STREAM_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_mtp_server_stream_draft_enabled() -> bool:
+    return os.environ.get(_GGUF_MTP_SERVER_STREAM_DRAFT_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -126,6 +137,7 @@ class _GGUFMTPServingSlot:
     session_pool_key: tuple[str, bool | None, bool | None] | None = None
     draft_pool_key: int | None = None
     mtp_device_kv_len: int = 0
+    draft_stream: int = 0
     done: bool = False
 
 
@@ -142,6 +154,7 @@ class _GGUFARServingSlot:
     done: bool = False
     native_decode_steps: int = 0
     serial_decode_steps: int = 0
+    decode_stream: int = 0
 
 
 @dataclass
@@ -609,7 +622,7 @@ class Qwen35GGUFBringupGenerator:
             plan.mode is SamplingMode.GREEDY_FAST
             and len(request.prompts) > 1
             and shared_runner is not None
-            and _gguf_ar_packed_decode_enabled()
+            and (_gguf_ar_packed_decode_enabled() or _gguf_ar_stream_decode_enabled())
         ):
             return self._generate_ar_serving_slots(shared_runner, request, plan=plan)
         session_open_start = time.perf_counter()
@@ -817,13 +830,51 @@ class Qwen35GGUFBringupGenerator:
         while any(not slot.done for slot in slots):
             live_slots = [slot for slot in slots if not slot.done]
             cycle_start = time.perf_counter()
-            handled = self._try_step_ar_serving_slots_batch(live_slots, request)
+            handled = self._try_step_ar_serving_slots_streams(live_slots, request)
+            if not handled and _gguf_ar_packed_decode_enabled():
+                handled = self._try_step_ar_serving_slots_batch(live_slots, request)
             if not handled:
                 for slot in live_slots:
                     self._step_ar_serving_slot_serial(slot, request)
             cycle_ms = _timing_ms_since(cycle_start)
             for slot in live_slots:
                 _timing_add_ms(slot.timing, "slots_decode_phase_ms", cycle_ms)
+
+    def _try_step_ar_serving_slots_streams(
+        self,
+        live_slots: list[_GGUFARServingSlot],
+        request: GenerationRequest,
+    ) -> bool:
+        if len(live_slots) <= 1 or not _gguf_ar_stream_decode_enabled():
+            return False
+        for slot in live_slots:
+            if not callable(getattr(slot.session, "step_async_top1", None)):
+                return False
+            if not callable(getattr(slot.session, "read_top1_sample", None)):
+                return False
+            runtime = getattr(slot.session, "runtime", None)
+            if not callable(getattr(runtime, "stream_create", None)):
+                return False
+            if not callable(getattr(runtime, "stream_synchronize", None)):
+                return False
+            if not callable(getattr(runtime, "stream_destroy", None)):
+                return False
+        launch_start = time.perf_counter()
+        launched: list[_GGUFARServingSlot] = []
+        for slot in live_slots:
+            if slot.decode_stream == 0:
+                slot.decode_stream = int(slot.session.runtime.stream_create(nonblocking=True))
+            slot.session.step_async_top1(int(slot.prev_token), position=int(slot.seq_position), stream=int(slot.decode_stream))
+            launched.append(slot)
+        for slot in launched:
+            slot.session.runtime.stream_synchronize(int(slot.decode_stream))
+        launch_ms = _timing_ms_since(launch_start)
+        for slot in launched:
+            result = slot.session.read_top1_sample()
+            _timing_add_ms(slot.timing, "decode_stream_batch_ms", launch_ms)
+            self._record_ar_serving_token(slot, int(result.token_id), request)
+            slot.native_decode_steps += 1
+        return True
 
     def _try_step_ar_serving_slots_batch(
         self,
@@ -845,26 +896,23 @@ class Qwen35GGUFBringupGenerator:
                     self._step_ar_serving_slot_serial(slot, request)
                 continue
             first_session = chunk[0].session
-            verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
-            if not callable(verify_batch):
+            step_batch = getattr(first_session, "step_batch_native", None)
+            if not callable(step_batch):
                 for slot in chunk:
                     self._step_ar_serving_slot_serial(slot, request)
                 continue
-            jobs = [
-                {
-                    "session": slot.session,
-                    "input_token_ids": (int(slot.prev_token),),
-                    "bulk_attention_mode": "bulk",
-                    "use_wmma_prefill": True,
-                    "capture_linear_state_rows": True,
-                    "defer_linear_state_commit": True,
-                }
-                for slot in chunk
-            ]
-            verify_start = time.perf_counter()
+            token_ids = [int(slot.prev_token) for slot in chunk]
+            sessions = [slot.session for slot in chunk]
+            positions = [int(slot.seq_position) for slot in chunk]
+            decode_start = time.perf_counter()
             try:
                 with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                    batch_result = verify_batch(jobs)
+                    batch_result = step_batch(
+                        token_ids,
+                        sessions=sessions,
+                        positions=positions,
+                        return_logits=False,
+                    )
             except NotImplementedError:
                 for slot in chunk:
                     self._step_ar_serving_slot_serial(slot, request)
@@ -873,24 +921,17 @@ class Qwen35GGUFBringupGenerator:
                 for slot in chunk:
                     self._step_ar_serving_slot_serial(slot, request)
                 continue
-            block_results = list(batch_result)
-            if len(block_results) != len(chunk):
+            step_results = list(batch_result)
+            if len(step_results) != len(chunk):
                 raise RuntimeError(
-                    f"GGUF AR target batch verifier returned {len(block_results)} result(s) "
+                    f"GGUF AR native batch decode returned {len(step_results)} result(s) "
                     f"for {len(chunk)} live slot(s)"
                 )
-            verify_ms = _timing_ms_since(verify_start)
-            for slot, block_result in zip(chunk, block_results, strict=True):
-                _timing_add_ms(slot.timing, "target_verify_ms", verify_ms)
-                _timing_add_ms(slot.timing, "target_verify_batch_ms", verify_ms)
-                token_ids = [int(token) for token in getattr(block_result, "token_ids", ())]
-                if len(token_ids) != 1:
-                    raise RuntimeError("GGUF AR packed verifier must return exactly one token per slot")
-                if not bool(getattr(block_result, "linear_state_rows_captured", False)):
-                    raise RuntimeError("GGUF AR packed verifier returned without captured state rows")
-                old_position = int(slot.seq_position)
-                slot.session._commit_verify_linear_state_row(0, position=old_position + 1)
-                self._record_ar_serving_token(slot, token_ids[0], request)
+            decode_ms = _timing_ms_since(decode_start)
+            for slot, step_result in zip(chunk, step_results, strict=True):
+                _timing_add_ms(slot.timing, "decode_batch_ms", decode_ms)
+                token = int(getattr(step_result, "token_id"))
+                self._record_ar_serving_token(slot, token, request)
                 slot.native_decode_steps += 1
         return True
 
@@ -925,6 +966,9 @@ class Qwen35GGUFBringupGenerator:
 
     def _close_ar_serving_slots(self, slots: list[_GGUFARServingSlot], *, reuse: bool = True) -> None:
         for slot in reversed(slots):
+            if slot.decode_stream:
+                slot.session.runtime.stream_destroy(int(slot.decode_stream))
+                slot.decode_stream = 0
             if reuse:
                 self._release_shared_session(slot.session_pool_key, slot.session)
             else:
@@ -1406,13 +1450,22 @@ class Qwen35GGUFBringupGenerator:
             drafted_cycles: list[_GGUFMTPDraftedCycle] = []
 
             draft_phase_start = time.perf_counter()
-            for slot in live_slots:
-                if slot.done:
-                    continue
-                raise_if_generation_deadline_expired(request)
-                drafted = self._draft_mtp_serving_slot(slot, assets, request, base_env=base_env)
-                if drafted is not None:
-                    drafted_cycles.append(drafted)
+            stream_drafted = self._try_draft_mtp_serving_slots_streams(
+                live_slots,
+                assets,
+                request,
+                base_env=base_env,
+            )
+            if stream_drafted is None:
+                for slot in live_slots:
+                    if slot.done:
+                        continue
+                    raise_if_generation_deadline_expired(request)
+                    drafted = self._draft_mtp_serving_slot(slot, assets, request, base_env=base_env)
+                    if drafted is not None:
+                        drafted_cycles.append(drafted)
+            else:
+                drafted_cycles.extend(stream_drafted)
             draft_phase_ms = _timing_ms_since(draft_phase_start)
             for slot in live_slots:
                 _timing_add_ms(slot.timing, "slots_draft_phase_ms", draft_phase_ms)
@@ -1454,6 +1507,53 @@ class Qwen35GGUFBringupGenerator:
         verified = self._verify_mtp_serving_cycle(drafted, request)
         self._commit_mtp_serving_cycle(verified, assets, request)
 
+    def _try_draft_mtp_serving_slots_streams(
+        self,
+        live_slots: list[_GGUFMTPServingSlot],
+        assets: _GGUFMTPServingAssets,
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+    ) -> list[_GGUFMTPDraftedCycle] | None:
+        if len(live_slots) <= 1 or not _gguf_mtp_server_stream_draft_enabled():
+            return None
+        for slot in live_slots:
+            remaining = int(request.max_tokens) - len(slot.generated_ids)
+            if remaining <= 1 or slot.resident_context.pending_seed is None:
+                return None
+            if not callable(getattr(slot.session.runtime, "stream_create", None)):
+                return None
+            if not callable(getattr(slot.session.runtime, "stream_synchronize", None)):
+                return None
+            if not callable(getattr(slot.session.runtime, "stream_destroy", None)):
+                return None
+        for slot in live_slots:
+            if slot.draft_stream == 0:
+                slot.draft_stream = int(slot.session.runtime.stream_create(nonblocking=True))
+
+        def _draft(slot: _GGUFMTPServingSlot) -> _GGUFMTPDraftedCycle | None:
+            raise_if_generation_deadline_expired(request)
+            return self._draft_mtp_serving_slot(
+                slot,
+                assets,
+                request,
+                base_env=base_env,
+                draft_stream=int(slot.draft_stream),
+            )
+
+        batch_start = time.perf_counter()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(live_slots)) as pool:
+            futures = [(slot, pool.submit(_draft, slot)) for slot in live_slots]
+            drafted: list[_GGUFMTPDraftedCycle] = []
+            for _slot, future in futures:
+                result = future.result()
+                if result is not None:
+                    drafted.append(result)
+        batch_ms = _timing_ms_since(batch_start)
+        for slot in live_slots:
+            _timing_add_ms(slot.timing, "draft_stream_batch_ms", batch_ms)
+        return drafted
+
     def _draft_mtp_serving_slot(
         self,
         slot: _GGUFMTPServingSlot,
@@ -1461,6 +1561,7 @@ class Qwen35GGUFBringupGenerator:
         request: GenerationRequest,
         *,
         base_env: dict[str, str | None],
+        draft_stream: int = 0,
     ) -> _GGUFMTPDraftedCycle | None:
         advance_start = time.perf_counter()
         remaining = int(request.max_tokens) - len(slot.generated_ids)
@@ -1510,6 +1611,7 @@ class Qwen35GGUFBringupGenerator:
             dense_value_cache=slot.mtp_value_cache,
             dense_cache_len=slot.mtp_device_kv_len,
             draft_p_min=0.0,
+            stream=draft_stream,
         )
         _timing_add(slot.timing, "draft_propose_ms", draft_start)
         draft_tokens = [int(token) for token in draft_tokens]
@@ -1767,6 +1869,9 @@ class Qwen35GGUFBringupGenerator:
 
     def _close_mtp_serving_slots(self, slots: list[_GGUFMTPServingSlot], *, reuse: bool = True) -> None:
         for slot in reversed(slots):
+            if slot.draft_stream:
+                slot.session.runtime.stream_destroy(int(slot.draft_stream))
+                slot.draft_stream = 0
             _free_mtp_buffers(slot.mtp_buffers, runtime=slot.session.runtime)
             self._release_mtp_draft_runner(
                 slot.draft_pool_key if reuse else None,

@@ -129,9 +129,10 @@ def _stage_add(timings: dict[str, float] | None, name: str, ms: float) -> None:
 class _GpuEventStageRecorder:
     """HIP-event timing for queued draft work without per-stage sync points."""
 
-    def __init__(self, runtime: HipRuntime, *, enabled: bool) -> None:
+    def __init__(self, runtime: HipRuntime, *, enabled: bool, stream: int = 0) -> None:
         self.runtime = runtime
         self.enabled = bool(enabled)
+        self.stream = int(stream)
         self._last_event: int | None = None
         self._intervals: list[tuple[str, int | None, int, int]] = []
         self._events: list[int] = []
@@ -147,7 +148,7 @@ class _GpuEventStageRecorder:
         if not self.enabled:
             return
         self._last_event = self._new_event()
-        self.runtime.event_record(self._last_event, 0)
+        self.runtime.event_record(self._last_event, self.stream)
 
     def mark(self, name: str, *, depth: int | None = None) -> None:
         if not self.enabled:
@@ -156,7 +157,7 @@ class _GpuEventStageRecorder:
             self.start()
         assert self._last_event is not None
         event = self._new_event()
-        self.runtime.event_record(event, 0)
+        self.runtime.event_record(event, self.stream)
         self._intervals.append((str(name), None if depth is None else int(depth), self._last_event, event))
         self._last_event = event
 
@@ -313,6 +314,7 @@ def apply_moe_down_combine(
     combine_lib,
     cast_lib,
     runtime: HipRuntime | None = None,
+    stream: int = 0,
     stage_marker=None,
     selected_silu_down_fused: bool = False,
 ) -> None:
@@ -336,7 +338,7 @@ def apply_moe_down_combine(
         gguf_q5_k_selected_silu_gemv_bf16_bf16_out(
             gate_bf16_ptr, up_bf16_ptr, selected_ptr, down_exps_ptr, down_out_bf16_ptr,
             top_k, top_k, num_experts, inter, hidden,
-            library=k_lib, runtime=runtime,
+            stream=stream, library=k_lib, runtime=runtime,
         )
         if stage_marker is not None:
             stage_marker("draft_run_moe_selected_silu_down_fused")
@@ -344,7 +346,7 @@ def apply_moe_down_combine(
         # SiLU(gate) * up over all top_k experts at once (bf16 in/out).
         silu_mul_separate_out_bf16(
             gate_bf16_ptr, up_bf16_ptr, inter_bf16_ptr, top_k, inter,
-            library=silu_lib, runtime=runtime,
+            stream=stream, library=silu_lib, runtime=runtime,
         )
         if stage_marker is not None:
             stage_marker("draft_run_moe_selected_silu")
@@ -353,22 +355,22 @@ def apply_moe_down_combine(
         gguf_q5_k_selected_gemv_bf16_bf16_out(
             inter_bf16_ptr, selected_ptr, down_exps_ptr, down_out_bf16_ptr,
             top_k, top_k, num_experts, inter, hidden,
-            library=k_lib, runtime=runtime,
+            stream=stream, library=k_lib, runtime=runtime,
         )
         if stage_marker is not None:
             stage_marker("draft_run_moe_selected_down")
     # Cast the f32 residual + shared-expert output to bf16 for the combine.
-    f32_to_bf16(residual_ptr, attended_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
-    f32_to_bf16(shared_out_ptr, shared_bf16_ptr, hidden, library=cast_lib, runtime=runtime)
+    f32_to_bf16(residual_ptr, attended_bf16_ptr, hidden, stream=stream, library=cast_lib, runtime=runtime)
+    f32_to_bf16(shared_out_ptr, shared_bf16_ptr, hidden, stream=stream, library=cast_lib, runtime=runtime)
     if stage_marker is not None:
         stage_marker("draft_run_moe_combine_cast_inputs")
     # routing-weighted expert sum + sigmoid(gate)*shared + residual, in one launch.
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
         down_out_bf16_ptr, routing_ptr, shared_bf16_ptr, shared_gate_logit_ptr,
         attended_bf16_ptr, ffn_out_bf16_ptr, top_k, hidden,
-        library=combine_lib, runtime=runtime,
+        stream=stream, library=combine_lib, runtime=runtime,
     )
-    bf16_to_f32(ffn_out_bf16_ptr, ffn_out_f32_ptr, hidden, library=cast_lib, runtime=runtime)
+    bf16_to_f32(ffn_out_bf16_ptr, ffn_out_f32_ptr, hidden, stream=stream, library=cast_lib, runtime=runtime)
     if stage_marker is not None:
         stage_marker("draft_run_moe_weighted_combine")
 
@@ -638,6 +640,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         rows: int,
         in_features: int,
         out_features: int,
+        stream: int = 0,
     ) -> bool:
         if (
             not self._draft_dense_q8_dp4a_enabled
@@ -657,6 +660,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.dense_q8_1.ptr,
             int(rows),
             int(in_features),
+            stream=stream,
             library=self._q4_lib,
             runtime=runtime,
         )
@@ -667,6 +671,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             int(rows),
             int(in_features),
             int(out_features),
+            stream=stream,
             library=self._q8_dp4a_lib,
             runtime=runtime,
         )
@@ -685,6 +690,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         in_features: int,
         out_features_a: int,
         out_features_b: int,
+        stream: int = 0,
     ) -> bool:
         if (
             not self._draft_dense_q8_dp4a_enabled
@@ -704,6 +710,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.dense_q8_1.ptr,
             int(rows),
             int(in_features),
+            stream=stream,
             library=self._q4_lib,
             runtime=runtime,
         )
@@ -717,6 +724,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             int(in_features),
             int(out_features_a),
             int(out_features_b),
+            stream=stream,
             library=self._q8_dp4a_lib,
             runtime=runtime,
         )
@@ -738,6 +746,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         out_features_a: int,
         out_features_b: int,
         out_features_c: int,
+        stream: int = 0,
     ) -> bool:
         if (
             not self._draft_dense_q8_dp4a_enabled
@@ -757,6 +766,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             self.dense_q8_1.ptr,
             int(rows),
             int(in_features),
+            stream=stream,
             library=self._q4_lib,
             runtime=runtime,
         )
@@ -773,6 +783,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             int(out_features_a),
             int(out_features_b),
             int(out_features_c),
+            stream=stream,
             library=self._q8_dp4a_lib,
             runtime=runtime,
         )
@@ -867,6 +878,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_cache_rows: tuple[int, ...] | list[int] | None = None,
         record_attention_debug: bool = False,
         record_stage_timings: bool = False,
+        stream: int = 0,
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
 
@@ -877,7 +889,16 @@ class Qwen35GGUFResidentMTPDraftRunner:
             raise ValueError("hidden_seed_ptr must be a non-zero device pointer")
         runtime = self.runtime or get_hip_runtime()
         t_seed0 = time.perf_counter() if stage_timings is not None else 0.0
-        runtime.memcpy(self.seed_a.ptr, ptr, self.hidden_size * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+        if stream:
+            runtime.memcpy_async(
+                self.seed_a.ptr,
+                ptr,
+                self.hidden_size * 4,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        else:
+            runtime.memcpy(self.seed_a.ptr, ptr, self.hidden_size * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_seed_upload", (time.perf_counter() - t_seed0) * 1000)
         return self._propose_chain_from_seed_buffer(
@@ -898,6 +919,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             record_cache_rows=record_cache_rows,
             record_attention_debug=record_attention_debug,
             stage_timings=stage_timings,
+            stream=stream,
         )
 
     def _propose_chain_from_seed_buffer(
@@ -920,6 +942,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         record_cache_rows: tuple[int, ...] | list[int] | None = None,
         record_attention_debug: bool = False,
         stage_timings: dict[str, float] | None = None,
+        stream: int = 0,
     ) -> tuple[list[int], list[list[int]], int]:
         self.last_top1_probs = []
         self.last_topk_scores = []
@@ -939,7 +962,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             and int(top_k) <= self.experts_used
         ):
             gpu_events = (
-                _GpuEventStageRecorder(self.runtime or get_hip_runtime(), enabled=True)
+                _GpuEventStageRecorder(self.runtime or get_hip_runtime(), enabled=True, stream=stream)
                 if bool(self.gpu_event_stage_timings) and stage_timings is not None
                 else None
             )
@@ -958,6 +981,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     dense_cache_len=int(dense_cache_len),
                     stage_timings=stage_timings,
                     gpu_events=gpu_events,
+                    stream=stream,
                 )
             except BaseException:
                 if gpu_events is not None:
@@ -1393,6 +1417,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int,
         stage_timings: dict[str, float] | None = None,
         gpu_events: _GpuEventStageRecorder | None = None,
+        stream: int = 0,
     ) -> tuple[list[int], list[list[int]], int]:
         """Device-chained NextN draft: one drain + one D->H for the whole chain.
 
@@ -1464,6 +1489,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     if (top_k == 1 and q6_top1_gather_enabled and depth + 1 < n)
                     else None
                 ),
+                stream=stream,
             )
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_mtp_layer_forward", (time.perf_counter() - t_forward0) * 1000)
@@ -1476,7 +1502,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 # for non-final depths, gathered the next token embedding.
                 pass
             else:
-                self._topk_indices_into(self.topk_all.ptr + depth * top_k * 4, top_k)
+                self._topk_indices_into(self.topk_all.ptr + depth * top_k * 4, top_k, stream=stream)
                 # Device-gather the next depth's embedding from this depth's top-1.
                 if depth + 1 < n:
                     gather_f32_rows_by_i32id(
@@ -1486,20 +1512,27 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         1,
                         self.hidden_size,
                         self.vocab,
+                        stream=stream,
                         library=self._gather_lib,
                         runtime=runtime,
                     )
             if gpu_events is not None:
                 gpu_events.mark("draft_gpu_device_topk_gather", depth=depth)
             if bool(getattr(self, "sync_stage_timings", False)) and stage_timings is not None:
-                runtime.device_synchronize()
+                if stream:
+                    runtime.stream_synchronize(stream)
+                else:
+                    runtime.device_synchronize()
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_device_topk_gather", (time.perf_counter() - t_topk0) * 1000)
             current_seed, next_seed = next_seed, current_seed
         # Single drain + readback of the whole chain's top-k.
         t_readback0 = time.perf_counter() if stage_timings is not None else 0.0
         t_drain0 = time.perf_counter() if stage_timings is not None else 0.0
-        runtime.device_synchronize()
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_device_chain_drain", (time.perf_counter() - t_drain0) * 1000)
         if gpu_events is not None:
@@ -1531,6 +1564,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_key_cache: DeviceBuffer,
         dense_value_cache: DeviceBuffer,
         dense_cache_len: int,
+        stream: int = 0,
     ) -> int:
         hidden = np.ascontiguousarray(hidden_seed_rows, dtype=np.float32)
         tokens = np.ascontiguousarray(token_ids, dtype=np.int64).reshape(-1)
@@ -1556,6 +1590,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_cache_len=current_len,
                 cos=cos,
                 sin=sin,
+                stream=stream,
             )
             current_len += 1
         return current_len
@@ -1572,6 +1607,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_value_cache: DeviceBuffer,
         dense_cache_len: int,
         hidden_stride_bytes: int | None = None,
+        stream: int = 0,
     ) -> int:
         """Write accepted MTP K/V rows from contiguous device hidden seeds."""
 
@@ -1594,12 +1630,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
             embed = np.ascontiguousarray(self.token_embd_f32[token:token + 1], dtype=np.float32)
             cos = np.ascontiguousarray(rope_cos[pos[row:row + 1]], dtype=np.float32)
             sin = np.ascontiguousarray(rope_sin[pos[row:row + 1]], dtype=np.float32)
-            runtime.memcpy(
-                self.seed_a.ptr,
-                base_ptr + row * stride,
-                self.hidden_size * 4,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
+            if stream:
+                runtime.memcpy_async(
+                    self.seed_a.ptr,
+                    base_ptr + row * stride,
+                    self.hidden_size * 4,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            else:
+                runtime.memcpy(
+                    self.seed_a.ptr,
+                    base_ptr + row * stride,
+                    self.hidden_size * 4,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
             copy_host_to_device(self.token_embed, host_array_ptr(embed), embed.nbytes, runtime=self.runtime)
             self._write_one_kv(
                 dense_key_cache=dense_key_cache,
@@ -1607,6 +1652,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 dense_cache_len=current_len,
                 cos=cos,
                 sin=sin,
+                stream=stream,
             )
             current_len += 1
         return current_len
@@ -1617,13 +1663,18 @@ class Qwen35GGUFResidentMTPDraftRunner:
         *,
         dense_q8_stage: str = "project",
         stage_marker=None,
+        stream: int = 0,
     ) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size
-        mtp_rmsnorm_f32(self.token_embed.ptr, self.enorm.ptr, self.e_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
-        mtp_rmsnorm_f32(hidden_seed.ptr, self.hnorm.ptr, self.h_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
-        runtime.memcpy(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
-        runtime.memcpy(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+        mtp_rmsnorm_f32(self.token_embed.ptr, self.enorm.ptr, self.e_norm.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
+        mtp_rmsnorm_f32(hidden_seed.ptr, self.hnorm.ptr, self.h_norm.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
+        if stream:
+            runtime.memcpy_async(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            runtime.memcpy_async(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+        else:
+            runtime.memcpy(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+            runtime.memcpy(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
         if stage_marker is not None:
             stage_marker("draft_run_project_norm_concat")
         if not self._try_dense_q8_dp4a_f32(
@@ -1634,6 +1685,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             rows=1,
             in_features=h * 2,
             out_features=h,
+            stream=stream,
         ):
             gguf_q8_0_gemv_f32_f32_out(
                 self.concat.ptr,
@@ -1642,12 +1694,13 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 1,
                 h * 2,
                 h,
+                stream=stream,
                 library=self._k_lib,
                 runtime=runtime,
             )
         if stage_marker is not None:
             stage_marker("draft_run_project_eh_proj")
-        mtp_rmsnorm_f32(self.projected.ptr, self.attn_norm.ptr, self.attn_normed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        mtp_rmsnorm_f32(self.projected.ptr, self.attn_norm.ptr, self.attn_normed.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         if stage_marker is not None:
             stage_marker("draft_run_project_attn_norm")
 
@@ -1659,12 +1712,13 @@ class Qwen35GGUFResidentMTPDraftRunner:
         dense_cache_len: int,
         cos: np.ndarray,
         sin: np.ndarray,
+        stream: int = 0,
     ) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size
         kv_heads = self.num_kv_heads
         d = self.qk_head_dim
-        self._project_current_to_attn_normed(self.seed_a, dense_q8_stage="init_project")
+        self._project_current_to_attn_normed(self.seed_a, dense_q8_stage="init_project", stream=stream)
         if not self._try_dense_q8_dp4a_dual_f32(
             self.attn_normed.ptr,
             self.wk.ptr,
@@ -1676,10 +1730,11 @@ class Qwen35GGUFResidentMTPDraftRunner:
             in_features=h,
             out_features_a=kv_heads * d,
             out_features_b=kv_heads * d,
+            stream=stream,
         ):
-            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
-            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
-        mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, stream=stream, library=self._k_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, stream=stream, library=self._k_lib, runtime=runtime)
+        mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         rotary_dim = self._rotary_dim_from_rope_table(cos)
         copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=runtime)
         copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=runtime)
@@ -1693,22 +1748,39 @@ class Qwen35GGUFResidentMTPDraftRunner:
             d,
             rotary_dim,
             rotary_dim // 2,
+            stream=stream,
             runtime=runtime,
         )
         key_row_bytes = kv_heads * d * 4
         value_row_bytes = kv_heads * d * 4
-        runtime.memcpy(
-            dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
-            self.key_cur.ptr,
-            key_row_bytes,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-        )
-        runtime.memcpy(
-            dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
-            self.value_cur.ptr,
-            value_row_bytes,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-        )
+        if stream:
+            runtime.memcpy_async(
+                dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
+                self.key_cur.ptr,
+                key_row_bytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
+                self.value_cur.ptr,
+                value_row_bytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        else:
+            runtime.memcpy(
+                dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
+                self.key_cur.ptr,
+                key_row_bytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+            runtime.memcpy(
+                dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
+                self.value_cur.ptr,
+                value_row_bytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
 
     def _run_one(
         self,
@@ -1728,6 +1800,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         gpu_event_depth: int | None = None,
         top1_out_ptr: int | None = None,
         top1_next_embed_ptr: int | None = None,
+        stream: int = 0,
     ) -> None:
         runtime = self.runtime or get_hip_runtime()
         h = self.hidden_size
@@ -1740,7 +1813,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
         def mark_stage(name: str, t0: float) -> float:
             if sync_stages:
-                runtime.device_synchronize()
+                if stream:
+                    runtime.stream_synchronize(stream)
+                else:
+                    runtime.device_synchronize()
                 _stage_add(stage_timings, name, (time.perf_counter() - t0) * 1000)
                 return time.perf_counter()
             return t0
@@ -1754,10 +1830,17 @@ class Qwen35GGUFResidentMTPDraftRunner:
             t_stage = mark_stage(name, t_stage)
 
         t_stage = time.perf_counter() if sync_stages else 0.0
-        runtime.memset(self.selected_out.ptr, 0, self.selected_out.nbytes)
+        if stream:
+            runtime.memset_async(self.selected_out.ptr, 0, self.selected_out.nbytes, stream)
+        else:
+            runtime.memset(self.selected_out.ptr, 0, self.selected_out.nbytes)
 
         t_project0 = time.perf_counter() if sync_stages else 0.0
-        self._project_current_to_attn_normed(hidden_seed, stage_marker=mark_substage if sync_stages else None)
+        self._project_current_to_attn_normed(
+            hidden_seed,
+            stage_marker=mark_substage if sync_stages else None,
+            stream=stream,
+        )
         add_aggregate_stage("draft_run_project", t_project0)
         if gpu_events is not None:
             gpu_events.mark("draft_gpu_run_project", depth=gpu_event_depth)
@@ -1777,15 +1860,16 @@ class Qwen35GGUFResidentMTPDraftRunner:
             out_features_a=heads * 2 * d,
             out_features_b=kv_heads * d,
             out_features_c=kv_heads * d,
+            stream=stream,
         )
         if not qkv_dp4a:
-            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wq.ptr, self.q_full.ptr, 1, h, heads * 2 * d, library=self._k_lib, runtime=runtime)
-        mtp_split_q_gate_f32(self.q_full.ptr, self.query.ptr, self.gate.ptr, 1, heads, d, library=self._mtp_lib, runtime=runtime)
-        mtp_rmsnorm_f32(self.query.ptr, self.q_norm.ptr, self.query.ptr, heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wq.ptr, self.q_full.ptr, 1, h, heads * 2 * d, stream=stream, library=self._k_lib, runtime=runtime)
+        mtp_split_q_gate_f32(self.q_full.ptr, self.query.ptr, self.gate.ptr, 1, heads, d, stream=stream, library=self._mtp_lib, runtime=runtime)
+        mtp_rmsnorm_f32(self.query.ptr, self.q_norm.ptr, self.query.ptr, heads, d, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_qkv_q_gate", t_stage)
         if not qkv_dp4a:
-            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
-        mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wk.ptr, self.key_cur.ptr, 1, h, kv_heads * d, stream=stream, library=self._k_lib, runtime=runtime)
+        mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         mtp_rope_f32(
             self.query.ptr,
             cos_ptr,
@@ -1796,6 +1880,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             d,
             int(rotary_dim),
             int(rotary_dim) // 2,
+            stream=stream,
             runtime=runtime,
         )
         mtp_rope_f32(
@@ -1808,28 +1893,45 @@ class Qwen35GGUFResidentMTPDraftRunner:
             d,
             int(rotary_dim),
             int(rotary_dim) // 2,
+            stream=stream,
             runtime=runtime,
         )
         t_stage = mark_stage("draft_run_qkv_k_rope", t_stage)
         if not qkv_dp4a:
-            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, library=self._k_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, stream=stream, library=self._k_lib, runtime=runtime)
         if dense_key_cache is not None:
             if dense_value_cache is None:
                 raise ValueError("dense_value_cache is required with dense_key_cache")
             key_row_bytes = kv_heads * d * 4
             value_row_bytes = kv_heads * d * 4
-            runtime.memcpy(
-                dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
-                self.key_cur.ptr,
-                key_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
-            runtime.memcpy(
-                dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
-                self.value_cur.ptr,
-                value_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
+            if stream:
+                runtime.memcpy_async(
+                    dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
+                    self.key_cur.ptr,
+                    key_row_bytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
+                    self.value_cur.ptr,
+                    value_row_bytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            else:
+                runtime.memcpy(
+                    dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
+                    self.key_cur.ptr,
+                    key_row_bytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+                runtime.memcpy(
+                    dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
+                    self.value_cur.ptr,
+                    value_row_bytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
             key_ptr = dense_key_cache.ptr
             value_ptr = dense_value_cache.ptr
             cache_tokens = int(dense_cache_len) + 1
@@ -1857,11 +1959,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
             d,
             cache_tokens,
             d ** -0.5,
+            stream=stream,
             library=self._mtp_lib,
             runtime=runtime,
         )
         t_stage = mark_stage("draft_run_attention_core", t_stage)
-        mtp_sigmoid_gate_mul_f32(self.attn.ptr, self.gate.ptr, self.gated.ptr, heads, d, library=self._mtp_lib, runtime=runtime)
+        mtp_sigmoid_gate_mul_f32(self.attn.ptr, self.gate.ptr, self.gated.ptr, heads, d, stream=stream, library=self._mtp_lib, runtime=runtime)
         if not self._try_dense_q8_dp4a_f32(
             self.gated.ptr,
             self.wo.ptr,
@@ -1870,9 +1973,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
             rows=1,
             in_features=heads * d,
             out_features=h,
+            stream=stream,
         ):
-            gguf_q8_0_gemv_f32_f32_out(self.gated.ptr, self.wo.ptr, self.wo_out.ptr, 1, heads * d, h, library=self._k_lib, runtime=runtime)
-        mtp_add_f32(self.projected.ptr, self.wo_out.ptr, self.attended.ptr, h, library=self._mtp_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.gated.ptr, self.wo.ptr, self.wo_out.ptr, 1, heads * d, h, stream=stream, library=self._k_lib, runtime=runtime)
+        mtp_add_f32(self.projected.ptr, self.wo_out.ptr, self.attended.ptr, h, stream=stream, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_attention_out", t_stage)
         add_aggregate_stage("draft_run_attention", t_attention0)
         if gpu_events is not None:
@@ -1880,7 +1984,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
         t_ffn0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_ffn0 if sync_stages else t_stage
-        mtp_rmsnorm_f32(self.attended.ptr, self.post_norm_weight.ptr, self.post_norm.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        mtp_rmsnorm_f32(self.attended.ptr, self.post_norm_weight.ptr, self.post_norm.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_post_norm", t_stage)
         if self._router_row_parallel_enabled:
             qwen35_router_logits_f32_f32w(
@@ -1891,6 +1995,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 h,
                 256,
                 threads=256,
+                stream=stream,
                 library=self._router_lib,
                 runtime=runtime,
             )
@@ -1902,6 +2007,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 1,
                 h,
                 256,
+                stream=stream,
                 library=self._mtp_lib,
                 runtime=runtime,
             )
@@ -1915,11 +2021,12 @@ class Qwen35GGUFResidentMTPDraftRunner:
             256,
             top_k,
             threads=256,
+            stream=stream,
             library=self._router_lib,
             runtime=runtime,
         )
         t_stage = mark_stage("draft_run_ffn_router_select_only", t_stage)
-        f32_to_bf16(self.post_norm.ptr, self.post_norm_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
+        f32_to_bf16(self.post_norm.ptr, self.post_norm_bf16.ptr, h, stream=stream, library=self._cast_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_post_norm_cast_bf16", t_stage)
         add_aggregate_stage("draft_run_ffn_router_select", t_ffn0)
         if gpu_events is not None:
@@ -1936,6 +2043,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             256,
             h,
             inter,
+            stream=stream,
             library=self._q4_lib,
             runtime=runtime,
         )
@@ -1953,6 +2061,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             in_features=h,
             out_features_a=inter,
             out_features_b=inter,
+            stream=stream,
         )
         if not shared_gate_up_dp4a and bool(getattr(self, "_q8_shared_dual_enabled", False)):
             gguf_q8_0_dual_gemv_f32_f32_out(
@@ -1964,14 +2073,15 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 1,
                 h,
                 inter,
+                stream=stream,
                 library=self._k_lib,
                 runtime=runtime,
             )
         elif not shared_gate_up_dp4a:
-            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
-            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, library=self._k_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, stream=stream, library=self._k_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, stream=stream, library=self._k_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_gate_up", t_stage)
-        mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, library=self._mtp_lib, runtime=runtime)
+        mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, stream=stream, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_silu", t_stage)
         if not self._try_dense_q8_dp4a_f32(
             self.shared_inter.ptr,
@@ -1981,8 +2091,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
             rows=1,
             in_features=inter,
             out_features=h,
+            stream=stream,
         ):
-            gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, library=self._k_lib, runtime=runtime)
+            gguf_q8_0_gemv_f32_f32_out(self.shared_inter.ptr, self.shared_down.ptr, self.shared_out.ptr, 1, inter, h, stream=stream, library=self._k_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_down", t_stage)
         # A one-row shared-gate dot needs parallelism across hidden columns; the
         # generic F32 linear only parallelizes across output rows.
@@ -1995,6 +2106,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 h,
                 1,
                 threads=256,
+                stream=stream,
                 library=self._router_lib,
                 runtime=runtime,
             )
@@ -2006,6 +2118,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 1,
                 h,
                 1,
+                stream=stream,
                 library=self._mtp_lib,
                 runtime=runtime,
             )
@@ -2043,16 +2156,19 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 combine_lib=self._combine_lib,
                 cast_lib=self._cast_lib,
                 runtime=runtime,
+                stream=stream,
                 stage_marker=mark_substage if sync_stages else None,
                 selected_silu_down_fused=bool(getattr(self, "_selected_silu_down_fused", False)),
             )
         else:
             # Legacy host-readback per-expert down loop + shared-gate combine.
-            bf16_to_f32(self.gate_bf16.ptr, self.gate_f32.ptr, top_k * inter, library=self._cast_lib, runtime=runtime)
-            bf16_to_f32(self.up_bf16.ptr, self.up_f32.ptr, top_k * inter, library=self._cast_lib, runtime=runtime)
+            bf16_to_f32(self.gate_bf16.ptr, self.gate_f32.ptr, top_k * inter, stream=stream, library=self._cast_lib, runtime=runtime)
+            bf16_to_f32(self.up_bf16.ptr, self.up_f32.ptr, top_k * inter, stream=stream, library=self._cast_lib, runtime=runtime)
             down_per_expert = int(self._get("blk.40.ffn_down_exps.weight").nbytes // 256)
             selected_host = np.empty((top_k,), dtype=np.int64)
             routing_host = np.empty((top_k,), dtype=np.float32)
+            if stream:
+                runtime.stream_synchronize(stream)
             copy_device_to_host(host_array_ptr(selected_host), self.selected, selected_host.nbytes, runtime=runtime)
             copy_device_to_host(host_array_ptr(routing_host), self.routing, routing_host.nbytes, runtime=runtime)
             for k in range(top_k):
@@ -2062,6 +2178,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     self.up_f32.ptr + k * inter * 4,
                     inter_ptr,
                     inter,
+                    stream=stream,
                     library=self._mtp_lib,
                     runtime=runtime,
                 )
@@ -2073,6 +2190,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     1,
                     inter,
                     h,
+                    stream=stream,
                     library=self._k_lib,
                     runtime=runtime,
                 )
@@ -2081,6 +2199,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     self.scaled.ptr,
                     float(routing_host[k]),
                     h,
+                    stream=stream,
                     library=self._mtp_lib,
                     runtime=runtime,
                 )
@@ -2089,6 +2208,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     self.scaled.ptr,
                     self.selected_out.ptr,
                     h,
+                    stream=stream,
                     library=self._mtp_lib,
                     runtime=runtime,
                 )
@@ -2099,20 +2219,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 1,
                 h,
                 1,
+                stream=stream,
                 library=self._mtp_lib,
                 runtime=runtime,
             )
-            mtp_add_f32(self.attended.ptr, self.selected_out.ptr, self.tmp.ptr, h, library=self._mtp_lib, runtime=runtime)
-            mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, library=self._mtp_lib, runtime=runtime)
+            mtp_add_f32(self.attended.ptr, self.selected_out.ptr, self.tmp.ptr, h, stream=stream, library=self._mtp_lib, runtime=runtime)
+            mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, stream=stream, library=self._mtp_lib, runtime=runtime)
 
         add_aggregate_stage("draft_run_moe_down_combine", t_moe_down0)
         if gpu_events is not None:
             gpu_events.mark("draft_gpu_run_moe_down_combine", depth=gpu_event_depth)
         t_stage = time.perf_counter() if sync_stages else t_stage
         t_lm_head0 = time.perf_counter() if sync_stages else 0.0
-        mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, library=self._mtp_lib, runtime=runtime)
+        mtp_rmsnorm_f32(self.ffn_out.ptr, self.shared_head_norm.ptr, next_seed.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_lm_head_norm", t_stage)
-        f32_to_bf16(next_seed.ptr, self.head_normed_bf16.ptr, h, library=self._cast_lib, runtime=runtime)
+        f32_to_bf16(next_seed.ptr, self.head_normed_bf16.ptr, h, stream=stream, library=self._cast_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_lm_head_cast_bf16", t_stage)
         if top1_out_ptr is not None:
             if bool(getattr(self, "_q6_top1_dp4a_enabled", False)):
@@ -2121,6 +2242,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     self.head_normed_q8_1.ptr,
                     1,
                     h,
+                    stream=stream,
                     library=self._q4_lib,
                     runtime=runtime,
                 )
@@ -2165,6 +2287,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             1,
                             h,
                             self.vocab,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2178,6 +2301,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             1,
                             h,
                             self.vocab,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2193,6 +2317,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             1,
                             h,
                             self.vocab,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2209,6 +2334,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             1,
                             h,
                             self.vocab,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2222,6 +2348,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             1,
                             h,
                             self.vocab,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2235,6 +2362,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             1,
                             h,
                             self.vocab,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2248,6 +2376,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             1,
                             h,
                             self.vocab,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2263,6 +2392,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         q6_top1_stage2_blocks,
                         h if top1_next_embed_ptr is not None else 0,
                         self.vocab,
+                        stream=stream,
                         library=self._q6_pack8_lib,
                         runtime=runtime,
                     )
@@ -2287,6 +2417,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             h,
                             self.vocab,
                             h if top1_next_embed_ptr is not None else 0,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2305,6 +2436,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             h,
                             self.vocab,
                             h if top1_next_embed_ptr is not None else 0,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2325,6 +2457,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             h,
                             self.vocab,
                             h if top1_next_embed_ptr is not None else 0,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2346,6 +2479,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             h,
                             self.vocab,
                             h if top1_next_embed_ptr is not None else 0,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2364,6 +2498,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             h,
                             self.vocab,
                             h if top1_next_embed_ptr is not None else 0,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2382,6 +2517,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             h,
                             self.vocab,
                             h if top1_next_embed_ptr is not None else 0,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2400,6 +2536,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                             h,
                             self.vocab,
                             h if top1_next_embed_ptr is not None else 0,
+                            stream=stream,
                             library=self._q6_pack8_lib,
                             runtime=runtime,
                         )
@@ -2415,6 +2552,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         1,
                         h,
                         self.vocab,
+                        stream=stream,
                         library=self._q6_pack8_lib,
                         runtime=runtime,
                     )
@@ -2430,6 +2568,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         self.vocab // 8,
                         h if top1_next_embed_ptr is not None else 0,
                         self.vocab,
+                        stream=stream,
                         library=self._q6_pack8_lib,
                         runtime=runtime,
                     )
@@ -2453,6 +2592,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                         h,
                         self.vocab,
                         h if top1_next_embed_ptr is not None else 0,
+                        stream=stream,
                         library=self._q6_pack8_lib,
                         runtime=runtime,
                     )
@@ -2465,6 +2605,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 1,
                 h,
                 self.vocab,
+                stream=stream,
                 library=self._q6_pack8_lib,
                 runtime=runtime,
             )
@@ -2474,7 +2615,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if gpu_events is not None:
             gpu_events.mark("draft_gpu_run_lm_head", depth=gpu_event_depth)
 
-    def _topk_indices_into(self, out_indices_ptr: int, top_k: int) -> None:
+    def _topk_indices_into(self, out_indices_ptr: int, top_k: int, *, stream: int = 0) -> None:
         """Write the top-``top_k`` logit indices to a device buffer (no sync)."""
         runtime = self.runtime or get_hip_runtime()
         if int(top_k) <= 8:
@@ -2486,6 +2627,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 self.vocab,
                 int(top_k),
                 threads=256,
+                stream=stream,
                 library=self._lm_head_lib,
                 runtime=runtime,
             )
