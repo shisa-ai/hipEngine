@@ -9973,6 +9973,7 @@ class _GGUFFullAttentionPrefillScratch:
     sin_table: object | None = None
     int8_kv_value_bf16: bool = False
     start: int = 0
+    gdn_segment_capacity: int = 1
 
     @classmethod
     def allocate(
@@ -9982,10 +9983,14 @@ class _GGUFFullAttentionPrefillScratch:
         rows: int,
         capacity: int | None = None,
         allocate_kv_cache: bool = True,
+        segments: int = 1,
         runtime: HipRuntime,
     ):
         if rows <= 0:
             raise ValueError("rows must be positive")
+        segments = int(segments)
+        if segments <= 0:
+            raise ValueError("segments must be positive")
         capacity = int(rows) if capacity is None else int(capacity)
         if capacity < rows:
             raise ValueError(f"capacity {capacity} must be >= rows {rows}")
@@ -10038,7 +10043,8 @@ class _GGUFFullAttentionPrefillScratch:
         block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
         positions_arr = np.arange(rows, dtype=np.int64)
         context_arr = positions_arr + np.int64(1)
-        cu_arr = np.asarray([0, rows], dtype=np.int32)
+        cu_arr = np.zeros((segments + 1,), dtype=np.int32)
+        cu_arr[1:] = rows
         atomic_arr = np.asarray([0], dtype=np.int32)
         cos_arr, sin_arr = _rope_tables(
             max_positions=rows,
@@ -10068,8 +10074,8 @@ class _GGUFFullAttentionPrefillScratch:
             "recurrent_bf16": buf(linear_z_bytes),
             "linear_conv_state_tmp": buf(conv_state_bytes),
             "linear_recurrent_state_tmp": buf(recurrent_state_bytes),
-            "gdn_cu_seqlens": buf(2 * DType.INT32.itemsize),
-            "gdn_state_indices": buf(DType.INT64.itemsize),
+            "gdn_cu_seqlens": buf((segments + 1) * DType.INT32.itemsize),
+            "gdn_state_indices": buf(segments * DType.INT64.itemsize),
             "full_query_raw": buf(q_f32_bytes),
             "full_key_raw": buf(kv_f32_bytes),
             "full_query": buf(q_f32_bytes),
@@ -10126,7 +10132,7 @@ class _GGUFFullAttentionPrefillScratch:
         copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
         copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
-        gdn_state_indices_arr = np.zeros((1,), dtype=np.int64)
+        gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
         copy_host_to_device(
             fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
         )
@@ -10176,6 +10182,7 @@ class _GGUFFullAttentionPrefillScratch:
             moe_selected_rows_capacity=moe_selected_rows_capacity,
             moe_wmma_rows_capacity=moe_wmma_rows_capacity,
             buffers=tuple(value for value in fields.values() if value is not None),
+            gdn_segment_capacity=segments,
         )
 
     def for_chunk(self, start: int, rows: int, total_tokens: int, *, runtime: HipRuntime, stream: int = 0):
@@ -10240,6 +10247,93 @@ class _GGUFFullAttentionPrefillScratch:
         return replace(
             self,
             start=start,
+            rows=rows,
+            block_table_tensor=block_table,
+            positions_tensor=positions,
+            context_counts_tensor=context_counts,
+            append_spans=append_spans,
+            prefill_spans=prefill_spans,
+        )
+
+    def for_packed_verify_layout(
+        self,
+        layout: _GGUFPackedVerifyLayout,
+        *,
+        runtime: HipRuntime,
+        stream: int = 0,
+    ):
+        rows = int(layout.rows)
+        if rows <= 0 or rows > int(self.rows):
+            raise ValueError(f"packed verify rows {rows} exceed scratch row capacity {self.rows}")
+        if int(layout.slot_count) > int(self.gdn_segment_capacity):
+            raise ValueError(
+                f"packed verify slots {layout.slot_count} exceed GDN segment capacity {self.gdn_segment_capacity}"
+            )
+        if int(layout.blocks_per_slot) > int(self.blocks):
+            raise ValueError(
+                f"packed verify blocks_per_slot {layout.blocks_per_slot} exceed scratch block capacity {self.blocks}"
+            )
+        if int(layout.total_physical_positions) > int(self.blocks) * int(self.block_size):
+            raise ValueError("packed verify physical KV span exceeds scratch KV capacity")
+        atomic_arr = np.asarray([0], dtype=np.int32)
+        cu_q_arr = np.asarray([0, rows], dtype=np.int32)
+        cu_k_arr = np.asarray([0, int(layout.max_live_count)], dtype=np.int32)
+        copy_host_to_device(self.block_table, host_array_ptr(layout.block_table), layout.block_table.nbytes, runtime=runtime)
+        copy_host_to_device(self.positions, host_array_ptr(layout.row_positions), layout.row_positions.nbytes, runtime=runtime)
+        copy_host_to_device(self.context_counts, host_array_ptr(layout.live_counts), layout.live_counts.nbytes, runtime=runtime)
+        copy_host_to_device(self.cu_q, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime)
+        copy_host_to_device(self.cu_k, host_array_ptr(cu_k_arr), cu_k_arr.nbytes, runtime=runtime)
+        copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
+        copy_host_to_device(
+            self.gdn_cu_seqlens,
+            host_array_ptr(layout.cu_seqlens),
+            layout.cu_seqlens.nbytes,
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            self.gdn_state_indices,
+            host_array_ptr(layout.state_indices),
+            layout.state_indices.nbytes,
+            runtime=runtime,
+        )
+        _ = stream
+        block_table = Tensor.from_handle(
+            self.block_table.ptr,
+            layout.block_table.shape,
+            DType.INT32,
+            self.block_table_tensor.device,
+        )
+        positions = Tensor.from_handle(
+            self.positions.ptr,
+            layout.row_positions.shape,
+            DType.INT64,
+            self.positions_tensor.device,
+        )
+        context_counts = Tensor.from_handle(
+            self.context_counts.ptr,
+            layout.live_counts.shape,
+            DType.INT64,
+            self.context_counts_tensor.device,
+        )
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=positions,
+            max_live_count=max(0, int(layout.max_live_count) - 1),
+            storage_dtype=DType.BF16,
+            row_positions=positions,
+            span_role="prefill",
+        )
+        prefill_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=context_counts,
+            max_live_count=int(layout.max_live_count),
+            storage_dtype=DType.BF16,
+            row_positions=positions,
+            span_role="prefill",
+        )
+        return replace(
+            self,
+            start=0,
             rows=rows,
             block_table_tensor=block_table,
             positions_tensor=positions,
