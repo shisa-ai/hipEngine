@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -2470,6 +2471,49 @@ def test_startup_scratch_probe_runs_batch_width_when_context_unknown() -> None:
     assert scratch_probe["max_prompt_tokens"] is None
     assert scratch_probe["probe_prompt_tokens"] == 64
     assert scratch_probe["context_unknown"] is True
+
+
+def test_startup_scratch_probe_sets_mtp_warmup_env_only_when_serving_enabled(monkeypatch) -> None:
+    class EnvCaptureFakeLLM(FakeLLM):
+        def prepare_request_scratch(self, **kwargs) -> dict[str, Any]:
+            payload = super().prepare_request_scratch(**kwargs)
+            payload["mtp_startup_warmup"] = os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP")
+            return payload
+
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", raising=False)
+    fake = EnvCaptureFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+        speculative_mtp_serving="opt_in",
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    scratch_result = response.json()["startup"]["checks"]["scratch_probe"]["result"]
+    assert scratch_result["mtp_startup_warmup"] == "1"
+    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") is None
+
+    fake_off = EnvCaptureFakeLLM(outputs=["warm"])
+    config_off = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+        speculative_mtp_serving="off",
+    )
+    app_off = create_app(config_off, llm=fake_off)
+
+    with TestClient(app_off) as client:
+        response_off = client.get("/ready")
+
+    assert response_off.status_code == 200
+    scratch_result_off = response_off.json()["startup"]["checks"]["scratch_probe"]["result"]
+    assert scratch_result_off["mtp_startup_warmup"] == "0"
+    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") is None
 
 
 def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:

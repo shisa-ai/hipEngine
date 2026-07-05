@@ -143971,3 +143971,66 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused pytest passed (`8 passed` for the broad GGUF/server
   focused set), and JSON artifact checks passed.
+
+## 2026-07-06 - GGUF MTP server startup prefill/verify warmup
+
+- Fixed the worst fresh-server c=2 MTP cold-start cliff. The AR startup warmup
+  fixed AR, but the first MTP request still paid MTP-specific hidden-seed packed
+  prefill and packed verifier cold work:
+  - Cold after-AR-fix c=2 smoke: **6.68 tok/s** with
+    `prefill_batch_ms=54803.784`.
+  - MTP prefill-only warmup moved first c=2 to **42.54 tok/s**, but exposed a
+    remaining verifier cold path (`target_packed_verify_scatter_outputs_ms`
+    **3207.810**).
+  - Final supported-width MTP prefill+verify startup warmup moves first c=2 to
+    **56.59 tok/s**, `prefill_batch_ms=2344.910`,
+    `target_packed_verify_total_ms=5258.140`, and verifier scatter **58.360 ms**.
+    Warm c=2 rerun is **59.71 tok/s**, matching retained **59.94** within
+    variance; warm c=4 rerun is **65.57 tok/s**, matching retained **66.60**
+    within variance.
+- Changes:
+  - The server sets scoped `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP=1` only
+    inside the startup scratch-probe thread when `--speculative-mtp-serving` is
+    not `off`; generic `prepare_request_scratch(...)` signatures are unchanged.
+  - GGUF `prepare_request_scratch(...)` now keeps AR warmup independent and, when
+    the scoped marker is enabled, warms MTP `prefill_batch_native(...,
+    return_hidden_seeds=True)` plus one tiny `verify_target_blocks_batch(...)`
+    for supported packed widths 2/4 under the llama-compatible env. It also
+    warms the MTP draft-runner pool for those supported widths.
+  - Rejected a wider pool-fill attempt for c=8: warming eight MTP slots raised
+    startup to **121.6 s**, retained **76.5 GiB** used after scratch probe, and
+    still measured only **35.25 tok/s** on c=8 rerun. The committed code does
+    not keep that width-8 pool-fill branch; c=8 remains verifier/draft
+    scheduling debt.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- Client command shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency {2,4} \
+    --extra-payload '{"speculative_mtp":true}' --out <artifact>
+  ```
+- Retained artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled tests/test_generation_qwen35_gguf_sampling.py -k 'speculative_mtp_c2 or packed_prefill or batch_verifier' tests/test_gguf_packed_verify_layout.py tests/test_server_api.py::test_startup_scratch_probe_runs_batch_width_when_context_unknown tests/test_server_api.py::test_startup_scratch_probe_uses_max_active_request_width tests/test_server_api.py::test_startup_scratch_probe_sets_mtp_warmup_env_only_when_serving_enabled
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json >/dev/null
+  ```
+  Pycompile passed, focused pytest passed (`9 passed`), and JSON artifact checks
+  passed. Next MTP c>N work remains c=8: verifier wall, draft scheduling, and
+  the four-slot packed verifier/prefill cap.

@@ -91,6 +91,7 @@ _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
 _GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
+_GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 
@@ -113,6 +114,10 @@ def _gguf_ar_stream_prefill_enabled() -> bool:
 
 def _gguf_mtp_server_packed_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_mtp_server_startup_warmup_enabled() -> bool:
+    return os.environ.get(_GGUF_MTP_SERVER_STARTUP_WARMUP_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_stream_draft_enabled() -> bool:
@@ -435,15 +440,13 @@ class Qwen35GGUFBringupGenerator:
             "packed_ar_prefill_widths": [],
             "packed_ar_prefill_prompt_lengths": [],
             "packed_ar_prefill_skipped": False,
+            "packed_mtp_prefill_widths": [],
+            "packed_mtp_prefill_prompt_lengths": [],
+            "packed_mtp_prefill_skipped": False,
+            "packed_mtp_verify_widths": [],
+            "packed_mtp_verify_prompt_lengths": [],
+            "packed_mtp_verify_skipped": False,
         }
-        if max_batch <= 1 or not _gguf_ar_packed_prefill_enabled():
-            result["packed_ar_prefill_skipped"] = True
-            result["reason"] = "batch_width_le_1_or_disabled"
-            return result
-        if not callable(getattr(Qwen35GGUFResidentSession, "prefill_batch_native", None)):
-            result["packed_ar_prefill_skipped"] = True
-            result["reason"] = "backend_hook_unavailable"
-            return result
 
         shared_runner = self._get_shared_runner()
         vocab_size = int(getattr(shared_runner, "vocab_size", 32000) or 32000)
@@ -456,54 +459,208 @@ class Qwen35GGUFBringupGenerator:
                 length = max(1, min(prompt_len, length + ((int(slot_index) * 5) % (2 * spread + 1)) - spread))
             return tuple(min(((pos + int(slot_index)) % max(1, max_token)) + 1, max_token) for pos in range(length)) or (0,)
 
+        def warm_verify_tokens_for(slot_index: int) -> tuple[int, int]:
+            first = min((int(slot_index) % max(1, max_token)) + 1, max_token)
+            second = min(((int(slot_index) + 1) % max(1, max_token)) + 1, max_token)
+            return (first, second)
+
         warm_prompt_lengths = sorted({min(prompt_len, 40), prompt_len})
-        widths = [width for width in (2, 4, 8) if width <= max_batch]
-        if max_batch > 1 and max_batch not in widths:
-            widths.append(max_batch)
-        widths = sorted(set(widths))
-        for width in widths:
-            for target_len in warm_prompt_lengths:
-                sessions: list[Qwen35GGUFResidentSession] = []
-                keys: list[tuple[str, bool | None, bool | None] | None] = []
-                unsupported = False
-                try:
-                    for _slot in range(width):
-                        session, key, _reused = self._acquire_shared_session(
-                            shared_runner,
-                            pool_name="ar_batch",
-                            use_wmma_prefill=True,
-                            use_gemv_decode=True,
-                        )
-                        sessions.append(session)
-                        keys.append(key)
-                    with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                        prefill_batch = getattr(sessions[0], "prefill_batch_native")
-                        prefill_batch(
-                            [warm_prompt_for(slot_index, target_len) for slot_index in range(width)],
-                            sessions=sessions,
-                            return_logits=False,
-                        )
-                except NotImplementedError:
-                    result["packed_ar_prefill_skipped"] = True
-                    result["reason"] = f"packed_prefill_unsupported_width_{width}"
-                    unsupported = True
-                except Exception:
-                    for session in sessions:
-                        session.close()
-                    sessions = []
-                    raise
-                finally:
-                    while sessions:
-                        session = sessions.pop()
-                        key = keys.pop()
-                        self._release_shared_session(key, session)
-                if unsupported:
+        prefill_batch_available = callable(getattr(Qwen35GGUFResidentSession, "prefill_batch_native", None))
+
+        if max_batch <= 1 or not _gguf_ar_packed_prefill_enabled():
+            result["packed_ar_prefill_skipped"] = True
+            result["packed_ar_prefill_reason"] = "batch_width_le_1_or_disabled"
+            result["reason"] = "batch_width_le_1_or_disabled"
+        elif not prefill_batch_available:
+            result["packed_ar_prefill_skipped"] = True
+            result["packed_ar_prefill_reason"] = "backend_hook_unavailable"
+            result["reason"] = "backend_hook_unavailable"
+        else:
+            ar_widths = [width for width in (2, 4, 8) if width <= max_batch]
+            if max_batch > 1 and max_batch not in ar_widths:
+                ar_widths.append(max_batch)
+            for width in sorted(set(ar_widths)):
+                for target_len in warm_prompt_lengths:
+                    sessions: list[Qwen35GGUFResidentSession] = []
+                    keys: list[tuple[str, bool | None, bool | None] | None] = []
+                    unsupported = False
+                    try:
+                        for _slot in range(width):
+                            session, key, _reused = self._acquire_shared_session(
+                                shared_runner,
+                                pool_name="ar_batch",
+                                use_wmma_prefill=True,
+                                use_gemv_decode=True,
+                            )
+                            sessions.append(session)
+                            keys.append(key)
+                        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                            prefill_batch = getattr(sessions[0], "prefill_batch_native")
+                            prefill_batch(
+                                [warm_prompt_for(slot_index, target_len) for slot_index in range(width)],
+                                sessions=sessions,
+                                return_logits=False,
+                            )
+                    except NotImplementedError:
+                        result["packed_ar_prefill_skipped"] = True
+                        result["packed_ar_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
+                        result["reason"] = f"packed_prefill_unsupported_width_{width}"
+                        unsupported = True
+                    except Exception:
+                        for session in sessions:
+                            session.close()
+                        sessions = []
+                        raise
+                    finally:
+                        while sessions:
+                            session = sessions.pop()
+                            key = keys.pop()
+                            self._release_shared_session(key, session)
+                    if unsupported:
+                        break
+                    result["packed_ar_prefill_prompt_lengths"].append(int(target_len))
+                if result["packed_ar_prefill_skipped"]:
                     break
-                result["packed_ar_prefill_prompt_lengths"].append(int(target_len))
-            if result["packed_ar_prefill_skipped"]:
-                break
-            result["packed_ar_prefill_widths"].append(width)
+                result["packed_ar_prefill_widths"].append(width)
         result["packed_ar_prefill_prompt_lengths"] = sorted(set(result["packed_ar_prefill_prompt_lengths"]))
+
+        if not _gguf_mtp_server_startup_warmup_enabled():
+            result["packed_mtp_prefill_skipped"] = True
+            result["packed_mtp_prefill_reason"] = "startup_warmup_disabled"
+            result["packed_mtp_verify_skipped"] = True
+            result["packed_mtp_verify_reason"] = "startup_warmup_disabled"
+        elif max_batch <= 1 or not _gguf_mtp_server_packed_prefill_enabled():
+            result["packed_mtp_prefill_skipped"] = True
+            result["packed_mtp_prefill_reason"] = "batch_width_le_1_or_disabled"
+            result["packed_mtp_verify_skipped"] = True
+            result["packed_mtp_verify_reason"] = "batch_width_le_1_or_disabled"
+        elif not self.supports_speculative_mtp:
+            result["packed_mtp_prefill_skipped"] = True
+            result["packed_mtp_prefill_reason"] = "mtp_tensors_unavailable"
+            result["packed_mtp_verify_skipped"] = True
+            result["packed_mtp_verify_reason"] = "mtp_tensors_unavailable"
+        elif not prefill_batch_available:
+            result["packed_mtp_prefill_skipped"] = True
+            result["packed_mtp_prefill_reason"] = "backend_hook_unavailable"
+            result["packed_mtp_verify_skipped"] = True
+            result["packed_mtp_verify_reason"] = "backend_hook_unavailable"
+        else:
+            mtp_width_cap = min(max_batch, _MTP_SERVING_TARGET_BATCH_MAX_SLOTS)
+            mtp_widths = [width for width in (2, 4) if width <= mtp_width_cap]
+            if mtp_width_cap > 1 and mtp_width_cap not in mtp_widths:
+                mtp_widths.append(mtp_width_cap)
+            assets = self._load_mtp_serving_assets()
+            for width in sorted(set(mtp_widths)):
+                for target_len in warm_prompt_lengths:
+                    sessions: list[Qwen35GGUFResidentSession] = []
+                    session_keys: list[tuple[str, bool | None, bool | None] | None] = []
+                    drafts: list[Any] = []
+                    draft_keys: list[int | None] = []
+                    unsupported = False
+                    try:
+                        for _slot in range(width):
+                            session, session_key, _session_reused = self._acquire_shared_session(
+                                shared_runner,
+                                pool_name="mtp_target",
+                                use_wmma_prefill=True,
+                                use_gemv_decode=True,
+                            )
+                            sessions.append(session)
+                            session_keys.append(session_key)
+                            draft, draft_key, _draft_reused = self._acquire_mtp_draft_runner(
+                                assets,
+                                runtime=session.runtime,
+                                pool_enabled=True,
+                            )
+                            drafts.append(draft)
+                            draft_keys.append(draft_key)
+                        with _temporary_env(_LLAMA_COMPAT_MTP_ENV):
+                            chunk_start_index = 0
+                            while chunk_start_index < width:
+                                remaining = width - chunk_start_index
+                                take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
+                                if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                                    take -= 1
+                                chunk_sessions = sessions[chunk_start_index:chunk_start_index + take]
+                                chunk_owner = chunk_sessions[0]
+                                prefill_batch = getattr(chunk_owner, "prefill_batch_native")
+                                warm_results = prefill_batch(
+                                    [
+                                        warm_prompt_for(slot_index, target_len)
+                                        for slot_index in range(chunk_start_index, chunk_start_index + take)
+                                    ],
+                                    sessions=chunk_sessions,
+                                    return_logits=False,
+                                    return_hidden_seeds=True,
+                                )
+                                if warm_results is None:
+                                    raise NotImplementedError("packed MTP prefill warmup returned no results")
+                                if len(list(warm_results)) != take:
+                                    raise RuntimeError("packed MTP prefill warmup returned the wrong result count")
+                                verify_batch = getattr(chunk_owner, "verify_target_blocks_batch", None)
+                                if callable(verify_batch) and not result["packed_mtp_verify_skipped"]:
+                                    try:
+                                        verify_results = verify_batch(
+                                            [
+                                                {
+                                                    "session": session,
+                                                    "input_token_ids": warm_verify_tokens_for(slot_index),
+                                                    "bulk_attention_mode": "bulk",
+                                                    "use_wmma_prefill": True,
+                                                    "capture_linear_state_rows": True,
+                                                    "defer_linear_state_commit": True,
+                                                }
+                                                for slot_index, session in zip(
+                                                    range(chunk_start_index, chunk_start_index + take),
+                                                    chunk_sessions,
+                                                    strict=True,
+                                                )
+                                            ]
+                                        )
+                                        if verify_results is None:
+                                            raise NotImplementedError("packed MTP verifier warmup returned no results")
+                                        if len(list(verify_results)) != take:
+                                            raise RuntimeError("packed MTP verifier warmup returned the wrong result count")
+                                    except NotImplementedError:
+                                        result["packed_mtp_verify_skipped"] = True
+                                        result["packed_mtp_verify_reason"] = f"packed_verify_unsupported_width_{take}"
+                                elif not callable(verify_batch):
+                                    result["packed_mtp_verify_skipped"] = True
+                                    result["packed_mtp_verify_reason"] = "backend_hook_unavailable"
+                                chunk_start_index += take
+                    except NotImplementedError:
+                        result["packed_mtp_prefill_skipped"] = True
+                        result["packed_mtp_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
+                        unsupported = True
+                    except Exception:
+                        for draft in drafts:
+                            self._release_mtp_draft_runner(None, draft)
+                        drafts = []
+                        for session in sessions:
+                            session.close()
+                        sessions = []
+                        raise
+                    finally:
+                        while drafts:
+                            draft = drafts.pop()
+                            draft_key = draft_keys.pop()
+                            self._release_mtp_draft_runner(draft_key, draft)
+                        while sessions:
+                            session = sessions.pop()
+                            session_key = session_keys.pop()
+                            self._release_shared_session(session_key, session)
+                    if unsupported:
+                        break
+                    result["packed_mtp_prefill_prompt_lengths"].append(int(target_len))
+                    if not result["packed_mtp_verify_skipped"]:
+                        result["packed_mtp_verify_prompt_lengths"].append(int(target_len))
+                if result["packed_mtp_prefill_skipped"]:
+                    break
+                result["packed_mtp_prefill_widths"].append(width)
+                if not result["packed_mtp_verify_skipped"]:
+                    result["packed_mtp_verify_widths"].append(width)
+        result["packed_mtp_prefill_prompt_lengths"] = sorted(set(result["packed_mtp_prefill_prompt_lengths"]))
+        result["packed_mtp_verify_prompt_lengths"] = sorted(set(result["packed_mtp_verify_prompt_lengths"]))
         return result
 
     def _get_shared_runner(self) -> Qwen35GGUFFullStackRunner:

@@ -1,15 +1,19 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-06 (hipEngine GGUF server AR cold-shape fix:
-startup scratch probing now warms max-active packed AR batch shapes with ragged
-40/64-token prompts, and packed verifier/decode workspace reuse is capacity-based
-instead of exact-slot-count. On Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 natural24
-with a 5 ms coalescing window, first-pass server AR c=2 recovers from the cold
-prefill-limited **51.4 tok/s** regime to **65.91 tok/s**; same-server AR is now
-**65.91/82.41/63.17 tok/s** at c=2/c=4/c=8. Retained warm MTP remains
-**59.94/66.60/54.88 tok/s**, so MTP is **0.910x/0.808x/0.869x** versus the
-stronger AR row. MTP c=2 warm smoke after this change is **60.12 tok/s**; cold
-MTP packed-prefill shapes remain separate debt. The c=8 MTP verifier bucket remains
+Last updated: 2026-07-06 (hipEngine GGUF server MTP startup warmup:
+when `--speculative-mtp-serving` is enabled, startup now warms the MTP
+hidden-seed packed-prefill path and a tiny packed target verifier at supported
+widths 2/4. This removes the worst fresh-server c=2 MTP cliff: the cold
+after-AR-fix probe was **6.68 tok/s** with `prefill_batch_ms=54803.784`; after
+MTP prefill+verify warmup, first c=2 is **56.59 tok/s** with
+`prefill_batch_ms=2344.910`, `target_packed_verify_total_ms=5258.140`, and
+`target_packed_verify_scatter_outputs_ms=58.360`. Same-server warm MTP remains
+in the retained regime: c=2 rerun **59.71 tok/s** and c=4 rerun **65.57 tok/s**
+versus retained **59.94/66.60/54.88 tok/s** at c=2/c=4/c=8. Same-server AR is
+**65.91/82.41/63.17 tok/s**, so MTP remains below the stronger AR row. c=8 is
+not fixed by startup pool filling; the rejected pool-8 diagnostic raised startup
+memory/time and still measured only **35.25 tok/s** on rerun. The c=8 MTP
+verifier bucket remains
 dominant. A follow-up packed-verifier instrumentation
 rerun keeps the same conclusion: warm c=8 measured **52.68 tok/s** with
 `slots_verify_phase_ms=12248.655` and packed verifier total
@@ -31,6 +35,10 @@ new retained MTP packed-prefill artifacts
 [`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-current-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-current-rerun.json),
 [`2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-current-rerun2.json`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-current-rerun2.json), and
 [`2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-current-rerun2.json`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-current-rerun2.json);
+new MTP startup-warm artifacts
+[`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json),
+[`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json), and
+[`2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json);
 instrumentation artifact
 [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
@@ -519,8 +527,8 @@ full-suite speed row above.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
-| hipEngine `llama-compat` server MTP | 2 | 65.91 | **59.94** | 0.910x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-current-rerun.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-ragged-release-arfix.json); startup warmup fixes the old cold first-pass AR c=2 prefill outlier |
-| hipEngine `llama-compat` server MTP | 4 | 82.41 | **66.60** | 0.808x | same | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-current-rerun2.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-ragged-release-arfix.json); AR got stronger after capacity-based packed workspace reuse, so MTP c=4 is no longer near AR but remains faster than llama.cpp HIP/Vulkan full-request MTP c=4 |
+| hipEngine `llama-compat` server MTP | 2 | 65.91 | **59.94** | 0.910x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + startup MTP prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-current-rerun.json), [`startup-first`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-ragged-release-arfix.json); startup warmup fixes the old cold first-pass AR c=2 prefill outlier and removes the worst MTP c=2 first-request prefill/verifier cold cliff |
+| hipEngine `llama-compat` server MTP | 4 | 82.41 | **66.60** | 0.808x | same | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-current-rerun2.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-ragged-release-arfix.json); AR got stronger after capacity-based packed workspace reuse, so MTP c=4 is no longer near AR but remains faster than llama.cpp HIP/Vulkan full-request MTP c=4 |
 | hipEngine `llama-compat` server MTP | 8 | 63.17 | **54.88** | 0.869x | same, c=8 first wave still uses serial prompt open, trailing c=2 wave uses packed MTP prefill, target verify streams chunk-4 groups | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-current-rerun2.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-ragged-release-arfix.json), [`packed-stage`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json); c=8 still beats llama.cpp HIP/Vulkan full-request MTP but remains below current hipEngine AR. Verifier work is still led by linear attention, LM-head/sample drain, and full attention. |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); full-request/client aggregate, decode-only aggregate is 52.19/75.56 |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); full-request/client aggregate, decode-only aggregate is 108.33/78.21 |

@@ -1589,6 +1589,178 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
 
 
+def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        pass
+
+    class FakeFullStackRunner:
+        vocab_size = 128
+
+        def __init__(self, model_path):
+            self.runtime = FakeRuntime()
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            calls.append(("session_init", self.slot_id))
+
+        def reset(self):
+            self.position = 0
+            calls.append(("reset", self.slot_id))
+
+        def close(self):  # pragma: no cover - warmup should release reusable sessions to the pool
+            calls.append(("close", self.slot_id))
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False, return_hidden_seeds=False):
+            calls.append(
+                (
+                    "prefill_batch",
+                    self.slot_id,
+                    len(prompt_token_ids),
+                    tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                    return_logits,
+                    return_hidden_seeds,
+                )
+            )
+            results = []
+            for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+                session.position = len(prompt)
+                results.append(
+                    SimpleNamespace(
+                        token_id=1,
+                        hidden_seeds=np.full((len(prompt), 2), float(session.slot_id + 1), dtype=np.float32),
+                    )
+            )
+            return results
+
+        def verify_target_blocks_batch(self, jobs):
+            calls.append(
+                (
+                    "verify_batch",
+                    self.slot_id,
+                    tuple((job["session"].slot_id, tuple(job["input_token_ids"])) for job in jobs),
+                    tuple(
+                        (
+                            job["bulk_attention_mode"],
+                            job["use_wmma_prefill"],
+                            job["capture_linear_state_rows"],
+                            job["defer_linear_state_commit"],
+                        )
+                        for job in jobs
+                    ),
+                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                )
+            )
+            return [
+                SimpleNamespace(
+                    token_ids=list(job["input_token_ids"]),
+                    hidden_seeds=np.ones((len(job["input_token_ids"]), 2), dtype=np.float32),
+                    linear_state_rows_captured=True,
+                )
+                for job in jobs
+            ]
+
+    class FakeDraft:
+        def __init__(self):
+            self.draft_id = len([call for call in calls if call and call[0] == "draft_init"])
+            calls.append(("draft_init", self.draft_id))
+
+        def close(self):  # pragma: no cover - warmup should release reusable drafts to the pool
+            calls.append(("draft_close", self.draft_id))
+
+    assets = qwen35_gguf._GGUFMTPServingAssets(
+        weights={
+            "blk.40.attn_q_norm.weight": (np.zeros((2,), dtype=np.float32), 0, (2,)),
+            "output.weight": (np.zeros((8, 1), dtype=np.uint8), 0, (8, 1)),
+        },
+        token_embd_f32=np.zeros((8, 2), dtype=np.float32),
+        rope_cos=np.ones((16, 2), dtype=np.float32),
+        rope_sin=np.zeros((16, 2), dtype=np.float32),
+    )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_load_mtp_serving_assets",
+        lambda self: assets,
+    )
+    monkeypatch.setattr(qwen35_gguf, "_new_mtp_draft_runner", lambda assets, *, runtime: FakeDraft())
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "1")
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+
+    generator = _generator()
+    generator.weight_index = _mtp_capable_weight_index()
+    result = generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=8)
+
+    assert result["packed_ar_prefill_skipped"] is True
+    assert result["packed_mtp_prefill_skipped"] is False
+    assert result["packed_mtp_prefill_widths"] == [2, 4]
+    assert result["packed_mtp_prefill_prompt_lengths"] == [4]
+    assert result["packed_mtp_verify_skipped"] is False
+    assert result["packed_mtp_verify_widths"] == [2, 4]
+    assert result["packed_mtp_verify_prompt_lengths"] == [4]
+    assert [call for call in calls if call[0] == "draft_init"] == [
+        ("draft_init", 0),
+        ("draft_init", 1),
+        ("draft_init", 2),
+        ("draft_init", 3),
+    ]
+    assert [call for call in calls if call[0] == "prefill_batch"] == [
+        (
+            "prefill_batch",
+            0,
+            2,
+            ((1, 2, 3, 4), (2, 3, 4, 5)),
+            (0, 1),
+            "1",
+            False,
+            True,
+        ),
+        (
+            "prefill_batch",
+            0,
+            4,
+            ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7)),
+            (0, 1, 2, 3),
+            "1",
+            False,
+            True,
+        ),
+    ]
+    assert [call for call in calls if call[0] == "verify_batch"] == [
+        (
+            "verify_batch",
+            0,
+            ((0, (1, 2)), (1, (2, 3))),
+            (("bulk", True, True, True), ("bulk", True, True, True)),
+            "1",
+        ),
+        (
+            "verify_batch",
+            0,
+            ((0, (1, 2)), (1, (2, 3)), (2, (3, 4)), (3, (4, 5))),
+            (
+                ("bulk", True, True, True),
+                ("bulk", True, True, True),
+                ("bulk", True, True, True),
+                ("bulk", True, True, True),
+            ),
+            "1",
+        ),
+    ]
+    assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
+
+
 def test_gguf_ar_batch_decode_notimplemented_falls_back_to_step(monkeypatch) -> None:
     calls: list[tuple] = []
 
