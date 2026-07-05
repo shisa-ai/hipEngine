@@ -84,6 +84,7 @@ _LLAMA_COMPAT_MTP_ENV = {
     "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES": "draft",
 }
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
+_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 
 
 @dataclass(frozen=True)
@@ -1337,27 +1338,45 @@ class Qwen35GGUFBringupGenerator:
     ) -> list[Any] | None:
         if len(drafted_cycles) <= 1:
             return None
-        first_session = drafted_cycles[0].slot.session
-        verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
-        if not callable(verify_batch):
-            return None
-        jobs = [
-            {
-                "session": drafted.slot.session,
-                "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
-                "bulk_attention_mode": "bulk",
-                "use_wmma_prefill": True,
-                "capture_linear_state_rows": True,
-                "defer_linear_state_commit": True,
-            }
-            for drafted in drafted_cycles
-        ]
-        verify_start = time.perf_counter()
-        block_results = list(verify_batch(jobs))
-        verify_ms = _timing_ms_since(verify_start)
-        for drafted in drafted_cycles:
-            _timing_add_ms(drafted.slot.timing, "target_verify_ms", verify_ms)
-            _timing_add_ms(drafted.slot.timing, "target_verify_batch_ms", verify_ms)
+        chunks: list[list[_GGUFMTPDraftedCycle]] = []
+        index = 0
+        while index < len(drafted_cycles):
+            remaining = len(drafted_cycles) - index
+            take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
+            if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                take -= 1
+            chunks.append(drafted_cycles[index:index + take])
+            index += take
+        block_results: list[Any] = []
+        for chunk in chunks:
+            first_session = chunk[0].slot.session
+            verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
+            if not callable(verify_batch):
+                return None
+            jobs = [
+                {
+                    "session": drafted.slot.session,
+                    "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
+                    "bulk_attention_mode": "bulk",
+                    "use_wmma_prefill": True,
+                    "capture_linear_state_rows": True,
+                    "defer_linear_state_commit": True,
+                }
+                for drafted in chunk
+            ]
+            verify_start = time.perf_counter()
+            try:
+                batch_result = verify_batch(jobs)
+            except NotImplementedError:
+                return None
+            if batch_result is None:
+                return None
+            chunk_results = list(batch_result)
+            verify_ms = _timing_ms_since(verify_start)
+            for drafted in chunk:
+                _timing_add_ms(drafted.slot.timing, "target_verify_ms", verify_ms)
+                _timing_add_ms(drafted.slot.timing, "target_verify_batch_ms", verify_ms)
+            block_results.extend(chunk_results)
         return block_results
 
     def _commit_mtp_serving_cycle(

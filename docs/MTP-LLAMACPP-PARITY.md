@@ -74,9 +74,9 @@ instrumented HIP stage target.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | Diagnostic blocked: zero batch window and persistent target-session / MTP draft-runner pools remove the deliberate 100 ms queue delay plus draft-open tax, but warmed c=1 MTP still loses to AR. Timing buckets show AR server-vs-direct is mostly prompt prefill, while MTP is dominated by target verify. |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | B2 resident slots, zero batch window, pooled target/draft state | Zero-window c=2 did not coalesce in the rerun: no `slots_*` phase buckets, effectively independent c=1 requests. |
-| hipEngine `llama-compat` server MTP | 2 | not rerun | **33.60** | n/a | B2, 5 ms batch window | Forced c=2 coalescing diagnostic. It enters the phase scheduler, but `slots_verify_phase_ms=9692.167` of `slots_run_ms=10991.786`, so target verify is still per-slot serialized. |
-| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.30** | 0.805x | B2 resident slots, zero batch window, pooled target/draft state | Phase buckets show the same blocker: `slots_verify_phase_ms=8556.890` of `slots_run_ms=9712.986`. |
-| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.41** | 0.785x | same | Best evidence for the next blocker: `slots_verify_phase_ms=23265.170` of `slots_run_ms=26514.334`; the current code is phase-serial (`draft -> verify -> commit`) but not target-batched. |
+| hipEngine `llama-compat` server MTP | 2 | 41.27 | **45.57** | 1.104x | B2, 5 ms batch window, packed target verify | New packed multi-slot verifier path. Forced c=2 coalescing improves old forced c=2 **33.60 -> 45.57 tok/s**; `slots_verify_phase_ms` drops **9692.167 -> 5389.484 ms** and `target_verify_batch_ms=5167.858`. |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **47.48** | 1.148x | B2, 5 ms batch window, packed target verify | Packed verifier sanity row; improves old phase-serial c=4 **33.30 -> 47.48 tok/s** with `target_verify_batch_ms=7739.042`. |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **47.18** | 1.143x | B2, 5 ms batch window, packed target verify chunked at 4 slots | Warm steady-state c=8 row. A single 8-slot packed verifier batch was rejected (**11.58 tok/s**, `target_verify_batch_ms=63733.783`), so serving currently chunks target verify as 4+4. Remaining c=8 blocker is resident draft / row-count scaling, not the old per-slot target verifier. |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | B2 | Untraced server aggregate diagnostic; faster than the earlier instrumented HIP stage-timing run. |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
@@ -92,8 +92,12 @@ Artifacts:
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-phase-serial.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-phase-serial.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-smoke.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-sweep.json`
 - `benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`
 - `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
@@ -112,7 +116,8 @@ loaded GGUF engine exposes the NextN tensors. Explicit opt-in requests use
 The route is guarded by the existing sampling-incompatibility checks and rejects
 streaming, non-greedy sampling, and unsupported engines.
 
-What landed is the c=N llama-compat resident-slot server milestone. The OpenAI
+What landed is the c=N llama-compat resident-slot server milestone plus the
+first production packed target verifier. The OpenAI
 path calls `LLM.generate_speculative_mtp_detailed()`, which enters a GGUF
 llama-compat MTP hook with one shared target-weight runner, pooled target
 sessions, pooled MTP draft runners, per-request draft K/V state, verifier
@@ -121,35 +126,27 @@ in one process; this is true resident state isolation, not parallel child
 processes and not the old single-session reset loop. The current c>N loop is now
 phase-serial (`draft -> target verify -> commit`) to mirror llama.cpp's lifecycle
 and expose `slots_draft_phase_ms`, `slots_verify_phase_ms`, and
-`slots_commit_phase_ms`, but the target verifier is still invoked once per slot.
+`slots_commit_phase_ms`; the target verify phase now calls
+`Qwen35GGUFResidentSession.verify_target_blocks_batch()` on packed multi-slot
+blocks when the shape is supported.
 Short prompts that cannot safely build the shifted context-replay rows still
 fall back to ordinary GGUF greedy AR under the same request. The exact default
-MTP route and streaming MTP remain unclaimed. The c=1/c=2/c=4/c=8 throughput
-measurement is still diagnostic-blocked rather than retained. The sequence of
+MTP route and streaming MTP remain unclaimed. The sequence of
 fixes is now measured: shared prepared target weights removed the catastrophic
 per-request GGUF rematerialization, zero batch window removed the intentional
 100 ms/request coalescing delay, and pooled target/draft state moved warmed c=1
 MTP **30.09 -> 34.44 usage tok/s** by eliminating draft-open cost. Server AR
 moved only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is
-prompt prefill, not session construction. The remaining MTP serving blocker is a
-GGUF target session/runner primitive that can verify a packed multi-slot
-`[slot][B+1]` slab in one target forward like llama.cpp's single `llama_decode()`
-batch. The phase rerun quantifies this: c=4 spends **8556.890 ms** of
-**9712.986 ms** `slots_run_ms` in `slots_verify_phase_ms`; c=8 spends
-**23265.170 ms** of **26514.334 ms** there. Zero-window c=2 does not reliably
-coalesce, and a forced 5 ms c=2 coalescing run spends **9692.167 ms** of
-**10991.786 ms** in the verifier phase. Until the packed target verifier exists,
-c>N serving still loses to AR.
+prompt prefill, not session construction.
 
-Implementation status after `5818ef74`: the server scheduler can now consume a
-real batch verifier via `verify_target_blocks_batch()` and will report
-`target_verify_batching=packed_slot_batch` only when that hook is actually used.
-No production `Qwen35GGUFResidentSession.verify_target_blocks_batch()` is exposed
-yet, because an internal loop over existing sessions would only relabel the
-per-slot serial path. The real next unit is a multi-slot target verifier/session
-that owns per-slot target KV spans, per-slot Conv/GDN recurrent state slabs, and
-per-slot captured verify rows, then verifies all active `[slot][B+1]` blocks in
-one target forward.
+Implementation status after packed target verify: c=2 forced coalescing improves
+**33.60 -> 45.57 tok/s** and c=4 improves **33.30 -> 47.48 tok/s**. Warm c=8 is
+**47.18 tok/s**, but only after chunking target verify at four slots; a single
+8-slot packed verifier batch is a measured rejected regime (**11.58 tok/s**).
+The next server blockers are therefore (1) true draft-side batching or a
+resident-draft row-count fix for c=8, (2) better packed verifier kernels for
+rows >= 16 before lifting the four-slot cap, and (3) reducing prompt-prefill
+overhead so server AR approaches the direct GGUF suite.
 
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 

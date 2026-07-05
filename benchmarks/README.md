@@ -1,17 +1,18 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-05 (hipEngine server MTP natural24 diagnostic: zero
-batch-window timing plus persistent target-session / MTP draft-runner pools move
-server AR to **41.24 usage tok/s** and warmed c=1 MTP to **34.44 tok/s**
-(**0.835× AR**), but the phase-serial rerun still has c=8 MTP at **32.41 vs
-41.27 tok/s** because resident slots remain per-slot serialized. The scheduler
-is now phase-serial (`draft -> verify -> commit`) but still lacks llama.cpp-style
-fused/batched target verify: c=8 spends **23.265 s** of **26.514 s**
-`slots_run_ms` in `slots_verify_phase_ms`. Timing buckets show server AR's
-direct-suite gap is mostly prompt prefill, while MTP is dominated by target
-verify; see
-[`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json) and
-[`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json).
+Last updated: 2026-07-05 (hipEngine server MTP packed target verifier diagnostic:
+the c>N llama-compat server route now verifies packed multi-slot target blocks
+instead of per-slot serial verifier calls. On Qwen3.6-35B-A3B GGUF Q4_K_M /
+gfx1151 natural24 with a 5 ms coalescing window, c=2 improves **33.60 -> 45.57
+tok/s** and c=4 improves **33.30 -> 47.48 tok/s**. Warm c=8 is **47.18 tok/s**
+with target verify chunked as 4+4; a single 8-slot packed verifier batch is a
+rejected diagnostic (**11.58 tok/s**) because rows>=16 enters a much slower
+regime. Remaining server concurrency work is now draft-side batching/row-count
+scaling and prompt-prefill overhead, not the old per-slot target verifier
+blocker. See
+[`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json),
+[`2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json), and
+[`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
 the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`

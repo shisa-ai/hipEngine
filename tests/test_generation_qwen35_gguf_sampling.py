@@ -502,6 +502,116 @@ def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
     assert all("slots_verify_phase_ms" in slot.timing for slot in slots)
 
 
+def test_gguf_speculative_mtp_batch_verifier_notimplemented_falls_back() -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+
+        def verify_target_blocks_batch(self, jobs):
+            calls.append(("verify_batch", tuple((job["session"].slot_id, tuple(job["input_token_ids"])) for job in jobs)))
+            raise NotImplementedError("unsupported packed shape")
+
+    slots = [
+        qwen35_gguf._GGUFMTPServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            resident_draft=SimpleNamespace(),
+            resident_context=SimpleNamespace(),
+            mtp_key_cache=SimpleNamespace(ptr=0x1000 + slot_id),
+            mtp_value_cache=SimpleNamespace(ptr=0x2000 + slot_id),
+            mtp_buffers=[],
+            hidden_size=2,
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+            mtp_device_kv_len=4,
+        )
+        for slot_id in range(2)
+    ]
+    drafted_cycles = [
+        qwen35_gguf._GGUFMTPDraftedCycle(
+            slot=slot,
+            advance_start=0.0,
+            cycle_mtp_kv_base_len=4,
+            draft_tokens=[2],
+            block_inputs=[1, 2],
+            block_start=4,
+            direct_commit_exact=True,
+        )
+        for slot in slots
+    ]
+
+    generator = _generator()
+
+    assert generator._try_verify_mtp_serving_cycles_batch(drafted_cycles) is None
+    assert calls == [("verify_batch", ((0, (1, 2)), (1, (1, 2))))]
+
+
+def test_gguf_speculative_mtp_batch_verifier_chunks_above_four_slots() -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+
+        def verify_target_blocks_batch(self, jobs):
+            calls.append(("verify_batch", self.slot_id, tuple(job["session"].slot_id for job in jobs)))
+            return [
+                SimpleNamespace(
+                    token_ids=[2, 3],
+                    hidden_seeds=np.ones((2, 2), dtype=np.float32),
+                    linear_state_rows_captured=True,
+                )
+                for _job in jobs
+            ]
+
+    slots = [
+        qwen35_gguf._GGUFMTPServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            resident_draft=SimpleNamespace(),
+            resident_context=SimpleNamespace(),
+            mtp_key_cache=SimpleNamespace(ptr=0x1000 + slot_id),
+            mtp_value_cache=SimpleNamespace(ptr=0x2000 + slot_id),
+            mtp_buffers=[],
+            hidden_size=2,
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+            mtp_device_kv_len=4,
+        )
+        for slot_id in range(8)
+    ]
+    drafted_cycles = [
+        qwen35_gguf._GGUFMTPDraftedCycle(
+            slot=slot,
+            advance_start=0.0,
+            cycle_mtp_kv_base_len=4,
+            draft_tokens=[2],
+            block_inputs=[1, 2],
+            block_start=4,
+            direct_commit_exact=True,
+        )
+        for slot in slots
+    ]
+
+    generator = _generator()
+    results = generator._try_verify_mtp_serving_cycles_batch(drafted_cycles)
+
+    assert len(results or []) == 8
+    assert calls == [
+        ("verify_batch", 0, (0, 1, 2, 3)),
+        ("verify_batch", 4, (4, 5, 6, 7)),
+    ]
+    assert all("target_verify_batch_ms" in slot.timing for slot in slots)
+
+
 def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
     payload = qwen35_gguf._gguf_mtp_last_batch_generation(
         _FakeTokenizer(),
