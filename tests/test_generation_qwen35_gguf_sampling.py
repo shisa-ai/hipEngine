@@ -923,7 +923,7 @@ def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
             calls.append(("step", self.slot_id, int(token_id), return_logits))
             raise AssertionError("scalar step should not be used when packed AR decode works")
 
-        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False):
+        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False, scatter_state=True):
             calls.append(
                 (
                     "step_batch",
@@ -931,6 +931,7 @@ def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
                     tuple((session.slot_id, int(token), int(position)) for session, token, position in zip(sessions, token_ids, positions, strict=True)),
                     os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
                     return_logits,
+                    scatter_state,
                 )
             )
             for session in sessions:
@@ -948,8 +949,8 @@ def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
 
     assert [output.text for output in outputs] == ["BCD", "BCD"]
     assert [call for call in calls if call[0] == "step_batch"] == [
-        ("step_batch", 0, ((0, 1, 4), (1, 1, 4)), "1", False),
-        ("step_batch", 0, ((0, 2, 5), (1, 2, 5)), "1", False),
+        ("step_batch", 0, ((0, 1, 4), (1, 1, 4)), "1", False, False),
+        ("step_batch", 0, ((0, 2, 5), (1, 2, 5)), "1", False, False),
     ]
     assert not [call for call in calls if call[0] == "step"]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
@@ -961,7 +962,7 @@ def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
     assert all(_decode_state(output)["native_caware_decode"] is True for output in outputs)
 
 
-def test_gguf_ar_packed_decode_is_default_off(monkeypatch) -> None:
+def test_gguf_ar_packed_decode_can_be_disabled(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -1002,7 +1003,7 @@ def test_gguf_ar_packed_decode_is_default_off(monkeypatch) -> None:
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.delenv("HIPENGINE_GGUF_AR_PACKED_DECODE", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
 
     generator = _generator()
@@ -1079,7 +1080,7 @@ def test_gguf_ar_stream_decode_uses_async_slot_streams(monkeypatch) -> None:
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
-    monkeypatch.delenv("HIPENGINE_GGUF_AR_PACKED_DECODE", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "0")
 
     generator = _generator()
     generator.prepare()
@@ -1168,7 +1169,7 @@ def test_gguf_ar_stream_prefill_reuses_decode_streams(monkeypatch) -> None:
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_PREFILL", "1")
-    monkeypatch.delenv("HIPENGINE_GGUF_AR_PACKED_DECODE", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "0")
 
     generator = _generator()
     generator.prepare()
@@ -1223,7 +1224,7 @@ def test_gguf_ar_batch_decode_notimplemented_falls_back_to_step(monkeypatch) -> 
             self.position = len(token_ids)
             return SimpleNamespace(token_id=1)
 
-        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False):
+        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False, scatter_state=True):
             calls.append(("step_batch", tuple(session.slot_id for session in sessions)))
             raise NotImplementedError("packed shape unavailable")
 
@@ -1265,8 +1266,8 @@ def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
             self.slot_id = int(slot_id)
             self.position = 4
 
-        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False):
-            calls.append(("step_batch", self.slot_id, tuple(session.slot_id for session in sessions)))
+        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False, scatter_state=True):
+            calls.append(("step_batch", self.slot_id, tuple(session.slot_id for session in sessions), scatter_state))
             for session in sessions:
                 session.position += 1
             return [SimpleNamespace(token_id=2) for _token in token_ids]
@@ -1293,11 +1294,62 @@ def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
 
     assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
     assert [call for call in calls if call[0] == "step_batch"] == [
-        ("step_batch", 0, (0, 1, 2, 3)),
-        ("step_batch", 4, (4, 5, 6, 7)),
+        ("step_batch", 0, (0, 1, 2, 3), False),
+        ("step_batch", 4, (4, 5, 6, 7), False),
     ]
     assert all(slot.native_decode_steps == 1 for slot in slots)
     assert all("decode_batch_ms" in slot.timing for slot in slots)
+
+
+def test_gguf_ar_batch_decode_flushes_before_singleton_fallback(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+
+        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False, scatter_state=True):
+            calls.append(("step_batch", self.slot_id, tuple(session.slot_id for session in sessions), scatter_state))
+            for session in sessions:
+                session.position += 1
+            return [
+                SimpleNamespace(token_id=99 if session.slot_id == 0 else 2)
+                for session in sessions
+            ]
+
+        def flush_packed_decode_state(self):
+            calls.append(("flush", self.slot_id))
+            return True
+
+        def step(self, token_id: int, *, return_logits=False):
+            calls.append(("step", self.slot_id, int(token_id), return_logits))
+            self.position += 1
+            return SimpleNamespace(token_id=int(token_id) + 1)
+
+    slots = [
+        qwen35_gguf._GGUFARServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+        )
+        for slot_id in range(2)
+    ]
+
+    generator = _generator()
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    monkeypatch.delenv("HIPENGINE_GGUF_AR_STREAM_DECODE", raising=False)
+    generator._run_ar_serving_slots(slots, _request(prompts=("long", "long2"), max_tokens=3))
+
+    assert [slot.generated_ids for slot in slots] == [[1, 99], [1, 2, 3]]
+    assert calls == [
+        ("step_batch", 0, (0, 1), False),
+        ("flush", 0),
+        ("step", 1, 2, False),
+    ]
 
 
 def test_gguf_sampled_thinking_budget_suppresses_tokenizer_eos(monkeypatch) -> None:

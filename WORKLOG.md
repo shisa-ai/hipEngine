@@ -143499,3 +143499,64 @@ python3 scripts/gguf_mtp_bench.py \
   artifacts, `git diff --check` passed, and
   `PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py`
   passed (`43 passed`).
+
+## 2026-07-05 - GGUF server packed AR decode retained
+
+- Promoted the server AR packed decode path to default-on via
+  `HIPENGINE_GGUF_AR_PACKED_DECODE=1`. The scheduler now tries packed AR first,
+  then stream decode, then scalar fallback. Packed AR calls
+  `step_batch_native(..., scatter_state=False)` so packed multi-slot state stays
+  canonical across decode cycles; state is scattered only before stream/scalar
+  fallback or a changed chunk layout. The runtime also uses
+  `wmma_prefill_session(False)` for decode-shaped packed rows and has a fused
+  packed linear-state commit path.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- Retained AR natural24 `max_tokens=24`, greedy, 5 ms batch-window results from
+  `scripts/mtp-bench.py`:
+  - c=2 **50.90 tok/s**
+    (`benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-gemv-default-rerun.json`)
+  - c=4 **57.00 tok/s**
+    (`benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-gemv-default-rerun.json`)
+  - c=8 **56.35 tok/s**
+    (`benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-gemv-default-rerun.json`)
+  This supersedes the stream-AR baseline **44.20/46.69/47.70 tok/s** and closes
+  the current AR c>N scheduling blocker.
+- Retained MTP remains c=2/c=4/c=8 **46.75/49.65/52.18 tok/s**, so MTP is now
+  **0.918x/0.871x/0.926x** versus current same-server AR. The active MTP server
+  blocker is verifier/economics, not AR c>N. c=8 still beats llama.cpp HIP
+  full-request MTP **50.56 tok/s** but trails llama.cpp Vulkan full-request MTP
+  **54.25 tok/s** and the stronger hipEngine AR row. Current c=8 phase buckets:
+  `slots_draft_phase_ms=3261.185`, `slots_verify_phase_ms=12345.442`,
+  `slots_commit_phase_ms=584.696`.
+- Rejected/no-hold MTP probes while chasing the same blocker:
+  - MTP verifier `use_wmma_prefill=False` / packed-GEMV rerun measured c=2
+    **44.04**, c=4 **51.14**, c=8 **50.17 tok/s**; the c=4 bump was not enough
+    to offset c=2/c=8 regression, so verifier keeps `use_wmma_prefill=True`.
+  - Persistent MTP draft/verify `ThreadPoolExecutor` probe regressed/failed to
+    improve c=8 (`benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-persistentpool-*.json`);
+    keep the current per-phase path and profile verifier rows before retrying
+    scheduler overhead.
+- Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+  `docs/MTP-LLAMACPP-PARITY.md`, and `docs/REFACTOR.md` so the active tables
+  show packed AR **50.90/57.00/56.35**, MTP **46.75/49.65/52.18**, and the new
+  MTP-vs-current-AR ratios **0.918x/0.871x/0.926x**.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py tests/test_qwen35_gguf_linear_state_commit.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'ar_batch_decode or ar_packed_decode or ar_stream_decode or ar_stream_prefill or speculative_mtp_batch_verifier or speculative_mtp_stream' tests/test_qwen35_gguf_linear_state_commit.py
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-gemv-default-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-gemv-default-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-gemv-default-rerun.json >/dev/null
+  git diff --check
+  ```
+  Pycompile, JSON validation, and diff check passed; focused pytest passed
+  (`10 passed`). The benchmark server on port `18082` was stopped after the
+  retained reruns.

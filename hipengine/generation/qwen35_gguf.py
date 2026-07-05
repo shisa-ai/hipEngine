@@ -94,7 +94,7 @@ _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 
 
 def _gguf_ar_packed_decode_enabled() -> bool:
-    return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
+    return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_ar_stream_decode_enabled() -> bool:
@@ -166,6 +166,7 @@ class _GGUFARServingSlot:
     native_decode_steps: int = 0
     serial_decode_steps: int = 0
     decode_stream: int = 0
+    packed_decode_owner: Any | None = None
 
 
 @dataclass
@@ -894,9 +895,11 @@ class Qwen35GGUFBringupGenerator:
         while any(not slot.done for slot in slots):
             live_slots = [slot for slot in slots if not slot.done]
             cycle_start = time.perf_counter()
-            handled = self._try_step_ar_serving_slots_streams(live_slots, request)
-            if not handled and _gguf_ar_packed_decode_enabled():
+            handled = False
+            if _gguf_ar_packed_decode_enabled():
                 handled = self._try_step_ar_serving_slots_batch(live_slots, request)
+            if not handled:
+                handled = self._try_step_ar_serving_slots_streams(live_slots, request)
             if not handled:
                 for slot in live_slots:
                     self._step_ar_serving_slot_serial(slot, request)
@@ -911,6 +914,7 @@ class Qwen35GGUFBringupGenerator:
     ) -> bool:
         if len(live_slots) <= 1 or not _gguf_ar_stream_decode_enabled():
             return False
+        self._flush_ar_packed_decode_owners(live_slots)
         for slot in live_slots:
             if not callable(getattr(slot.session, "step_async_top1", None)):
                 return False
@@ -956,15 +960,18 @@ class Qwen35GGUFBringupGenerator:
             chunk = live_slots[index:index + take]
             index += take
             if len(chunk) <= 1:
+                self._flush_ar_packed_decode_owners(chunk)
                 for slot in chunk:
                     self._step_ar_serving_slot_serial(slot, request)
                 continue
             first_session = chunk[0].session
             step_batch = getattr(first_session, "step_batch_native", None)
             if not callable(step_batch):
+                self._flush_ar_packed_decode_owners(chunk)
                 for slot in chunk:
                     self._step_ar_serving_slot_serial(slot, request)
                 continue
+            self._flush_ar_packed_decode_owners_if_chunk_changed(chunk)
             token_ids = [int(slot.prev_token) for slot in chunk]
             sessions = [slot.session for slot in chunk]
             positions = [int(slot.seq_position) for slot in chunk]
@@ -976,12 +983,15 @@ class Qwen35GGUFBringupGenerator:
                         sessions=sessions,
                         positions=positions,
                         return_logits=False,
+                        scatter_state=False,
                     )
             except NotImplementedError:
+                self._flush_ar_packed_decode_owners(chunk)
                 for slot in chunk:
                     self._step_ar_serving_slot_serial(slot, request)
                 continue
             if batch_result is None:
+                self._flush_ar_packed_decode_owners(chunk)
                 for slot in chunk:
                     self._step_ar_serving_slot_serial(slot, request)
                 continue
@@ -996,8 +1006,36 @@ class Qwen35GGUFBringupGenerator:
                 _timing_add_ms(slot.timing, "decode_batch_ms", decode_ms)
                 token = int(getattr(step_result, "token_id"))
                 self._record_ar_serving_token(slot, token, request)
+                slot.packed_decode_owner = first_session
                 slot.native_decode_steps += 1
         return True
+
+    def _flush_ar_packed_decode_owners_if_chunk_changed(self, chunk: list[_GGUFARServingSlot]) -> None:
+        if not chunk:
+            return
+        owner = chunk[0].packed_decode_owner
+        sessions = tuple(slot.session for slot in chunk)
+        if owner is not None and all(slot.packed_decode_owner is owner for slot in chunk):
+            owner_sessions = tuple(getattr(owner, "_packed_decode_sessions", ()))
+            owner_dirty = bool(getattr(owner, "_packed_decode_state_dirty", False))
+            if owner_dirty and owner_sessions == sessions:
+                return
+        self._flush_ar_packed_decode_owners(chunk)
+
+    def _flush_ar_packed_decode_owners(self, slots: list[_GGUFARServingSlot]) -> None:
+        owners: list[Any] = []
+        for slot in slots:
+            owner = slot.packed_decode_owner
+            if owner is not None and not any(existing is owner for existing in owners):
+                owners.append(owner)
+        for owner in owners:
+            flush = getattr(owner, "flush_packed_decode_state", None)
+            if callable(flush):
+                flush()
+        if owners:
+            for slot in slots:
+                if any(slot.packed_decode_owner is owner for owner in owners):
+                    slot.packed_decode_owner = None
 
     def _step_ar_serving_slot_serial(
         self,
@@ -1006,6 +1044,7 @@ class Qwen35GGUFBringupGenerator:
     ) -> None:
         if slot.done:
             return
+        self._flush_ar_packed_decode_owners([slot])
         raise_if_generation_deadline_expired(request)
         decode_start = time.perf_counter()
         step = slot.session.step(slot.prev_token, return_logits=False)
