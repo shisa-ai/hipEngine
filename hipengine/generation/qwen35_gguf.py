@@ -476,9 +476,7 @@ class Qwen35GGUFBringupGenerator:
             result["packed_ar_prefill_reason"] = "backend_hook_unavailable"
             result["reason"] = "backend_hook_unavailable"
         else:
-            ar_widths = [width for width in (2, 4, 8) if width <= max_batch]
-            if max_batch > 1 and max_batch not in ar_widths:
-                ar_widths.append(max_batch)
+            ar_widths = [width for width in (2, 4) if width <= max_batch]
             for width in sorted(set(ar_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
@@ -1100,36 +1098,59 @@ class Qwen35GGUFBringupGenerator:
     ) -> bool:
         if len(slots) <= 1 or not _gguf_ar_packed_prefill_enabled():
             return False
-        owner_session = slots[0].session
-        prefill_batch = getattr(owner_session, "prefill_batch_native", None)
-        if not callable(prefill_batch):
+        chunks = self._ar_serving_slot_chunks(slots)
+        if any(len(chunk) <= 1 for chunk in chunks):
             return False
-        prompt_ids = [tuple(int(token) for token in slot.prompt_ids) for slot in slots]
-        if any(not prompt for prompt in prompt_ids):
-            return False
-        sessions = [slot.session for slot in slots]
-        prefill_start = time.perf_counter()
+        for chunk in chunks:
+            prefill_batch = getattr(chunk[0].session, "prefill_batch_native", None)
+            if not callable(prefill_batch):
+                return False
+            if any(not slot.prompt_ids for slot in chunk):
+                return False
+        batch_start = time.perf_counter()
+        batch_results_by_request: dict[int, Any] = {}
+        chunk_ms_by_request: dict[int, float] = {}
+        completed_chunks = 0
         try:
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    prompt_ids,
-                    sessions=sessions,
-                    return_logits=False,
-                )
+                for chunk in chunks:
+                    prefill_batch = getattr(chunk[0].session, "prefill_batch_native")
+                    prompt_ids = [tuple(int(token) for token in slot.prompt_ids) for slot in chunk]
+                    sessions = [slot.session for slot in chunk]
+                    chunk_start = time.perf_counter()
+                    results = prefill_batch(
+                        prompt_ids,
+                        sessions=sessions,
+                        return_logits=False,
+                    )
+                    if results is None:
+                        raise NotImplementedError("GGUF AR packed prefill returned no results")
+                    batch_results = list(results)
+                    if len(batch_results) != len(chunk):
+                        raise RuntimeError(
+                            f"GGUF AR packed prefill returned {len(batch_results)} result(s) "
+                            f"for {len(chunk)} live slot(s)"
+                        )
+                    chunk_ms = _timing_ms_since(chunk_start)
+                    for slot, result in zip(chunk, batch_results, strict=True):
+                        batch_results_by_request[int(slot.request_id)] = result
+                        chunk_ms_by_request[int(slot.request_id)] = chunk_ms
+                    completed_chunks += 1
         except NotImplementedError:
-            return False
-        if results is None:
-            return False
-        batch_results = list(results)
-        if len(batch_results) != len(slots):
-            raise RuntimeError(
-                f"GGUF AR packed prefill returned {len(batch_results)} result(s) "
-                f"for {len(slots)} live slot(s)"
-            )
-        prefill_ms = _timing_ms_since(prefill_start)
-        for slot, result in zip(slots, batch_results, strict=True):
+            if completed_chunks == 0:
+                return False
+            raise
+        prefill_ms = _timing_ms_since(batch_start)
+        for slot in slots:
+            result = batch_results_by_request[int(slot.request_id)]
             _timing_add_ms(slot.timing, "prefill_ms", prefill_ms)
             _timing_add_ms(slot.timing, "prefill_batch_ms", prefill_ms)
+            if len(chunks) > 1:
+                _timing_add_ms(
+                    slot.timing,
+                    "prefill_batch_chunk_ms",
+                    float(chunk_ms_by_request.get(int(slot.request_id), 0.0)),
+                )
             self._finish_ar_serving_slot_prefill(slot, int(getattr(result, "token_id")), request)
         return True
 

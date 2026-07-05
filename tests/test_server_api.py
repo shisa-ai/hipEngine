@@ -47,6 +47,8 @@ from hipengine.server.api import (
     _coerce_generation_output,
     _GenerationBatcher,
     _QueuedBatchResult,
+    _SPECULATIVE_MTP_BATCH_ROUTE,
+    _SPECULATIVE_MTP_DEFAULT_ROUTE,
     _request_control,
     _startup_memory_summary,
 )
@@ -4216,6 +4218,74 @@ def test_generation_batcher_limits_active_request_group_size() -> None:
         assert fake.calls == [(("one",), sampling), (("two",), sampling)]
         assert batcher.active_requests() == 0
         assert batcher.max_active_requests() == 1
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_applies_route_specific_group_limit() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+            route_max_active_requests={_SPECULATIVE_MTP_DEFAULT_ROUTE: 4},
+        )
+
+        results = await asyncio.gather(
+            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(8))
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(8)]
+        assert fake.calls == [
+            ((("prompt-0", "prompt-1", "prompt-2", "prompt-3")), sampling),
+            ((("prompt-4", "prompt-5", "prompt-6", "prompt-7")), sampling),
+        ]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_route_limit_does_not_cap_mtp_route() -> None:
+    async def run() -> None:
+        class FakeMTPLLM(FakeLLM):
+            supports_speculative_mtp = True
+
+            def generate_speculative_mtp_detailed(self, prompts, sampling_params: SamplingParams):
+                return self.generate_detailed(prompts, sampling_params)
+
+        fake = FakeMTPLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+            route_max_active_requests={_SPECULATIVE_MTP_DEFAULT_ROUTE: 4},
+        )
+
+        results = await asyncio.gather(
+            *(
+                batcher.submit((f"prompt-{index}",), sampling, route=_SPECULATIVE_MTP_BATCH_ROUTE)
+                for index in range(8)
+            )
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(8)]
+        assert fake.calls == [
+            (
+                (
+                    "prompt-0",
+                    "prompt-1",
+                    "prompt-2",
+                    "prompt-3",
+                    "prompt-4",
+                    "prompt-5",
+                    "prompt-6",
+                    "prompt-7",
+                ),
+                sampling,
+            )
+        ]
 
     asyncio.run(run())
 

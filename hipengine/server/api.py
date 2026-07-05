@@ -231,6 +231,7 @@ _CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
 _SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
 _SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
+_GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS = 4
 _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
     "guided_grammar",
@@ -1840,6 +1841,7 @@ class _GenerationBatcher:
         batch_window_seconds: float,
         max_queue_size: int | None = None,
         max_active_requests: int | None = None,
+        route_max_active_requests: Mapping[str, int] | None = None,
         retry_after_seconds: int = 1,
     ) -> None:
         self._engine_factory = engine_factory
@@ -1850,6 +1852,12 @@ class _GenerationBatcher:
         self._max_active_requests = None if max_active_requests is None else int(max_active_requests)
         if self._max_active_requests is not None and self._max_active_requests < 1:
             raise ValueError("max_active_requests must be positive when set")
+        self._route_max_active_requests: dict[str, int] = {}
+        for route, limit in dict(route_max_active_requests or {}).items():
+            route_limit = int(limit)
+            if route_limit < 1:
+                raise ValueError("route max_active_requests limits must be positive")
+            self._route_max_active_requests[str(route)] = route_limit
         self._retry_after_seconds = max(1, int(retry_after_seconds))
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
@@ -1871,7 +1879,12 @@ class _GenerationBatcher:
         return self._worker is not None and not self._worker.done()
 
     def _group_has_capacity(self, group: Sequence[_QueuedGeneration]) -> bool:
-        return self._max_active_requests is None or len(group) < self._max_active_requests
+        limit = self._max_active_requests
+        if group:
+            route_limit = self._route_max_active_requests.get(str(group[0].route))
+            if route_limit is not None:
+                limit = route_limit if limit is None else min(limit, route_limit)
+        return limit is None or len(group) < limit
 
     def _group_key(self, item: _QueuedGeneration) -> tuple[str, tuple[Any, ...]]:
         route = str(item.route)
@@ -2932,6 +2945,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         batch_window_seconds=float(config.generation_batch_window_ms) / 1000.0,
         max_queue_size=config.max_queued_requests,
         max_active_requests=config.max_active_requests,
+        route_max_active_requests=(
+            {_SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS}
+            if str(config.quant).startswith("gguf_")
+            else None
+        ),
         retry_after_seconds=config.queue_retry_after_seconds,
     )
     app.state.hipengine_generation_batcher = generation_batcher

@@ -77,9 +77,9 @@ the artifacts and are called out in the reading column where useful.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | Diagnostic blocked: zero batch window and persistent target-session / MTP draft-runner pools remove the deliberate 100 ms queue delay plus draft-open tax, but warmed c=1 MTP still loses to AR. Timing buckets show AR server-vs-direct is mostly prompt prefill, while MTP is dominated by target verify. |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | B2 resident slots, zero batch window, pooled target/draft state | Zero-window c=2 did not coalesce in the rerun: no `slots_*` phase buckets, effectively independent c=1 requests. |
-| hipEngine `llama-compat` server MTP | 2 | 65.91 | **59.94** | 0.910x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + startup MTP hidden-seed prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify | Startup warmup fixes the old cold first-pass AR c=2 prefill outlier and now removes the worst MTP c=2 first-request cliff. Fresh c=2 after the MTP warmup is **56.59 tok/s** (`prefill_batch_ms=2344.910`, verifier scatter **58.360 ms**) and warm c=2 rerun is **59.71 tok/s**. |
-| hipEngine `llama-compat` server MTP | 4 | 82.41 | **66.60** | 0.808x | same | AR got stronger after capacity-based packed workspace reuse, so MTP c=4 is no longer near AR. Startup-warm rerun **65.57 tok/s** is within the retained warm regime and still faster than llama.cpp HIP/Vulkan full-request MTP c=4 (**49.69/48.10 tok/s**). |
-| hipEngine `llama-compat` server MTP | 8 | 63.17 | **54.88** | 0.869x | same; c=8 first wave still uses serial prompt open, trailing c=2 wave uses packed MTP prefill, target verify streams chunk-4 groups | c=8 still beats llama.cpp HIP/Vulkan full-request MTP c=8 (**50.56/54.25 tok/s**) but remains below current hipEngine AR; verifier still dominates. Startup pool-fill to eight slots was rejected: it raised startup time/memory and still measured only **35.25 tok/s** on c=8 rerun. |
+| hipEngine `llama-compat` server MTP | 2 | 66.39 | **59.94** | 0.903x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + startup MTP hidden-seed prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify | Startup warmup fixes the old cold first-pass AR c=2 prefill outlier and now removes the worst MTP c=2 first-request cliff. Fresh c=2 after the MTP warmup is **56.59 tok/s** (`prefill_batch_ms=2344.910`, verifier scatter **58.360 ms**) and warm c=2 rerun is **59.71 tok/s**. |
+| hipEngine `llama-compat` server MTP | 4 | 82.46 | **66.60** | 0.808x | same | AR got stronger after capacity-based packed workspace reuse and route-cap scheduling, so MTP c=4 is no longer near AR. Startup-warm rerun **65.57 tok/s** is within the retained warm regime and still faster than llama.cpp HIP/Vulkan full-request MTP c=4 (**49.69/48.10 tok/s**). |
+| hipEngine `llama-compat` server MTP | 8 | 81.94 | **54.88** | 0.670x | same; default GGUF AR route is capped at four backend requests while MTP remains on the speculative route | c=8 AR is now fixed: the old c=8 AR **63.17 tok/s** row was a slow 8-wide backend shape with serial prompt-open behavior. MTP c=8 still beats llama.cpp HIP/Vulkan full-request MTP c=8 (**50.56/54.25 tok/s**) but is now clearly verifier/economics-bound versus hipEngine AR. Startup pool-fill to eight MTP slots was rejected: it raised startup time/memory and still measured only **35.25 tok/s** on c=8 rerun. |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | B2 | Full-request/client aggregate. Decode-only aggregate is **52.19/75.56 tok/s**. |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | B2 | Full-request/client aggregate. Decode-only aggregate is **108.33/78.21 tok/s**. |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | B2 | Full-request/client aggregate. Decode-only aggregate is **124.71/78.56 tok/s**. |
@@ -180,6 +180,16 @@ llama.cpp HIP/Vulkan full-request MTP
 decode-only aggregate scaling. The real MTP concurrency target is therefore
 narrower but still open: reduce verifier wall and cold-shape latency for c=8,
 then revisit full packed prompt prefill beyond the four-slot cap.
+
+AR route-cap follow-up: default GGUF AR serving now caps backend groups at the
+proven four-request shape even when the HTTP server is configured with
+`--max-active-requests 8`; the speculative MTP route is intentionally not
+capped. This moves fresh c=8 AR **63.17 -> 81.94 tok/s** with normal startup
+scratch time (**6.680 s** in the retained run), while c=2/c=4 remain flat at
+**66.39/82.46 tok/s**. Single width-8 packed AR decode was rejected
+(**60.21 tok/s**), and startup width-8 AR warmups were rejected because they
+raised scratch warmup to **38-43 s** while failing to deliver a better
+fresh-request result.
 
 Startup MTP warmup follow-up: the server now sets
 `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP=1` only while running the startup
