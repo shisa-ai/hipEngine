@@ -76,9 +76,9 @@ the artifacts and are called out in the reading column where useful.
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | Under the natural24 token cap, B2 is faster than B5, but B1 is fastest and no exact budget beats AR. This does not supersede the retained 10-cycle exact B5 row **61.98 tok/s / 1.131x AR**. |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | 41.13 | **45.38** | 1.103x | B2, 5 ms batch window, retained server route | Current c=1 refresh after the retained server path: MTP beats same-server AR and records `draft=163`, `accepted=142`, accept rate **0.8712**, target rows **247**. This supersedes the older zero-window pooled c=1 diagnostic (**34.44 tok/s**). |
-| hipEngine `llama-compat` server MTP | 2 | 66.39 | **70.06** | 1.055x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + MTP route cap 4 + startup MTP hidden-seed prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify with no-WMMA small-B body + chunked Q6_K rowtile LM-head for packed rows >6 | Rowtile chunking keeps c=2 flat-positive versus no-WMMA (**69.78 -> 70.06 tok/s**) and still beats same-server AR. Economy is `draft=165`, `accepted=141`, accept rate **0.8545**, target verifier rows **250**. |
-| hipEngine `llama-compat` server MTP | 4 | 82.46 | **77.29** | 0.937x | same | Rowtile chunking moves retained c=4 **72.56 -> 77.29 tok/s**, closing most of the gap to llama.cpp HIP decode-only MTP c=4 (**78.21 tok/s**) while still trailing the stronger hipEngine AR row. |
-| hipEngine `llama-compat` server MTP | 8 | 81.94 | **76.46** | 0.933x | same; default GGUF AR and speculative MTP routes are both capped at four backend requests | c=8 now combines the four-slot route cap, no-WMMA small-B verifier, and rowtile-chunk LM-head: **54.88 -> 65.79 -> 68.83 -> 76.46 tok/s**. The verifier row economy is `draft=165`, `accepted=141`, accept rate **0.8545**, target rows **250**; `slots_verify_phase_ms` drops **7236.054 -> 6035.985 ms** versus no-WMMA, and LM-head/sample drops **5202.328 -> 4277.118 ms** but remains the largest exposed verifier bucket. |
+| hipEngine `llama-compat` server MTP | 2 | 66.39 | **70.53** | 1.062x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + MTP route cap 4 + startup MTP hidden-seed prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify with no-WMMA small-B body + chunked Q6_K rowtile LM-head for packed rows >6 + deferred packed verifier scatter | Deferred scatter keeps c=2 faster than same-server AR. Economy is unchanged at `draft=165`, `accepted=141`, accept rate **0.8545**, target verifier rows **250**. |
+| hipEngine `llama-compat` server MTP | 4 | 82.46 | **78.76** | 0.955x | same | Deferred scatter moves retained c=4 **77.29 -> 78.76 tok/s**, matching llama.cpp HIP decode-only MTP c=4 (**78.21 tok/s**) on this diagnostic while still trailing the stronger hipEngine AR row. |
+| hipEngine `llama-compat` server MTP | 8 | 81.94 | **79.61** | 0.972x | same; default GGUF AR and speculative MTP routes are both capped at four backend requests | c=8 now combines the four-slot route cap, no-WMMA small-B verifier, rowtile-chunk LM-head, and deferred scatter: **54.88 -> 65.79 -> 68.83 -> 76.46 -> 79.61 tok/s**. The verifier row economy is `draft=165`, `accepted=141`, accept rate **0.8545**, target rows **250**; `slots_verify_phase_ms` drops **7236.054 -> 5551.690 ms** versus no-WMMA, scatter drops from the rowtile baseline **53.900 -> 3.436 ms**, and LM-head/sample remains the largest exposed verifier bucket. |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | B2 | Full-request/client aggregate. Decode-only aggregate is **52.19/75.56 tok/s**. |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | B2 | Full-request/client aggregate. Decode-only aggregate is **108.33/78.21 tok/s**. |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | B2 | Full-request/client aggregate. Decode-only aggregate is **124.71/78.56 tok/s**. |
@@ -137,6 +137,9 @@ Artifacts:
 - `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json`
 - `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json`
 - `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json`
+- `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-default-defer-scatter-resetfix-rerun.json`
+- `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-default-defer-scatter-resetfix-rerun2.json`
+- `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-default-defer-scatter-resetfix-rerun.json`
 - `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json`
 - `benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`
 - `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
@@ -183,13 +186,15 @@ warmup, c=8 AR chunk-stream decode, stream-slot MTP draft, c=8 stream-verify
 chunks, default-on packed MTP prompt prefill for eligible four-slot batches,
 startup MTP hidden-seed prefill/verify warmup for supported widths 2/4, MTP
 speculative-route group capping at four backend requests, no-WMMA small-B
-target verifier, and chunked Q6_K rowtile LM-head for packed verifier rows >6:
-c=1 is **41.13 AR / 45.38 MTP tok/s**, c=2 is **66.39 / 70.06**, c=4 is
-**82.46 / 77.29**, and c=8 is **81.94 / 76.46**. This keeps AR c>N fixed,
-shows current server MTP scaling **1.68x** from c=1 to c=8, removes the cold first-pass AR c=2
-prefill outlier, removes the worst fresh-server MTP c=2 prefill/verifier cold
-cliff, avoids the bad 8-slot MTP backend group, and materially improves the
-AR/MTP c=8 ratio from **0.670x -> 0.933x**. AR still scales more strongly
+target verifier, chunked Q6_K rowtile LM-head for packed verifier rows >6, and
+deferred packed verifier scatter:
+c=1 is **41.13 AR / 45.38 MTP tok/s**, c=2 is **66.39 / 70.53**, c=4 is
+**82.46 / 78.76**, and c=8 is **81.94 / 79.61**. This keeps AR c>N fixed,
+shows current server MTP scaling **1.75x** from c=1 to c=8, removes the cold
+first-pass AR c=2 prefill outlier, removes the worst fresh-server MTP c=2
+prefill/verifier cold cliff, avoids the bad 8-slot MTP backend group, and
+materially improves the AR/MTP c=8 ratio from **0.670x -> 0.972x**. AR still
+scales more strongly
 from c=1 to c=8 (**1.99x**) than MTP, but c=8 now beats llama.cpp HIP/Vulkan
 full-request MTP (**50.56/54.25 tok/s**) by a wider margin and is close to
 llama.cpp HIP decode-only MTP c=8 (**78.56 tok/s**), while still trailing
@@ -318,6 +323,18 @@ c=8 pass also measured **77.52 tok/s**. The warmed c=8 verifier total drops
 **7142.328 -> 5923.988 ms** and LM-head/sample drops **5202.328 ->
 4277.118 ms** versus the no-WMMA row, but LM-head/sample remains the largest
 exposed packed-verifier bucket.
+
+Deferred-scatter follow-up: the packed verifier now keeps owner-side packed
+state live through acceptance and scatters only the rows actually needed after
+the verifier result is known. This removes eager hidden/full-attention/state
+copies for rejected draft rows while preserving the captured-row commit path.
+Retained no-env natural24 MTP moves **70.06/77.29/76.46 ->
+70.53/78.76/79.61 tok/s** at c=2/c=4/c=8 with unchanged economy
+(`draft=165`, `accepted=141`, accept rate **0.8545**, target rows **250**).
+The first fresh-server c=2 request also keeps the retained economy after reset
+now invalidates packed verifier/decode session metadata; without that reset
+invalidation, startup verifier warmup could leave stale packed KV write-position
+bookkeeping and perturb the first request.
 
 Rejected large-rowtile follow-up: extending the exact Q6_K T16 rowtile kernel to
 directly instantiate rows 7-12 was bit-exact in the HIP gate, but the c=4 server

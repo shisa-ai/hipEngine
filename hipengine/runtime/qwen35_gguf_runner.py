@@ -536,6 +536,7 @@ class Qwen35GGUFBlockVerifyResult:
     lm_head_logits_f32: np.ndarray | None = None
     linear_state_rows_captured: bool = False
     final_linear_state_committed: bool = False
+    deferred_packed_state: object | None = None
 
     def __post_init__(self) -> None:
         if self.start_position < 0:
@@ -623,6 +624,19 @@ class _GGUFPackedVerifyLayout:
     @property
     def slot_count(self) -> int:
         return int(self.state_indices.shape[0])
+
+
+@dataclass(frozen=True)
+class _GGUFPackedVerifyDeferredState:
+    """Owner-side packed verifier state kept live until accept-row commit."""
+
+    owner: object
+    packed_state: object
+    slot_index: int
+    row_start: int
+    row_end: int
+    start_position: int
+    end_position: int
 
 
 def _build_gguf_packed_verify_layout(
@@ -7548,6 +7562,13 @@ class Qwen35GGUFResidentSession:
         self._last_pre_output_norm_hidden = None
         self._last_layer_output_hidden = {}
         self._verify_hidden_seed_rows_populated = 0
+        self._packed_verify_session_ids = ()
+        self._packed_verify_max_written_positions = ()
+        self._packed_decode_sessions = ()
+        self._packed_decode_last_layout = None
+        self._packed_decode_state_dirty = False
+        self._packed_decode_session_ids = ()
+        self._packed_decode_positions = ()
 
     def _linear_state_snapshot(self) -> list[tuple[DeviceBuffer, DeviceBuffer]]:
         """D2D-copy linear-attention state for rollback-safe block verification.
@@ -8298,10 +8319,13 @@ class Qwen35GGUFResidentSession:
 
         capture_linear_state_rows = bool(job_list[0].get("capture_linear_state_rows", False))
         defer_linear_state_commit = bool(job_list[0].get("defer_linear_state_commit", False))
+        defer_state_scatter = bool(job_list[0].get("defer_state_scatter", False))
         if capture_linear_state_rows and not defer_linear_state_commit:
             raise NotImplementedError("packed target verifier captured-row mode requires deferred linear-state commit")
         if not capture_linear_state_rows and defer_linear_state_commit:
             raise NotImplementedError("packed target verifier cannot defer uncaptured linear-state commit")
+        if defer_state_scatter and (not capture_linear_state_rows or not defer_linear_state_commit):
+            raise NotImplementedError("packed target verifier can defer scatter only for captured/deferred rows")
 
         slot_blocks: list[_GGUFPackedVerifySlotBlock] = []
         for job in job_list:
@@ -8320,6 +8344,8 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed target verifier requires uniform linear-state capture mode")
             if bool(job.get("defer_linear_state_commit", False)) != defer_linear_state_commit:
                 raise NotImplementedError("packed target verifier requires uniform linear-state commit mode")
+            if bool(job.get("defer_state_scatter", False)) != defer_state_scatter:
+                raise NotImplementedError("packed target verifier requires uniform state-scatter mode")
             input_token_ids = tuple(int(token) for token in job.get("input_token_ids", ()))
             if not input_token_ids:
                 raise ValueError("packed target verifier jobs require non-empty input_token_ids")
@@ -8516,6 +8542,7 @@ class Qwen35GGUFResidentSession:
             stream=stream,
             linear_state_rows_captured=capture_linear_state_rows,
             final_linear_state_committed=not defer_linear_state_commit,
+            defer_state_scatter=defer_state_scatter,
         )
         add_stage("packed_verify_scatter_outputs", scatter_start)
         sync_start = time.perf_counter()
@@ -11116,6 +11143,7 @@ class Qwen35GGUFResidentSession:
         stream: int,
         linear_state_rows_captured: bool = True,
         final_linear_state_committed: bool = False,
+        defer_state_scatter: bool = False,
     ) -> list[Qwen35GGUFBlockVerifyResult]:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -11133,10 +11161,21 @@ class Qwen35GGUFResidentSession:
             slot_rows = row_end - row_start
             start_position = int(layout.row_positions[row_start])
             end_position = start_position + slot_rows
+            deferred_state = None
+            if defer_state_scatter:
+                deferred_state = _GGUFPackedVerifyDeferredState(
+                    owner=self,
+                    packed_state=packed_state,
+                    slot_index=int(slot_index),
+                    row_start=row_start,
+                    row_end=row_end,
+                    start_position=start_position,
+                    end_position=end_position,
+                )
             session._ensure_verify_block_buffers(slot_rows, runtime=runtime)
-            if linear_state_rows_captured:
+            if linear_state_rows_captured and not defer_state_scatter:
                 session._ensure_verify_linear_state_row_buffers(slot_rows, runtime=runtime)
-            if session is not self:
+            if session is not self and not defer_state_scatter:
                 if self._verify_hidden_seed_buf is None or session._verify_hidden_seed_buf is None:
                     raise RuntimeError("packed verifier hidden buffers are closed")
                 runtime.memcpy_async(
@@ -11151,7 +11190,10 @@ class Qwen35GGUFResidentSession:
                     conv_state, recurrent_state = session.scratch.layer_conv_states[layer_id], session.scratch.layer_recurrent_states[layer_id]
                     if conv_state is None or recurrent_state is None:
                         raise RuntimeError(f"session layer {layer_id} missing linear state")
-                    if linear_state_rows_captured:
+                    if defer_state_scatter:
+                        if not linear_state_rows_captured:
+                            raise RuntimeError("deferred packed verifier scatter requires captured linear rows")
+                    elif linear_state_rows_captured:
                         src_pair = self._verify_linear_state_row_pair(layer_id)
                         dst_pair = session._verify_linear_state_row_pair(layer_id)
                         if src_pair is None or dst_pair is None:
@@ -11192,6 +11234,8 @@ class Qwen35GGUFResidentSession:
                     else:
                         raise RuntimeError("packed verifier produced neither captured nor final linear state")
                 elif layer_type == FULL_ATTENTION:
+                    if defer_state_scatter:
+                        continue
                     src_key, src_value = packed_state.full_cache(layer_id)
                     dst_key, dst_value = session.scratch.full_cache(layer_id)
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
@@ -11212,8 +11256,9 @@ class Qwen35GGUFResidentSession:
                     )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-            session._verify_hidden_seed_rows_populated = slot_rows
-            if final_linear_state_committed:
+            if not defer_state_scatter:
+                session._verify_hidden_seed_rows_populated = slot_rows
+            if final_linear_state_committed and not defer_state_scatter:
                 if self._verify_hidden_seed_buf is None:
                     raise RuntimeError("packed verifier hidden buffers are closed")
                 runtime.memcpy_async(
@@ -11223,18 +11268,19 @@ class Qwen35GGUFResidentSession:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     stream,
                 )
-            session._position = end_position
-            session.scratch.position_host[0] = end_position
-            session.scratch.context_host[0] = end_position + 1
-            set_decode_position_i64(
-                session.scratch.position_buf.ptr,
-                session.scratch.context_buf.ptr,
-                end_position,
-                library=session._runtime_state_library,
-                runtime=runtime,
-            )
-            session._hidden_seed_fp32_populated = True
-            written_positions[slot_index] = max(int(written_positions[slot_index]), end_position)
+            if not defer_state_scatter:
+                session._position = end_position
+                session.scratch.position_host[0] = end_position
+                session.scratch.context_host[0] = end_position + 1
+                set_decode_position_i64(
+                    session.scratch.position_buf.ptr,
+                    session.scratch.context_buf.ptr,
+                    end_position,
+                    library=session._runtime_state_library,
+                    runtime=runtime,
+                )
+                session._hidden_seed_fp32_populated = True
+                written_positions[slot_index] = max(int(written_positions[slot_index]), end_position)
             results.append(
                 Qwen35GGUFBlockVerifyResult(
                     input_token_ids=[int(token) for token in layout.input_token_ids[row_start:row_end].tolist()],
@@ -11243,10 +11289,139 @@ class Qwen35GGUFResidentSession:
                     start_position=start_position,
                     linear_state_rows_captured=bool(linear_state_rows_captured),
                     final_linear_state_committed=bool(final_linear_state_committed),
+                    deferred_packed_state=deferred_state,
                 )
             )
         self._packed_verify_max_written_positions = tuple(written_positions)
         return results
+
+    def _commit_deferred_packed_verify_state(
+        self,
+        deferred_state: object,
+        destination_session: "Qwen35GGUFResidentSession",
+        *,
+        commit_row_index: int,
+        position: int,
+        hidden_rows: int,
+        stream: int = 0,
+    ) -> None:
+        """Commit one accepted packed-verifier row after deferred scatter."""
+
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if getattr(deferred_state, "owner", None) is not self:
+            raise RuntimeError("deferred packed verifier state belongs to a different owner")
+        if not isinstance(destination_session, Qwen35GGUFResidentSession) or destination_session.scratch is None:
+            raise RuntimeError("deferred packed verifier destination session is closed")
+        if destination_session.runner is not self.runner:
+            raise RuntimeError("deferred packed verifier destination must share the owner runner")
+        if self._verify_hidden_seed_buf is None:
+            raise RuntimeError("packed verifier hidden buffers are closed")
+        packed_state = getattr(deferred_state, "packed_state", None)
+        if not isinstance(packed_state, _GGUFPackedTargetState):
+            raise RuntimeError("deferred packed verifier state is invalid")
+        row_start = int(getattr(deferred_state, "row_start"))
+        row_end = int(getattr(deferred_state, "row_end"))
+        slot_index = int(getattr(deferred_state, "slot_index"))
+        start_position = int(getattr(deferred_state, "start_position"))
+        slot_rows = row_end - row_start
+        row = int(commit_row_index)
+        if row < 0 or row >= slot_rows:
+            raise ValueError("commit_row_index is outside deferred packed verifier rows")
+        end_position = int(position)
+        consumed_rows = end_position - start_position
+        if consumed_rows <= 0 or consumed_rows > slot_rows:
+            raise ValueError("deferred packed verifier commit position is outside slot rows")
+        hidden_count = int(hidden_rows)
+        if hidden_count <= 0 or hidden_count > slot_rows:
+            raise ValueError("hidden_rows is outside deferred packed verifier rows")
+        if row >= hidden_count:
+            raise ValueError("hidden_rows must include the committed verifier row")
+
+        runtime = self.runtime or get_hip_runtime()
+        cfg = self.runner.weights.config
+        destination_session._ensure_verify_block_buffers(hidden_count, runtime=runtime)
+        if destination_session._verify_hidden_seed_buf is None:
+            raise RuntimeError("destination verifier hidden buffers are closed")
+        hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+        runtime.memcpy_async(
+            destination_session._verify_hidden_seed_buf.ptr,
+            self._verify_hidden_seed_buf.ptr + row_start * hidden_row_nbytes,
+            hidden_count * hidden_row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            destination_session.scratch.hidden_seed_fp32.ptr,
+            self._verify_hidden_seed_buf.ptr + (row_start + row) * hidden_row_nbytes,
+            hidden_row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+
+        full_row_nbytes = self._packed_full_kv_row_nbytes()
+        for layer_id, layer_type in enumerate(cfg.layer_types):
+            if layer_type == LINEAR_ATTENTION:
+                src_pair = self._verify_linear_state_row_pair(layer_id)
+                if src_pair is None:
+                    raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+                src_conv_rows, src_recurrent_rows = src_pair
+                dst_conv = destination_session.scratch.layer_conv_states[layer_id]
+                dst_recurrent = destination_session.scratch.layer_recurrent_states[layer_id]
+                if dst_conv is None or dst_recurrent is None:
+                    raise RuntimeError(f"destination layer {layer_id} missing linear state")
+                runtime.memcpy_async(
+                    dst_conv.ptr,
+                    src_conv_rows.ptr + (row_start + row) * int(dst_conv.nbytes),
+                    int(dst_conv.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    dst_recurrent.ptr,
+                    src_recurrent_rows.ptr + (row_start + row) * int(dst_recurrent.nbytes),
+                    int(dst_recurrent.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            elif layer_type == FULL_ATTENTION:
+                src_key, src_value = packed_state.full_cache(layer_id)
+                dst_key, dst_value = destination_session.scratch.full_cache(layer_id)
+                physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
+                nbytes = consumed_rows * full_row_nbytes
+                runtime.memcpy_async(
+                    dst_key.ptr + start_position * full_row_nbytes,
+                    src_key.ptr + (physical_base + start_position) * full_row_nbytes,
+                    nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    dst_value.ptr + start_position * full_row_nbytes,
+                    src_value.ptr + (physical_base + start_position) * full_row_nbytes,
+                    nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            else:
+                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+
+        destination_session._verify_hidden_seed_rows_populated = hidden_count
+        destination_session._position = end_position
+        destination_session.scratch.position_host[0] = end_position
+        destination_session.scratch.context_host[0] = end_position + 1
+        set_decode_position_i64(
+            destination_session.scratch.position_buf.ptr,
+            destination_session.scratch.context_buf.ptr,
+            end_position,
+            library=destination_session._runtime_state_library,
+            runtime=runtime,
+        )
+        destination_session._hidden_seed_fp32_populated = True
+        if slot_index < len(self._packed_verify_max_written_positions):
+            written_positions = list(self._packed_verify_max_written_positions)
+            written_positions[slot_index] = max(int(written_positions[slot_index]), end_position)
+            self._packed_verify_max_written_positions = tuple(written_positions)
 
     def _record_current_linear_state_row(
         self,

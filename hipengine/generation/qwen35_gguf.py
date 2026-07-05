@@ -97,6 +97,7 @@ _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 _GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV = (
     "HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH"
 )
+_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
 _MTP_SERVING_TARGET_USE_WMMA_PREFILL = False
 
 
@@ -134,6 +135,15 @@ def _gguf_mtp_server_stream_verify_enabled() -> bool:
 
 def _gguf_mtp_server_verify_final_state_fastpath_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV, "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _gguf_mtp_server_defer_verify_scatter_enabled() -> bool:
+    return os.environ.get(_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV, "1").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -710,6 +720,7 @@ class Qwen35GGUFBringupGenerator:
                                                     "use_wmma_prefill": _MTP_SERVING_TARGET_USE_WMMA_PREFILL,
                                                     "capture_linear_state_rows": True,
                                                     "defer_linear_state_commit": True,
+                                                    "defer_state_scatter": _gguf_mtp_server_defer_verify_scatter_enabled(),
                                                 }
                                                 for slot_index, session in zip(
                                                     range(chunk_start_index, chunk_start_index + take),
@@ -2654,6 +2665,10 @@ class Qwen35GGUFBringupGenerator:
         if not callable(verify_batch):
             return None
         final_state_fastpath = _gguf_mtp_server_verify_final_state_fastpath_enabled()
+        defer_state_scatter = (
+            _gguf_mtp_server_defer_verify_scatter_enabled()
+            and not final_state_fastpath
+        )
         jobs = [
             {
                 "session": drafted.slot.session,
@@ -2662,6 +2677,7 @@ class Qwen35GGUFBringupGenerator:
                 "use_wmma_prefill": _MTP_SERVING_TARGET_USE_WMMA_PREFILL,
                 "capture_linear_state_rows": not final_state_fastpath,
                 "defer_linear_state_commit": not final_state_fastpath,
+                "defer_state_scatter": defer_state_scatter,
             }
             for drafted in chunk
         ]
@@ -2705,12 +2721,31 @@ class Qwen35GGUFBringupGenerator:
             state_commit_start = time.perf_counter()
             captured_rows = bool(getattr(verified.block_result, "linear_state_rows_captured", False))
             final_state_committed = bool(getattr(verified.block_result, "final_linear_state_committed", False))
+            deferred_packed_state = getattr(verified.block_result, "deferred_packed_state", None)
+            seed_row_count = (
+                consumed_rows
+                if deferred_packed_state is not None
+                else len(block_target_tokens)
+            )
             if consumed_rows < len(block_inputs):
                 if captured_rows:
-                    slot.session._commit_verify_linear_state_row(
-                        consumed_rows - 1,
-                        position=block_start + consumed_rows,
-                    )
+                    if deferred_packed_state is not None:
+                        owner = getattr(deferred_packed_state, "owner", None)
+                        commit_deferred = getattr(owner, "_commit_deferred_packed_verify_state", None)
+                        if not callable(commit_deferred):
+                            raise RuntimeError("deferred packed verifier state owner cannot commit rows")
+                        commit_deferred(
+                            deferred_packed_state,
+                            slot.session,
+                            commit_row_index=consumed_rows - 1,
+                            position=block_start + consumed_rows,
+                            hidden_rows=seed_row_count,
+                        )
+                    else:
+                        slot.session._commit_verify_linear_state_row(
+                            consumed_rows - 1,
+                            position=block_start + consumed_rows,
+                        )
                 elif final_state_committed:
                     if snapshot is None:
                         raise RuntimeError("MTP partial fastpath replay requested without a linear-state snapshot")
@@ -2725,10 +2760,23 @@ class Qwen35GGUFBringupGenerator:
                     raise RuntimeError("direct MTP partial commit requested without captured or final state")
             elif drafted.direct_commit_exact:
                 if captured_rows:
-                    slot.session._commit_verify_linear_state_row(
-                        len(block_inputs) - 1,
-                        position=block_start + len(block_inputs),
-                    )
+                    if deferred_packed_state is not None:
+                        owner = getattr(deferred_packed_state, "owner", None)
+                        commit_deferred = getattr(owner, "_commit_deferred_packed_verify_state", None)
+                        if not callable(commit_deferred):
+                            raise RuntimeError("deferred packed verifier state owner cannot commit rows")
+                        commit_deferred(
+                            deferred_packed_state,
+                            slot.session,
+                            commit_row_index=len(block_inputs) - 1,
+                            position=block_start + len(block_inputs),
+                            hidden_rows=seed_row_count,
+                        )
+                    else:
+                        slot.session._commit_verify_linear_state_row(
+                            len(block_inputs) - 1,
+                            position=block_start + len(block_inputs),
+                        )
                 elif not final_state_committed:
                     raise RuntimeError("direct MTP full commit requested without captured or final state")
             else:
@@ -2740,7 +2788,6 @@ class Qwen35GGUFBringupGenerator:
                 if replay_tokens != block_target_tokens:
                     raise RuntimeError("MTP serial-exact replay diverged from block verifier rows")
             _timing_add(slot.timing, "target_state_commit_ms", state_commit_start)
-            seed_row_count = len(block_target_tokens)
             if (
                 consumed_rows < len(block_inputs)
                 and final_state_committed
