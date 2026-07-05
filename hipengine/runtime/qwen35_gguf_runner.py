@@ -504,6 +504,120 @@ class Qwen35GGUFBlockVerifyResult:
 
 
 @dataclass(frozen=True)
+class _GGUFPackedVerifySlotBlock:
+    """One speculative target-verifier block for a packed multi-slot pass."""
+
+    input_token_ids: tuple[int, ...]
+    start_position: int
+
+    def __post_init__(self) -> None:
+        if not self.input_token_ids:
+            raise ValueError("packed verify slot block input_token_ids must be non-empty")
+        if int(self.start_position) < 0:
+            raise ValueError("packed verify slot block start_position must be non-negative")
+
+
+@dataclass(frozen=True)
+class _GGUFPackedVerifyLayout:
+    """CPU-side row/state layout for a future packed multi-slot target verifier."""
+
+    input_token_ids: np.ndarray
+    row_slot_indices: np.ndarray
+    row_positions: np.ndarray
+    row_offsets_in_slot: np.ndarray
+    live_counts: np.ndarray
+    block_table: np.ndarray
+    cu_seqlens: np.ndarray
+    state_indices: np.ndarray
+    blocks_per_slot: int
+    block_size: int
+    max_live_count: int
+    total_physical_positions: int
+
+    @property
+    def rows(self) -> int:
+        return int(self.input_token_ids.shape[0])
+
+    @property
+    def slot_count(self) -> int:
+        return int(self.state_indices.shape[0])
+
+
+def _build_gguf_packed_verify_layout(
+    slot_blocks: list[_GGUFPackedVerifySlotBlock] | tuple[_GGUFPackedVerifySlotBlock, ...],
+    *,
+    block_size: int = 256,
+) -> _GGUFPackedVerifyLayout:
+    """Build per-row KVLiveSpans/linear-state metadata for packed slot verify.
+
+    Rows are packed slot-major. Each slot gets a disjoint physical paged-KV
+    block range while keeping local per-slot RoPE positions and live counts.
+    Linear-attention segment metadata mirrors the same slot-major packing:
+    ``cu_seqlens`` defines each slot's row range and ``state_indices`` maps that
+    segment to the slot's Conv/GDN recurrent-state slab.
+    """
+
+    blocks = tuple(slot_blocks)
+    if not blocks:
+        raise ValueError("packed verify layout requires at least one slot block")
+    block_size = int(block_size)
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    row_count = sum(len(block.input_token_ids) for block in blocks)
+    max_live_count = max(
+        int(block.start_position) + len(block.input_token_ids)
+        for block in blocks
+    )
+    blocks_per_slot = max(1, (max_live_count + block_size - 1) // block_size)
+    input_token_ids = np.empty((row_count,), dtype=np.int64)
+    row_slot_indices = np.empty((row_count,), dtype=np.int32)
+    row_positions = np.empty((row_count,), dtype=np.int64)
+    row_offsets_in_slot = np.empty((row_count,), dtype=np.int32)
+    live_counts = np.empty((row_count,), dtype=np.int64)
+    block_table = np.empty((row_count, blocks_per_slot), dtype=np.int32)
+    cu_seqlens = np.empty((len(blocks) + 1,), dtype=np.int32)
+    state_indices = np.arange(len(blocks), dtype=np.int64)
+
+    row_cursor = 0
+    cu_seqlens[0] = 0
+    for slot_index, block in enumerate(blocks):
+        slot_rows = len(block.input_token_ids)
+        slot_start = int(block.start_position)
+        slot_block_base = slot_index * blocks_per_slot
+        slot_block_table = np.arange(
+            slot_block_base,
+            slot_block_base + blocks_per_slot,
+            dtype=np.int32,
+        )
+        for row_offset, token_id in enumerate(block.input_token_ids):
+            row = row_cursor + row_offset
+            position = slot_start + row_offset
+            input_token_ids[row] = int(token_id)
+            row_slot_indices[row] = int(slot_index)
+            row_positions[row] = int(position)
+            row_offsets_in_slot[row] = int(row_offset)
+            live_counts[row] = int(position) + 1
+            block_table[row, :] = slot_block_table
+        row_cursor += slot_rows
+        cu_seqlens[slot_index + 1] = row_cursor
+
+    return _GGUFPackedVerifyLayout(
+        input_token_ids=input_token_ids,
+        row_slot_indices=row_slot_indices,
+        row_positions=row_positions,
+        row_offsets_in_slot=row_offsets_in_slot,
+        live_counts=live_counts,
+        block_table=block_table,
+        cu_seqlens=cu_seqlens,
+        state_indices=state_indices,
+        blocks_per_slot=blocks_per_slot,
+        block_size=block_size,
+        max_live_count=max_live_count,
+        total_physical_positions=len(blocks) * blocks_per_slot * block_size,
+    )
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFLinearAttentionBoundaryCapture:
     """Host-visible diagnostic snapshot for one GGUF linear-attention boundary."""
 
