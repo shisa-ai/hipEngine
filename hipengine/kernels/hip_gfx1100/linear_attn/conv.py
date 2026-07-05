@@ -23,6 +23,7 @@ _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
 _SYMBOL_PREFILL_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_f32_state_rows"
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
+_SYMBOL_PREFILL_SEGMENTS_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32_state_rows"
 
 
 def plan_qwen35_linear_attn_conv_build(
@@ -460,6 +461,50 @@ def qwen35_linear_attn_conv_prefill_segments_f32(
     )
 
 
+def qwen35_linear_attn_conv_prefill_segments_f32_state_rows(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_state_rows_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch segment-aware FP32 prefill convolution and row-state capture.
+
+    This is the packed-verifier sibling of
+    :func:`qwen35_linear_attn_conv_prefill_f32_state_rows`: each segment reads
+    its own initial state slot from ``conv_state`` via ``state_indices`` and
+    writes per-row Conv states into the slot-major packed row slab without
+    mutating the initial state.
+    """
+
+    _launch_conv_prefill_segments_state_rows(
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_state_rows_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_decode", "w4_paro", "f32"),
@@ -489,6 +534,11 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "f32_segments"),
         qwen35_linear_attn_conv_prefill_segments_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "f32_segments_state_rows"),
+        qwen35_linear_attn_conv_prefill_segments_f32_state_rows,
         replace=replace,
     )
     for backend in ("hip_gfx1100", "hip_gfx1151"):
@@ -729,6 +779,61 @@ def _launch_conv_prefill_segments(
     err = fn(
         ctypes.c_void_p(hidden_states_ptr),
         ctypes.c_void_p(conv_state_ptr),
+        ctypes.c_void_p(conv_weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(cu_seqlens_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(total_tokens),
+        ctypes.c_int64(segments),
+        ctypes.c_int64(channels),
+        ctypes.c_int64(kernel_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_conv_prefill_segments_state_rows(
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_state_rows_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_conv_shape(channels, kernel_size)
+    _check_positive(total_tokens, "total_tokens")
+    _check_positive(segments, "segments")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_SEGMENTS_F32_STATE_ROWS)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_states_ptr),
+        ctypes.c_void_p(conv_state_ptr),
+        ctypes.c_void_p(conv_state_rows_ptr),
         ctypes.c_void_p(conv_weight_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_void_p(cu_seqlens_ptr),

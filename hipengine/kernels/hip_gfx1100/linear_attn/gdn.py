@@ -34,6 +34,9 @@ _SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_BF16 = (
 _SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_NO_COPY_BF16 = (
     "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy"
 )
+_SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_BF16 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy"
+)
 
 
 def plan_qwen35_linear_attn_gdn_build(
@@ -1178,6 +1181,93 @@ def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_co
     _check_launch(runtime, err)
 
 
+def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_initial_ptr: int,
+    recurrent_state_rows_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    eps: float,
+    total_tokens: int,
+    segments: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch segment-aware BF16 decode-order GDN with row-state capture.
+
+    The input rows are packed, ``cu_seqlens`` maps each slot segment to its row
+    range, and ``state_indices`` selects that segment's initial recurrent-state
+    slot. The initial state is not mutated; every packed row writes its resulting
+    recurrent state into ``recurrent_state_rows``.
+    """
+
+    _check_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    if segments <= 0:
+        raise ValueError("segments must be positive")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(a_ptr),
+        ctypes.c_void_p(b_ptr),
+        ctypes.c_void_p(dt_bias_ptr),
+        ctypes.c_void_p(a_log_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(recurrent_state_initial_ptr),
+        ctypes.c_void_p(recurrent_state_rows_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(cu_seqlens_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(total_tokens),
+        ctypes.c_int64(segments),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
     conv_out_ptr: int,
     gate_ptr: int,
@@ -1310,6 +1400,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "decode_order_bf16"),
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "decode_order_bf16_segments_state_rows_no_copy",
+        ),
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
         replace=replace,
     )
     register(

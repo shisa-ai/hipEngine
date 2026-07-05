@@ -143204,3 +143204,34 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed; packed-layout/state tests passed (`6 passed`) and full GGUF
   sampling tests passed (`26 passed`).
+
+## 2026-07-05 - Packed verifier segment row-state kernels
+
+- Added segment-aware no-copy row-state capture surfaces for the packed target
+  verifier groundwork:
+  `hipengine_qwen35_linear_attn_conv_prefill_segments_f32_state_rows` captures
+  per-row Conv states from per-slot initial state slabs, and
+  `hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy`
+  captures BF16 decode-order GDN recurrent rows from per-slot initial slabs
+  without mutating them.
+- Added GPU equivalence coverage comparing packed two-segment Conv/GDN captures
+  against independent single-segment row-state captures, plus a registry check
+  for the new GGUF GDN alias. This preserves the direct verifier lifecycle:
+  capture all rows, then commit only the accepted row later.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` was attempted but
+  is blocked on this host because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is
+  absent.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/kernels/hip_gfx1100/linear_attn/conv.py hipengine/kernels/hip_gfx1100/linear_attn/gdn.py tests/test_qwen35_linear_attn_segment_state_rows.py tests/test_qwen35_gguf_gdn_prefill_correctness.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_qwen35_linear_attn_segment_state_rows.py tests/test_qwen35_gguf_gdn_prefill_correctness.py -k 'segments_state_rows_no_copy_matches_per_segment_capture or conv_prefill_segments_state_rows_match_per_segment_capture or registry'
+  rocprofv3 --kernel-trace -d /tmp/hipengine-segment-state-rocprof -o segment_state -f csv -- env PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_qwen35_linear_attn_segment_state_rows.py tests/test_qwen35_gguf_gdn_prefill_correctness.py -k 'segments_state_rows_no_copy_matches_per_segment_capture or conv_prefill_segments_state_rows_match_per_segment_capture'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_qwen35_linear_attn_segment_state_rows.py tests/test_qwen35_gguf_gdn_prefill_correctness.py -k 'registry or state_rows' tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py
+  ```
+  Pycompile passed; focused Conv/GDN segment-state tests passed (`3 passed`),
+  the rocprof smoke passed (`2 passed`) and traced
+  `qwen35_linear_attn_conv_prefill_segments_state_rows_kernel` (~23.3 us) plus
+  `qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel`
+  (~166.4 us) on the synthetic gfx1151 run; packed-layout + GGUF sampling
+  passed unfiltered (`32 passed`).
