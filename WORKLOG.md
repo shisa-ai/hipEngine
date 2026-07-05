@@ -144391,3 +144391,66 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-mtpprepare-rejected.json`,
   and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpprepare-rejected.json`.
+
+## 2026-07-06 - Rejected GGUF MTP packed verifier stream-upload probe
+
+- Ran a current-code GPU-stage diagnostic before editing:
+  ```bash
+  HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency 4 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-gpustage-current.json
+  ```
+  Result: **68.37 tok/s** with event overhead. Real GPU leaves were still spread
+  across linear-attention QKV/gate (**1075.914 ms**), full attention
+  (**1078.894 ms**), selected MoE gate/up (**916.630 ms**), selected MoE down
+  (**579.386 ms**), LM-head/sample (**525.046 ms**), SSM out (**397.538 ms**),
+  and GDN state rows (**317.210 ms**). The exposed host
+  `target_packed_verify_lm_head_sample_ms` bucket remains a stream-drain point,
+  not pure LM-head GPU time.
+- Tested a scoped patch that made `for_packed_verify_layout()` and the packed
+  verifier token upload use `hipMemcpyAsync(..., stream)` for their tiny H2D
+  uploads while keeping NumPy host arrays alive through the returned scratch
+  view. Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots
+  ```
+  The focused tests passed.
+- Benchmark server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-streamupload-rerun.json
+  ```
+  Sequential warmed results regressed versus the retained rowtilechunk MTP rows
+  (**77.29/76.46 tok/s** at c=4/c=8): c=4 **76.02 tok/s**, c=8
+  **53.49 tok/s**. c=4 left `target_packed_verify_token_upload_ms` essentially
+  unchanged at **174.646 ms** total. c=8 produced a large token-upload stall
+  (**3242.886 ms**) and raised `target_packed_verify_total_ms` to
+  **9026.614 ms**. Code was reverted; current tracked code is back to the
+  retained implementation. Saved rejected artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-gpustage-current.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-streamupload-rerun.json`,
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-streamupload-rerun.json`.

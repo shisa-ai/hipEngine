@@ -214,6 +214,21 @@ Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpprepare-rejected.json`.
 
+Rejected stream-upload follow-up: making `for_packed_verify_layout()` and the
+packed verifier token upload use `hipMemcpyAsync(..., stream)` instead of the
+synchronous H2D helper did not reduce the exposed token-upload bucket and
+regressed throughput. Sequential warmed natural24 MTP measured **76.02 tok/s**
+at c=4 and **53.49 tok/s** at c=8 versus the retained **77.29/76.46 tok/s**.
+The c=4 run left `target_packed_verify_token_upload_ms` essentially unchanged
+(**174.646 ms** total), while the c=8 run produced a large token-upload stall
+(**3242.886 ms**) and `target_packed_verify_total_ms` rose to **9026.614 ms**.
+The code was reverted; keep this direction rejected unless layout uploads are
+first moved to persistent pinned host buffers or a device-side layout update.
+Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-streamupload-rerun.json`
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-streamupload-rerun.json`.
+
 Route-cap follow-up: default GGUF AR serving now caps backend groups at the
 proven four-request shape even when the HTTP server is configured with
 `--max-active-requests 8`; the speculative MTP route now uses the same
