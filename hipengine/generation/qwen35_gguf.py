@@ -261,6 +261,31 @@ def _timing_set(timing: dict[str, float], key: str, start: float) -> None:
     timing[key] = _timing_ms_since(start)
 
 
+def _add_mtp_cycle_timing_metrics(
+    timing: dict[str, float],
+    cycles: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> None:
+    cycle_rows = list(cycles)
+    draft_tokens = sum(int(cycle.get("generated_draft_tokens", 0)) for cycle in cycle_rows)
+    accepted_tokens = sum(int(cycle.get("accepted_draft_tokens", 0)) for cycle in cycle_rows)
+    visible_tokens = sum(int(cycle.get("visible_output_tokens", 0)) for cycle in cycle_rows)
+    target_rows = sum(
+        int(cycle.get("generated_draft_tokens", 0)) + 1
+        for cycle in cycle_rows
+        if str(cycle.get("mode", "")) == "llama_compat_direct_commit"
+    )
+    timing["mtp_cycles_count"] = float(len(cycle_rows))
+    timing["mtp_generated_draft_tokens"] = float(draft_tokens)
+    timing["mtp_accepted_draft_tokens"] = float(accepted_tokens)
+    timing["mtp_visible_output_tokens"] = float(visible_tokens)
+    timing["mtp_target_verify_rows"] = float(target_rows)
+    timing["mtp_accept_per_draft"] = (
+        float(accepted_tokens) / float(draft_tokens)
+        if draft_tokens > 0
+        else 0.0
+    )
+
+
 def _llama_cpp_mtp_catchup_rows(
     prompt_tokens: list[int] | tuple[int, ...],
     prompt_hidden_seeds: np.ndarray,
@@ -1574,6 +1599,7 @@ class Qwen35GGUFBringupGenerator:
                             timing["draft_open_ms"] = draft_open_ms
                             timing["assets_load_ms"] = assets_load_ms
                             timing["tokenize_ms"] = tokenize_ms_by_request.get(row_index, 0.0)
+                            _add_mtp_cycle_timing_metrics(timing, run.cycles)
                             _timing_set(timing, "request_total_ms", request_start)
                             outputs.append(
                                 self._mtp_generation_output(
@@ -1686,6 +1712,7 @@ class Qwen35GGUFBringupGenerator:
                 timing["assets_load_ms"] = assets_load_ms
                 timing["slots_open_ms"] = slots_open_ms
                 timing["slots_run_ms"] = slots_run_ms
+                _add_mtp_cycle_timing_metrics(timing, slot.cycles)
                 outputs.append(
                     self._mtp_generation_output(
                         slot.prompt_ids,

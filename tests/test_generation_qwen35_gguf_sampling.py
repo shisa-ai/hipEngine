@@ -211,6 +211,13 @@ def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) 
     assert generator.last_batch_generation["path"] == "gguf_llama_compat_mtp_server"
     assert generator.last_batch_generation["speculative_mtp"]["total_draft_tokens"] == 1
     assert generator.last_batch_generation["speculative_mtp"]["total_accepted_draft_tokens"] == 1
+    timing = outputs[0].telemetry.to_json_dict()["timing"]
+    assert timing["mtp_cycles_count"] == 1.0
+    assert timing["mtp_generated_draft_tokens"] == 1.0
+    assert timing["mtp_accepted_draft_tokens"] == 1.0
+    assert timing["mtp_visible_output_tokens"] == 2.0
+    assert timing["mtp_target_verify_rows"] == 2.0
+    assert timing["mtp_accept_per_draft"] == 1.0
 
 
 def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
@@ -372,6 +379,10 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert "slots_draft_phase_ms" in timing
     assert "slots_verify_phase_ms" in timing
     assert "slots_commit_phase_ms" in timing
+    assert timing["mtp_cycles_count"] == 1.0
+    assert timing["mtp_generated_draft_tokens"] == 1.0
+    assert timing["mtp_accepted_draft_tokens"] == 1.0
+    assert timing["mtp_target_verify_rows"] == 2.0
 
 
 def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(monkeypatch) -> None:
