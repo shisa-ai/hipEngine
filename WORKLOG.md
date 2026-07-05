@@ -143164,3 +143164,24 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed and the packed-layout + GGUF sampling bundle passed
   (`29 passed`).
+
+## 2026-07-05 - Packed verifier scratch metadata view
+
+- Extended `_GGUFFullAttentionPrefillScratch` so its Conv/GDN metadata buffers
+  can be allocated for more than one segment while preserving the existing
+  single-segment default. Added `for_packed_verify_layout()` to upload a packed
+  verifier layout's block table, local row positions, live counts, `cu_seqlens`,
+  and state indices, then return a `KVLiveSpans` view over the packed rows.
+- Added fake-runtime coverage that monkeypatches `malloc` and
+  `copy_host_to_device` to verify the exact host arrays uploaded for the packed
+  scratch view without requiring ROCm. This is still not a production
+  `verify_target_blocks_batch()` implementation; it is the scratch/metadata
+  plumbing that implementation will use.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  ```
+  Pycompile passed; packed-layout tests passed (`4 passed`) and full GGUF
+  sampling tests passed (`26 passed`).

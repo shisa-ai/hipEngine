@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import ctypes
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
+import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFPackedVerifySlotBlock,
+    _GGUFFullAttentionPrefillScratch,
     _build_gguf_packed_verify_layout,
 )
 
@@ -75,3 +81,77 @@ def test_gguf_packed_verify_layout_rejects_invalid_inputs() -> None:
             (_GGUFPackedVerifySlotBlock(input_token_ids=(1,), start_position=0),),
             block_size=0,
         )
+
+
+def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
+    next_ptr = 0x100000
+    copies: dict[int, bytes] = {}
+
+    def fake_malloc(nbytes: int, *, runtime):
+        nonlocal next_ptr
+        ptr = next_ptr
+        next_ptr += max(8, int(nbytes) + 8)
+        return DeviceBuffer(ptr=ptr, nbytes=int(nbytes))
+
+    def fake_copy_host_to_device(buffer, host_ptr, nbytes=None, *, runtime):
+        count = int(buffer.nbytes if nbytes is None else nbytes)
+        copies[int(buffer.ptr)] = ctypes.string_at(int(host_ptr), count)
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(gguf_runner, "copy_host_to_device", fake_copy_host_to_device)
+
+    cfg = SimpleNamespace(
+        expert_used_count=2,
+        is_moe=True,
+        expert_count=4,
+        expert_shared_feed_forward_length=8,
+        ssm_inner_size=6,
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=2,
+        ssm_state_size=3,
+        head_count_kv=2,
+        key_length=4,
+        rope_dimension_count=4,
+        rope_freq_base=10000.0,
+        head_count=4,
+    )
+    runner = SimpleNamespace(
+        hidden_size=8,
+        q_width=16,
+        kv_width=8,
+        ffn_size=12,
+        linear_qkv_width=10,
+        ssm_value_dim=2,
+        weights=SimpleNamespace(config=cfg),
+    )
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        runner,
+        rows=6,
+        capacity=512,
+        segments=2,
+        runtime=SimpleNamespace(),
+    )
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11, 12, 13), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(21, 22, 23), start_position=8),
+        ),
+    )
+    copies.clear()
+
+    view = scratch.for_packed_verify_layout(layout, runtime=SimpleNamespace())
+
+    block_upload = np.frombuffer(copies[scratch.block_table.ptr], dtype=np.int32).reshape(layout.block_table.shape)
+    pos_upload = np.frombuffer(copies[scratch.positions.ptr], dtype=np.int64)
+    live_upload = np.frombuffer(copies[scratch.context_counts.ptr], dtype=np.int64)
+    cu_upload = np.frombuffer(copies[scratch.gdn_cu_seqlens.ptr], dtype=np.int32)
+    state_upload = np.frombuffer(copies[scratch.gdn_state_indices.ptr], dtype=np.int64)
+    np.testing.assert_array_equal(block_upload, layout.block_table)
+    np.testing.assert_array_equal(pos_upload, layout.row_positions)
+    np.testing.assert_array_equal(live_upload, layout.live_counts)
+    np.testing.assert_array_equal(cu_upload, layout.cu_seqlens)
+    np.testing.assert_array_equal(state_upload, layout.state_indices)
+    assert view.rows == layout.rows
+    assert view.block_table_tensor.shape == layout.block_table.shape
+    assert view.positions_tensor.shape == layout.row_positions.shape
+    assert view.context_counts_tensor.shape == layout.live_counts.shape
