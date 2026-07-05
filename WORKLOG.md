@@ -144558,3 +144558,54 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-defer-readback-probe.json`
   and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-defer-readback-probe.json`.
+
+## 2026-07-06 - Rejected GGUF MTP route-cap-8 probe
+
+- Retried the c=8 MTP server coalescing idea after confirming AR c>N is already
+  fixed by the retained four-request GGUF AR route cap
+  (**66.39/82.46/81.94 tok/s** at c=2/c=4/c=8). The temporary MTP patch widened
+  `_GGUF_MTP_MAX_ACTIVE_REQUESTS` from 4 to 8 and removed the
+  `_try_open_mtp_serving_slots_batch_prefill()` early return above four prompts,
+  while keeping `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS=4` so prompt prefill and
+  packed verify still chunk internally as 4+4.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q \
+    tests/test_server_api.py::test_generation_batcher_applies_route_specific_group_limit \
+    tests/test_server_api.py::test_generation_batcher_allows_eight_request_mtp_route_group \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c8_opens_packed_prefill_in_four_slot_chunks \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_batch_verifier_chunks_above_four_slots
+  ```
+  Pycompile passed and the focused tests passed (`4 passed`).
+- Benchmark server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-mtpcap8-probe.json
+  ```
+- Results rejected versus retained rowtilechunk MTP
+  (**77.29/76.46 tok/s** at c=4/c=8): c=4 **75.45 tok/s**, c=8
+  **45.35 tok/s**. The c=8 group shape exposed the same width-8 failure mode
+  despite internal 4+4 chunking: `slots_open_ms=25374.834`,
+  `prefill_batch_ms=10387.592`, `slots_verify_phase_ms=12108.575`, and
+  `target_packed_verify_total_ms=11115.561`
+  (`target_packed_verify_lm_head_sample_ms=6981.361`). Code/test changes were
+  reverted; current tracked code is back to the retained four-request MTP route
+  cap.
+- Saved rejected artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-mtpcap8-probe.json`
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpcap8-probe.json`.
