@@ -144338,3 +144338,56 @@ python3 scripts/gguf_mtp_bench.py \
   Results: c=2 **65.96 tok/s**, c=4 **82.31 tok/s**, c=8 **81.99 tok/s**.
   These match the retained fixed AR band (**66.39/82.46/81.94 tok/s**) and
   confirm AR remains fixed before resuming MTP c>N work.
+
+## 2026-07-06 - Rejected GGUF MTP server prepare-sidecar materialization
+
+- Tested the hypothesis that the MTP server shared GGUF runner was missing the
+  llama-compat raw Q8 sidecars / dense-Q8 dp4a materialization because
+  `prepare()` constructs the runner before `generate_speculative_mtp_detailed()`
+  enters `_LLAMA_COMPAT_MTP_ENV`. A candidate patch set a server prepare marker
+  around `ensure_resident_context()` and had GGUF `prepare()` materialize the
+  shared runner under `_LLAMA_COMPAT_MTP_ENV` when MTP tensors were present.
+  Focused unit tests for marker scoping and runner-constructor env passed, as
+  did the nearby MTP serving tests:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_materializes_mtp_runner_with_llama_env_when_server_marker_enabled tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_keeps_normal_runner_env_without_server_mtp_marker tests/test_server_api.py::test_startup_scratch_probe_sets_mtp_warmup_env_only_when_serving_enabled
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots
+  ```
+- Benchmark server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Startup reached ready, but `resident_prepare_s` rose to **46.236874 s** and
+  `startup_total_s` to **53.676055 s**. This is much larger than the retained
+  route-cap AR startup scratch path (**6.680 s** scratch time in the retained
+  run) and is not acceptable without a clear throughput win.
+- MTP client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out /tmp/hipengine-server-mtp-natural24-cC-mtpprepare-probe-rerun.json
+  ```
+  Warmed results regressed versus the retained rowtilechunk MTP rows
+  (**77.29/76.46 tok/s** at c=4/c=8): c=4 **75.07 tok/s**, c=8
+  **75.14 tok/s**. Economy changed to `draft=162`, `accepted=144`, accept rate
+  **0.8889**, target rows **246**. Exposed packed-verifier buckets improved
+  (c=4 `target_packed_verify_total_ms=5102.702`,
+  `target_packed_verify_lm_head_sample_ms=3406.156`; c=8
+  `target_packed_verify_total_ms=5194.822`,
+  `target_packed_verify_lm_head_sample_ms=3513.713`), but same-protocol wall
+  throughput still lost and startup cost ballooned.
+- Reverted the code/tests from the probe; current tracked code is back to the
+  retained implementation. Saved rejected artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-prepare-env-startup-rejected.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-mtpprepare-rejected.json`,
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpprepare-rejected.json`.
