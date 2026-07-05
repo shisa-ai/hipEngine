@@ -144158,3 +144158,63 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots tests/test_mtp_bench_tool.py::test_record_from_llamacpp_timing_payload_matches_pr_columns tests/test_mtp_bench_tool.py::test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts tests/test_mtp_bench_tool.py::test_concurrent_aggregate_uses_client_wall_not_request_wall_sum
   ```
   Pycompile passed and focused pytest passed (`5 passed`).
+
+## 2026-07-06 - GGUF MTP server small-B verifier body
+
+- Changed the llama-compat MTP serving target verifier to match the direct
+  small-B target-block policy: packed verifier jobs now pass
+  `use_wmma_prefill=false` instead of forcing the rows>1 WMMA prefill body. This
+  keeps the existing packed verifier lifecycle, route cap, startup MTP warmup,
+  stream-draft, and stream-verify paths unchanged while avoiding the bad
+  small-row WMMA body shape.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- Client command shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' --out <artifact>
+  ```
+- Retained warm natural24 MTP results: c=2 **69.78 tok/s**, c=4
+  **72.56 tok/s**, c=8 **68.83 tok/s**. This moves retained MTP
+  **59.94/66.60/65.79 -> 69.78/72.56/68.83 tok/s** at c=2/c=4/c=8. c=8
+  improves **+4.6%** versus the route-cap row and **+25.4%** versus the
+  pre-route-cap **54.88 tok/s** row. Same-server AR remains
+  **66.39/82.46/81.94 tok/s**, so MTP now beats AR at c=2 but still trails at
+  c=4/c=8.
+- c=8 economy/buckets after the change: `draft=166`, `accepted=140`, accept
+  rate **0.8434**, target verifier rows **251**,
+  `slots_verify_phase_ms=7236.054`, `target_packed_verify_total_ms=7142.328`,
+  linear-attention layers **715.082 ms**, full-attention layers **251.018 ms**,
+  and LM-head/sample **5202.328 ms**. Versus route-cap, linear attention drops
+  **4187.772 -> 715.082 ms** and full attention drops **1234.868 -> 251.018
+  ms**; LM-head/sample is now the dominant remaining packed-verifier bucket.
+- A split no-WMMA verifier body plus WMMA sample policy was tested and rejected:
+  c=8 measured **41.76 tok/s** and **50.89 tok/s** on rerun, with repeated
+  setup outliers and unchanged LM-head cost. Do not retain that route.
+- Retained artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-no-wmma-verify.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-no-wmma-verify.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-no-wmma-verify.json`.
+  Rejected split-policy artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-split-verify-no-wmma-sample-wmma.json` and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-split-verify-no-wmma-sample-wmma-rerun.json`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py scripts/mtp-bench.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled tests/test_mtp_bench_tool.py::test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-no-wmma-verify.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-no-wmma-verify.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-no-wmma-verify.json >/dev/null
+  ```
+  Pycompile passed, focused pytest passed (`5 passed`), and artifact JSON
+  checks passed.
