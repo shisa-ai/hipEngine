@@ -316,6 +316,17 @@ c=8 pass also measured **77.52 tok/s**. The warmed c=8 verifier total drops
 4277.118 ms** versus the no-WMMA row, but LM-head/sample remains the largest
 exposed packed-verifier bucket.
 
+Rejected large-rowtile follow-up: extending the exact Q6_K T16 rowtile kernel to
+directly instantiate rows 7-12 was bit-exact in the HIP gate, but the c=4 server
+wall collapsed, consistent with excessive register pressure/spill in the larger
+template. Natural24 c=4 MTP measured only **5.87 tok/s** versus retained
+**77.29 tok/s**; `target_packed_verify_lm_head_sample_ms` exploded
+**4239.592 -> 91055.422 ms** and `target_packed_verify_total_ms` rose
+**5870.712 -> 93002.792 ms**. Code was reverted; keep the retained 2-6-row
+chunking unless a new kernel changes the accumulation strategy rather than
+merely increasing `ROW_TILE`. Artifact:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilelarge-probe.json`.
+
 Startup MTP warmup follow-up: the server now sets
 `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP=1` only while running the startup
 scratch probe when `--speculative-mtp-serving` is not `off`. The GGUF backend
