@@ -144609,3 +144609,49 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-mtpcap8-probe.json`
   and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpcap8-probe.json`.
+
+## 2026-07-06 - Rejected GGUF MTP large rowtile LM-head probe
+
+- Tested whether the retained exact Q6_K T16 rowtile verifier LM-head path was
+  losing c>N wall by chunking 12 packed rows as `6+6` and re-reading the
+  417 MB head twice. The temporary patch added direct rowtile template cases for
+  rows 7-12 and routed `_verify_lm_head_rowtile_chunked()` through a
+  `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_ROWTILE_LARGE=1` opt-in flag.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.py tests/test_qwen35_gguf_verify_lm_head_top1.py tests/test_gguf_q6_k_t16_rowtile_gemv.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_qwen35_gguf_verify_lm_head_top1.py
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_q6_k_t16_rowtile_gemv.py
+  ```
+  Pycompile passed, the focused planner tests passed (`7 passed`), and the HIP
+  rowtile correctness gate passed with direct rows 2-12 bit-exact against
+  per-row decode.
+- Benchmark server command:
+  ```bash
+  HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_ROWTILE_LARGE=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency 4 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilelarge-probe.json
+  ```
+- Result rejected versus retained rowtilechunk c=4 MTP **77.29 tok/s**:
+  large-rowtile c=4 measured **5.87 tok/s**. Economy stayed identical
+  (`draft=165`, `accepted=141`, accept rate **0.8545**), but
+  `target_packed_verify_lm_head_sample_ms` exploded
+  **4239.592 -> 91055.422 ms** and `target_packed_verify_total_ms` rose
+  **5870.712 -> 93002.792 ms**. This is consistent with severe register
+  pressure/spill from the larger `ROW_TILE` template, not a scheduling win.
+  c=8 was not run after the c=4 failure. Code/test changes were reverted; the
+  retained exact 2-6-row chunked rowtile path remains active.
+- Saved rejected artifact:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilelarge-probe.json`.
