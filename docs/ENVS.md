@@ -156,6 +156,7 @@ Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 | `HIPENGINE_GGUF_AR_PACKED_DECODE` | true | Retained default with rollback opt-out | Enables GGUF server greedy-AR packed resident decode for c>N coalesced requests. Set `0`/`false`/`off` to force stream/scalar fallback for bisection. |
 | `HIPENGINE_GGUF_AR_STREAM_DECODE` | true | Retained fallback with rollback opt-out | Enables per-slot stream decode fallback and c>4 packed-decode chunk streams. Set false only for bisection. |
 | `HIPENGINE_GGUF_AR_STREAM_PREFILL` | false | Rejected diagnostic | Launches per-slot stream prompt prefill before stream decode. Rejected on the 2026-07-05 c=8 natural24 rerun; leave unset unless reproducing that diagnostic. |
+| `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL` | false | Rejected diagnostic | Enables the GGUF MTP server packed prompt-prefill opener for c=2/c=4 shapes, returning FP32 prompt hidden rows for MTP catch-up. Default-off after 2026-07-06 natural24 probes: c=2 improved, but c=4/c=8 showed severe intermittent prefill/verifier regressions. |
 | `HIPENGINE_GGUF_Q4_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `32` / `16` | Kernel R&D | Q4_K selected WMMA tile override. Allowed tile pairs are validated by the build helper. |
 | `HIPENGINE_GGUF_Q5_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `16` / `16` | Kernel R&D | Q5_K selected WMMA tile override. |
 | `HIPENGINE_GGUF_Q6_K_SELECTED_WMMA_TILE_M` / `_TILE_N` | `16` / `16` | Kernel R&D | Q6_K selected WMMA tile override. |

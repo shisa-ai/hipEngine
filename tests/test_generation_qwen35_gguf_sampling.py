@@ -374,6 +374,175 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert "slots_commit_phase_ms" in timing
 
 
+def test_gguf_speculative_mtp_c2_uses_packed_prefill(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        pass
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path):
+            self.model_path = str(model_path)
+            self.runtime = FakeRuntime()
+            self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
+            calls.append(("shared_runner_init", self.model_path))
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            calls.append(("session_init", self.slot_id))
+
+        def reset(self):
+            self.position = 0
+
+        def close(self):
+            calls.append(("session_close", self.slot_id))
+
+        def prefill(self, token_ids, **kwargs):  # pragma: no cover - must not be used
+            raise AssertionError("packed MTP prefill should bypass per-slot prefill")
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False, return_hidden_seeds=False):
+            calls.append(
+                (
+                    "prefill_batch",
+                    self.slot_id,
+                    tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                    return_logits,
+                    return_hidden_seeds,
+                )
+            )
+            results = []
+            for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+                session.position = len(prompt)
+                hidden = np.full((len(prompt), 2), float(session.slot_id + 1), dtype=np.float32)
+                results.append(SimpleNamespace(token_id=1, hidden_seeds=hidden))
+            return results
+
+        def mtp_draft_seed(self, *, token_id: int, position: int):
+            calls.append(("mtp_seed", self.slot_id, int(token_id), int(position)))
+            return SimpleNamespace(
+                token_id=int(token_id),
+                position=int(position),
+                hidden_ptr=0xABC0 + self.slot_id * 0x100,
+                hidden_contract=SimpleNamespace(
+                    ready_for_mtp=True,
+                    rows=1,
+                    hidden_size=2,
+                ),
+            )
+
+        def verify_target_block(self, input_token_ids, **kwargs):
+            calls.append(("verify_block", self.slot_id, tuple(input_token_ids), dict(kwargs)))
+            return SimpleNamespace(
+                token_ids=[2, 3],
+                hidden_seeds=np.ones((2, 2), dtype=np.float32),
+                linear_state_rows_captured=True,
+            )
+
+        def _commit_verify_linear_state_row(self, row_index: int, *, position: int):
+            calls.append(("commit_row", self.slot_id, int(row_index), int(position)))
+            self.position = int(position)
+
+        def fp32_verify_hidden_seed_ptr(self, row_index: int = 0) -> int:
+            return 0xD000 + self.slot_id * 0x100 + int(row_index) * 8
+
+    class FakeDraft:
+        def __init__(self):
+            self.draft_id = len([call for call in calls if call and call[0] == "draft_init"])
+            calls.append(("draft_init", self.draft_id))
+
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            calls.append(("draft", self.draft_id, int(hidden_seed_ptr), dict(kwargs)))
+            return [2], [[2]], int(kwargs["dense_cache_len"]) + 2
+
+        def write_kv_rows(self, hidden_rows, token_ids, **kwargs):
+            calls.append(
+                (
+                    "write_context_kv",
+                    self.draft_id,
+                    tuple(int(token) for token in token_ids),
+                    tuple(hidden_rows.shape),
+                    float(hidden_rows[1, 0]),
+                )
+            )
+            return len(token_ids)
+
+        def write_kv_rows_from_device_seed_base(self, hidden_seed_ptr, token_ids, **kwargs):
+            calls.append(
+                (
+                    "write_commit_kv",
+                    self.draft_id,
+                    int(hidden_seed_ptr),
+                    tuple(int(token) for token in token_ids.tolist()),
+                )
+            )
+            return int(kwargs["dense_cache_len"]) + len(token_ids)
+
+        def close(self):
+            calls.append(("draft_close", self.draft_id))
+
+    assets = qwen35_gguf._GGUFMTPServingAssets(
+        weights={
+            "blk.40.attn_q_norm.weight": (np.zeros((2,), dtype=np.float32), 0, (2,)),
+            "output.weight": (np.zeros((8, 1), dtype=np.uint8), 0, (8, 1)),
+        },
+        token_embd_f32=np.zeros((8, 2), dtype=np.float32),
+        rope_cos=np.ones((16, 2), dtype=np.float32),
+        rope_sin=np.zeros((16, 2), dtype=np.float32),
+    )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_load_mtp_serving_assets",
+        lambda self: assets,
+    )
+    monkeypatch.setattr(qwen35_gguf, "_new_mtp_draft_runner", lambda assets, *, runtime: FakeDraft())
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "_allocate_mtp_dense_kv",
+        lambda **kwargs: (SimpleNamespace(ptr=0x1000), SimpleNamespace(ptr=0x2000), []),
+    )
+    monkeypatch.setattr(qwen35_gguf, "_free_mtp_buffers", lambda buffers, *, runtime: calls.append(("free_kv", len(buffers))))
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "1")
+
+    generator = _generator()
+    generator.weight_index = _mtp_capable_weight_index()
+    generator.prepare()
+    outputs = generator.generate_speculative_mtp_detailed(_request(prompts=("long", "long2"), max_tokens=3))
+
+    assert [output.text for output in outputs] == ["BCD", "BCD"]
+    assert [call for call in calls if call[0] == "prefill_batch"] == [
+        (
+            "prefill_batch",
+            0,
+            ((10, 11, 12, 13), (20, 21, 22, 23)),
+            (0, 1),
+            "1",
+            False,
+            True,
+        )
+    ]
+    assert [call for call in calls if call[0] == "mtp_seed"] == [
+        ("mtp_seed", 0, 1, 3),
+        ("mtp_seed", 1, 1, 3),
+    ]
+    assert [call for call in calls if call[0] == "write_context_kv"] == [
+        ("write_context_kv", 0, (10, 11, 12, 13), (4, 2), 1.0),
+        ("write_context_kv", 1, (20, 21, 22, 23), (4, 2), 2.0),
+    ]
+    assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
+    timing = outputs[0].telemetry.to_json_dict()["timing"]
+    assert "prefill_batch_ms" in timing
+
+
 def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
     calls: list[tuple] = []
 

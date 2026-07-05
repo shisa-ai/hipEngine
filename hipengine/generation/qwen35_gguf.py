@@ -90,6 +90,7 @@ _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
+_GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 
@@ -108,6 +109,10 @@ def _gguf_ar_stream_decode_enabled() -> bool:
 
 def _gguf_ar_stream_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_AR_STREAM_PREFILL_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_mtp_server_packed_prefill_enabled() -> bool:
+    return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_stream_draft_enabled() -> bool:
@@ -1502,6 +1507,15 @@ class Qwen35GGUFBringupGenerator:
         *,
         pool_sessions: bool,
     ) -> list[_GGUFMTPServingSlot]:
+        packed_slots = self._try_open_mtp_serving_slots_batch_prefill(
+            shared_runner,
+            assets,
+            encoded_prompts,
+            request,
+            pool_sessions=pool_sessions,
+        )
+        if packed_slots is not None:
+            return packed_slots
         slots: list[_GGUFMTPServingSlot] = []
         try:
             for row_index in range(len(request.prompts)):
@@ -1523,6 +1537,227 @@ class Qwen35GGUFBringupGenerator:
             self._close_mtp_serving_slots(slots, reuse=False)
             raise
         return slots
+
+    def _try_open_mtp_serving_slots_batch_prefill(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        assets: _GGUFMTPServingAssets,
+        encoded_prompts: dict[int, list[int]],
+        request: GenerationRequest,
+        *,
+        pool_sessions: bool,
+    ) -> list[_GGUFMTPServingSlot] | None:
+        if len(request.prompts) <= 1 or not _gguf_mtp_server_packed_prefill_enabled():
+            return None
+        if len(request.prompts) > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS:
+            return None
+        if not callable(getattr(Qwen35GGUFResidentSession, "prefill_batch_native", None)):
+            return None
+
+        acquired: list[dict[str, Any]] = []
+
+        def close_acquired() -> None:
+            for entry in reversed(acquired):
+                slot = entry.get("slot")
+                if isinstance(slot, _GGUFMTPServingSlot):
+                    _free_mtp_buffers(slot.mtp_buffers, runtime=slot.session.runtime)
+                    self._release_mtp_draft_runner(None, slot.resident_draft)
+                    slot.session.close()
+                    continue
+                draft = entry.get("resident_draft")
+                if draft is not None:
+                    self._release_mtp_draft_runner(None, draft)
+                session = entry.get("session")
+                if isinstance(session, Qwen35GGUFResidentSession):
+                    session.close()
+
+        try:
+            for row_index in range(len(request.prompts)):
+                raise_if_generation_deadline_expired(request)
+                prompt_ids = encoded_prompts[row_index]
+                if not prompt_ids:
+                    raise ValueError("GGUF prompt tokenization produced no token IDs")
+                slot_open_start = time.perf_counter()
+                timing: dict[str, float] = {}
+                session_open_start = time.perf_counter()
+                session, session_pool_key, _session_reused = self._acquire_shared_session(
+                    shared_runner,
+                    pool_name="mtp_target",
+                    use_wmma_prefill=True,
+                    use_gemv_decode=True,
+                ) if pool_sessions else (
+                    Qwen35GGUFResidentSession(
+                        self.model_path,
+                        runtime=shared_runner.runtime,
+                        shared_runner=shared_runner,
+                        use_wmma_prefill=True,
+                        use_gemv_decode=True,
+                    ),
+                    None,
+                    False,
+                )
+                _timing_set(timing, "session_open_ms", session_open_start)
+                runtime = session.runtime
+                draft_open_start = time.perf_counter()
+                resident_draft, draft_pool_key, _draft_reused = self._acquire_mtp_draft_runner(
+                    assets,
+                    runtime=runtime,
+                    pool_enabled=pool_sessions,
+                )
+                _timing_set(timing, "draft_open_ms", draft_open_start)
+                acquired.append(
+                    {
+                        "request_id": int(row_index),
+                        "prompt_ids": list(prompt_ids),
+                        "slot_open_start": slot_open_start,
+                        "timing": timing,
+                        "session": session,
+                        "session_pool_key": session_pool_key,
+                        "resident_draft": resident_draft,
+                        "draft_pool_key": draft_pool_key,
+                    }
+                )
+
+            owner_session = acquired[0]["session"]
+            prefill_batch = getattr(owner_session, "prefill_batch_native", None)
+            if not callable(prefill_batch):
+                raise NotImplementedError("resident session has no packed prefill entry point")
+            prefill_results_by_slot: list[Any | None] = [None] * len(acquired)
+            prefill_ms_by_slot = [0.0] * len(acquired)
+            chunk_start_index = 0
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                while chunk_start_index < len(acquired):
+                    remaining = len(acquired) - chunk_start_index
+                    take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
+                    if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                        take -= 1
+                    chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
+                    chunk_owner = chunk_entries[0]["session"]
+                    chunk_prefill_batch = getattr(chunk_owner, "prefill_batch_native", None)
+                    if not callable(chunk_prefill_batch):
+                        raise NotImplementedError("resident session has no packed prefill entry point")
+                    prompt_batch = [tuple(entry["prompt_ids"]) for entry in chunk_entries]
+                    session_batch = [entry["session"] for entry in chunk_entries]
+                    prefill_start = time.perf_counter()
+                    chunk_results = chunk_prefill_batch(
+                        prompt_batch,
+                        sessions=session_batch,
+                        return_logits=False,
+                        return_hidden_seeds=True,
+                    )
+                    prefill_ms = _timing_ms_since(prefill_start)
+                    if chunk_results is None:
+                        raise NotImplementedError("packed MTP prefill returned no results")
+                    chunk_results = list(chunk_results)
+                    if len(chunk_results) != len(chunk_entries):
+                        raise RuntimeError(
+                            f"packed MTP prefill returned {len(chunk_results)} result(s) "
+                            f"for {len(chunk_entries)} slot(s)"
+                        )
+                    for offset, result in enumerate(chunk_results):
+                        slot_index = chunk_start_index + offset
+                        prefill_results_by_slot[slot_index] = result
+                        prefill_ms_by_slot[slot_index] = prefill_ms
+                    chunk_start_index += take
+
+            slots: list[_GGUFMTPServingSlot] = []
+            hidden_size = int(assets.token_embd_f32.shape[1])
+            qk_head_dim = int(np.asarray(assets.weights["blk.40.attn_q_norm.weight"][0]).shape[0])
+            max_cycles = max(1, int(request.max_tokens))
+            for entry, prefill_result, prefill_ms in zip(
+                acquired,
+                prefill_results_by_slot,
+                prefill_ms_by_slot,
+                strict=True,
+            ):
+                if prefill_result is None:
+                    raise RuntimeError("packed MTP prefill did not populate every slot result")
+                session = entry["session"]
+                resident_draft = entry["resident_draft"]
+                timing = entry["timing"]
+                prompt_ids = entry["prompt_ids"]
+                prompt_hidden_rows = np.ascontiguousarray(
+                    getattr(prefill_result, "hidden_seeds"),
+                    dtype=np.float32,
+                )
+                if prompt_hidden_rows.shape != (len(prompt_ids), hidden_size):
+                    raise RuntimeError(
+                        "packed MTP prefill returned hidden rows with shape "
+                        f"{prompt_hidden_rows.shape}, expected {(len(prompt_ids), hidden_size)}"
+                    )
+                _timing_add_ms(timing, "prefill_ms", prefill_ms)
+                _timing_add_ms(timing, "prefill_batch_ms", prefill_ms)
+                mtp_context_tokens, mtp_context_hidden_rows = _llama_cpp_mtp_catchup_rows(
+                    prompt_ids,
+                    prompt_hidden_rows,
+                )
+                prev_token = int(getattr(prefill_result, "token_id"))
+                generated_ids = [prev_token]
+                seq_position = int(session.position)
+                resident_context = _new_mtp_context(
+                    session,
+                    token_id=prev_token,
+                    position=int(session.position) - 1,
+                    mtp_block=resident_draft,
+                )
+                mtp_device_kv_capacity = max(
+                    1,
+                    len(mtp_context_tokens) + max_cycles * (2 * 2 + 2) + 4,
+                )
+                mtp_kv_alloc_start = time.perf_counter()
+                mtp_key_cache, mtp_value_cache, mtp_buffers = _allocate_mtp_dense_kv(
+                    runtime=session.runtime,
+                    capacity=mtp_device_kv_capacity,
+                    qk_head_dim=qk_head_dim,
+                    kv_heads=2,
+                )
+                _timing_set(timing, "mtp_kv_alloc_ms", mtp_kv_alloc_start)
+                slot = _GGUFMTPServingSlot(
+                    request_id=int(entry["request_id"]),
+                    prompt_ids=list(prompt_ids),
+                    session=session,
+                    resident_draft=resident_draft,
+                    resident_context=resident_context,
+                    mtp_key_cache=mtp_key_cache,
+                    mtp_value_cache=mtp_value_cache,
+                    mtp_buffers=mtp_buffers,
+                    hidden_size=hidden_size,
+                    prev_token=prev_token,
+                    seq_position=seq_position,
+                    generated_ids=generated_ids,
+                    timing=timing,
+                    session_pool_key=entry["session_pool_key"],
+                    draft_pool_key=entry["draft_pool_key"],
+                    done=(
+                        len(generated_ids) >= int(request.max_tokens)
+                        or _gguf_finished(generated_ids, self.tokenizer, request)
+                    ),
+                )
+                if mtp_context_tokens:
+                    context_positions = np.asarray(range(len(mtp_context_tokens)), dtype=np.int64)
+                    context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
+                    context_write_start = time.perf_counter()
+                    slot.mtp_device_kv_len = resident_draft.write_kv_rows(
+                        mtp_context_hidden_rows,
+                        context_tokens,
+                        positions=context_positions,
+                        rope_cos=assets.rope_cos,
+                        rope_sin=assets.rope_sin,
+                        dense_key_cache=mtp_key_cache,
+                        dense_value_cache=mtp_value_cache,
+                        dense_cache_len=0,
+                    )
+                    _timing_add(slot.timing, "mtp_context_write_ms", context_write_start)
+                _timing_set(slot.timing, "slot_open_total_ms", float(entry["slot_open_start"]))
+                entry["slot"] = slot
+                slots.append(slot)
+            return slots
+        except NotImplementedError:
+            close_acquired()
+            return None
+        except Exception:
+            close_acquired()
+            raise
 
     def _open_mtp_serving_slot(
         self,
