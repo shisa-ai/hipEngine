@@ -111,6 +111,9 @@ Artifacts:
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamdraft-rerun2.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packedstage-rerun.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packedstage-rerun.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-sweep.json`
 - `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-default-after-batcher.json`
 - `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-default-after-batcher.json`
@@ -169,12 +172,34 @@ tok/s**) and far below llama.cpp decode-only aggregate scaling. The real MTP
 concurrency target is therefore still open: c=8 phase buckets remain
 verifier-heavy (`slots_verify_phase_ms=12345.442`,
 `slots_draft_phase_ms=3261.185`, `slots_commit_phase_ms=584.696`). The next
-server blockers are therefore (1) reducing target verifier wall further or
-improving the rows>=16 packed verifier path before lifting the four-slot cap,
+server blockers are therefore (1) reducing target verifier wall further,
 (2) replacing per-cycle `ThreadPoolExecutor` stream-draft/verify launch overhead
 with a persistent or batched resident scheduler if profiling shows it matters,
 and (3) improving MTP row/acceptance economics enough to beat the stronger AR
 baseline.
+
+Follow-up packed-verifier instrumentation now splits the target verifier chunk
+inside the server artifact. On the warm c=8 diagnostic rerun
+(`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`),
+the headline is within the same retained regime (**52.68 tok/s**, diagnostic
+only), with `slots_verify_phase_ms=12248.655` and
+`target_packed_verify_total_ms=11653.156`. The biggest exposed sub-buckets are:
+
+| packed verifier c=8 bucket | total ms |
+| --- | ---: |
+| linear-attention layers | 6080.186 |
+| LM-head/sample drain | 2183.854 |
+| full-attention layers | 1958.680 |
+| final stream sync | 846.360 |
+| setup + initial state import + token upload | 456.700 |
+| scatter outputs | 97.646 |
+| hidden readback | 3.268 |
+
+This rejects the cheap next knobs: B1 server budget regressed warm c=8 to
+**50.94 tok/s** and verifier chunk-size 3 regressed to **51.21 tok/s**; chunk
+size 2 failed under four concurrent stream chunks. The next useful fix should
+start in packed verifier linear-attention rows and sampling/drain, not budget
+shape or smaller chunking.
 
 Follow-up AR c>N audit: the default OpenAI batcher now coalesces compatible
 non-MTP requests even when each request has its own cancellation token; grouped

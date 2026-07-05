@@ -143560,3 +143560,55 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile, JSON validation, and diff check passed; focused pytest passed
   (`10 passed`). The benchmark server on port `18082` was stopped after the
   retained reruns.
+
+## 2026-07-05 - GGUF server MTP packed-verifier buckets
+
+- Rejected the B1 server budget probe. A temporary
+  `HIPENGINE_GGUF_MTP_SERVER_DRAFT_N_MAX=1` route measured c=8 **38.41 tok/s**
+  cold and **50.94 tok/s** warm versus the retained B2 c=8 **52.18 tok/s**.
+  Warm buckets regressed verifier wall (`slots_verify_phase_ms=14320.607` vs
+  retained `12345.442`), so the knob was removed instead of retained.
+- Rejected smaller verifier chunking. A temporary MTP-only verifier chunk-size
+  knob showed chunk size 2 fails at c=8 with `streamed packed target verifier
+  chunk failed after launch` under four concurrent stream chunks. Chunk size 3
+  runs but regresses warm c=8 to **51.21 tok/s** and changes total predicted
+  tokens (`272` vs retained `274`), so the knob was removed.
+- Added packed target verifier sub-stage telemetry:
+  `last_packed_verify_stage_timings_ms` in `Qwen35GGUFResidentSession`, propagated
+  to server timings as `target_packed_verify_*_ms`. Focused validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'speculative_mtp_batch_verifier or speculative_mtp_stream'
+  ```
+  Pycompile passed and the focused tests passed (`4 passed`).
+- Server command for the retained instrumentation reruns on AMD Ryzen AI MAX+
+  395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- Warm packed-stage diagnostics:
+  - c=2 **44.25 tok/s**, `slots_verify_phase_ms=5925.069`,
+    `target_packed_verify_total_ms=5239.698`
+    (`benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packedstage-rerun.json`)
+  - c=4 **50.07 tok/s**, `slots_verify_phase_ms=7838.892`,
+    `target_packed_verify_total_ms=7549.004`
+    (`benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packedstage-rerun.json`)
+  - c=8 **52.68 tok/s**, `slots_verify_phase_ms=12248.655`,
+    `target_packed_verify_total_ms=11653.156`
+    (`benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`)
+- c=8 packed verifier sub-buckets are now explicit: linear-attention layers
+  **6080.186 ms**, LM-head/sample drain **2183.854 ms**, full-attention layers
+  **1958.680 ms**, final stream sync **846.360 ms**, setup+state import+token
+  upload **456.700 ms**, scatter **97.646 ms**, hidden readback **3.268 ms**.
+  This is diagnostic instrumentation, not a new speed claim; the active retained
+  MTP server speed row remains **46.75/49.65/52.18 tok/s** until a same-protocol
+  rerun supersedes it.
+- Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and
+  `docs/MTP-LLAMACPP-PARITY.md` with the new packed-stage artifacts and the
+  next target: packed verifier linear-attention rows plus sampling/drain, not
+  B1 budget or smaller verifier chunks.

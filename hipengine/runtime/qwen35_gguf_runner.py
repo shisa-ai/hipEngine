@@ -6711,6 +6711,7 @@ class Qwen35GGUFResidentSession:
     _lm_head_threads: int = field(default=128, init=False)
     _lm_head_stage1_blocks: int = field(default=0, init=False)
     last_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
+    last_packed_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
@@ -8032,6 +8033,16 @@ class Qwen35GGUFResidentSession:
         verification.
         """
 
+        stage_timings: dict[str, float] = {}
+        self.last_packed_verify_stage_timings_ms = stage_timings
+        total_start = time.perf_counter()
+
+        def add_stage(name: str, start: float) -> float:
+            now = time.perf_counter()
+            stage_timings[name] = stage_timings.get(name, 0.0) + (now - start) * 1000.0
+            return now
+
+        setup_start = time.perf_counter()
         job_list = list(jobs)
         if len(job_list) <= 1:
             raise NotImplementedError("packed target verifier requires at least two jobs")
@@ -8104,6 +8115,8 @@ class Qwen35GGUFResidentSession:
         )
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
+        add_stage("packed_verify_setup", setup_start)
+        sync_state_start = time.perf_counter()
         self._sync_packed_verify_initial_state(
             job_list,
             layout,
@@ -8111,10 +8124,14 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
         )
+        add_stage("packed_verify_sync_initial_state", sync_state_start)
+        token_upload_start = time.perf_counter()
         packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
         token_ids = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_ids), token_ids.nbytes, runtime=runtime)
+        add_stage("packed_verify_token_upload", token_upload_start)
 
+        embedding_start = time.perf_counter()
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
         hidden_seed_buf = self._verify_hidden_seed_buf
         if hidden_seed_buf is None:
@@ -8129,6 +8146,7 @@ class Qwen35GGUFResidentSession:
             stream=stream,
             runtime=runtime,
         )
+        add_stage("packed_verify_embedding", embedding_start)
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         linear_decode_scratch = replace(
@@ -8139,6 +8157,7 @@ class Qwen35GGUFResidentSession:
         block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
         with wmma_prefill_session(block_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                layer_start = time.perf_counter()
                 if layer_type == LINEAR_ATTENTION:
                     self.runner._run_linear_attention_prefill_layer_rows(
                         layer_id,
@@ -8157,6 +8176,7 @@ class Qwen35GGUFResidentSession:
                         sync_stage_timings=False,
                         stage_prefix="target_block_packed_linear_attn",
                     )
+                    add_stage("packed_verify_linear_attn_layers", layer_start)
                 elif layer_type == FULL_ATTENTION:
                     key_cache, value_cache = packed_state.full_cache(layer_id)
                     layer_scratch = replace(
@@ -8177,10 +8197,12 @@ class Qwen35GGUFResidentSession:
                         sync_stage_timings=False,
                         stage_prefix="target_block_packed_full_attn",
                     )
+                    add_stage("packed_verify_full_attn_layers", layer_start)
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 src, dst = dst, src
 
+            output_norm_start = time.perf_counter()
             output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
             gguf_rmsnorm_bf16_f32_weight(
                 src.ptr,
@@ -8209,14 +8231,20 @@ class Qwen35GGUFResidentSession:
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 stream,
             )
+            add_stage("packed_verify_output_norm_hidden", output_norm_start)
+            sample_start = time.perf_counter()
             token_host = self._sample_target_block_rows_from_hidden(
                 packed_scratch.norm.ptr,
                 rows,
                 activation_dtype=GGUF_ACTIVATION_BF16,
                 stream=stream,
             )
+            add_stage("packed_verify_lm_head_sample", sample_start)
+        hidden_readback_start = time.perf_counter()
         hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
         copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
+        add_stage("packed_verify_hidden_readback", hidden_readback_start)
+        scatter_start = time.perf_counter()
         results = self._scatter_packed_verify_outputs(
             job_list,
             layout,
@@ -8226,10 +8254,14 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
         )
+        add_stage("packed_verify_scatter_outputs", scatter_start)
+        sync_start = time.perf_counter()
         if stream:
             runtime.stream_synchronize(stream)
         else:
             runtime.device_synchronize()
+        add_stage("packed_verify_final_sync", sync_start)
+        stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
         return results
 
     def verify_target_block(
