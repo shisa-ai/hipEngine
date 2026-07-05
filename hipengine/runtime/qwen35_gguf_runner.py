@@ -618,6 +618,119 @@ def _build_gguf_packed_verify_layout(
 
 
 @dataclass(frozen=True)
+class _GGUFPackedTargetState:
+    """Per-slot target recurrent/KV state for a future packed verifier."""
+
+    slot_count: int
+    max_sequence_length: int
+    block_size: int
+    blocks_per_slot: int
+    total_positions: int
+    layer_conv_states: tuple[object | None, ...]
+    layer_recurrent_states: tuple[object | None, ...]
+    full_key_caches: tuple[object | None, ...]
+    full_value_caches: tuple[object | None, ...]
+    buffers: tuple[object, ...]
+
+    @classmethod
+    def allocate(
+        cls,
+        runner: Qwen35GGUFFullStackRunner,
+        *,
+        slot_count: int,
+        max_sequence_length: int,
+        runtime: HipRuntime,
+        block_size: int = 256,
+    ) -> "_GGUFPackedTargetState":
+        slot_count = int(slot_count)
+        max_sequence_length = int(max_sequence_length)
+        block_size = int(block_size)
+        if slot_count <= 0:
+            raise ValueError("slot_count must be positive")
+        if max_sequence_length <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        if block_size <= 0:
+            raise ValueError("block_size must be positive")
+        assert runner.weights is not None
+        cfg = runner.weights.config
+        blocks_per_slot = (max_sequence_length + block_size - 1) // block_size
+        total_positions = slot_count * blocks_per_slot * block_size
+
+        def buf(nbytes: int):
+            return malloc(nbytes, runtime=runtime)
+
+        conv_state_nbytes = (
+            slot_count
+            * int(runner.linear_qkv_width)
+            * int(cfg.ssm_conv_kernel)
+            * DType.FP32.itemsize
+        )
+        recurrent_state_nbytes = (
+            slot_count
+            * int(cfg.ssm_time_step_rank)
+            * int(cfg.ssm_state_size)
+            * int(runner.ssm_value_dim)
+            * DType.FP32.itemsize
+        )
+        kv_cache_nbytes = (
+            total_positions
+            * int(cfg.head_count_kv)
+            * int(cfg.key_length)
+            * DType.BF16.itemsize
+        )
+        layer_conv_states: list[object | None] = []
+        layer_recurrent_states: list[object | None] = []
+        full_key_caches: list[object | None] = []
+        full_value_caches: list[object | None] = []
+        buffers: list[object] = []
+        for layer_type in cfg.layer_types:
+            if layer_type == LINEAR_ATTENTION:
+                conv_state = buf(conv_state_nbytes)
+                recurrent_state = buf(recurrent_state_nbytes)
+                buffers.extend((conv_state, recurrent_state))
+                layer_conv_states.append(conv_state)
+                layer_recurrent_states.append(recurrent_state)
+                full_key_caches.append(None)
+                full_value_caches.append(None)
+            elif layer_type == FULL_ATTENTION:
+                key_cache = buf(kv_cache_nbytes)
+                value_cache = buf(kv_cache_nbytes)
+                buffers.extend((key_cache, value_cache))
+                layer_conv_states.append(None)
+                layer_recurrent_states.append(None)
+                full_key_caches.append(key_cache)
+                full_value_caches.append(value_cache)
+            else:
+                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+        return cls(
+            slot_count=slot_count,
+            max_sequence_length=max_sequence_length,
+            block_size=block_size,
+            blocks_per_slot=blocks_per_slot,
+            total_positions=total_positions,
+            layer_conv_states=tuple(layer_conv_states),
+            layer_recurrent_states=tuple(layer_recurrent_states),
+            full_key_caches=tuple(full_key_caches),
+            full_value_caches=tuple(full_value_caches),
+            buffers=tuple(buffers),
+        )
+
+    def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
+        conv_state = self.layer_conv_states[int(layer_id)]
+        recurrent_state = self.layer_recurrent_states[int(layer_id)]
+        if conv_state is None or recurrent_state is None:
+            raise ValueError(f"layer {layer_id} has no packed linear-attention state")
+        return conv_state, recurrent_state
+
+    def full_cache(self, layer_id: int) -> tuple[object, object]:
+        key_cache = self.full_key_caches[int(layer_id)]
+        value_cache = self.full_value_caches[int(layer_id)]
+        if key_cache is None or value_cache is None:
+            raise ValueError(f"layer {layer_id} has no packed full-attention KV cache")
+        return key_cache, value_cache
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFLinearAttentionBoundaryCapture:
     """Host-visible diagnostic snapshot for one GGUF linear-attention boundary."""
 
