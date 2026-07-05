@@ -1,20 +1,20 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-06 (hipEngine GGUF server MTP startup warmup:
-when `--speculative-mtp-serving` is enabled, startup now warms the MTP
-hidden-seed packed-prefill path and a tiny packed target verifier at supported
-widths 2/4. This removes the worst fresh-server c=2 MTP cliff: the cold
-after-AR-fix probe was **6.68 tok/s** with `prefill_batch_ms=54803.784`; after
-MTP prefill+verify warmup, first c=2 is **56.59 tok/s** with
-`prefill_batch_ms=2344.910`, `target_packed_verify_total_ms=5258.140`, and
-`target_packed_verify_scatter_outputs_ms=58.360`. Same-server warm MTP remains
-in the retained regime: c=2 rerun **59.71 tok/s** and c=4 rerun **65.57 tok/s**
-versus retained **59.94/66.60/54.88 tok/s** at c=2/c=4/c=8. Same-server AR is
-**65.91/82.41/63.17 tok/s**, so MTP remains below the stronger AR row. c=8 is
-not fixed by startup pool filling; the rejected pool-8 diagnostic raised startup
-memory/time and still measured only **35.25 tok/s** on rerun. The c=8 MTP
-verifier bucket remains
-dominant. A follow-up packed-verifier instrumentation
+Last updated: 2026-07-06 (hipEngine GGUF server MTP c=8 route-cap fix:
+GGUF MTP serving now caps the speculative route's backend groups at the proven
+four-slot shape, matching the AR route-cap lesson while leaving global
+`--max-active-requests 8` intact. This moves retained warm c=8 MTP
+**54.88 -> 65.79 tok/s** (+19.9%) and cuts packed verifier total
+**11777.715 -> 7661.600 ms** on the natural24 c=8 run; c=2/c=4 validation
+reruns are flat versus same-session pre-change retries. Same-server AR c=8
+sanity remains **82.02 tok/s**. The older startup warmup fix still removes the
+worst fresh-server c=2 MTP cliff: first c=2 after MTP prefill+verify warmup is
+**56.59 tok/s** with `prefill_batch_ms=2344.910`,
+`target_packed_verify_total_ms=5258.140`, and verifier scatter **58.360 ms**.
+Current retained warm MTP is **59.94/66.60/65.79 tok/s** at c=2/c=4/c=8,
+versus same-server AR **66.39/82.46/81.94 tok/s**. The c=8 MTP verifier bucket
+remains dominant, but the serving scheduler no longer enters the bad 8-slot MTP
+group shape. A follow-up packed-verifier instrumentation
 rerun keeps the same conclusion: warm c=8 measured **52.68 tok/s** with
 `slots_verify_phase_ms=12248.655` and packed verifier total
 `11653.156 ms`; the biggest exposed sub-buckets are linear-attention layers
@@ -39,6 +39,11 @@ new MTP startup-warm artifacts
 [`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json),
 [`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json), and
 [`2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json);
+new MTP route-cap validation artifacts
+[`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-routecap4-rerun2.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-routecap4-rerun2.json),
+[`2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap4-rerun2.json`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap4-rerun2.json),
+[`2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap4-rerun2.json`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap4-rerun2.json), and
+[`2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json);
 instrumentation artifact
 [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
@@ -86,10 +91,9 @@ sweep finds **B1 52.13 tok/s** as fastest, with **B2 52.04** and **B5 50.65**
 versus AR **54.80**; B2 is faster than B5, but neither should be used as a speed
 path for that token-cap protocol because B1 is fastest and all exact MTP budgets
 are below AR. The opt-in GGUF server route now provides real c>N
-llama-compat serving rows; current c=4/c=8 full-request MTP is **49.65/52.18
-tok/s**, at/above llama.cpp HIP full-request MTP **49.69/50.56 tok/s** but still
-well behind llama.cpp's decode-only aggregate scaling and the final hipEngine
-c>N target.
+llama-compat serving rows; current c=4/c=8 full-request MTP is **66.60/65.79
+tok/s**, above llama.cpp HIP full-request MTP **49.69/50.56 tok/s** but still
+behind hipEngine AR and llama.cpp's decode-only aggregate scaling.
 Natural24 diagnostic artifacts:
 `results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`,
 `results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json`,
@@ -527,9 +531,9 @@ full-suite speed row above.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
-| hipEngine `llama-compat` server MTP | 2 | 66.39 | **59.94** | 0.903x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + startup MTP prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-current-rerun.json), [`startup-first`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-routecap4-arfix.json); startup warmup fixes the old cold first-pass AR c=2 prefill outlier and removes the worst MTP c=2 first-request prefill/verifier cold cliff |
-| hipEngine `llama-compat` server MTP | 4 | 82.46 | **66.60** | 0.808x | same | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-current-rerun2.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-routecap4-arfix.json); AR got stronger after capacity-based packed workspace reuse and route-cap scheduling, so MTP c=4 is no longer near AR but remains faster than llama.cpp HIP/Vulkan full-request MTP c=4 |
-| hipEngine `llama-compat` server MTP | 8 | 81.94 | **54.88** | 0.670x | same; default GGUF AR route is capped at four backend requests while MTP remains on the speculative route | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-current-rerun2.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-routecap4-arfix.json), [`packed-stage`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json); c=8 AR is now fixed, and MTP c=8 still beats llama.cpp HIP/Vulkan full-request MTP but is verifier/economics-bound versus hipEngine AR. Verifier work is still led by linear attention, LM-head/sample drain, and full attention. |
+| hipEngine `llama-compat` server MTP | 2 | 66.39 | **59.94** | 0.903x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + MTP route cap 4 + startup MTP prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-current-rerun.json), [`startup-first`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json), [`route-cap check`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-routecap4-rerun2.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-routecap4-arfix.json); startup warmup fixes the old cold first-pass AR c=2 prefill outlier and removes the worst MTP c=2 first-request prefill/verifier cold cliff |
+| hipEngine `llama-compat` server MTP | 4 | 82.46 | **66.60** | 0.808x | same | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-current-rerun2.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json), [`route-cap check`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap4-rerun2.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-routecap4-arfix.json); AR got stronger after capacity-based packed workspace reuse and route-cap scheduling, so MTP c=4 is no longer near AR but remains faster than llama.cpp HIP/Vulkan full-request MTP c=4 |
+| hipEngine `llama-compat` server MTP | 8 | 81.94 | **65.79** | 0.803x | same; default GGUF AR and speculative MTP routes are both capped at four backend requests | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap4-rerun2.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-routecap4-arfix.json), [`AR sanity`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json), [`packed-stage`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json); c=8 MTP no longer enters the bad 8-slot backend group and moves **54.88 -> 65.79 tok/s**. Verifier work is still led by linear attention, LM-head/sample drain, and full attention. |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); full-request/client aggregate, decode-only aggregate is 52.19/75.56 |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); full-request/client aggregate, decode-only aggregate is 108.33/78.21 |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); full-request/client aggregate, decode-only aggregate is 124.71/78.56 |
