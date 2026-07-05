@@ -143136,3 +143136,12 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile passed; focused speculative-MTP tests passed (`3 passed`), full
   GGUF sampling tests passed (`26 passed`), and focused server tests passed
   (`5 passed`).
+
+## 2026-07-05 - MTP parity doc batch-verifier handoff
+
+- Updated `docs/MTP-LLAMACPP-PARITY.md` to record the post-`5818ef74` serving
+  status: the server scheduler has a tested `verify_target_blocks_batch()`
+  integration point, but hipEngine still must not advertise a production packed
+  verifier until a real multi-slot target session owns per-slot KV spans,
+  Conv/GDN recurrent state slabs, and captured verify rows. An internal serial
+  loop over current sessions would not count as llama.cpp-style target batching.

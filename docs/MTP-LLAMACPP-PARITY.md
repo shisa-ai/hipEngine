@@ -141,6 +141,16 @@ coalesce, and a forced 5 ms c=2 coalescing run spends **9692.167 ms** of
 **10991.786 ms** in the verifier phase. Until the packed target verifier exists,
 c>N serving still loses to AR.
 
+Implementation status after `5818ef74`: the server scheduler can now consume a
+real batch verifier via `verify_target_blocks_batch()` and will report
+`target_verify_batching=packed_slot_batch` only when that hook is actually used.
+No production `Qwen35GGUFResidentSession.verify_target_blocks_batch()` is exposed
+yet, because an internal loop over existing sessions would only relabel the
+per-slot serial path. The real next unit is a multi-slot target verifier/session
+that owns per-slot target KV spans, per-slot Conv/GDN recurrent state slabs, and
+per-slot captured verify rows, then verifies all active `[slot][B+1]` blocks in
+one target forward.
+
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 
 Decision: close the speed-gap sprint. The current `llama-compat` replication
