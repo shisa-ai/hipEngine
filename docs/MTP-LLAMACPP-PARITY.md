@@ -195,11 +195,25 @@ only), with `slots_verify_phase_ms=12248.655` and
 | scatter outputs | 97.646 |
 | hidden readback | 3.268 |
 
+An opt-in HIP-event split
+(`HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS=1`) confirms the same target
+without per-leaf synchronizes. The c=8 event run is slower due instrumentation
+(**47.17 tok/s**) but exposes queued GPU work: compact-WMMA selected gate/up
+**1860.286 ms**, verifier LM-head/sample **2049.108 ms**, full-attention layers
+**1984.223 ms**, QKV/gate projection **1295.096 ms**, selected down
+**805.975 ms**, and `wmma_total` read **163.563 ms**. Use it for ranking
+kernel bodies, not for headline speed.
+
 This rejects the cheap next knobs: B1 server budget regressed warm c=8 to
 **50.94 tok/s** and verifier chunk-size 3 regressed to **51.21 tok/s**; chunk
-size 2 failed under four concurrent stream chunks. The next useful fix should
-start in packed verifier linear-attention rows and sampling/drain, not budget
-shape or smaller chunking.
+size 2 failed under four concurrent stream chunks. Follow-up diagnostics also
+reject skipping the compact-WMMA `wmma_total` host read and selected-WMMA
+launch-bounds tuning as defaults: the no-read probe measured **52.05/51.96
+tok/s** at c=8, while launch-bounds=4 helped c=8 in isolation
+(**53.22/53.44 tok/s**) but regressed c=4 (**49.20/49.04 tok/s** vs retained
+**49.65**). The next useful fix should start in packed verifier
+linear-attention rows and sampling/drain with a real kernel/body change, not
+budget shape, smaller chunking, scalar-read removal, or launch-bounds tuning.
 
 Follow-up AR c>N audit: the default OpenAI batcher now coalesces compatible
 non-MTP requests even when each request has its own cancellation token; grouped

@@ -275,6 +275,63 @@ def _mark_sync_stage(
     return time.perf_counter()
 
 
+class _HipEventStageRecorder:
+    """HIP-event stage timing for queued work without per-stage synchronizes."""
+
+    def __init__(self, runtime: HipRuntime, *, enabled: bool, stream: int = 0) -> None:
+        self.runtime = runtime
+        self.enabled = bool(enabled)
+        self.stream = int(stream)
+        self._last_event: int | None = None
+        self._events: list[int] = []
+        self._intervals: list[tuple[tuple[str, ...], int, int]] = []
+
+    def start(self) -> None:
+        if not self.enabled:
+            return
+        self._last_event = self._new_event()
+        self.runtime.event_record(self._last_event, self.stream)
+
+    def mark(self, name: str, *aliases: str) -> None:
+        if not self.enabled:
+            return
+        if self._last_event is None:
+            self.start()
+        assert self._last_event is not None
+        event = self._new_event()
+        self.runtime.event_record(event, self.stream)
+        names = (str(name), *(str(alias) for alias in aliases))
+        self._intervals.append((names, self._last_event, event))
+        self._last_event = event
+
+    def resolve_into(self, timings: dict[str, float] | None) -> None:
+        if not self.enabled:
+            return
+        try:
+            for names, start, stop in self._intervals:
+                self.runtime.event_synchronize(stop)
+                ms = self.runtime.event_elapsed_time_ms(start, stop)
+                if ms < 0.0:
+                    _add_sync_stage_timing(timings, f"{names[0]}_negative_event_elapsed", -ms)
+                    _add_sync_stage_timing(timings, "packed_verify_gpu_negative_event_elapsed", -ms)
+                    ms = 0.0
+                for name in names:
+                    _add_sync_stage_timing(timings, name, ms)
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        while self._events:
+            self.runtime.event_destroy(self._events.pop())
+        self._last_event = None
+        self._intervals.clear()
+
+    def _new_event(self) -> int:
+        event = self.runtime.event_create()
+        self._events.append(event)
+        return event
+
+
 @dataclass(frozen=True)
 class Qwen35GGUFNextTokenProbeResult:
     token_id: int
@@ -2837,6 +2894,7 @@ class Qwen35GGUFFullStackRunner:
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_linear_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         assert self.weights is not None
         if rows <= 0:
@@ -2870,6 +2928,8 @@ class Qwen35GGUFFullStackRunner:
             t_norm_qkv_gate_ms += norm_ms
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_norm", norm_ms)
             t_stage = time.perf_counter()
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_attn_norm")
         qkv_gate_route = "pair"
         pair_fused = False
         linear_qkv_f32_ready = False
@@ -3045,6 +3105,11 @@ class Qwen35GGUFFullStackRunner:
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_attn_qkv_gate_{qkv_gate_route}", qkv_gate_ms)
             _add_sync_stage_timing(stage_timings, f"{stage_prefix}_norm_qkv_gate", t_norm_qkv_gate_ms)
             t_stage = time.perf_counter()
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(
+                f"{stage_prefix}_attn_qkv_gate_{qkv_gate_route}",
+                f"{stage_prefix}_attn_qkv_gate",
+            )
         alpha_beta_route = self._run_linear_attention_alpha_beta_rows(
             layer,
             scratch.norm.ptr,
@@ -3089,6 +3154,11 @@ class Qwen35GGUFFullStackRunner:
                 sync_stages,
                 f"{stage_prefix}_alpha_beta",
                 t_stage,
+            )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(
+                f"{stage_prefix}_alpha_beta_{alpha_beta_route}",
+                f"{stage_prefix}_alpha_beta",
             )
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
@@ -3178,23 +3248,26 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
+            chain_conv_stage_name = (
+                f"{stage_prefix}_prefill_conv_state_rows"
+                if use_prefill_gdn_capture and not use_prefill_gdn_chain_conv
+                else (
+                    f"{stage_prefix}_prefill_gdn_chain_conv_f32"
+                    if use_prefill_gdn_chain_conv
+                    else f"{stage_prefix}_chain_conv_f32"
+                    if use_f32_chain_conv
+                    else f"{stage_prefix}_chain_conv"
+                )
+            )
             t_stage = _mark_sync_stage(
                 runtime,
                 stage_timings,
                 sync_stages,
-                (
-                    f"{stage_prefix}_prefill_conv_state_rows"
-                    if use_prefill_gdn_capture and not use_prefill_gdn_chain_conv
-                    else (
-                        f"{stage_prefix}_prefill_gdn_chain_conv_f32"
-                        if use_prefill_gdn_chain_conv
-                        else f"{stage_prefix}_chain_conv_f32"
-                        if use_f32_chain_conv
-                        else f"{stage_prefix}_chain_conv"
-                    )
-                ),
+                chain_conv_stage_name,
                 t_stage,
             )
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark(chain_conv_stage_name)
             if use_prefill_gdn_capture:
                 if active_segments > 1:
                     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy(
@@ -3248,6 +3321,8 @@ class Qwen35GGUFFullStackRunner:
                     f"{stage_prefix}_prefill_gdn_state_rows",
                     t_stage,
                 )
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark(f"{stage_prefix}_prefill_gdn_state_rows")
             else:
                 chain_gdn = (
                     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16
@@ -3275,17 +3350,20 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
+                chain_gdn_stage_name = (
+                    f"{stage_prefix}_chain_gdn_regular"
+                    if _gguf_verify_capture_regular_chain_gdn_enabled()
+                    else f"{stage_prefix}_chain_gdn"
+                )
                 t_stage = _mark_sync_stage(
                     runtime,
                     stage_timings,
                     sync_stages,
-                    (
-                        f"{stage_prefix}_chain_gdn_regular"
-                        if _gguf_verify_capture_regular_chain_gdn_enabled()
-                        else f"{stage_prefix}_chain_gdn"
-                    ),
+                    chain_gdn_stage_name,
                     t_stage,
                 )
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark(chain_gdn_stage_name)
             prefill_score_ready = False
             if use_prefill_score_capture and not use_prefill_gdn_capture:
                 runtime.memcpy_async(
@@ -3350,6 +3428,8 @@ class Qwen35GGUFFullStackRunner:
                     f"{stage_prefix}_prefill_score",
                     t_stage,
                 )
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark(f"{stage_prefix}_prefill_score")
             if commit_final_linear_state:
                 runtime.memcpy_async(
                     conv_state.ptr,
@@ -3372,6 +3452,8 @@ class Qwen35GGUFFullStackRunner:
                     f"{stage_prefix}_final_state_copy",
                     t_stage,
                 )
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark(f"{stage_prefix}_final_state_copy")
             attn_out_f32_ptr: int | None = None
             f32_attn_out_ready = False
             ssm_out_input_ptr = (
@@ -3402,6 +3484,8 @@ class Qwen35GGUFFullStackRunner:
                     f"{stage_prefix}_chain_gdn_out_bf16",
                     t_stage,
                 )
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark(f"{stage_prefix}_chain_gdn_out_bf16")
             if (
                 _gguf_verify_f32_attn_out_enabled()
                 and ssm_out_activation_dtype == GGUF_ACTIVATION_F32
@@ -3476,6 +3560,8 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_ssm_out",
                 t_stage,
             )
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark(f"{stage_prefix}_ssm_out")
             self._run_post_attention_ffn_rows(
                 layer_id,
                 hidden_ptr,
@@ -3491,7 +3577,10 @@ class Qwen35GGUFFullStackRunner:
                 stage_timings=stage_timings,
                 sync_stage_timings=sync_stage_timings,
                 stage_prefix=f"{stage_prefix}_ffn",
+                gpu_stage_recorder=gpu_stage_recorder,
             )
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
             return
         if not linear_qkv_f32_ready:
             bf16_to_f32(
@@ -3510,6 +3599,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_qkv_bf16_to_f32",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_qkv_bf16_to_f32")
         qwen35_linear_attn_conv_prefill_f32(
             scratch.linear_qkv_f32.ptr,
             conv_state.ptr,
@@ -3528,6 +3619,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_prefill_conv",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_prefill_conv")
         self._run_gdn_prefill(
             layer=layer,
             scratch=scratch,
@@ -3544,6 +3637,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_prefill_gdn",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_prefill_gdn")
         if not _try_launch_dense_q8_single_dp4a(
             layer.weight("ssm_out"),
             scratch.recurrent_bf16.ptr,
@@ -3572,6 +3667,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_ssm_out",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_ssm_out")
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
@@ -3586,7 +3683,10 @@ class Qwen35GGUFFullStackRunner:
             stage_timings=stage_timings,
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
+            gpu_stage_recorder=gpu_stage_recorder,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
 
     def _run_full_attention_layer(
         self,
@@ -4031,6 +4131,7 @@ class Qwen35GGUFFullStackRunner:
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -4103,6 +4204,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_post_norm_residual",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_post_norm_residual")
         if self.weights.config.is_moe:
             if rows == 1:
                 self._run_post_attention_moe_c1(
@@ -4128,6 +4231,7 @@ class Qwen35GGUFFullStackRunner:
                     stage_timings=stage_timings,
                     sync_stage_timings=sync_stage_timings,
                     stage_prefix=f"{stage_prefix}_moe",
+                    gpu_stage_recorder=gpu_stage_recorder,
                 )
             return
         if not launch_gguf_linear_pair(
@@ -4169,6 +4273,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_gate_up",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_gate_up")
         silu_mul_separate_out_bf16(
             scratch.ffn_gate_up.ptr,
             scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
@@ -4185,6 +4291,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_silu",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_silu")
         launch_gguf_linear(
             layer.weight("ffn_down"),
             scratch.ffn_intermediate.ptr,
@@ -4229,6 +4337,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_down_residual",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_down_residual")
 
     def _run_post_attention_moe_c1(
         self,
@@ -4709,6 +4819,7 @@ class Qwen35GGUFFullStackRunner:
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn_moe",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
@@ -4789,6 +4900,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_router",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_router")
 
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
@@ -4815,6 +4928,8 @@ class Qwen35GGUFFullStackRunner:
             top_k=top_k,
             stream=stream,
             runtime=runtime,
+            gpu_stage_recorder=gpu_stage_recorder,
+            stage_prefix=f"{stage_prefix}_compact_wmma",
         ):
             _mark_sync_stage(
                 runtime,
@@ -4849,6 +4964,8 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_compact_gemv",
                 t_stage,
             )
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark(f"{stage_prefix}_compact_gemv")
             return
         gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
         expert_silu_ready = False
@@ -4968,6 +5085,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_expert_gate_up",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_expert_gate_up")
         if not expert_silu_ready:
             if f32_selected_intermediate:
                 silu_mul_separate_out_f32(
@@ -5004,6 +5123,8 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_expert_silu",
                 t_stage,
             )
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark(f"{stage_prefix}_expert_silu")
         selected_down_is_f32 = False
         if expert_sidecar is not None:
             _launch_selected_expert_pack8_moe_linear(
@@ -5057,6 +5178,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_expert_down",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_expert_down")
 
         shared_q8_dp4a_enabled = _gguf_dense_q8_dp4a_shared_enabled()
         if shared_q8_dp4a_enabled and shared_f32_ptr is not None:
@@ -5188,6 +5311,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_shared_gate_up_silu",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_gate_up_silu")
         shared_down_is_f32 = False
         if (
             _gguf_use_f32_shared_down(scratch, f32_residual, selected_down_is_f32)
@@ -5241,6 +5366,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_shared_down",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_down")
         if f32_residual:
             if selected_down_is_f32 and shared_down_is_f32:
                 weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w(
@@ -5317,6 +5444,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_combine_residual",
             t_stage,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_combine_residual")
 
     def close(self) -> None:
         if self.weights is not None:
@@ -5380,6 +5509,8 @@ _GGUF_VERIFY_CAPTURE_BF16_GDN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV"
 _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL"
+_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
+_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _GGUF_TOKEN_EMBEDDING_TENSOR = "token_embd.weight"
 _Q8_1_BLOCK = 32
@@ -5785,6 +5916,14 @@ def _gguf_verify_capture_prefill_gdn_chain_conv_enabled() -> bool:
 
 def _gguf_verify_capture_score_prefill_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV, False)
+
+
+def _gguf_packed_verify_gpu_stage_timings_enabled() -> bool:
+    return _env_flag(_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV, False)
+
+
+def _gguf_compact_wmma_no_read_max_selected_rows() -> int:
+    return max(0, _env_int(_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV, 0))
 
 
 def _gguf_token_embedding_rows_f32(
@@ -8130,6 +8269,13 @@ class Qwen35GGUFResidentSession:
         token_ids = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_ids), token_ids.nbytes, runtime=runtime)
         add_stage("packed_verify_token_upload", token_upload_start)
+        gpu_stage_recorder = (
+            _HipEventStageRecorder(runtime, enabled=True, stream=stream)
+            if _gguf_packed_verify_gpu_stage_timings_enabled()
+            else None
+        )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.start()
 
         embedding_start = time.perf_counter()
         row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
@@ -8147,6 +8293,8 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         add_stage("packed_verify_embedding", embedding_start)
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark("packed_verify_gpu_embedding")
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         linear_decode_scratch = replace(
@@ -8174,7 +8322,8 @@ class Qwen35GGUFResidentSession:
                         out_f32_ptr=None,
                         stage_timings=None,
                         sync_stage_timings=False,
-                        stage_prefix="target_block_packed_linear_attn",
+                        stage_prefix="packed_verify_gpu_linear_attn",
+                        gpu_stage_recorder=gpu_stage_recorder,
                     )
                     add_stage("packed_verify_linear_attn_layers", layer_start)
                 elif layer_type == FULL_ATTENTION:
@@ -8197,6 +8346,8 @@ class Qwen35GGUFResidentSession:
                         sync_stage_timings=False,
                         stage_prefix="target_block_packed_full_attn",
                     )
+                    if gpu_stage_recorder is not None:
+                        gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
                     add_stage("packed_verify_full_attn_layers", layer_start)
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -8232,6 +8383,8 @@ class Qwen35GGUFResidentSession:
                 stream,
             )
             add_stage("packed_verify_output_norm_hidden", output_norm_start)
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark("packed_verify_gpu_output_norm_hidden")
             sample_start = time.perf_counter()
             token_host = self._sample_target_block_rows_from_hidden(
                 packed_scratch.norm.ptr,
@@ -8240,6 +8393,8 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
             )
             add_stage("packed_verify_lm_head_sample", sample_start)
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark("packed_verify_gpu_lm_head_sample")
         hidden_readback_start = time.perf_counter()
         hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
         copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
@@ -8261,6 +8416,8 @@ class Qwen35GGUFResidentSession:
         else:
             runtime.device_synchronize()
         add_stage("packed_verify_final_sync", sync_start)
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.resolve_into(stage_timings)
         stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
         return results
 
@@ -12705,6 +12862,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
     top_k: int,
     stream: int,
     runtime: HipRuntime,
+    gpu_stage_recorder: _HipEventStageRecorder | None = None,
+    stage_prefix: str = "target_block_ffn_moe_compact_wmma",
 ) -> bool:
     """Run the opt-in P8.6 compact grouped-MoE WMMA path when available."""
 
@@ -12783,23 +12942,39 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
+    wmma_rows_capacity = int(getattr(scratch, "moe_wmma_rows_capacity", 0))
+    wmma_total_upper_rows = int(selected_rows) * 16
+    use_wmma_total_upper_bound = (
+        selected_rows <= _gguf_compact_wmma_no_read_max_selected_rows()
+        and wmma_total_upper_rows <= wmma_rows_capacity
+    )
     qwen35_moe_wmma_tile_map(
         scratch.moe_expert_start_compact.ptr,
         scratch.moe_expert_start_wmma.ptr,
         scratch.moe_tile_expert.ptr,
         scratch.moe_wmma_total.ptr,
         num_experts,
+        tile_capacity=selected_rows if use_wmma_total_upper_bound else 0,
         stream=stream,
         runtime=runtime,
     )
-    wmma_total_rows = _read_i64_device_scalar(
-        scratch.moe_wmma_total,
-        scratch.moe_wmma_total_host,
-        stream=stream,
-        runtime=runtime,
-    )
-    if wmma_total_rows <= 0 or wmma_total_rows > int(getattr(scratch, "moe_wmma_rows_capacity", wmma_total_rows)):
-        return False
+    if gpu_stage_recorder is not None:
+        gpu_stage_recorder.mark(f"{stage_prefix}_scheduler", stage_prefix)
+    if use_wmma_total_upper_bound:
+        wmma_total_rows = wmma_total_upper_rows
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_wmma_total_upper_bound", stage_prefix)
+    else:
+        wmma_total_rows = _read_i64_device_scalar(
+            scratch.moe_wmma_total,
+            scratch.moe_wmma_total_host,
+            stream=stream,
+            runtime=runtime,
+        )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_read_wmma_total", stage_prefix)
+        if wmma_total_rows <= 0 or wmma_total_rows > wmma_rows_capacity:
+            return False
 
     gate_up_input_ptr = scratch.moe_down_out.ptr
     if plan.gate_up_requires_ds4_input:
@@ -12814,6 +12989,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
             runtime=runtime,
         )
         gate_up_input_ptr = scratch.moe_q8_1_ds4.ptr
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_gate_up_ds4_pack", stage_prefix)
 
     gate_up_fn(
         gate_up_input_ptr,
@@ -12832,6 +13009,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
+    if gpu_stage_recorder is not None:
+        gpu_stage_recorder.mark(f"{stage_prefix}_selected_gate_up", stage_prefix)
     silu_mul_dual_out_bf16(
         scratch.ffn_gate_up.ptr,
         scratch.ffn_intermediate.ptr,
@@ -12840,6 +13019,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
+    if gpu_stage_recorder is not None:
+        gpu_stage_recorder.mark(f"{stage_prefix}_selected_silu", stage_prefix)
     down_fn(
         scratch.ffn_intermediate.ptr,
         scratch.moe_expert_start_compact.ptr,
@@ -12855,6 +13036,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
+    if gpu_stage_recorder is not None:
+        gpu_stage_recorder.mark(f"{stage_prefix}_selected_down", stage_prefix)
     weighted_lanes_sum_out_bf16_f32w(
         scratch.moe_down_out.ptr,
         scratch.moe_sorted_weights.ptr,
@@ -12867,6 +13050,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
+    if gpu_stage_recorder is not None:
+        gpu_stage_recorder.mark(f"{stage_prefix}_selected_sum", stage_prefix)
 
     shared_ffn = int(cfg.expert_shared_feed_forward_length)
     if launch_gguf_linear_pair_concat(
@@ -12888,6 +13073,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_gate_up_silu", stage_prefix)
     else:
         if not launch_gguf_linear_pair(
             layer.weight("ffn_gate_shexp"),
@@ -12930,6 +13117,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_gate_up_silu", stage_prefix)
     launch_gguf_linear(
         layer.weight("ffn_down_shexp"),
         scratch.moe_shared_intermediate.ptr,
@@ -12940,6 +13129,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
+    if gpu_stage_recorder is not None:
+        gpu_stage_recorder.mark(f"{stage_prefix}_shared_down", stage_prefix)
     shared_gate_combine_residual_batch_out_bf16(
         scratch.ffn_down.ptr,
         scratch.moe_shared_out.ptr,
@@ -12952,6 +13143,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
+    if gpu_stage_recorder is not None:
+        gpu_stage_recorder.mark(f"{stage_prefix}_combine_residual", stage_prefix)
     return True
 
 

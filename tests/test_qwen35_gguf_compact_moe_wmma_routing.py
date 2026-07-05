@@ -15,6 +15,7 @@ def _reset_wmma_prefill_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_WMMA_PREFILL", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_T16_DS4_PREFILL", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", raising=False)
     set_wmma_prefill_enabled(None)
     yield
     set_wmma_prefill_enabled(None)
@@ -131,6 +132,26 @@ def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypat
     assert ("ds4_pack", (scratch.moe_down_out.ptr, scratch.moe_q8_1_ds4.ptr, 6, 256)) in calls
     assert ("compact_gate_up_ds4", (scratch.moe_q8_1_ds4.ptr, 6, 256, 256, 256, 4, 16)) in calls
     assert ("compact_down", (6, 256, 256, 4, 16)) in calls
+
+
+def test_compact_wmma_small_rows_skips_host_wmma_total_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    scratch.moe_wmma_rows_capacity = 96
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    _patch_compact_scheduler(monkeypatch, calls)
+    _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k")
+    monkeypatch.setattr(qgr, "_read_i64_device_scalar", _fail_if_called("read_wmma_total"))
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "6")
+    set_wmma_prefill_enabled(True)
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+
+    assert ("tile_map", 6) in calls
+    assert ("compact_gate_up", (6, 256, 256, 256, 4, 96)) in calls
+    assert ("compact_down", (6, 256, 256, 4, 96)) in calls
 
 
 def test_q4k_selected_dual_dp4a_off_by_default_keeps_raw_pair(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -346,7 +367,11 @@ def _patch_compact_scheduler(monkeypatch: pytest.MonkeyPatch, calls: list[tuple[
         "qwen35_moe_group_scatter_gather_lowp",
         lambda *args, **kwargs: calls.append(("group_scatter_gather", None)),
     )
-    monkeypatch.setattr(qgr, "qwen35_moe_wmma_tile_map", lambda *args, **kwargs: calls.append(("tile_map", None)))
+    monkeypatch.setattr(
+        qgr,
+        "qwen35_moe_wmma_tile_map",
+        lambda *args, **kwargs: calls.append(("tile_map", kwargs.get("tile_capacity"))),
+    )
     monkeypatch.setattr(
         qgr,
         "silu_mul_dual_out_bf16",
