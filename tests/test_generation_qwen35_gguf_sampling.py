@@ -713,6 +713,108 @@ def test_gguf_speculative_mtp_batch_verifier_chunks_above_four_slots() -> None:
     assert all("target_verify_batch_ms" in slot.timing for slot in slots)
 
 
+def test_gguf_speculative_mtp_batch_verifier_streams_chunks_above_four_slots(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        next_stream = 900
+
+        def stream_create(self, *, nonblocking=True):
+            stream = FakeRuntime.next_stream
+            FakeRuntime.next_stream += 1
+            calls.append(("stream_create", stream, bool(nonblocking)))
+            return stream
+
+        def stream_synchronize(self, stream):
+            calls.append(("stream_sync", int(stream)))
+
+        def stream_destroy(self, stream):
+            calls.append(("stream_destroy", int(stream)))
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+            self.runtime = FakeRuntime()
+
+        def verify_target_blocks_batch(self, jobs, *, stream: int = 0):
+            calls.append(("verify_batch", self.slot_id, int(stream), tuple(job["session"].slot_id for job in jobs)))
+            return [
+                SimpleNamespace(
+                    token_ids=[2, 3],
+                    hidden_seeds=np.ones((2, 2), dtype=np.float32),
+                    linear_state_rows_captured=True,
+                )
+                for _job in jobs
+            ]
+
+        def reset(self):
+            calls.append(("reset", self.slot_id))
+
+        def close(self):
+            calls.append(("session_close", self.slot_id))
+
+    class FakeDraft:
+        def close(self):
+            calls.append(("draft_close",))
+
+    slots = [
+        qwen35_gguf._GGUFMTPServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            resident_draft=FakeDraft(),
+            resident_context=SimpleNamespace(),
+            mtp_key_cache=SimpleNamespace(ptr=0x1000 + slot_id),
+            mtp_value_cache=SimpleNamespace(ptr=0x2000 + slot_id),
+            mtp_buffers=[],
+            hidden_size=2,
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+            mtp_device_kv_len=4,
+        )
+        for slot_id in range(8)
+    ]
+    drafted_cycles = [
+        qwen35_gguf._GGUFMTPDraftedCycle(
+            slot=slot,
+            advance_start=0.0,
+            cycle_mtp_kv_base_len=4,
+            draft_tokens=[2],
+            block_inputs=[1, 2],
+            block_start=4,
+            direct_commit_exact=True,
+        )
+        for slot in slots
+    ]
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY", "1")
+    monkeypatch.setattr(qwen35_gguf, "_free_mtp_buffers", lambda buffers, *, runtime: None)
+
+    generator = _generator()
+    results = generator._try_verify_mtp_serving_cycles_batch(drafted_cycles)
+
+    assert len(results or []) == 8
+    assert [call for call in calls if call[0] == "stream_create"] == [
+        ("stream_create", 900, True),
+        ("stream_create", 901, True),
+    ]
+    assert sorted(call for call in calls if call[0] == "verify_batch") == [
+        ("verify_batch", 0, 900, (0, 1, 2, 3)),
+        ("verify_batch", 4, 901, (4, 5, 6, 7)),
+    ]
+    assert all("target_verify_batch_ms" in slot.timing for slot in slots)
+    assert all("target_verify_stream_chunks_ms" in slot.timing for slot in slots)
+
+    generator._close_mtp_serving_slots(slots, reuse=False)
+
+    assert [call for call in calls if call[0] == "stream_destroy"] == [
+        ("stream_destroy", 901),
+        ("stream_destroy", 900),
+    ]
+
+
 def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
     payload = qwen35_gguf._gguf_mtp_last_batch_generation(
         _FakeTokenizer(),

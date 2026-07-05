@@ -90,6 +90,7 @@ _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
+_GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 
 
 def _gguf_ar_packed_decode_enabled() -> bool:
@@ -106,6 +107,10 @@ def _gguf_ar_stream_prefill_enabled() -> bool:
 
 def _gguf_mtp_server_stream_draft_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_STREAM_DRAFT_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_mtp_server_stream_verify_enabled() -> bool:
+    return os.environ.get(_GGUF_MTP_SERVER_STREAM_VERIFY_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -143,6 +148,7 @@ class _GGUFMTPServingSlot:
     draft_pool_key: int | None = None
     mtp_device_kv_len: int = 0
     draft_stream: int = 0
+    verify_stream: int = 0
     done: bool = False
 
 
@@ -1785,37 +1791,104 @@ class Qwen35GGUFBringupGenerator:
                 take -= 1
             chunks.append(drafted_cycles[index:index + take])
             index += take
+        if len(chunks) > 1 and _gguf_mtp_server_stream_verify_enabled():
+            streamed_results = self._try_verify_mtp_serving_cycle_chunks_streams(chunks)
+            if streamed_results is not None:
+                return streamed_results
         block_results: list[Any] = []
         for chunk in chunks:
-            first_session = chunk[0].slot.session
-            verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
-            if not callable(verify_batch):
+            chunk_results = self._verify_mtp_serving_cycle_chunk(chunk)
+            if chunk_results is None:
+                if block_results:
+                    raise RuntimeError("packed target verifier chunk failed after a prior chunk advanced state")
                 return None
-            jobs = [
-                {
-                    "session": drafted.slot.session,
-                    "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
-                    "bulk_attention_mode": "bulk",
-                    "use_wmma_prefill": True,
-                    "capture_linear_state_rows": True,
-                    "defer_linear_state_commit": True,
-                }
-                for drafted in chunk
-            ]
-            verify_start = time.perf_counter()
-            try:
-                batch_result = verify_batch(jobs)
-            except NotImplementedError:
-                return None
-            if batch_result is None:
-                return None
-            chunk_results = list(batch_result)
-            verify_ms = _timing_ms_since(verify_start)
-            for drafted in chunk:
-                _timing_add_ms(drafted.slot.timing, "target_verify_ms", verify_ms)
-                _timing_add_ms(drafted.slot.timing, "target_verify_batch_ms", verify_ms)
             block_results.extend(chunk_results)
         return block_results
+
+    def _try_verify_mtp_serving_cycle_chunks_streams(
+        self,
+        chunks: list[list[_GGUFMTPDraftedCycle]],
+    ) -> list[Any] | None:
+        if len(chunks) <= 1:
+            return None
+        for chunk in chunks:
+            if not chunk:
+                return None
+            owner_slot = chunk[0].slot
+            runtime = getattr(owner_slot.session, "runtime", None)
+            if not callable(getattr(runtime, "stream_create", None)):
+                return None
+            if not callable(getattr(runtime, "stream_synchronize", None)):
+                return None
+            if not callable(getattr(runtime, "stream_destroy", None)):
+                return None
+            if not callable(getattr(owner_slot.session, "verify_target_blocks_batch", None)):
+                return None
+        for chunk in chunks:
+            owner_slot = chunk[0].slot
+            if owner_slot.verify_stream == 0:
+                owner_slot.verify_stream = int(owner_slot.session.runtime.stream_create(nonblocking=True))
+
+        def verify_chunk(chunk: list[_GGUFMTPDraftedCycle]) -> list[Any] | None:
+            return self._verify_mtp_serving_cycle_chunk(
+                chunk,
+                stream=int(chunk[0].slot.verify_stream),
+            )
+
+        stream_start = time.perf_counter()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+            futures = [(chunk, pool.submit(verify_chunk, chunk)) for chunk in chunks]
+            chunk_results: list[tuple[list[_GGUFMTPDraftedCycle], list[Any]]] = []
+            for chunk, future in futures:
+                result = future.result()
+                if result is None:
+                    raise RuntimeError("streamed packed target verifier chunk failed after launch")
+                chunk_results.append((chunk, result))
+        stream_ms = _timing_ms_since(stream_start)
+        block_results: list[Any] = []
+        for chunk, result in chunk_results:
+            for drafted in chunk:
+                _timing_add_ms(drafted.slot.timing, "target_verify_stream_chunks_ms", stream_ms)
+            block_results.extend(result)
+        return block_results
+
+    def _verify_mtp_serving_cycle_chunk(
+        self,
+        chunk: list[_GGUFMTPDraftedCycle],
+        *,
+        stream: int = 0,
+    ) -> list[Any] | None:
+        first_session = chunk[0].slot.session
+        verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
+        if not callable(verify_batch):
+            return None
+        jobs = [
+            {
+                "session": drafted.slot.session,
+                "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
+                "bulk_attention_mode": "bulk",
+                "use_wmma_prefill": True,
+                "capture_linear_state_rows": True,
+                "defer_linear_state_commit": True,
+            }
+            for drafted in chunk
+        ]
+        verify_start = time.perf_counter()
+        try:
+            if stream:
+                batch_result = verify_batch(jobs, stream=int(stream))
+            else:
+                batch_result = verify_batch(jobs)
+        except NotImplementedError:
+            return None
+        if batch_result is None:
+            return None
+        chunk_results = list(batch_result)
+        verify_ms = _timing_ms_since(verify_start)
+        for drafted in chunk:
+            _timing_add_ms(drafted.slot.timing, "target_verify_ms", verify_ms)
+            _timing_add_ms(drafted.slot.timing, "target_verify_batch_ms", verify_ms)
+        return chunk_results
 
     def _commit_mtp_serving_cycle(
         self,
@@ -1927,6 +2000,9 @@ class Qwen35GGUFBringupGenerator:
 
     def _close_mtp_serving_slots(self, slots: list[_GGUFMTPServingSlot], *, reuse: bool = True) -> None:
         for slot in reversed(slots):
+            if slot.verify_stream:
+                slot.session.runtime.stream_destroy(int(slot.verify_stream))
+                slot.verify_stream = 0
             if slot.draft_stream:
                 slot.session.runtime.stream_destroy(int(slot.draft_stream))
                 slot.draft_stream = 0
