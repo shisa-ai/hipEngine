@@ -262,6 +262,59 @@ def _timing_set(timing: dict[str, float], key: str, start: float) -> None:
     timing[key] = _timing_ms_since(start)
 
 
+def _mtp_cycle_summary(cycles: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    direct_cycles = [
+        cycle
+        for cycle in cycles
+        if str(cycle.get("mode", "")) == "llama_compat_direct_commit"
+    ]
+    accept_hist: dict[str, int] = {}
+    shape_hist: dict[str, int] = {}
+    full_accept_cycles = 0
+    partial_accept_cycles = 0
+    reject_cycles = 0
+    target_rows = 0
+    linear_state_commit_rows = 0
+    hidden_seed_rows_needed = 0
+    for cycle in direct_cycles:
+        generated = max(0, int(cycle.get("generated_draft_tokens", 0)))
+        accepted = max(0, int(cycle.get("accepted_draft_tokens", 0)))
+        rows = generated + 1
+        target_rows += rows
+        linear_state_commit_rows += 1
+        hidden_seed_rows_needed += min(accepted + 1, rows)
+        accept_key = str(accepted)
+        accept_hist[accept_key] = accept_hist.get(accept_key, 0) + 1
+        shape_key = f"draft{generated}_accept{accepted}"
+        shape_hist[shape_key] = shape_hist.get(shape_key, 0) + 1
+        if accepted <= 0:
+            reject_cycles += 1
+        elif accepted >= generated:
+            full_accept_cycles += 1
+        else:
+            partial_accept_cycles += 1
+    direct_count = len(direct_cycles)
+    return {
+        "direct_cycles": direct_count,
+        "full_accept_cycles": full_accept_cycles,
+        "partial_accept_cycles": partial_accept_cycles,
+        "reject_cycles": reject_cycles,
+        "full_accept_rate": (
+            float(full_accept_cycles) / float(direct_count)
+            if direct_count > 0
+            else 0.0
+        ),
+        "accepted_draft_tokens_histogram": dict(sorted(accept_hist.items())),
+        "cycle_shape_histogram": dict(sorted(shape_hist.items())),
+        "linear_state_captured_rows": target_rows,
+        "linear_state_commit_rows": linear_state_commit_rows,
+        "linear_state_extra_rows": max(0, target_rows - linear_state_commit_rows),
+        "hidden_seed_captured_rows": target_rows,
+        "hidden_seed_needed_rows": hidden_seed_rows_needed,
+        "hidden_seed_extra_rows": max(0, target_rows - hidden_seed_rows_needed),
+    }
+
+
 def _add_mtp_cycle_timing_metrics(
     timing: dict[str, float],
     cycles: list[dict[str, Any]] | tuple[dict[str, Any], ...],
@@ -285,6 +338,18 @@ def _add_mtp_cycle_timing_metrics(
         if draft_tokens > 0
         else 0.0
     )
+    summary = _mtp_cycle_summary(cycle_rows)
+    timing["mtp_direct_cycles_count"] = float(summary["direct_cycles"])
+    timing["mtp_full_accept_cycles"] = float(summary["full_accept_cycles"])
+    timing["mtp_partial_accept_cycles"] = float(summary["partial_accept_cycles"])
+    timing["mtp_reject_cycles"] = float(summary["reject_cycles"])
+    timing["mtp_full_accept_rate"] = float(summary["full_accept_rate"])
+    timing["mtp_linear_state_captured_rows"] = float(summary["linear_state_captured_rows"])
+    timing["mtp_linear_state_commit_rows"] = float(summary["linear_state_commit_rows"])
+    timing["mtp_linear_state_extra_rows"] = float(summary["linear_state_extra_rows"])
+    timing["mtp_hidden_seed_captured_rows"] = float(summary["hidden_seed_captured_rows"])
+    timing["mtp_hidden_seed_needed_rows"] = float(summary["hidden_seed_needed_rows"])
+    timing["mtp_hidden_seed_extra_rows"] = float(summary["hidden_seed_extra_rows"])
 
 
 def _llama_cpp_mtp_catchup_rows(
@@ -3442,6 +3507,7 @@ def _gguf_mtp_last_batch_generation(
     total_drafts = sum(int(cycle.get("generated_draft_tokens", 0)) for cycle in cycles)
     total_accepted = sum(int(cycle.get("accepted_draft_tokens", 0)) for cycle in cycles)
     visible_from_cycles = sum(int(cycle.get("visible_output_tokens", 0)) for cycle in cycles)
+    mtp_summary = _mtp_cycle_summary(cycles)
     payload: dict[str, Any] = {
         "path": path,
         "batch_size": len(request_ids),
@@ -3475,6 +3541,19 @@ def _gguf_mtp_last_batch_generation(
             "total_accepted_draft_tokens": total_accepted,
             "accept_per_draft": (total_accepted / total_drafts if total_drafts > 0 else 0.0),
             "visible_output_tokens_from_cycles": visible_from_cycles,
+            "direct_cycles": mtp_summary["direct_cycles"],
+            "full_accept_cycles": mtp_summary["full_accept_cycles"],
+            "partial_accept_cycles": mtp_summary["partial_accept_cycles"],
+            "reject_cycles": mtp_summary["reject_cycles"],
+            "full_accept_rate": mtp_summary["full_accept_rate"],
+            "accepted_draft_tokens_histogram": mtp_summary["accepted_draft_tokens_histogram"],
+            "cycle_shape_histogram": mtp_summary["cycle_shape_histogram"],
+            "linear_state_captured_rows": mtp_summary["linear_state_captured_rows"],
+            "linear_state_commit_rows": mtp_summary["linear_state_commit_rows"],
+            "linear_state_extra_rows": mtp_summary["linear_state_extra_rows"],
+            "hidden_seed_captured_rows": mtp_summary["hidden_seed_captured_rows"],
+            "hidden_seed_needed_rows": mtp_summary["hidden_seed_needed_rows"],
+            "hidden_seed_extra_rows": mtp_summary["hidden_seed_extra_rows"],
             "cycles_by_request": {
                 str(request_id): list(cycles_by_request.get(request_id, ()))
                 for request_id in request_ids
