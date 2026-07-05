@@ -144655,3 +144655,47 @@ python3 scripts/gguf_mtp_bench.py \
   retained exact 2-6-row chunked rowtile path remains active.
 - Saved rejected artifact:
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilelarge-probe.json`.
+
+## 2026-07-06 - GGUF MTP server current c1 refresh
+
+- Re-ran c=1 on the retained GGUF OpenAI server path because the parity table
+  still showed the older zero-window pooled c=1 MTP diagnostic (**34.44 tok/s**),
+  which predates the retained bw5 route, packed prefill, startup warmups,
+  route-cap, no-WMMA verifier, and rowtile LM-head fixes.
+- Server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- AR client:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency 1 \
+    --out benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c1-bw5-current-refresh.json
+  ```
+  Result: **41.13 tok/s**, `total_predicted=274`, `prefill_ms=2332.728`,
+  `decode_ms=4204.854`.
+- MTP client:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency 1 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-current-refresh.json
+  ```
+  Result: **45.38 tok/s**, `total_predicted=274`, `draft=163`,
+  `accepted=142`, accept rate **0.8712**, target rows **247**,
+  `target_verify_ms=2751.636`, `draft_propose_ms=581.928`.
+- Interpretation: current retained server MTP now scales
+  **45.38 -> 70.06 -> 77.29 -> 76.46 tok/s** at c=1/c=2/c=4/c=8
+  (**1.68x** c=1->c=8). Same-server AR scales
+  **41.13 -> 66.39 -> 82.46 -> 81.94 tok/s** (**1.99x**). The stale
+  zero-window pooled c=1/c=2 rows remain historical diagnostics only and no
+  longer describe the retained MTP server route.

@@ -1,7 +1,12 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-06 (hipEngine GGUF server MTP packed LM-head rowtile
-chunking: packed target verifier rows above six now split the Q6_K T16 lm-head
+Last updated: 2026-07-06 (hipEngine GGUF server MTP current c=1 refresh plus
+packed LM-head rowtile chunking: current retained bw5 server c=1 is
+**41.13 AR / 45.38 MTP tok/s**, replacing the stale zero-window pooled MTP c=1
+diagnostic (**34.44 tok/s**) in the natural24 serving table. MTP now scales
+**45.38 -> 76.46 tok/s** from c=1 to c=8 (**1.68x**), while AR scales
+**41.13 -> 81.94 tok/s** (**1.99x**). Packed target verifier rows above six now
+split the Q6_K T16 lm-head
 projection into bit-exact 2-6-row rowtile launches instead of falling through to
 the generic 12-row body. Retained natural24 MTP moves
 **69.78/72.56/68.83 -> 70.06/77.29/76.46 tok/s** at c=2/c=4/c=8; the c=8
@@ -44,6 +49,10 @@ new retained rowtile-chunk verifier artifacts
 [`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json),
 [`2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json), and
 [`2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json);
+current c=1 refresh artifacts
+[`2026-07-06-hipengine-server-ar-natural24-c1-bw5-current-refresh.json`](results/2026-07-06-hipengine-server-ar-natural24-c1-bw5-current-refresh.json)
+and
+[`2026-07-06-hipengine-server-mtp-natural24-c1-bw5-current-refresh.json`](results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-current-refresh.json);
 instrumentation artifact
 [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
@@ -91,10 +100,13 @@ sweep finds **B1 52.13 tok/s** as fastest, with **B2 52.04** and **B5 50.65**
 versus AR **54.80**; B2 is faster than B5, but neither should be used as a speed
 path for that token-cap protocol because B1 is fastest and all exact MTP budgets
 are below AR. The opt-in GGUF server route now provides real c>N
-llama-compat serving rows; current c=4/c=8 full-request MTP is **66.60/65.79
-tok/s**, above llama.cpp HIP full-request MTP **49.69/50.56 tok/s** but still
-behind hipEngine AR and llama.cpp's decode-only aggregate scaling.
+llama-compat serving rows; current c=1/c=2/c=4/c=8 full-request MTP is
+**45.38/70.06/77.29/76.46 tok/s**, above llama.cpp HIP full-request MTP
+**48.22/49.69/50.56 tok/s** at c=1/c=4/c=8 except for c=1, but still behind
+hipEngine AR at c=4/c=8 and llama.cpp's decode-only Vulkan aggregate scaling.
 Natural24 diagnostic artifacts:
+`results/2026-07-06-hipengine-server-ar-natural24-c1-bw5-current-refresh.json`,
+`results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-current-refresh.json`,
 `results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`,
 `results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json`,
 `results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json`,
@@ -529,8 +541,7 @@ full-suite speed row above.
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json); diagnostic, does not supersede retained 10-cycle B5 row |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
-| hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
-| hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
+| hipEngine `llama-compat` server MTP | 1 | 41.13 | **45.38** | 1.103x | B2, 5 ms batch window, retained server route | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-current-refresh.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c1-bw5-current-refresh.json); current c=1 refresh supersedes the old zero-window pooled MTP c=1 diagnostic (**34.44 tok/s**) |
 | hipEngine `llama-compat` server MTP | 2 | 66.39 | **70.06** | 1.055x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + MTP route cap 4 + startup MTP prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify with no-WMMA small-B body + chunked Q6_K rowtile LM-head for packed rows >6 | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json), [`no-WMMA`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-no-wmma-verify.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-routecap4-arfix.json); chunking leaves c=2 effectively flat and still faster than same-server AR |
 | hipEngine `llama-compat` server MTP | 4 | 82.46 | **77.29** | 0.937x | same | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json), [`no-WMMA`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-no-wmma-verify.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-routecap4-arfix.json); rowtile chunking moves retained c=4 **72.56 -> 77.29 tok/s** and closes most of the gap to llama.cpp HIP decode-only MTP c=4 **78.21 tok/s** |
 | hipEngine `llama-compat` server MTP | 8 | 81.94 | **76.46** | 0.933x | same; default GGUF AR and speculative MTP routes are both capped at four backend requests | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json), [`same-session 77.52`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify.json), [`no-WMMA`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-no-wmma-verify.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-routecap4-arfix.json); c=8 now moves **54.88 -> 65.79 -> 68.83 -> 76.46 tok/s**. LM-head/sample remains the largest verifier bucket, but no longer uses the generic 12-row fallback. |
