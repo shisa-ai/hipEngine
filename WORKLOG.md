@@ -144298,3 +144298,20 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile passed, focused pytest passed (`6 passed`, `3 passed`,
   `7 passed`), artifact JSON checks passed, and the benchmark server was
   stopped after the retained reruns.
+
+- Rejected the exact Q6_K T16 rowtile+top1 fused verifier LM-head experiment.
+  The candidate kept the rowtile dot product bit-exact versus the retained
+  rowtile+argmax path on rows 2/3/4/5/6/7/8/12, but it did not improve the
+  server hot path. Same server command as above; sequential c=4 natural24
+  artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q6rowtiletop1.json`
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q6rowtiletop1-rerun.json`.
+  Results regressed versus retained rowtilechunk c=4 **77.29 tok/s**:
+  first pass **75.56 tok/s** (`target_packed_verify_total_ms=6129.620`,
+  `target_packed_verify_lm_head_sample_ms=4270.582`), warmed rerun
+  **75.42 tok/s** (`target_packed_verify_total_ms=6020.016`,
+  `target_packed_verify_lm_head_sample_ms=4265.542`). The code was reverted;
+  leave this direction rejected unless a profiler shows the rowtile+argmax
+  launch/materialization is the true limiter rather than the rowtile GEMV
+  itself.
