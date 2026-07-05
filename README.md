@@ -260,14 +260,15 @@ automatically. The capabilities manifest reports
 the loaded engine exposes the GGUF NextN tensors. Current serving support is
 non-streaming/greedy-fast with shared-weight resident-slot scheduling for
 coalesced c=N requests and a packed target verifier. c=2/c=4/c=8 are throughput
-positive versus the earlier phase-serial server rows. With default-on packed MTP
-prefill, c=4 is near the current same-server packed AR prefill/decode row
-(`67.68 tok/s` AR vs `66.60 tok/s` MTP), while c=2/c=8 remain below AR
-(`66.15/61.72 tok/s` AR vs `59.94/54.88 tok/s` MTP). c=8 works in warm
-steady-state with a four-slot target-verifier cap and beats llama.cpp HIP and
-Vulkan full-request MTP. Streaming MTP, the exact/default MTP server route,
-draft-side c=8 batching, cold-shape packed-prefill warmup, and lifting the
-four-slot verifier cap remain future work tracked in
+positive versus the earlier phase-serial server rows. Startup now warms ragged
+packed AR batch shapes, so first-pass c=2 AR no longer falls into the old cold
+prefill regime. The current same-server packed AR row is
+`65.91/82.41/63.17 tok/s` at c=2/c=4/c=8, while retained warm MTP is
+`59.94/66.60/54.88 tok/s`. c=8 works in warm steady-state with a four-slot
+target-verifier cap and beats llama.cpp HIP and Vulkan full-request MTP, but MTP
+still trails the stronger hipEngine AR baseline. Streaming MTP, the exact/default
+MTP server route, draft-side c=8 batching, cold MTP packed-prefill warmup, and
+lifting the four-slot verifier cap remain future work tracked in
 [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
 
 ## Concurrency (batched decode)

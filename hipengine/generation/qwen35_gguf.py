@@ -414,6 +414,98 @@ class Qwen35GGUFBringupGenerator:
         self._get_shared_runner()
         return None if max_sequence_length is None else int(max_sequence_length)
 
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: Any | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        """Warm server request shapes that are lazy in the GGUF resident path."""
+
+        del sampling_params, max_new_tokens
+        max_batch = max(1, int(max_batch_size))
+        prompt_len = max(1, min(128, int(max_prompt_tokens)))
+        result: dict[str, Any] = {
+            "max_prompt_tokens": int(max_prompt_tokens),
+            "max_batch_size": max_batch,
+            "release_after_probe": bool(release_after_probe),
+            "packed_ar_prefill_widths": [],
+            "packed_ar_prefill_prompt_lengths": [],
+            "packed_ar_prefill_skipped": False,
+        }
+        if max_batch <= 1 or not _gguf_ar_packed_prefill_enabled():
+            result["packed_ar_prefill_skipped"] = True
+            result["reason"] = "batch_width_le_1_or_disabled"
+            return result
+        if not callable(getattr(Qwen35GGUFResidentSession, "prefill_batch_native", None)):
+            result["packed_ar_prefill_skipped"] = True
+            result["reason"] = "backend_hook_unavailable"
+            return result
+
+        shared_runner = self._get_shared_runner()
+        vocab_size = int(getattr(shared_runner, "vocab_size", 32000) or 32000)
+        max_token = max(0, vocab_size - 1)
+
+        def warm_prompt_for(slot_index: int, target_len: int) -> tuple[int, ...]:
+            length = int(target_len)
+            if length >= 32:
+                spread = min(8, max(1, length // 5))
+                length = max(1, min(prompt_len, length + ((int(slot_index) * 5) % (2 * spread + 1)) - spread))
+            return tuple(min(((pos + int(slot_index)) % max(1, max_token)) + 1, max_token) for pos in range(length)) or (0,)
+
+        warm_prompt_lengths = sorted({min(prompt_len, 40), prompt_len})
+        widths = [width for width in (2, 4, 8) if width <= max_batch]
+        if max_batch > 1 and max_batch not in widths:
+            widths.append(max_batch)
+        widths = sorted(set(widths))
+        for width in widths:
+            for target_len in warm_prompt_lengths:
+                sessions: list[Qwen35GGUFResidentSession] = []
+                keys: list[tuple[str, bool | None, bool | None] | None] = []
+                unsupported = False
+                try:
+                    for _slot in range(width):
+                        session, key, _reused = self._acquire_shared_session(
+                            shared_runner,
+                            pool_name="ar_batch",
+                            use_wmma_prefill=True,
+                            use_gemv_decode=True,
+                        )
+                        sessions.append(session)
+                        keys.append(key)
+                    with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                        prefill_batch = getattr(sessions[0], "prefill_batch_native")
+                        prefill_batch(
+                            [warm_prompt_for(slot_index, target_len) for slot_index in range(width)],
+                            sessions=sessions,
+                            return_logits=False,
+                        )
+                except NotImplementedError:
+                    result["packed_ar_prefill_skipped"] = True
+                    result["reason"] = f"packed_prefill_unsupported_width_{width}"
+                    unsupported = True
+                except Exception:
+                    for session in sessions:
+                        session.close()
+                    sessions = []
+                    raise
+                finally:
+                    while sessions:
+                        session = sessions.pop()
+                        key = keys.pop()
+                        self._release_shared_session(key, session)
+                if unsupported:
+                    break
+                result["packed_ar_prefill_prompt_lengths"].append(int(target_len))
+            if result["packed_ar_prefill_skipped"]:
+                break
+            result["packed_ar_prefill_widths"].append(width)
+        result["packed_ar_prefill_prompt_lengths"] = sorted(set(result["packed_ar_prefill_prompt_lengths"]))
+        return result
+
     def _get_shared_runner(self) -> Qwen35GGUFFullStackRunner:
         runner = getattr(self, "_shared_runner", None)
         if runner is not None:
