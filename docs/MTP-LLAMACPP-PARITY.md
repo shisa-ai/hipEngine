@@ -209,6 +209,17 @@ without per-leaf synchronizes. The c=8 event run is slower due instrumentation
 **805.975 ms**, and `wmma_total` read **163.563 ms**. Use it for ranking
 kernel bodies, not for headline speed.
 
+Rejected MTP packed prompt-prefill diagnostic: 2026-07-06 added an opt-in
+`HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL=1` path that reuses packed prompt rows
+and returns FP32 prompt hidden rows for MTP catch-up. It is not a default
+serving fix. Warm c=2 can improve **46.75 -> 59.60 tok/s**, but c=4/c=8 are not
+stable enough to retain: one c=4 final-code rerun collapsed to **6.25 tok/s**
+with `prefill_batch_ms=162474.386`, uncapped c=8 collapsed to **12.80 tok/s**,
+and capped c=8 only returned to baseline-ish **52.04 tok/s** versus retained
+**52.18 tok/s**. Keep the path as an opt-in profiler lever only; the next MTP
+scaling work remains verifier body/scheduler work, especially LM-head/sample,
+linear-attention rows, and packed verifier setup/scatter at c=8.
+
 This rejects the cheap next knobs: B1 server budget regressed warm c=8 to
 **50.94 tok/s** and verifier chunk-size 3 regressed to **51.21 tok/s**; chunk
 size 2 failed under four concurrent stream chunks. Follow-up diagnostics also

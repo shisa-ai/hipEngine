@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-06
+
+- [rejected diagnostic] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / hipEngine OpenAI server natural24 MTP c>N: opt-in packed MTP prompt prefill (`HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL=1`) reuses packed prompt rows and returns FP32 hidden rows for MTP catch-up, but is not retained/default-on. Warm c=2 can improve **46.75 -> 59.60 tok/s**, but final-code c=4 showed a severe outlier **6.25 tok/s** (`prefill_batch_ms=162474.386`), uncapped c=8 collapsed to **12.80 tok/s**, and capped c=8 only returned to **52.04 tok/s** vs retained **52.18**. Keep as profiling-only until c=2/c=4/c=8 are non-regressive. `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-capped-rerun.json`, `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-capped-rerun.json`, `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-chunked-rerun.json`, `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-capped-rerun2.json`.
+
 ## 2026-07-05
 
 - [diagnostic retained] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / hipEngine OpenAI server natural24 AR c>N: default-on packed final-row prompt prefill (`HIPENGINE_GGUF_AR_PACKED_PREFILL=1`) moves same-protocol AR c=2/c=4/c=8 **50.89/56.79/59.17 -> 66.15/67.68/61.72 tok/s** (+30.0%/+19.2%/+4.3%) by packing slot-major prompt rows, scattering final KV/recurrent state back to each resident session, and sampling only final prompt rows. MTP remains **46.75/49.65/52.18 tok/s**, now **0.707x/0.734x/0.845x** versus same-server AR. `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-prefill-finalrows-rerun.json`, `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-prefill-finalrows-rerun.json`, `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-prefill-finalrows-rerun2.json`.

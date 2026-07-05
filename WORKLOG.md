@@ -143747,3 +143747,52 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile passed, focused pytest passed (`9 passed`), the existing MTP
   resident-slot regression test passed, retained artifact JSON checks passed,
   and diff whitespace check was clean.
+
+## 2026-07-06 - GGUF MTP server packed prefill rejected
+
+- Added an opt-in GGUF MTP serving opener gated by
+  `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL=1`. It packs c>N prompt prefill
+  rows through `Qwen35GGUFResidentSession.prefill_batch_native(...)`, captures
+  FP32 post-output-norm prompt hidden rows, scatters per-slot hidden seeds back
+  into resident sessions, and uses those rows for llama-compatible MTP catch-up.
+  The env is default-off because the same-protocol c>N runs are not
+  non-regressive.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client command used `scripts/mtp-bench.py` natural24 prompts,
+  `--max-tokens 24 --temperature 0 --top-p 1`, concurrency c=2/c=4/c=8, and
+  `--extra-payload '{"speculative_mtp":true}'`.
+- Results: c=2 improved **46.75 -> 59.60 tok/s** with
+  `prefill_batch_ms=2321.262`, but c=4 collapsed to **6.25 tok/s** with
+  `prefill_batch_ms=162474.386`; uncapped/chunked c=8 collapsed to
+  **12.80 tok/s** with `prefill_batch_ms=60835.698`; capped c=8 recovered only
+  to **52.04 tok/s**, below the retained **52.18 tok/s**. Artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-capped-rerun.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-capped-rerun.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-chunked-rerun.json`,
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-capped-rerun2.json`.
+- Updated `docs/ENVS.md`, `docs/REFACTOR.md`,
+  `docs/MTP-LLAMACPP-PARITY.md`, and `benchmarks/CHANGELOG.md` to label this
+  as a rejected diagnostic. No `benchmarks/README.md` rollup change: the
+  retained MTP serving row remains **46.75/49.65/52.18 tok/s**, and retained AR
+  remains **66.15/67.68/61.72 tok/s** from the packed final-row prefill commit.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_packed_prefill tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots tests/test_generation_qwen35_gguf_sampling.py -k 'speculative_mtp_c2 or packed_prefill or batch_verifier' tests/test_gguf_packed_verify_layout.py
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-packed-prefill-capped-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-packed-prefill-capped-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-chunked-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-packed-prefill-capped-rerun2.json >/dev/null
+  git diff --check
+  ```
+  Pycompile passed, focused pytest passed (`8 passed`), artifact JSON checks
+  passed, and diff whitespace check was clean.

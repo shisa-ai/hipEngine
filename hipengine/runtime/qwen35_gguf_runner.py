@@ -340,6 +340,26 @@ class Qwen35GGUFNextTokenProbeResult:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFPackedPrefillResult:
+    """Host-visible result for one slot in a packed prompt prefill pass."""
+
+    input_token_ids: list[int]
+    token_id: int
+    hidden_seeds: np.ndarray
+    start_position: int
+
+    def __post_init__(self) -> None:
+        if self.start_position < 0:
+            raise ValueError("start_position must be non-negative")
+        if len(self.input_token_ids) == 0:
+            raise ValueError("input_token_ids must be non-empty")
+        if self.hidden_seeds.shape[0] != len(self.input_token_ids):
+            raise ValueError("hidden_seeds rows must match input_token_ids length")
+        if self.hidden_seeds.dtype != np.float32:
+            raise ValueError("hidden_seeds must be float32")
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMTPDraftSeed:
     """Ready target seed descriptor for one GGUF MTP draft step."""
 
@@ -9141,14 +9161,17 @@ class Qwen35GGUFResidentSession:
         *,
         sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
         return_logits: bool = False,
+        return_hidden_seeds: bool = False,
         stream: int = 0,
-    ) -> list[Qwen35GGUFNextTokenProbeResult]:
+    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult]:
         """Consume one prompt for each resident session in one packed prefill pass.
 
         This is the server AR prompt counterpart to :meth:`step_batch_native`.
         It packs prompt rows slot-major, scatters the resulting KV/recurrent
         state back to each session, and samples only the final prompt row for
-        each slot.
+        each slot.  ``return_hidden_seeds=True`` additionally returns the FP32
+        post-output_norm prompt rows needed by the llama-compatible MTP draft
+        catch-up path.
         """
 
         prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
@@ -9218,6 +9241,12 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=slot_capacity,
             runtime=runtime,
         )
+        hidden_seed_buf = None
+        if return_hidden_seeds:
+            self._ensure_verify_block_buffers(rows, runtime=runtime)
+            if self._verify_hidden_seed_buf is None:
+                raise RuntimeError("GGUF packed prefill hidden-seed buffer is closed")
+            hidden_seed_buf = self._verify_hidden_seed_buf
         self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
         self._sync_packed_decode_initial_state(
             session_tuple,
@@ -9308,6 +9337,17 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 runtime=runtime,
             )
+            if hidden_seed_buf is not None:
+                gguf_rmsnorm_bf16_f32_weight_out_f32(
+                    src.ptr,
+                    output_norm_weight_ptr,
+                    hidden_seed_buf.ptr,
+                    rows=rows,
+                    hidden_size=self.runner.hidden_size,
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
             row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
             for slot_index in range(int(layout.slot_count)):
                 final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
@@ -9327,6 +9367,10 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
             )
 
+        hidden_host = None
+        if hidden_seed_buf is not None:
+            hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
         self._scatter_packed_decode_state(
             session_tuple,
             layout,
@@ -9334,6 +9378,38 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
         )
+        if hidden_seed_buf is not None:
+            hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+            for slot_index, session in enumerate(session_tuple):
+                if session.scratch is None:
+                    raise RuntimeError("packed prefill job session is closed")
+                row_start = int(layout.cu_seqlens[slot_index])
+                row_end = int(layout.cu_seqlens[slot_index + 1])
+                slot_rows = row_end - row_start
+                final_row = row_end - 1
+                session._ensure_verify_block_buffers(slot_rows, runtime=runtime)
+                if session._verify_hidden_seed_buf is None:
+                    raise RuntimeError("packed prefill slot hidden-seed buffer is closed")
+                if session is not self:
+                    runtime.memcpy_async(
+                        session._verify_hidden_seed_buf.ptr,
+                        hidden_seed_buf.ptr + row_start * hidden_row_nbytes,
+                        slot_rows * hidden_row_nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    final_src_ptr = session._verify_hidden_seed_buf.ptr + (slot_rows - 1) * hidden_row_nbytes
+                else:
+                    final_src_ptr = hidden_seed_buf.ptr + final_row * hidden_row_nbytes
+                runtime.memcpy_async(
+                    session.scratch.hidden_seed_fp32.ptr,
+                    final_src_ptr,
+                    hidden_row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                session._verify_hidden_seed_rows_populated = slot_rows
+                session._hidden_seed_fp32_populated = True
         self._packed_decode_sessions = ()
         self._packed_decode_last_layout = None
         self._packed_decode_state_dirty = False
@@ -9343,6 +9419,25 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(stream)
         else:
             runtime.device_synchronize()
+        if return_hidden_seeds:
+            if hidden_host is None:
+                raise RuntimeError("packed prefill hidden rows were not captured")
+            return [
+                Qwen35GGUFPackedPrefillResult(
+                    input_token_ids=[int(token) for token in layout.input_token_ids[
+                        int(layout.cu_seqlens[slot_index]):int(layout.cu_seqlens[slot_index + 1])
+                    ].tolist()],
+                    token_id=int(token_host[slot_index]),
+                    hidden_seeds=np.ascontiguousarray(
+                        hidden_host[
+                            int(layout.cu_seqlens[slot_index]):int(layout.cu_seqlens[slot_index + 1])
+                        ],
+                        dtype=np.float32,
+                    ),
+                    start_position=int(layout.row_positions[int(layout.cu_seqlens[slot_index])]),
+                )
+                for slot_index in range(int(layout.slot_count))
+            ]
         return [
             Qwen35GGUFNextTokenProbeResult(
                 token_id=int(token),
