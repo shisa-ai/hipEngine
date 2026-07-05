@@ -144883,3 +144883,58 @@ python3 scripts/gguf_mtp_bench.py \
   is either reducing captured-row overhead without losing accepted-row commit
   state, or reducing partial/reject frequency enough that replay economics
   changes. The probe server was stopped after the c=4 run.
+
+## 2026-07-06 - MTP serving deferred packed-verifier scatter retained
+
+- Added and promoted default-on
+  `HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER` for GGUF MTP serving packed
+  verifier batches. The verifier now keeps owner-side packed state live through
+  acceptance and commits only the accepted hidden seed rows, full-attention KV
+  prefix, and final linear-state row. The env remains as an opt-out for
+  bisection.
+- During promotion, a fresh no-env first request reproduced the earlier
+  `mixed_ja_en_translate` economy shift (`draft=20`, `accepted=12`) even though
+  warm reruns were clean. Root cause: startup verifier warmup marked packed
+  full-attention KV as written, then `reset()` zeroed sessions without clearing
+  `_packed_verify_max_written_positions`; the first real request could skip
+  prompt-KV sync and verify against stale warmup packed KV. `reset()` now
+  invalidates packed verifier/decode session/write-position metadata without
+  freeing the workspaces.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q \
+    tests/test_gguf_packed_verify_layout.py::test_gguf_resident_reset_invalidates_packed_state_metadata \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_deferred_verify_scatter_commits_from_owner \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
+  ```
+  Result: py_compile passed; focused pytest passed (`5 passed`).
+- Benchmark server (no defer env; default path):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-default-defer-scatter-resetfix-rerun.json
+  ```
+- Retained no-env results versus the rowtile-chunk baseline
+  **70.06/77.29/76.46 tok/s**: c=2 **70.53 tok/s**, c=4 **78.76 tok/s**, c=8
+  **79.61 tok/s**. Economy is unchanged for all retained rows:
+  `draft=165`, `accepted=141`, accept rate **0.8545**, target verifier rows
+  **250**. The c=8 verifier scatter bucket drops from the rowtile baseline
+  **53.900 -> 3.436 ms**, while `target_packed_verify_total_ms` drops
+  **5923.988 -> 5488.058 ms**.
+- Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+  `docs/MTP-LLAMACPP-PARITY.md`, and `docs/REFACTOR.md`.

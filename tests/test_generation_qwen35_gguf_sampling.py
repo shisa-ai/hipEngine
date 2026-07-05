@@ -75,6 +75,14 @@ def _mtp_capable_weight_index():
     )
 
 
+def test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
+    assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is True
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", "0")
+    assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is False
+
+
 def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) -> None:
     calls: list[tuple] = []
 
@@ -595,6 +603,7 @@ def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
                             job["use_wmma_prefill"],
                             job["capture_linear_state_rows"],
                             job["defer_linear_state_commit"],
+                            job["defer_state_scatter"],
                         )
                         for job in jobs
                     ),
@@ -687,7 +696,7 @@ def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
         (
             "verify_batch",
             ((0, (1, 2)), (1, (1, 2))),
-            (("bulk", False, True, True), ("bulk", False, True, True)),
+            (("bulk", False, True, True, True), ("bulk", False, True, True, True)),
         )
     ]
     assert not [call for call in calls if call[0] == "verify_block"]
@@ -813,6 +822,144 @@ def test_gguf_speculative_mtp_final_state_fastpath_uses_batch_final_state(monkey
     assert not [call for call in calls if call[0] == "commit_row"]
     assert not [call for call in calls if call[0] == "verify_block"]
     assert [call for call in calls if call[0] == "accept"] == [("accept", 1), ("accept", 1)]
+
+
+def test_gguf_speculative_mtp_deferred_verify_scatter_commits_from_owner(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+            self.runtime = SimpleNamespace()
+
+        def verify_target_blocks_batch(self, jobs):
+            calls.append(
+                (
+                    "verify_batch",
+                    tuple((job["session"].slot_id, tuple(job["input_token_ids"])) for job in jobs),
+                    tuple(
+                        (
+                            job["capture_linear_state_rows"],
+                            job["defer_linear_state_commit"],
+                            job["defer_state_scatter"],
+                        )
+                        for job in jobs
+                    ),
+                )
+            )
+            return [
+                SimpleNamespace(
+                    token_ids=[2, 3],
+                    hidden_seeds=np.ones((2, 2), dtype=np.float32),
+                    linear_state_rows_captured=True,
+                    final_linear_state_committed=False,
+                    deferred_packed_state=SimpleNamespace(owner=self, slot_index=index),
+                )
+                for index, _job in enumerate(jobs)
+            ]
+
+        def _commit_deferred_packed_verify_state(
+            self,
+            deferred_state,
+            destination_session,
+            *,
+            commit_row_index: int,
+            position: int,
+            hidden_rows: int,
+        ):
+            calls.append(
+                (
+                    "commit_deferred",
+                    self.slot_id,
+                    int(deferred_state.slot_index),
+                    destination_session.slot_id,
+                    int(commit_row_index),
+                    int(position),
+                    int(hidden_rows),
+                )
+            )
+            destination_session.position = int(position)
+
+        def verify_target_block(self, input_token_ids, **kwargs):  # pragma: no cover - must not be used
+            calls.append(("verify_block", self.slot_id, tuple(input_token_ids), dict(kwargs)))
+            raise AssertionError("per-slot verifier should not be used when batch verifier exists")
+
+        def _commit_verify_linear_state_row(self, row_index: int, *, position: int):
+            calls.append(("commit_row", self.slot_id, int(row_index), int(position)))
+
+        def fp32_verify_hidden_seed_ptr(self, row_index: int = 0) -> int:
+            return 0xD000 + self.slot_id * 0x100 + int(row_index) * 8
+
+    class FakeDraft:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            return [2], [[2]], int(kwargs["dense_cache_len"]) + 2
+
+        def write_kv_rows_from_device_seed_base(self, hidden_seed_ptr, token_ids, **kwargs):
+            calls.append(("write_commit_kv", self.slot_id, tuple(int(token) for token in token_ids.tolist())))
+            return int(kwargs["dense_cache_len"]) + len(token_ids)
+
+    class FakeContext:
+        def __init__(self, slot_id: int):
+            self.pending_seed = SimpleNamespace(hidden_ptr=0xABC0 + slot_id * 0x100)
+
+        def record_verify_seeds(self, rows):
+            calls.append(("record_verify_seeds", tuple(row.token_id for row in rows)))
+
+        def accept(self, accepted_draft_tokens: int):
+            calls.append(("accept", int(accepted_draft_tokens)))
+
+    assets = qwen35_gguf._GGUFMTPServingAssets(
+        weights={},
+        token_embd_f32=np.zeros((8, 2), dtype=np.float32),
+        rope_cos=np.ones((16, 2), dtype=np.float32),
+        rope_sin=np.zeros((16, 2), dtype=np.float32),
+    )
+    slots = [
+        qwen35_gguf._GGUFMTPServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            resident_draft=FakeDraft(slot_id),
+            resident_context=FakeContext(slot_id),
+            mtp_key_cache=SimpleNamespace(ptr=0x1000 + slot_id),
+            mtp_value_cache=SimpleNamespace(ptr=0x2000 + slot_id),
+            mtp_buffers=[],
+            hidden_size=2,
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+            mtp_device_kv_len=4,
+        )
+        for slot_id in range(2)
+    ]
+
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
+
+    generator = _generator()
+    generator._run_mtp_serving_slots(
+        slots,
+        assets,
+        _request(prompts=("long", "long2"), max_tokens=3),
+        base_env={},
+    )
+
+    assert [call for call in calls if call[0] == "verify_batch"] == [
+        (
+            "verify_batch",
+            ((0, (1, 2)), (1, (1, 2))),
+            ((True, True, True), (True, True, True)),
+        )
+    ]
+    assert [call for call in calls if call[0] == "commit_deferred"] == [
+        ("commit_deferred", 0, 0, 0, 1, 6, 2),
+        ("commit_deferred", 0, 1, 1, 1, 6, 2),
+    ]
+    assert not [call for call in calls if call[0] == "commit_row"]
+    assert not [call for call in calls if call[0] == "verify_block"]
 
 
 def test_gguf_speculative_mtp_final_state_fastpath_partial_replays_prefix() -> None:
@@ -2020,6 +2167,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
                             job["use_wmma_prefill"],
                             job["capture_linear_state_rows"],
                             job["defer_linear_state_commit"],
+                            job["defer_state_scatter"],
                         )
                         for job in jobs
                     ),
@@ -2110,7 +2258,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
             "verify_batch",
             0,
             ((0, (1, 2)), (1, (2, 3))),
-            (("bulk", False, True, True), ("bulk", False, True, True)),
+            (("bulk", False, True, True, True), ("bulk", False, True, True, True)),
             "1",
         ),
         (
@@ -2118,10 +2266,10 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
             0,
             ((0, (1, 2)), (1, (2, 3)), (2, (3, 4)), (3, (4, 5))),
             (
-                ("bulk", False, True, True),
-                ("bulk", False, True, True),
-                ("bulk", False, True, True),
-                ("bulk", False, True, True),
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
             ),
             "1",
         ),

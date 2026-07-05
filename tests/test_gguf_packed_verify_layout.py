@@ -19,6 +19,54 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
+def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeScratch:
+        def zero_states(self, runtime, *, stream: int = 0, set_position: bool = False):
+            calls.append(("zero_states", runtime, int(stream), bool(set_position)))
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_set_full_attention_position_device",
+        lambda self, position, *, stream=0: calls.append(("set_position", int(position), int(stream))),
+    )
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.scratch = FakeScratch()
+    session.runtime = SimpleNamespace(name="runtime")
+    session._position = 17
+    session._hidden_seed_fp32_populated = True
+    session._last_pre_output_norm_hidden = np.ones((1,), dtype=np.float32)
+    session._last_layer_output_hidden = {3: np.ones((1,), dtype=np.float32)}
+    session._verify_hidden_seed_rows_populated = 2
+    session._packed_verify_session_ids = (11, 22)
+    session._packed_verify_max_written_positions = (4, 4)
+    session._packed_decode_sessions = (object(),)
+    session._packed_decode_last_layout = object()
+    session._packed_decode_state_dirty = True
+    session._packed_decode_session_ids = (33,)
+    session._packed_decode_positions = (5,)
+
+    session.reset(stream=7)
+
+    assert calls == [
+        ("zero_states", session.runtime, 7, False),
+        ("set_position", 0, 7),
+    ]
+    assert session.position == 0
+    assert session._hidden_seed_fp32_populated is False
+    assert session._last_pre_output_norm_hidden is None
+    assert session._last_layer_output_hidden == {}
+    assert session._verify_hidden_seed_rows_populated == 0
+    assert session._packed_verify_session_ids == ()
+    assert session._packed_verify_max_written_positions == ()
+    assert session._packed_decode_sessions == ()
+    assert session._packed_decode_last_layout is None
+    assert session._packed_decode_state_dirty is False
+    assert session._packed_decode_session_ids == ()
+    assert session._packed_decode_positions == ()
+
+
 def test_gguf_packed_verify_layout_maps_rows_and_slot_state() -> None:
     layout = _build_gguf_packed_verify_layout(
         (
