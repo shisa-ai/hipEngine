@@ -73,9 +73,10 @@ instrumented HIP stage target.
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | Under the natural24 token cap, B2 is faster than B5, but B1 is fastest and no exact budget beats AR. This does not supersede the retained 10-cycle exact B5 row **61.98 tok/s / 1.131x AR**. |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | Diagnostic blocked: zero batch window and persistent target-session / MTP draft-runner pools remove the deliberate 100 ms queue delay plus draft-open tax, but warmed c=1 MTP still loses to AR. Timing buckets show AR server-vs-direct is mostly prompt prefill, while MTP is dominated by target verify. |
-| hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.41** | 0.834x | same | Request coalescing and resident slots work, but aggregate server throughput is still below AR. |
-| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | Slots are isolated but target verify is still per-slot serialized; `slots_run_ms` shows the missing fused/batched verifier work. |
-| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | Best evidence for the next blocker: true batched/fused slot advancement is required. The current code is phase-serial (`draft -> verify -> commit`) but not target-batched. |
+| hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | B2 resident slots, zero batch window, pooled target/draft state | Zero-window c=2 did not coalesce in the rerun: no `slots_*` phase buckets, effectively independent c=1 requests. |
+| hipEngine `llama-compat` server MTP | 2 | not rerun | **33.60** | n/a | B2, 5 ms batch window | Forced c=2 coalescing diagnostic. It enters the phase scheduler, but `slots_verify_phase_ms=9692.167` of `slots_run_ms=10991.786`, so target verify is still per-slot serialized. |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.30** | 0.805x | B2 resident slots, zero batch window, pooled target/draft state | Phase buckets show the same blocker: `slots_verify_phase_ms=8556.890` of `slots_run_ms=9712.986`. |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.41** | 0.785x | same | Best evidence for the next blocker: `slots_verify_phase_ms=23265.170` of `slots_run_ms=26514.334`; the current code is phase-serial (`draft -> verify -> commit`) but not target-batched. |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | B2 | Untraced server aggregate diagnostic; faster than the earlier instrumented HIP stage-timing run. |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | B2 | MTP loses aggregate decode throughput under c=4 serving on this prompt suite. |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | B2 | MTP loses aggregate decode throughput under c=8 serving on this prompt suite. |
@@ -89,6 +90,10 @@ Artifacts:
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-phase-serial.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-phase-serial.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-sweep.json`
 - `benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`
 - `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
@@ -129,7 +134,12 @@ moved only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is
 prompt prefill, not session construction. The remaining MTP serving blocker is a
 GGUF target session/runner primitive that can verify a packed multi-slot
 `[slot][B+1]` slab in one target forward like llama.cpp's single `llama_decode()`
-batch. Until that exists, c>N serving still loses to AR.
+batch. The phase rerun quantifies this: c=4 spends **8556.890 ms** of
+**9712.986 ms** `slots_run_ms` in `slots_verify_phase_ms`; c=8 spends
+**23265.170 ms** of **26514.334 ms** there. Zero-window c=2 does not reliably
+coalesce, and a forced 5 ms c=2 coalescing run spends **9692.167 ms** of
+**10991.786 ms** in the verifier phase. Until the packed target verifier exists,
+c>N serving still loses to AR.
 
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 

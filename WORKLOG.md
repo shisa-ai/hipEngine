@@ -143073,3 +143073,41 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed; focused GGUF MTP tests passed (`2 passed`); focused server
   speculative MTP tests passed (`5 passed`).
+
+## 2026-07-05 - Server MTP phase-bucket rerun
+
+- Started the GGUF OpenAI server on AMD Ryzen AI MAX+ 395 / Radeon 8060S
+  (`gfx1151`) with:
+  ```bash
+  HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 0 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18081 --log-level warning
+  ```
+- Warmed the pools with one c=1 MTP run, then ran:
+  ```bash
+  python3 scripts/mtp-bench.py --url http://127.0.0.1:18081 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --timeout 1200 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --concurrency C \
+    --out benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-cC-bw0-phase-serial.json
+  ```
+  for `C=2,4,8`. Results: c=2 **34.22 tok/s**, c=4 **33.30 tok/s**,
+  c=8 **32.41 tok/s**. Zero-window c=2 did not coalesce into the resident-slot
+  scheduler (no `slots_*` phase buckets), matching the older c=2 pooled artifact.
+- Restarted with `--generation-batch-window-ms 5`, warmed c=1, and ran c=2 to
+  force coalescing:
+  `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-phase-serial.json`.
+  Result: **33.60 tok/s**. It enters the c>N phase scheduler but is still
+  verifier-bound: `slots_verify_phase_ms=9692.167` of
+  `slots_run_ms=10991.786`.
+- Coalesced zero-window c=4/c=8 show the same bottleneck:
+  c=4 `slots_verify_phase_ms=8556.890` of `slots_run_ms=9712.986`;
+  c=8 `slots_verify_phase_ms=23265.170` of `slots_run_ms=26514.334`.
+  Conclusion unchanged: phase scheduling made the llama.cpp lifecycle boundary
+  explicit, but the missing speedup requires a GGUF multi-slot target verifier
+  that runs a packed `[slot][B+1]` slab in one target forward.
+- Stopped the benchmark server after the runs.

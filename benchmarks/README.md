@@ -3,13 +3,15 @@
 Last updated: 2026-07-05 (hipEngine server MTP natural24 diagnostic: zero
 batch-window timing plus persistent target-session / MTP draft-runner pools move
 server AR to **41.24 usage tok/s** and warmed c=1 MTP to **34.44 tok/s**
-(**0.835× AR**), but c=8 MTP is still **32.55 vs 41.27 tok/s** because
-resident slots remain per-slot serialized. The scheduler is now phase-serial
-(`draft -> verify -> commit`) but still lacks llama.cpp-style fused/batched
-target verify. Timing buckets show server AR's direct-suite gap is mostly prompt
-prefill, while MTP is dominated by target verify; see
+(**0.835× AR**), but the phase-serial rerun still has c=8 MTP at **32.41 vs
+41.27 tok/s** because resident slots remain per-slot serialized. The scheduler
+is now phase-serial (`draft -> verify -> commit`) but still lacks llama.cpp-style
+fused/batched target verify: c=8 spends **23.265 s** of **26.514 s**
+`slots_run_ms` in `slots_verify_phase_ms`. Timing buckets show server AR's
+direct-suite gap is mostly prompt prefill, while MTP is dominated by target
+verify; see
 [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json) and
-[`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json).
+[`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
 the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`
@@ -493,9 +495,10 @@ full-suite speed row above.
 | hipEngine exact direct suite | 1 | 54.80 | **52.13** | 0.951x | B1 fastest; B2 52.04, B5 50.65 | [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json); diagnostic, does not supersede retained 10-cycle B5 row |
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
-| hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.41** | 0.834x | same | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-timing-pooled.json); still below AR |
-| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.44** | 0.809x | same | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-timing-pooled.json); `slots_run_ms` shows per-slot serialization |
-| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.55** | 0.789x | same | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-timing-pooled.json); true batched/fused target verify is the next blocker |
+| hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
+| hipEngine `llama-compat` server MTP | 2 | not rerun | **33.60** | n/a | B2 resident slots, 5 ms batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-phase-serial.json); forced c=2 coalescing, `slots_verify_phase_ms=9692.167` of `slots_run_ms=10991.786` |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.30** | 0.805x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-phase-serial.json); `slots_verify_phase_ms=8556.890` of `slots_run_ms=9712.986` |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.41** | 0.785x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json); true batched/fused target verify is the next blocker |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); external diagnostic |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); aggregate decode loses vs AR |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); aggregate decode loses vs AR |
