@@ -214,6 +214,26 @@ Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpprepare-rejected.json`.
 
+Rejected pair-sidecar prepare follow-up: narrowing the prepare-time
+materialization to only raw Q8 sidecars plus dense-Q8 pair dp4a
+(`HIPENGINE_GGUF_Q8_0_RAW_SIDECAR=1`, `HIPENGINE_GGUF_DENSE_Q8_DP4A=1`,
+`HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL=0`) also failed the same-server wall test.
+It reduced exposed packed verifier total versus the retained rowtilechunk row
+(c=4 **5870.712 -> 5478.620 ms**, c=8 **5923.988 -> 5540.240 ms**) and reduced
+LM-head/sample somewhat (c=4 **4239.592 -> 3757.266 ms**, c=8
+**4277.118 -> 3889.850 ms**), but warmed natural24 MTP measured only
+**74.46 tok/s** at c=4 and **73.89 tok/s** at c=8 versus the retained
+**77.29/76.46 tok/s**. The route also changed economy to `draft=166`,
+`accepted=140`, accept rate **0.8434**, below the retained **0.8545** accept
+rate, so the verifier bucket improvement did not translate to end-to-end
+throughput. Code was reverted; do not re-enable prepare-time pair sidecars
+without preserving retained acceptance/economy and proving wall throughput.
+Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q8pairprepare-probe.json`,
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q8pairprepare-rerun.json`,
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-q8pairprepare-rerun.json`.
+
 Rejected stream-upload follow-up: making `for_packed_verify_layout()` and the
 packed verifier token upload use `hipMemcpyAsync(..., stream)` instead of the
 synchronous H2D helper did not reduce the exposed token-upload bucket and

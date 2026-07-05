@@ -144454,3 +144454,55 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-streamupload-rerun.json`,
   and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-streamupload-rerun.json`.
+
+## 2026-07-06 - Rejected GGUF MTP q8 pair-sidecar prepare probe
+
+- Tested a narrower version of the prepare-sidecar hypothesis: materialize the
+  shared server GGUF runner with only raw Q8 sidecars plus dense-Q8 pair dp4a
+  enabled (`HIPENGINE_GGUF_Q8_0_RAW_SIDECAR=1`,
+  `HIPENGINE_GGUF_DENSE_Q8_DP4A=1`,
+  `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL=0`) instead of the full llama-compat MTP
+  env. The temporary code was guarded by
+  `HIPENGINE_GGUF_MTP_SERVER_PREPARE_Q8_PAIR_SIDECAR=1`.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_can_materialize_q8_pair_sidecar_probe
+  ```
+  The focused test passed.
+- Benchmark server command:
+  ```bash
+  HIPENGINE_GGUF_MTP_SERVER_PREPARE_Q8_PAIR_SIDECAR=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-q8pairprepare-rerun.json
+  ```
+- Results rejected versus the retained rowtilechunk MTP rows
+  (**77.29/76.46 tok/s** at c=4/c=8): c=4 first pass **71.94 tok/s**, c=4
+  warmed rerun **74.46 tok/s**, c=8 warmed rerun **73.89 tok/s**. Exposed
+  packed verifier totals improved versus retained (c=4 **5870.712 -> 5478.620
+  ms**, c=8 **5923.988 -> 5540.240 ms**) and LM-head/sample improved (c=4
+  **4239.592 -> 3757.266 ms**, c=8 **4277.118 -> 3889.850 ms**), but economy
+  changed to `draft=166`, `accepted=140`, accept rate **0.8434**, below the
+  retained **0.8545**. Same-protocol wall throughput lost, so the code/test
+  probe was reverted and the direction remains rejected.
+- Post-revert tracked-code validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  ```
+  Saved rejected artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q8pairprepare-probe.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q8pairprepare-rerun.json`,
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-q8pairprepare-rerun.json`.
