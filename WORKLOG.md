@@ -143285,3 +143285,16 @@ python3 scripts/gguf_mtp_bench.py \
 - Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`,
   `benchmarks/CHANGELOG.md`, and `docs/REFACTOR.md` with the retained
   diagnostic rows and the four-slot cap removal trigger.
+
+## 2026-07-05 - MTP server and gfx1151 concurrency docs sync
+
+- Synced the top-level README and benchmark rollup with the packed target
+  verifier serving rows: c=2 **45.57 tok/s**, c=4 **47.48 tok/s**, and warm c=8
+  **47.18 tok/s** with target verify chunked at four slots.
+- Corrected the benchmark rollup concurrency snapshot text/artifacts to describe
+  the gfx1151/Radeon 8060S row it actually reports. The broad concurrency gap is
+  now explicit: hipEngine PARO scales **1.43x** c=1->c=8, while llama.cpp Vulkan
+  scales **1.93x** and leads at c=2/c=4/c=8 on the historical cross-quant
+  diagnostic.
+- Docs-only validation: re-read the changed README and benchmark sections and
+  ran `git diff --check`.
