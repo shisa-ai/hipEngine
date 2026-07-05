@@ -143646,3 +143646,47 @@ python3 scripts/gguf_mtp_bench.py \
   rows and rejected-probe evidence. The next verifier work remains a real
   packed-verifier kernel/body improvement in linear-attention rows or sampling
   drain, not B1 budget, chunk-size, no-read, or launch-bounds tuning.
+
+## 2026-07-05 - GGUF server AR packed decode chunk streams
+
+- Added a c>4 streamed chunk path for default-on packed GGUF AR serving. The
+  previous packed AR route capped each native batch at four slots, so c=8 ran
+  two chunk-4 target decode batches serially per token. The new path keeps the
+  existing chunking but launches each chunk on its owner session's HIP stream
+  through `step_batch_native(..., scatter_state=False, stream=...)`, then records
+  tokens after the streamed chunk group completes. The serial packed chunk path
+  remains available with `HIPENGINE_GGUF_AR_STREAM_DECODE=0` or unsupported
+  stream/runtime shapes.
+- Focused validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'ar_batch_decode or ar_packed_decode or ar_stream_decode or ar_stream_prefill'
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-streamchunks-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-streamchunks-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-streamchunks-rerun2.json >/dev/null
+  ```
+  Pycompile passed, focused pytest passed (`7 passed`), and retained artifacts
+  are valid JSON.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client command used `scripts/mtp-bench.py` with natural24 prompts,
+  `--max-tokens 24 --temperature 0 --top-p 1`, and concurrency c=2/c=4/c=8.
+- Retained results: c=2 **50.89 tok/s** and c=4 **56.79 tok/s** are flat versus
+  the prior packed AR row, while c=8 improves **56.35 -> 59.17 tok/s** (+5.0%).
+  c=8 `slots_decode_phase_ms` moved **15752.616 -> 13990.934**, with
+  `decode_stream_chunks_ms=12760.896`. Artifacts:
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-streamchunks-rerun.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-streamchunks-rerun.json`,
+  and
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-streamchunks-rerun2.json`.
+- With retained MTP server rows still **46.75/49.65/52.18 tok/s**, the new
+  same-server MTP/AR ratios are **0.919x/0.874x/0.882x**. This fixes the c=8
+  AR serial-chunk backend issue; the MTP server path is now more clearly blocked
+  by verifier/economics rather than AR c>N scheduling.
