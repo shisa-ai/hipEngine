@@ -248,6 +248,7 @@ work is on the MTP-bearing `UD-Q4_K_M` GGUF.
 | GGUF MTP exact default B5 | Qwen3.6-35B-A3B `UD-Q4_K_M`, gfx1151/Radeon 8060S, full `mtpbench-code-general-ja` 10-cycle suite | **61.98 tok/s**, **1.1312x AR** (`54.79` AR), `16.162 ms/output` | Correctness-preserving default suite route after the shared parallel MTP-attention fix; artifact: [`2026-07-02-ar-mtp-default-parallelattn-full.json`](benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json). |
 | GGUF MTP `llama-compat` B2 | Same model/suite, natural24 cyclecap24, no-copy verifier capture + llama-style direct partial commit | **71.52 tok/s**, **1.3055x AR**, `14.005 ms/output` | Active llama.cpp replication lane. Stage wall is slightly faster than the llama.cpp HIP rerun (`14.269 ms/output`), while request throughput is within `0.39 tok/s` (`71.52` vs `71.91`). This lane is accuracy-traded and not serial-prefix-equivalent; artifact: [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json). |
 | GGUF MTP exact natural24 c=1 | Same model, direct suite, `max_tokens=24` | **52.13 tok/s** B1 vs **54.80 tok/s** AR (`0.951x`) | Token-cap diagnostic: B1 is fastest; B2 `52.04`, B5 `50.65`. This does not supersede the retained exact B5 full-suite row; artifact: [`2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`](benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json). |
+| GGUF MTP `llama-compat` server natural24 | Same GGUF/model on gfx1151, B2, OpenAI server, `--speculative-mtp-serving opt_in`, 5 ms coalescing window | c=2 **45.57 tok/s**, c=4 **47.48 tok/s**, warm c=8 **47.18 tok/s** | Packed target verifier serving diagnostic. c=8 currently chunks target verify 4+4 because one 8-slot packed verifier batch is rejected at `11.58 tok/s`; artifacts: [`c2`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json), [`c4`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json), [`c8`](benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json). |
 | llama.cpp MTP server diagnostics | Same GGUF/model on gfx1151, B2, HIP/Vulkan, c=1/4/8 | HIP: c=1 `75.56` (`1.448x`), c=4 `78.21` (`0.722x`), c=8 `78.56` (`0.630x`). Vulkan: c=1 `91.48` (`1.426x`), c=4 `92.19` (`0.739x`), c=8 `103.57` (`0.741x`) | Cross-engine diagnostics: MTP wins c=1 but loses aggregate decode under c=4/c=8 on this prompt suite. See [`benchmarks/README.md`](benchmarks/README.md#natural24-mtp-vs-ar-concurrency-diagnostic). |
 
 Server MTP is available as a guarded, default-off GGUF llama-compat route. Start
@@ -258,10 +259,11 @@ automatically. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when the policy is enabled and
 the loaded engine exposes the GGUF NextN tensors. Current serving support is
 non-streaming/greedy-fast with shared-weight resident-slot scheduling for
-coalesced c=N requests; c=2 is the implementation target and c=4/c=8 have
-functional smoke coverage. These are correctness/capacity serving checks, not
-retained throughput claims. Streaming MTP and the exact/default MTP server route
-remain future work tracked in
+coalesced c=N requests and a packed target verifier. c=2/c=4 are throughput
+positive versus the earlier phase-serial server rows; c=8 works in warm
+steady-state with a four-slot target-verifier cap. Streaming MTP, the
+exact/default MTP server route, draft-side c=8 batching, and lifting the
+four-slot verifier cap remain future work tracked in
 [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md).
 
 ## Concurrency (batched decode)
@@ -327,6 +329,13 @@ and text-only attempts loaded weights but never bound port 8008.
 | 2 | 69.86 | 34.93 | 94.12 | 47.06 | blocked |
 | 4 | 88.10 | 22.02 | 119.51 | 29.88 | blocked |
 | 8 | 96.03 | 12.00 | 119.94 | 14.99 | blocked |
+
+The gfx1151 concurrency snapshot is weaker than the W7900/gfx1100 story:
+hipEngine scales only **1.43x** from c1 to c8 here, while llama.cpp Vulkan scales
+**1.93x** and leads at c=2/c=4/c=8. Treat this as an active backend/scheduler
+gap, not a model-quality issue: the gfx1151 path is a native target-arch peer
+backend, but it still inherits many gfx1100 scheduling assumptions and has not
+had the same row-count/concurrency tuning as the W7900 path or llama.cpp Vulkan.
 
 Source artifacts: [`gfx1151 summary`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-summary.json),
 [`hipEngine PARO`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json),

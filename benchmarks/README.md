@@ -497,9 +497,9 @@ full-suite speed row above.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
-| hipEngine `llama-compat` server MTP | 2 | not rerun | **33.60** | n/a | B2 resident slots, 5 ms batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-phase-serial.json); forced c=2 coalescing, `slots_verify_phase_ms=9692.167` of `slots_run_ms=10991.786` |
-| hipEngine `llama-compat` server MTP | 4 | 41.35 | **33.30** | 0.805x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw0-phase-serial.json); `slots_verify_phase_ms=8556.890` of `slots_run_ms=9712.986` |
-| hipEngine `llama-compat` server MTP | 8 | 41.27 | **32.41** | 0.785x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json); true batched/fused target verify is the next blocker |
+| hipEngine `llama-compat` server MTP | 2 | 41.27 | **45.57** | 1.104x | B2, 5 ms batch window, packed target verify | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-packed-smoke.json); forced c=2 coalescing improves old forced c=2 **33.60 -> 45.57 tok/s** |
+| hipEngine `llama-compat` server MTP | 4 | 41.35 | **47.48** | 1.148x | B2, 5 ms batch window, packed target verify | [`2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-packed-smoke.json); improves old phase-serial c=4 **33.30 -> 47.48 tok/s** |
+| hipEngine `llama-compat` server MTP | 8 | 41.27 | **47.18** | 1.143x | B2, 5 ms batch window, packed target verify chunked at 4 slots | [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json); warm steady-state c=8 row. A single 8-slot packed verifier batch was rejected (**11.58 tok/s**) |
 | llama.cpp HIP server B2 | 1 | 52.19 | **75.56** | 1.448x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); external diagnostic |
 | llama.cpp HIP server B2 | 4 | 108.33 | **78.21** | 0.722x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); aggregate decode loses vs AR |
 | llama.cpp HIP server B2 | 8 | 124.71 | **78.56** | 0.630x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); aggregate decode loses vs AR |
@@ -509,11 +509,13 @@ full-suite speed row above.
 
 For serving capability, `speculative_mtp.serving_route=true` is now available
 only with `--speculative-mtp-serving opt_in` or `auto` and a GGUF model exposing
-NextN tensors. The first measured server row is **not** a retained perf win:
-the initial throughput probe exposed per-request GGUF weight rematerialization,
-which was fixed by sharing prepared target weights across server requests, but
-the current resident-slot MTP scheduler still verifies target blocks per slot
-and loses to ordinary AR on this natural24 server protocol.
+NextN tensors. The packed target verifier removes the old per-slot target-verify
+blocker for c=2/c=4 and the warm chunked c=8 row, so the current server MTP
+route is throughput-positive versus same-protocol server AR under the 5 ms
+coalescing protocol. It is still diagnostic rather than a retained production
+claim: c=8 needs draft-side row-count scaling, rows>=16 packed verifier tuning
+before lifting the four-slot cap, and prompt-prefill overhead reduction so
+server AR approaches the direct GGUF suite.
 
 | Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
 | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |
@@ -805,19 +807,16 @@ HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE
 ## Concurrency decode snapshot (non-retained)
 
 Current-code PARO decode throughput vs number of concurrent sequences `c`, fixed
-512/128 per sequence, gfx1100 / W7900, BF16 KV, median of 3 runs. This remains a
-diagnostic throughput snapshot for the top-level README "Concurrency" table, not
-a retained row: it carries the native-batch generated-token equality and
-per-kernel CPU-reference gates, but not the full retained gate suite (rocprof
-provenance / scaling-reference / bucket gates) of the accepted c=4/c=8 rows
-above. This 2026-06-14 snapshot's llama.cpp column used the then-available
-Qwen3.6 GGUF `UD-Q4_K_S` under Vulkan/RADV with f16 KV and exact token-id
-prompts, so the table remains historical cross-quant until rerun. Future
-`run_w7900_readme_refresh.sh concurrency` runs use `UD-Q4_K_M` to match the
-current GGUF comparison target. The vLLM column uses a local
-`v0.22.1rc1.dev499+g470229c37.d20260613` source build,
-`palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, no MTP, and OpenAI `/v1/completions`
-wall-throughput; see [`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
+512/128 per sequence, gfx1151 / Radeon 8060S, BF16 KV, median of 3 runs. This
+remains a diagnostic throughput snapshot for the top-level README "Concurrency"
+table, not a retained row: it carries primitive c>N correctness and generated
+token equality, but not the full retained gate suite (rocprof provenance /
+scaling-reference / bucket gates) of the accepted c=4/c=8 rows above. The
+llama.cpp column uses `UD-Q4_K_S` under Vulkan/RADV with f16 KV and exact
+token-id prompts, so the table is historical cross-quant until rerun. vLLM did
+not produce OpenAI rows on gfx1151: non-text-only startup hit a 256 GiB ViT SDPA
+OOM, and text-only attempts loaded weights but never bound port 8008; see
+[`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
 
 | Concurrency `c` | hipEngine agg decode tok/s | hipEngine per-seq tok/s | llama.cpp Vulkan agg tok/s | llama.cpp per-seq tok/s | vLLM OpenAI agg tok/s | vLLM per-seq tok/s |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -826,15 +825,17 @@ wall-throughput; see [`../docs/VLLM_RDNA3.md`](../docs/VLLM_RDNA3.md).
 | 4 | 88.10 | 22.02 | 119.51 | 29.88 | blocked | blocked |
 | 8 | 96.03 | 12.00 | 119.94 | 14.99 | blocked | blocked |
 
-Artifacts: [`hipEngine W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json),
-[`llama.cpp Vulkan W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json),
-[`vLLM local build W7900`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
-[`full W7900 refresh summary`](results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json).
-The current-code RX 7900 XTX rerun reached c1/c2/c4 but c8 blocked with HIP OOM;
-see [`XTX partial`](results/2026-06-13-hipengine-qwen35-concurrency-decode-latest-xtx-blocked-c8.json).
-Replicate with `scripts/run_w7900_readme_refresh.sh concurrency` and
-`scripts/run_w7900_readme_refresh.sh vllm`; the exact expanded commands are in
-this file's README sweep procedure and in the script.
+Artifacts: [`hipEngine gfx1151`](results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json),
+[`llama.cpp Vulkan gfx1151`](results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-llamacpp-vulkan/summary.json),
+[`vLLM blocked gfx1151`](results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-vllm-gptq-int4-blocked.json),
+[`gfx1151 summary`](results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-summary.json).
+
+This gfx1151 snapshot is the current broad concurrency gap: hipEngine scales
+**1.43x** from c=1 to c=8, while llama.cpp Vulkan scales **1.93x** and leads at
+c=2/c=4/c=8. Treat this as a backend/scheduler tuning problem, not as a model
+quality issue. The likely next measurements are row-count-specific kernel timing
+for gfx1151, true draft-side batching for server MTP, and a refreshed same-quant
+Q4_K_M concurrency sweep once the active MTP serving route settles.
 
 ## Source-lineage target: Qwen3.5-35B-A3B-PARO
 
