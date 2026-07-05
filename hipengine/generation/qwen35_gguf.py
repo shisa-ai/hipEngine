@@ -112,7 +112,7 @@ def _gguf_ar_stream_prefill_enabled() -> bool:
 
 
 def _gguf_mtp_server_packed_prefill_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
+    return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_stream_draft_enabled() -> bool:
