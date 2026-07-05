@@ -211,6 +211,10 @@ def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) 
     assert generator.last_batch_generation["path"] == "gguf_llama_compat_mtp_server"
     assert generator.last_batch_generation["speculative_mtp"]["total_draft_tokens"] == 1
     assert generator.last_batch_generation["speculative_mtp"]["total_accepted_draft_tokens"] == 1
+    assert generator.last_batch_generation["speculative_mtp"]["accepted_draft_tokens_histogram"] == {"1": 1}
+    assert generator.last_batch_generation["speculative_mtp"]["cycle_shape_histogram"] == {"draft1_accept1": 1}
+    assert generator.last_batch_generation["speculative_mtp"]["full_accept_cycles"] == 1
+    assert generator.last_batch_generation["speculative_mtp"]["linear_state_extra_rows"] == 1
     timing = outputs[0].telemetry.to_json_dict()["timing"]
     assert timing["mtp_cycles_count"] == 1.0
     assert timing["mtp_generated_draft_tokens"] == 1.0
@@ -218,6 +222,10 @@ def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) 
     assert timing["mtp_visible_output_tokens"] == 2.0
     assert timing["mtp_target_verify_rows"] == 2.0
     assert timing["mtp_accept_per_draft"] == 1.0
+    assert timing["mtp_full_accept_cycles"] == 1.0
+    assert timing["mtp_linear_state_captured_rows"] == 2.0
+    assert timing["mtp_linear_state_commit_rows"] == 1.0
+    assert timing["mtp_hidden_seed_extra_rows"] == 0.0
 
 
 def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
@@ -374,6 +382,12 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert mtp["target_verify_batching"] == "per_slot_serial"
     assert mtp["total_draft_tokens"] == 2
     assert mtp["total_accepted_draft_tokens"] == 2
+    assert mtp["accepted_draft_tokens_histogram"] == {"1": 2}
+    assert mtp["cycle_shape_histogram"] == {"draft1_accept1": 2}
+    assert mtp["full_accept_cycles"] == 2
+    assert mtp["linear_state_captured_rows"] == 4
+    assert mtp["linear_state_commit_rows"] == 2
+    assert mtp["linear_state_extra_rows"] == 2
     assert sorted(mtp["cycles_by_request"]) == ["0", "1"]
     timing = outputs[0].telemetry.to_json_dict()["timing"]
     assert "slots_draft_phase_ms" in timing
@@ -383,6 +397,8 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert timing["mtp_generated_draft_tokens"] == 1.0
     assert timing["mtp_accepted_draft_tokens"] == 1.0
     assert timing["mtp_target_verify_rows"] == 2.0
+    assert timing["mtp_full_accept_cycles"] == 1.0
+    assert timing["mtp_linear_state_extra_rows"] == 1.0
 
 
 def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(monkeypatch) -> None:
@@ -1010,14 +1026,51 @@ def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
             SimpleNamespace(),
         ),
         cycles_by_request={
-            0: [{"generated_draft_tokens": 1, "accepted_draft_tokens": 1, "visible_output_tokens": 2}],
-            1: [{"generated_draft_tokens": 1, "accepted_draft_tokens": 1, "visible_output_tokens": 2}],
+            0: [
+                {
+                    "mode": "llama_compat_direct_commit",
+                    "generated_draft_tokens": 2,
+                    "accepted_draft_tokens": 2,
+                    "visible_output_tokens": 3,
+                },
+                {
+                    "mode": "llama_compat_direct_commit",
+                    "generated_draft_tokens": 2,
+                    "accepted_draft_tokens": 1,
+                    "visible_output_tokens": 2,
+                },
+            ],
+            1: [
+                {
+                    "mode": "llama_compat_direct_commit",
+                    "generated_draft_tokens": 2,
+                    "accepted_draft_tokens": 0,
+                    "visible_output_tokens": 1,
+                }
+            ],
         },
         resident_slot_count=2,
         target_verify_batching="packed_slot_batch",
     )
 
-    assert payload["speculative_mtp"]["target_verify_batching"] == "packed_slot_batch"
+    mtp = payload["speculative_mtp"]
+    assert mtp["target_verify_batching"] == "packed_slot_batch"
+    assert mtp["accepted_draft_tokens_histogram"] == {"0": 1, "1": 1, "2": 1}
+    assert mtp["cycle_shape_histogram"] == {
+        "draft2_accept0": 1,
+        "draft2_accept1": 1,
+        "draft2_accept2": 1,
+    }
+    assert mtp["full_accept_cycles"] == 1
+    assert mtp["partial_accept_cycles"] == 1
+    assert mtp["reject_cycles"] == 1
+    assert mtp["full_accept_rate"] == pytest.approx(1.0 / 3.0)
+    assert mtp["linear_state_captured_rows"] == 9
+    assert mtp["linear_state_commit_rows"] == 3
+    assert mtp["linear_state_extra_rows"] == 6
+    assert mtp["hidden_seed_captured_rows"] == 9
+    assert mtp["hidden_seed_needed_rows"] == 6
+    assert mtp["hidden_seed_extra_rows"] == 3
 
 
 def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:

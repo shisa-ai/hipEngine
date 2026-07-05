@@ -144749,3 +144749,22 @@ python3 scripts/gguf_mtp_bench.py \
   **65.98/82.64/82.42 tok/s** c=2/c=4/c=8 run confirms the documented
   **66.39/82.46/81.94 tok/s** route-cap AR fix within normal variance and does
   not supersede the rollup row.
+
+## 2026-07-06 - GGUF MTP serving cycle histogram telemetry
+
+- Added server-visible MTP cycle economy telemetry so the next c>N scaling
+  pass can distinguish unavoidable verifier work from per-row state-capture
+  waste. The per-request timing now reports direct/full/partial/reject cycle
+  counts, full-accept rate, accepted-draft histogram inputs, and captured vs
+  actually-needed linear-state and hidden-seed row counts.
+- The last-batch generation metadata now carries the aggregate histograms:
+  `accepted_draft_tokens_histogram` and `cycle_shape_histogram`, plus
+  `linear_state_extra_rows` and `hidden_seed_extra_rows`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py
+  ```
+  Result: py_compile passed; generation sampling tests passed; server API
+  tests passed.
