@@ -143796,3 +143796,51 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused pytest passed (`8 passed`), artifact JSON checks
   passed, and diff whitespace check was clean.
+
+## 2026-07-06 - GGUF server AR validation rerun
+
+- Re-ran the defaults-on GGUF server AR natural24 c>N protocol after the user
+  asked to fix AR before continuing MTP. The first attempted client command used
+  `scripts/mtp-bench.py`'s default prompt fixture and hit the long-prompt guard
+  (`GGUF bulk prefill rows 743 exceed cache capacity 256`), so it was not a
+  comparable natural24 row. Converted
+  `benchmarks/prompts/mtpbench-code-general-ja.jsonl` to the JSON prompt shape
+  expected by `scripts/mtp-bench.py` under `/tmp/hipengine-mtpbench-code-general-ja.json`.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client command used no `speculative_mtp` payload, `--max-tokens 24
+  --temperature 0 --top-p 1`, and the converted 10-prompt natural24 JSON.
+- Results: the first correct c=2 pass after a fresh server measured only
+  **51.42 tok/s** because packed prompt prefill was cold
+  (`prefill_batch_ms=4637.184` vs retained `2323.688`). The immediate warm c=2
+  rerun matched the retained row at **66.24 tok/s** with
+  `prefill_batch_ms=2327.762` and `decode_batch_ms=5746.222`. Warm c=4 measured
+  **67.15 tok/s** (`prefill_batch_ms=6102.768`, `decode_batch_ms=8075.230`) and
+  warm c=8 measured **61.90 tok/s** (`prefill_batch_ms=596.424`,
+  `decode_batch_ms=14178.088`, `decode_stream_chunks_ms=13022.752`).
+- Conclusion: AR c>N is fixed for steady-state server throughput. The retained
+  headline remains **66.15/67.68/61.72 tok/s** because the new warm rerun is a
+  validation check, not a material superseding improvement. The next work should
+  return to MTP verifier/economics rather than AR decode scheduling.
+- Artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-default-rerun2.json`
+  (cold first correct pass),
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-default-rerun3.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-default-rerun.json`,
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-default-rerun.json`.
+- Validation:
+  ```bash
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-default-rerun2.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-default-rerun3.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-default-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-default-rerun.json >/dev/null
+  ```
+  Artifact JSON checks passed.
