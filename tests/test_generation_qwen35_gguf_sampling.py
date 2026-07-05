@@ -374,6 +374,157 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert "slots_commit_phase_ms" in timing
 
 
+def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+            self.runtime = SimpleNamespace()
+
+        def verify_target_block(self, input_token_ids, **kwargs):  # pragma: no cover - must not be used
+            calls.append(("verify_block", self.slot_id, tuple(input_token_ids), dict(kwargs)))
+            raise AssertionError("per-slot verifier should not be used when batch verifier exists")
+
+        def verify_target_blocks_batch(self, jobs):
+            calls.append(
+                (
+                    "verify_batch",
+                    tuple((job["session"].slot_id, tuple(job["input_token_ids"])) for job in jobs),
+                    tuple(
+                        (
+                            job["bulk_attention_mode"],
+                            job["use_wmma_prefill"],
+                            job["capture_linear_state_rows"],
+                            job["defer_linear_state_commit"],
+                        )
+                        for job in jobs
+                    ),
+                )
+            )
+            return [
+                SimpleNamespace(
+                    token_ids=[2, 3],
+                    hidden_seeds=np.ones((2, 2), dtype=np.float32),
+                    linear_state_rows_captured=True,
+                )
+                for _job in jobs
+            ]
+
+        def _commit_verify_linear_state_row(self, row_index: int, *, position: int):
+            calls.append(("commit_row", self.slot_id, int(row_index), int(position)))
+            self.position = int(position)
+
+        def fp32_verify_hidden_seed_ptr(self, row_index: int = 0) -> int:
+            return 0xD000 + self.slot_id * 0x100 + int(row_index) * 8
+
+    class FakeDraft:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            calls.append(("draft", self.slot_id, int(hidden_seed_ptr), dict(kwargs)))
+            return [2], [[2]], int(kwargs["dense_cache_len"]) + 2
+
+        def write_kv_rows_from_device_seed_base(self, hidden_seed_ptr, token_ids, **kwargs):
+            calls.append(
+                (
+                    "write_commit_kv",
+                    self.slot_id,
+                    int(hidden_seed_ptr),
+                    tuple(int(token) for token in token_ids.tolist()),
+                    tuple(int(pos) for pos in kwargs["positions"].tolist()),
+                    int(kwargs["dense_cache_len"]),
+                )
+            )
+            return int(kwargs["dense_cache_len"]) + len(token_ids)
+
+    class FakeContext:
+        def __init__(self, slot_id: int):
+            self.pending_seed = SimpleNamespace(hidden_ptr=0xABC0 + slot_id * 0x100)
+            self.accepted: list[int] = []
+
+        def record_verify_seeds(self, rows):
+            calls.append(("record_verify_seeds", tuple(row.token_id for row in rows)))
+
+        def accept(self, accepted_draft_tokens: int):
+            self.accepted.append(int(accepted_draft_tokens))
+            calls.append(("accept", int(accepted_draft_tokens)))
+
+    assets = qwen35_gguf._GGUFMTPServingAssets(
+        weights={},
+        token_embd_f32=np.zeros((8, 2), dtype=np.float32),
+        rope_cos=np.ones((16, 2), dtype=np.float32),
+        rope_sin=np.zeros((16, 2), dtype=np.float32),
+    )
+    slots = [
+        qwen35_gguf._GGUFMTPServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            resident_draft=FakeDraft(slot_id),
+            resident_context=FakeContext(slot_id),
+            mtp_key_cache=SimpleNamespace(ptr=0x1000 + slot_id),
+            mtp_value_cache=SimpleNamespace(ptr=0x2000 + slot_id),
+            mtp_buffers=[],
+            hidden_size=2,
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+            mtp_device_kv_len=4,
+        )
+        for slot_id in range(2)
+    ]
+
+    generator = _generator()
+    generator._run_mtp_serving_slots(
+        slots,
+        assets,
+        _request(prompts=("long", "long2"), max_tokens=3),
+        base_env={},
+    )
+
+    assert [slot.generated_ids for slot in slots] == [[1, 2, 3], [1, 2, 3]]
+    assert [call for call in calls if call[0] == "verify_batch"] == [
+        (
+            "verify_batch",
+            ((0, (1, 2)), (1, (1, 2))),
+            (("bulk", True, True, True), ("bulk", True, True, True)),
+        )
+    ]
+    assert not [call for call in calls if call[0] == "verify_block"]
+    assert [call for call in calls if call[0] == "commit_row"] == [
+        ("commit_row", 0, 1, 6),
+        ("commit_row", 1, 1, 6),
+    ]
+    assert all("target_verify_batch_ms" in slot.timing for slot in slots)
+    assert all("slots_verify_phase_ms" in slot.timing for slot in slots)
+
+
+def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
+    payload = qwen35_gguf._gguf_mtp_last_batch_generation(
+        _FakeTokenizer(),
+        _request(prompts=("long", "long2"), max_tokens=3),
+        SimpleNamespace(active_processors=(), fast_path_blockers=(), fallback_reason=None, mode=SimpleNamespace(value="greedy_fast")),
+        {0: [10, 11, 12, 13], 1: [20, 21, 22, 23]},
+        {0: [1, 2, 3], 1: [1, 2, 3]},
+        {},
+        outputs=(
+            SimpleNamespace(),
+            SimpleNamespace(),
+        ),
+        cycles_by_request={
+            0: [{"generated_draft_tokens": 1, "accepted_draft_tokens": 1, "visible_output_tokens": 2}],
+            1: [{"generated_draft_tokens": 1, "accepted_draft_tokens": 1, "visible_output_tokens": 2}],
+        },
+        resident_slot_count=2,
+        target_verify_batching="packed_slot_batch",
+    )
+
+    assert payload["speculative_mtp"]["target_verify_batching"] == "packed_slot_batch"
+
+
 def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
     calls: list[tuple] = []
 

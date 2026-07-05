@@ -143111,3 +143111,28 @@ python3 scripts/gguf_mtp_bench.py \
   explicit, but the missing speedup requires a GGUF multi-slot target verifier
   that runs a packed `[slot][B+1]` slab in one target forward.
 - Stopped the benchmark server after the runs.
+
+## 2026-07-05 - Server MTP batch-verifier scheduler seam
+
+- Added a c>N target-verify hook to the GGUF MTP server scheduler. The verify
+  phase now snapshots all drafted cycles, calls `verify_target_blocks_batch()`
+  once when the resident session exposes it, records `target_verify_batch_ms`,
+  and falls back to the existing per-slot `verify_target_block()` loop when the
+  capability is absent.
+- Threaded `target_verify_batching` through the MTP last-batch metadata so the
+  server can distinguish `single_slot`, `per_slot_serial`, and
+  `packed_slot_batch`.
+- Added RED/GREEN coverage:
+  a hand-built c=2 resident-slot test proves the batch verifier is called once
+  and per-slot verify is not used when available; the existing c=2 full fake
+  path remains the per-slot fallback coverage.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'speculative_mtp'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'speculative_mtp or generation_batcher_coalesces_speculative_mtp'
+  ```
+  Pycompile passed; focused speculative-MTP tests passed (`3 passed`), full
+  GGUF sampling tests passed (`26 passed`), and focused server tests passed
+  (`5 passed`).

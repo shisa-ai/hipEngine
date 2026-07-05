@@ -754,11 +754,12 @@ class Qwen35GGUFBringupGenerator:
                             resident_draft,
                         )
                 resident_slot_count = 1
+                target_verify_batching = "single_slot"
             else:
                 shared_runner = self._prepared_shared_runner()
                 if shared_runner is None:
                     with Qwen35GGUFFullStackRunner(self.model_path) as local_runner:
-                        resident_slot_count = self._generate_prepared_mtp_serving_slots(
+                        resident_slot_count, target_verify_batching = self._generate_prepared_mtp_serving_slots(
                             local_runner,
                             assets,
                             encoded_prompts,
@@ -773,7 +774,7 @@ class Qwen35GGUFBringupGenerator:
                             outputs=outputs,
                         )
                 else:
-                    resident_slot_count = self._generate_prepared_mtp_serving_slots(
+                    resident_slot_count, target_verify_batching = self._generate_prepared_mtp_serving_slots(
                         shared_runner,
                         assets,
                         encoded_prompts,
@@ -799,6 +800,7 @@ class Qwen35GGUFBringupGenerator:
             outputs=self.last_generation_outputs,
             cycles_by_request=mtp_cycles_by_request,
             resident_slot_count=resident_slot_count,
+            target_verify_batching=target_verify_batching,
         )
         return outputs
 
@@ -817,7 +819,7 @@ class Qwen35GGUFBringupGenerator:
         assets_load_ms: float,
         pool_sessions: bool,
         outputs: list[GenerationOutput],
-    ) -> int:
+    ) -> tuple[int, str]:
         slots_open_start = time.perf_counter()
         slots = self._open_mtp_serving_slots(
             shared_runner,
@@ -828,11 +830,14 @@ class Qwen35GGUFBringupGenerator:
         )
         slots_open_ms = _timing_ms_since(slots_open_start)
         resident_slot_count = len(slots)
+        target_verify_batching = "per_slot_serial" if resident_slot_count > 1 else "single_slot"
         release_slots_to_pool = False
         try:
             slots_run_start = time.perf_counter()
             self._run_mtp_serving_slots(slots, assets, request, base_env=base_env)
             slots_run_ms = _timing_ms_since(slots_run_start)
+            if resident_slot_count > 1 and any("target_verify_batch_ms" in slot.timing for slot in slots):
+                target_verify_batching = "packed_slot_batch"
             for slot in slots:
                 prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
                 generated_ids = list(slot.generated_ids)
@@ -856,7 +861,7 @@ class Qwen35GGUFBringupGenerator:
             release_slots_to_pool = True
         finally:
             self._close_mtp_serving_slots(slots, reuse=release_slots_to_pool)
-        return resident_slot_count
+        return resident_slot_count, target_verify_batching
 
     def _mtp_generation_output(
         self,
@@ -1134,13 +1139,9 @@ class Qwen35GGUFBringupGenerator:
                 _timing_add_ms(slot.timing, "slots_draft_phase_ms", draft_phase_ms)
 
             verify_phase_start = time.perf_counter()
-            verified_cycles: list[_GGUFMTPVerifiedCycle] = []
             try:
-                for drafted in drafted_cycles:
-                    verified_cycles.append(self._verify_mtp_serving_cycle(drafted, request))
+                verified_cycles = self._verify_mtp_serving_cycles(drafted_cycles, request)
             except Exception:
-                for verified in verified_cycles:
-                    self._free_mtp_serving_cycle_snapshot(verified.drafted)
                 raise
             verify_phase_ms = _timing_ms_since(verify_phase_start)
             for slot in live_slots:
@@ -1271,37 +1272,93 @@ class Qwen35GGUFBringupGenerator:
         drafted: _GGUFMTPDraftedCycle,
         request: GenerationRequest,
     ) -> _GGUFMTPVerifiedCycle:
+        return self._verify_mtp_serving_cycles([drafted], request)[0]
+
+    def _verify_mtp_serving_cycles(
+        self,
+        drafted_cycles: list[_GGUFMTPDraftedCycle],
+        request: GenerationRequest,
+    ) -> list[_GGUFMTPVerifiedCycle]:
         _ = request
-        slot = drafted.slot
-        snapshot_start = time.perf_counter()
-        snapshot = None if drafted.direct_commit_exact else slot.session._linear_state_snapshot()
-        drafted.snapshot = snapshot
-        if snapshot is not None:
-            _timing_add(slot.timing, "linear_state_snapshot_ms", snapshot_start)
+        if not drafted_cycles:
+            return []
+        for drafted in drafted_cycles:
+            slot = drafted.slot
+            snapshot_start = time.perf_counter()
+            snapshot = None if drafted.direct_commit_exact else slot.session._linear_state_snapshot()
+            drafted.snapshot = snapshot
+            if snapshot is not None:
+                _timing_add(slot.timing, "linear_state_snapshot_ms", snapshot_start)
         try:
-            verify_start = time.perf_counter()
-            block_result = slot.session.verify_target_block(
-                drafted.block_inputs,
-                bulk_attention_mode="bulk",
-                use_wmma_prefill=True,
-                capture_linear_state_rows=True,
-                defer_linear_state_commit=True,
-            )
-            _timing_add(slot.timing, "target_verify_ms", verify_start)
-            block_target_tokens = [int(token) for token in block_result.token_ids]
-            acceptance = _llama_cpp_acceptance_from_target_samples(
-                drafted.draft_tokens,
-                block_target_tokens,
-            )
-            return _GGUFMTPVerifiedCycle(
-                drafted=drafted,
-                block_result=block_result,
-                block_target_tokens=block_target_tokens,
-                acceptance=acceptance,
-            )
+            block_results = self._try_verify_mtp_serving_cycles_batch(drafted_cycles)
+            if block_results is None:
+                block_results = []
+                for drafted in drafted_cycles:
+                    slot = drafted.slot
+                    verify_start = time.perf_counter()
+                    block_result = slot.session.verify_target_block(
+                        drafted.block_inputs,
+                        bulk_attention_mode="bulk",
+                        use_wmma_prefill=True,
+                        capture_linear_state_rows=True,
+                        defer_linear_state_commit=True,
+                    )
+                    _timing_add(slot.timing, "target_verify_ms", verify_start)
+                    block_results.append(block_result)
+            if len(block_results) != len(drafted_cycles):
+                raise RuntimeError(
+                    f"MTP target batch verifier returned {len(block_results)} result(s) "
+                    f"for {len(drafted_cycles)} drafted cycle(s)"
+                )
+            verified: list[_GGUFMTPVerifiedCycle] = []
+            for drafted, block_result in zip(drafted_cycles, block_results, strict=True):
+                block_target_tokens = [int(token) for token in block_result.token_ids]
+                acceptance = _llama_cpp_acceptance_from_target_samples(
+                    drafted.draft_tokens,
+                    block_target_tokens,
+                )
+                verified.append(
+                    _GGUFMTPVerifiedCycle(
+                        drafted=drafted,
+                        block_result=block_result,
+                        block_target_tokens=block_target_tokens,
+                        acceptance=acceptance,
+                    )
+                )
+            return verified
         except Exception:
-            self._free_mtp_serving_cycle_snapshot(drafted)
+            for drafted in drafted_cycles:
+                self._free_mtp_serving_cycle_snapshot(drafted)
             raise
+
+    def _try_verify_mtp_serving_cycles_batch(
+        self,
+        drafted_cycles: list[_GGUFMTPDraftedCycle],
+    ) -> list[Any] | None:
+        if len(drafted_cycles) <= 1:
+            return None
+        first_session = drafted_cycles[0].slot.session
+        verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
+        if not callable(verify_batch):
+            return None
+        jobs = [
+            {
+                "session": drafted.slot.session,
+                "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
+                "bulk_attention_mode": "bulk",
+                "use_wmma_prefill": True,
+                "capture_linear_state_rows": True,
+                "defer_linear_state_commit": True,
+            }
+            for drafted in drafted_cycles
+        ]
+        verify_start = time.perf_counter()
+        block_results = list(verify_batch(jobs))
+        verify_ms = _timing_ms_since(verify_start)
+        for drafted in drafted_cycles:
+            _timing_add_ms(drafted.slot.timing, "target_verify_ms", verify_ms)
+            _timing_add_ms(drafted.slot.timing, "target_verify_batch_ms", verify_ms)
+        return block_results
 
     def _commit_mtp_serving_cycle(
         self,
@@ -2121,6 +2178,7 @@ def _gguf_mtp_last_batch_generation(
     outputs: tuple[GenerationOutput, ...],
     cycles_by_request: dict[int, list[dict[str, Any]]],
     resident_slot_count: int = 1,
+    target_verify_batching: str | None = None,
 ) -> dict[str, Any]:
     request_ids = tuple(range(len(outputs)))
     path = "gguf_llama_compat_mtp_server"
@@ -2144,7 +2202,7 @@ def _gguf_mtp_last_batch_generation(
             "serving_route": "llama_compat",
             "draft_n_max": 2,
             "target_verify": "bulk_direct_commit",
-            "target_verify_batching": (
+            "target_verify_batching": target_verify_batching or (
                 "per_slot_serial"
                 if int(resident_slot_count) > 1
                 else "single_slot"
