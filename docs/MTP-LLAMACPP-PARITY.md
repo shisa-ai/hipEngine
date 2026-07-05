@@ -263,6 +263,23 @@ reduces total packed verify wall, not just attribution buckets. Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-defer-readback-probe.json`.
 
+Rejected MTP route-cap-8 follow-up: widening only the speculative MTP HTTP
+backend group cap from four to eight, while keeping internal packed prefill and
+packed verifier chunks at four slots, still reproduced the bad one-group c=8
+shape. The probe also removed the packed-prefill early guard so one c=8 request
+group could open as 4+4 prefill chunks. Same-server natural24 MTP measured only
+**75.45 tok/s** at c=4 and **45.35 tok/s** at c=8 versus retained
+**77.29/76.46 tok/s**. c=8 exposed the failure mode directly:
+`slots_open_ms=25374.834`, `prefill_batch_ms=10387.592`,
+`slots_verify_phase_ms=12108.575`, and `target_packed_verify_total_ms=11115.561`
+(`lm_head_sample_ms=6981.361`). Code was reverted; the retained MTP server route
+must keep the four-request backend group cap unless a future implementation
+changes the c=8 open/verify scheduler itself, not just the outer batching cap.
+Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-mtpcap8-probe.json`
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpcap8-probe.json`.
+
 Route-cap follow-up: default GGUF AR serving now caps backend groups at the
 proven four-request shape even when the HTTP server is configured with
 `--max-active-requests 8`; the speculative MTP route now uses the same
