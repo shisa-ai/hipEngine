@@ -6761,6 +6761,33 @@ def _chunk_ranges(total: int, chunk_size: int, *, min_chunk_size: int = 1) -> tu
     return tuple(ranges)
 
 
+def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]:
+    rows = int(rows)
+    max_chunk = int(max_chunk)
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if max_chunk < 2:
+        raise ValueError("max_chunk must be at least 2")
+    if rows <= max_chunk:
+        return (rows,)
+    chunks: list[int] = []
+    remaining = rows
+    while remaining > 0:
+        if remaining <= max_chunk:
+            if remaining == 1 and chunks:
+                chunks[-1] -= 1
+                chunks.append(2)
+            else:
+                chunks.append(remaining)
+            break
+        take = max_chunk
+        if remaining - take == 1:
+            take -= 1
+        chunks.append(take)
+        remaining -= take
+    return tuple(chunks)
+
+
 @dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
@@ -11456,6 +11483,40 @@ class Qwen35GGUFResidentSession:
         )
         return True
 
+    def _verify_lm_head_rowtile_chunked(
+        self, hidden_ptr: int, out_ptr: int, rows: int, *, stream: int = 0, runtime=None
+    ) -> bool:
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if rows <= 6:
+            return self._verify_lm_head_rowtile(
+                hidden_ptr,
+                out_ptr,
+                rows,
+                stream=stream,
+                runtime=runtime,
+            )
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        hidden_row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
+        logits_row_nbytes = int(self.runner.vocab_size) * DType.FP32.itemsize
+        row_offset = 0
+        for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=6):
+            if int(chunk_rows) < 2:
+                return False
+            handled = self._verify_lm_head_rowtile(
+                hidden_ptr + row_offset * hidden_row_nbytes,
+                out_ptr + row_offset * logits_row_nbytes,
+                int(chunk_rows),
+                stream=stream,
+                runtime=runtime,
+            )
+            if not handled:
+                return False
+            row_offset += int(chunk_rows)
+        return True
+
     def _verify_lm_head_q6_top1_dp4a(
         self,
         hidden_ptr: int,
@@ -11569,7 +11630,7 @@ class Qwen35GGUFResidentSession:
                     "non-dp4a verifier lm-head fallback expects BF16 hidden rows, "
                     f"got {activation_dtype!r}"
                 )
-            if not self._verify_lm_head_rowtile(
+            if not self._verify_lm_head_rowtile_chunked(
                 hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
             ):
                 launch_gguf_linear(

@@ -1,20 +1,19 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-06 (hipEngine GGUF server MTP small-B verifier fix:
-the llama-compat serving target verifier now uses the same no-WMMA small-B body
-shape as the direct target-block verifier instead of forcing the rows>1 WMMA
-prefill route. Retained natural24 MTP moves **59.94/66.60/65.79 ->
-69.78/72.56/68.83 tok/s** at c=2/c=4/c=8. c=8 improves **+4.6%** versus the
-route-cap row and **+25.4%** versus the pre-route-cap **54.88 tok/s** row.
-Same-server AR remains **66.39/82.46/81.94 tok/s**. The new c=8 economy row has
-`draft=166`, `accepted=140`, accept rate **0.8434**, and **251** target verifier
-rows; verifier wall drops `slots_verify_phase_ms` **7842.676 -> 7236.054 ms**,
-with linear-attention layers **4187.772 -> 715.082 ms** and full-attention
-layers **1234.868 -> 251.018 ms**. LM-head/sample is now the dominant verifier
-bucket (**5202.328 ms**) because the no-WMMA body also routes the 12-row packed
-head through the non-WMMA fallback. A split no-WMMA-body/WMMA-sample probe was
-rejected (**41.76/50.89 tok/s** c=8) due to repeated packed-verify setup
-outliers and unchanged LM-head cost. See
+Last updated: 2026-07-06 (hipEngine GGUF server MTP packed LM-head rowtile
+chunking: packed target verifier rows above six now split the Q6_K T16 lm-head
+projection into bit-exact 2-6-row rowtile launches instead of falling through to
+the generic 12-row body. Retained natural24 MTP moves
+**69.78/72.56/68.83 -> 70.06/77.29/76.46 tok/s** at c=2/c=4/c=8; the c=8
+first pass also measured **77.52 tok/s**. Same-server AR remains
+**66.39/82.46/81.94 tok/s**, so MTP now beats AR at c=2 and trails by about
+5 tok/s at c=4/c=8. The warmed c=8 row has `draft=165`, `accepted=141`, accept
+rate **0.8545**, and **250** target verifier rows. Versus the no-WMMA verifier
+row, c=8 `slots_verify_phase_ms` drops **7236.054 -> 6035.985 ms** and packed
+verifier total drops **7142.328 -> 5923.988 ms**; LM-head/sample falls
+**5202.328 -> 4277.118 ms** but remains the largest exposed verifier bucket.
+Rows 7/8/12 are covered by the HIP rowtile correctness gate against per-row
+decode. See
 [`2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-streamchunks-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-streamchunks-rerun.json),
 [`2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-streamchunks-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-streamchunks-rerun.json),
 [`2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-streamchunks-rerun2.json`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-streamchunks-rerun2.json),
@@ -41,6 +40,10 @@ new retained no-WMMA verifier artifacts
 [`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-no-wmma-verify.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-no-wmma-verify.json),
 [`2026-07-06-hipengine-server-mtp-natural24-c4-bw5-no-wmma-verify.json`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-no-wmma-verify.json), and
 [`2026-07-06-hipengine-server-mtp-natural24-c8-bw5-no-wmma-verify.json`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-no-wmma-verify.json);
+new retained rowtile-chunk verifier artifacts
+[`2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json),
+[`2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json), and
+[`2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json);
 instrumentation artifact
 [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
@@ -528,9 +531,9 @@ full-suite speed row above.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
-| hipEngine `llama-compat` server MTP | 2 | 66.39 | **69.78** | 1.051x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + MTP route cap 4 + startup MTP prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify with no-WMMA small-B body | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-no-wmma-verify.json), [`route-cap check`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-routecap4-rerun2.json), [`startup-first`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-smoke.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-startup-mtp-verifywarm-serial-rerun.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-routecap4-arfix.json); small-B no-WMMA verifier moves retained c=2 **59.94 -> 69.78 tok/s** and makes MTP faster than same-server AR at c=2 |
-| hipEngine `llama-compat` server MTP | 4 | 82.46 | **72.56** | 0.880x | same | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-no-wmma-verify.json), [`route-cap check`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap4-rerun2.json), [`startup-rerun`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-startup-mtp-verifywarm-serial-rerun.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-routecap4-arfix.json); small-B no-WMMA verifier moves retained c=4 **66.60 -> 72.56 tok/s** and stays well above llama.cpp HIP/Vulkan full-request MTP c=4 |
-| hipEngine `llama-compat` server MTP | 8 | 81.94 | **68.83** | 0.840x | same; default GGUF AR and speculative MTP routes are both capped at four backend requests | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-no-wmma-verify.json), [`route-cap`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap4-rerun2.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-routecap4-arfix.json), [`AR sanity`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json); c=8 now combines the four-slot route cap with the no-WMMA small-B verifier and moves **54.88 -> 65.79 -> 68.83 tok/s**. Verifier work is now led by LM-head/sample drain after linear/full-attention buckets dropped. |
+| hipEngine `llama-compat` server MTP | 2 | 66.39 | **70.06** | 1.055x | B2, 5 ms batch window, packed AR prefill/decode + startup ragged AR warmup + default GGUF AR route cap 4 + MTP route cap 4 + startup MTP prefill/verify warmup at widths 2/4 + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify with no-WMMA small-B body + chunked Q6_K rowtile LM-head for packed rows >6 | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-rowtilechunk-verify-rerun.json), [`no-WMMA`](results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-no-wmma-verify.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-routecap4-arfix.json); chunking leaves c=2 effectively flat and still faster than same-server AR |
+| hipEngine `llama-compat` server MTP | 4 | 82.46 | **77.29** | 0.937x | same | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify-rerun.json), [`no-WMMA`](results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-no-wmma-verify.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-routecap4-arfix.json); rowtile chunking moves retained c=4 **72.56 -> 77.29 tok/s** and closes most of the gap to llama.cpp HIP decode-only MTP c=4 **78.21 tok/s** |
+| hipEngine `llama-compat` server MTP | 8 | 81.94 | **76.46** | 0.933x | same; default GGUF AR and speculative MTP routes are both capped at four backend requests | [`MTP`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify-rerun.json), [`same-session 77.52`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-rowtilechunk-verify.json), [`no-WMMA`](results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-no-wmma-verify.json), [`AR`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-routecap4-arfix.json); c=8 now moves **54.88 -> 65.79 -> 68.83 -> 76.46 tok/s**. LM-head/sample remains the largest verifier bucket, but no longer uses the generic 12-row fallback. |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); full-request/client aggregate, decode-only aggregate is 52.19/75.56 |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); full-request/client aggregate, decode-only aggregate is 108.33/78.21 |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); full-request/client aggregate, decode-only aggregate is 124.71/78.56 |

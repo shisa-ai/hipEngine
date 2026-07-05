@@ -1,8 +1,10 @@
 """Correctness gate for the Q6_K T16 small-B rowtile GEMV (verify lm-head path).
 
 The rowtile kernel (reads each weight tile once, accumulates ROW_TILE rows) must
-be BIT-IDENTICAL to the per-row t16 decode kernel for rows 2-6. The per-row decode
-kernel is the exact reference. Skips without HIP or the local 35B GGUF fixture.
+be BIT-IDENTICAL to the per-row t16 decode kernel. The direct rowtile kernel
+handles rows 2-6; packed serving verifies larger row counts by chunking into
+2-6-row launches. The per-row decode kernel is the exact reference. Skips
+without HIP or the local 35B GGUF fixture.
 """
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ def test_q6_k_t16_rowtile_matches_per_row_decode() -> None:
 
     from hipengine.core.hip import get_hip_runtime, HipMemcpyKind
     from hipengine.core.memory import malloc, free, host_array_ptr
-    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, _small_b_rowtile_chunks
     from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
         gguf_q6_k_t16_gemv_decode_bf16_f32_out as decode,
         gguf_q6_k_t16_gemv_rowtile_bf16_f32_out as rowtile,
@@ -41,7 +43,7 @@ def test_q6_k_t16_rowtile_matches_per_row_decode() -> None:
         H = s.runner.hidden_size
         V = s.runner.vocab_size
         rng = np.random.default_rng(0)
-        for rows in (2, 3, 4, 5, 6):
+        for rows in (2, 3, 4, 5, 6, 7, 8, 12):
             xh = (rng.standard_normal(rows * H).astype(np.float32) * 0.2).astype(np.float16).view(np.uint16)
             x = malloc(rows * H * 2, runtime=rt)
             rt.memcpy(x.ptr, host_array_ptr(np.ascontiguousarray(xh)), xh.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
@@ -49,7 +51,18 @@ def test_q6_k_t16_rowtile_matches_per_row_decode() -> None:
             got = malloc(rows * V * 4, runtime=rt)
             for r in range(rows):
                 decode(x.ptr + r * H * 2, w.ptr, ref.ptr + r * V * 4, 1, H, V, runtime=rt)
-            rowtile(x.ptr, w.ptr, got.ptr, rows, H, V, runtime=rt)
+            row_offset = 0
+            for chunk_rows in _small_b_rowtile_chunks(rows):
+                rowtile(
+                    x.ptr + row_offset * H * 2,
+                    w.ptr,
+                    got.ptr + row_offset * V * 4,
+                    chunk_rows,
+                    H,
+                    V,
+                    runtime=rt,
+                )
+                row_offset += chunk_rows
             rt.device_synchronize()
             a = np.empty((rows * V,), dtype=np.float32)
             b = np.empty((rows * V,), dtype=np.float32)
