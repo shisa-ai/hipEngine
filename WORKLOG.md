@@ -144715,3 +144715,37 @@ python3 scripts/gguf_mtp_bench.py \
   PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
   ```
   Result: server API tests passed; generation sampling tests passed.
+
+## 2026-07-06 - GGUF server AR c>N fresh confirmation
+
+- Rechecked the retained GGUF OpenAI server AR path after confirming that the
+  active defaults are packed AR prefill/decode plus the four-slot route cap.
+  This was a validation rerun, not a code change.
+- Server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- Client command template:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --out benchmarks/results/2026-07-06-hipengine-server-ar-natural24-cC-bw5-fresh-confirm.json
+  ```
+- Results:
+  - c=2: **65.98 tok/s**, `total_predicted=274`,
+    `prefill_batch_ms=2315.802`, `decode_batch_ms=5758.090`.
+  - c=4: **82.64 tok/s**, `total_predicted=274`,
+    `prefill_batch_ms=3186.542`, `decode_batch_ms=8072.956`.
+  - c=8: **82.42 tok/s**, `total_predicted=274`,
+    `prefill_batch_ms=3199.428`, `decode_batch_ms=8128.008`.
+- Interpretation: AR is fixed/retained. The fresh
+  **65.98/82.64/82.42 tok/s** c=2/c=4/c=8 run confirms the documented
+  **66.39/82.46/81.94 tok/s** route-cap AR fix within normal variance and does
+  not supersede the rollup row.

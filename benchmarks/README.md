@@ -11,8 +11,10 @@ projection into bit-exact 2-6-row rowtile launches instead of falling through to
 the generic 12-row body. Retained natural24 MTP moves
 **69.78/72.56/68.83 -> 70.06/77.29/76.46 tok/s** at c=2/c=4/c=8; the c=8
 first pass also measured **77.52 tok/s**. Same-server AR remains
-**66.39/82.46/81.94 tok/s**, so MTP now beats AR at c=2 and trails by about
-5 tok/s at c=4/c=8. The warmed c=8 row has `draft=165`, `accepted=141`, accept
+**66.39/82.46/81.94 tok/s**; a fresh post-commit validation rerun measured
+**65.98/82.64/82.42 tok/s**, confirming the retained AR c>N row within normal
+variance. MTP now beats AR at c=2 and trails by about 5 tok/s at c=4/c=8. The
+warmed c=8 row has `draft=165`, `accepted=141`, accept
 rate **0.8545**, and **250** target verifier rows. Versus the no-WMMA verifier
 row, c=8 `slots_verify_phase_ms` drops **7236.054 -> 6035.985 ms** and packed
 verifier total drops **7142.328 -> 5923.988 ms**; LM-head/sample falls
@@ -53,6 +55,10 @@ current c=1 refresh artifacts
 [`2026-07-06-hipengine-server-ar-natural24-c1-bw5-current-refresh.json`](results/2026-07-06-hipengine-server-ar-natural24-c1-bw5-current-refresh.json)
 and
 [`2026-07-06-hipengine-server-mtp-natural24-c1-bw5-current-refresh.json`](results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-current-refresh.json);
+fresh AR c>N validation artifacts
+[`2026-07-06-hipengine-server-ar-natural24-c2-bw5-fresh-confirm.json`](results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-fresh-confirm.json),
+[`2026-07-06-hipengine-server-ar-natural24-c4-bw5-fresh-confirm.json`](results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-fresh-confirm.json), and
+[`2026-07-06-hipengine-server-ar-natural24-c8-bw5-fresh-confirm.json`](results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-fresh-confirm.json);
 instrumentation artifact
 [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packedstage-rerun.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
