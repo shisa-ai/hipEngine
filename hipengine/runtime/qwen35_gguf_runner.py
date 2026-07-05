@@ -111,6 +111,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_prefill_f32,
     qwen35_linear_attn_conv_prefill_f32_state_rows,
+    qwen35_linear_attn_conv_prefill_segments_f32,
     qwen35_linear_attn_conv_prefill_segments_f32_state_rows,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
@@ -118,6 +119,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
@@ -533,6 +535,7 @@ class Qwen35GGUFBlockVerifyResult:
     layer_boundary_hidden: dict[int, dict[str, np.ndarray]] | None = None
     lm_head_logits_f32: np.ndarray | None = None
     linear_state_rows_captured: bool = False
+    final_linear_state_committed: bool = False
 
     def __post_init__(self) -> None:
         if self.start_position < 0:
@@ -3180,6 +3183,7 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_alpha_beta_{alpha_beta_route}",
                 f"{stage_prefix}_alpha_beta",
             )
+        active_segments = int(getattr(scratch, "gdn_active_segments", 1))
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
             use_prefill_gdn_capture = _gguf_verify_capture_prefill_gdn_enabled()
@@ -3191,7 +3195,6 @@ class Qwen35GGUFFullStackRunner:
             use_f32_chain_conv = (
                 _gguf_verify_capture_f32_chain_conv_enabled() or use_prefill_gdn_capture
             )
-            active_segments = int(getattr(scratch, "gdn_active_segments", 1))
             if use_prefill_gdn_capture and not use_prefill_gdn_chain_conv:
                 if not linear_qkv_f32_ready:
                     bf16_to_f32(
@@ -3621,44 +3624,88 @@ class Qwen35GGUFFullStackRunner:
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_qkv_bf16_to_f32")
-        qwen35_linear_attn_conv_prefill_f32(
-            scratch.linear_qkv_f32.ptr,
-            conv_state.ptr,
-            layer.weight("ssm_conv1d").allocation().tensor.ptr,
-            scratch.conv_out.ptr,
-            rows,
-            self.linear_qkv_width,
-            cfg.ssm_conv_kernel,
-            stream=stream,
-            runtime=runtime,
-        )
+        if active_segments > 1:
+            qwen35_linear_attn_conv_prefill_segments_f32(
+                scratch.linear_qkv_f32.ptr,
+                conv_state.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                scratch.gdn_cu_seqlens.ptr,
+                scratch.gdn_state_indices.ptr,
+                rows,
+                active_segments,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            qwen35_linear_attn_conv_prefill_f32(
+                scratch.linear_qkv_f32.ptr,
+                conv_state.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                rows,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
             sync_stages,
-            f"{stage_prefix}_prefill_conv",
+            f"{stage_prefix}_prefill_conv_segments" if active_segments > 1 else f"{stage_prefix}_prefill_conv",
             t_stage,
         )
         if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_prefill_conv")
-        self._run_gdn_prefill(
-            layer=layer,
-            scratch=scratch,
-            cfg=cfg,
-            rows=rows,
-            recurrent_state=recurrent_state,
-            stream=stream,
-            runtime=runtime,
-        )
+            gpu_stage_recorder.mark(
+                f"{stage_prefix}_prefill_conv_segments" if active_segments > 1 else f"{stage_prefix}_prefill_conv"
+            )
+        if active_segments > 1:
+            qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments(
+                scratch.conv_out.ptr,
+                scratch.linear_z.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_bf16.ptr,
+                scratch.gdn_cu_seqlens.ptr,
+                scratch.gdn_state_indices.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                active_segments,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            self._run_gdn_prefill(
+                layer=layer,
+                scratch=scratch,
+                cfg=cfg,
+                rows=rows,
+                recurrent_state=recurrent_state,
+                stream=stream,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
             sync_stages,
-            f"{stage_prefix}_prefill_gdn",
+            f"{stage_prefix}_prefill_gdn_segments" if active_segments > 1 else f"{stage_prefix}_prefill_gdn",
             t_stage,
         )
         if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_prefill_gdn")
+            gpu_stage_recorder.mark(
+                f"{stage_prefix}_prefill_gdn_segments" if active_segments > 1 else f"{stage_prefix}_prefill_gdn"
+            )
         if not _try_launch_dense_q8_single_dp4a(
             layer.weight("ssm_out"),
             scratch.recurrent_bf16.ptr,
@@ -8249,6 +8296,13 @@ class Qwen35GGUFResidentSession:
         if not _gguf_verify_capture_prefill_gdn_enabled():
             raise NotImplementedError("packed target verifier requires prefill-GDN no-copy capture")
 
+        capture_linear_state_rows = bool(job_list[0].get("capture_linear_state_rows", False))
+        defer_linear_state_commit = bool(job_list[0].get("defer_linear_state_commit", False))
+        if capture_linear_state_rows and not defer_linear_state_commit:
+            raise NotImplementedError("packed target verifier captured-row mode requires deferred linear-state commit")
+        if not capture_linear_state_rows and defer_linear_state_commit:
+            raise NotImplementedError("packed target verifier cannot defer uncaptured linear-state commit")
+
         slot_blocks: list[_GGUFPackedVerifySlotBlock] = []
         for job in job_list:
             session = job.get("session")
@@ -8262,10 +8316,10 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed target verifier currently supports BF16 KV only")
             if str(job.get("bulk_attention_mode", "bulk")) != "bulk":
                 raise NotImplementedError("packed target verifier supports bulk attention mode only")
-            if not bool(job.get("capture_linear_state_rows", False)):
-                raise NotImplementedError("packed target verifier requires captured linear state rows")
-            if not bool(job.get("defer_linear_state_commit", False)):
-                raise NotImplementedError("packed target verifier requires deferred linear-state commit")
+            if bool(job.get("capture_linear_state_rows", False)) != capture_linear_state_rows:
+                raise NotImplementedError("packed target verifier requires uniform linear-state capture mode")
+            if bool(job.get("defer_linear_state_commit", False)) != defer_linear_state_commit:
+                raise NotImplementedError("packed target verifier requires uniform linear-state commit mode")
             input_token_ids = tuple(int(token) for token in job.get("input_token_ids", ()))
             if not input_token_ids:
                 raise ValueError("packed target verifier jobs require non-empty input_token_ids")
@@ -8300,7 +8354,8 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         self._ensure_verify_block_buffers(rows, runtime=runtime)
-        self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
+        if capture_linear_state_rows:
+            self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
         add_stage("packed_verify_setup", setup_start)
         sync_state_start = time.perf_counter()
         self._sync_packed_verify_initial_state(
@@ -8363,8 +8418,12 @@ class Qwen35GGUFResidentSession:
                         stream=stream,
                         decode_scratch=linear_decode_scratch,
                         expert_sidecar=None,
-                        linear_state_rows=self._verify_linear_state_row_pair(layer_id),
-                        commit_final_linear_state=False,
+                        linear_state_rows=(
+                            self._verify_linear_state_row_pair(layer_id)
+                            if capture_linear_state_rows
+                            else None
+                        ),
+                        commit_final_linear_state=not defer_linear_state_commit,
                         hidden_f32_ptr=None,
                         out_f32_ptr=None,
                         stage_timings=None,
@@ -8455,6 +8514,8 @@ class Qwen35GGUFResidentSession:
             token_host,
             runtime=runtime,
             stream=stream,
+            linear_state_rows_captured=capture_linear_state_rows,
+            final_linear_state_committed=not defer_linear_state_commit,
         )
         add_stage("packed_verify_scatter_outputs", scatter_start)
         sync_start = time.perf_counter()
@@ -8963,6 +9024,7 @@ class Qwen35GGUFResidentSession:
                 None if lm_head_logits_host is None else np.ascontiguousarray(lm_head_logits_host, dtype=np.float32)
             ),
             linear_state_rows_captured=bool(capture_linear_state_rows),
+            final_linear_state_committed=not bool(defer_linear_state_commit),
         )
 
     def verify_target_block_serial_exact(
@@ -9084,6 +9146,7 @@ class Qwen35GGUFResidentSession:
                 }
             ),
             linear_state_rows_captured=bool(capture_linear_state_rows),
+            final_linear_state_committed=True,
         )
 
     def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
@@ -11051,6 +11114,8 @@ class Qwen35GGUFResidentSession:
         *,
         runtime: HipRuntime,
         stream: int,
+        linear_state_rows_captured: bool = True,
+        final_linear_state_committed: bool = False,
     ) -> list[Qwen35GGUFBlockVerifyResult]:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -11069,7 +11134,8 @@ class Qwen35GGUFResidentSession:
             start_position = int(layout.row_positions[row_start])
             end_position = start_position + slot_rows
             session._ensure_verify_block_buffers(slot_rows, runtime=runtime)
-            session._ensure_verify_linear_state_row_buffers(slot_rows, runtime=runtime)
+            if linear_state_rows_captured:
+                session._ensure_verify_linear_state_row_buffers(slot_rows, runtime=runtime)
             if session is not self:
                 if self._verify_hidden_seed_buf is None or session._verify_hidden_seed_buf is None:
                     raise RuntimeError("packed verifier hidden buffers are closed")
@@ -11082,30 +11148,49 @@ class Qwen35GGUFResidentSession:
                 )
             for layer_id, layer_type in enumerate(cfg.layer_types):
                 if layer_type == LINEAR_ATTENTION:
-                    src_pair = self._verify_linear_state_row_pair(layer_id)
-                    dst_pair = session._verify_linear_state_row_pair(layer_id)
-                    if src_pair is None or dst_pair is None:
-                        raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
-                    src_conv_rows, src_recurrent_rows = src_pair
-                    dst_conv_rows, dst_recurrent_rows = dst_pair
                     conv_state, recurrent_state = session.scratch.layer_conv_states[layer_id], session.scratch.layer_recurrent_states[layer_id]
                     if conv_state is None or recurrent_state is None:
                         raise RuntimeError(f"session layer {layer_id} missing linear state")
-                    if session is not self:
+                    if linear_state_rows_captured:
+                        src_pair = self._verify_linear_state_row_pair(layer_id)
+                        dst_pair = session._verify_linear_state_row_pair(layer_id)
+                        if src_pair is None or dst_pair is None:
+                            raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+                        src_conv_rows, src_recurrent_rows = src_pair
+                        dst_conv_rows, dst_recurrent_rows = dst_pair
+                        if session is not self:
+                            runtime.memcpy_async(
+                                dst_conv_rows.ptr,
+                                src_conv_rows.ptr + row_start * int(conv_state.nbytes),
+                                slot_rows * int(conv_state.nbytes),
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                            runtime.memcpy_async(
+                                dst_recurrent_rows.ptr,
+                                src_recurrent_rows.ptr + row_start * int(recurrent_state.nbytes),
+                                slot_rows * int(recurrent_state.nbytes),
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                    elif final_linear_state_committed:
+                        packed_conv, packed_recurrent = packed_state.linear_state_pair(layer_id)
                         runtime.memcpy_async(
-                            dst_conv_rows.ptr,
-                            src_conv_rows.ptr + row_start * int(conv_state.nbytes),
-                            slot_rows * int(conv_state.nbytes),
+                            conv_state.ptr,
+                            packed_conv.ptr + slot_index * int(conv_state.nbytes),
+                            int(conv_state.nbytes),
                             HipMemcpyKind.DEVICE_TO_DEVICE,
                             stream,
                         )
                         runtime.memcpy_async(
-                            dst_recurrent_rows.ptr,
-                            src_recurrent_rows.ptr + row_start * int(recurrent_state.nbytes),
-                            slot_rows * int(recurrent_state.nbytes),
+                            recurrent_state.ptr,
+                            packed_recurrent.ptr + slot_index * int(recurrent_state.nbytes),
+                            int(recurrent_state.nbytes),
                             HipMemcpyKind.DEVICE_TO_DEVICE,
                             stream,
                         )
+                    else:
+                        raise RuntimeError("packed verifier produced neither captured nor final linear state")
                 elif layer_type == FULL_ATTENTION:
                     src_key, src_value = packed_state.full_cache(layer_id)
                     dst_key, dst_value = session.scratch.full_cache(layer_id)
@@ -11128,6 +11213,16 @@ class Qwen35GGUFResidentSession:
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             session._verify_hidden_seed_rows_populated = slot_rows
+            if final_linear_state_committed:
+                if self._verify_hidden_seed_buf is None:
+                    raise RuntimeError("packed verifier hidden buffers are closed")
+                runtime.memcpy_async(
+                    session.scratch.hidden_seed_fp32.ptr,
+                    self._verify_hidden_seed_buf.ptr + (row_end - 1) * hidden_row_nbytes,
+                    hidden_row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
             session._position = end_position
             session.scratch.position_host[0] = end_position
             session.scratch.context_host[0] = end_position + 1
@@ -11146,7 +11241,8 @@ class Qwen35GGUFResidentSession:
                     token_ids=[int(token) for token in token_host[row_start:row_end].tolist()],
                     hidden_seeds=np.ascontiguousarray(hidden_host[row_start:row_end], dtype=np.float32),
                     start_position=start_position,
-                    linear_state_rows_captured=True,
+                    linear_state_rows_captured=bool(linear_state_rows_captured),
+                    final_linear_state_committed=bool(final_linear_state_committed),
                 )
             )
         self._packed_verify_max_written_positions = tuple(written_positions)

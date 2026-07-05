@@ -144828,3 +144828,58 @@ python3 scripts/gguf_mtp_bench.py \
   Reusing `linear_state_rows=None` is invalid because it takes the older
   non-capture prefill/GDN path and changed MTP economy in the rejected probe.
 - The diagnostic server was stopped after the c=4/c=8 runs.
+
+## 2026-07-06 - Corrected MTP serving final-state fastpath remains rejected
+
+- Added a segment-aware mutable decode-order GDN prefill kernel for the packed
+  verifier no-capture path and wired
+  `HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH=1` as a default-off
+  serving diagnostic. The previous rejected probe had collapsed acceptance
+  because packed no-capture verification used a non-segment path; the corrected
+  path keeps `gdn_cu_seqlens`/`gdn_state_indices` and mutates each packed slot's
+  Conv/GDN final state independently.
+- Correctness/shape validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py tests/test_qwen35_gguf_gdn_prefill_correctness.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q \
+    tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases \
+    tests/test_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segments_mutating_matches_per_segment_decode_order \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_final_state_fastpath_uses_batch_final_state \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_final_state_fastpath_partial_replays_prefix \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_batch_verifier_chunks_above_four_slots \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_batch_verifier_streams_chunks_above_four_slots
+  ```
+  Result: py_compile passed; focused pytest passed (`7 passed`).
+- Benchmark server:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency 4 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-finalstate-fastpath2.json
+  ```
+- Result: rejected and not retained. c=4 measured **66.75 tok/s** with
+  acceptance unchanged at **0.8545** (`draft=165`, `accepted=141`), versus the
+  retained captured-row verifier artifact
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify.json`
+  at **76.83 tok/s** with the same economy. The corrected no-capture path fixed
+  the semantic collapse, but `target_state_commit_ms` rose **10.443 -> 405.559
+  ms** because partial/reject cycles need accepted-prefix replay when row states
+  were not captured. `target_packed_verify_total_ms` also rose **5985.302 ->
+  6321.722 ms** in this run.
+- Interpretation: full-final-state no-capture is the wrong MTP serving economy
+  under current acceptance distribution. The next real fix is not this flag; it
+  is either reducing captured-row overhead without losing accepted-row commit
+  state, or reducing partial/reject frequency enough that replay economics
+  changes. The probe server was stopped after the c=4 run.
