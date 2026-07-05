@@ -6675,6 +6675,8 @@ class Qwen35GGUFResidentSession:
     _packed_verify_scratch: object | None = field(default=None, init=False)
     _packed_verify_session_ids: tuple[int, ...] = field(default=(), init=False)
     _packed_verify_max_written_positions: tuple[int, ...] = field(default=(), init=False)
+    _packed_decode_session_ids: tuple[int, ...] = field(default=(), init=False)
+    _packed_decode_positions: tuple[int, ...] = field(default=(), init=False)
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
@@ -8851,6 +8853,239 @@ class Qwen35GGUFResidentSession:
             self._position += 1
             return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
 
+    def step_async_top1(
+        self,
+        token_id: int,
+        position: int | None = None,
+        *,
+        stream: int,
+    ) -> None:
+        """Launch one exact scalar decode step on ``stream`` without host sync."""
+
+        if position is not None and int(position) != self._position:
+            raise ValueError(f"position {position} does not match session cursor {self._position}")
+        with gemv_decode_session(self.use_gemv_decode):
+            hidden_ptr = self._run_token_to_final_hidden(
+                int(token_id),
+                position=self._position,
+                stream=stream,
+            )
+            self._position += 1
+            self._sample_device_from_hidden(hidden_ptr, stream=stream)
+
+    def read_top1_sample(self) -> Qwen35GGUFNextTokenProbeResult:
+        """Read the token produced by ``step_async_top1`` after stream sync."""
+
+        return self._read_sample(return_logits=False)
+
+    def step_batch_native(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
+        positions: list[int] | tuple[int, ...] | None = None,
+        return_logits: bool = False,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult]:
+        """Consume one decode token for each resident session in one packed pass.
+
+        This is the AR-serving counterpart to ``verify_target_blocks_batch``.
+        It uses the same row-shaped GGUF kernels, but every input row is
+        committed, so it skips verifier hidden-row D2H and deferred
+        linear-state scatter.  Consecutive calls with the same session tuple keep
+        the packed workspace canonical and avoid re-importing per-slot Conv/GDN
+        and full-attention history.
+        """
+
+        token_tuple = tuple(int(token) for token in token_ids)
+        session_tuple = (self,) if sessions is None else tuple(sessions)
+        if not token_tuple:
+            raise ValueError("token_ids must be non-empty")
+        if len(token_tuple) != len(session_tuple):
+            raise ValueError("token_ids and sessions must have the same length")
+        if return_logits:
+            raise NotImplementedError("GGUF packed AR decode currently supports top-1 sampling only")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
+            raise RuntimeError("GGUF resident packed decode buffers are closed")
+        if self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        if self.kv_storage_dtype != DType.BF16:
+            raise NotImplementedError("packed AR decode currently supports BF16 KV only")
+        if self.use_expert_sidecar:
+            raise NotImplementedError("packed AR decode does not support expert sidecars yet")
+        if self.host_token_embedding_enabled:
+            raise NotImplementedError("packed AR decode does not support host token embedding")
+        if not _gguf_verify_capture_prefill_gdn_enabled():
+            raise NotImplementedError("packed AR decode requires segmented prefill-GDN state rows")
+
+        position_tuple = tuple(int(session.position) for session in session_tuple)
+        if positions is not None:
+            expected = tuple(int(position) for position in positions)
+            if expected != position_tuple:
+                raise ValueError(f"packed AR positions {expected!r} do not match session cursors {position_tuple!r}")
+        for token in token_tuple:
+            if token < 0 or token >= int(self.runner.vocab_size):
+                raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+        for session in session_tuple:
+            if not isinstance(session, Qwen35GGUFResidentSession):
+                raise NotImplementedError("packed AR decode requires resident GGUF sessions")
+            if session.runner is not self.runner:
+                raise NotImplementedError("packed AR decode requires shared runner sessions")
+            if session.scratch is None:
+                raise RuntimeError("packed AR decode job session is closed")
+            if session.kv_storage_dtype != DType.BF16:
+                raise NotImplementedError("packed AR decode currently supports BF16 KV only")
+
+        slot_blocks = tuple(
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=(token,),
+                start_position=int(session.position),
+            )
+            for token, session in zip(token_tuple, session_tuple, strict=True)
+        )
+        max_live_count = max(
+            int(block.start_position) + len(block.input_token_ids)
+            for block in slot_blocks
+        )
+        slot_capacity = max(1024, max_live_count)
+        layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
+        if int(layout.max_live_count) >= 1024:
+            raise NotImplementedError("packed AR decode currently requires context < 1024")
+        rows = int(layout.rows)
+        if rows > int(self._bulk_prefill_scratch.rows):
+            raise NotImplementedError(
+                f"packed AR rows {rows} exceed resident hidden-buffer capacity {self._bulk_prefill_scratch.rows}"
+            )
+
+        runtime = self.runtime or get_hip_runtime()
+        packed_state, packed_scratch_base = self._ensure_packed_verify_workspace(
+            slot_count=int(layout.slot_count),
+            rows=rows,
+            max_sequence_length=slot_capacity,
+            runtime=runtime,
+        )
+        self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
+        self._sync_packed_decode_initial_state(
+            session_tuple,
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+        )
+        packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
+        token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
+        copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
+
+        launch_gguf_embedding(
+            self.runner.weights.root("token_embedding"),
+            self._prefill_token_buf.ptr,
+            self._prefill_hidden_a.ptr,
+            rows=rows,
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        src = self._prefill_hidden_a
+        dst = self._prefill_hidden_b
+        linear_decode_scratch = replace(
+            self.scratch,
+            layer_conv_states=packed_state.layer_conv_states,
+            layer_recurrent_states=packed_state.layer_recurrent_states,
+        )
+        with wmma_prefill_session(True), gemv_decode_session(self.use_gemv_decode):
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    self.runner._run_linear_attention_prefill_layer_rows(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        packed_scratch,
+                        rows=rows,
+                        stream=stream,
+                        decode_scratch=linear_decode_scratch,
+                        expert_sidecar=None,
+                        linear_state_rows=self._verify_linear_state_row_pair(layer_id),
+                        commit_final_linear_state=False,
+                        hidden_f32_ptr=None,
+                        out_f32_ptr=None,
+                        stage_timings=None,
+                        sync_stage_timings=False,
+                        stage_prefix="ar_batch_linear_attn",
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    key_cache, value_cache = packed_state.full_cache(layer_id)
+                    layer_scratch = replace(
+                        packed_scratch,
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        cos_table=self.scratch.cos_table,
+                        sin_table=self.scratch.sin_table,
+                    )
+                    self.runner._run_full_attention_decode_batch_layer_rows(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        layer_scratch,
+                        stream=stream,
+                        expert_sidecar=None,
+                        stage_timings=None,
+                        sync_stage_timings=False,
+                        stage_prefix="ar_batch_full_attn",
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                src, dst = dst, src
+
+            self._commit_packed_decode_linear_state_rows(
+                layout,
+                packed_state,
+                runtime=runtime,
+                stream=stream,
+            )
+            output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
+            gguf_rmsnorm_bf16_f32_weight(
+                src.ptr,
+                output_norm_weight_ptr,
+                packed_scratch.norm.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            token_host = self._sample_target_block_rows_from_hidden(
+                packed_scratch.norm.ptr,
+                rows,
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                stream=stream,
+            )
+
+        self._scatter_packed_decode_state(
+            session_tuple,
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+        )
+        session_ids = tuple(id(session) for session in session_tuple)
+        self._packed_decode_session_ids = session_ids
+        self._packed_decode_positions = tuple(int(session.position) for session in session_tuple)
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+        return [
+            Qwen35GGUFNextTokenProbeResult(
+                token_id=int(token),
+                logit=0.0,
+                logits=np.empty((0,), dtype=np.float32),
+            )
+            for token in token_host.tolist()
+        ]
+
     def _run_token_to_final_hidden(
         self,
         token_id: int,
@@ -9676,6 +9911,8 @@ class Qwen35GGUFResidentSession:
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()
+        self._packed_decode_session_ids = ()
+        self._packed_decode_positions = ()
 
     def _ensure_packed_verify_workspace(
         self,
@@ -9805,6 +10042,198 @@ class Qwen35GGUFResidentSession:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             written_positions[slot_index] = max(int(written_positions[slot_index]), start_position)
         self._packed_verify_max_written_positions = tuple(written_positions)
+
+    def _sync_packed_decode_initial_state(
+        self,
+        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        layout: _GGUFPackedVerifyLayout,
+        packed_state: _GGUFPackedTargetState,
+        *,
+        runtime: HipRuntime,
+        stream: int,
+    ) -> None:
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        session_ids = tuple(id(session) for session in sessions)
+        prior_positions = self._packed_decode_positions
+        can_reuse = (
+            self._packed_decode_session_ids == session_ids
+            and len(prior_positions) == len(sessions)
+        )
+        row_nbytes = self._packed_full_kv_row_nbytes()
+        cfg = self.runner.weights.config
+        for slot_index, session in enumerate(sessions):
+            if session.scratch is None:
+                raise RuntimeError("packed AR decode job session is closed")
+            row_start = int(layout.cu_seqlens[slot_index])
+            start_position = int(session.position)
+            if start_position != int(layout.row_positions[row_start]):
+                raise NotImplementedError("packed AR decode job start does not match session position")
+            slot_is_current = can_reuse and int(prior_positions[slot_index]) == start_position
+            if slot_is_current:
+                continue
+            for layer_id, layer_type in enumerate(cfg.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    src_conv = session.scratch.layer_conv_states[layer_id]
+                    src_recurrent = session.scratch.layer_recurrent_states[layer_id]
+                    if src_conv is None or src_recurrent is None:
+                        raise RuntimeError(f"session layer {layer_id} missing linear state")
+                    dst_conv, dst_recurrent = packed_state.linear_state_pair(layer_id)
+                    runtime.memcpy_async(
+                        dst_conv.ptr + slot_index * int(src_conv.nbytes),
+                        src_conv.ptr,
+                        int(src_conv.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        dst_recurrent.ptr + slot_index * int(src_recurrent.nbytes),
+                        src_recurrent.ptr,
+                        int(src_recurrent.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    if start_position <= 0:
+                        continue
+                    src_key, src_value = session.scratch.full_cache(layer_id)
+                    dst_key, dst_value = packed_state.full_cache(layer_id)
+                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
+                    nbytes = start_position * row_nbytes
+                    runtime.memcpy_async(
+                        dst_key.ptr + physical_base * row_nbytes,
+                        src_key.ptr,
+                        nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        dst_value.ptr + physical_base * row_nbytes,
+                        src_value.ptr,
+                        nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+
+    def _commit_packed_decode_linear_state_rows(
+        self,
+        layout: _GGUFPackedVerifyLayout,
+        packed_state: _GGUFPackedTargetState,
+        *,
+        runtime: HipRuntime,
+        stream: int,
+    ) -> None:
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        cfg = self.runner.weights.config
+        for layer_id, layer_type in enumerate(cfg.layer_types):
+            if layer_type != LINEAR_ATTENTION:
+                continue
+            src_pair = self._verify_linear_state_row_pair(layer_id)
+            if src_pair is None:
+                raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+            src_conv_rows, src_recurrent_rows = src_pair
+            dst_conv, dst_recurrent = packed_state.linear_state_pair(layer_id)
+            single_conv_state = self.scratch.layer_conv_states[layer_id]
+            single_recurrent_state = self.scratch.layer_recurrent_states[layer_id]
+            if single_conv_state is None or single_recurrent_state is None:
+                raise RuntimeError(f"session layer {layer_id} missing linear state")
+            conv_nbytes = int(single_conv_state.nbytes)
+            recurrent_nbytes = int(single_recurrent_state.nbytes)
+            for slot_index in range(int(layout.slot_count)):
+                final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                if final_row < int(layout.cu_seqlens[slot_index]):
+                    raise RuntimeError("packed AR decode slot has no final row to commit")
+                runtime.memcpy_async(
+                    dst_conv.ptr + slot_index * conv_nbytes,
+                    src_conv_rows.ptr + final_row * conv_nbytes,
+                    conv_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    dst_recurrent.ptr + slot_index * recurrent_nbytes,
+                    src_recurrent_rows.ptr + final_row * recurrent_nbytes,
+                    recurrent_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+
+    def _scatter_packed_decode_state(
+        self,
+        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        layout: _GGUFPackedVerifyLayout,
+        packed_state: _GGUFPackedTargetState,
+        *,
+        runtime: HipRuntime,
+        stream: int,
+    ) -> None:
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        cfg = self.runner.weights.config
+        row_nbytes = self._packed_full_kv_row_nbytes()
+        for slot_index, session in enumerate(sessions):
+            if session.scratch is None:
+                raise RuntimeError("packed AR decode job session is closed")
+            row_start = int(layout.cu_seqlens[slot_index])
+            row_end = int(layout.cu_seqlens[slot_index + 1])
+            slot_rows = row_end - row_start
+            start_position = int(layout.row_positions[row_start])
+            end_position = start_position + slot_rows
+            for layer_id, layer_type in enumerate(cfg.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    src_conv, src_recurrent = packed_state.linear_state_pair(layer_id)
+                    dst_conv = session.scratch.layer_conv_states[layer_id]
+                    dst_recurrent = session.scratch.layer_recurrent_states[layer_id]
+                    if dst_conv is None or dst_recurrent is None:
+                        raise RuntimeError(f"session layer {layer_id} missing linear state")
+                    runtime.memcpy_async(
+                        dst_conv.ptr,
+                        src_conv.ptr + slot_index * int(dst_conv.nbytes),
+                        int(dst_conv.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        dst_recurrent.ptr,
+                        src_recurrent.ptr + slot_index * int(dst_recurrent.nbytes),
+                        int(dst_recurrent.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    src_key, src_value = packed_state.full_cache(layer_id)
+                    dst_key, dst_value = session.scratch.full_cache(layer_id)
+                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
+                    nbytes = slot_rows * row_nbytes
+                    runtime.memcpy_async(
+                        dst_key.ptr + start_position * row_nbytes,
+                        src_key.ptr + (physical_base + start_position) * row_nbytes,
+                        nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        dst_value.ptr + start_position * row_nbytes,
+                        src_value.ptr + (physical_base + start_position) * row_nbytes,
+                        nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            session._position = end_position
+            session.scratch.position_host[0] = end_position
+            session.scratch.context_host[0] = end_position + 1
+            set_decode_position_i64(
+                session.scratch.position_buf.ptr,
+                session.scratch.context_buf.ptr,
+                end_position,
+                library=session._runtime_state_library,
+                runtime=runtime,
+            )
 
     def _scatter_packed_verify_outputs(
         self,
@@ -10487,6 +10916,8 @@ class Qwen35GGUFResidentSession:
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()
+        self._packed_decode_session_ids = ()
+        self._packed_decode_positions = ()
         for buffer in reversed(self._buffers):
             if buffer is not None:
                 free(buffer, runtime=runtime)
