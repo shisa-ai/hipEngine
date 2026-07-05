@@ -143185,3 +143185,22 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed; packed-layout tests passed (`4 passed`) and full GGUF
   sampling tests passed (`26 passed`).
+
+## 2026-07-05 - Packed target-state allocator primitive
+
+- Added `_GGUFPackedTargetState`, an internal allocator for future packed target
+  verification. It owns per-slot Conv/GDN recurrent state slabs for linear
+  attention layers and BF16 full-attention KV caches over disjoint physical slot
+  ranges. It also exposes `linear_state_pair()` and `full_cache()` helpers for
+  the eventual packed forward.
+- Added fake-runtime tests covering layer-to-state mapping, slot/block sizing,
+  allocation byte counts, and invalid inputs. This closes another state
+  ownership gap without exposing `verify_target_blocks_batch()` yet.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py
+  ```
+  Pycompile passed; packed-layout/state tests passed (`6 passed`) and full GGUF
+  sampling tests passed (`26 passed`).

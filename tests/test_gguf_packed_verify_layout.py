@@ -9,6 +9,9 @@ import pytest
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime.qwen35_gguf_runner import (
+    FULL_ATTENTION,
+    LINEAR_ATTENTION,
+    _GGUFPackedTargetState,
     _GGUFPackedVerifySlotBlock,
     _GGUFFullAttentionPrefillScratch,
     _build_gguf_packed_verify_layout,
@@ -155,3 +158,89 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
     assert view.block_table_tensor.shape == layout.block_table.shape
     assert view.positions_tensor.shape == layout.row_positions.shape
     assert view.context_counts_tensor.shape == layout.live_counts.shape
+
+
+def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:
+    next_ptr = 0x200000
+    allocations: list[DeviceBuffer] = []
+
+    def fake_malloc(nbytes: int, *, runtime):
+        nonlocal next_ptr
+        buffer = DeviceBuffer(ptr=next_ptr, nbytes=int(nbytes))
+        next_ptr += max(8, int(nbytes) + 8)
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    cfg = SimpleNamespace(
+        layer_types=(LINEAR_ATTENTION, FULL_ATTENTION, LINEAR_ATTENTION),
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=2,
+        ssm_state_size=3,
+        head_count_kv=2,
+        key_length=4,
+    )
+    runner = SimpleNamespace(
+        linear_qkv_width=10,
+        ssm_value_dim=2,
+        weights=SimpleNamespace(config=cfg),
+    )
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=2,
+        max_sequence_length=300,
+        runtime=SimpleNamespace(),
+    )
+
+    conv_nbytes = 2 * 10 * 4 * 4
+    recurrent_nbytes = 2 * 2 * 3 * 2 * 4
+    kv_nbytes = 2 * 512 * 2 * 4 * 2
+    assert state.slot_count == 2
+    assert state.blocks_per_slot == 2
+    assert state.total_positions == 1024
+    assert [buffer.nbytes for buffer in allocations] == [
+        conv_nbytes,
+        recurrent_nbytes,
+        kv_nbytes,
+        kv_nbytes,
+        conv_nbytes,
+        recurrent_nbytes,
+    ]
+    assert state.linear_state_pair(0) == (state.layer_conv_states[0], state.layer_recurrent_states[0])
+    assert state.full_cache(1) == (state.full_key_caches[1], state.full_value_caches[1])
+    with pytest.raises(ValueError, match="no packed full-attention"):
+        state.full_cache(0)
+    with pytest.raises(ValueError, match="no packed linear-attention"):
+        state.linear_state_pair(1)
+
+
+def test_gguf_packed_target_state_rejects_invalid_inputs(monkeypatch) -> None:
+    monkeypatch.setattr(gguf_runner, "malloc", lambda nbytes, *, runtime: DeviceBuffer(ptr=1, nbytes=int(nbytes)))
+    runner = SimpleNamespace(
+        linear_qkv_width=10,
+        ssm_value_dim=2,
+        weights=SimpleNamespace(
+            config=SimpleNamespace(
+                layer_types=(LINEAR_ATTENTION,),
+                ssm_conv_kernel=4,
+                ssm_time_step_rank=2,
+                ssm_state_size=3,
+                head_count_kv=2,
+                key_length=4,
+            )
+        ),
+    )
+
+    with pytest.raises(ValueError, match="slot_count"):
+        _GGUFPackedTargetState.allocate(runner, slot_count=0, max_sequence_length=1, runtime=SimpleNamespace())
+    with pytest.raises(ValueError, match="max_sequence_length"):
+        _GGUFPackedTargetState.allocate(runner, slot_count=1, max_sequence_length=0, runtime=SimpleNamespace())
+    with pytest.raises(ValueError, match="block_size"):
+        _GGUFPackedTargetState.allocate(
+            runner,
+            slot_count=1,
+            max_sequence_length=1,
+            block_size=0,
+            runtime=SimpleNamespace(),
+        )
