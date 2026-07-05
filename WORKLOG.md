@@ -144315,3 +144315,26 @@ python3 scripts/gguf_mtp_bench.py \
   leave this direction rejected unless a profiler shows the rowtile+argmax
   launch/materialization is the true limiter rather than the rowtile GEMV
   itself.
+
+- Retried the GGUF server AR natural24 c=2/c=4/c=8 sweep after restarting the
+  server from `26ccdd6a` on gfx1151/Radeon 8060S. This was a confirmatory rerun
+  of the retained AR route-cap fix, not a new retained rollup row. Server:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape, without `speculative_mtp` payload:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --out /tmp/hipengine-server-ar-natural24-cC-retry.json
+  ```
+  Results: c=2 **65.96 tok/s**, c=4 **82.31 tok/s**, c=8 **81.99 tok/s**.
+  These match the retained fixed AR band (**66.39/82.46/81.94 tok/s**) and
+  confirm AR remains fixed before resuming MTP c>N work.
