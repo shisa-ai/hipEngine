@@ -77,9 +77,9 @@ the artifacts and are called out in the reading column where useful.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | Diagnostic blocked: zero batch window and persistent target-session / MTP draft-runner pools remove the deliberate 100 ms queue delay plus draft-open tax, but warmed c=1 MTP still loses to AR. Timing buckets show AR server-vs-direct is mostly prompt prefill, while MTP is dominated by target verify. |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | B2 resident slots, zero batch window, pooled target/draft state | Zero-window c=2 did not coalesce in the rerun: no `slots_*` phase buckets, effectively independent c=1 requests. |
-| hipEngine `llama-compat` server MTP | 2 | 44.20 | **46.75** | 1.058x | B2, 5 ms batch window, AR stream decode + MTP stream-draft + packed target verify | Current default-on stream path. AR improves over scalar **41.17 -> 44.20 tok/s**; MTP improves over packed-only **45.57 -> 46.75 tok/s**. |
-| hipEngine `llama-compat` server MTP | 4 | 46.69 | **49.65** | 1.063x | same | Current default-on stream path. MTP is essentially equal to llama.cpp HIP full-request MTP c=4 (**49.69 tok/s**), but not to llama.cpp decode-only aggregate c=4 (**78.21 tok/s**). |
-| hipEngine `llama-compat` server MTP | 8 | 47.70 | **52.18** | 1.094x | same, target verify uses parallel chunk-4 streams | Current default-on stream path plus stream-verify chunks. MTP now beats llama.cpp HIP full-request MTP c=8 (**50.56 tok/s**) and is ~3.8% behind Vulkan full-request MTP c=8 (**54.25 tok/s**); verifier still dominates (`slots_verify_phase_ms=12345.442`). |
+| hipEngine `llama-compat` server MTP | 2 | 50.90 | **46.75** | 0.918x | B2, 5 ms batch window, packed AR decode + MTP stream-draft + packed target verify | Current default-on packed AR path supersedes stream AR **44.20 -> 50.90 tok/s**; MTP no longer beats same-server AR. |
+| hipEngine `llama-compat` server MTP | 4 | 57.00 | **49.65** | 0.871x | same | MTP is essentially equal to llama.cpp HIP full-request MTP c=4 (**49.69 tok/s**), but below current hipEngine AR and llama.cpp decode-only aggregate c=4 (**78.21 tok/s**). |
+| hipEngine `llama-compat` server MTP | 8 | 56.35 | **52.18** | 0.926x | same, target verify uses parallel chunk-4 streams | MTP beats llama.cpp HIP full-request MTP c=8 (**50.56 tok/s**) and is ~3.8% behind Vulkan full-request MTP c=8 (**54.25 tok/s**), but remains below current hipEngine AR; verifier still dominates (`slots_verify_phase_ms=12345.442`). |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | B2 | Full-request/client aggregate. Decode-only aggregate is **52.19/75.56 tok/s**. |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | B2 | Full-request/client aggregate. Decode-only aggregate is **108.33/78.21 tok/s**. |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | B2 | Full-request/client aggregate. Decode-only aggregate is **124.71/78.56 tok/s**. |
@@ -101,6 +101,9 @@ Artifacts:
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw0-phase-serial.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-smoke.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-packed-chunk4-warm.json`
+- `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-gemv-default-rerun.json`
+- `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-gemv-default-rerun.json`
+- `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-gemv-default-rerun.json`
 - `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json`
 - `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json`
 - `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json`
@@ -155,37 +158,37 @@ MTP **30.09 -> 34.44 usage tok/s** by eliminating draft-open cost. Server AR
 moved only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is
 prompt prefill, not session construction.
 
-Implementation status after stream-slot decode/draft plus c=8 stream-verify
-chunks: c=2 is **44.20 AR / 46.75 MTP tok/s**, c=4 is **46.69 / 49.65**, and
-c=8 is **47.70 / 52.18**. This makes MTP positive versus same-server AR at
-every c>N shape; c=4 is essentially llama.cpp HIP full-request MTP parity, and
-c=8 now beats llama.cpp HIP full-request MTP (**50.56 tok/s**) while remaining
-below Vulkan full-request MTP (**54.25 tok/s**) and far below llama.cpp
-decode-only aggregate scaling. The real concurrency target is therefore still
-open: c=8 only gets **1.094x** over same-server AR and its phase buckets remain
+Implementation status after packed AR decode, stream-slot MTP draft, and c=8
+stream-verify chunks: c=2 is **50.90 AR / 46.75 MTP tok/s**, c=4 is
+**57.00 / 49.65**, and c=8 is **56.35 / 52.18**. This closes the AR c>N
+scheduling blocker but makes MTP negative versus current same-server AR at every
+c>N shape (**0.918x/0.871x/0.926x**). c=4 is still essentially llama.cpp HIP
+full-request MTP parity, and c=8 still beats llama.cpp HIP full-request MTP
+(**50.56 tok/s**) while remaining below Vulkan full-request MTP (**54.25
+tok/s**) and far below llama.cpp decode-only aggregate scaling. The real MTP
+concurrency target is therefore still open: c=8 phase buckets remain
 verifier-heavy (`slots_verify_phase_ms=12345.442`,
 `slots_draft_phase_ms=3261.185`, `slots_commit_phase_ms=584.696`). The next
 server blockers are therefore (1) reducing target verifier wall further or
 improving the rows>=16 packed verifier path before lifting the four-slot cap,
 (2) replacing per-cycle `ThreadPoolExecutor` stream-draft/verify launch overhead
 with a persistent or batched resident scheduler if profiling shows it matters,
-and (3) reducing prompt-prefill overhead so server AR approaches the direct GGUF
-suite.
+and (3) improving MTP row/acceptance economics enough to beat the stronger AR
+baseline.
 
 Follow-up AR c>N audit: the default OpenAI batcher now coalesces compatible
 non-MTP requests even when each request has its own cancellation token; grouped
 requests receive a composite cancellation token just like the MTP route. This
 fixes the scheduler precondition but did not by itself create AR backend
-scaling. Default-on per-slot stream decode now moves AR to c=2/c=4/c=8
-**44.20/46.69/47.70 tok/s**, which is useful but still below the direct suite
-and llama.cpp decode-only aggregate scaling. Reusing the MTP
-`verify_target_blocks_batch()` primitive for one-token AR decode was tested
-behind `HIPENGINE_GGUF_AR_PACKED_DECODE=1` and rejected: c=2/c=4/c=8 measured
-**32.12/41.32/41.22 tok/s**, with `target_verify_batch_ms` dominating
-(**1192/1382/1391 ms mean per request**). That path is default-off diagnostic
-only. The next AR scaling fix needs a true resident batched target-decode or
-multi-slot scheduler primitive that avoids the packed verifier's per-step state
-import/scatter and linear-state row-capture overhead.
+scaling. Default-on packed AR decode now moves AR to c=2/c=4/c=8
+**50.90/57.00/56.35 tok/s** by using `step_batch_native(...,
+scatter_state=False)`, decode-shaped GEMV projection, and deferred packed-state
+scatter across cycles. The older attempt to reuse the MTP
+`verify_target_blocks_batch()` primitive for one-token AR decode was rejected:
+c=2/c=4/c=8 measured **32.12/41.32/41.22 tok/s**, with
+`target_verify_batch_ms` dominating (**1192/1382/1391 ms mean per request**).
+That rejected verifier-shaped path is superseded by the retained packed decode
+path.
 
 ### CLOSURE AUDIT - speed target, exact-path portability, and remaining risk
 

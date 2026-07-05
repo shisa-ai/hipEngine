@@ -1,22 +1,23 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-05 (hipEngine GGUF server AR stream decode + MTP
-stream-draft/stream-verify diagnostic: the c>N llama-compat server route now
-defaults AR to per-slot HIP stream decode, MTP draft proposal to per-slot HIP
-streams, and c=8 target verification to parallel chunk-4 verifier streams. On
-Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151
-natural24 with a 5 ms coalescing window, same-server AR improves from the prior
-scalar **41.17/41.45/41.42 tok/s** to **44.20/46.69/47.70 tok/s** at
-c=2/c=4/c=8. MTP now measures **46.75/49.65/52.18 tok/s**, or
-**1.058x/1.063x/1.094x** versus the current same-server AR rows. The c=8 stream
-verify step moves MTP **48.72 -> 52.18 tok/s** and
-`slots_verify_phase_ms` **15354.902 -> 12345.442**, but c=8 is still verifier
-heavy versus draft/commit (`slots_draft_phase_ms=3261.185`,
-`slots_commit_phase_ms=584.696`), so this is a retained diagnostic step, not
-the final c>N scaling target. See
-[`2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json),
-[`2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json),
-[`2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json),
+Last updated: 2026-07-05 (hipEngine GGUF server packed AR decode diagnostic:
+the c>N llama-compat server route now defaults greedy AR to decode-shaped packed
+resident target passes with deferred packed state, while MTP keeps stream-draft
+and c=8 chunk-stream target verification. On Qwen3.6-35B-A3B GGUF Q4_K_M /
+gfx1151 natural24 with a 5 ms coalescing window, same-server AR improves from
+the prior stream baseline **44.20/46.69/47.70 tok/s** to
+**50.90/57.00/56.35 tok/s** at c=2/c=4/c=8. MTP remains
+**46.75/49.65/52.18 tok/s**, now **0.918x/0.871x/0.926x** versus the current
+same-server AR rows. This closes the AR c>N blocker and moves the active MTP
+server gap to verifier/economics: c=8 MTP still beats llama.cpp HIP
+full-request MTP (**50.56 tok/s**) but remains below llama.cpp Vulkan
+full-request MTP (**54.25 tok/s**) and below the current hipEngine AR server
+row. The c=8 MTP verifier bucket remains dominant
+(`slots_verify_phase_ms=12345.442`, `slots_draft_phase_ms=3261.185`,
+`slots_commit_phase_ms=584.696`). See
+[`2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-gemv-default-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-gemv-default-rerun.json),
+[`2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-gemv-default-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-gemv-default-rerun.json),
+[`2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-gemv-default-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-gemv-default-rerun.json),
 [`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json),
 [`2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json), and
 [`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json).
@@ -506,9 +507,9 @@ full-suite speed row above.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | [`2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`](results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json); direct suite, not server concurrency |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | [`2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json); diagnostic blocked, warmed after asset/draft pool fill |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
-| hipEngine `llama-compat` server MTP | 2 | 44.20 | **46.75** | 1.058x | B2, 5 ms batch window, AR stream decode + MTP stream-draft + packed target verify | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json); default-on stream path, improves the packed-only MTP row **45.57 -> 46.75 tok/s** |
-| hipEngine `llama-compat` server MTP | 4 | 46.69 | **49.65** | 1.063x | same | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json); close to llama.cpp HIP full-request MTP, but still far below llama.cpp decode-only aggregate AR scaling |
-| hipEngine `llama-compat` server MTP | 8 | 47.70 | **52.18** | 1.094x | same, target verify uses parallel chunk-4 streams | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json); c=8 MTP now beats llama.cpp HIP full-request MTP, but verifier still dominates (`slots_verify_phase_ms=12345.442`) |
+| hipEngine `llama-compat` server MTP | 2 | 50.90 | **46.75** | 0.918x | B2, 5 ms batch window, packed AR decode + MTP stream-draft + packed target verify | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-gemv-default-rerun.json); packed AR supersedes the stream AR row **44.20 -> 50.90 tok/s**, so MTP no longer beats same-server AR |
+| hipEngine `llama-compat` server MTP | 4 | 57.00 | **49.65** | 0.871x | same | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-gemv-default-rerun.json); MTP is essentially equal to llama.cpp HIP full-request MTP, but below current hipEngine AR and far below llama.cpp decode-only aggregate scaling |
+| hipEngine `llama-compat` server MTP | 8 | 56.35 | **52.18** | 0.926x | same, target verify uses parallel chunk-4 streams | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-gemv-default-rerun.json); c=8 MTP beats llama.cpp HIP full-request MTP but remains below current hipEngine AR and verifier still dominates (`slots_verify_phase_ms=12345.442`) |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); full-request/client aggregate, decode-only aggregate is 52.19/75.56 |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); full-request/client aggregate, decode-only aggregate is 108.33/78.21 |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); full-request/client aggregate, decode-only aggregate is 124.71/78.56 |
@@ -519,19 +520,18 @@ full-suite speed row above.
 For serving capability, `speculative_mtp.serving_route=true` is now available
 only with `--speculative-mtp-serving opt_in` or `auto` and a GGUF model exposing
 NextN tensors. The packed target verifier removed the old per-slot target-verify
-blocker for c=2/c=4 and the warm chunked c=8 row; the newer default-on stream
-paths raise both same-server AR and MTP. It is still diagnostic rather than a
-retained production claim: c=8 needs lower verifier wall, rows>=16 packed
-verifier tuning before lifting the four-slot cap, and prompt-prefill overhead
-reduction so server AR approaches the direct GGUF suite.
+blocker for c=2/c=4 and the warm chunked c=8 row; the newer default-on packed
+AR path closes the server AR c>N blocker. It is still diagnostic rather than a
+retained production MTP claim: c=8 needs lower verifier wall, rows>=16 packed
+verifier tuning before lifting the four-slot cap, and MTP economics that beat
+the now-stronger same-server AR row.
 The default-route batcher now coalesces compatible AR requests with composite
-cancellation tokens, and `HIPENGINE_GGUF_AR_STREAM_DECODE=1` now overlaps
-per-slot scalar decode on separate HIP streams by default. AR improves to
-**44.20/46.69/47.70 tok/s** at c=2/c=4/c=8 but remains far below the direct GGUF
-suite and llama.cpp decode-only aggregate scaling. The opt-in one-token packed
-AR verifier diagnostic (`HIPENGINE_GGUF_AR_PACKED_DECODE=1`) remains rejected
-because it imports/scatters verifier state and captures linear-state rows every
-token.
+cancellation tokens. The retained AR route now uses `HIPENGINE_GGUF_AR_PACKED_DECODE=1`
+by default, runs decode-shaped packed resident target rows with
+`wmma_prefill_session(False)`, and defers packed state scatter across decode
+cycles. AR improves to **50.90/57.00/56.35 tok/s** at c=2/c=4/c=8. The older
+one-token packed-verifier AR diagnostic remains rejected because it imported
+and scattered verifier state and captured linear-state rows every token.
 
 | Lane | Status | Workload | Same-session AR tok/s | Spec tok/s | Ratio | Correctness | Artifact / source | Notes |
 | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |

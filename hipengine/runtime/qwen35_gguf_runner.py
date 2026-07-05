@@ -6675,6 +6675,9 @@ class Qwen35GGUFResidentSession:
     _packed_verify_scratch: object | None = field(default=None, init=False)
     _packed_verify_session_ids: tuple[int, ...] = field(default=(), init=False)
     _packed_verify_max_written_positions: tuple[int, ...] = field(default=(), init=False)
+    _packed_decode_sessions: tuple["Qwen35GGUFResidentSession", ...] = field(default=(), init=False)
+    _packed_decode_last_layout: _GGUFPackedVerifyLayout | None = field(default=None, init=False)
+    _packed_decode_state_dirty: bool = field(default=False, init=False)
     _packed_decode_session_ids: tuple[int, ...] = field(default=(), init=False)
     _packed_decode_positions: tuple[int, ...] = field(default=(), init=False)
     _prefill_token_buf: object | None = field(default=None, init=False)
@@ -8951,6 +8954,7 @@ class Qwen35GGUFResidentSession:
         positions: list[int] | tuple[int, ...] | None = None,
         return_logits: bool = False,
         stream: int = 0,
+        scatter_state: bool = True,
     ) -> list[Qwen35GGUFNextTokenProbeResult]:
         """Consume one decode token for each resident session in one packed pass.
 
@@ -9060,7 +9064,7 @@ class Qwen35GGUFResidentSession:
             layer_conv_states=packed_state.layer_conv_states,
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
-        with wmma_prefill_session(True), gemv_decode_session(self.use_gemv_decode):
+        with wmma_prefill_session(False), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
                     self.runner._run_linear_attention_prefill_layer_rows(
@@ -9128,14 +9132,23 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
             )
 
-        self._scatter_packed_decode_state(
-            session_tuple,
-            layout,
-            packed_state,
-            runtime=runtime,
-            stream=stream,
-        )
         session_ids = tuple(id(session) for session in session_tuple)
+        if scatter_state:
+            self._scatter_packed_decode_state(
+                session_tuple,
+                layout,
+                packed_state,
+                runtime=runtime,
+                stream=stream,
+            )
+            self._packed_decode_sessions = ()
+            self._packed_decode_last_layout = None
+            self._packed_decode_state_dirty = False
+        else:
+            self._advance_packed_decode_session_cursors(session_tuple, layout)
+            self._packed_decode_sessions = session_tuple
+            self._packed_decode_last_layout = layout
+            self._packed_decode_state_dirty = True
         self._packed_decode_session_ids = session_ids
         self._packed_decode_positions = tuple(int(session.position) for session in session_tuple)
         if stream:
@@ -9976,6 +9989,9 @@ class Qwen35GGUFResidentSession:
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()
+        self._packed_decode_sessions = ()
+        self._packed_decode_last_layout = None
+        self._packed_decode_state_dirty = False
         self._packed_decode_session_ids = ()
         self._packed_decode_positions = ()
 
@@ -10193,6 +10209,156 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         cfg = self.runner.weights.config
+        used_fused_commit = False
+        if self._fused_linear_state_commit_enabled():
+            conv_sources: list[int] = []
+            recurrent_sources: list[int] = []
+            conv_dests: list[int] = []
+            recurrent_dests: list[int] = []
+            conv_row_nbytes = 0
+            recurrent_row_nbytes = 0
+            for layer_id, layer_type in enumerate(cfg.layer_types):
+                if layer_type != LINEAR_ATTENTION:
+                    continue
+                src_pair = self._verify_linear_state_row_pair(layer_id)
+                if src_pair is None:
+                    raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+                src_conv_rows, src_recurrent_rows = src_pair
+                dst_conv, dst_recurrent = packed_state.linear_state_pair(layer_id)
+                single_conv_state = self.scratch.layer_conv_states[layer_id]
+                single_recurrent_state = self.scratch.layer_recurrent_states[layer_id]
+                if single_conv_state is None or single_recurrent_state is None:
+                    raise RuntimeError(f"session layer {layer_id} missing linear state")
+                conv_nbytes = int(single_conv_state.nbytes)
+                recurrent_nbytes = int(single_recurrent_state.nbytes)
+                if conv_row_nbytes not in {0, conv_nbytes}:
+                    conv_sources = []
+                    break
+                if recurrent_row_nbytes not in {0, recurrent_nbytes}:
+                    conv_sources = []
+                    break
+                conv_row_nbytes = conv_nbytes
+                recurrent_row_nbytes = recurrent_nbytes
+                for slot_index in range(int(layout.slot_count)):
+                    final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                    if final_row < int(layout.cu_seqlens[slot_index]):
+                        raise RuntimeError("packed AR decode slot has no final row to commit")
+                    conv_sources.append(int(src_conv_rows.ptr) + final_row * conv_nbytes)
+                    recurrent_sources.append(int(src_recurrent_rows.ptr) + final_row * recurrent_nbytes)
+                    conv_dests.append(int(dst_conv.ptr) + slot_index * conv_nbytes)
+                    recurrent_dests.append(int(dst_recurrent.ptr) + slot_index * recurrent_nbytes)
+            n_entries = len(conv_sources)
+            if n_entries > 0 and n_entries == len(recurrent_sources):
+                tables_ready = (
+                    self._verify_linear_state_src_conv_table_buf is not None
+                    and self._verify_linear_state_src_recurrent_table_buf is not None
+                    and self._verify_linear_state_dst_conv_table_buf is not None
+                    and self._verify_linear_state_dst_recurrent_table_buf is not None
+                    and self._verify_linear_state_commit_row_i32_buf is not None
+                    and int(self._verify_linear_state_layer_count) == n_entries
+                    and int(self._verify_linear_state_conv_row_nbytes) == conv_row_nbytes
+                    and int(self._verify_linear_state_recurrent_row_nbytes) == recurrent_row_nbytes
+                )
+                if not tables_ready:
+                    table_nbytes = n_entries * np.dtype(np.uint64).itemsize
+                    new_buffers = (
+                        malloc(table_nbytes, runtime=runtime),
+                        malloc(table_nbytes, runtime=runtime),
+                        malloc(table_nbytes, runtime=runtime),
+                        malloc(table_nbytes, runtime=runtime),
+                        malloc(DType.INT32.itemsize, runtime=runtime),
+                    )
+                    self._verify_linear_state_src_conv_table_buf = new_buffers[0]
+                    self._verify_linear_state_src_recurrent_table_buf = new_buffers[1]
+                    self._verify_linear_state_dst_conv_table_buf = new_buffers[2]
+                    self._verify_linear_state_dst_recurrent_table_buf = new_buffers[3]
+                    self._verify_linear_state_commit_row_i32_buf = new_buffers[4]
+                    self._verify_linear_state_src_conv_host = np.zeros((n_entries,), dtype=np.uint64)
+                    self._verify_linear_state_src_recurrent_host = np.zeros((n_entries,), dtype=np.uint64)
+                    self._verify_linear_state_src_conv_cached = np.zeros((n_entries,), dtype=np.uint64)
+                    self._verify_linear_state_src_recurrent_cached = np.zeros((n_entries,), dtype=np.uint64)
+                    self._verify_linear_state_dst_conv_host = np.zeros((n_entries,), dtype=np.uint64)
+                    self._verify_linear_state_dst_recurrent_host = np.zeros((n_entries,), dtype=np.uint64)
+                    self._verify_linear_state_conv_row_nbytes = conv_row_nbytes
+                    self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
+                    self._verify_linear_state_layer_count = n_entries
+                    self._buffers = (*self._buffers, *new_buffers)
+                assert self._verify_linear_state_src_conv_host is not None
+                assert self._verify_linear_state_src_recurrent_host is not None
+                assert self._verify_linear_state_src_conv_cached is not None
+                assert self._verify_linear_state_src_recurrent_cached is not None
+                assert self._verify_linear_state_dst_conv_host is not None
+                assert self._verify_linear_state_dst_recurrent_host is not None
+                self._verify_linear_state_src_conv_host[:] = np.asarray(conv_sources, dtype=np.uint64)
+                self._verify_linear_state_src_recurrent_host[:] = np.asarray(recurrent_sources, dtype=np.uint64)
+                self._verify_linear_state_dst_conv_host[:] = np.asarray(conv_dests, dtype=np.uint64)
+                self._verify_linear_state_dst_recurrent_host[:] = np.asarray(recurrent_dests, dtype=np.uint64)
+                if not np.array_equal(self._verify_linear_state_src_conv_host, self._verify_linear_state_src_conv_cached):
+                    copy_host_to_device(
+                        self._verify_linear_state_src_conv_table_buf,
+                        host_array_ptr(self._verify_linear_state_src_conv_host),
+                        self._verify_linear_state_src_conv_host.nbytes,
+                        runtime=runtime,
+                    )
+                    np.copyto(self._verify_linear_state_src_conv_cached, self._verify_linear_state_src_conv_host)
+                if not np.array_equal(
+                    self._verify_linear_state_src_recurrent_host,
+                    self._verify_linear_state_src_recurrent_cached,
+                ):
+                    copy_host_to_device(
+                        self._verify_linear_state_src_recurrent_table_buf,
+                        host_array_ptr(self._verify_linear_state_src_recurrent_host),
+                        self._verify_linear_state_src_recurrent_host.nbytes,
+                        runtime=runtime,
+                    )
+                    np.copyto(self._verify_linear_state_src_recurrent_cached, self._verify_linear_state_src_recurrent_host)
+                copy_host_to_device(
+                    self._verify_linear_state_dst_conv_table_buf,
+                    host_array_ptr(self._verify_linear_state_dst_conv_host),
+                    self._verify_linear_state_dst_conv_host.nbytes,
+                    runtime=runtime,
+                )
+                copy_host_to_device(
+                    self._verify_linear_state_dst_recurrent_table_buf,
+                    host_array_ptr(self._verify_linear_state_dst_recurrent_host),
+                    self._verify_linear_state_dst_recurrent_host.nbytes,
+                    runtime=runtime,
+                )
+                assert self._verify_linear_state_commit_row_i32_buf is not None
+                commit_row = np.asarray([0], dtype=np.int32)
+                copy_host_to_device(
+                    self._verify_linear_state_commit_row_i32_buf,
+                    host_array_ptr(commit_row),
+                    commit_row.nbytes,
+                    runtime=runtime,
+                )
+                linear_commit = (
+                    linear_state_pair_commit_chunked_i32
+                    if self._chunked_linear_state_commit_enabled()
+                    else linear_state_pair_commit_i32
+                )
+                if self._dflash_commit_library is None:
+                    self._dflash_commit_library = build_dflash_commit(
+                        load=True,
+                        compiler_version=self.compiler_version,
+                        require_cached=self.require_cached_build,
+                    )
+                linear_commit(
+                    self._verify_linear_state_src_conv_table_buf.ptr,
+                    self._verify_linear_state_dst_conv_table_buf.ptr,
+                    int(conv_row_nbytes),
+                    self._verify_linear_state_src_recurrent_table_buf.ptr,
+                    self._verify_linear_state_dst_recurrent_table_buf.ptr,
+                    int(recurrent_row_nbytes),
+                    self._verify_linear_state_commit_row_i32_buf.ptr,
+                    int(n_entries),
+                    stream=stream,
+                    library=self._dflash_commit_library,
+                    runtime=runtime,
+                )
+                used_fused_commit = True
+        if used_fused_commit:
+            return
         for layer_id, layer_type in enumerate(cfg.layer_types):
             if layer_type != LINEAR_ATTENTION:
                 continue
@@ -10299,6 +10465,53 @@ class Qwen35GGUFResidentSession:
                 library=session._runtime_state_library,
                 runtime=runtime,
             )
+
+    def _advance_packed_decode_session_cursors(
+        self,
+        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        layout: _GGUFPackedVerifyLayout,
+    ) -> None:
+        for slot_index, session in enumerate(sessions):
+            if session.scratch is None:
+                raise RuntimeError("packed AR decode job session is closed")
+            row_start = int(layout.cu_seqlens[slot_index])
+            row_end = int(layout.cu_seqlens[slot_index + 1])
+            slot_rows = row_end - row_start
+            start_position = int(layout.row_positions[row_start])
+            end_position = start_position + slot_rows
+            session._position = end_position
+            session.scratch.position_host[0] = end_position
+            session.scratch.context_host[0] = end_position + 1
+
+    def flush_packed_decode_state(self, *, stream: int = 0) -> bool:
+        """Scatter deferred packed-AR state back into the slot sessions.
+
+        ``step_batch_native(..., scatter_state=False)`` keeps the packed
+        multi-slot state canonical across decode cycles. Call this before any
+        scalar/session-local fallback needs the per-session scratch state.
+        """
+
+        if not self._packed_decode_state_dirty:
+            return False
+        if self._packed_verify_state is None or self._packed_decode_last_layout is None:
+            return False
+        if not self._packed_decode_sessions:
+            return False
+        runtime = self.runtime or get_hip_runtime()
+        self._scatter_packed_decode_state(
+            self._packed_decode_sessions,
+            self._packed_decode_last_layout,
+            self._packed_verify_state,
+            runtime=runtime,
+            stream=stream,
+        )
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+        self._packed_decode_positions = tuple(int(session.position) for session in self._packed_decode_sessions)
+        self._packed_decode_state_dirty = False
+        return True
 
     def _scatter_packed_verify_outputs(
         self,
