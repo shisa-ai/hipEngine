@@ -1291,7 +1291,7 @@ def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
 
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
-    monkeypatch.delenv("HIPENGINE_GGUF_AR_STREAM_DECODE", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
     generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 8, max_tokens=2))
 
     assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
@@ -1301,6 +1301,90 @@ def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
     ]
     assert all(slot.native_decode_steps == 1 for slot in slots)
     assert all("decode_batch_ms" in slot.timing for slot in slots)
+
+
+def test_gguf_ar_batch_decode_streams_chunks_above_four_slots(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        next_stream = 500
+
+        def stream_create(self, *, nonblocking=True):
+            stream = FakeRuntime.next_stream
+            FakeRuntime.next_stream += 1
+            calls.append(("stream_create", stream, bool(nonblocking)))
+            return stream
+
+        def stream_synchronize(self, stream):  # pragma: no cover - fake batch owns sync contract
+            calls.append(("stream_sync", int(stream)))
+
+        def stream_destroy(self, stream):
+            calls.append(("stream_destroy", int(stream)))
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 4
+            self.runtime = FakeRuntime()
+
+        def step_batch_native(self, token_ids, *, sessions, positions, return_logits=False, scatter_state=True, stream=0):
+            calls.append(
+                (
+                    "step_batch",
+                    self.slot_id,
+                    int(stream),
+                    tuple(session.slot_id for session in sessions),
+                    tuple(int(position) for position in positions),
+                    scatter_state,
+                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                )
+            )
+            for session in sessions:
+                session.position += 1
+            return [SimpleNamespace(token_id=2) for _token in token_ids]
+
+        def step(self, token_id: int, *, return_logits=False):  # pragma: no cover - must not be used
+            raise AssertionError("streamed packed AR should not use scalar step")
+
+        def close(self):
+            calls.append(("close", self.slot_id))
+
+    slots = [
+        qwen35_gguf._GGUFARServingSlot(
+            request_id=slot_id,
+            prompt_ids=[10, 11, 12, 13],
+            session=FakeSession(slot_id),
+            prev_token=1,
+            seq_position=4,
+            generated_ids=[1],
+        )
+        for slot_id in range(8)
+    ]
+
+    generator = _generator()
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
+    generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 8, max_tokens=2))
+
+    assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
+    assert [call for call in calls if call[0] == "stream_create"] == [
+        ("stream_create", 500, True),
+        ("stream_create", 501, True),
+    ]
+    assert sorted(call for call in calls if call[0] == "step_batch") == [
+        ("step_batch", 0, 500, (0, 1, 2, 3), (4, 4, 4, 4), False, "1"),
+        ("step_batch", 4, 501, (4, 5, 6, 7), (4, 4, 4, 4), False, "1"),
+    ]
+    assert all(slot.native_decode_steps == 1 for slot in slots)
+    assert all("decode_batch_ms" in slot.timing for slot in slots)
+    assert all("decode_stream_chunks_ms" in slot.timing for slot in slots)
+
+    generator._close_ar_serving_slots(slots, reuse=False)
+
+    assert [call for call in calls if call[0] == "stream_destroy"] == [
+        ("stream_destroy", 501),
+        ("stream_destroy", 500),
+    ]
 
 
 def test_gguf_ar_batch_decode_flushes_before_singleton_fallback(monkeypatch) -> None:
