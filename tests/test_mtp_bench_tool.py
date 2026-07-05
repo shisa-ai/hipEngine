@@ -73,6 +73,46 @@ def test_concurrent_aggregate_uses_client_wall_not_request_wall_sum() -> None:
     }
 
 
+def test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "code_python",
+        {
+            "usage": {"completion_tokens": 24},
+            "timings": {"predicted_per_second": 12.5},
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {
+                            "mtp_generated_draft_tokens": 18.0,
+                            "mtp_accepted_draft_tokens": 11.0,
+                            "mtp_target_verify_rows": 27.0,
+                            "target_verify_ms": 123.4,
+                        },
+                        "decode_state": {
+                            "execution_path": "gguf_llama_compat_mtp_server",
+                            "generated_tokens": 24,
+                            "prompt_tokens": 50,
+                        },
+                    }
+                }
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 18
+    assert record["draft_n_accepted"] == 11
+    assert record["accept_rate"] == 0.6111
+    assert record["backend_timing_ms"]["mtp_target_verify_rows"] == 27.0
+    assert record["backend_decode_state"] == {
+        "execution_path": "gguf_llama_compat_mtp_server",
+        "generated_tokens": 24,
+        "prompt_tokens": 50,
+    }
+
+
 def test_cli_lists_llamacpp_prompt_suite() -> None:
     completed = subprocess.run(
         [sys.executable, str(TOOL_PATH), "--list-prompts"],

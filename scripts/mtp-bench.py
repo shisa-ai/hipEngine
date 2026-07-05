@@ -228,6 +228,10 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
         timing = numeric_mapping(hipengine_payloads[0].get("timing"))
         if timing:
             record["backend_timing_ms"] = {key: round(value, 3) for key, value in timing.items()}
+            if record["draft_n"] == 0 and "mtp_generated_draft_tokens" in timing:
+                record["draft_n"] = int(timing["mtp_generated_draft_tokens"])
+            if record["draft_n_accepted"] == 0 and "mtp_accepted_draft_tokens" in timing:
+                record["draft_n_accepted"] = int(timing["mtp_accepted_draft_tokens"])
         decode_state = hipengine_payloads[0].get("decode_state")
         if isinstance(decode_state, dict):
             record["backend_decode_state"] = {

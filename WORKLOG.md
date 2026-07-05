@@ -144140,3 +144140,21 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   Pycompile passed, focused pytest passed (`4 passed`), artifact JSON checks
   passed, and the benchmark server was stopped after the retained reruns.
+
+## 2026-07-06 - GGUF MTP server economics telemetry
+
+- Added per-choice GGUF MTP serving economy counters to backend telemetry:
+  `mtp_cycles_count`, `mtp_generated_draft_tokens`,
+  `mtp_accepted_draft_tokens`, `mtp_visible_output_tokens`,
+  `mtp_target_verify_rows`, and `mtp_accept_per_draft`.
+- Updated `scripts/mtp-bench.py` so hipEngine server rows use those telemetry
+  counters as `draft_n` / `draft_n_accepted` when the OpenAI-compatible
+  top-level `timings` object does not expose llama.cpp-style draft counters.
+  This makes future server artifacts report aggregate accept rate and target
+  verifier row economics instead of `draft=0 acc=0 rate=n/a`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py scripts/mtp-bench.py tests/test_generation_qwen35_gguf_sampling.py tests/test_mtp_bench_tool.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots tests/test_mtp_bench_tool.py::test_record_from_llamacpp_timing_payload_matches_pr_columns tests/test_mtp_bench_tool.py::test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts tests/test_mtp_bench_tool.py::test_concurrent_aggregate_uses_client_wall_not_request_wall_sum
+  ```
+  Pycompile passed and focused pytest passed (`5 passed`).
