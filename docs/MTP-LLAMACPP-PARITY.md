@@ -196,6 +196,24 @@ wall inside the four-slot chunks and revisit full packed prompt prefill beyond
 the four-slot cap only with a solution that does not reproduce the rejected
 width-8 path.
 
+Rejected prepare-sidecar follow-up: materializing the server shared GGUF runner
+under the full llama-compat MTP env (`HIPENGINE_GGUF_Q8_0_RAW_SIDECAR=1`,
+`HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL=1`, and related draft/verifier flags) did not
+close the c>N gap. A fresh startup with that marker raised
+`resident_prepare_s` to **46.237 s**, then warmed natural24 MTP measured only
+**75.07 tok/s** at c=4 and **75.14 tok/s** at c=8 versus the retained
+**77.29/76.46 tok/s**. It did reduce the exposed packed verifier total
+(c=4 **5102.702 ms**, c=8 **5194.822 ms**) and LM-head/sample bucket
+(c=4 **3406.156 ms**, c=8 **3513.713 ms**), but the large startup cost and
+lower same-protocol throughput make this a rejected server-default path. If this
+route is revisited, isolate which sidecar/dispatch subflag helps instead of
+blanket-applying the whole llama-compat materialization env at `prepare()`.
+Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-prepare-env-startup-rejected.json`,
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-mtpprepare-rejected.json`,
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpprepare-rejected.json`.
+
 Route-cap follow-up: default GGUF AR serving now caps backend groups at the
 proven four-request shape even when the HTTP server is configured with
 `--max-active-requests 8`; the speculative MTP route now uses the same
