@@ -10513,7 +10513,7 @@ class Qwen35GGUFResidentSession:
             raise ValueError("packed verify workspace dimensions must be positive")
         state_ready = (
             self._packed_verify_state is not None
-            and int(self._packed_verify_state.slot_count) == slot_count
+            and int(self._packed_verify_state.slot_count) >= slot_count
             and int(self._packed_verify_state.max_sequence_length) >= max_sequence_length
         )
         scratch_ready = (

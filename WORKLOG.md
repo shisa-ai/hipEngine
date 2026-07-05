@@ -143901,3 +143901,73 @@ python3 scripts/gguf_mtp_bench.py \
   passed. Next bottlenecks: verifier wall (linear attention, LM-head/sample,
   full attention, final sync), startup cold-shape warmup, and lifting/replacing
   the four-slot packed-prefill/verifier cap for full c=8 batching.
+
+## 2026-07-06 - GGUF server AR cold-shape warmup fix
+
+- Fixed the remaining first-pass AR c=2 server regression. The previous retained
+  steady-state AR path was fast, but a fresh server's first c=2 natural24 run
+  still reproduced the old cold-prefill regime at about **51.5 tok/s** with
+  `prefill_batch_ms` around **4.65 s**. The immediate rerun was warm at
+  **66.37 tok/s**, confirming the issue was startup/cached-shape behavior rather
+  than decode scheduling.
+- Changes:
+  - Server startup scratch probing now passes `max_active_requests` as the
+    backend scratch/warmup batch width.
+  - When the effective context is unknown, the startup scratch probe still calls
+    backend hooks for batch-shape warmup with a bounded 64-token prompt-shape
+    probe and records `context_unknown=true` instead of claiming max-context
+    coverage.
+  - GGUF implements `prepare_request_scratch(...)` by warming pooled AR packed
+    prompt-prefill sessions at widths 2/4/8 with generic ragged 40/64-token
+    prompt shapes. Unsupported width-8 warmup shapes are recorded and released
+    back to the pool instead of closing already-warmed sessions.
+  - Packed verifier/decode workspace reuse now treats larger slot-count
+    workspaces as reusable capacity for smaller active widths rather than
+    requiring exact `slot_count` equality.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  `/ready` reported startup scratch probe `packed_ar_prefill_widths=[2,4]`,
+  `packed_ar_prefill_prompt_lengths=[40,64]`,
+  `reason=packed_prefill_unsupported_width_8`, and `scratch_probe_s=2.811724`.
+- Client command used `scripts/mtp-bench.py`,
+  `/tmp/hipengine-mtpbench-code-general-ja.json`, `--max-tokens 24
+  --temperature 0 --top-p 1`, and c=2/c=4/c=8.
+- Results:
+  - AR c=2 first pass **65.91 tok/s**, `prefill_batch_ms=2317.592`,
+    `decode_batch_ms=5771.896`. This replaces the cold first-pass **51.44 tok/s**
+    probe where `prefill_batch_ms=4658.302`.
+  - AR c=4 **82.41 tok/s**, `prefill_batch_ms=3187.502`,
+    `decode_batch_ms=8096.066`.
+  - AR c=8 **63.17 tok/s**, `prefill_batch_ms=539.190`,
+    `prefill_ms=2333.662`, `decode_batch_ms=14002.194`.
+  - Warm MTP c=2 smoke after the AR fix measured **60.12 tok/s** with
+    `prefill_batch_ms=2304.212` and `target_packed_verify_total_ms=5172.742`.
+    A preceding cold MTP c=2 smoke hit **6.68 tok/s** due to a known cold MTP
+    packed-prefill shape (`prefill_batch_ms=54803.784`), so MTP startup warmup
+    remains separate debt.
+- Retained same-server AR is now **65.91/82.41/63.17 tok/s** at c=2/c=4/c=8.
+  Retained warm MTP remains **59.94/66.60/54.88 tok/s**, so MTP/AR is
+  **0.910x/0.808x/0.869x** against the stronger AR baseline.
+- Artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-ragged-release-arfix.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-ragged-release-arfix.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-ragged-release-arfix.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-after-arfix-smoke-rerun.json`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/server/api.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths tests/test_generation_qwen35_gguf_sampling.py -k 'packed_prefill or batch_verifier' tests/test_gguf_packed_verify_layout.py tests/test_server_api.py::test_startup_scratch_probe_runs_batch_width_when_context_unknown tests/test_server_api.py::test_startup_scratch_probe_uses_max_active_request_width
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-ragged-release-arfix.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-ragged-release-arfix.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-ragged-release-arfix.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-after-arfix-smoke-rerun.json >/dev/null
+  ```
+  Pycompile passed, focused pytest passed (`8 passed` for the broad GGUF/server
+  focused set), and JSON artifact checks passed.

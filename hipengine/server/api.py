@@ -3193,23 +3193,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         max_prompt_tokens = _startup_max_prompt_tokens(max_context)
         if config.startup_scratch_probe:
             scratch_preparer = getattr(engine, "prepare_request_scratch", None)
-            if max_prompt_tokens is None:
+            scratch_probe_context_unknown = max_prompt_tokens is None
+            scratch_probe_prompt_tokens = 64 if max_prompt_tokens is None else int(max_prompt_tokens)
+            scratch_probe_batch_size = max(1, int(config.max_active_requests or 1))
+            if max_prompt_tokens is None and scratch_probe_batch_size <= 1:
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "unknown_context"}
             elif not callable(scratch_preparer):
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "backend_hook_unavailable"}
                 _LOGGER.warning("STARTUP_SCRATCH_PROBE: skipped; backend does not expose prepare_request_scratch")
             else:
                 _LOGGER.info(
-                    "STARTUP_SCRATCH_PROBE: max_prompt_tokens=%d max_new_tokens=0 max_batch_size=1 release_after_probe=True",
-                    max_prompt_tokens,
+                    "STARTUP_SCRATCH_PROBE: max_prompt_tokens=%s probe_prompt_tokens=%d max_new_tokens=0 max_batch_size=%d release_after_probe=True",
+                    "unknown" if scratch_probe_context_unknown else str(max_prompt_tokens),
+                    scratch_probe_prompt_tokens,
+                    scratch_probe_batch_size,
                 )
                 try:
                     scratch_result = await run_in_threadpool(
                         lambda: scratch_preparer(
-                            max_prompt_tokens=max_prompt_tokens,
+                            max_prompt_tokens=scratch_probe_prompt_tokens,
                             max_new_tokens=0,
                             sampling_params=sampling,
-                            max_batch_size=1,
+                            max_batch_size=scratch_probe_batch_size,
                             release_after_probe=True,
                         )
                     )
@@ -3217,13 +3222,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     startup_checks["scratch_probe"] = {
                         "enabled": True,
                         "status": "failed",
-                        "max_prompt_tokens": max_prompt_tokens,
+                        "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
+                        "probe_prompt_tokens": scratch_probe_prompt_tokens,
+                        "context_unknown": scratch_probe_context_unknown,
                         "exception_type": type(exc).__name__,
                     }
                     _LOGGER.error(
-                        "STARTUP_SCRATCH_PROBE: failed at max_prompt_tokens=%d: %s. "
+                        "STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=%d: %s. "
                         "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
-                        max_prompt_tokens,
+                        scratch_probe_prompt_tokens,
                         exc,
                     )
                     mark_startup_failed(
@@ -3243,7 +3250,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 startup_checks["scratch_probe"] = {
                     "enabled": True,
                     "status": "passed",
-                    "max_prompt_tokens": max_prompt_tokens,
+                    "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
+                    "probe_prompt_tokens": scratch_probe_prompt_tokens,
+                    "context_unknown": scratch_probe_context_unknown,
                     "result": scratch_result,
                 }
         else:

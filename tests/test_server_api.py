@@ -2426,6 +2426,52 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
     ]
 
 
+def test_startup_scratch_probe_uses_max_active_request_width() -> None:
+    fake = FakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/v1/models")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+
+
+def test_startup_scratch_probe_runs_batch_width_when_context_unknown() -> None:
+    class UnknownContextFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length: int | None = None, sampling_params: SamplingParams) -> None:
+            self.prepares.append((None if max_sequence_length is None else int(max_sequence_length), sampling_params))
+            self.max_sequence_length = None
+            return None
+
+    fake = UnknownContextFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_prompt_tokens"] == 64
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    scratch_probe = response.json()["startup"]["checks"]["scratch_probe"]
+    assert scratch_probe["status"] == "passed"
+    assert scratch_probe["max_prompt_tokens"] is None
+    assert scratch_probe["probe_prompt_tokens"] == 64
+    assert scratch_probe["context_unknown"] is True
+
+
 def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:
     summary = _startup_memory_summary(
         {
