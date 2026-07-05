@@ -1005,6 +1005,94 @@ def test_gguf_ar_stream_decode_uses_async_slot_streams(monkeypatch) -> None:
     assert generator.last_batch_generation["serial_decode_fallback"] is False
 
 
+def test_gguf_ar_stream_prefill_reuses_decode_streams(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        next_stream = 300
+
+        def stream_create(self, *, nonblocking=True):
+            stream = FakeRuntime.next_stream
+            FakeRuntime.next_stream += 1
+            calls.append(("stream_create", stream, nonblocking))
+            return stream
+
+        def stream_synchronize(self, stream):
+            calls.append(("stream_sync", int(stream)))
+
+        def stream_destroy(self, stream):
+            calls.append(("stream_destroy", int(stream)))
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path):
+            self.runtime = FakeRuntime()
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            self._pending_token = 0
+            calls.append(("session_init", self.slot_id))
+
+        def reset(self):
+            self.position = 0
+
+        def close(self):
+            calls.append(("close", self.slot_id))
+
+        def prefill(self, token_ids, *, return_logits=False):  # pragma: no cover - must not be used
+            raise AssertionError("stream prefill should not use synchronous prefill")
+
+        def prefill_async_top1(self, token_ids, *, stream: int, **kwargs):
+            calls.append(("prefill_async", self.slot_id, tuple(token_ids), int(stream)))
+            self.position = len(token_ids)
+            self._pending_token = 1
+
+        def step_async_top1(self, token_id: int, *, position: int, stream: int):
+            calls.append(("step_async", self.slot_id, int(token_id), int(position), int(stream)))
+            self.position += 1
+            self._pending_token = int(token_id) + 1
+
+        def read_top1_sample(self):
+            calls.append(("read_sample", self.slot_id))
+            return SimpleNamespace(token_id=self._pending_token)
+
+        def step(self, token_id: int, *, return_logits=False):  # pragma: no cover - must not be used
+            raise AssertionError("stream decode should not use scalar step")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_PREFILL", "1")
+    monkeypatch.delenv("HIPENGINE_GGUF_AR_PACKED_DECODE", raising=False)
+
+    generator = _generator()
+    generator.prepare()
+    outputs = generator.generate_detailed(_request(prompts=("long", "long2"), max_tokens=3))
+
+    assert [output.text for output in outputs] == ["BCD", "BCD"]
+    assert [call for call in calls if call[0] == "stream_create"] == [
+        ("stream_create", 300, True),
+        ("stream_create", 301, True),
+    ]
+    assert [call for call in calls if call[0] == "prefill_async"] == [
+        ("prefill_async", 0, (10, 11, 12, 13), 300),
+        ("prefill_async", 1, (20, 21, 22, 23), 301),
+    ]
+    assert [call for call in calls if call[0] == "step_async"] == [
+        ("step_async", 0, 1, 4, 300),
+        ("step_async", 1, 1, 4, 301),
+        ("step_async", 0, 2, 5, 300),
+        ("step_async", 1, 2, 5, 301),
+    ]
+    assert [call for call in calls if call[0] == "stream_destroy"] == [
+        ("stream_destroy", 301),
+        ("stream_destroy", 300),
+    ]
+
+
 def test_gguf_ar_batch_decode_notimplemented_falls_back_to_step(monkeypatch) -> None:
     calls: list[tuple] = []
 

@@ -143415,3 +143415,26 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile, JSON validation, and diff check passed; focused GGUF tests passed
   (`41 passed`); focused server API tests passed (`17 passed`, one Starlette
   deprecation warning).
+
+## 2026-07-05 - GGUF server AR stream-prefill no-hold
+
+- Added default-off AR stream-prefill diagnostic plumbing behind
+  `HIPENGINE_GGUF_AR_STREAM_PREFILL=1`. It reuses each AR serving slot's decode
+  stream, launches prompt prefill + top-1 sampling asynchronously with
+  `Qwen35GGUFResidentSession.prefill_async_top1(...)`, and then falls into the
+  existing stream-decode loop. The default path remains stream decode only.
+- Measured the opt-in path on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  PYTHONPATH=. python3 scripts/mtp-bench.py --url http://127.0.0.1:18082 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --timeout 1200 --concurrency 8 \
+    --out benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-stream-prefill-rerun.json
+  ```
+- Result: rejected/no-hold. c=8 AR stream prefill measured **47.44 tok/s**,
+  below the retained stream-decode baseline **47.70 tok/s**. The short-prompt
+  natural24 workload shows prefill contention rather than useful overlap:
+  `prefill_stream_batch_ms=15076.522`, `prefill_ms=8665.634`,
+  `decode_stream_batch_ms=21819.026`.
+- Updated `benchmarks/CHANGELOG.md` and `docs/REFACTOR.md` so the flag is
+  explicitly default-off and removal-triggered. Next aligned work remains true
+  c>N target decode/verifier scaling, not concurrent prompt prefill.
