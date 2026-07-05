@@ -196,7 +196,7 @@ def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) 
     assert ("draft_init_env", "1", "q6") in calls
     assert ("verify_block", (1, 2), {
         "bulk_attention_mode": "bulk",
-        "use_wmma_prefill": True,
+        "use_wmma_prefill": False,
         "capture_linear_state_rows": True,
         "defer_linear_state_commit": True,
     }) in calls
@@ -354,13 +354,13 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert [call for call in calls if call and call[0] == "verify_block"] == [
         ("verify_block", 0, (1, 2), {
             "bulk_attention_mode": "bulk",
-            "use_wmma_prefill": True,
+            "use_wmma_prefill": False,
             "capture_linear_state_rows": True,
             "defer_linear_state_commit": True,
         }),
         ("verify_block", 1, (1, 2), {
             "bulk_attention_mode": "bulk",
-            "use_wmma_prefill": True,
+            "use_wmma_prefill": False,
             "capture_linear_state_rows": True,
             "defer_linear_state_commit": True,
         }),
@@ -671,7 +671,7 @@ def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
         (
             "verify_batch",
             ((0, (1, 2)), (1, (1, 2))),
-            (("bulk", True, True, True), ("bulk", True, True, True)),
+            (("bulk", False, True, True), ("bulk", False, True, True)),
         )
     ]
     assert not [call for call in calls if call[0] == "verify_block"]
@@ -1842,7 +1842,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
             "verify_batch",
             0,
             ((0, (1, 2)), (1, (2, 3))),
-            (("bulk", True, True, True), ("bulk", True, True, True)),
+            (("bulk", False, True, True), ("bulk", False, True, True)),
             "1",
         ),
         (
@@ -1850,10 +1850,10 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
             0,
             ((0, (1, 2)), (1, (2, 3)), (2, (3, 4)), (3, (4, 5))),
             (
-                ("bulk", True, True, True),
-                ("bulk", True, True, True),
-                ("bulk", True, True, True),
-                ("bulk", True, True, True),
+                ("bulk", False, True, True),
+                ("bulk", False, True, True),
+                ("bulk", False, True, True),
+                ("bulk", False, True, True),
             ),
             "1",
         ),
