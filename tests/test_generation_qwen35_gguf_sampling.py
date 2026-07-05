@@ -388,6 +388,7 @@ def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
             raise AssertionError("per-slot verifier should not be used when batch verifier exists")
 
         def verify_target_blocks_batch(self, jobs):
+            self.last_packed_verify_stage_timings_ms = {"packed_verify_total": 1.25}
             calls.append(
                 (
                     "verify_batch",
@@ -499,6 +500,7 @@ def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
         ("commit_row", 1, 1, 6),
     ]
     assert all("target_verify_batch_ms" in slot.timing for slot in slots)
+    assert all(slot.timing["target_packed_verify_total_ms"] == pytest.approx(1.25) for slot in slots)
     assert all("slots_verify_phase_ms" in slot.timing for slot in slots)
 
 

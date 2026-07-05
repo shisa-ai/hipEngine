@@ -1924,9 +1924,13 @@ class Qwen35GGUFBringupGenerator:
             return None
         chunk_results = list(batch_result)
         verify_ms = _timing_ms_since(verify_start)
+        packed_stage_timings = getattr(first_session, "last_packed_verify_stage_timings_ms", {})
         for drafted in chunk:
             _timing_add_ms(drafted.slot.timing, "target_verify_ms", verify_ms)
             _timing_add_ms(drafted.slot.timing, "target_verify_batch_ms", verify_ms)
+            if isinstance(packed_stage_timings, dict):
+                for stage_name, stage_ms in packed_stage_timings.items():
+                    _timing_add_ms(drafted.slot.timing, f"target_{stage_name}_ms", float(stage_ms))
         return chunk_results
 
     def _commit_mtp_serving_cycle(
