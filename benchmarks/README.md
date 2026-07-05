@@ -1,22 +1,25 @@
 # hipEngine Benchmark Rollup
 
 Last updated: 2026-07-05 (hipEngine GGUF server AR stream decode + MTP
-stream-draft diagnostic: the c>N llama-compat server route now defaults AR to
-per-slot HIP stream decode and MTP draft proposal to per-slot HIP streams before
-the packed/chunked verifier. On Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151
+stream-draft/stream-verify diagnostic: the c>N llama-compat server route now
+defaults AR to per-slot HIP stream decode, MTP draft proposal to per-slot HIP
+streams, and c=8 target verification to parallel chunk-4 verifier streams. On
+Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151
 natural24 with a 5 ms coalescing window, same-server AR improves from the prior
 scalar **41.17/41.45/41.42 tok/s** to **44.20/46.69/47.70 tok/s** at
-c=2/c=4/c=8. MTP stream-draft measures **46.75/49.65/48.72 tok/s**, or
-**1.058x/1.063x/1.021x** versus the current same-server AR rows. The c=8 bucket
-is still verifier-dominated (`slots_verify_phase_ms=15354.902` versus
-`slots_draft_phase_ms=3275.134` and `slots_commit_phase_ms=569.736`), so this
-is a retained diagnostic step, not the final c>N scaling target. See
+c=2/c=4/c=8. MTP now measures **46.75/49.65/52.18 tok/s**, or
+**1.058x/1.063x/1.094x** versus the current same-server AR rows. The c=8 stream
+verify step moves MTP **48.72 -> 52.18 tok/s** and
+`slots_verify_phase_ms` **15354.902 -> 12345.442**, but c=8 is still verifier
+heavy versus draft/commit (`slots_draft_phase_ms=3261.185`,
+`slots_commit_phase_ms=584.696`), so this is a retained diagnostic step, not
+the final c>N scaling target. See
 [`2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json),
 [`2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json),
 [`2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json),
 [`2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json),
 [`2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json), and
-[`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamdraft-rerun2.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamdraft-rerun2.json).
+[`2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json).
 Prior 2026-07-03 note: llama.cpp replication lane verifier-head attribution correction:
 the active
 `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`
@@ -62,8 +65,8 @@ sweep finds **B1 52.13 tok/s** as fastest, with **B2 52.04** and **B5 50.65**
 versus AR **54.80**; B2 is faster than B5, but neither should be used as a speed
 path for that token-cap protocol because B1 is fastest and all exact MTP budgets
 are below AR. The opt-in GGUF server route now provides real c>N
-llama-compat serving rows; current c=4/c=8 full-request MTP is **49.65/48.72
-tok/s**, close to llama.cpp HIP full-request MTP **49.69/50.56 tok/s** but still
+llama-compat serving rows; current c=4/c=8 full-request MTP is **49.65/52.18
+tok/s**, at/above llama.cpp HIP full-request MTP **49.69/50.56 tok/s** but still
 well behind llama.cpp's decode-only aggregate scaling and the final hipEngine
 c>N target.
 Natural24 diagnostic artifacts:
@@ -505,7 +508,7 @@ full-suite speed row above.
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | same, zero batch window | [`2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw0-phase-serial.json); zero-window c=2 did not coalesce, no `slots_*` phase buckets |
 | hipEngine `llama-compat` server MTP | 2 | 44.20 | **46.75** | 1.058x | B2, 5 ms batch window, AR stream decode + MTP stream-draft + packed target verify | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-streamdraft-server-rerun.json); default-on stream path, improves the packed-only MTP row **45.57 -> 46.75 tok/s** |
 | hipEngine `llama-compat` server MTP | 4 | 46.69 | **49.65** | 1.063x | same | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-streamdraft-server-rerun.json); close to llama.cpp HIP full-request MTP, but still far below llama.cpp decode-only aggregate AR scaling |
-| hipEngine `llama-compat` server MTP | 8 | 47.70 | **48.72** | 1.021x | same, target verify still chunked at 4 slots | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamdraft-rerun2.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json); verifier still dominates (`slots_verify_phase_ms=15354.902`) |
+| hipEngine `llama-compat` server MTP | 8 | 47.70 | **52.18** | 1.094x | same, target verify uses parallel chunk-4 streams | [`MTP`](results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json), [`AR`](results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-streamdraft-server-rerun.json); c=8 MTP now beats llama.cpp HIP full-request MTP, but verifier still dominates (`slots_verify_phase_ms=12345.442`) |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | `--spec-type draft-mtp --spec-draft-n-max 2` | [`2026-07-03-llamacpp-hip-mtp-natural24-c1.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c1.json); full-request/client aggregate, decode-only aggregate is 52.19/75.56 |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c4.json); full-request/client aggregate, decode-only aggregate is 108.33/78.21 |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | same | [`2026-07-03-llamacpp-hip-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-hip-mtp-natural24-c8.json); full-request/client aggregate, decode-only aggregate is 124.71/78.56 |

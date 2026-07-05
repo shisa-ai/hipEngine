@@ -79,7 +79,7 @@ the artifacts and are called out in the reading column where useful.
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | B2 resident slots, zero batch window, pooled target/draft state | Zero-window c=2 did not coalesce in the rerun: no `slots_*` phase buckets, effectively independent c=1 requests. |
 | hipEngine `llama-compat` server MTP | 2 | 44.20 | **46.75** | 1.058x | B2, 5 ms batch window, AR stream decode + MTP stream-draft + packed target verify | Current default-on stream path. AR improves over scalar **41.17 -> 44.20 tok/s**; MTP improves over packed-only **45.57 -> 46.75 tok/s**. |
 | hipEngine `llama-compat` server MTP | 4 | 46.69 | **49.65** | 1.063x | same | Current default-on stream path. MTP is essentially equal to llama.cpp HIP full-request MTP c=4 (**49.69 tok/s**), but not to llama.cpp decode-only aggregate c=4 (**78.21 tok/s**). |
-| hipEngine `llama-compat` server MTP | 8 | 47.70 | **48.72** | 1.021x | same, target verify still chunked at 4 slots | Current default-on stream path. MTP is ~3.6% behind llama.cpp HIP full-request MTP c=8 (**50.56 tok/s**) and ~10.2% behind Vulkan full-request MTP c=8 (**54.25 tok/s**); verifier still dominates (`slots_verify_phase_ms=15354.902`). |
+| hipEngine `llama-compat` server MTP | 8 | 47.70 | **52.18** | 1.094x | same, target verify uses parallel chunk-4 streams | Current default-on stream path plus stream-verify chunks. MTP now beats llama.cpp HIP full-request MTP c=8 (**50.56 tok/s**) and is ~3.8% behind Vulkan full-request MTP c=8 (**54.25 tok/s**); verifier still dominates (`slots_verify_phase_ms=12345.442`). |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | B2 | Full-request/client aggregate. Decode-only aggregate is **52.19/75.56 tok/s**. |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | B2 | Full-request/client aggregate. Decode-only aggregate is **108.33/78.21 tok/s**. |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | B2 | Full-request/client aggregate. Decode-only aggregate is **124.71/78.56 tok/s**. |
@@ -107,6 +107,7 @@ Artifacts:
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c2-bw5-streamdraft-warm.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamdraft-rerun2.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamdraft-rerun2.json`
+- `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json`
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-sweep.json`
 - `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-default-after-batcher.json`
 - `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-default-after-batcher.json`
@@ -154,18 +155,22 @@ MTP **30.09 -> 34.44 usage tok/s** by eliminating draft-open cost. Server AR
 moved only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is
 prompt prefill, not session construction.
 
-Implementation status after stream-slot decode/draft: c=2 is **44.20 AR /
-46.75 MTP tok/s**, c=4 is **46.69 / 49.65**, and c=8 is **47.70 / 48.72**.
-This makes MTP positive versus same-server AR at every c>N shape, and c=4 is
-now essentially llama.cpp HIP full-request MTP parity. It does not close the
-real concurrency target: c=8 still only gets **1.021x** over same-server AR and
-its phase buckets are verifier-heavy (`slots_verify_phase_ms=15354.902`,
-`slots_draft_phase_ms=3275.134`, `slots_commit_phase_ms=569.736`). The next
-server blockers are therefore (1) reducing target verifier wall or improving the
-rows>=16 packed verifier path before lifting the four-slot cap, (2) replacing
-per-cycle `ThreadPoolExecutor` stream-draft launch overhead with a persistent or
-batched resident scheduler if profiling shows it matters, and (3) reducing
-prompt-prefill overhead so server AR approaches the direct GGUF suite.
+Implementation status after stream-slot decode/draft plus c=8 stream-verify
+chunks: c=2 is **44.20 AR / 46.75 MTP tok/s**, c=4 is **46.69 / 49.65**, and
+c=8 is **47.70 / 52.18**. This makes MTP positive versus same-server AR at
+every c>N shape; c=4 is essentially llama.cpp HIP full-request MTP parity, and
+c=8 now beats llama.cpp HIP full-request MTP (**50.56 tok/s**) while remaining
+below Vulkan full-request MTP (**54.25 tok/s**) and far below llama.cpp
+decode-only aggregate scaling. The real concurrency target is therefore still
+open: c=8 only gets **1.094x** over same-server AR and its phase buckets remain
+verifier-heavy (`slots_verify_phase_ms=12345.442`,
+`slots_draft_phase_ms=3261.185`, `slots_commit_phase_ms=584.696`). The next
+server blockers are therefore (1) reducing target verifier wall further or
+improving the rows>=16 packed verifier path before lifting the four-slot cap,
+(2) replacing per-cycle `ThreadPoolExecutor` stream-draft/verify launch overhead
+with a persistent or batched resident scheduler if profiling shows it matters,
+and (3) reducing prompt-prefill overhead so server AR approaches the direct GGUF
+suite.
 
 Follow-up AR c>N audit: the default OpenAI batcher now coalesces compatible
 non-MTP requests even when each request has its own cancellation token; grouped

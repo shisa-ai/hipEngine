@@ -143438,3 +143438,64 @@ python3 scripts/gguf_mtp_bench.py \
 - Updated `benchmarks/CHANGELOG.md` and `docs/REFACTOR.md` so the flag is
   explicitly default-off and removal-triggered. Next aligned work remains true
   c>N target decode/verifier scaling, not concurrent prompt prefill.
+
+## 2026-07-05 - GGUF server MTP c8 stream-verify chunks
+
+- Added default-on c>N MTP target verifier chunk streams behind
+  `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY=1`. The scheduler keeps
+  `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` so it does not enter the rejected
+  rows>=16/single-8-slot packed verifier regime, but when c=8 splits into two
+  chunk-4 verifier calls it runs those chunks on separate owner-session HIP
+  streams. Owner sessions already hold independent packed verifier workspaces,
+  and the packed verifier synchronizes its stream before returning.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'speculative_mtp_batch_verifier or speculative_mtp_stream'
+  git diff --check
+  ```
+  Pycompile and diff check passed; focused tests passed (`4 passed`).
+- Restarted the local gfx1151 server from this tree:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_AR_STREAM_DECODE=1 HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT=1 HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- First c=8 probe was cold and not retained as a speed row: **39.26 tok/s** with
+  one-time `assets_load_ms=5875.058` and `draft_open_ms=891.916`, but it already
+  showed `slots_verify_phase_ms` down to **13063.262**.
+- Warm c=8 reruns:
+  ```bash
+  PYTHONPATH=. python3 scripts/mtp-bench.py --url http://127.0.0.1:18082 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --timeout 1200 --concurrency 8 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-warm.json
+  PYTHONPATH=. python3 scripts/mtp-bench.py --url http://127.0.0.1:18082 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --timeout 1200 --concurrency 8 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c8-bw5-streamverify-rerun2.json
+  ```
+  Results: **50.51 tok/s** then retained **52.18 tok/s**. Versus the retained
+  stream-draft c=8 row, this moves **48.72 -> 52.18 tok/s** (+7.1%),
+  `slots_verify_phase_ms` **15354.902 -> 12345.442**, and `slots_run_ms`
+  **20072.944 -> 17017.602**. The new row beats llama.cpp HIP full-request MTP
+  c=8 **50.56 tok/s**, but remains below llama.cpp Vulkan full-request MTP c=8
+  **54.25 tok/s** and far below decode-only aggregate scaling.
+- c=4 sanity rerun with the same code stayed on the single-chunk path and
+  measured **49.39 tok/s** versus retained **49.65 tok/s**; treated as noise and
+  not replacing the c=4 retained row. Artifact:
+  `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c4-bw5-streamverify-rerun.json`.
+- Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+  `docs/MTP-LLAMACPP-PARITY.md`, and `docs/REFACTOR.md` with the new c=8
+  retained row and the remaining verifier-heavy blocker.
+- Commit-gate rerun after the partial-chunk fallback safety check:
+  `python3 -m py_compile ...` passed, focused stream verifier tests passed
+  (`4 passed`), JSON validation passed for the three retained stream-verify
+  artifacts, `git diff --check` passed, and
+  `PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py`
+  passed (`43 passed`).
