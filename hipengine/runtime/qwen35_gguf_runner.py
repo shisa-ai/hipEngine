@@ -9135,6 +9135,223 @@ class Qwen35GGUFResidentSession:
 
         return self._read_sample(return_logits=False)
 
+    def prefill_batch_native(
+        self,
+        prompt_token_ids: list[list[int] | tuple[int, ...]] | tuple[list[int] | tuple[int, ...], ...],
+        *,
+        sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
+        return_logits: bool = False,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult]:
+        """Consume one prompt for each resident session in one packed prefill pass.
+
+        This is the server AR prompt counterpart to :meth:`step_batch_native`.
+        It packs prompt rows slot-major, scatters the resulting KV/recurrent
+        state back to each session, and samples only the final prompt row for
+        each slot.
+        """
+
+        prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
+        session_tuple = (self,) if sessions is None else tuple(sessions)
+        if not prompt_tuple:
+            raise ValueError("prompt_token_ids must be non-empty")
+        if len(prompt_tuple) != len(session_tuple):
+            raise ValueError("prompt_token_ids and sessions must have the same length")
+        if return_logits:
+            raise NotImplementedError("GGUF packed AR prefill currently supports top-1 sampling only")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
+            raise RuntimeError("GGUF resident packed prefill buffers are closed")
+        if self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        if self.kv_storage_dtype != DType.BF16:
+            raise NotImplementedError("packed AR prefill currently supports BF16 KV only")
+        if self.use_expert_sidecar:
+            raise NotImplementedError("packed AR prefill does not support expert sidecars yet")
+        if self.host_token_embedding_enabled:
+            raise NotImplementedError("packed AR prefill does not support host token embedding")
+        if not _gguf_verify_capture_prefill_gdn_enabled():
+            raise NotImplementedError("packed AR prefill requires segmented prefill-GDN state rows")
+
+        for prompt in prompt_tuple:
+            if not prompt:
+                raise ValueError("packed AR prefill prompts must be non-empty")
+            for token in prompt:
+                if token < 0 or token >= int(self.runner.vocab_size):
+                    raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+        for session in session_tuple:
+            if not isinstance(session, Qwen35GGUFResidentSession):
+                raise NotImplementedError("packed AR prefill requires resident GGUF sessions")
+            if session.runner is not self.runner:
+                raise NotImplementedError("packed AR prefill requires shared runner sessions")
+            if session.scratch is None:
+                raise RuntimeError("packed AR prefill job session is closed")
+            if session.kv_storage_dtype != DType.BF16:
+                raise NotImplementedError("packed AR prefill currently supports BF16 KV only")
+
+        slot_blocks = tuple(
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=prompt,
+                start_position=int(session.position),
+            )
+            for prompt, session in zip(prompt_tuple, session_tuple, strict=True)
+        )
+        max_live_count = max(
+            int(block.start_position) + len(block.input_token_ids)
+            for block in slot_blocks
+        )
+        slot_capacity = max(1024, max_live_count)
+        layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
+        if int(layout.max_live_count) >= 1024:
+            raise NotImplementedError("packed AR prefill currently requires context < 1024")
+        rows = int(layout.rows)
+        if rows > int(self._bulk_prefill_scratch.rows):
+            raise NotImplementedError(
+                f"packed AR prefill rows {rows} exceed resident hidden-buffer capacity {self._bulk_prefill_scratch.rows}"
+            )
+
+        runtime = self.runtime or get_hip_runtime()
+        packed_state, packed_scratch_base = self._ensure_packed_verify_workspace(
+            slot_count=int(layout.slot_count),
+            rows=rows,
+            max_sequence_length=slot_capacity,
+            runtime=runtime,
+        )
+        self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
+        self._sync_packed_decode_initial_state(
+            session_tuple,
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+        )
+        packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
+        token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
+        copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
+
+        launch_gguf_embedding(
+            self.runner.weights.root("token_embedding"),
+            self._prefill_token_buf.ptr,
+            self._prefill_hidden_a.ptr,
+            rows=rows,
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        src = self._prefill_hidden_a
+        dst = self._prefill_hidden_b
+        linear_decode_scratch = replace(
+            self.scratch,
+            layer_conv_states=packed_state.layer_conv_states,
+            layer_recurrent_states=packed_state.layer_recurrent_states,
+        )
+        with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    self.runner._run_linear_attention_prefill_layer_rows(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        packed_scratch,
+                        rows=rows,
+                        stream=stream,
+                        decode_scratch=linear_decode_scratch,
+                        expert_sidecar=None,
+                        linear_state_rows=self._verify_linear_state_row_pair(layer_id),
+                        commit_final_linear_state=False,
+                        hidden_f32_ptr=None,
+                        out_f32_ptr=None,
+                        stage_timings=None,
+                        sync_stage_timings=False,
+                        stage_prefix="ar_prefill_batch_linear_attn",
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    key_cache, value_cache = packed_state.full_cache(layer_id)
+                    layer_scratch = replace(
+                        packed_scratch,
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        cos_table=self.scratch.cos_table,
+                        sin_table=self.scratch.sin_table,
+                    )
+                    self.runner._run_full_attention_decode_batch_layer_rows(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        layer_scratch,
+                        stream=stream,
+                        expert_sidecar=None,
+                        stage_timings=None,
+                        sync_stage_timings=False,
+                        stage_prefix="ar_prefill_batch_full_attn",
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                src, dst = dst, src
+
+            self._commit_packed_decode_linear_state_rows(
+                layout,
+                packed_state,
+                runtime=runtime,
+                stream=stream,
+            )
+            output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
+            gguf_rmsnorm_bf16_f32_weight(
+                src.ptr,
+                output_norm_weight_ptr,
+                packed_scratch.norm.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+            for slot_index in range(int(layout.slot_count)):
+                final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                if final_row < int(layout.cu_seqlens[slot_index]):
+                    raise RuntimeError("packed AR prefill slot has no final row to sample")
+                runtime.memcpy_async(
+                    self._prefill_hidden_a.ptr + slot_index * row_nbytes,
+                    packed_scratch.norm.ptr + final_row * row_nbytes,
+                    row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            token_host = self._sample_target_block_rows_from_hidden(
+                self._prefill_hidden_a.ptr,
+                int(layout.slot_count),
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                stream=stream,
+            )
+
+        self._scatter_packed_decode_state(
+            session_tuple,
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+        )
+        self._packed_decode_sessions = ()
+        self._packed_decode_last_layout = None
+        self._packed_decode_state_dirty = False
+        self._packed_decode_session_ids = tuple(id(session) for session in session_tuple)
+        self._packed_decode_positions = tuple(int(session.position) for session in session_tuple)
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+        return [
+            Qwen35GGUFNextTokenProbeResult(
+                token_id=int(token),
+                logit=0.0,
+                logits=np.empty((0,), dtype=np.float32),
+            )
+            for token in token_host.tolist()
+        ]
+
     def step_batch_native(
         self,
         token_ids: list[int] | tuple[int, ...],

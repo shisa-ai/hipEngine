@@ -87,6 +87,7 @@ _LLAMA_COMPAT_MTP_ENV = {
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
+_GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
@@ -95,6 +96,10 @@ _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 
 def _gguf_ar_packed_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_ar_packed_prefill_enabled() -> bool:
+    return os.environ.get(_GGUF_AR_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_ar_stream_decode_enabled() -> bool:
@@ -820,6 +825,8 @@ class Qwen35GGUFBringupGenerator:
                     session_pool_key=session_pool_key,
                 )
                 slots.append(slot)
+            if self._try_prefill_ar_serving_slots_batch(slots, request):
+                return slots
             if self._try_prefill_ar_serving_slots_streams(slots, request):
                 return slots
             for slot in slots:
@@ -831,6 +838,46 @@ class Qwen35GGUFBringupGenerator:
             self._close_ar_serving_slots(slots, reuse=False)
             raise
         return slots
+
+    def _try_prefill_ar_serving_slots_batch(
+        self,
+        slots: list[_GGUFARServingSlot],
+        request: GenerationRequest,
+    ) -> bool:
+        if len(slots) <= 1 or not _gguf_ar_packed_prefill_enabled():
+            return False
+        owner_session = slots[0].session
+        prefill_batch = getattr(owner_session, "prefill_batch_native", None)
+        if not callable(prefill_batch):
+            return False
+        prompt_ids = [tuple(int(token) for token in slot.prompt_ids) for slot in slots]
+        if any(not prompt for prompt in prompt_ids):
+            return False
+        sessions = [slot.session for slot in slots]
+        prefill_start = time.perf_counter()
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    prompt_ids,
+                    sessions=sessions,
+                    return_logits=False,
+                )
+        except NotImplementedError:
+            return False
+        if results is None:
+            return False
+        batch_results = list(results)
+        if len(batch_results) != len(slots):
+            raise RuntimeError(
+                f"GGUF AR packed prefill returned {len(batch_results)} result(s) "
+                f"for {len(slots)} live slot(s)"
+            )
+        prefill_ms = _timing_ms_since(prefill_start)
+        for slot, result in zip(slots, batch_results, strict=True):
+            _timing_add_ms(slot.timing, "prefill_ms", prefill_ms)
+            _timing_add_ms(slot.timing, "prefill_batch_ms", prefill_ms)
+            self._finish_ar_serving_slot_prefill(slot, int(getattr(result, "token_id")), request)
+        return True
 
     def _try_prefill_ar_serving_slots_streams(
         self,

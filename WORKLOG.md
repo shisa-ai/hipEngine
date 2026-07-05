@@ -143690,3 +143690,60 @@ python3 scripts/gguf_mtp_bench.py \
   same-server MTP/AR ratios are **0.919x/0.874x/0.882x**. This fixes the c=8
   AR serial-chunk backend issue; the MTP server path is now more clearly blocked
   by verifier/economics rather than AR c>N scheduling.
+
+## 2026-07-05 - GGUF server AR packed final-row prefill
+
+- Added default-on `HIPENGINE_GGUF_AR_PACKED_PREFILL=1` for coalesced GGUF
+  greedy AR serving. The server now calls
+  `Qwen35GGUFResidentSession.prefill_batch_native(...)` before the existing
+  stream/serial prefill fallbacks when multiple AR slots are admitted together.
+  Unsupported shapes raise `NotImplementedError` and fall back to the previous
+  per-slot prefill path.
+- Implemented `prefill_batch_native(...)` by packing prompt rows slot-major,
+  reusing the packed verifier state/workspace layout, importing each resident
+  session's current KV/recurrent state, running the native prefill/full-attn
+  layer loop, committing final packed linear-state rows, scattering final
+  KV/recurrent state back to each resident session, and sampling only each
+  slot's final prompt row. The retained support envelope is BF16 KV, shared
+  runner sessions, no host token embedding, segmented prefill-GDN capture, and
+  context `<1024`.
+- Rejected the naive verifier-as-prefill probe: c=8 natural24 measured
+  **50.56 tok/s** because it sampled/copied every prompt row and lost to the
+  retained packed-decode baseline. The first cold final-row packed-prefill probe
+  measured **55.33 tok/s**; warm reruns are the retained rows.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client command used `scripts/mtp-bench.py` with natural24 prompts,
+  `--max-tokens 24 --temperature 0 --top-p 1`, and concurrency c=2/c=4/c=8.
+- Retained AR rows: c=2 **66.15 tok/s**, c=4 **67.68 tok/s**, and c=8
+  **61.72 tok/s**. This moves the prior packed-decode/chunk-stream AR row
+  **50.89/56.79/59.17 -> 66.15/67.68/61.72 tok/s**
+  (+30.0%/+19.2%/+4.3%). Artifacts:
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-prefill-finalrows-rerun.json`,
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-prefill-finalrows-rerun.json`,
+  and
+  `benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-prefill-finalrows-rerun2.json`.
+- MTP rows are unchanged at **46.75/49.65/52.18 tok/s**, so current same-server
+  MTP/AR ratios are **0.707x/0.734x/0.845x**. The AR c>N blocker is now
+  materially improved; MTP serving remains verifier/economics-bound versus the
+  stronger AR baseline.
+- Focused validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'ar_batch_decode or ar_packed_decode or ar_stream_decode or ar_stream_prefill or packed_prefill' tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c2-bw5-packed-prefill-finalrows-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c4-bw5-packed-prefill-finalrows-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-05-hipengine-server-ar-natural24-c8-bw5-packed-prefill-finalrows-rerun2.json >/dev/null
+  git diff --check
+  ```
+  Pycompile passed, focused pytest passed (`9 passed`), the existing MTP
+  resident-slot regression test passed, retained artifact JSON checks passed,
+  and diff whitespace check was clean.
