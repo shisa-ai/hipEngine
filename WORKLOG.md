@@ -143145,3 +143145,22 @@ python3 scripts/gguf_mtp_bench.py \
   verifier until a real multi-slot target session owns per-slot KV spans,
   Conv/GDN recurrent state slabs, and captured verify rows. An internal serial
   loop over current sessions would not count as llama.cpp-style target batching.
+
+## 2026-07-05 - Packed target-verifier layout primitive
+
+- Added the CPU-side packed verifier row/state layout used by the future GGUF
+  multi-slot target verifier. `_build_gguf_packed_verify_layout()` packs rows
+  slot-major, assigns each slot a disjoint physical paged-KV block range, keeps
+  local per-slot positions/live counts, and emits Conv/GDN segment metadata
+  (`cu_seqlens`, `state_indices`) for per-slot recurrent state slabs.
+- Added `tests/test_gguf_packed_verify_layout.py` covering c=2 B2-style row
+  packing, variable row counts, physical block-table separation, local live
+  counts, and invalid inputs. This is groundwork only; no production
+  `verify_target_blocks_batch()` is exposed yet.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py
+  ```
+  Pycompile passed and the packed-layout + GGUF sampling bundle passed
+  (`29 passed`).
