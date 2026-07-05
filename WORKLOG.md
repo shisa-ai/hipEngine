@@ -143235,3 +143235,53 @@ python3 scripts/gguf_mtp_bench.py \
   `qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel`
   (~166.4 us) on the synthetic gfx1151 run; packed-layout + GGUF sampling
   passed unfiltered (`32 passed`).
+
+## 2026-07-05 - Server MTP packed target verifier
+
+- Wired the first real GGUF `Qwen35GGUFResidentSession.verify_target_blocks_batch()`
+  production slice for the server llama-compat path. It packs independent
+  resident slots slot-major, imports per-slot Conv/GDN recurrent state and
+  full-attention KV into a packed target workspace, runs one target forward over
+  the packed rows, then scatters hidden seeds, captured linear-state rows, and
+  written full-attention KV rows back to each slot for the existing accept/commit
+  lifecycle.
+- Fixed the packed layout/state alignment bug found during review: the verifier
+  now builds the block table against the same per-slot capacity as the packed
+  target KV allocation. The scratch metadata view no longer rejects external
+  packed KV spans when it does not own a local KV cache.
+- Added scheduler fallback and chunking:
+  unsupported verifier shapes raise `NotImplementedError` and fall back to
+  per-slot serial verify, and server target verify chunks at four slots because
+  one 8-slot packed target batch is a measured rejected regime.
+- Validation:
+  ```bash
+  git diff --check
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py hipengine/generation/qwen35_gguf.py tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py
+  ```
+  Diff check passed; pycompile passed; focused packed-layout + GGUF sampling
+  tests passed (`35 passed`).
+- Server benchmark setup on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  python3 scripts/mtp-bench.py --url http://127.0.0.1:18082 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --timeout 1200 \
+    --extra-payload '{"speculative_mtp":true}' --concurrency C \
+    --out benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-cC-bw5-packed*.json
+  ```
+- Results: c=2 forced coalescing **33.60 -> 45.57 tok/s** with
+  `slots_verify_phase_ms` **9692.167 -> 5389.484 ms** and
+  `target_verify_batch_ms=5167.858`; c=4 **33.30 -> 47.48 tok/s** with
+  `target_verify_batch_ms=7739.042`; warm c=8 **32.41 -> 47.18 tok/s** with
+  target verify chunked 4+4 and `target_verify_batch_ms=8363.508`.
+  A single 8-slot packed verifier batch was rejected at **11.58 tok/s** with
+  `target_verify_batch_ms=63733.783`.
+- Updated `docs/MTP-LLAMACPP-PARITY.md`, `benchmarks/README.md`,
+  `benchmarks/CHANGELOG.md`, and `docs/REFACTOR.md` with the retained
+  diagnostic rows and the four-slot cap removal trigger.

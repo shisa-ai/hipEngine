@@ -72,6 +72,23 @@ def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
     assert layout.blocks_per_slot == 2
 
 
+def test_gguf_packed_verify_layout_honors_slot_capacity() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11, 12), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(21, 22), start_position=4),
+        ),
+        block_size=4,
+        slot_capacity=16,
+    )
+
+    assert layout.max_live_count == 6
+    assert layout.blocks_per_slot == 4
+    np.testing.assert_array_equal(layout.block_table[0], np.asarray([0, 1, 2, 3], dtype=np.int32))
+    np.testing.assert_array_equal(layout.block_table[2], np.asarray([4, 5, 6, 7], dtype=np.int32))
+    assert layout.total_physical_positions == 32
+
+
 def test_gguf_packed_verify_layout_rejects_invalid_inputs() -> None:
     with pytest.raises(ValueError, match="at least one"):
         _build_gguf_packed_verify_layout(())
@@ -83,6 +100,11 @@ def test_gguf_packed_verify_layout_rejects_invalid_inputs() -> None:
         _build_gguf_packed_verify_layout(
             (_GGUFPackedVerifySlotBlock(input_token_ids=(1,), start_position=0),),
             block_size=0,
+        )
+    with pytest.raises(ValueError, match="slot_capacity"):
+        _build_gguf_packed_verify_layout(
+            (_GGUFPackedVerifySlotBlock(input_token_ids=(1,), start_position=4),),
+            slot_capacity=4,
         )
 
 
@@ -130,8 +152,9 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
     scratch = _GGUFFullAttentionPrefillScratch.allocate(
         runner,
         rows=6,
-        capacity=512,
+        capacity=1024,
         segments=2,
+        allocate_kv_cache=False,
         runtime=SimpleNamespace(),
     )
     layout = _build_gguf_packed_verify_layout(
@@ -139,6 +162,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
             _GGUFPackedVerifySlotBlock(input_token_ids=(11, 12, 13), start_position=4),
             _GGUFPackedVerifySlotBlock(input_token_ids=(21, 22, 23), start_position=8),
         ),
+        slot_capacity=1024,
     )
     copies.clear()
 
