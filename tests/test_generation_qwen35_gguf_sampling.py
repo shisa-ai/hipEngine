@@ -1457,6 +1457,95 @@ def test_gguf_ar_packed_prefill_uses_batch_prompt_path(monkeypatch) -> None:
     assert generator.last_batch_generation["native_caware_decode"] is True
 
 
+def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        pass
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path):
+            self.runtime = FakeRuntime()
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            calls.append(("session_init", self.slot_id))
+
+        def reset(self):
+            self.position = 0
+
+        def close(self):
+            calls.append(("close", self.slot_id))
+
+        def prefill(self, token_ids, *, return_logits=False):  # pragma: no cover - must not be used
+            raise AssertionError("chunked packed prompt prefill should bypass scalar prefill")
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False):
+            if len(prompt_token_ids) > 4:
+                raise AssertionError("AR packed prefill should chunk above four slots")
+            calls.append(
+                (
+                    "prefill_batch",
+                    self.slot_id,
+                    tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                    return_logits,
+                )
+            )
+            for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+                session.position = len(prompt)
+            return [SimpleNamespace(token_id=1) for _session in sessions]
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+
+    generator = _generator()
+    generator.prepare()
+    outputs = generator.generate_detailed(
+        _request(prompts=("long", "long2", "long", "long2", "long", "long2", "long", "long2"), max_tokens=1)
+    )
+
+    assert [output.text for output in outputs] == ["B"] * 8
+    assert [call for call in calls if call[0] == "prefill_batch"] == [
+        (
+            "prefill_batch",
+            0,
+            (
+                (10, 11, 12, 13),
+                (20, 21, 22, 23),
+                (10, 11, 12, 13),
+                (20, 21, 22, 23),
+            ),
+            (0, 1, 2, 3),
+            "1",
+            False,
+        ),
+        (
+            "prefill_batch",
+            4,
+            (
+                (10, 11, 12, 13),
+                (20, 21, 22, 23),
+                (10, 11, 12, 13),
+                (20, 21, 22, 23),
+            ),
+            (4, 5, 6, 7),
+            "1",
+            False,
+        ),
+    ]
+    assert all("prefill_batch_ms" in output.telemetry.to_json_dict()["timing"] for output in outputs)
+    assert all("prefill_batch_chunk_ms" in output.telemetry.to_json_dict()["timing"] for output in outputs)
+    assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
+
+
 def test_gguf_ar_packed_prefill_notimplemented_falls_back(monkeypatch) -> None:
     calls: list[tuple] = []
 

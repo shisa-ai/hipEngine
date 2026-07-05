@@ -144034,3 +144034,52 @@ python3 scripts/gguf_mtp_bench.py \
   Pycompile passed, focused pytest passed (`9 passed`), and JSON artifact checks
   passed. Next MTP c>N work remains c=8: verifier wall, draft scheduling, and
   the four-slot packed verifier/prefill cap.
+
+## 2026-07-06 - GGUF server AR c=8 route-cap fix
+
+- Fixed the remaining GGUF server AR c=8 scheduling issue before returning to
+  MTP. The old c=8 AR row (**63.17 tok/s**) was not a good 8-wide backend
+  shape: width-8 packed AR decode was slower than the current chunked path
+  (**60.21 tok/s**, rejected), while startup width-8 AR warmups raised scratch
+  warmup to **38-43 s** and produced poor fresh-request results (**66.04** or
+  **43.38 tok/s**, rejected).
+- Retained fix: the OpenAI generation batcher now supports per-route active
+  group limits. GGUF default AR serving caps backend groups at the proven
+  four-request shape even when the server is configured with
+  `--max-active-requests 8`; the speculative MTP route is intentionally not
+  capped. Request-time AR packed prefill also chunks c>4 if called directly,
+  so private/direct generator use avoids the old unsupported width-8 scalar
+  fallback.
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  `/ready` reported normal startup again:
+  `packed_ar_prefill_widths=[2,4]`, `scratch_probe_s=6.679670`.
+- Client command shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency {2,4,8} \
+    --out <artifact>
+  ```
+- Retained AR results: c=2 **66.39 tok/s**, c=4 **82.46 tok/s**, c=8
+  **81.94 tok/s**. This supersedes **65.91/82.41/63.17 tok/s**; the c=8 AR
+  improvement is **+29.7%** with normal startup.
+- Retained artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-routecap4-arfix.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-routecap4-arfix.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-routecap4-arfix.json`.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/server/api.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_generation_qwen35_gguf_sampling.py::test_gguf_ar_packed_prefill_chunks_above_four_slots tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths tests/test_generation_qwen35_gguf_sampling.py::test_gguf_ar_packed_prefill_uses_batch_prompt_path tests/test_generation_qwen35_gguf_sampling.py::test_gguf_ar_packed_prefill_notimplemented_falls_back tests/test_server_api.py::test_generation_batcher_limits_active_request_group_size tests/test_server_api.py::test_generation_batcher_applies_route_specific_group_limit tests/test_server_api.py::test_generation_batcher_route_limit_does_not_cap_mtp_route
+  ```
+  Pycompile passed, focused pytest passed (`7 passed`), and JSON artifact
+  checks passed.
