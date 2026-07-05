@@ -7298,13 +7298,14 @@ class Qwen35GGUFResidentSession:
             hidden_contract=self.fp32_verify_hidden_seed_contract(rows=1),
         )
 
-    def reset(self) -> None:
+    def reset(self, *, stream: int = 0) -> None:
         """Reset sequence state without freeing resident weights or scratch."""
 
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
-        self.scratch.zero_states(runtime)
+        self.scratch.zero_states(runtime, stream=stream, set_position=False)
+        self._set_full_attention_position_device(0, stream=stream)
         self._position = 0
         self._hidden_seed_fp32_populated = False
         self._last_pre_output_norm_hidden = None
@@ -7446,12 +7447,22 @@ class Qwen35GGUFResidentSession:
 
         if token_ids_device_ptr is None:
             raise ValueError("token_ids_device_ptr is required for device token embedding")
-        copy_host_to_device(
-            DeviceBuffer(int(token_ids_device_ptr), int(token_arr.nbytes)),
-            host_array_ptr(token_arr),
-            int(token_arr.nbytes),
-            runtime=runtime,
-        )
+        token_ids_device = DeviceBuffer(int(token_ids_device_ptr), int(token_arr.nbytes))
+        if stream:
+            runtime.memcpy_async(
+                token_ids_device.ptr,
+                host_array_ptr(token_arr),
+                int(token_arr.nbytes),
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
+        else:
+            copy_host_to_device(
+                token_ids_device,
+                host_array_ptr(token_arr),
+                int(token_arr.nbytes),
+                runtime=runtime,
+            )
         launch_gguf_embedding(
             self.runner.weights.root("token_embedding"),
             int(token_ids_device_ptr),
@@ -7645,6 +7656,56 @@ class Qwen35GGUFResidentSession:
         assert hidden_ptr is not None
         return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
 
+    def prefill_async_top1(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        use_bulk: bool | None = None,
+        bulk_attention_mode: str = "bulk",
+        capture_hidden_seed_fp32: bool = False,
+        stream: int,
+    ) -> None:
+        """Launch prompt prefill and top-1 sampling on ``stream`` without host readback."""
+
+        if int(stream) == 0:
+            raise ValueError("prefill_async_top1 requires a non-default stream")
+        if not token_ids:
+            raise ValueError("token_ids must be non-empty")
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
+        selected_bulk_attention_mode = bulk_attention_mode
+        run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+        if run_bulk:
+            if len(token_ids) < min_bulk_tokens:
+                raise ValueError(
+                    f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
+                )
+            with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+                self._run_bulk_prefill_and_sample(
+                    token_ids,
+                    stream=int(stream),
+                    bulk_attention_mode=selected_bulk_attention_mode,
+                    return_logits=False,
+                    capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+                    enqueue_sample_only=True,
+                )
+            return
+
+        self.reset(stream=int(stream))
+        hidden_ptr = None
+        final_index = len(token_ids) - 1
+        for index, token_id in enumerate(token_ids):
+            hidden_ptr = self._run_token_to_final_hidden(
+                int(token_id),
+                position=self._position,
+                stream=int(stream),
+                capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32) and index == final_index,
+            )
+            self._position += 1
+        assert hidden_ptr is not None
+        self._sample_device_from_hidden(hidden_ptr, stream=int(stream))
+
     def _run_bulk_prefill_and_sample(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -7653,7 +7714,8 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         return_logits: bool = True,
         capture_hidden_seed_fp32: bool = False,
-    ) -> Qwen35GGUFNextTokenProbeResult:
+        enqueue_sample_only: bool = False,
+    ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
@@ -7678,7 +7740,7 @@ class Qwen35GGUFResidentSession:
             if self._verify_hidden_seed_buf is None:
                 raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
             hidden_seed_buf = self._verify_hidden_seed_buf
-        self.reset()
+        self.reset(stream=stream)
         alloc_capacity = self._prefill_hidden_a.nbytes // (self.runner.hidden_size * 2)
         chunk_outer = alloc_capacity < rows
         if hidden_seed_buf is not None and chunk_outer:
@@ -7909,7 +7971,10 @@ class Qwen35GGUFResidentSession:
                 library=self._runtime_state_library,
                 runtime=runtime,
             )
-            return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
+            if enqueue_sample_only:
+                self._sample_device_from_hidden(last_hidden_ptr, stream=stream)
+                return None
+            return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits, stream=stream)
         finally:
             self._release_int8_prefill_oracle_buffers()
 
@@ -10838,9 +10903,19 @@ class Qwen35GGUFResidentSession:
             )
         return np.ascontiguousarray(token_i64, dtype=np.int64)
 
-    def _sample_from_hidden(self, hidden_ptr: int, *, return_logits: bool = True) -> Qwen35GGUFNextTokenProbeResult:
-        self._sample_device_from_hidden(hidden_ptr)
-        (self.runtime or get_hip_runtime()).device_synchronize()
+    def _sample_from_hidden(
+        self,
+        hidden_ptr: int,
+        *,
+        return_logits: bool = True,
+        stream: int = 0,
+    ) -> Qwen35GGUFNextTokenProbeResult:
+        self._sample_device_from_hidden(hidden_ptr, stream=stream)
+        runtime = self.runtime or get_hip_runtime()
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
         return self._read_sample(return_logits=return_logits)
 
     def _read_sample(self, *, return_logits: bool = True) -> Qwen35GGUFNextTokenProbeResult:
@@ -11876,13 +11951,14 @@ class _FullStackScratch:
         copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), runtime=runtime)
         copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
 
-    def zero_states(self, runtime: HipRuntime) -> None:
+    def zero_states(self, runtime: HipRuntime, *, stream: int = 0, set_position: bool = True) -> None:
         for conv_state, recurrent_state in zip(self.layer_conv_states, self.layer_recurrent_states, strict=True):
             if conv_state is not None:
-                _zero(runtime, conv_state, self.conv_zero)
+                _zero(runtime, conv_state, self.conv_zero, stream=stream)
             if recurrent_state is not None:
-                _zero(runtime, recurrent_state, self.recurrent_zero)
-        self.set_full_attention_position(0, runtime)
+                _zero(runtime, recurrent_state, self.recurrent_zero, stream=stream)
+        if set_position:
+            self.set_full_attention_position(0, runtime)
 
 
 def _expert_raw_ptr(weight: Qwen35GGUFDeviceWeight, expert_id: int) -> int:
