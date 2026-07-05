@@ -144506,3 +144506,55 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q8pairprepare-rerun.json`,
   and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-q8pairprepare-rerun.json`.
+
+## 2026-07-06 - Rejected GGUF MTP packed verifier deferred-readback probe
+
+- Tested whether the retained packed verifier was losing c>N wall time by
+  synchronizing and reading target tokens before scattering verifier state back
+  into per-slot sessions. The temporary patch split
+  `_sample_target_block_rows_from_hidden()` into an enqueue-only helper for
+  packed verify, enqueued state scatter before the final stream sync, and moved
+  token/hidden host readback after that sync. This was exact-intent scheduling
+  only: no precision change, no sidecars, no request-shape branching.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_block_verify_result.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_qwen35_gguf_block_verify_result.py tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled tests/test_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_c2_uses_resident_slots
+  ```
+  The focused tests passed.
+- Benchmark server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-defer-readback-probe.json
+  ```
+- Results rejected versus retained rowtilechunk MTP
+  (**77.29/76.46 tok/s** at c=4/c=8): c=4 **76.01 tok/s**, c=8
+  **76.41 tok/s**. The bucket shift confirmed attribution rather than a real
+  wall win: c=4 `target_packed_verify_lm_head_sample_ms` moved
+  **4239.592 -> 178.988 ms**, but `target_packed_verify_final_sync_ms` rose
+  **362.812 -> 4314.866 ms** and `target_packed_verify_total_ms` regressed
+  **5870.712 -> 6025.642 ms**. c=8 stayed effectively flat
+  (`5923.988 -> 5924.556 ms` packed verifier total) with no throughput upside.
+  Code/test changes were reverted; current tracked code is back to the retained
+  implementation.
+- Post-revert tracked-code validation:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_qwen35_gguf_block_verify_result.py
+  ```
+  Saved rejected artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-defer-readback-probe.json`
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-defer-readback-probe.json`.

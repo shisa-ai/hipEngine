@@ -249,6 +249,20 @@ Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-streamupload-rerun.json`.
 
+Rejected deferred-readback follow-up: splitting packed verifier sampling so
+LM-head/argmax was only enqueued, then scattering verifier state before a single
+final sync and token/hidden host readback, did not improve wall throughput. It
+confirmed that the large `target_packed_verify_lm_head_sample_ms` bucket was
+mostly sync attribution: c=4 shifted LM-head/sample **4239.592 -> 178.988 ms**
+but final sync rose **362.812 -> 4314.866 ms**, and total packed verify
+regressed **5870.712 -> 6025.642 ms**. Natural24 MTP measured **76.01 tok/s**
+at c=4 and **76.41 tok/s** at c=8 versus retained **77.29/76.46 tok/s**. The
+code was reverted; keep this rejected unless the scatter/readback ordering also
+reduces total packed verify wall, not just attribution buckets. Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-defer-readback-probe.json`
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-defer-readback-probe.json`.
+
 Route-cap follow-up: default GGUF AR serving now caps backend groups at the
 proven four-request shape even when the HTTP server is configured with
 `--max-active-requests 8`; the speculative MTP route now uses the same
