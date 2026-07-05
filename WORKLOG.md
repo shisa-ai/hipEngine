@@ -143298,3 +143298,13 @@ python3 scripts/gguf_mtp_bench.py \
   diagnostic.
 - Docs-only validation: re-read the changed README and benchmark sections and
   ran `git diff --check`.
+
+## 2026-07-05 - Concurrency plan status refresh
+
+- Updated `docs/PLAN.md` so the c>N/SpecDec readiness section matches the
+  current tree: PARO c=2/c=4/c=8 is diagnostic rather than absent, GGUF
+  llama-compat MTP serving is partially wired behind opt-in/auto, and retained
+  production c>N still needs continuous-batching ownership, profiler evidence,
+  row-count kernel tuning, and same-quant external baselines.
+- Docs-only validation: re-read the edited plan section and ran
+  `git diff --check`.

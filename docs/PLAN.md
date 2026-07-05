@@ -442,7 +442,11 @@ Our host is simpler because **the kernels do the heavy lifting**. The scheduler 
 
 ### Concurrent Decode, Continuous Batching, and SpecDec Readiness
 
-hipEngine is a better foundation for c>1 than the current `nano-vllm-amd` native PARO path, but the runnable implementation remains c=1 until the batch-state and c-aware kernels below land. Treat current Qwen3.5/PARO numbers as **single-request decode** unless a benchmark explicitly says otherwise.
+hipEngine is a better foundation for c>1 than the current `nano-vllm-amd`
+native PARO path. The runnable tree now has diagnostic c=2/c=4/c=8 PARO decode
+paths and a guarded GGUF MTP server route, but retained production c>N
+throughput still requires the gates below. Treat c>N numbers as diagnostic
+unless the benchmark explicitly says retained-ready.
 
 Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-shaped and speculative-verification-safe even when the first implementation only runs `C=1`.** Scalar c=1 entrypoints are allowed as smoke wrappers, not as the canonical internal interface.
 
@@ -470,9 +474,9 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 | Question | Answer |
 |---|---|
-| Can current hipEngine run real c=8 PARO decode? | No. |
-| Does current hipEngine implement continuous batching? | No. |
-| Is current SpecDec wired into generation? | No; only the design/file-tree placeholder exists. |
+| Can current hipEngine run real c=8 PARO decode? | Diagnostic only. PARO c=2/c=4/c=8 decode paths have generated-token equality evidence, but no retained production c>N throughput row. |
+| Does current hipEngine implement continuous batching? | Partially. The engine loop, scheduler, and OpenAI coalescer have batch-shaped request accounting, but mixed prefill/decode admission, compaction/reclaim, and retained c>N perf are not complete. |
+| Is current SpecDec wired into generation? | Partially. GGUF llama-compat MTP has a guarded non-streaming greedy server route with resident slots and packed target verify; exact/default MTP serving, streaming, and broad SpecDec pluginization remain future work. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
 | Is hipEngine the better place to build c=8+ PARO and SpecDec? | Probably yes. |
@@ -486,23 +490,36 @@ Why the design is better positioned:
 - Decode graph capture is already framed as shape buckets rather than one global graph.
 - Model plugins can advertise optional speculative heads, while speculative methods live under their own plugin boundary instead of forking the engine.
 
-Current blockers that keep Qwen3.5/PARO effectively c=1:
+Current blockers that keep c>N diagnostic rather than retained:
 
-- `hipengine.generation.qwen35_paro.Qwen35ParoOneTokenGenerator` is a smoke path: it requires `max_tokens == 1` and serializes prompts in Python.
-- `Qwen35ParoResidentSession` owns single-request state: `(1, hidden_size)` hidden buffers, scalar token/position/context device buffers, one block table/span object, and one KV cache per full-attention layer.
-- There is no active-request table, no request admission loop, no batch compaction/reclaim path, no mixed prefill+decode scheduler, and no per-request sampler/output queue.
-- Several decode orchestrators still reject `tokens != 1` or only support c1-style GEMV batching; this is useful for prefill bring-up but not a complete concurrent decode scheduler.
-- The current GQA split-K attention kernels consume one query stream with scalar context length. c>1 needs a batch grid dimension plus per-sequence `live_counts`/page tables.
-- Selected MoE GEMV needs a real mapping from token rows to routed lanes. For c=8 and top-k=8 the natural shape is `x_rows=8`, `rows=64`; kernels must gather hidden rows by `lane // top_k` or run grouped/compact expert kernels rather than assuming one hidden row or one row per lane.
-- Speculative decode needs transactional KV scratch/journaling, candidate-row metadata, target verification passes, and scheduler-side accept/reject accounting before MTP/EAGLE3/DFlash can be enabled.
+- The public c=1 generator path remains separate from the c>N diagnostic
+  scheduler/bench path. Production serving still needs one continuous-batching
+  owner for admission, mixed prefill/decode work, slot compaction/reclaim,
+  sampler/output routing, and metrics.
+- Several decode kernels are row-parallel GEMV rather than true grouped/MMQ/WMMA
+  batch kernels. They increase grid size but do not reliably reuse streamed
+  weights across requests, which is visible in the weak gfx1151 c=1->c=8 scale
+  versus llama.cpp Vulkan.
+- GQA split-K and full-attention paths still need row-count-specific profiler
+  evidence and per-sequence `KVLiveSpans` coverage before long-context c>N can be
+  promoted beyond diagnostic rows.
+- Selected MoE decode has row-aware/grouped diagnostic coverage for c<=8, but
+  retained performance still needs routed-lane profiling and c-aware thresholds
+  for grouped GEMV versus compact/WMMA execution.
+- GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
+  commit. Target verify is packed up to four slots; draft-side batching, rows>=16
+  verifier tuning, streaming, and exact/default MTP serving remain open.
+- Benchmark coverage must report aggregate tok/s, per-request tok/s, latency,
+  memory, active occupancy, generated-token equality, graph/profiler provenance,
+  and same-quant external baselines before promoting c>N claims.
 
 #### Expected c=8 behavior
 
 | Path | Expected aggregate c=8 behavior |
 |---|---|
-| Current hipEngine as-is | Unsupported. |
+| Current retained hipEngine default | No retained c=8 production claim. |
 | Eight serial c=1 sessions sharing weights | About 1× c1 aggregate, worse latency. |
-| Naive `rows=8` where wrappers allow it | Modest gain from larger grids and lower relative launch cost; weights are still mostly reloaded per row. |
+| Current diagnostic row-parallel c=8 | Modest gain from larger grids and lower relative launch cost; weights are still mostly reloaded per row. |
 | Proper c=8 batch path | Plausibly 2–4× c1 aggregate for Qwen3.5/PARO decode; not 8×. |
 | c>16 | Prefer GEMM/MMQ/WMMA and grouped MoE designs over extending c1 GEMV. |
 
