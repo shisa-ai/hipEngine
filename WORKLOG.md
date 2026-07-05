@@ -143308,3 +143308,47 @@ python3 scripts/gguf_mtp_bench.py \
   row-count kernel tuning, and same-quant external baselines.
 - Docs-only validation: re-read the edited plan section and ran
   `git diff --check`.
+
+## 2026-07-05 - GGUF server AR c>N coalescing and packed-AR rejection
+
+- Fixed the OpenAI generation batcher so compatible non-MTP submissions no
+  longer split solely because each request owns a distinct cancellation token.
+  Grouped requests now use the existing composite cancellation token path; the
+  same-token case still passes through unchanged.
+- Added a default-off diagnostic GGUF AR resident-slot path behind
+  `HIPENGINE_GGUF_AR_PACKED_DECODE=1`. It opens one target session per prompt
+  over the prepared shared runner, prefills each slot, then advances live slots
+  with one-token `verify_target_blocks_batch()` chunks and serial fallback.
+  Focused fake tests cover packed c=2, default-off behavior, `NotImplementedError`
+  fallback, and c=8 chunking.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'generation_batcher'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py
+  git diff --check
+  ```
+  Pycompile passed; focused server batcher tests passed (`14 passed`, one
+  Starlette/httpx deprecation warning); packed-layout + GGUF sampling tests
+  passed (`39 passed`); diff check passed.
+- Server benchmark setup on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  PYTHONPATH=. python3 scripts/mtp-bench.py --url http://127.0.0.1:18082 \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja-suite.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --timeout 1200 \
+    --concurrency C --out benchmarks/results/2026-07-05-hipengine-server-ar-natural24-cC-*.json
+  ```
+- Results: default AR after the batcher fix is still flat at c=2/c=4/c=8
+  **41.17/41.45/41.42 tok/s**, with scalar `decode_ms` telemetry. The opt-in
+  one-token packed verifier AR route is rejected at **32.12/41.32/41.22 tok/s**;
+  `target_verify_batch_ms` dominates with mean per-request
+  **1192/1382/1391 ms**. Conclusion: request coalescing is now fixed, but the
+  MTP packed verifier is not the GGUF AR c>N primitive. Next implementation work
+  needs a true resident batched target decode path that avoids per-token packed
+  verifier state import/scatter and row-capture overhead.

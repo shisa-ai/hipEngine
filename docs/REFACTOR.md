@@ -688,3 +688,23 @@ should be boring.
 - Remove when: target hidden-to-logit parity is closed or replaced by a broader
   cross-engine tensor trace. Keep it default-off; the extra full-logit D2H copy
   makes it invalid for retained timing claims.
+
+## `HIPENGINE_GGUF_AR_PACKED_DECODE` (diagnostic rejected)
+- Added 2026-07-05. Default-off server/runtime env flag that routes prepared
+  multi-prompt GGUF greedy AR through resident target slots and
+  `Qwen35GGUFResidentSession.verify_target_blocks_batch()` with one input token
+  per live slot.
+- Purpose: test whether the MTP server packed target verifier could also serve
+  as the first GGUF AR c>N decode primitive after fixing default-route request
+  coalescing.
+- Result: rejected on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
+  Qwen3.6-35B-A3B `UD-Q4_K_M`, natural24 `max_tokens=24`, 5 ms server batch
+  window. Default scalar AR after the batcher fix is c=2/c=4/c=8
+  **41.17/41.45/41.42 tok/s**. The opt-in packed verifier AR route is
+  **32.12/41.32/41.22 tok/s**, with `target_verify_batch_ms` dominating
+  (**1192/1382/1391 ms mean per request**). Reusing the MTP verifier imports
+  and scatters per-slot state and captures linear-state rows every token, so it
+  is not the production AR scaling primitive.
+- Remove when: a true GGUF resident batched target-decode primitive lands, or
+  if a future packed verifier fast path proves non-regressive on the full
+  natural24 c=2/c=4/c=8 server protocol. Do not promote this flag as-is.
