@@ -374,7 +374,7 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert "slots_commit_phase_ms" in timing
 
 
-def test_gguf_speculative_mtp_c2_uses_packed_prefill(monkeypatch) -> None:
+def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -511,7 +511,7 @@ def test_gguf_speculative_mtp_c2_uses_packed_prefill(monkeypatch) -> None:
     )
     monkeypatch.setattr(qwen35_gguf, "_free_mtp_buffers", lambda buffers, *, runtime: calls.append(("free_kv", len(buffers))))
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "1")
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", raising=False)
 
     generator = _generator()
     generator.weight_index = _mtp_capable_weight_index()

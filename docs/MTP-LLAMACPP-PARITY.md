@@ -77,9 +77,9 @@ the artifacts and are called out in the reading column where useful.
 | hipEngine `llama-compat` direct suite | 1 | 54.79 | **71.52** | 1.3055x | B2 directcommit/no-copy | Direct suite only; not a server concurrency row. |
 | hipEngine `llama-compat` server MTP | 1 | 41.24 | **34.44** | 0.835x | B2 resident slots, zero batch window, pooled target/draft state | Diagnostic blocked: zero batch window and persistent target-session / MTP draft-runner pools remove the deliberate 100 ms queue delay plus draft-open tax, but warmed c=1 MTP still loses to AR. Timing buckets show AR server-vs-direct is mostly prompt prefill, while MTP is dominated by target verify. |
 | hipEngine `llama-compat` server MTP | 2 | 41.27 | **34.22** | 0.829x | B2 resident slots, zero batch window, pooled target/draft state | Zero-window c=2 did not coalesce in the rerun: no `slots_*` phase buckets, effectively independent c=1 requests. |
-| hipEngine `llama-compat` server MTP | 2 | 66.15 | **46.75** | 0.707x | B2, 5 ms batch window, packed AR prefill/decode + MTP stream-draft + packed target verify | Current default-on packed final-row AR prefill supersedes packed-decode-only AR **50.89 -> 66.15 tok/s**; MTP is now clearly below same-server AR. |
-| hipEngine `llama-compat` server MTP | 4 | 67.68 | **49.65** | 0.734x | same | AR is now within ~1.3% of llama.cpp HIP full-request AR c=4 (**68.59 tok/s**), while MTP remains verifier/economics-bound. |
-| hipEngine `llama-compat` server MTP | 8 | 61.72 | **52.18** | 0.845x | same; AR and target verify both stream parallel chunk-4 groups at c=8 | MTP beats llama.cpp HIP full-request MTP c=8 (**50.56 tok/s**) and is ~3.8% behind Vulkan full-request MTP c=8 (**54.25 tok/s**), but remains below current hipEngine AR; verifier still dominates (`slots_verify_phase_ms=12345.442`). |
+| hipEngine `llama-compat` server MTP | 2 | 66.15 | **59.94** | 0.906x | B2, 5 ms batch window, packed AR prefill/decode + default-on packed MTP prefill for eligible batches + MTP stream-draft + packed target verify | Packed MTP prefill removes most c=2 prompt-open overhead after warmup. |
+| hipEngine `llama-compat` server MTP | 4 | 67.68 | **66.60** | 0.984x | same | c=4 is now near same-server AR and faster than llama.cpp HIP/Vulkan full-request MTP c=4 (**49.69/48.10 tok/s**). |
+| hipEngine `llama-compat` server MTP | 8 | 61.72 | **54.88** | 0.889x | same; c=8 first wave still uses serial prompt open, trailing c=2 wave uses packed MTP prefill, target verify streams chunk-4 groups | c=8 now beats llama.cpp HIP/Vulkan full-request MTP c=8 (**50.56/54.25 tok/s**) but remains below current hipEngine AR; verifier still dominates. |
 | llama.cpp HIP server B2 | 1 | 38.10 | **48.22** | 1.266x | B2 | Full-request/client aggregate. Decode-only aggregate is **52.19/75.56 tok/s**. |
 | llama.cpp HIP server B2 | 4 | 68.59 | **49.69** | 0.724x | B2 | Full-request/client aggregate. Decode-only aggregate is **108.33/78.21 tok/s**. |
 | llama.cpp HIP server B2 | 8 | 76.76 | **50.56** | 0.659x | B2 | Full-request/client aggregate. Decode-only aggregate is **124.71/78.56 tok/s**. |
@@ -165,23 +165,15 @@ moved only **40.56 -> 41.24 tok/s** because the remaining direct-suite gap is
 prompt prefill, not session construction.
 
 Implementation status after packed AR prefill/decode, c=8 AR chunk-stream
-decode, stream-slot MTP draft, and c=8 stream-verify chunks: c=2 is
-**66.15 AR / 46.75 MTP tok/s**, c=4 is **67.68 / 49.65**, and c=8 is
-**61.72 / 52.18**. This closes the main AR c>N server prefill/decode blocker
-and makes MTP negative versus current same-server AR at every c>N shape
-(**0.707x/0.734x/0.845x**). c=4 AR is now close to llama.cpp HIP full-request
-AR (**67.68 vs 68.59 tok/s**), while c=8 AR still trails llama.cpp HIP/Vulkan
-full-request AR (**76.76/78.50 tok/s**). c=8 MTP still beats llama.cpp HIP
-full-request MTP (**50.56 tok/s**) while remaining below Vulkan full-request
-MTP (**54.25 tok/s**) and far below llama.cpp decode-only aggregate scaling.
-The real MTP concurrency target is therefore still open: c=8 phase buckets remain
-verifier-heavy (`slots_verify_phase_ms=12345.442`,
-`slots_draft_phase_ms=3261.185`, `slots_commit_phase_ms=584.696`). The next
-server blockers are therefore (1) reducing target verifier wall further,
-(2) replacing per-cycle `ThreadPoolExecutor` stream-draft/verify launch overhead
-with a persistent or batched resident scheduler if profiling shows it matters,
-and (3) improving MTP row/acceptance economics enough to beat the stronger AR
-baseline.
+decode, stream-slot MTP draft, c=8 stream-verify chunks, and default-on packed
+MTP prompt prefill for eligible four-slot batches: c=2 is **66.15 AR / 59.94
+MTP tok/s**, c=4 is **67.68 / 66.60**, and c=8 is **61.72 / 54.88**. This keeps
+AR c>N fixed and materially improves MTP c>N scaling. c=4 is now near
+same-server AR, and c=8 now beats llama.cpp HIP/Vulkan full-request MTP
+(**50.56/54.25 tok/s**), while still trailing hipEngine AR and llama.cpp
+decode-only aggregate scaling. The real MTP concurrency target is therefore
+narrower but still open: reduce verifier wall and cold-shape latency, and then
+revisit c=8 full packed prompt prefill beyond the four-slot cap.
 
 Follow-up packed-verifier instrumentation now splits the target verifier chunk
 inside the server artifact. On the warm c=8 diagnostic rerun
@@ -209,16 +201,14 @@ without per-leaf synchronizes. The c=8 event run is slower due instrumentation
 **805.975 ms**, and `wmma_total` read **163.563 ms**. Use it for ranking
 kernel bodies, not for headline speed.
 
-Rejected MTP packed prompt-prefill diagnostic: 2026-07-06 added an opt-in
-`HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL=1` path that reuses packed prompt rows
-and returns FP32 prompt hidden rows for MTP catch-up. It is not a default
-serving fix. Warm c=2 can improve **46.75 -> 59.60 tok/s**, but c=4/c=8 are not
-stable enough to retain: one c=4 final-code rerun collapsed to **6.25 tok/s**
-with `prefill_batch_ms=162474.386`, uncapped c=8 collapsed to **12.80 tok/s**,
-and capped c=8 only returned to baseline-ish **52.04 tok/s** versus retained
-**52.18 tok/s**. Keep the path as an opt-in profiler lever only; the next MTP
-scaling work remains verifier body/scheduler work, especially LM-head/sample,
-linear-attention rows, and packed verifier setup/scatter at c=8.
+Packed MTP prompt-prefill update: 2026-07-06 promotes
+`HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL=1` to the default for eligible c=2/c=4
+serving batches. It reuses packed prompt rows and returns FP32 prompt hidden rows
+for MTP catch-up. Warm c=2/c=4/c=8 move **46.75/49.65/52.18 ->
+59.94/66.60/54.88 tok/s**. The four-slot guard remains: uncapped c=8 packed
+prefill was previously rejected, and the current c=8 win comes from the trailing
+c=2 wave plus normal chunk-4 verifier streaming. Cold first packed-prefill
+shapes can be slow, so startup warmup/cached-build policy remains a follow-up.
 
 This rejects the cheap next knobs: B1 server budget regressed warm c=8 to
 **50.94 tok/s** and verifier chunk-size 3 regressed to **51.21 tok/s**; chunk
