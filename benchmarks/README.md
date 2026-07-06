@@ -11,8 +11,8 @@ while reset invalidates packed verifier write-position metadata so startup
 warmup cannot leak stale packed KV into the first real request. Retained
 natural24 MTP moves **70.06/77.29/76.46 -> 70.53/78.76/79.61 tok/s** at
 c=2/c=4/c=8. Same-server AR remains
-**66.39/82.46/81.94 tok/s**; the full-access retry3 validation measured
-**65.87/82.23/82.11 tok/s**, confirming the retained AR c>N row within normal
+**66.39/82.46/81.94 tok/s**; the full-access retry4 validation measured
+**66.34/82.53/82.09 tok/s**, confirming the retained AR c>N row within normal
 variance. MTP now beats AR at c=2 and trails by about 3.7 tok/s at c=4 and
 2.3 tok/s at c=8. The
 warmed c=8 row has `draft=165`, `accepted=141`, accept
@@ -585,8 +585,8 @@ only the final prompt row for each slot; decode then runs decode-shaped packed
 resident target rows with deferred packed state scatter. Startup ragged-shape
 warmup and capacity-based packed workspace reuse first lifted c=2/c=4, then the
 route-specific four-request backend cap fixed c=8; the retained AR row is
-**66.39/82.46/81.94 tok/s** at c=2/c=4/c=8, with full-access retry3 measuring
-**65.87/82.23/82.11 tok/s**. The older one-token
+**66.39/82.46/81.94 tok/s** at c=2/c=4/c=8, with full-access retry4 measuring
+**66.34/82.53/82.09 tok/s**. The older one-token
 packed-verifier AR diagnostic remains rejected because it imported and
 scattered verifier state and captured linear-state rows every token.
 
