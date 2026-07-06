@@ -145682,3 +145682,51 @@ python3 scripts/gguf_mtp_bench.py \
   HIP loaded, `rocminfo` reported `gfx1151`, all three JSON artifacts
   validated, and the OpenAI server was stopped after the sweep; port `18082`
   is clear.
+
+## 2026-07-06 - GGUF server MTP c>N scaling audit
+
+- Ran a current-HEAD retained-route GGUF OpenAI server MTP natural24 scaling
+  audit after AR c>N was validated. No code changes were made. Hardware:
+  AMD Ryzen AI Max+ 395 / Radeon 8060S, `gfx1151`. Server:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  `/ready` reported `packed_ar_prefill_widths=[2,4]`,
+  `packed_mtp_prefill_widths=[2,4,8]`,
+  `packed_mtp_verify_widths=[2,4,8]`, `scratch_probe_s=14.331298`, and
+  `startup_total_s=65.207072`.
+- Client:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-scaling-audit.json
+  ```
+- Results: c=1 **44.95 tok/s**, c=2 **70.47 tok/s**, c=4 **79.48 tok/s**,
+  c=8 **77.71 tok/s** first pass and **79.45 tok/s** on immediate rerun. The
+  c=8 rerun kept the normal c>N economy (`draft=165`, `accepted=141`, accept
+  rate **0.8545**) and is used for the scaling comparison. c8/c1 scaling is
+  **1.768x**, above retained PARO native c8/c1 **1.584x** and llama.cpp MTP
+  c8/c1: HIP/Vulkan full-request **1.049x/1.108x**, HIP/Vulkan decode-only
+  **1.040x/1.132x**.
+- Interpretation: the GGUF MTP server c>N scaling target is met. This is not a
+  claim that MTP beats the stronger same-server AR row at every concurrency;
+  c=4/c=8 still trail AR slightly, and packed verifier LM-head/sample remains
+  the next non-scaling optimization target.
+- Validation:
+  ```bash
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-scaling-audit.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-scaling-audit.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-scaling-audit.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-scaling-audit.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-scaling-audit-rerun.json >/dev/null
+  ```
+  All five JSON artifacts validated and the OpenAI server was stopped after the
+  sweep; port `18082` is clear.
