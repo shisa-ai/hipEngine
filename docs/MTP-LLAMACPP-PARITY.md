@@ -140,6 +140,11 @@ Artifacts:
 - `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-default-defer-scatter-resetfix-rerun.json`
 - `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-default-defer-scatter-resetfix-rerun2.json`
 - `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-default-defer-scatter-resetfix-rerun.json`
+- Full-access retained-route confirmation artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-fullaccess-current.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-fullaccess-current-rerun.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-fullaccess-current-rerun2.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-fullaccess-current.json`
 - `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json`
 - `benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`
 - `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`
@@ -198,7 +203,10 @@ scales more strongly
 from c=1 to c=8 (**1.99x**) than MTP, but c=8 now beats llama.cpp HIP/Vulkan
 full-request MTP (**50.56/54.25 tok/s**) by a wider margin and is close to
 llama.cpp HIP decode-only MTP c=8 (**78.56 tok/s**), while still trailing
-hipEngine AR by about **5.5 tok/s**. The real MTP concurrency target is
+hipEngine AR by about **2.3 tok/s**. A full-access retained-route confirmation
+run measured c=1 **45.27 tok/s**, c=2 **70.83 tok/s** on the immediate rerun,
+c=4 **77.77 tok/s** on the second rerun, and c=8 **78.95 tok/s**, confirming
+the retained c=8 band without superseding the best retained rows. The real MTP concurrency target is
 therefore narrower but still open: reduce the remaining LM-head/sample verifier
 wall inside the four-slot chunks and revisit full packed prompt prefill beyond
 the four-slot cap only with a solution that does not reproduce the rejected
