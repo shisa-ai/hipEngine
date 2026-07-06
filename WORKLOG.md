@@ -145112,3 +145112,51 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-cap8-warmowners-probe-rerun.json >/dev/null
   ```
   All four rejected artifacts parsed and the probe server was stopped.
+
+## 2026-07-06 - Rejected GGUF MTP cap-8 no-stream-verify probe
+
+- Retried the true c=8 MTP backend-group shape with one new variable: the
+  temporary probe again raised `_GGUF_MTP_MAX_ACTIVE_REQUESTS` from 4 to 8 and
+  removed the packed MTP prefill opener's `len(request.prompts) > 4` guard, but
+  the server ran with `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY=0` so the two
+  four-slot verifier chunks were processed sequentially instead of on
+  concurrent streams. This tested whether the prior warm cap-8 wall was mainly
+  stream contention.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py
+  ```
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-cap8-no-streamverify-probe*.json
+  ```
+- Results rejected. First c=4 pass was cold at **60.01 tok/s**; the immediate
+  warm c=4 rerun measured **74.38 tok/s**, below retained c=4 **78.76**. True
+  c=8 measured **75.23 tok/s**, better than the prior warm cap-8 probe
+  **71.25** but still below retained capped c=8 **79.61**. Economy stayed
+  normal (`draft=165`, `accepted=141`, accept rate **0.8545**).
+- The probe narrowed the cap-8 blocker but did not solve it. c=8 still paid
+  `slots_open_ms=6571.304`, `draft_stream_batch_ms=3881.350`,
+  `slots_verify_phase_ms=10955.637`, and `target_packed_verify_total_ms=6054.917`.
+  The retained four-request cap remains the correct route shape.
+- Code was reverted and the probe server was stopped. Post-revert validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-cap8-no-streamverify-probe.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-cap8-no-streamverify-probe-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-cap8-no-streamverify-probe.json >/dev/null
+  ```
