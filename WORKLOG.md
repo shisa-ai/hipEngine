@@ -145425,3 +145425,41 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-fullaccess-retry2.json >/dev/null
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-fullaccess-retry2.json >/dev/null
   ```
+
+## 2026-07-06 - Rejected parallel four-slot MTP subgroup probe
+
+- Tested a temporary c=8 speculative MTP server route that kept the proven
+  four-slot packed verifier shape but split one eight-request MTP call into two
+  four-slot GGUF generator subgroups running concurrently inside the outer
+  MTP serving lock/env scope. Focused validation while the probe code was
+  present:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py
+  PYTHONPATH=. pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'c8_runs_parallel_four_slot_subgroups or c2_uses_resident_slots or batch_verifier or deferred_verify_scatter or c2_uses_packed_prefill_by_default'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'generation_batcher_applies_mtp_route_group_limit or generation_batcher_applies_route_specific_group_limit or generation_batcher_keeps_speculative_mtp_and_default_routes_separate'
+  PYTHONPATH=. pytest -q tests/test_gguf_packed_verify_layout.py
+  ```
+- Benchmark command:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency 8 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-parallel-subgroups-probe.json
+  ```
+- Rejected. c=8 measured **56.21 tok/s** versus retained **79.61 tok/s**.
+  Economy changed from retained `draft=165`, `accepted=141`, accept rate
+  **0.8545** to `draft=175`, `accepted=136`, accept rate **0.7771**. Timing
+  also regressed: `slots_open_ms=13514.400`, `slots_run_ms=17400.006`,
+  `slots_draft_phase_ms=4655.078`, `slots_verify_phase_ms=10256.730`,
+  `target_packed_verify_total_ms=9126.138`, and
+  `target_packed_verify_lm_head_sample_ms=7066.644`.
+- Probe code was reverted and the speculative MTP route cap is back at the
+  retained four-request guard. Post-revert validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py
+  PYTHONPATH=. pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'batch_verifier or deferred_verify_scatter or c2_uses_packed_prefill_by_default'
+  PYTHONPATH=. pytest -q tests/test_gguf_packed_verify_layout.py
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-parallel-subgroups-probe.json >/dev/null
+  ```
