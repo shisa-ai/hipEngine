@@ -288,6 +288,23 @@ Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-mtpcap8-probe.json`.
 
+Rejected cap-8 no-stream-verify follow-up: after the cap-8 chunk-owner warmup,
+a narrower temporary probe widened the speculative MTP backend group to eight
+again but ran with `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY=0`, so the two
+four-slot verifier chunks ran sequentially instead of on concurrent streams.
+This improved the warmed true c=8 result from the prior **71.25 tok/s** to
+**75.23 tok/s**, but it still lost to the retained four-request cap
+**79.61 tok/s** and warmed c=4 regressed to **74.38 tok/s** versus retained
+**78.76**. The code was reverted. Conclusion: concurrent verify chunk streams
+are part of the true c=8 penalty, but disabling them does not recover the
+retained four-slot-cap scheduler; one 8-slot backend group still pays too much
+slot-open/draft/verify wall.
+Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-cap8-no-streamverify-probe.json`,
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-cap8-no-streamverify-probe-rerun.json`,
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-cap8-no-streamverify-probe.json`.
+
 Route-cap follow-up: default GGUF AR serving now caps backend groups at the
 proven four-request shape even when the HTTP server is configured with
 `--max-active-requests 8`; the speculative MTP route now uses the same
