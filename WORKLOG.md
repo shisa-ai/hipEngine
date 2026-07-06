@@ -145544,3 +145544,12 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-async-readback-probe.json >/dev/null
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-async-readback-probe-rerun.json >/dev/null
   ```
+
+## 2026-07-06 - GGUF server AR rollup text cleanup
+
+- Corrected `benchmarks/README.md` after the full-access retry3 validation so
+  the natural24 serving section no longer repeats the stale intermediate AR row
+  (**65.91/82.41/63.17 tok/s**) after the retained route-cap fix. The retained
+  row remains **66.39/82.46/81.94 tok/s**, and retry3 measured
+  **65.87/82.23/82.11 tok/s**.
+- No code or benchmark rerun; this is a documentation consistency cleanup.
