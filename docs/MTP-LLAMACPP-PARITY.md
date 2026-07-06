@@ -389,6 +389,22 @@ chunking unless a new kernel changes the accumulation strategy rather than
 merely increasing `ROW_TILE`. Artifact:
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilelarge-probe.json`.
 
+Rejected rowtile-top1 fusion follow-up: fusing the exact Q6_K T16 rowtile
+LM-head projection with top-1 selection passed the focused HIP correctness gate,
+but did not produce a retainable same-server throughput win. The valid sequential
+natural24 reruns measured c=4 **79.09 tok/s** versus retained **78.76** and c=8
+**79.16 tok/s** versus retained **79.61** with unchanged economy
+(`draft=165`, `accepted=141`, accept rate **0.8545**). The exposed verifier
+bucket also stayed in-family: c=8 `target_packed_verify_lm_head_sample_ms` was
+**4225.714 ms** versus the full-access retained-route confirmation's
+**4239.558 ms**, and `target_packed_verify_total_ms` was **5507.384 ms** versus
+**5504.050 ms**. Code was reverted; do not revisit this exact fused top-1 shape
+unless the implementation reduces total packed-verify wall, not just the local
+LM-head attribution. Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q6t16-rowtile-top1-probe-rerun2.json`
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-q6t16-rowtile-top1-probe-rerun2.json`.
+
 Startup MTP warmup follow-up: the server now sets
 `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP=1` only while running the startup
 scratch probe when `--speculative-mtp-serving` is not `off`. The GGUF backend
