@@ -144938,3 +144938,40 @@ python3 scripts/gguf_mtp_bench.py \
   **5923.988 -> 5488.058 ms**.
 - Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
   `docs/MTP-LLAMACPP-PARITY.md`, and `docs/REFACTOR.md`.
+
+## 2026-07-06 - GGUF server AR full-access retry validation
+
+- Retried the retained GGUF OpenAI server AR natural24 route after switching
+  this session to the active `/home/lhl/hipEngine-main` `mtp-server` worktree.
+  The model and prompt file were present, ROCm loaded (`hip OK`), and the
+  temporary server on port 18082 was stopped after the sweep.
+- Server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+- Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --out benchmarks/results/2026-07-06-hipengine-server-ar-natural24-cC-bw5-fullaccess-retry.json
+  ```
+- Results: c=2 **66.26 tok/s**, c=4 **82.47 tok/s**, c=8 **81.76 tok/s**.
+  This confirms the retained AR fix band (**66.39/82.46/81.94 tok/s**) within
+  variance; no rollup row supersession.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/speculative/mtp_resident_draft.py tests/test_mtp_resident_draft_device_commit.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_mtp_resident_draft_device_commit.py
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-fullaccess-retry.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-fullaccess-retry.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-fullaccess-retry.json >/dev/null
+  ```
+  Pycompile passed, focused pytest passed (`13 passed`), and all three JSON
+  artifacts parsed.
