@@ -145238,3 +145238,53 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-fullaccess-retry.json >/dev/null
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-fullaccess-retry.json >/dev/null
   ```
+
+## 2026-07-06 - GGUF server MTP full-access retry confirmation
+
+- Retried the retained GGUF OpenAI server MTP natural24 route after full
+  filesystem access was confirmed. No code changes were made. Server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-fullaccess-current*.json
+  ```
+- Results confirmed the retained deferred-scatter MTP band without superseding
+  retained best rows: c=1 **45.27 tok/s**; c=2 **68.54** then **70.83 tok/s**
+  on rerun versus retained **70.53**; c=4 **71.01**, **76.82**, then
+  **77.77 tok/s** versus retained **78.76**; c=8 **78.95 tok/s** versus
+  retained **79.61**. c=2/c=8 economy stayed `draft=165`, `accepted=141`,
+  accept rate **0.8545**; the c=4 second rerun had `draft=166`,
+  `accepted=140`, accept rate **0.8434**.
+- c=8 exposed the same remaining wall as the retained route:
+  `slots_run_ms=8408.536`, `slots_open_ms=3597.348`,
+  `slots_draft_phase_ms=2230.926`, `slots_verify_phase_ms=5577.541`,
+  `target_packed_verify_total_ms=5504.050`, and
+  `target_packed_verify_lm_head_sample_ms=4239.558`.
+- Rowtile chunk planner follow-up: microbenchmarks with the real LM-head
+  confirmed the current `_small_b_rowtile_chunks()` choices remain best on
+  gfx1151. rows7 `(5,2)` median **5.095 ms** beat `(4,3)` **5.870** and
+  `(2,5)` **5.152**; rows8 `(6,2)` **5.552** beat `(4,4)` **6.086**; rows12
+  `(6,6)` **6.879** beat `(4,4,4)` **9.085**. Leave the chunk planner as-is
+  unless a new kernel changes the accumulation strategy.
+- Validation:
+  ```bash
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-fullaccess-current.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-fullaccess-current.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-fullaccess-current-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-fullaccess-current.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-fullaccess-current-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-fullaccess-current-rerun2.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-fullaccess-current.json >/dev/null
+  ```
