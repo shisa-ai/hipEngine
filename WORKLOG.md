@@ -145160,3 +145160,49 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-cap8-no-streamverify-probe-rerun.json >/dev/null
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-cap8-no-streamverify-probe.json >/dev/null
   ```
+
+## 2026-07-06 - Rejected GGUF MTP route-cap-5 probe
+
+- Tested a smaller c>N scheduler shape than the rejected cap-8 route. The
+  temporary probe raised `_GGUF_MTP_MAX_ACTIVE_REQUESTS` from 4 to 5 and
+  removed the packed MTP prefill opener's `len(request.prompts) > 4` guard so
+  above-four groups could chunk internally as `3+2`, avoiding the known bad
+  8-slot group while reducing the retained c=8 `4+4+2` backend waves.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py
+  ```
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-routecap5-probe*.json
+  ```
+- Results rejected. c=4 measured **33.26 tok/s** cold and **61.57 tok/s** on
+  the immediate rerun versus retained c=4 **78.76**. c=8 measured only
+  **33.54 tok/s** versus retained capped c=8 **79.61**. Economy stayed normal
+  (`draft=165`, `accepted=141`, accept rate **0.8545**), so this was scheduler
+  wall, not acceptance.
+- The c=8 failure mode is distinct from cap-8/no-stream: route cap 5 triggered
+  `target_packed_verify_total_ms=13237.791`, `target_packed_verify_setup_ms=7123.143`,
+  and `target_verify_stream_chunks_ms=3811.745`. The 5-slot backend group shape
+  should not be retained.
+- Code was reverted and the probe server was stopped. Post-revert validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap5-probe.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap5-probe-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap5-probe.json >/dev/null
+  ```
