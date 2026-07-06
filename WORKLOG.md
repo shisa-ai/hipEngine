@@ -145058,3 +145058,57 @@ python3 scripts/gguf_mtp_bench.py \
     tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths
   ```
   Pycompile passed and focused pytest passed (`2 passed`).
+
+## 2026-07-06 - Rejected warmed GGUF MTP route-cap-8 probe
+
+- Retested the true c=8 MTP route after the retained cap-8 chunk-owner scratch
+  warmup. The temporary probe raised `_GGUF_MTP_MAX_ACTIVE_REQUESTS` from 4 to
+  8 and removed the packed MTP prefill opener's `len(request.prompts) > 4`
+  guard so the existing internal chunk loop could run width 8 as 4+4. The code
+  change was reverted after measurement; the retained server still uses the
+  four-request MTP route cap.
+- Validation before benchmarking:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  ```
+- Server command on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`):
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-cap8-warmowners-probe*.json
+  ```
+- Results rejected. c=4 first pass was cold-draft limited at **59.49 tok/s**,
+  but the immediate c=4 rerun measured **79.78 tok/s**, preserving economy
+  (`draft=165`, `accepted=141`, accept rate **0.8545**) and matching retained
+  c=4 **78.76**. True c=8 remained slower than the retained four-request cap:
+  first pass **58.95 tok/s** with an economy wobble (`draft=167`,
+  `accepted=140`, accept rate **0.8383**), rerun **71.25 tok/s** with normal
+  economy, still below retained capped c=8 **79.61**.
+- The cap-8 warmup fixed the obvious first-wave slot-open cliff from the earlier
+  cap-8 probe, but the remaining true c=8 wall is chunk scheduling itself:
+  retained capped c=8 has `slots_open_ms=3565.542`,
+  `draft_stream_batch_ms=2018.902`, `slots_verify_phase_ms=5551.690`, and
+  `target_packed_verify_total_ms=5488.058`; the warm cap-8 rerun has
+  `slots_open_ms=6683.304`, `draft_stream_batch_ms=3748.818`,
+  `slots_verify_phase_ms=12641.733`, and
+  `target_packed_verify_total_ms=12275.575`.
+- Post-revert validation:
+  ```bash
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-cap8-warmowners-probe.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-cap8-warmowners-probe-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-cap8-warmowners-probe.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-cap8-warmowners-probe-rerun.json >/dev/null
+  ```
+  All four rejected artifacts parsed and the probe server was stopped.
