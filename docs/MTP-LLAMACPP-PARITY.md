@@ -305,6 +305,23 @@ Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-cap8-no-streamverify-probe.json`.
 
+Rejected route-cap-5 follow-up: a temporary probe widened the speculative MTP
+backend group only to five and removed the above-four packed-prefill guard so
+the internal chunker could form `3+2` packed-prefill/verifier chunks. This was
+worse than both the retained four-request cap and the rejected cap-8/no-stream
+shape. Natural24 c=4 measured **33.26 tok/s** cold and **61.57 tok/s** warm
+versus retained **78.76**; c=8 measured only **33.54 tok/s** versus retained
+**79.61**, with unchanged economy (`draft=165`, `accepted=141`, accept rate
+**0.8545**). The c=8 failure mode was a large setup/stream-chunk wall:
+`target_packed_verify_total_ms=13237.791`, `target_packed_verify_setup_ms=7123.143`,
+and `target_verify_stream_chunks_ms=3811.745`. Code was reverted; the 5-slot
+backend group shape is not a viable c>N scheduler.
+Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap5-probe.json`,
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap5-probe-rerun.json`,
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap5-probe.json`.
+
 Route-cap follow-up: default GGUF AR serving now caps backend groups at the
 proven four-request shape even when the HTTP server is configured with
 `--max-active-requests 8`; the speculative MTP route now uses the same
