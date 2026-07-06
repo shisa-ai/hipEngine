@@ -145309,3 +145309,53 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q6t16-rowtile-top1-probe-rerun2.json`
   and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-q6t16-rowtile-top1-probe-rerun2.json`.
+
+## 2026-07-06 - Rejected GGUF MTP route-cap-8 internal-four-slot probe
+
+- Retried the c=8 MTP serving scheduler idea after full access was available by
+  temporarily raising `_GGUF_MTP_MAX_ACTIVE_REQUESTS` to 8, while keeping
+  `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` and splitting the GGUF MTP runtime
+  into internal four-slot subgroups. This avoided the rejected single width-8
+  verifier body; it only tested whether one HTTP backend call wrapping two
+  serial four-slot resident groups was better than the retained route-cap-4
+  batching shape.
+- Focused validation while the probe code was present:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py tests/test_server_api.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'c8_opens_internal_four_slot_groups or c2_uses_resident_slots or batch_verifier_chunks_above_four_slots or batch_verifier_streams_chunks_above_four_slots'
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'generation_batcher_applies_mtp_route_group_limit or generation_batcher_applies_route_specific_group_limit'
+  ```
+  Pycompile passed, the GGUF sampling subset passed (`4 passed`), and the server
+  API subset passed (`2 passed`, one FastAPI/Starlette deprecation warning).
+- Benchmark server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-routecap8-internal4-probe.json
+  ```
+- Results rejected. c=4 measured **77.15 tok/s** versus retained **78.76**; c=8
+  measured **79.26 tok/s** versus retained **79.61**. Economy was unchanged
+  (`draft=165`, `accepted=141`, accept rate **0.8545**). c=8 timing stayed in
+  the retained verifier band: `slots_run_ms=8365.136`,
+  `slots_open_ms=3600.240`, `slots_draft_phase_ms=2188.537`,
+  `slots_verify_phase_ms=5573.773`, `target_packed_verify_total_ms=5506.090`,
+  and `target_packed_verify_lm_head_sample_ms=4234.372`.
+- Code was reverted; no runtime/test changes retained. Conclusion: the four-slot
+  MTP route cap should remain until the server scheduler can overlap or truly
+  batch resident c>4 work. Merely wrapping two serial four-slot groups in one
+  backend call is not a retainable shape. Saved rejected artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap8-internal4-probe.json`
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap8-internal4-probe.json`.

@@ -405,6 +405,23 @@ LM-head attribution. Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-q6t16-rowtile-top1-probe-rerun2.json`.
 
+Rejected cap-8/internal-four-slot follow-up: temporarily raising the speculative
+MTP HTTP backend group cap to eight while internally splitting the GGUF MTP
+runtime into the proven four-slot subgroups did not recover a useful c=8
+serving win. This avoided the rejected single width-8 verifier shape, but it
+still ran the two four-slot subgroups sequentially inside one backend call.
+Natural24 measured c=4 **77.15 tok/s** versus retained **78.76**, and c=8
+**79.26 tok/s** versus retained **79.61**, with unchanged economy
+(`draft=165`, `accepted=141`, accept rate **0.8545**). The c=8 verifier wall was
+still the same shape (`target_packed_verify_total_ms=5506.090 ms`,
+`target_packed_verify_lm_head_sample_ms=4234.372 ms`). Code was reverted; the
+route cap should remain four until the scheduler can overlap or batch true
+resident c>4 work rather than merely wrapping two serial four-slot groups in one
+HTTP backend call. Artifacts:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap8-internal4-probe.json`
+and
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap8-internal4-probe.json`.
+
 Startup MTP warmup follow-up: the server now sets
 `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP=1` only while running the startup
 scratch probe when `--speculative-mtp-serving` is not `off`. The GGUF backend
