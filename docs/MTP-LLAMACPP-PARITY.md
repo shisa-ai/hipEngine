@@ -422,6 +422,16 @@ HTTP backend call. Artifacts:
 and
 `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap8-internal4-probe.json`.
 
+Rejected packed-verifier scalar-index skip: temporarily skipping the owner
+session's `lm_out_index` scalar update after packed verifier sampling looked
+like dead bookkeeping, but it changed the natural24 c=4 MTP economy and
+regressed throughput. The c=4 probe measured **75.39 tok/s** versus retained
+**78.76**, with `draft=167`, `accepted=140`, accept rate **0.8383** instead of
+the retained `draft=165`, `accepted=141`, accept rate **0.8545**. Code was
+reverted; keep the scalar update unless a future change provides an explicit
+ordering/fence replacement and preserves the full prompt-suite economy. Artifact:
+`benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-skip-lmoutindex-probe.json`.
+
 Startup MTP warmup follow-up: the server now sets
 `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP=1` only while running the startup
 scratch probe when `--speculative-mtp-serving` is not `off`. The GGUF backend

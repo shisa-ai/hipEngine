@@ -145359,3 +145359,39 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap8-internal4-probe.json`
   and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap8-internal4-probe.json`.
+
+## 2026-07-06 - Rejected packed-verifier scalar-index skip
+
+- Tested a very narrow packed verifier cleanup: skip the owner session
+  `lm_out_index` scalar update after `_sample_target_block_rows_from_hidden()`
+  when called from `verify_target_blocks_batch()`. The hypothesis was that MTP
+  packed verify only needs the returned per-row token IDs, not the scalar last
+  token stored for ordinary single-row sampling.
+- Focused validation while the probe code was present:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'batch_verifier or deferred_verify_scatter or c2_uses_packed_prefill_by_default'
+  PYTHONPATH=. pytest -q tests/test_gguf_packed_verify_layout.py
+  ```
+  Pycompile passed, the sampling subset passed (`6 passed`), and the packed
+  verify layout tests passed (`9 passed`).
+- Benchmark command:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency 4 \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-skip-lmoutindex-probe.json
+  ```
+- Rejected immediately on c=4: throughput regressed to **75.39 tok/s** versus
+  retained **78.76**, and the economy changed to `draft=167`, `accepted=140`,
+  accept rate **0.8383** from the retained `draft=165`, `accepted=141`, accept
+  rate **0.8545**. This suggests the scalar update currently acts as an ordering
+  or state dependency, not dead bookkeeping.
+- Code was reverted; only the rejected c=4 artifact is kept:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-skip-lmoutindex-probe.json`.
+  Post-revert pycompile passed:
+  ```bash
+  python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py
+  ```
