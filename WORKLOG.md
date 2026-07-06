@@ -145641,3 +145641,44 @@ python3 scripts/gguf_mtp_bench.py \
   HIP loaded, `rocminfo` reported `gfx1151`, and all three JSON artifacts
   validated. The OpenAI server was stopped after the sweep; port `18082` is
   clear.
+
+## 2026-07-06 - GGUF server AR full-access retry5 validation
+
+- Ran one more retained GGUF OpenAI server AR natural24 retry on current
+  `mtp-server` HEAD after confirming the live worktree and port state. No code
+  changes were made. Hardware: AMD Ryzen AI Max+ 395 / Radeon 8060S, `gfx1151`.
+  Server:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  `/ready` reported `packed_ar_prefill_widths=[2,4]`,
+  `packed_ar_prefill_prompt_lengths=[40,64]`, `scratch_probe_s=26.623321`,
+  and `startup_total_s=80.988798`.
+- Client:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --out benchmarks/results/2026-07-06-hipengine-server-ar-natural24-cC-bw5-fullaccess-retry5.json
+  ```
+- Results: c=2 **66.10 tok/s**, c=4 **82.48 tok/s**, c=8
+  **82.07 tok/s**. This again confirms the retained AR fix band
+  (**66.39/82.46/81.94 tok/s**) within same-session variance; no rollup row
+  supersession.
+- Validation:
+  ```bash
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  rocminfo | grep -E 'Name:|gfx' | head -n 40
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-fullaccess-retry5.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-fullaccess-retry5.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-fullaccess-retry5.json >/dev/null
+  ```
+  HIP loaded, `rocminfo` reported `gfx1151`, all three JSON artifacts
+  validated, and the OpenAI server was stopped after the sweep; port `18082`
+  is clear.
