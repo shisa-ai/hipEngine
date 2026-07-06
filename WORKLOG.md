@@ -145553,3 +145553,51 @@ python3 scripts/gguf_mtp_bench.py \
   row remains **66.39/82.46/81.94 tok/s**, and retry3 measured
   **65.87/82.23/82.11 tok/s**.
 - No code or benchmark rerun; this is a documentation consistency cleanup.
+
+## 2026-07-06 - Rejected GGUF MTP rolling four-slot server probe
+
+- Implemented a default-off rolling MTP serving diagnostic behind
+  `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`. The server default route cap was
+  restored to four after the probe. The diagnostic keeps at most four live MTP
+  slots, opens replacements in warmed widths where possible, and can keep a
+  stable packed-verifier owner session so replacement slots do not become cold
+  owners mid-batch. Focused validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+  PYTHONPATH=. pytest -q tests/test_generation_qwen35_gguf_sampling.py -k 'rolls_slots_above_four or c2_uses_packed_prefill_by_default or c2_uses_batch_verifier_when_available or batch_verifier_chunks_above_four_slots or batch_verifier_streams_chunks_above_four_slots or deferred_verify_scatter_commits_from_owner' tests/test_gguf_packed_verify_layout.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q tests/test_server_api.py -k 'generation_batcher_applies_mtp_route_group_limit or generation_batcher_applies_route_specific_group_limit or generation_batcher_keeps_speculative_mtp_and_default_routes_separate or generation_batcher_coalesces_speculative_mtp_with_request_tokens'
+  ```
+  Results: pycompile passed; focused MTP/layout tests passed (`6 passed`);
+  server-batcher subset passed (`4 passed`).
+- Benchmark server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --extra-payload '{"speculative_mtp":true}' \
+    --out benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-cC-bw5-*.json
+  ```
+- Rejected. Naive rolling with route cap 8 measured c=8 **11.22 tok/s** and
+  then **6.60 tok/s** on rerun, with normal economy but catastrophic replacement
+  slot open/prefill and packed verifier setup. The stable-owner/warmed-width
+  variant fixed the setup spike (`target_packed_verify_setup_ms=6.603 ms`) but
+  only reached c=8 **61.23 tok/s** versus retained **79.61**; economy stayed
+  `draft=165`, `accepted=141`, accept rate **0.8545**, while aggregate
+  `slots_open_ms` was still **14612.712 ms**. c=4 remained sane at
+  **78.46 tok/s** versus retained **78.76**.
+- Default route restored: `_GGUF_MTP_MAX_ACTIVE_REQUESTS = 4`, rolling flag
+  default-off. Fresh default c=8 was cold-owner noisy (**55.28**, **59.90**),
+  then warmed to **78.91 tok/s** with normal economy and retained-stage timings
+  (`target_packed_verify_total_ms=5494.702`, `slots_run_ms=8421.580`), matching
+  the retained **79.61 tok/s** band within variance. The OpenAI server was
+  stopped after validation; `ss -ltnp | rg ':18082' || true` is clear.

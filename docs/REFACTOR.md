@@ -767,3 +767,24 @@ should be boring.
 - Remove when: a compact selected-row capture path exists, or if no follow-up
   uses the segment-aware no-capture kernel. The flag must stay default-off and
   must not be used for retained timing claims.
+
+## `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`
+- Added 2026-07-06 as a default-off MTP serving diagnostic while trying to lift
+  the four-request MTP route cap without using a true width-8 verifier. The
+  route keeps at most four live resident slots, opens replacements in warmed
+  widths when possible, and can hold a stable packed-verifier owner session so
+  replacement slots do not allocate owner workspaces mid-batch.
+- Purpose: test whether c=8 can avoid the fixed two-backend-group barrier while
+  preserving the retained four-slot packed verifier shape.
+- Result: rejected on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
+  Qwen3.6-35B-A3B `UD-Q4_K_M`, natural24 `max_tokens=24`, 5 ms server batch
+  window. Naive rolling measured **11.22 tok/s** at c=8; the stable-owner /
+  warmed-width variant improved to **61.23 tok/s**, still below retained
+  **79.61 tok/s**. Economy stayed normal (`draft=165`, `accepted=141`, accept
+  rate **0.8545**), but replacement slot opening/prefill exposed
+  **14.613 s** aggregate `slots_open_ms`. The default MTP route cap remains
+  four; guarded default c=8 rerun measured **78.91 tok/s**.
+- Remove when: a true cap>4 MTP scheduler can pre-open/reuse replacement slots
+  without exposing slot-open/prefill wall, or after the next c>N MTP scheduler
+  direction supersedes it. The flag must stay default-off and must not be used
+  for retained timing claims.

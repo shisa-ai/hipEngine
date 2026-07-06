@@ -98,6 +98,7 @@ _GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV = (
     "HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH"
 )
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
+_GGUF_MTP_SERVER_ROLLING_SLOTS_ENV = "HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS"
 _MTP_SERVING_TARGET_USE_WMMA_PREFILL = False
 
 
@@ -144,6 +145,15 @@ def _gguf_mtp_server_verify_final_state_fastpath_enabled() -> bool:
 
 def _gguf_mtp_server_defer_verify_scatter_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV, "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _gguf_mtp_server_rolling_slots_enabled() -> bool:
+    return os.environ.get(_GGUF_MTP_SERVER_ROLLING_SLOTS_ENV, "0").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -1773,6 +1783,25 @@ class Qwen35GGUFBringupGenerator:
         pool_sessions: bool,
         outputs: list[GenerationOutput],
     ) -> tuple[int, str]:
+        if (
+            len(request.prompts) > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS
+            and _gguf_mtp_server_rolling_slots_enabled()
+        ):
+            return self._generate_rolling_mtp_serving_slots(
+                shared_runner,
+                assets,
+                encoded_prompts,
+                request,
+                base_env=base_env,
+                prompt_rows_by_request=prompt_rows_by_request,
+                generated_ids_by_request=generated_ids_by_request,
+                mtp_cycles_by_request=mtp_cycles_by_request,
+                tokenize_ms_by_request=tokenize_ms_by_request,
+                assets_load_ms=assets_load_ms,
+                pool_sessions=pool_sessions,
+                outputs=outputs,
+            )
+
         slots_open_start = time.perf_counter()
         slots = self._open_mtp_serving_slots(
             shared_runner,
@@ -1816,6 +1845,136 @@ class Qwen35GGUFBringupGenerator:
         finally:
             self._close_mtp_serving_slots(slots, reuse=release_slots_to_pool)
         return resident_slot_count, target_verify_batching
+
+    def _generate_rolling_mtp_serving_slots(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        assets: _GGUFMTPServingAssets,
+        encoded_prompts: dict[int, list[int]],
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+        prompt_rows_by_request: dict[int, list[int]],
+        generated_ids_by_request: dict[int, list[int]],
+        mtp_cycles_by_request: dict[int, list[dict[str, Any]]],
+        tokenize_ms_by_request: dict[int, float],
+        assets_load_ms: float,
+        pool_sessions: bool,
+        outputs: list[GenerationOutput],
+    ) -> tuple[int, str]:
+        max_active_slots = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, len(request.prompts))
+        pending_request_ids = list(range(len(request.prompts)))
+        active_slots: list[_GGUFMTPServingSlot] = []
+        completed_slots: list[_GGUFMTPServingSlot] = []
+        deferred_close_slots: list[_GGUFMTPServingSlot] = []
+        verify_owner_session: Qwen35GGUFResidentSession | None = None
+        slots_open_ms = 0.0
+
+        def open_more_slots() -> None:
+            nonlocal slots_open_ms
+            if len(active_slots) >= max_active_slots or not pending_request_ids:
+                return
+            capacity = max_active_slots - len(active_slots)
+            take = min(capacity, len(pending_request_ids))
+            if take == 3:
+                take = 2
+            if take == 1 and active_slots:
+                return
+            request_ids = [pending_request_ids.pop(0) for _ in range(take)]
+            sub_request = replace(
+                request,
+                prompts=tuple(request.prompts[request_id] for request_id in request_ids),
+            )
+            sub_encoded = {
+                local_index: encoded_prompts[request_id]
+                for local_index, request_id in enumerate(request_ids)
+            }
+            open_start = time.perf_counter()
+            new_slots = self._open_mtp_serving_slots(
+                shared_runner,
+                assets,
+                sub_encoded,
+                sub_request,
+                pool_sessions=pool_sessions,
+            )
+            open_ms = _timing_ms_since(open_start)
+            slots_open_ms += open_ms
+            if len(new_slots) != len(request_ids):
+                self._close_mtp_serving_slots(new_slots, reuse=False)
+                raise RuntimeError(
+                    f"rolling MTP opened {len(new_slots)} slot(s) for {len(request_ids)} request(s)"
+                )
+            for slot, request_id in zip(new_slots, request_ids, strict=True):
+                slot.request_id = int(request_id)
+                _timing_add_ms(slot.timing, "rolling_slot_open_batch_ms", open_ms)
+            active_slots.extend(new_slots)
+
+        slots_run_start = time.perf_counter()
+        try:
+            open_more_slots()
+            if active_slots:
+                verify_owner_session = active_slots[0].session
+            while active_slots:
+                if any(not slot.done for slot in active_slots):
+                    self._run_mtp_serving_slots_cycle(
+                        active_slots,
+                        assets,
+                        request,
+                        base_env=base_env,
+                        verify_owner_session=verify_owner_session,
+                    )
+                still_active: list[_GGUFMTPServingSlot] = []
+                finished_now: list[_GGUFMTPServingSlot] = []
+                for slot in active_slots:
+                    if slot.done:
+                        finished_now.append(slot)
+                    else:
+                        still_active.append(slot)
+                active_slots = still_active
+                for slot in finished_now:
+                    completed_slots.append(slot)
+                    if verify_owner_session is not None and slot.session is verify_owner_session:
+                        deferred_close_slots.append(slot)
+                    else:
+                        self._close_mtp_serving_slots([slot], reuse=True)
+                open_more_slots()
+        except Exception:
+            self._close_mtp_serving_slots(active_slots, reuse=False)
+            self._close_mtp_serving_slots(deferred_close_slots, reuse=False)
+            raise
+        finally:
+            if deferred_close_slots:
+                self._close_mtp_serving_slots(deferred_close_slots, reuse=True)
+
+        slots_run_ms = _timing_ms_since(slots_run_start)
+        target_verify_batching = (
+            "packed_slot_batch"
+            if any("target_verify_batch_ms" in slot.timing for slot in completed_slots)
+            else "per_slot_serial"
+        )
+        for slot in sorted(completed_slots, key=lambda item: int(item.request_id)):
+            prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
+            generated_ids = list(slot.generated_ids)
+            generated_ids_by_request[slot.request_id] = generated_ids
+            mtp_cycles_by_request[slot.request_id] = list(slot.cycles)
+            timing = dict(slot.timing)
+            timing["tokenize_ms"] = tokenize_ms_by_request.get(slot.request_id, 0.0)
+            timing["assets_load_ms"] = assets_load_ms
+            timing["slots_open_ms"] = slots_open_ms
+            timing["slots_run_ms"] = slots_run_ms
+            timing["rolling_max_active_slots"] = float(max_active_slots)
+            _add_mtp_cycle_timing_metrics(timing, slot.cycles)
+            outputs.append(
+                self._mtp_generation_output(
+                    slot.prompt_ids,
+                    generated_ids,
+                    request,
+                    row_index=slot.request_id,
+                    resident_slot_count=max_active_slots,
+                    timing=timing,
+                )
+            )
+        return max_active_slots, target_verify_batching
 
     def _mtp_generation_output(
         self,
@@ -2306,53 +2465,67 @@ class Qwen35GGUFBringupGenerator:
         base_env: dict[str, str | None],
     ) -> None:
         while any(not slot.done for slot in slots):
-            live_slots = [slot for slot in slots if not slot.done]
-            cycle_start = time.perf_counter()
-            drafted_cycles: list[_GGUFMTPDraftedCycle] = []
+            self._run_mtp_serving_slots_cycle(slots, assets, request, base_env=base_env)
 
-            draft_phase_start = time.perf_counter()
-            stream_drafted = self._try_draft_mtp_serving_slots_streams(
-                live_slots,
-                assets,
-                request,
-                base_env=base_env,
-            )
-            if stream_drafted is None:
-                for slot in live_slots:
-                    if slot.done:
-                        continue
-                    raise_if_generation_deadline_expired(request)
-                    drafted = self._draft_mtp_serving_slot(slot, assets, request, base_env=base_env)
-                    if drafted is not None:
-                        drafted_cycles.append(drafted)
-            else:
-                drafted_cycles.extend(stream_drafted)
-            draft_phase_ms = _timing_ms_since(draft_phase_start)
-            for slot in live_slots:
-                _timing_add_ms(slot.timing, "slots_draft_phase_ms", draft_phase_ms)
+    def _run_mtp_serving_slots_cycle(
+        self,
+        slots: list[_GGUFMTPServingSlot],
+        assets: _GGUFMTPServingAssets,
+        request: GenerationRequest,
+        *,
+        base_env: dict[str, str | None],
+        verify_owner_session: Qwen35GGUFResidentSession | None = None,
+    ) -> None:
+        live_slots = [slot for slot in slots if not slot.done]
+        if not live_slots:
+            return
+        cycle_start = time.perf_counter()
+        drafted_cycles: list[_GGUFMTPDraftedCycle] = []
 
-            verify_phase_start = time.perf_counter()
-            try:
-                verified_cycles = self._verify_mtp_serving_cycles(drafted_cycles, request)
-            except Exception:
-                raise
-            verify_phase_ms = _timing_ms_since(verify_phase_start)
+        draft_phase_start = time.perf_counter()
+        stream_drafted = self._try_draft_mtp_serving_slots_streams(
+            live_slots,
+            assets,
+            request,
+            base_env=base_env,
+        )
+        if stream_drafted is None:
             for slot in live_slots:
-                _timing_add_ms(slot.timing, "slots_verify_phase_ms", verify_phase_ms)
+                if slot.done:
+                    continue
+                raise_if_generation_deadline_expired(request)
+                drafted = self._draft_mtp_serving_slot(slot, assets, request, base_env=base_env)
+                if drafted is not None:
+                    drafted_cycles.append(drafted)
+        else:
+            drafted_cycles.extend(stream_drafted)
+        draft_phase_ms = _timing_ms_since(draft_phase_start)
+        for slot in live_slots:
+            _timing_add_ms(slot.timing, "slots_draft_phase_ms", draft_phase_ms)
 
-            commit_phase_start = time.perf_counter()
-            commit_index = 0
-            try:
-                for commit_index, verified in enumerate(verified_cycles):
-                    self._commit_mtp_serving_cycle(verified, assets, request)
-            except Exception:
-                for verified in verified_cycles[commit_index + 1:]:
-                    self._free_mtp_serving_cycle_snapshot(verified.drafted)
-                raise
-            commit_phase_ms = _timing_ms_since(commit_phase_start)
-            for slot in live_slots:
-                _timing_add_ms(slot.timing, "slots_commit_phase_ms", commit_phase_ms)
-                _timing_add(slot.timing, "slots_cycle_wall_ms", cycle_start)
+        verify_phase_start = time.perf_counter()
+        verified_cycles = self._verify_mtp_serving_cycles(
+            drafted_cycles,
+            request,
+            verify_owner_session=verify_owner_session,
+        )
+        verify_phase_ms = _timing_ms_since(verify_phase_start)
+        for slot in live_slots:
+            _timing_add_ms(slot.timing, "slots_verify_phase_ms", verify_phase_ms)
+
+        commit_phase_start = time.perf_counter()
+        commit_index = 0
+        try:
+            for commit_index, verified in enumerate(verified_cycles):
+                self._commit_mtp_serving_cycle(verified, assets, request)
+        except Exception:
+            for verified in verified_cycles[commit_index + 1:]:
+                self._free_mtp_serving_cycle_snapshot(verified.drafted)
+            raise
+        commit_phase_ms = _timing_ms_since(commit_phase_start)
+        for slot in live_slots:
+            _timing_add_ms(slot.timing, "slots_commit_phase_ms", commit_phase_ms)
+            _timing_add(slot.timing, "slots_cycle_wall_ms", cycle_start)
 
     def _advance_mtp_serving_slot(
         self,
@@ -2520,6 +2693,8 @@ class Qwen35GGUFBringupGenerator:
         self,
         drafted_cycles: list[_GGUFMTPDraftedCycle],
         request: GenerationRequest,
+        *,
+        verify_owner_session: Qwen35GGUFResidentSession | None = None,
     ) -> list[_GGUFMTPVerifiedCycle]:
         _ = request
         if not drafted_cycles:
@@ -2537,7 +2712,10 @@ class Qwen35GGUFBringupGenerator:
             if snapshot is not None:
                 _timing_add(slot.timing, "linear_state_snapshot_ms", snapshot_start)
         try:
-            block_results = self._try_verify_mtp_serving_cycles_batch(drafted_cycles)
+            block_results = self._try_verify_mtp_serving_cycles_batch(
+                drafted_cycles,
+                verify_owner_session=verify_owner_session,
+            )
             if block_results is None:
                 block_results = []
                 for drafted in drafted_cycles:
@@ -2581,6 +2759,8 @@ class Qwen35GGUFBringupGenerator:
     def _try_verify_mtp_serving_cycles_batch(
         self,
         drafted_cycles: list[_GGUFMTPDraftedCycle],
+        *,
+        verify_owner_session: Qwen35GGUFResidentSession | None = None,
     ) -> list[Any] | None:
         if len(drafted_cycles) <= 1:
             return None
@@ -2599,7 +2779,10 @@ class Qwen35GGUFBringupGenerator:
                 return streamed_results
         block_results: list[Any] = []
         for chunk in chunks:
-            chunk_results = self._verify_mtp_serving_cycle_chunk(chunk)
+            chunk_results = self._verify_mtp_serving_cycle_chunk(
+                chunk,
+                verify_owner_session=verify_owner_session,
+            )
             if chunk_results is None:
                 if block_results:
                     raise RuntimeError("packed target verifier chunk failed after a prior chunk advanced state")
@@ -2659,8 +2842,9 @@ class Qwen35GGUFBringupGenerator:
         chunk: list[_GGUFMTPDraftedCycle],
         *,
         stream: int = 0,
+        verify_owner_session: Qwen35GGUFResidentSession | None = None,
     ) -> list[Any] | None:
-        first_session = chunk[0].slot.session
+        first_session = verify_owner_session or chunk[0].slot.session
         verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
         if not callable(verify_batch):
             return None
@@ -3625,7 +3809,7 @@ def _gguf_mtp_last_batch_generation(
         "prompt_lengths": [len(prompt_rows_by_request.get(request_id, ())) for request_id in request_ids],
         "decode_steps": max((len(generated_ids_by_request.get(request_id, ())) for request_id in request_ids), default=0),
         "native_decode_steps": 0,
-        "serial_decode_fallback": len(request_ids) > int(resident_slot_count),
+        "serial_decode_fallback": False,
         "native_compact_prefill": False,
         "native_caware_decode": False,
         "native_sampler_rows": False,
