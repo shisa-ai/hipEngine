@@ -2,9 +2,9 @@
   "results": [
     {
       "name": "code_merge_intervals",
-      "wall_s": 1.248,
+      "wall_s": 1.249,
       "predicted_n": 28,
-      "predicted_per_second": 22.44,
+      "predicted_per_second": 22.42,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
@@ -24,13 +24,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.113,
-            "session_open_ms": 1.969,
-            "prefill_ms": 347.615,
-            "prefill_batch_ms": 347.615,
-            "decode_batch_ms": 864.974,
-            "slots_decode_phase_ms": 865.362,
-            "decode_text_ms": 0.018
+            "tokenize_ms": 0.107,
+            "session_open_ms": 1.604,
+            "prefill_ms": 345.94,
+            "prefill_batch_ms": 345.94,
+            "decode_batch_ms": 867.691,
+            "slots_decode_phase_ms": 868.143,
+            "decode_text_ms": 0.024
           },
           "finish_details": {
             "reason": "length",
@@ -39,18 +39,18 @@
             "cache_action": "append_none",
             "phase": "answer",
             "continuation_eligible": true,
-            "continuation_id": "gen_ec15099c44bc40d0b609f437a2e2162f"
+            "continuation_id": "gen_ff02a7f889ca4a0dbc9141f01c961cdf"
           }
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.113,
-        "session_open_ms": 1.969,
-        "prefill_ms": 347.615,
-        "prefill_batch_ms": 347.615,
-        "decode_batch_ms": 864.974,
-        "slots_decode_phase_ms": 865.362,
-        "decode_text_ms": 0.018
+        "tokenize_ms": 0.107,
+        "session_open_ms": 1.604,
+        "prefill_ms": 345.94,
+        "prefill_batch_ms": 345.94,
+        "decode_batch_ms": 867.691,
+        "slots_decode_phase_ms": 868.143,
+        "decode_text_ms": 0.024
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -65,13 +65,13 @@
       "name": "code_topological_sort",
       "wall_s": 1.248,
       "predicted_n": 28,
-      "predicted_per_second": 22.44,
+      "predicted_per_second": 22.43,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
         {
           "decode_state": {
-            "row_index": 2,
+            "row_index": 0,
             "step_index": 24,
             "prompt_tokens": 60,
             "generated_tokens": 24,
@@ -85,13 +85,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.127,
-            "session_open_ms": 1.808,
-            "prefill_ms": 347.615,
-            "prefill_batch_ms": 347.615,
-            "decode_batch_ms": 864.974,
-            "slots_decode_phase_ms": 865.362,
-            "decode_text_ms": 0.016
+            "tokenize_ms": 0.188,
+            "session_open_ms": 1.911,
+            "prefill_ms": 345.94,
+            "prefill_batch_ms": 345.94,
+            "decode_batch_ms": 867.691,
+            "slots_decode_phase_ms": 868.143,
+            "decode_text_ms": 0.039
           },
           "finish_details": {
             "reason": "length",
@@ -100,18 +100,18 @@
             "cache_action": "append_none",
             "phase": "answer",
             "continuation_eligible": true,
-            "continuation_id": "gen_abf1ffe8fcb54074a6fd3efff9620888"
+            "continuation_id": "gen_1b3fd00ac09e4a1ea1a52c4bd5aa7827"
           }
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.127,
-        "session_open_ms": 1.808,
-        "prefill_ms": 347.615,
-        "prefill_batch_ms": 347.615,
-        "decode_batch_ms": 864.974,
-        "slots_decode_phase_ms": 865.362,
-        "decode_text_ms": 0.016
+        "tokenize_ms": 0.188,
+        "session_open_ms": 1.911,
+        "prefill_ms": 345.94,
+        "prefill_batch_ms": 345.94,
+        "decode_batch_ms": 867.691,
+        "slots_decode_phase_ms": 868.143,
+        "decode_text_ms": 0.039
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -124,15 +124,15 @@
     },
     {
       "name": "code_lru_cache",
-      "wall_s": 1.247,
+      "wall_s": 1.246,
       "predicted_n": 26,
-      "predicted_per_second": 20.84,
+      "predicted_per_second": 20.87,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
         {
           "decode_state": {
-            "row_index": 3,
+            "row_index": 2,
             "step_index": 24,
             "prompt_tokens": 57,
             "generated_tokens": 24,
@@ -146,13 +146,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.113,
-            "session_open_ms": 1.723,
-            "prefill_ms": 347.615,
-            "prefill_batch_ms": 347.615,
-            "decode_batch_ms": 864.974,
-            "slots_decode_phase_ms": 865.362,
-            "decode_text_ms": 0.017
+            "tokenize_ms": 0.117,
+            "session_open_ms": 2.004,
+            "prefill_ms": 345.94,
+            "prefill_batch_ms": 345.94,
+            "decode_batch_ms": 867.691,
+            "slots_decode_phase_ms": 868.143,
+            "decode_text_ms": 0.024
           },
           "finish_details": {
             "reason": "length",
@@ -165,13 +165,13 @@
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.113,
-        "session_open_ms": 1.723,
-        "prefill_ms": 347.615,
-        "prefill_batch_ms": 347.615,
-        "decode_batch_ms": 864.974,
-        "slots_decode_phase_ms": 865.362,
-        "decode_text_ms": 0.017
+        "tokenize_ms": 0.117,
+        "session_open_ms": 2.004,
+        "prefill_ms": 345.94,
+        "prefill_batch_ms": 345.94,
+        "decode_batch_ms": 867.691,
+        "slots_decode_phase_ms": 868.143,
+        "decode_text_ms": 0.024
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -184,7 +184,7 @@
     },
     {
       "name": "code_markdown_table",
-      "wall_s": 1.249,
+      "wall_s": 1.248,
       "predicted_n": 28,
       "predicted_per_second": 22.43,
       "draft_n": 0,
@@ -192,7 +192,7 @@
       "hipengine": [
         {
           "decode_state": {
-            "row_index": 0,
+            "row_index": 3,
             "step_index": 24,
             "prompt_tokens": 62,
             "generated_tokens": 24,
@@ -206,13 +206,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.197,
-            "session_open_ms": 1.873,
-            "prefill_ms": 347.615,
-            "prefill_batch_ms": 347.615,
-            "decode_batch_ms": 864.974,
-            "slots_decode_phase_ms": 865.362,
-            "decode_text_ms": 0.032
+            "tokenize_ms": 0.137,
+            "session_open_ms": 1.902,
+            "prefill_ms": 345.94,
+            "prefill_batch_ms": 345.94,
+            "decode_batch_ms": 867.691,
+            "slots_decode_phase_ms": 868.143,
+            "decode_text_ms": 0.021
           },
           "finish_details": {
             "reason": "length",
@@ -221,18 +221,18 @@
             "cache_action": "append_none",
             "phase": "answer",
             "continuation_eligible": true,
-            "continuation_id": "gen_2eb410c95e214cbeb5faf859afba2d18"
+            "continuation_id": "gen_663c8cdf556248e5bf1f79f0f3b25025"
           }
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.197,
-        "session_open_ms": 1.873,
-        "prefill_ms": 347.615,
-        "prefill_batch_ms": 347.615,
-        "decode_batch_ms": 864.974,
-        "slots_decode_phase_ms": 865.362,
-        "decode_text_ms": 0.032
+        "tokenize_ms": 0.137,
+        "session_open_ms": 1.902,
+        "prefill_ms": 345.94,
+        "prefill_batch_ms": 345.94,
+        "decode_batch_ms": 867.691,
+        "slots_decode_phase_ms": 868.143,
+        "decode_text_ms": 0.021
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -247,7 +247,7 @@
       "name": "general_en_plan",
       "wall_s": 1.206,
       "predicted_n": 26,
-      "predicted_per_second": 21.55,
+      "predicted_per_second": 21.56,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
@@ -267,13 +267,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.088,
-            "session_open_ms": 1.022,
-            "prefill_ms": 317.824,
-            "prefill_batch_ms": 317.824,
-            "decode_batch_ms": 865.301,
-            "slots_decode_phase_ms": 865.628,
-            "decode_text_ms": 0.02
+            "tokenize_ms": 0.079,
+            "session_open_ms": 0.991,
+            "prefill_ms": 315.69,
+            "prefill_batch_ms": 315.69,
+            "decode_batch_ms": 866.015,
+            "slots_decode_phase_ms": 866.399,
+            "decode_text_ms": 0.018
           },
           "finish_details": {
             "reason": "length",
@@ -286,13 +286,13 @@
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.088,
-        "session_open_ms": 1.022,
-        "prefill_ms": 317.824,
-        "prefill_batch_ms": 317.824,
-        "decode_batch_ms": 865.301,
-        "slots_decode_phase_ms": 865.628,
-        "decode_text_ms": 0.02
+        "tokenize_ms": 0.079,
+        "session_open_ms": 0.991,
+        "prefill_ms": 315.69,
+        "prefill_batch_ms": 315.69,
+        "decode_batch_ms": 866.015,
+        "slots_decode_phase_ms": 866.399,
+        "decode_text_ms": 0.018
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -305,15 +305,15 @@
     },
     {
       "name": "general_en_explain",
-      "wall_s": 1.206,
+      "wall_s": 1.205,
       "predicted_n": 26,
-      "predicted_per_second": 21.55,
+      "predicted_per_second": 21.58,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
         {
           "decode_state": {
-            "row_index": 3,
+            "row_index": 0,
             "step_index": 24,
             "prompt_tokens": 50,
             "generated_tokens": 24,
@@ -327,13 +327,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.08,
-            "session_open_ms": 0.998,
-            "prefill_ms": 317.824,
-            "prefill_batch_ms": 317.824,
-            "decode_batch_ms": 865.301,
-            "slots_decode_phase_ms": 865.628,
-            "decode_text_ms": 0.011
+            "tokenize_ms": 0.094,
+            "session_open_ms": 1.023,
+            "prefill_ms": 315.69,
+            "prefill_batch_ms": 315.69,
+            "decode_batch_ms": 866.015,
+            "slots_decode_phase_ms": 866.399,
+            "decode_text_ms": 0.027
           },
           "finish_details": {
             "reason": "length",
@@ -346,13 +346,13 @@
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.08,
-        "session_open_ms": 0.998,
-        "prefill_ms": 317.824,
-        "prefill_batch_ms": 317.824,
-        "decode_batch_ms": 865.301,
-        "slots_decode_phase_ms": 865.628,
-        "decode_text_ms": 0.011
+        "tokenize_ms": 0.094,
+        "session_open_ms": 1.023,
+        "prefill_ms": 315.69,
+        "prefill_batch_ms": 315.69,
+        "decode_batch_ms": 866.015,
+        "slots_decode_phase_ms": 866.399,
+        "decode_text_ms": 0.027
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -365,70 +365,9 @@
     },
     {
       "name": "general_ja_plan",
-      "wall_s": 1.206,
+      "wall_s": 1.204,
       "predicted_n": 28,
-      "predicted_per_second": 23.21,
-      "draft_n": 0,
-      "draft_n_accepted": 0,
-      "hipengine": [
-        {
-          "decode_state": {
-            "row_index": 0,
-            "step_index": 24,
-            "prompt_tokens": 53,
-            "generated_tokens": 24,
-            "phase": "done",
-            "continuation_eligible": true,
-            "sampler_mode": "greedy_fast",
-            "execution_path": "gguf_packed_ar_server_decode",
-            "native_compact_prefill": false,
-            "native_caware_decode": true,
-            "serial_decode_fallback": false,
-            "native_sampler_rows": false
-          },
-          "timing": {
-            "tokenize_ms": 0.099,
-            "session_open_ms": 1.031,
-            "prefill_ms": 317.824,
-            "prefill_batch_ms": 317.824,
-            "decode_batch_ms": 865.301,
-            "slots_decode_phase_ms": 865.628,
-            "decode_text_ms": 0.044
-          },
-          "finish_details": {
-            "reason": "length",
-            "length_limit": 24,
-            "sampler_mode": "greedy_fast",
-            "cache_action": "append_none",
-            "phase": "answer",
-            "continuation_eligible": true,
-            "continuation_id": "gen_5b12ba8c0562465d948c3e7ee4d48ea9"
-          }
-        }
-      ],
-      "backend_timing_ms": {
-        "tokenize_ms": 0.099,
-        "session_open_ms": 1.031,
-        "prefill_ms": 317.824,
-        "prefill_batch_ms": 317.824,
-        "decode_batch_ms": 865.301,
-        "slots_decode_phase_ms": 865.628,
-        "decode_text_ms": 0.044
-      },
-      "backend_decode_state": {
-        "execution_path": "gguf_packed_ar_server_decode",
-        "serial_decode_fallback": false,
-        "generated_tokens": 24,
-        "prompt_tokens": 53,
-        "sampler_mode": "greedy_fast"
-      },
-      "accept_rate": null
-    },
-    {
-      "name": "general_ja_explain",
-      "wall_s": 1.206,
-      "predicted_n": 28,
-      "predicted_per_second": 23.21,
+      "predicted_per_second": 23.25,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
@@ -448,13 +387,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.062,
-            "session_open_ms": 1.075,
-            "prefill_ms": 317.824,
-            "prefill_batch_ms": 317.824,
-            "decode_batch_ms": 865.301,
-            "slots_decode_phase_ms": 865.628,
-            "decode_text_ms": 0.024
+            "tokenize_ms": 0.085,
+            "session_open_ms": 1.043,
+            "prefill_ms": 315.69,
+            "prefill_batch_ms": 315.69,
+            "decode_batch_ms": 866.015,
+            "slots_decode_phase_ms": 866.399,
+            "decode_text_ms": 0.037
           },
           "finish_details": {
             "reason": "length",
@@ -463,18 +402,79 @@
             "cache_action": "append_none",
             "phase": "answer",
             "continuation_eligible": true,
-            "continuation_id": "gen_d91e496157344d37a582099a56dd279e"
+            "continuation_id": "gen_521aee2443b644b6b747b0df718b0b3b"
           }
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.062,
-        "session_open_ms": 1.075,
-        "prefill_ms": 317.824,
-        "prefill_batch_ms": 317.824,
-        "decode_batch_ms": 865.301,
-        "slots_decode_phase_ms": 865.628,
-        "decode_text_ms": 0.024
+        "tokenize_ms": 0.085,
+        "session_open_ms": 1.043,
+        "prefill_ms": 315.69,
+        "prefill_batch_ms": 315.69,
+        "decode_batch_ms": 866.015,
+        "slots_decode_phase_ms": 866.399,
+        "decode_text_ms": 0.037
+      },
+      "backend_decode_state": {
+        "execution_path": "gguf_packed_ar_server_decode",
+        "serial_decode_fallback": false,
+        "generated_tokens": 24,
+        "prompt_tokens": 53,
+        "sampler_mode": "greedy_fast"
+      },
+      "accept_rate": null
+    },
+    {
+      "name": "general_ja_explain",
+      "wall_s": 1.206,
+      "predicted_n": 28,
+      "predicted_per_second": 23.22,
+      "draft_n": 0,
+      "draft_n_accepted": 0,
+      "hipengine": [
+        {
+          "decode_state": {
+            "row_index": 3,
+            "step_index": 24,
+            "prompt_tokens": 53,
+            "generated_tokens": 24,
+            "phase": "done",
+            "continuation_eligible": true,
+            "sampler_mode": "greedy_fast",
+            "execution_path": "gguf_packed_ar_server_decode",
+            "native_compact_prefill": false,
+            "native_caware_decode": true,
+            "serial_decode_fallback": false,
+            "native_sampler_rows": false
+          },
+          "timing": {
+            "tokenize_ms": 0.061,
+            "session_open_ms": 1.087,
+            "prefill_ms": 315.69,
+            "prefill_batch_ms": 315.69,
+            "decode_batch_ms": 866.015,
+            "slots_decode_phase_ms": 866.399,
+            "decode_text_ms": 0.028
+          },
+          "finish_details": {
+            "reason": "length",
+            "length_limit": 24,
+            "sampler_mode": "greedy_fast",
+            "cache_action": "append_none",
+            "phase": "answer",
+            "continuation_eligible": true,
+            "continuation_id": "gen_bce160e9e4c0434d86b186d85379fcbf"
+          }
+        }
+      ],
+      "backend_timing_ms": {
+        "tokenize_ms": 0.061,
+        "session_open_ms": 1.087,
+        "prefill_ms": 315.69,
+        "prefill_batch_ms": 315.69,
+        "decode_batch_ms": 866.015,
+        "slots_decode_phase_ms": 866.399,
+        "decode_text_ms": 0.028
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -487,9 +487,9 @@
     },
     {
       "name": "mixed_ja_en_translate",
-      "wall_s": 0.863,
+      "wall_s": 0.865,
       "predicted_n": 28,
-      "predicted_per_second": 32.45,
+      "predicted_per_second": 32.38,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
@@ -509,13 +509,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.099,
-            "session_open_ms": 1.014,
-            "prefill_ms": 270.641,
-            "prefill_batch_ms": 270.641,
-            "decode_batch_ms": 576.44,
-            "slots_decode_phase_ms": 576.706,
-            "decode_text_ms": 0.018
+            "tokenize_ms": 0.254,
+            "session_open_ms": 0.981,
+            "prefill_ms": 270.88,
+            "prefill_batch_ms": 270.88,
+            "decode_batch_ms": 577.824,
+            "slots_decode_phase_ms": 578.11,
+            "decode_text_ms": 0.017
           },
           "finish_details": {
             "reason": "length",
@@ -524,18 +524,18 @@
             "cache_action": "append_none",
             "phase": "answer",
             "continuation_eligible": true,
-            "continuation_id": "gen_90da437f9fd64e9cae822a85142c25bc"
+            "continuation_id": "gen_6cbff1277bd64bb7a2d83d0e20cf6d59"
           }
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.099,
-        "session_open_ms": 1.014,
-        "prefill_ms": 270.641,
-        "prefill_batch_ms": 270.641,
-        "decode_batch_ms": 576.44,
-        "slots_decode_phase_ms": 576.706,
-        "decode_text_ms": 0.018
+        "tokenize_ms": 0.254,
+        "session_open_ms": 0.981,
+        "prefill_ms": 270.88,
+        "prefill_batch_ms": 270.88,
+        "decode_batch_ms": 577.824,
+        "slots_decode_phase_ms": 578.11,
+        "decode_text_ms": 0.017
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -548,9 +548,9 @@
     },
     {
       "name": "mixed_ja_en_review",
-      "wall_s": 0.863,
+      "wall_s": 0.864,
       "predicted_n": 28,
-      "predicted_per_second": 32.45,
+      "predicted_per_second": 32.41,
       "draft_n": 0,
       "draft_n_accepted": 0,
       "hipengine": [
@@ -570,13 +570,13 @@
             "native_sampler_rows": false
           },
           "timing": {
-            "tokenize_ms": 0.138,
-            "session_open_ms": 1.025,
-            "prefill_ms": 270.641,
-            "prefill_batch_ms": 270.641,
-            "decode_batch_ms": 576.44,
-            "slots_decode_phase_ms": 576.706,
-            "decode_text_ms": 0.026
+            "tokenize_ms": 0.327,
+            "session_open_ms": 1.027,
+            "prefill_ms": 270.88,
+            "prefill_batch_ms": 270.88,
+            "decode_batch_ms": 577.824,
+            "slots_decode_phase_ms": 578.11,
+            "decode_text_ms": 0.025
           },
           "finish_details": {
             "reason": "length",
@@ -585,18 +585,18 @@
             "cache_action": "append_none",
             "phase": "answer",
             "continuation_eligible": true,
-            "continuation_id": "gen_d5176b4e456b4c56821f0b4f056a68ea"
+            "continuation_id": "gen_770f0e48f9544faaa5c1fe0c1d12053c"
           }
         }
       ],
       "backend_timing_ms": {
-        "tokenize_ms": 0.138,
-        "session_open_ms": 1.025,
-        "prefill_ms": 270.641,
-        "prefill_batch_ms": 270.641,
-        "decode_batch_ms": 576.44,
-        "slots_decode_phase_ms": 576.706,
-        "decode_text_ms": 0.026
+        "tokenize_ms": 0.327,
+        "session_open_ms": 1.027,
+        "prefill_ms": 270.88,
+        "prefill_batch_ms": 270.88,
+        "decode_batch_ms": 577.824,
+        "slots_decode_phase_ms": 578.11,
+        "decode_text_ms": 0.025
       },
       "backend_decode_state": {
         "execution_path": "gguf_packed_ar_server_decode",
@@ -618,24 +618,24 @@
     "aggregate_accept_rate": null,
     "wall_s_total": 3.32,
     "request_wall_s_total": 11.54,
-    "aggregate_predicted_per_second": 82.47,
+    "aggregate_predicted_per_second": 82.43,
     "backend_timing_totals_ms": {
-      "decode_batch_ms": 8073.98,
-      "decode_text_ms": 0.226,
-      "prefill_batch_ms": 3203.038,
-      "prefill_ms": 3203.038,
-      "session_open_ms": 13.538,
-      "slots_decode_phase_ms": 8077.372,
-      "tokenize_ms": 1.116
+      "decode_batch_ms": 8090.472,
+      "decode_text_ms": 0.26,
+      "prefill_batch_ms": 3188.28,
+      "prefill_ms": 3188.28,
+      "session_open_ms": 13.573,
+      "slots_decode_phase_ms": 8094.388,
+      "tokenize_ms": 1.449
     },
     "backend_timing_mean_ms": {
-      "decode_batch_ms": 807.398,
-      "decode_text_ms": 0.023,
-      "prefill_batch_ms": 320.304,
-      "prefill_ms": 320.304,
-      "session_open_ms": 1.354,
-      "slots_decode_phase_ms": 807.737,
-      "tokenize_ms": 0.112
+      "decode_batch_ms": 809.047,
+      "decode_text_ms": 0.026,
+      "prefill_batch_ms": 318.828,
+      "prefill_ms": 318.828,
+      "session_open_ms": 1.357,
+      "slots_decode_phase_ms": 809.439,
+      "tokenize_ms": 0.145
     }
   }
 }
