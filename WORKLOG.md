@@ -145206,3 +145206,35 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-routecap5-probe-rerun.json >/dev/null
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-routecap5-probe.json >/dev/null
   ```
+
+## 2026-07-06 - GGUF server AR full-access retry rerun
+
+- Retried the retained GGUF OpenAI server AR natural24 route again after full
+  filesystem access was confirmed in the Codex session. No code changes were
+  made. Server command:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    --out benchmarks/results/2026-07-06-hipengine-server-ar-natural24-cC-bw5-fullaccess-retry.json
+  ```
+- Results: c=2 **65.89 tok/s**, c=4 **82.43 tok/s**, c=8 **81.76 tok/s**.
+  This again confirms the retained AR fix band (**66.39/82.46/81.94 tok/s**)
+  within normal same-session variance; no benchmark rollup row changes.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/server/api.py hipengine/generation/qwen35_gguf.py hipengine/runtime/qwen35_gguf_runner.py
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c2-bw5-fullaccess-retry.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c4-bw5-fullaccess-retry.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-fullaccess-retry.json >/dev/null
+  ```
