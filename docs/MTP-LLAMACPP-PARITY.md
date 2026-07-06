@@ -86,6 +86,16 @@ the artifacts and are called out in the reading column where useful.
 | llama.cpp Vulkan server B2 | 4 | 68.32 | **48.10** | 0.704x | B2 | Full-request/client aggregate. Decode-only aggregate is **124.68/92.19 tok/s**. |
 | llama.cpp Vulkan server B2 | 8 | 78.50 | **54.25** | 0.691x | B2 | Full-request/client aggregate. Decode-only aggregate is **139.71/103.57 tok/s**. |
 
+Current-HEAD scaling audit on the retained GGUF MTP server route measured
+**44.95/70.47/79.48/79.45 tok/s** at c=1/c=2/c=4/c=8. The c=8 rerun keeps
+the normal c>N economy (`draft=165`, `accepted=141`, accept rate **0.8545**) and
+gives hipEngine GGUF MTP **1.768x c8/c1 scaling**. That clears the c>N scaling
+bar against retained PARO native c8/c1 (**1.584x**) and the llama.cpp MTP rows:
+HIP/Vulkan full-request **1.049x/1.108x**, HIP/Vulkan decode-only
+**1.040x/1.132x**. The remaining gap is not c>N scaling; it is that the
+stronger same-server AR path is still slightly ahead at c=4/c=8, with packed
+verifier LM-head/sample the largest exposed MTP bucket.
+
 Artifacts:
 
 - `benchmarks/results/2026-07-05-hipengine-server-mtp-natural24-c1-bw0-timing-pooled-warm.json`
@@ -145,6 +155,12 @@ Artifacts:
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-fullaccess-current-rerun.json`,
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-fullaccess-current-rerun2.json`, and
   `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-fullaccess-current.json`
+- Scaling-audit current-HEAD artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-scaling-audit.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-scaling-audit.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-scaling-audit.json`,
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-scaling-audit.json`, and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-scaling-audit-rerun.json`
 - `benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-mtpcap-sanity.json`
 - `benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json`
 - `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`

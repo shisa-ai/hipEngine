@@ -567,15 +567,24 @@ full-suite speed row above.
 | llama.cpp Vulkan server B2 | 4 | 68.32 | **48.10** | 0.704x | same | [`2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json`](results/2026-07-03-llamacpp-vulkan-mtp-natural24-c4.json); full-request/client aggregate, decode-only aggregate is 124.68/92.19 |
 | llama.cpp Vulkan server B2 | 8 | 78.50 | **54.25** | 0.691x | same | [`2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json`](results/2026-07-03-llamacpp-vulkan-mtp-natural24-c8.json); full-request/client aggregate, decode-only aggregate is 139.71/103.57 |
 
+Current-HEAD scaling audit on the retained route measured MTP
+**44.95/70.47/79.48/79.45 tok/s** at c=1/c=2/c=4/c=8
+(`2026-07-06-hipengine-server-mtp-natural24-c*-bw5-scaling-audit*.json`),
+with normal c>N economy (`draft=165`, `accepted=141`, accept rate **0.8545**).
+Using the c=8 rerun, hipEngine GGUF MTP c8/c1 scaling is **1.768x**. That is
+above the retained PARO native c8/c1 scaling row (**1.584x**) and the
+llama.cpp MTP c8/c1 rows: HIP/Vulkan full-request **1.049x/1.108x** and
+HIP/Vulkan decode-only **1.040x/1.132x**. This is a serving-scaling claim, not a
+claim that MTP beats the now-stronger same-server AR row at every c.
+
 For serving capability, `speculative_mtp.serving_route=true` is now available
 only with `--speculative-mtp-serving opt_in` or `auto` and a GGUF model exposing
 NextN tensors. The packed target verifier removed the old per-slot target-verify
 blocker for c=2/c=4 and the warm chunked c=8 row; the newer default-on packed
 AR prefill/decode path plus the default GGUF AR route cap closes the main server
-AR c>N blocker. It is still diagnostic rather than a retained production MTP
-claim: c=8 needs lower
-verifier wall, rows>=16 packed verifier tuning before lifting the four-slot
-cap, and MTP economics that beat the now-stronger same-server AR row.
+AR c>N blocker. The remaining MTP work is no longer a c>N scaling blocker:
+c=4/c=8 still trail same-server AR, and rows>=16 packed verifier/LM-head tuning
+is the next path if we want MTP to beat AR at every concurrency.
 The default-route batcher now coalesces compatible AR requests with composite
 cancellation tokens. The retained AR route now uses
 `HIPENGINE_GGUF_AR_PACKED_PREFILL=1` and
