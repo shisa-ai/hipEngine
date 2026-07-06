@@ -145039,3 +145039,22 @@ python3 scripts/gguf_mtp_bench.py \
   client c=8 row is multiple c<=4 backend groups. Prior route-cap-8 probes
   showed the blocker is true c=8 slot open/prefill/verify cost, not the retained
   c<=4 packed-verifier metadata order.
+
+## 2026-07-06 - GGUF MTP scratch warmup covers cap-8 chunk owners
+
+- Updated GGUF MTP startup scratch warmup to exercise `max_batch_size` MTP
+  widths, while still internally chunking packed prefill/verify at four slots.
+  With `--max-active-requests 8`, the scratch probe now warms a width-8 shape as
+  two four-slot packed chunks instead of warming only one width-4 owner. This
+  targets the rejected cap-8 probe's first-wave cold-owner symptom before
+  retesting any route-cap lift.
+- No serving route cap was changed in this unit; `_GGUF_MTP_MAX_ACTIVE_REQUESTS`
+  remains 4 and no throughput row is superseded.
+- Validation:
+  ```bash
+  python3 -m py_compile hipengine/generation/qwen35_gguf.py tests/test_generation_qwen35_gguf_sampling.py
+  PYTHONPATH=. uv run --isolated --extra dev pytest -q \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled \
+    tests/test_generation_qwen35_gguf_sampling.py::test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths
+  ```
+  Pycompile passed and focused pytest passed (`2 passed`).

@@ -2220,16 +2220,20 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
 
     assert result["packed_ar_prefill_skipped"] is True
     assert result["packed_mtp_prefill_skipped"] is False
-    assert result["packed_mtp_prefill_widths"] == [2, 4]
+    assert result["packed_mtp_prefill_widths"] == [2, 4, 8]
     assert result["packed_mtp_prefill_prompt_lengths"] == [4]
     assert result["packed_mtp_verify_skipped"] is False
-    assert result["packed_mtp_verify_widths"] == [2, 4]
+    assert result["packed_mtp_verify_widths"] == [2, 4, 8]
     assert result["packed_mtp_verify_prompt_lengths"] == [4]
     assert [call for call in calls if call[0] == "draft_init"] == [
         ("draft_init", 0),
         ("draft_init", 1),
         ("draft_init", 2),
         ("draft_init", 3),
+        ("draft_init", 4),
+        ("draft_init", 5),
+        ("draft_init", 6),
+        ("draft_init", 7),
     ]
     assert [call for call in calls if call[0] == "prefill_batch"] == [
         (
@@ -2252,6 +2256,26 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
             False,
             True,
         ),
+        (
+            "prefill_batch",
+            0,
+            4,
+            ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7)),
+            (0, 1, 2, 3),
+            "1",
+            False,
+            True,
+        ),
+        (
+            "prefill_batch",
+            4,
+            4,
+            ((5, 6, 7, 8), (6, 7, 8, 9), (7, 8, 9, 10), (8, 9, 10, 11)),
+            (4, 5, 6, 7),
+            "1",
+            False,
+            True,
+        ),
     ]
     assert [call for call in calls if call[0] == "verify_batch"] == [
         (
@@ -2265,6 +2289,30 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
             "verify_batch",
             0,
             ((0, (1, 2)), (1, (2, 3)), (2, (3, 4)), (3, (4, 5))),
+            (
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+            ),
+            "1",
+        ),
+        (
+            "verify_batch",
+            0,
+            ((0, (1, 2)), (1, (2, 3)), (2, (3, 4)), (3, (4, 5))),
+            (
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+                ("bulk", False, True, True, True),
+            ),
+            "1",
+        ),
+        (
+            "verify_batch",
+            4,
+            ((4, (5, 6)), (5, (6, 7)), (6, (7, 8)), (7, (8, 9))),
             (
                 ("bulk", False, True, True, True),
                 ("bulk", False, True, True, True),

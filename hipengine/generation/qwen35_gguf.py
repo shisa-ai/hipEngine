@@ -656,7 +656,7 @@ class Qwen35GGUFBringupGenerator:
             result["packed_mtp_verify_skipped"] = True
             result["packed_mtp_verify_reason"] = "backend_hook_unavailable"
         else:
-            mtp_width_cap = min(max_batch, _MTP_SERVING_TARGET_BATCH_MAX_SLOTS)
+            mtp_width_cap = max_batch
             mtp_widths = [width for width in (2, 4) if width <= mtp_width_cap]
             if mtp_width_cap > 1 and mtp_width_cap not in mtp_widths:
                 mtp_widths.append(mtp_width_cap)
