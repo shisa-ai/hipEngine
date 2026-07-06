@@ -145288,3 +145288,24 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-fullaccess-current-rerun2.json >/dev/null
   python3 -m json.tool benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-fullaccess-current.json >/dev/null
   ```
+
+## 2026-07-06 - Rejected GGUF server MTP rowtile top1 fusion
+
+- Tested a temporary exact Q6_K T16 rowtile LM-head + top-1 fused path for the
+  packed verifier. Focused validation while the code was present:
+  ```bash
+  python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.py hipengine/runtime/qwen35_gguf_runner.py tests/test_gguf_q6_k_t16_rowtile_gemv.py
+  PYTHONPATH=. pytest -q tests/test_gguf_q6_k_t16_rowtile_gemv.py
+  ```
+  Pycompile passed and the focused HIP gate passed (`1 passed`).
+- Throughput was not retainable. Valid sequential reruns measured c=4
+  **79.09 tok/s** versus retained **78.76**, and c=8 **79.16 tok/s** versus
+  retained **79.61**. Economy was unchanged (`draft=165`, `accepted=141`, accept
+  rate **0.8545**). The c=8 packed verifier stayed flat:
+  `target_packed_verify_lm_head_sample_ms=4225.714` versus the full-access
+  retained-route confirmation's **4239.558**, and
+  `target_packed_verify_total_ms=5507.384` versus **5504.050**.
+- Code was reverted; no runtime/kernel changes retained. Selected artifacts:
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-q6t16-rowtile-top1-probe-rerun2.json`
+  and
+  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-q6t16-rowtile-top1-probe-rerun2.json`.
