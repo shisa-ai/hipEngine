@@ -146440,3 +146440,52 @@ python3 scripts/gguf_mtp_bench.py \
   `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/geometry_sweep.py --backend hip --gfx-arch gfx1151 --hip-workgroup-specialization fixed --k-list 512 --rows-list 1 --workgroups 64 --body-repeats 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-geometry-fixed-wg-smoke.json`
   passed CPU-oracle correctness and recorded
   `hip_workgroup_specialization=fixed` with `hip_fixed_workgroup_sizes=[64]`.
+
+## 2026-07-08 - gfx1151 HIP fixed-shape retained controls
+
+- Captured clean-source environment after `87ad0555`:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json`.
+- Ran same-commit HIP dot runtime control:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/dot_path.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-dot-fixed-shape-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-dot-path-runtime-control.json`.
+- Ran HIP dot fixed-block control:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/dot_path.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --hip-fixed-block-index --build-dir /tmp/hipengine-micro-dot-fixed-shape-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-dot-path-fixed-block.json`.
+- Ran same-commit Vulkan dot control:
+  `python3 benchmarks/micro/runners/dot_path.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-dot-fixed-shape-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-dot-path-fixed-control.json`.
+- Built dot fixed comparison:
+  `python3 benchmarks/micro/runners/dot_path.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-dot-path-fixed-block.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-dot-path-fixed-control.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`.
+- Dot result: all rows passed exact sampled CPU-oracle correctness. Fixed-block
+  HIP was flat versus same-commit runtime HIP (`0.993x-1.000x` fixed/runtime),
+  and Vulkan still beat fixed HIP by `3.31x-3.43x`.
+- Ran same-commit HIP memory runtime control:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/memory_waitcnt.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-memory-fixed-shape-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt-runtime-control.json`.
+- Ran HIP memory fixed-block control:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/memory_waitcnt.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --hip-fixed-block-index --build-dir /tmp/hipengine-micro-memory-fixed-shape-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt-fixed-block.json`.
+- Ran same-commit Vulkan memory control:
+  `python3 benchmarks/micro/runners/memory_waitcnt.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-memory-fixed-shape-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt-fixed-control.json`.
+- Built memory fixed comparison:
+  `python3 benchmarks/micro/runners/memory_waitcnt.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt-fixed-block.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt-fixed-control.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`.
+- Memory result: all rows passed sampled CPU-oracle correctness. Fixed-block
+  HIP was mixed versus runtime (`0.906x-1.290x` fixed/runtime), improved
+  coalesced width 8 and interleave 1/16, but regressed gather by `1.290x`.
+  Vulkan remained faster on every fixed-HIP row by `1.04x-2.36x`.
+- Ran same-commit HIP geometry runtime control:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/geometry_sweep.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-geometry-fixed-shape-build --k-list 512,2048,8192 --rows-list 1,4,8 --workgroups 32,64,128,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --raw-json benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-runtime-control-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-runtime-control.json`.
+- Ran HIP geometry fixed-workgroup control:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/geometry_sweep.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --hip-workgroup-specialization fixed --build-dir /tmp/hipengine-micro-geometry-fixed-shape-build --k-list 512,2048,8192 --rows-list 1,4,8 --workgroups 32,64,128,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --raw-json benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup.json`.
+- Ran same-commit Vulkan geometry control:
+  `python3 benchmarks/micro/runners/geometry_sweep.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-geometry-fixed-shape-build --k-list 512,2048,8192 --rows-list 1,4,8 --workgroups 32,64,128,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --raw-json benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep-fixed-control-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep-fixed-control.json`.
+- Built geometry fixed comparison:
+  `python3 benchmarks/micro/runners/geometry_sweep.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep-fixed-control.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json`.
+- Geometry result: all rows passed CPU-oracle correctness. Fixed-workgroup HIP
+  improved best HIP wg256 rows by `0.1%` to `6.3%` versus same-commit runtime
+  HIP, but same-commit Vulkan still beat fixed HIP best-native rows by
+  `5.56x-14.03x`.
+- Interpretation: HIP runtime `blockDim`/fixed-shape specialization is not the
+  missing switch for retained dot, memory, or geometry gaps. Keep the next
+  attribution work focused on real selected-MoE/q6 lm-head slices, q8_1
+  materialization/layout accounting, and better RADV allocation stats.
+- Validation:
+  `python3 -m json.tool` passed for the environment, all fixed-shape backend
+  artifacts, raw geometry artifacts, and comparison artifacts. Updated
+  `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
