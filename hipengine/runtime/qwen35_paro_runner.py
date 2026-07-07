@@ -133,6 +133,9 @@ _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMO
 _INT8_PREFILL_LOW_MEMORY_TOTAL_GIB_DEFAULT = 26.0
 _INT8_PREFILL_ORACLE_RESERVE_MIB_ENV = "HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB"
 _INT8_PREFILL_ORACLE_RESERVE_MIB_DEFAULT = 1024
+_SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP"
+_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
+_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _LOGGER = logging.getLogger(__name__)
 _VERIFY_DYNAMIC_METADATA_FIELDS = 5
 
@@ -1627,6 +1630,7 @@ class Qwen35ParoResidentSession:
         self._clear_resident_tensor_view_caches()
         self._decode_full_block_table_key = None
         self.last_prefill_execution = None
+        self.last_batch_decode_execution = None
 
     def step(self, token_id: int, *, position: int, sample: bool = True) -> Qwen35ParoAutoregressiveStepResult | None:
         if self.closed:
@@ -3702,6 +3706,11 @@ class Qwen35ParoResidentSession:
                         )
                     capture_live_memory("full_prefill_scratch_live")
 
+            native_batch_warmup = self._warm_server_native_batch_shapes(
+                max_prompt_tokens=prompt_rows,
+                max_batch_size=batch_size,
+            )
+
             peak_memory = None
             if live_memory_samples:
                 peak_memory = max(live_memory_samples, key=lambda item: int(item.get("used_bytes", 0) or 0))
@@ -3756,6 +3765,7 @@ class Qwen35ParoResidentSession:
                 "workspace_overlap_minimized": bool(minimize_workspace_overlap),
                 "prefill_phase_order": list(phase_order),
                 "prefill_chunk_tuning": dict(getattr(self, "prefill_chunk_tuning", {}) or {}),
+                "native_batch_warmup": native_batch_warmup,
                 "live_memory": peak_memory,
                 "live_memory_samples": list(live_memory_samples),
                 "release_after_probe": bool(release_after_probe),
@@ -3765,6 +3775,97 @@ class Qwen35ParoResidentSession:
                 self._restore_decode_scratch_after_prefill()
             elif minimize_workspace_overlap:
                 self._reserve_decode_scratch_after_prefill()
+
+    def _warm_server_native_batch_shapes(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_batch_size: int,
+    ) -> dict[str, Any]:
+        """Optionally run tiny packed c>N prefill/decode shapes during startup.
+
+        GGUF server work showed that merely reserving scratch can miss cold
+        packed-shape setup costs. PARO keeps this opt-in until native c>N decode
+        is promoted beyond the experimental gate.
+        """
+
+        enabled = _env_flag(_SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV)
+        result: dict[str, Any] = {
+            "enabled": bool(enabled),
+            "packed_prefill_widths": [],
+            "packed_prefill_prompt_lengths": [],
+            "native_batch_decode_widths": [],
+            "native_batch_decode_skipped": False,
+            "native_batch_decode_skip_reason": None,
+            "skipped": False,
+            "skip_reason": None,
+        }
+        if not enabled:
+            result["skipped"] = True
+            result["skip_reason"] = "disabled"
+            return result
+        if max_batch_size <= 1:
+            result["skipped"] = True
+            result["skip_reason"] = "batch_width_le_1"
+            return result
+        if getattr(self, "kv_storage_dtype", DType.BF16) != DType.BF16:
+            result["skipped"] = True
+            result["skip_reason"] = "bf16_kv_required"
+            return result
+
+        from hipengine.generation.batch_scheduler import ResidentBatchScheduler
+
+        max_token = max(1, int(getattr(self, "vocab_size", 32000) or 32000) - 1)
+        warm_tokens = max(
+            1,
+            min(
+                int(max_prompt_tokens),
+                _env_int(
+                    _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV,
+                    _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT,
+                ),
+            ),
+        )
+        decode_enabled = _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE")
+        if not decode_enabled:
+            result["native_batch_decode_skipped"] = True
+            result["native_batch_decode_skip_reason"] = "experimental_native_batch_decode_disabled"
+
+        for width in (2, 4, 8):
+            if width > int(max_batch_size):
+                continue
+            token_rows = tuple(
+                tuple(((slot + position) % max_token) + 1 for position in range(warm_tokens))
+                for slot in range(width)
+            )
+            scheduler = ResidentBatchScheduler(capacity=width)
+            request_ids = tuple(scheduler.submit(row, max_new_tokens=1) for row in token_rows)
+            admitted = scheduler.admit_pending()
+            if admitted != request_ids:
+                raise RuntimeError(f"unexpected startup warmup admitted request ids {admitted!r}")
+            slabs = scheduler.next_compact_prefill_slabs(
+                chunk_size=warm_tokens,
+                block_size=getattr(self, "block_size", 256),
+            )
+            for slab in slabs:
+                self.prefill_native_packed(slab, sample=False)
+            result["packed_prefill_widths"].append(width)
+            result["packed_prefill_prompt_lengths"].append(warm_tokens)
+
+            if decode_enabled:
+                self.step_batch_native(
+                    [row[-1] for row in token_rows],
+                    positions=[len(row) for row in token_rows],
+                    slots=list(range(width)),
+                    sample=False,
+                )
+                result["native_batch_decode_widths"].append(width)
+
+            reset = getattr(self, "reset", None)
+            if callable(reset):
+                reset()
+
+        return result
 
     def _trace_linear_input_bits(
         self,

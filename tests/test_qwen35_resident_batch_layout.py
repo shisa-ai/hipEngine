@@ -1533,6 +1533,119 @@ def test_qwen35_resident_batch_execution_metadata_loads_projection_dispatch_cand
     )
 
 
+def test_qwen35_resident_server_native_batch_warmup_is_disabled_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.kv_storage_dtype = DType.BF16
+    monkeypatch.delenv("HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP", raising=False)
+
+    result = session._warm_server_native_batch_shapes(max_prompt_tokens=8, max_batch_size=4)
+
+    assert result == {
+        "enabled": False,
+        "packed_prefill_widths": [],
+        "packed_prefill_prompt_lengths": [],
+        "native_batch_decode_widths": [],
+        "native_batch_decode_skipped": False,
+        "native_batch_decode_skip_reason": None,
+        "skipped": True,
+        "skip_reason": "disabled",
+    }
+
+
+def test_qwen35_resident_server_native_batch_warmup_runs_packed_prefill_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.kv_storage_dtype = DType.BF16
+    session.vocab_size = 32
+    session.block_size = 256
+    calls: list[tuple] = []
+
+    def fake_prefill(self, slab, *, sample: bool = True):
+        calls.append(
+            (
+                "prefill",
+                slab.request_ids,
+                slab.token_rows,
+                slab.physical_slot_ids,
+                sample,
+            )
+        )
+        return tuple(None for _ in slab.request_ids)
+
+    def fake_reset(self):
+        calls.append(("reset",))
+
+    session.prefill_native_packed = MethodType(fake_prefill, session)
+    session.reset = MethodType(fake_reset, session)
+    monkeypatch.setenv("HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS", "3")
+    monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
+
+    result = session._warm_server_native_batch_shapes(max_prompt_tokens=8, max_batch_size=4)
+
+    assert result["packed_prefill_widths"] == [2, 4]
+    assert result["packed_prefill_prompt_lengths"] == [3, 3]
+    assert result["native_batch_decode_widths"] == []
+    assert result["native_batch_decode_skipped"] is True
+    assert result["native_batch_decode_skip_reason"] == "experimental_native_batch_decode_disabled"
+    assert [call[0] for call in calls] == ["prefill", "reset", "prefill", "reset"]
+    assert calls[0] == (
+        "prefill",
+        (0, 1),
+        ((1, 2, 3), (2, 3, 4)),
+        (0, 1),
+        False,
+    )
+    assert calls[2] == (
+        "prefill",
+        (0, 1, 2, 3),
+        ((1, 2, 3), (2, 3, 4), (3, 4, 5), (4, 5, 6)),
+        (0, 1, 2, 3),
+        False,
+    )
+
+
+def test_qwen35_resident_server_native_batch_warmup_runs_decode_when_experimental(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.kv_storage_dtype = DType.BF16
+    session.vocab_size = 32
+    session.block_size = 256
+    calls: list[tuple] = []
+
+    def fake_prefill(self, slab, *, sample: bool = True):
+        calls.append(("prefill", len(slab.request_ids), sample))
+        return tuple(None for _ in slab.request_ids)
+
+    def fake_step(self, token_ids, *, positions, slots, sample: bool = True):
+        calls.append(("decode", tuple(token_ids), tuple(positions), tuple(slots), sample))
+        return tuple(None for _ in token_ids)
+
+    def fake_reset(self):
+        calls.append(("reset",))
+
+    session.prefill_native_packed = MethodType(fake_prefill, session)
+    session.step_batch_native = MethodType(fake_step, session)
+    session.reset = MethodType(fake_reset, session)
+    monkeypatch.setenv("HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS", "2")
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+
+    result = session._warm_server_native_batch_shapes(max_prompt_tokens=8, max_batch_size=4)
+
+    assert result["packed_prefill_widths"] == [2, 4]
+    assert result["native_batch_decode_widths"] == [2, 4]
+    assert result["native_batch_decode_skipped"] is False
+    assert [call for call in calls if call[0] == "decode"] == [
+        ("decode", (2, 3), (2, 2), (0, 1), False),
+        ("decode", (2, 3, 4, 5), (2, 2, 2, 2), (0, 1, 2, 3), False),
+    ]
+
+
 def test_qwen35_resident_step_batch_native_requires_experimental_env(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
