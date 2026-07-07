@@ -135,6 +135,49 @@ def test_normalize_geometry_result_shapes_schema() -> None:
     json.dumps(result, allow_nan=False)
 
 
+def test_geometry_fixed_workgroup_merge_and_schema() -> None:
+    module = _load_runner_module()
+    raw32 = _raw_artifact("hip")
+    raw32["config"]["workgroups"] = [32]
+    raw32["rows"] = [row for row in raw32["rows"] if row["workgroup_size"] == 32]
+    raw64 = _raw_artifact("hip")
+    raw64["config"]["workgroups"] = [64]
+    raw64["rows"] = [row for row in raw64["rows"] if row["workgroup_size"] == 64]
+
+    merged = module._merge_fixed_hip_raw_results([raw32, raw64], workgroups=[32, 64])
+    assert merged["config"]["hip_workgroup_specialization"] == "fixed"
+    assert merged["config"]["hip_fixed_workgroup_sizes"] == [32, 64]
+    assert [row["workgroup_size"] for row in merged["rows"]] == [32, 64, 64]
+
+    result = module.normalize_raw_result(
+        merged,
+        backend="hip",
+        environment=_environment(),
+        wrapper_command=["python3", "geometry_sweep.py"],
+        harness_command=[["/tmp/fixed32"], ["/tmp/fixed64"]],
+        build_command=[["hipcc", "fixed32"], ["hipcc", "fixed64"]],
+        shader_command=None,
+        source_hash="sha256:test",
+    )
+    assert result["parameters"]["hip_workgroup_specialization"] == "fixed"
+    assert result["parameters"]["hip_fixed_workgroup_sizes"] == [32, 64]
+    json.dumps(result, allow_nan=False)
+
+
+def test_geometry_fixed_workgroup_arg_is_hip_only() -> None:
+    module = _load_runner_module()
+
+    args = module.parse_args(["--backend", "hip", "--hip-workgroup-specialization", "fixed"])
+    assert args.hip_workgroup_specialization == "fixed"
+
+    try:
+        module.parse_args(["--backend", "vulkan", "--hip-workgroup-specialization", "fixed"])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("expected SystemExit for Vulkan fixed HIP workgroup flag")
+
+
 def test_geometry_comparison_matches_rows() -> None:
     module = _load_runner_module()
     env = _environment()

@@ -42,6 +42,20 @@ def test_memory_waitcnt_wavefront_flags() -> None:
     assert module._hip_wavefront_flags("64") == ["-mwavefrontsize64"]
 
 
+def test_memory_waitcnt_fixed_block_arg_is_hip_only() -> None:
+    module = _load_runner_module()
+
+    args = module.parse_args(["--backend", "hip", "--hip-fixed-block-index"])
+    assert args.hip_fixed_block_index is True
+
+    try:
+        module.parse_args(["--backend", "vulkan", "--hip-fixed-block-index"])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("expected SystemExit for Vulkan fixed HIP block flag")
+
+
 def test_build_memory_waitcnt_comparison() -> None:
     module = _load_runner_module()
     hip = {

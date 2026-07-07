@@ -20,6 +20,10 @@
 #define HIPENGINE_DOT_GROUPS 16
 #endif
 
+#ifndef HIPENGINE_DOT_FIXED_BLOCK
+#define HIPENGINE_DOT_FIXED_BLOCK 0
+#endif
+
 namespace {
 
 constexpr uint32_t kBlockSize = 256;
@@ -27,6 +31,12 @@ constexpr uint32_t kModeQ8Signed = 0;
 constexpr uint32_t kModeQ4Unsigned = 1;
 constexpr uint32_t kModeQ6Zero = 2;
 constexpr uint32_t kModeScalarDequant = 3;
+
+#if HIPENGINE_DOT_FIXED_BLOCK
+#define HIPENGINE_DOT_LAUNCH_BOUNDS __launch_bounds__(kBlockSize)
+#else
+#define HIPENGINE_DOT_LAUNCH_BOUNDS
+#endif
 
 struct Args {
   std::string json_path;
@@ -283,6 +293,7 @@ __host__ __device__ int run_value(
   return sum;
 }
 
+HIPENGINE_DOT_LAUNCH_BOUNDS
 __global__ void dot_path_kernel(
     const uint32_t* __restrict__ weights,
     const uint32_t* __restrict__ activations,
@@ -290,7 +301,12 @@ __global__ void dot_path_kernel(
     uint32_t n,
     uint32_t body_iters,
     uint32_t data_mask) {
-  uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  uint32_t idx =
+#if HIPENGINE_DOT_FIXED_BLOCK
+      blockIdx.x * kBlockSize + threadIdx.x;
+#else
+      blockIdx.x * blockDim.x + threadIdx.x;
+#endif
   if (idx >= n) {
     return;
   }
@@ -460,6 +476,8 @@ void write_json(const Args& args, const hipDeviceProp_t& prop, const Row& row) {
   *out << "    \"n\": " << row.n << ",\n";
   *out << "    \"body_iters\": " << row.body_iters << ",\n";
   *out << "    \"block_size\": " << row.block_size << ",\n";
+  *out << "    \"fixed_block_indexing\": "
+       << (HIPENGINE_DOT_FIXED_BLOCK ? "true" : "false") << ",\n";
   *out << "    \"data_elems\": " << row.data_elems << ",\n";
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
