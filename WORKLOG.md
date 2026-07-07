@@ -146272,3 +146272,19 @@ python3 scripts/gguf_mtp_bench.py \
   and `git diff --check` passed. Updated `docs/HIP-vs-VULKAN.md`,
   `benchmarks/micro/README.md`, `benchmarks/README.md`, and
   `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - HIP vs Vulkan conclusion and next-test cleanup
+
+- Updated `docs/HIP-vs-VULKAN.md` from a pure attribution plan into a retained
+  results-and-plan document. The current conclusion is explicit: the gfx1151
+  evidence does not support "HIP is slower simply because RADV/ACO is better"
+  as a single explanation.
+- Recorded the ruled-out explanations: missed HIP VOPD/dual-issue, HIP
+  scratch/spills, and workgroup-size choice alone. The remaining plausible
+  causes are dispatch/runtime overhead, memory/waitcnt scheduling after
+  wave/fixed-shape controls, dot-instruction lowering, and real-slice transfer.
+- Narrowed the useful next tests to dot-path q8/q4/q6 microbenches, HIP
+  wave64/fixed-shape memory and geometry controls, one selected-MoE or q6
+  lm-head real slice, and then cross-GPU reruns after the harnesses are
+  classified. Generic gfx1151 dispatch, broad geometry, generic VOPD, and
+  generic memory reruns are no longer priority.
