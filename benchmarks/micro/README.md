@@ -19,6 +19,7 @@ benchmarks/micro/
     dot_path.py
     geometry_sweep.py
     isa_stats.py
+    q4_selected_dual_isa_stats.py
     memory_waitcnt.py
     q4_selected_dual_real_slice.py
     vopd_sweep.py
@@ -492,10 +493,35 @@ python3 benchmarks/micro/runners/vopd_sweep.py \
   --out benchmarks/micro/results/gfx1100/w7900/vopd-sweep-comparison.json
 ```
 
+## Q4 Selected-Dual HIP/RADV ISA Comparison
+
+`runners/q4_selected_dual_isa_stats.py` compares the production HIP
+Q4_K selected-dual q8_1+dp4a kernel against the retained Vulkan/RADV shaderstats
+artifact for the same real slice. It compiles the HIP production source with
+`hipcc --save-temps`, parses code-object metadata and `llvm-objdump`
+disassembly, then joins the rows with the RADV shaderstats artifact.
+
+Retained gfx1151 command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+python3 benchmarks/micro/runners/q4_selected_dual_isa_stats.py \
+  --hip-result benchmarks/micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json \
+  --vulkan-isa-result benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json \
+  --build-dir /tmp/hipengine-micro-q4-selected-dual-isa-stats \
+  --gfx-arch gfx1151 \
+  --hardware-gpu "Radeon 8060S Graphics" \
+  --out benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json
+```
+
+This is an attribution artifact for the retained Q4_K selected-dual Vulkan win.
+It does not create a new timing claim by itself.
+
 ## Retained Results
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q4_K selected-dual HIP/RADV ISA comparison | Targeted ISA comparison for the one positive Vulkan real-slice row shows the Q4 win is not missing HIP dot4, HIP spills, or RADV VOPD pairing. HIP and RADV both emit 3 dot4 instructions and no scratch/spills for the dot shader. HIP emits wave32, 31 SGPR / 22 VGPR, 564 static instructions, 35 waitcnt-family instructions, and 4 VOPD; RADV emits wave64, official 108 SGPR / 48 VGPR, 526 static instructions, 26 waitcnt-family instructions, and 0 VOPD. Classified slice-specific `real_slice_probe`; remaining Q4 follow-up is narrower scheduling/source/reduction work only if it changes backend or HIP implementation priority. | `results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q4_K selected-dual real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness and does transfer a real Vulkan win. Best Vulkan local_size=64 is `0.29607 ms` prequantized dot and `0.29238 ms` quantize+dot versus retained HIP `0.34638 ms` and `0.34582 ms`, so Vulkan is `1.17x` faster on dot and `1.18x` faster combined. RADV final dot shader has 3 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 26 waitcnt-family instructions, and 22 buffer loads. Classified slice-specific `real_slice_probe`, not broad `compiler_aco`. | `results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q6_K X8 selected-down real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness but does not transfer the synthetic Vulkan dot-path win. Best Vulkan local_size=64 is `0.03076 ms` prequantized dot and `0.03217 ms` quantize+dot versus retained HIP `0.01665 ms` and `0.01925 ms`, so Vulkan is `1.85x` slower on dot and `1.67x` slower combined. RADV final dot shader has 9 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 89 waitcnt-family instructions, and 82 buffer loads. Classified `real_slice_probe`; do not pursue this q6 selected-down Vulkan port as implemented. | `results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S | HIP q8_1 real-slice layout controls | HIP production-layout q8_1 controls are positive. Q4_K selected-dual gate/up q8_1 quantize+dp4a is `2.77x` faster than raw selected-dual with top-1 `1.0`; Q6_K selected-down X8 q8_1 quantize+dp4a is `1.68x` faster than production T16 float with top-1 `1.0`. q8_1 quantization is only `0.0025-0.0027 ms`. Classified `layout_quant`; this is HIP-only evidence, not a matched Vulkan real-slice result. | `results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json`, `results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json` |
