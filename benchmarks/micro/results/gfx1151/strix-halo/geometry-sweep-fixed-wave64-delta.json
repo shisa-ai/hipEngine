@@ -1,0 +1,160 @@
+{
+  "bench": "f32_gemv_geometry_fixed_wave64_delta",
+  "classification": "diagnostic_unclassified",
+  "correctness": {
+    "hip_fixed_wave32": {
+      "max_abs": 0.0,
+      "max_rel": 0.0,
+      "oracle": "CPU f32 reference using the same per-workgroup reduction order",
+      "status": "pass"
+    },
+    "hip_fixed_wave64": {
+      "max_abs": 0.0,
+      "max_rel": 0.0,
+      "oracle": "CPU f32 reference using the same per-workgroup reduction order",
+      "status": "pass"
+    },
+    "vulkan": {
+      "max_abs": 0.0,
+      "max_rel": 0.0,
+      "oracle": "CPU f32 reference using the same per-workgroup reduction order",
+      "status": "pass"
+    }
+  },
+  "hardware": {
+    "hip_fixed_wave32": {
+      "gfx_arch": "gfx1151",
+      "gpu_name": "Radeon 8060S Graphics"
+    },
+    "hip_fixed_wave64": {
+      "gfx_arch": "gfx1151",
+      "gpu_name": "Radeon 8060S Graphics"
+    },
+    "vulkan": {
+      "device_id": "0x1586",
+      "gfx_arch": "gfx1151",
+      "gpu_name": "Radeon 8060S Graphics"
+    }
+  },
+  "inputs": {
+    "hip_fixed_wave32": "benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup.json",
+    "hip_fixed_wave64": "benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup-wave64.json",
+    "hip_wave64_isa": "benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json",
+    "isa_comparison": "benchmarks/micro/results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json",
+    "vulkan_fixed_control": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep-fixed-control.json",
+    "vulkan_vs_hip_wave64": "benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-wave64-comparison.json"
+  },
+  "interpretation": "Forcing HIP wave64 while also specializing fixed workgroup sizes does not close the f32 geometry gap. Best HIP fixed-wave64 rows are slower than fixed-wave32, and Vulkan remains faster on every retained best-native shape.",
+  "kind": "hipengine_micro_comparison",
+  "schema_version": 1,
+  "shape_summary": [
+    {
+      "best_hip_fixed_wave32_median_us": 23.24804962,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 26.3368994,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 3.05725,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.1328648996577633,
+      "k": 512,
+      "rows": 1,
+      "vulkan_vs_hip_fixed_wave64_speedup": 8.614571722953636
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 23.25665057,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 26.30659938,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 3.32925,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.1311430810219203,
+      "k": 512,
+      "rows": 4,
+      "vulkan_vs_hip_fixed_wave64_speedup": 7.901659346699708
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 23.23729992,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 26.36590004,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 4.17635,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.1346369901309945,
+      "k": 512,
+      "rows": 8,
+      "vulkan_vs_hip_fixed_wave64_speedup": 6.313144262334335
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 82.14895129,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 98.62604737,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 7.10485,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.2005758542410725,
+      "k": 2048,
+      "rows": 1,
+      "vulkan_vs_hip_fixed_wave64_speedup": 13.88151014729375
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 82.82870054,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 102.1945953,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 7.7781,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.2338065746986788,
+      "k": 2048,
+      "rows": 4,
+      "vulkan_vs_hip_fixed_wave64_speedup": 13.138760789910132
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 85.9367013,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 99.04900193,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 8.775,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.152580916321488,
+      "k": 2048,
+      "rows": 8,
+      "vulkan_vs_hip_fixed_wave64_speedup": 11.287635547578347
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 385.4372501,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 444.3787098,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 27.47305,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.1529210258860758,
+      "k": 8192,
+      "rows": 1,
+      "vulkan_vs_hip_fixed_wave64_speedup": 16.175077386748104
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 392.9991484,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 451.1388779,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 31.2141,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.1479385635737422,
+      "k": 8192,
+      "rows": 4,
+      "vulkan_vs_hip_fixed_wave64_speedup": 14.453047754059865
+    },
+    {
+      "best_hip_fixed_wave32_median_us": 398.3396053,
+      "best_hip_fixed_wave32_workgroup": 256,
+      "best_hip_fixed_wave64_median_us": 464.8898602,
+      "best_hip_fixed_wave64_workgroup": 256,
+      "best_vulkan_median_us": 32.99395,
+      "best_vulkan_workgroup": 256,
+      "hip_wave64_over_wave32": 1.1670691390324575,
+      "k": 8192,
+      "rows": 8,
+      "vulkan_vs_hip_fixed_wave64_speedup": 14.090154716243433
+    }
+  ]
+}

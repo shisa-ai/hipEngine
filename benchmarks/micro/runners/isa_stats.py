@@ -370,7 +370,21 @@ def _find_single(paths: list[Path], suffix: str) -> Path:
     return sorted(matches)[0]
 
 
-def _compile_hip_save_temps(build_dir: Path, gfx_arch: str | None) -> tuple[Path, Path, list[str]]:
+def _hip_wavefront_flags(wavefront_size: str) -> list[str]:
+    if wavefront_size == "64":
+        return ["-mwavefrontsize64"]
+    if wavefront_size == "32":
+        return ["-mno-wavefrontsize64"]
+    return []
+
+
+def _compile_hip_save_temps(
+    build_dir: Path,
+    gfx_arch: str | None,
+    *,
+    hip_wavefront_size: str = "default",
+    fixed_workgroup_size: int | None = None,
+) -> tuple[Path, Path, list[str]]:
     build_dir.mkdir(parents=True, exist_ok=True)
     hipcc = shutil.which("hipcc")
     if not hipcc:
@@ -378,7 +392,22 @@ def _compile_hip_save_temps(build_dir: Path, gfx_arch: str | None) -> tuple[Path
     command = [hipcc]
     if gfx_arch:
         command.append(f"--offload-arch={gfx_arch}")
-    command.extend(["-O3", "-std=c++17", "--save-temps", str(HIP_HARNESS), "-o", "hip_geometry_sweep"])
+    command.extend(
+        [
+            *_hip_wavefront_flags(hip_wavefront_size),
+            "-O3",
+            "-std=c++17",
+            "--save-temps",
+            *(
+                [f"-DHIPENGINE_FIXED_WORKGROUP_SIZE={fixed_workgroup_size}"]
+                if fixed_workgroup_size
+                else []
+            ),
+            str(HIP_HARNESS),
+            "-o",
+            "hip_geometry_sweep",
+        ]
+    )
     completed = _run_command(command, cwd=build_dir)
     if completed.returncode != 0:
         raise RuntimeError("HIP save-temps build failed")
@@ -507,50 +536,91 @@ def _run_hip(args: argparse.Namespace) -> dict[str, Any]:
         environment_ref=str(args.environment_ref) if args.environment_ref else None,
         geometry_result=args.geometry_result,
     )
-    build_dir = args.build_dir / "hip"
-    obj, asm, build_command = _compile_hip_save_temps(build_dir, args.gfx_arch)
-    readobj_command = [shutil.which("llvm-readobj") or "llvm-readobj", "--notes", str(obj)]
-    objdump_command = [
-        shutil.which("llvm-objdump") or "llvm-objdump",
-        "-d",
-        "--no-show-raw-insn",
-        str(obj),
-    ]
-    notes = _read_text_command(readobj_command, cwd=REPO_ROOT)
-    disasm = _read_text_command(objdump_command, cwd=REPO_ROOT)
-    metadata = parse_hip_metadata(notes)
-    disasm_stats = parse_disassembly_stats(disasm)
     workgroups = [int(value) for value in args.workgroups.split(",") if value]
     rows = []
+    build_dir = args.build_dir / "hip"
+    build_commands: list[list[str]] = []
+    readobj_commands: list[list[str]] = []
+    objdump_commands: list[list[str]] = []
+    object_paths: list[str] = []
+    assembly_paths: list[str] = []
     for workgroup in workgroups:
-        row = {
-            "k": args.k,
-            "rows": args.rows,
-            "workgroup_size": workgroup,
-            "body_repeats": args.body_repeats,
-            "lds_bytes": workgroup * 4,
-            **metadata,
-            **disasm_stats,
-            "stats_status": "actual_hip_code_object_metadata_plus_objdump_disassembly",
-        }
-        rows.append(row)
+        fixed_workgroup_size = (
+            workgroup if args.hip_workgroup_specialization == "fixed" else None
+        )
+        compile_dir = (
+            build_dir / f"fixed_wg{workgroup}"
+            if fixed_workgroup_size is not None
+            else build_dir / "runtime"
+        )
+        obj, asm, build_command_one = _compile_hip_save_temps(
+            compile_dir,
+            args.gfx_arch,
+            hip_wavefront_size=args.hip_wavefront_size,
+            fixed_workgroup_size=fixed_workgroup_size,
+        )
+        readobj_command = [shutil.which("llvm-readobj") or "llvm-readobj", "--notes", str(obj)]
+        objdump_command = [
+            shutil.which("llvm-objdump") or "llvm-objdump",
+            "-d",
+            "--no-show-raw-insn",
+            str(obj),
+        ]
+        notes = _read_text_command(readobj_command, cwd=REPO_ROOT)
+        disasm = _read_text_command(objdump_command, cwd=REPO_ROOT)
+        metadata = parse_hip_metadata(notes)
+        disasm_stats = parse_disassembly_stats(disasm)
+        build_commands.append(build_command_one)
+        readobj_commands.append(readobj_command)
+        objdump_commands.append(objdump_command)
+        object_paths.append(str(obj))
+        assembly_paths.append(str(asm))
+        rows.append(
+            {
+                "k": args.k,
+                "rows": args.rows,
+                "workgroup_size": workgroup,
+                "body_repeats": args.body_repeats,
+                "lds_bytes": workgroup * 4,
+                "hip_workgroup_specialization": args.hip_workgroup_specialization,
+                "hip_wavefront_size_request": args.hip_wavefront_size,
+                **metadata,
+                **disasm_stats,
+                "stats_status": "actual_hip_code_object_metadata_plus_objdump_disassembly",
+            }
+        )
+        if args.hip_workgroup_specialization != "fixed":
+            break
+    if args.hip_workgroup_specialization != "fixed" and rows:
+        template = rows[0]
+        rows = [
+            {
+                **template,
+                "workgroup_size": workgroup,
+                "lds_bytes": workgroup * 4,
+            }
+            for workgroup in workgroups
+        ]
     primary = rows[-1] if rows else {}
     result["parameters"].update(
         {
-            "build_command": build_command,
-            "readobj_command": readobj_command,
-            "objdump_command": objdump_command,
+            "hip_workgroup_specialization": args.hip_workgroup_specialization,
+            "hip_wavefront_size_request": args.hip_wavefront_size,
+            "build_command": build_commands,
+            "readobj_command": readobj_commands,
+            "objdump_command": objdump_commands,
             "save_temps_dir": str(build_dir),
-            "object_path": str(obj),
-            "assembly_path": str(asm),
+            "object_path": object_paths,
+            "assembly_path": assembly_paths,
         }
     )
     result["isa"] = _json_safe(primary)
     result["measurements"] = {"rows": _json_safe(rows)}
     result["notes"] = (
         "HIP ISA stats are compile-time code-object metadata plus llvm-objdump counts. "
-        "The geometry kernel uses runtime blockDim, so one code object covers all listed "
-        "workgroup sizes; dynamic LDS bytes are reported per workgroup."
+        "Runtime-workgroup extraction uses one code object for all listed workgroups; "
+        "fixed-workgroup extraction compiles one code object per workgroup. Dynamic LDS "
+        "bytes are reported per workgroup."
     )
     return _json_safe(result)
 
@@ -778,6 +848,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD_DIR)
     parser.add_argument("--gfx-arch", help="Override gfx arch and HIP offload arch")
     parser.add_argument("--hardware-gpu", help="Override GPU name in normalized output")
+    parser.add_argument(
+        "--hip-workgroup-specialization",
+        choices=["runtime", "fixed"],
+        default="runtime",
+        help="For HIP, extract runtime blockDim code or one fixed-workgroup code object per workgroup",
+    )
+    parser.add_argument("--hip-wavefront-size", choices=["default", "32", "64"], default="default")
     parser.add_argument("--k", type=int, default=2048)
     parser.add_argument("--rows", type=int, default=1)
     parser.add_argument("--workgroups", default="64,256")
@@ -796,6 +873,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--compare and --backend are mutually exclusive")
     if not args.compare and not args.backend:
         parser.error("one of --backend or --compare is required")
+    if args.backend != "hip" and args.hip_workgroup_specialization != "runtime":
+        parser.error("--hip-workgroup-specialization=fixed only applies to --backend hip")
+    if args.backend != "hip" and args.hip_wavefront_size != "default":
+        parser.error("--hip-wavefront-size only applies to --backend hip")
     if args.k <= 0 or args.rows <= 0 or args.body_repeats <= 0:
         parser.error("--k, --rows, and --body-repeats must be positive")
     try:

@@ -80,6 +80,7 @@ def _compile_hip_harness(
     gfx_arch: str | None,
     *,
     fixed_workgroup_size: int | None = None,
+    hip_wavefront_size: str = "default",
 ) -> tuple[Path, list[str]]:
     build_dir.mkdir(parents=True, exist_ok=True)
     exe_path = build_dir / "hip_geometry_sweep"
@@ -90,6 +91,10 @@ def _compile_hip_harness(
     arch = gfx_arch or os.environ.get("HIPENGINE_HIP_ARCH")
     if arch:
         command.append(f"--offload-arch={arch}")
+    if hip_wavefront_size == "64":
+        command.append("-mwavefrontsize64")
+    elif hip_wavefront_size == "32":
+        command.append("-mno-wavefrontsize64")
     command.extend(
         [
             "-O3",
@@ -294,6 +299,9 @@ def normalize_raw_result(
                 "benchmark_family": "geometry_sweep",
                 "algorithm": "repeat_shifted_f32_gemv_row_shared_tree_reduce",
                 "hip_workgroup_specialization": config.get("hip_workgroup_specialization")
+                if backend == "hip"
+                else None,
+                "hip_wavefront_size_request": config.get("hip_wavefront_size_request")
                 if backend == "hip"
                 else None,
                 "hip_fixed_workgroup_sizes": config.get("hip_fixed_workgroup_sizes")
@@ -525,6 +533,7 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
                     fixed_dir,
                     args.gfx_arch,
                     fixed_workgroup_size=workgroup,
+                    hip_wavefront_size=args.hip_wavefront_size,
                 )
                 raw_one = fixed_dir / "raw.json"
                 harness_command_one = [
@@ -555,11 +564,16 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
                 build_commands.append(build_command_one)
                 harness_commands.append(harness_command_one)
             raw = _merge_fixed_hip_raw_results(raw_results, workgroups=workgroups)
+            raw.setdefault("config", {})["hip_wavefront_size_request"] = args.hip_wavefront_size
             raw_path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             build_command = build_commands
             harness_command = harness_commands
         else:
-            exe, build_command = _compile_hip_harness(build_dir, args.gfx_arch)
+            exe, build_command = _compile_hip_harness(
+                build_dir,
+                args.gfx_arch,
+                hip_wavefront_size=args.hip_wavefront_size,
+            )
             harness_command = [
                 str(exe),
                 "--json",
@@ -585,6 +599,7 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
             if completed.returncode != 0:
                 raise RuntimeError(f"{args.backend} geometry harness run failed")
             raw = json.loads(raw_path.read_text(encoding="utf-8"))
+            raw.setdefault("config", {})["hip_wavefront_size_request"] = args.hip_wavefront_size
         shader_command = None
         source_hash = _hash_files([Path(__file__).resolve(), HIP_HARNESS])
     else:
@@ -654,6 +669,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="runtime",
         help="For HIP, compile runtime blockDim code or one fixed-workgroup binary per requested workgroup",
     )
+    parser.add_argument("--hip-wavefront-size", choices=["default", "32", "64"], default="default")
     parser.add_argument("--k-list", default="512,2048,8192")
     parser.add_argument("--rows-list", default="1,4,8")
     parser.add_argument("--workgroups", default="32,64,128,256")
@@ -673,6 +689,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("one of --backend or --compare is required")
     if args.backend != "hip" and args.hip_workgroup_specialization != "runtime":
         parser.error("--hip-workgroup-specialization=fixed only applies to --backend hip")
+    if args.backend != "hip" and args.hip_wavefront_size != "default":
+        parser.error("--hip-wavefront-size only applies to --backend hip")
     for name in ("k_list", "rows_list", "workgroups"):
         values = _list_arg(getattr(args, name))
         if not values or any(not value.isdigit() or int(value) <= 0 for value in values):
