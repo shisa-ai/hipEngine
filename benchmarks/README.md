@@ -5,7 +5,8 @@ Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, geometry
 ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
 dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
 shaderstats allocation extraction, HIP q8_1 real-slice layout controls, plus a
-matched Vulkan Q6_K X8 selected-down real-slice probe.
+matched Vulkan Q6_K X8 selected-down real-slice probe and matched Vulkan Q4_K
+selected-dual gate/up real-slice probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -60,7 +61,22 @@ passes full CPU correctness but measures **0.03076 ms** prequantized dot and
 combined path. RADV final dot shader has **9** final dot4 instructions,
 subgroup size **64**, **0 VOPD**, official **48 VGPR / 108 SGPR** with
 **0 scratch/spills**, **89** waitcnt-family instructions, and **82** buffer
-loads. Artifacts:
+loads.
+Matched Vulkan Q4_K selected-dual gate/up real-slice probe: best Vulkan
+local_size=64 passes full CPU correctness and measures **0.29607 ms**
+prequantized dot and **0.29238 ms** quantize+dot versus retained HIP
+**0.34638 ms** and **0.34582 ms**; Vulkan is **1.17x** faster on dot and
+**1.18x** faster on the combined path. RADV final dot shader has **3** final
+dot4 instructions, subgroup size **64**, **0 VOPD**, official
+**48 VGPR / 108 SGPR** with **0 scratch/spills**, **26** waitcnt-family
+instructions, and **22** buffer loads. This is retained as slice-specific
+`real_slice_probe`, not broad `compiler_aco`.
+Artifacts:
+[`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json),
+[`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json),
+[`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json),
+[`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json),
+[`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json),
 [`micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`](micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json),
