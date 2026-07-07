@@ -355,11 +355,11 @@ def _vulkan_isa(
     completed = _run_command(
         command,
         cwd=REPO_ROOT,
-        env={"RADV_DEBUG": "shaders"},
+        env={"RADV_DEBUG": "shaders,shaderstats"},
         echo=not args.quiet_shader_dump,
     )
     if completed.returncode != 0:
-        raise RuntimeError("Vulkan RADV_DEBUG=shaders memory/waitcnt run failed")
+        raise RuntimeError("Vulkan RADV_DEBUG=shaders,shaderstats memory/waitcnt run failed")
     dump = completed.stdout + completed.stderr
     rows = isa.parse_radv_shader_dump(dump)
     if not rows:
@@ -367,7 +367,7 @@ def _vulkan_isa(
     row = rows[-1]
     row.update(
         {
-            "stats_status": "radv_debug_shaders_final_disassembly",
+            "stats_status": "radv_debug_shaders_shaderstats_final_disassembly",
             "raw_probe_retained": False,
             "shader_dump_retained": False,
         }
@@ -411,7 +411,15 @@ def _normalize_result(
             else None
         )
         row["wave_size"] = isa.get("wave_size") or isa.get("api_subgroup_size")
-        for key in ("vgpr", "sgpr", "scratch_bytes", "sgpr_spill_count", "vgpr_spill_count"):
+        for key in (
+            "vgpr",
+            "sgpr",
+            "scratch_bytes",
+            "sgpr_spill_count",
+            "vgpr_spill_count",
+            "subgroups_per_simd",
+            "code_size_bytes",
+        ):
             if isa.get(key) is not None:
                 row[key] = isa.get(key)
         for key in ("estimated_vgpr_span", "estimated_sgpr_span"):
@@ -596,7 +604,7 @@ def _run_vulkan(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dic
                 "build_command": build_command,
                 "harness_command": harness_command,
                 "debug_command": debug_command,
-                "debug_env": {"RADV_DEBUG": "shaders"},
+                "debug_env": {"RADV_DEBUG": "shaders,shaderstats"},
                 "shader_dump_bytes": shader_dump_bytes,
                 "raw_json_retained": False,
                 "shader_dump_retained": False,
@@ -669,6 +677,13 @@ def build_comparison(
                 "hip_vgpr": hip.get("vgpr"),
                 "hip_sgpr": hip.get("sgpr"),
                 "hip_scratch_bytes": hip.get("scratch_bytes"),
+                "vulkan_vgpr": vulkan.get("vgpr"),
+                "vulkan_sgpr": vulkan.get("sgpr"),
+                "vulkan_scratch_bytes": vulkan.get("scratch_bytes"),
+                "vulkan_sgpr_spill_count": vulkan.get("sgpr_spill_count"),
+                "vulkan_vgpr_spill_count": vulkan.get("vgpr_spill_count"),
+                "vulkan_subgroups_per_simd": vulkan.get("subgroups_per_simd"),
+                "vulkan_code_size_bytes": vulkan.get("code_size_bytes"),
                 "vulkan_estimated_vgpr_span": vulkan.get("estimated_vgpr_span"),
                 "vulkan_estimated_sgpr_span": vulkan.get("estimated_sgpr_span"),
                 "hip_vopd_count": hip.get("vopd_count"),
