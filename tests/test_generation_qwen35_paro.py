@@ -1785,6 +1785,7 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         "native_compact_prefill": True,
         "native_caware_decode": False,
         "throughput_claim_eligible": False,
+        "batch_execution": None,
     }
     assert [
         (chunk["request_id"], chunk["token_index"], chunk["token_id"], chunk["finished"], chunk["chunk"]["text"])

@@ -665,6 +665,11 @@ class Qwen35ParoOneTokenGenerator:
             scheduler_owned=True,
             native_decode=native_decode_complete,
         )
+        batch_execution_payload = (
+            batch_execution.to_json_dict()
+            if callable(getattr(batch_execution, "to_json_dict", None))
+            else None
+        )
         self.last_batch_generation = {
             "path": "scheduler_native_packed_prefill_native_decode"
             if native_decode_complete
@@ -683,6 +688,7 @@ class Qwen35ParoOneTokenGenerator:
             "throughput_claim_eligible": bool(
                 getattr(batch_execution, "throughput_claim_eligible", False)
             ),
+            "batch_execution": batch_execution_payload,
         }
         self.last_batch_generation["scheduler_token_chunks"] = _batch_scheduler_token_chunks(
             request_ids,
@@ -952,6 +958,11 @@ class Qwen35ParoOneTokenGenerator:
             configure_rows(None, None)
 
         batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=False)
+        batch_execution_payload = (
+            batch_execution.to_json_dict()
+            if callable(getattr(batch_execution, "to_json_dict", None))
+            else None
+        )
         self.last_batch_generation = {
             "path": sampled_path,
             "batch_size": batch_size,
@@ -965,6 +976,7 @@ class Qwen35ParoOneTokenGenerator:
             "native_caware_decode": False,
             "native_sampler_rows": use_native_sampler_rows,
             "throughput_claim_eligible": False,
+            "batch_execution": batch_execution_payload,
             "sampler_plan_metadata": [dict(row) for row in sampler_plan_metadata],
         }
         self.last_batch_generation["scheduler_token_chunks"] = _sampled_batch_scheduler_token_chunks(
