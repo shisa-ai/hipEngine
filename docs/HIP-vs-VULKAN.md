@@ -49,24 +49,32 @@ LLVM-AMDGPU" as a single explanation.
   coalesced, strided, and interleave variants; gather is essentially tied
   (`1.02x`). HIP reports no scratch and no spills, while RADV still exposes only
   estimated register spans. Simple rows show slightly fewer RADV waitcnt-family
-  instructions; fixed-shape controls and better RADV allocation stats are still
-  needed before turning this into an LLVM-AMDGPU waitcnt/scheduling claim.
+  instructions; fixed-shape controls do not close the gap, but better RADV
+  allocation stats and real-slice evidence are still needed before turning this
+  into an LLVM-AMDGPU waitcnt/scheduling claim.
 - The retained packed dot-path sweep rules out a missing-HIP-dot-instruction
   story for the current q8/q4/q6 idiom. HIP and RADV both emit final dot4
   instructions for q8 signed, q4 unsigned-byte by signed-q8, and q6 zero-point
   correction rows; HIP reports no scratch/spills. Vulkan is still `3.29x-3.43x`
-  faster, including the scalar-dequant row (`3.29x`). After the HIP wave64
-  controls, the remaining dot-path gap is more likely fixed-shape/surrounding
+  faster, including the scalar-dequant row (`3.29x`). After the HIP wave64 and
+  fixed-block controls, the remaining dot-path gap is more likely surrounding
   scheduling or layout/activation quantization economics than basic dot
-  lowering or wave mode.
+  lowering, wave mode, or runtime block indexing.
 - The first retained HIP wave64 controls do not close the gap. On packed-dot
   rows, forcing HIP wave64 makes HIP `1.007x-1.061x` slower than the retained
   wave32 HIP rows. On memory/waitcnt rows, HIP wave64 is mixed but still leaves
   Vulkan faster on most shapes; gather regresses `6.35x` versus HIP wave32.
+- The retained HIP fixed-shape controls also do not close the gap. Dot-path
+  fixed block indexing is flat versus same-commit runtime HIP
+  (`0.993x-1.000x` fixed/runtime) and Vulkan remains `3.31x-3.43x` faster.
+  Memory fixed block indexing is mixed (`0.906x-1.290x` fixed/runtime) and
+  Vulkan remains faster on every retained row (`1.04x-2.36x`). Fixed-workgroup
+  geometry improves some HIP wg256 rows by up to `6.3%`, but Vulkan still leads
+  best-native geometry by `5.56x-14.03x`.
 - We still cannot claim `compiler_aco` for the f32 geometry gap. RADV official
-  VGPR/SGPR allocation counts were not exposed by `RADV_DEBUG=shaders`, and the
-  current evidence mixes HIP runtime `blockDim` code with Vulkan specialization
-  constants and different wave/subgroup modes.
+  VGPR/SGPR allocation counts were not exposed by `RADV_DEBUG=shaders`; the
+  fixed-workgroup control removes the runtime-`blockDim` confound, but wave mode
+  and official RADV allocation stats remain unresolved.
 
 What we have ruled out:
 
@@ -81,6 +89,9 @@ What we have ruled out:
   HIP emits the expected dot4 instructions in the retained packed-dot rows.
 - Do not treat HIP wave64 as the missing switch for the retained dot/memory
   gaps. It does not close dot, and it severely hurts the retained gather row.
+- Do not treat HIP runtime `blockDim`/block-indexing overhead as the missing
+  switch for retained dot, memory, or f32 geometry gaps. Fixed-shape HIP
+  controls are flat or small relative to the remaining Vulkan lead.
 
 What remains plausible:
 
@@ -88,14 +99,14 @@ What remains plausible:
 - Vulkan has a large matched-math advantage in one f32 diagnostic, but that row
   is still `diagnostic_unclassified`.
 - Memory/access scheduling is still the strongest compiler-facing lead, but HIP
-  wave64 alone is not the fix. It may become an LLVM-AMDGPU waitcnt/scheduling
-  issue only after fixed-shape controls and real-slice checks remove the
-  remaining specialization/layout confounds.
+  wave64 and fixed block indexing are not the fix. It may become an
+  LLVM-AMDGPU waitcnt/scheduling issue only after real-slice checks and better
+  RADV allocation stats remove the remaining layout/stat confounds.
 - Dot-instruction availability is no longer untested for the packed q8/q4/q6
   idiom: HIP emits dot4. HIP wave64 also does not close the dot gap. The
-  remaining dot-path work is to remove fixed-shape confounds, check q8_1
-  materialization/layout costs in a real slice, and only then decide whether any
-  narrow hand-ISA sequence is worth carrying.
+  fixed-block control also does not close it. The remaining dot-path work is to
+  check q8_1 materialization/layout costs in a real slice and only then decide
+  whether any narrow hand-ISA sequence is worth carrying.
 - Real inference slices still need to confirm that the microbench deltas predict
   shipped hot buckets.
 
@@ -120,19 +131,18 @@ spend more gfx1151 time on dispatch-only, broad geometry-only, generic VOPD, or
 generic memory sweeps. Those have already answered the coarse questions. The
 next useful tranche is decision-grade controls:
 
-1. HIP fixed-shape/specialization controls for the f32 geometry, memory, and
-   dot-path kernels: compile fixed workgroup-size variants and remove runtime
-   `blockDim` address/control overhead before attributing the remaining gap to
-   LLVM scheduling. HIP wave64 has now been tested for dot and memory and did
-   not close the gap.
-2. One representative inference slice after the microbench deltas are
+1. One representative inference slice after the microbench deltas are
    classified. The best first slices are selected-MoE small-K or q6 lm-head
    rowtile, because they map directly to exposed hipEngine buckets.
-3. q8_1 materialization/layout accounting for the dot path, preferably inside
+2. q8_1 materialization/layout accounting for the dot path, preferably inside
    the same real slice, because the retained packed-dot result says the basic
    instruction is present but not whether activation quantization and layout
    economics are production-positive.
-4. Cross-GPU reruns only after the harnesses above stabilize. gfx1100/W7900 and
+3. Better RADV allocation/stat extraction, if we can get official VGPR/SGPR
+   counts for final shaders without changing the benchmark shape.
+4. HIP wave64 plus fixed-workgroup geometry control, if we need to remove the
+   remaining wave-mode confound before a compiler-facing geometry claim.
+5. Cross-GPU reruns only after the harnesses above stabilize. gfx1100/W7900 and
    7900 XTX reruns should check portability of a classified diagnosis, not
    replace the missing controls.
 
@@ -142,13 +152,14 @@ Priority summary:
 | --- | --- | --- |
 | Done | Dot-path q8/q4/q6 kernels with dot ISA counts | HIP emits dot4; remaining gap is not basic dot lowering |
 | Done | HIP wave64 dot/memory controls | Wave64 does not close dot/memory gaps and regresses gather |
-| P0 | HIP fixed-shape memory/dot/geometry controls | Decide whether retained gaps are specialization/runtime-shape or LLVM scheduling |
-| P1 | Fixed-workgroup HIP geometry variants | Remove the Vulkan specialization-constant vs HIP runtime-`blockDim` confound |
+| Done | HIP fixed-shape memory/dot/geometry controls | Runtime `blockDim`/fixed-shape overhead does not close retained gaps |
 | P1 | One real selected-MoE or q6 lm-head slice | Check whether the microbench diagnosis predicts a shipped hot bucket |
+| P1 | q8_1 materialization/layout accounting | Decide whether dot-path Vulkan wins transfer to production quant layout |
+| P1 | Better RADV allocation/stat extraction | Decide whether memory/geometry rows are suitable LLVM issue evidence |
 | P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after fixed-shape and real-slice harnesses are classified on gfx1151 |
 
-Tooling that would improve attribution quality, but should not displace the P0
-tests:
+Tooling that would improve attribution quality, but should not displace the
+remaining real-slice work:
 
 - Better RADV allocation/stat extraction, via whatever Mesa/RADV or RGP path
   exposes official VGPR/SGPR allocation counts for final shaders.
@@ -158,7 +169,7 @@ tests:
 
 Cross-GPU reruns on gfx1100/W7900 and 7900 XTX are important after the harnesses
 are stable. They should confirm portability of the gfx1151 conclusions, not
-replace the remaining HIP fixed-shape/specialization and real-slice tests.
+replace the remaining real-slice and allocation-stat tests.
 
 ## Current Retained Evidence
 
@@ -367,8 +378,8 @@ better VOPD pairing than LLVM/HIP. In this targeted family, LLVM/HIP is the
 backend emitting VOPD. Vulkan's modest wins on independent-8, mixed int+float,
 and dequant-like rows must come from something else: wave64 execution shape,
 non-VOPD scheduling, instruction selection, runtime/pipeline effects, or
-measurement noise. The next relevant compiler tests are fixed-shape controls
-and real-slice confirmation, not more generic VOPD speculation.
+measurement noise. The next relevant compiler tests are real-slice confirmation
+and better allocation/stat extraction, not more generic VOPD speculation.
 
 ### gfx1151 Memory / Waitcnt Sweep
 
@@ -428,9 +439,9 @@ Conclusion: memory/access scheduling is now a serious candidate for the Vulkan
 ceiling. Vulkan is consistently faster on coalesced, strided, and most
 interleave rows, while gather is essentially tied. This does **not** yet justify
 a clean LLVM `compiler_aco` issue because the retained rows still compare HIP
-wave32 against RADV wave64 and RADV allocation counts are estimated. The next
-control is fixed-shape memory and geometry variants; the dot-path result below
-separately shows basic q8/q4/q6 dot lowering is present in HIP.
+wave32 against RADV wave64 and RADV allocation counts are estimated. The
+fixed-block control below does not close the memory gap; the dot-path result
+below separately shows basic q8/q4/q6 dot lowering is present in HIP.
 
 ### gfx1151 Packed Dot Path
 
@@ -478,11 +489,12 @@ Register/stat summary:
 
 Conclusion: do **not** spend more gfx1151 time proving whether HIP can emit the
 basic q8/q4/q6 dot instruction; it can. The retained dot-path gap is still
-large, but the useful next controls are fixed-shape dot variants and
-a representative real slice that includes q8_1 activation materialization and
-layout costs. A hand-ISA path is not justified by this artifact alone; it would
-need to beat the same HIP dot body after wave/fixed-shape controls and then
-move a shipped selected-MoE or q6 lm-head slice.
+large, but the fixed-block control below shows runtime block indexing is not
+the missing switch. The useful next control is a representative real slice that
+includes q8_1 activation materialization and layout costs. A hand-ISA path is
+not justified by this artifact alone; it would need to beat the same HIP dot
+body after wave/fixed-shape controls and then move a shipped selected-MoE or q6
+lm-head slice.
 
 ### gfx1151 HIP Wave64 Controls
 
@@ -526,9 +538,74 @@ Memory/waitcnt wave64 result:
 | interleave | mixed; unroll 16 faster by `0.922x`, unroll 1 slower by `1.146x` | Vulkan faster except unroll 16, where HIP wave64 is `1.15x` faster |
 
 Conclusion: HIP wave64 is not the missing switch. It does not close the packed
-dot gap, and the memory result is mixed with a severe gather regression. Keep
-fixed-shape/specialization and real-slice tests as the next controls; do not
-promote broad HIP wave64 routing from this evidence.
+dot gap, and the memory result is mixed with a severe gather regression. The
+later fixed-shape controls also fail to close these gaps; do not promote broad
+HIP wave64 routing from this evidence.
+
+### gfx1151 HIP Fixed-Shape Controls
+
+Retained artifacts:
+`benchmarks/micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`,
+and
+`benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json`.
+Backend artifacts include same-commit runtime HIP controls, fixed HIP controls,
+and same-commit Vulkan controls:
+`hip-dot-path-runtime-control.json`, `hip-dot-path-fixed-block.json`,
+`vulkan-dot-path-fixed-control.json`,
+`hip-memory-waitcnt-runtime-control.json`,
+`hip-memory-waitcnt-fixed-block.json`,
+`vulkan-memory-waitcnt-fixed-control.json`,
+`hip-geometry-sweep-runtime-control.json`,
+`hip-geometry-sweep-fixed-workgroup.json`, and
+`vulkan-geometry-sweep-fixed-control.json`. The run uses
+`environment-fixed-shape-controls.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Vulkan driver: RADV, Mesa `26.1.2-arch2.1`.
+- HIP dot/memory control: `--hip-fixed-block-index`, which compiles
+  `__launch_bounds__(256)` and `kBlockSize` global indexing instead of
+  `blockDim.x`.
+- HIP geometry control: `--hip-workgroup-specialization fixed`, which compiles
+  one HIP binary per requested workgroup size and replaces runtime
+  `blockDim.x` in the reduction/indexing path.
+- Classification: `diagnostic_unclassified`; this is a runtime-shape control,
+  not final compiler attribution.
+
+Dot fixed-block result:
+
+| Variant | Fixed / runtime HIP | Same-commit Vulkan vs fixed HIP |
+| --- | ---: | ---: |
+| q8 signed | `1.000x` | `3.43x` |
+| q4 unsigned x q8 | `1.000x` | `3.42x` |
+| q6 zero-corrected | `0.997x` | `3.31x` |
+| scalar q4 dequant | `0.993x` | `3.31x` |
+
+Memory fixed-block result:
+
+| Group | Fixed / runtime HIP | Same-commit Vulkan vs fixed HIP |
+| --- | --- | --- |
+| coalesced | width 1 slower `1.063x`; widths 2/4 flat; width 8 faster `0.906x` | Vulkan `1.47x-2.28x` faster |
+| strided | `1.004x-1.026x` slower | Vulkan `1.35x-2.36x` faster |
+| gather | `1.290x` slower | Vulkan `1.36x` faster |
+| interleave | mixed: unroll 1/16 faster `0.913x/0.930x`, unroll 2 slower `1.120x`, others flat | Vulkan `1.04x-2.29x` faster |
+
+Geometry fixed-workgroup result:
+
+| Shape group | Fixed / runtime HIP at best HIP wg256 | Same-commit Vulkan vs fixed HIP best-native |
+| --- | ---: | ---: |
+| K=512 rows=1/4/8 | `0.985x-0.987x` | `5.56x-7.60x` |
+| K=2048 rows=1/4/8 | `0.937x-0.999x` | `9.79x-11.56x` |
+| K=8192 rows=1/4/8 | `0.976x-0.991x` | `12.07x-14.03x` |
+
+Conclusion: HIP runtime `blockDim`/shape specialization is not the missing
+switch for the retained gfx1151 gaps. Fixed geometry gives a useful small HIP
+improvement, especially K=2048 rows=1 wg256, but the Vulkan geometry lead
+remains large. Dot fixed-block is flat, and memory fixed-block is mixed with a
+gather regression. Treat memory/access scheduling and geometry as still
+unclassified until real slices and better RADV allocation stats are available.
 
 ## Questions To Answer
 
@@ -538,20 +615,21 @@ promote broad HIP wave64 routing from this evidence.
    `s_waitcnt`, better unroll, or more VOPD pairing?
 2. **Geometry:** How much of the Vulkan win comes from 64-thread subgroup
    shapes versus the common HIP 128/256-thread block shapes?
-3. **Wave mode:** HIP wave64 did not close retained dot/memory gaps; does the
-   same answer hold for fixed-shape geometry and cross-GPU reruns?
+3. **Wave mode:** HIP wave64 did not close retained dot/memory gaps; a
+   fixed-workgroup wave64 geometry row remains optional if we need to remove the
+   last wave-mode confound before filing compiler work.
 4. **Dispatch/runtime:** Is Vulkan faster because individual shaders are faster,
    or because command-buffer/pipeline execution reduces per-dispatch cost?
 5. **Memory scheduling:** Retained gfx1151 rows show higher Vulkan bandwidth on
-   coalesced, strided, and interleave loops. Does that survive fixed-shape
-   controls, and does it predict quantized GEMV inner loops?
+   coalesced, strided, and interleave loops. This survives fixed-block controls;
+   the remaining question is whether it predicts quantized GEMV inner loops.
 6. **VOPD portability:** gfx1151 retained evidence is negative for "ACO finds
    VOPD that LLVM misses." Do gfx1100/W7900 and 7900 XTX reproduce that answer,
    or is this driver/GPU-specific?
 7. **dp4a/sudot4:** Does the compiler matter once the code uses the intended
    RDNA3 dot instruction? Retained gfx1151 packed-dot rows say HIP and RADV
-   both emit dot4, and HIP wave64 does not close the gap, so the remaining gap
-   is fixed-shape codegen, surrounding scheduling, or layout/activation
+   both emit dot4, while HIP wave64 and fixed-block indexing do not close the
+   gap, so the remaining gap is surrounding scheduling or layout/activation
    quantization economics.
 8. **LLVM roadmap:** For each confirmed RADV/ACO win, what exactly would LLVM
    need to improve?
@@ -673,10 +751,10 @@ coalescing is a source/layout issue.
 
 Status: retained on gfx1151. Vulkan is `1.30x-2.35x` faster on most coalesced,
 strided, and interleave rows, while gather is essentially tied at `1.02x`.
-HIP wave64 controls do not close the gap and severely regress gather. This is
-strong memory-side evidence but remains `diagnostic_unclassified` because
-fixed-shape controls and official RADV register allocation counts are still
-missing.
+HIP wave64 and fixed-block controls do not close the gap; both severely regress
+gather in their retained runs. This is strong memory-side evidence but remains
+`diagnostic_unclassified` because official RADV register allocation counts and
+real-slice confirmation are still missing.
 
 ### 4. VOPD And VALU Scheduling
 
@@ -696,8 +774,8 @@ dual-issue scheduling at matched occupancy and instruction count.
 Status: retained on gfx1151. HIP emitted VOPD in all retained rows and RADV
 emitted none, so the current retained evidence is a negative result for
 "Vulkan wins because ACO finds VOPD that LLVM misses." Cross-GPU reruns can
-check portability, but the next gfx1151 compiler tests should move to HIP
-wave/specialization controls and real-slice confirmation.
+check portability, but the next gfx1151 compiler tests should move to real-slice
+confirmation and allocation/stat extraction.
 
 ### 5. Dot4 / q8_1 / sudot4
 
@@ -719,9 +797,9 @@ Status: retained on gfx1151 for packed q8 signed, q4 unsigned-byte by signed-q8,
 q6 zero-point correction, and scalar q4 dequant rows. HIP and RADV both emit
 final dot4 instructions in q8/q4/q6 rows, and HIP reports no scratch/spills.
 Vulkan remains `3.29x-3.43x` faster, including the scalar row, and HIP wave64
-does not close the gap, so basic dot-instruction availability and wave mode are
-no longer the main questions. The next dot work is fixed-shape control plus real
-q8_1 materialization and layout economics.
+and fixed-block controls do not close the gap, so basic dot-instruction
+availability, wave mode, and runtime block indexing are no longer the main
+questions. The next dot work is real q8_1 materialization and layout economics.
 
 ### 6. LDS, Barriers, And Subgroup Reductions
 
@@ -927,19 +1005,22 @@ Promotion requirements:
 5. Add memory waitcnt microbenches: coalesced load+accumulate, strided
    load+accumulate, gather IDs, and load-compute interleave. Status: retained
    on gfx1151; Vulkan has a broad memory-side advantage except gather, but
-   wave64 controls do not close it and RADV allocation-count/fixed-shape
-   confounds keep it `diagnostic_unclassified`.
+   wave64 and fixed-block controls do not close it. RADV allocation-count and
+   real-slice confounds keep it `diagnostic_unclassified`.
 6. Add q8_1/sudot4 and scalar-dequant GEMV pairs. Status: retained on gfx1151
    for packed dot-path diagnostics; HIP and RADV both emit dot4 in q8/q4/q6
-   rows, but Vulkan remains `3.29x-3.43x` faster. HIP wave64 does not close the
-   gap, and the row is `diagnostic_unclassified`.
-7. Port one real slice: selected-MoE small-K or q6 lm-head rowtile.
-8. Classify each retained row using the result buckets above.
-9. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
+   rows, but Vulkan remains `3.29x-3.43x` faster. HIP wave64 and fixed-block
+   controls do not close the gap, and the row is `diagnostic_unclassified`.
+7. Add HIP fixed-shape controls for dot, memory, and geometry. Status:
+   retained on gfx1151; runtime block indexing/workgroup specialization is not
+   the missing switch.
+8. Port one real slice: selected-MoE small-K or q6 lm-head rowtile.
+9. Classify each retained row using the result buckets above.
+10. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
-The next most useful tests are now HIP fixed-shape controls for the retained
-memory, geometry, and dot rows, plus one representative real slice.
+The next most useful tests are now one representative real slice plus q8_1
+materialization/layout accounting.
 The gfx1151 geometry, VOPD, memory/waitcnt, and dot-path extractions already
 found that the current gap is not a missed-HIP-VOPD, HIP-spill, or missed-dot4
 story. The next stop is isolating the remaining hypotheses rather than rerunning
