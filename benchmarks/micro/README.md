@@ -239,7 +239,9 @@ python3 benchmarks/micro/runners/dot_path.py \
 The runner records CPU-oracle correctness, timing, HIP code-object metadata,
 RADV final shader disassembly stats, final dot4 counts, waitcnt/load counts,
 wave/subgroup size, HIP scratch/spill evidence, and SPIR-V `OpSDot`/`OpSUDot`
-counts for the Vulkan rows.
+counts for the Vulkan rows. Use `--hip-wavefront-size 64` or
+`--hip-wavefront-size 32` on HIP rows to run wave-mode controls; the normalized
+artifact records both the requested mode and the code-object wave size.
 
 ## F32 GEMV Geometry Sweep
 
@@ -367,7 +369,9 @@ python3 benchmarks/micro/runners/isa_stats.py \
 ISA/stat extraction. The retained variants should cover coalesced vector-width
 loads, strided loads, gather-ID addressing, and load/compute interleave. Vulkan
 uses device-local storage buffers with staging copies so the timed region is not
-just a host-visible-buffer diagnostic.
+just a host-visible-buffer diagnostic. Use `--hip-wavefront-size 64` or
+`--hip-wavefront-size 32` on HIP rows to test whether the memory-side Vulkan
+lead survives wave-mode control.
 
 Example paired run:
 
