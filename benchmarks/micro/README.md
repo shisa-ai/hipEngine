@@ -22,6 +22,7 @@ benchmarks/micro/
     q4_selected_dual_isa_stats.py
     memory_waitcnt.py
     q4_selected_dual_real_slice.py
+    reduction_sweep.py
     vopd_sweep.py
     hip_dot_path.hip
     hip_geometry_sweep.hip
@@ -42,6 +43,8 @@ benchmarks/micro/
       memory_waitcnt.comp
       q4_selected_dual.comp
       q8_1_quantize.comp
+      reduction_extra_barrier.comp
+      reduction_subgroup.comp
       vopd_sweep.comp
   schemas/
     environment.schema.json
@@ -517,10 +520,44 @@ python3 benchmarks/micro/runners/q4_selected_dual_isa_stats.py \
 This is an attribution artifact for the retained Q4_K selected-dual Vulkan win.
 It does not create a new timing claim by itself.
 
+## LDS / Barrier / Subgroup Reduction Sweep
+
+`runners/reduction_sweep.py` runs HIP and Vulkan reduction-topology controls
+using the geometry harness interface. The retained variants are HIP LDS tree,
+HIP LDS tree with one extra barrier per reduction stage, HIP wave-shuffle
+reduction, Vulkan LDS tree, Vulkan extra-barrier LDS tree, and Vulkan subgroup
+reduction via `GL_KHR_shader_subgroup_arithmetic`.
+
+Retained gfx1151 command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+python3 benchmarks/micro/runners/reduction_sweep.py \
+  --backend both \
+  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json \
+  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json \
+  --gfx-arch gfx1151 \
+  --hardware-gpu "Radeon 8060S Graphics" \
+  --build-dir /tmp/hipengine-micro-reduction-sweep \
+  --out benchmarks/micro/results/gfx1151/strix-halo/reduction-sweep.json \
+  --k-list 512,2048,8192 \
+  --rows-list 1 \
+  --workgroups 64,256 \
+  --body-repeats 128 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 11 \
+  --pretty
+```
+
+This is a reduction-topology control for the f32 geometry gap. It does not
+stand alone as LLVM/RADV compiler attribution.
+
 ## Retained Results
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | LDS/barrier/subgroup reduction sweep | One-row K=512/2048/8192 wg64/wg256 rows all pass CPU correctness. HIP extra-barrier is only `1.002x-1.028x` slower than HIP LDS, HIP wave-shuffle is flat versus HIP LDS (`0.991x-1.005x`), Vulkan extra-barrier is flat versus Vulkan LDS (`0.991x-1.005x`), and Vulkan subgroup is mostly flat to modestly slower than Vulkan LDS (`0.984x-1.132x`). Matched Vulkan LDS remains `8.19x-14.55x` faster than matched HIP LDS, so reduction topology is not the missing f32 geometry switch. Classified `diagnostic_unclassified`. | `results/gfx1151/strix-halo/reduction-sweep.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q4_K selected-dual HIP/RADV ISA comparison | Targeted ISA comparison for the one positive Vulkan real-slice row shows the Q4 win is not missing HIP dot4, HIP spills, or RADV VOPD pairing. HIP and RADV both emit 3 dot4 instructions and no scratch/spills for the dot shader. HIP emits wave32, 31 SGPR / 22 VGPR, 564 static instructions, 35 waitcnt-family instructions, and 4 VOPD; RADV emits wave64, official 108 SGPR / 48 VGPR, 526 static instructions, 26 waitcnt-family instructions, and 0 VOPD. Classified slice-specific `real_slice_probe`; remaining Q4 follow-up is narrower scheduling/source/reduction work only if it changes backend or HIP implementation priority. | `results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q4_K selected-dual real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness and does transfer a real Vulkan win. Best Vulkan local_size=64 is `0.29607 ms` prequantized dot and `0.29238 ms` quantize+dot versus retained HIP `0.34638 ms` and `0.34582 ms`, so Vulkan is `1.17x` faster on dot and `1.18x` faster combined. RADV final dot shader has 3 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 26 waitcnt-family instructions, and 22 buffer loads. Classified slice-specific `real_slice_probe`, not broad `compiler_aco`. | `results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q6_K X8 selected-down real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness but does not transfer the synthetic Vulkan dot-path win. Best Vulkan local_size=64 is `0.03076 ms` prequantized dot and `0.03217 ms` quantize+dot versus retained HIP `0.01665 ms` and `0.01925 ms`, so Vulkan is `1.85x` slower on dot and `1.67x` slower combined. RADV final dot shader has 9 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 89 waitcnt-family instructions, and 82 buffer loads. Classified `real_slice_probe`; do not pursue this q6 selected-down Vulkan port as implemented. | `results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json` |

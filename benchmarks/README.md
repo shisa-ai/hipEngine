@@ -5,9 +5,10 @@ Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, geometry
 ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
 dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
 shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
-q8_1 real-slice layout controls, plus a matched Vulkan Q6_K X8 selected-down
-real-slice probe and matched Vulkan Q4_K selected-dual gate/up real-slice
-probe with targeted HIP/RADV ISA comparison.
+q8_1 real-slice layout controls, LDS/barrier/subgroup reduction controls, plus
+a matched Vulkan Q6_K X8 selected-down real-slice probe and matched Vulkan
+Q4_K selected-dual gate/up real-slice probe with targeted HIP/RADV ISA
+comparison.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -57,6 +58,14 @@ best-native rows, and Vulkan remains **6.31x-16.18x faster** than HIP
 fixed-wave64. HIP fixed-wave64 reports wave64, **11 VGPR / 20 SGPR**,
 **0 scratch/spills**, and **0 VOPD** for K=2048 rows=1 wg64/wg256. Classified
 **diagnostic_unclassified**; wave mode is not the missing f32 geometry switch.
+LDS/barrier/subgroup reduction controls: one-row K=512/2048/8192 wg64/wg256
+rows all pass the CPU oracle. HIP extra-barrier is only **1.002x-1.028x**
+slower than HIP LDS, HIP wave-shuffle is flat versus HIP LDS
+(**0.991x-1.005x**), Vulkan extra-barrier is flat versus Vulkan LDS
+(**0.991x-1.005x**), and Vulkan subgroup is mostly flat to modestly slower
+than Vulkan LDS (**0.984x-1.132x**). Matched Vulkan LDS remains
+**8.19x-14.55x faster** than matched HIP LDS, so reduction topology is not the
+missing f32 geometry switch.
 HIP q8_1 real-slice layout controls: Q4_K selected-dual gate/up q8_1
 quantize+dp4a is **2.77x** faster than raw selected-dual, and Q6_K
 selected-down X8 q8_1 quantize+dp4a is **1.68x** faster than production T16
@@ -107,6 +116,7 @@ Artifacts:
 [`micro/results/gfx1151/strix-halo/geometry-sweep-fixed-wave64-delta.json`](micro/results/gfx1151/strix-halo/geometry-sweep-fixed-wave64-delta.json),
 [`micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json`](micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json),
 [`micro/results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json`](micro/results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json),
+[`micro/results/gfx1151/strix-halo/reduction-sweep.json`](micro/results/gfx1151/strix-halo/reduction-sweep.json),
 [`micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/dot-path-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-comparison.json),
