@@ -13,7 +13,17 @@
 #include <string>
 #include <vector>
 
+#ifndef HIPENGINE_FIXED_WORKGROUP_SIZE
+#define HIPENGINE_FIXED_WORKGROUP_SIZE 0
+#endif
+
 namespace {
+
+#if HIPENGINE_FIXED_WORKGROUP_SIZE
+#define HIPENGINE_GEOMETRY_LAUNCH_BOUNDS __launch_bounds__(HIPENGINE_FIXED_WORKGROUP_SIZE)
+#else
+#define HIPENGINE_GEOMETRY_LAUNCH_BOUNDS
+#endif
 
 struct Args {
   std::string json_path;
@@ -118,6 +128,11 @@ Args parse_args(int argc, char** argv) {
     if (wg == 0 || wg > 256 || (wg & (wg - 1)) != 0) {
       fail("workgroup sizes must be powers of two in [1, 256]");
     }
+#if HIPENGINE_FIXED_WORKGROUP_SIZE
+    if (wg != HIPENGINE_FIXED_WORKGROUP_SIZE) {
+      fail("fixed-workgroup build can only run its compiled workgroup size");
+    }
+#endif
   }
   return args;
 }
@@ -203,6 +218,7 @@ void print_json_array(std::ostream& out, const std::vector<T>& values) {
   out << "]";
 }
 
+HIPENGINE_GEOMETRY_LAUNCH_BOUNDS
 __global__ void f32_gemv_geometry_kernel(
     const float* __restrict__ x,
     const float* __restrict__ w,
@@ -212,7 +228,12 @@ __global__ void f32_gemv_geometry_kernel(
   extern __shared__ float scratch[];
   uint32_t row = blockIdx.x;
   uint32_t lid = threadIdx.x;
-  uint32_t wg = blockDim.x;
+  uint32_t wg =
+#if HIPENGINE_FIXED_WORKGROUP_SIZE
+      HIPENGINE_FIXED_WORKGROUP_SIZE;
+#else
+      blockDim.x;
+#endif
   float sum = 0.0f;
   for (uint32_t repeat = 0; repeat < body_repeats; ++repeat) {
     for (uint32_t i = lid; i < k; i += wg) {
@@ -364,6 +385,7 @@ void write_json(
   print_json_array(*out, args.workgroups);
   *out << ",\n";
   *out << "    \"body_repeats\": " << args.body_repeats << ",\n";
+  *out << "    \"hip_fixed_workgroup_size\": " << HIPENGINE_FIXED_WORKGROUP_SIZE << ",\n";
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";

@@ -241,7 +241,11 @@ RADV final shader disassembly stats, final dot4 counts, waitcnt/load counts,
 wave/subgroup size, HIP scratch/spill evidence, and SPIR-V `OpSDot`/`OpSUDot`
 counts for the Vulkan rows. Use `--hip-wavefront-size 64` or
 `--hip-wavefront-size 32` on HIP rows to run wave-mode controls; the normalized
-artifact records both the requested mode and the code-object wave size.
+artifact records both the requested mode and the code-object wave size. Use
+`--hip-fixed-block-index` on HIP rows to compile a fixed-indexing control with
+`__launch_bounds__(256)` and `kBlockSize`-based global ID calculation instead
+of `blockDim.x`; this isolates the tiny runtime-shape overhead that remains in
+the normal HIP source.
 
 ## F32 GEMV Geometry Sweep
 
@@ -251,7 +255,11 @@ accumulation over K, and a shared-memory tree reduction. The repeat-shift keeps
 the body loop from collapsing into one identical dot product. HIP uses the
 runtime block size; Vulkan uses a `local_size_x` specialization constant. The
 harness validates every row against a CPU reference that mirrors the same
-per-workgroup reduction order.
+per-workgroup reduction order. Use `--hip-workgroup-specialization fixed` on
+HIP rows to compile one fixed-workgroup binary per requested workgroup size and
+merge the rows into one artifact. This removes the runtime `blockDim.x`
+reduction/indexing path and is the paired control for Vulkan's
+`local_size_x` specialization.
 
 Example paired run:
 
@@ -371,7 +379,8 @@ loads, strided loads, gather-ID addressing, and load/compute interleave. Vulkan
 uses device-local storage buffers with staging copies so the timed region is not
 just a host-visible-buffer diagnostic. Use `--hip-wavefront-size 64` or
 `--hip-wavefront-size 32` on HIP rows to test whether the memory-side Vulkan
-lead survives wave-mode control.
+lead survives wave-mode control. Use `--hip-fixed-block-index` on HIP rows to
+compile the fixed 256-thread indexing and launch-bounds control.
 
 Example paired run:
 

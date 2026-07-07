@@ -75,7 +75,12 @@ def _run_command(command: list[str], *, cwd: Path) -> subprocess.CompletedProces
     return completed
 
 
-def _compile_hip_harness(build_dir: Path, gfx_arch: str | None) -> tuple[Path, list[str]]:
+def _compile_hip_harness(
+    build_dir: Path,
+    gfx_arch: str | None,
+    *,
+    fixed_workgroup_size: int | None = None,
+) -> tuple[Path, list[str]]:
     build_dir.mkdir(parents=True, exist_ok=True)
     exe_path = build_dir / "hip_geometry_sweep"
     hipcc = shutil.which("hipcc")
@@ -85,7 +90,20 @@ def _compile_hip_harness(build_dir: Path, gfx_arch: str | None) -> tuple[Path, l
     arch = gfx_arch or os.environ.get("HIPENGINE_HIP_ARCH")
     if arch:
         command.append(f"--offload-arch={arch}")
-    command.extend(["-O3", "-std=c++17", str(HIP_HARNESS), "-o", str(exe_path)])
+    command.extend(
+        [
+            "-O3",
+            "-std=c++17",
+            *(
+                [f"-DHIPENGINE_FIXED_WORKGROUP_SIZE={fixed_workgroup_size}"]
+                if fixed_workgroup_size
+                else []
+            ),
+            str(HIP_HARNESS),
+            "-o",
+            str(exe_path),
+        ]
+    )
     completed = _run_command(command, cwd=REPO_ROOT)
     if completed.returncode != 0:
         raise RuntimeError("HIP geometry harness build failed")
@@ -275,6 +293,12 @@ def normalize_raw_result(
             {
                 "benchmark_family": "geometry_sweep",
                 "algorithm": "repeat_shifted_f32_gemv_row_shared_tree_reduce",
+                "hip_workgroup_specialization": config.get("hip_workgroup_specialization")
+                if backend == "hip"
+                else None,
+                "hip_fixed_workgroup_sizes": config.get("hip_fixed_workgroup_sizes")
+                if backend == "hip"
+                else None,
                 "raw_config": config,
                 "harness_command": harness_command,
                 "build_command": build_command,
@@ -451,6 +475,31 @@ def _list_arg(values: str) -> list[str]:
     return [item for item in values.split(",") if item]
 
 
+def _int_list_arg(values: str) -> list[int]:
+    return [int(item) for item in _list_arg(values)]
+
+
+def _merge_fixed_hip_raw_results(
+    raw_results: list[dict[str, Any]],
+    *,
+    workgroups: list[int],
+) -> dict[str, Any]:
+    if not raw_results:
+        raise RuntimeError("no fixed-workgroup HIP raw results to merge")
+    merged = dict(raw_results[0])
+    config = dict(merged.get("config") if isinstance(merged.get("config"), dict) else {})
+    config["workgroups"] = workgroups
+    config["hip_workgroup_specialization"] = "fixed"
+    config["hip_fixed_workgroup_sizes"] = workgroups
+    rows: list[dict[str, Any]] = []
+    for raw in raw_results:
+        raw_rows = raw.get("rows") if isinstance(raw.get("rows"), list) else []
+        rows.extend(row for row in raw_rows if isinstance(row, dict))
+    merged["config"] = config
+    merged["rows"] = rows
+    return merged
+
+
 def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
     build_dir = args.build_dir / args.backend
     environment = _collect_environment(args)
@@ -465,28 +514,77 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
         raw_path = Path(temp_raw.name)
 
     if args.backend == "hip":
-        exe, build_command = _compile_hip_harness(build_dir, args.gfx_arch)
-        harness_command = [
-            str(exe),
-            "--json",
-            str(raw_path),
-            "--k-list",
-            args.k_list,
-            "--rows-list",
-            args.rows_list,
-            "--workgroups",
-            args.workgroups,
-            "--body-repeats",
-            str(args.body_repeats),
-            "--reps",
-            str(args.reps),
-            "--warmup",
-            str(args.warmup),
-            "--samples",
-            str(args.samples),
-            "--device-index",
-            str(args.device_index),
-        ]
+        if args.hip_workgroup_specialization == "fixed":
+            raw_results: list[dict[str, Any]] = []
+            build_commands: list[list[str]] = []
+            harness_commands: list[list[str]] = []
+            workgroups = _int_list_arg(args.workgroups)
+            for workgroup in workgroups:
+                fixed_dir = build_dir / f"fixed_wg{workgroup}"
+                exe, build_command_one = _compile_hip_harness(
+                    fixed_dir,
+                    args.gfx_arch,
+                    fixed_workgroup_size=workgroup,
+                )
+                raw_one = fixed_dir / "raw.json"
+                harness_command_one = [
+                    str(exe),
+                    "--json",
+                    str(raw_one),
+                    "--k-list",
+                    args.k_list,
+                    "--rows-list",
+                    args.rows_list,
+                    "--workgroups",
+                    str(workgroup),
+                    "--body-repeats",
+                    str(args.body_repeats),
+                    "--reps",
+                    str(args.reps),
+                    "--warmup",
+                    str(args.warmup),
+                    "--samples",
+                    str(args.samples),
+                    "--device-index",
+                    str(args.device_index),
+                ]
+                completed = _run_command(harness_command_one, cwd=REPO_ROOT)
+                if completed.returncode != 0:
+                    raise RuntimeError(f"HIP fixed-workgroup geometry run failed for wg={workgroup}")
+                raw_results.append(json.loads(raw_one.read_text(encoding="utf-8")))
+                build_commands.append(build_command_one)
+                harness_commands.append(harness_command_one)
+            raw = _merge_fixed_hip_raw_results(raw_results, workgroups=workgroups)
+            raw_path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            build_command = build_commands
+            harness_command = harness_commands
+        else:
+            exe, build_command = _compile_hip_harness(build_dir, args.gfx_arch)
+            harness_command = [
+                str(exe),
+                "--json",
+                str(raw_path),
+                "--k-list",
+                args.k_list,
+                "--rows-list",
+                args.rows_list,
+                "--workgroups",
+                args.workgroups,
+                "--body-repeats",
+                str(args.body_repeats),
+                "--reps",
+                str(args.reps),
+                "--warmup",
+                str(args.warmup),
+                "--samples",
+                str(args.samples),
+                "--device-index",
+                str(args.device_index),
+            ]
+            completed = _run_command(harness_command, cwd=REPO_ROOT)
+            if completed.returncode != 0:
+                raise RuntimeError(f"{args.backend} geometry harness run failed")
+            raw = json.loads(raw_path.read_text(encoding="utf-8"))
         shader_command = None
         source_hash = _hash_files([Path(__file__).resolve(), HIP_HARNESS])
     else:
@@ -517,10 +615,10 @@ def _run_backend(args: argparse.Namespace) -> dict[str, Any]:
         ]
         source_hash = _hash_files([Path(__file__).resolve(), VULKAN_HARNESS, VULKAN_SHADER])
 
-    completed = _run_command(harness_command, cwd=REPO_ROOT)
-    if completed.returncode != 0:
-        raise RuntimeError(f"{args.backend} geometry harness run failed")
-    raw = json.loads(raw_path.read_text(encoding="utf-8"))
+        completed = _run_command(harness_command, cwd=REPO_ROOT)
+        if completed.returncode != 0:
+            raise RuntimeError(f"{args.backend} geometry harness run failed")
+        raw = json.loads(raw_path.read_text(encoding="utf-8"))
     result = normalize_raw_result(
         raw,
         backend=args.backend,
@@ -550,6 +648,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD_DIR)
     parser.add_argument("--gfx-arch", help="Override gfx arch and HIP offload arch")
     parser.add_argument("--hardware-gpu", help="Override GPU name in normalized output")
+    parser.add_argument(
+        "--hip-workgroup-specialization",
+        choices=["runtime", "fixed"],
+        default="runtime",
+        help="For HIP, compile runtime blockDim code or one fixed-workgroup binary per requested workgroup",
+    )
     parser.add_argument("--k-list", default="512,2048,8192")
     parser.add_argument("--rows-list", default="1,4,8")
     parser.add_argument("--workgroups", default="32,64,128,256")
@@ -567,6 +671,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--compare and --backend are mutually exclusive")
     if not args.compare and not args.backend:
         parser.error("one of --backend or --compare is required")
+    if args.backend != "hip" and args.hip_workgroup_specialization != "runtime":
+        parser.error("--hip-workgroup-specialization=fixed only applies to --backend hip")
     for name in ("k_list", "rows_list", "workgroups"):
         values = _list_arg(getattr(args, name))
         if not values or any(not value.isdigit() or int(value) <= 0 for value in values):

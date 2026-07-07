@@ -192,6 +192,7 @@ def _compile_hip_variant(
     variant: dict[str, Any],
     gfx_arch: str | None,
     hip_wavefront_size: str,
+    hip_fixed_block_index: bool,
 ) -> tuple[Path, Path, list[str]]:
     build_dir.mkdir(parents=True, exist_ok=True)
     hipcc = shutil.which("hipcc")
@@ -207,6 +208,7 @@ def _compile_hip_variant(
             *_hip_wavefront_flags(hip_wavefront_size),
             "--save-temps",
             *_compile_defines(variant),
+            *(["-DHIPENGINE_DOT_FIXED_BLOCK=1"] if hip_fixed_block_index else []),
             str(HIP_HARNESS),
             "-o",
             "hip_dot_path",
@@ -436,6 +438,7 @@ def _normalize_result(
     gfx_arch: str | None,
     environment_ref: str | None,
     hip_wavefront_size: str | None,
+    hip_fixed_block_index: bool | None,
 ) -> dict[str, Any]:
     rows = []
     for raw, isa in zip(raw_rows, isa_rows, strict=True):
@@ -487,6 +490,7 @@ def _normalize_result(
             "body_iters": primary.get("body_iters"),
             "block_size": primary.get("block_size"),
             "hip_wavefront_size_request": hip_wavefront_size,
+            "hip_fixed_block_index": hip_fixed_block_index,
             "commands": commands,
         },
         "correctness": {
@@ -529,7 +533,11 @@ def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[s
     for variant in variants:
         variant_dir = args.build_dir / "hip" / _variant_name(variant)
         exe, obj, build_command = _compile_hip_variant(
-            variant_dir, variant, args.gfx_arch, args.hip_wavefront_size
+            variant_dir,
+            variant,
+            args.gfx_arch,
+            args.hip_wavefront_size,
+            args.hip_fixed_block_index,
         )
         raw_path = variant_dir / "raw.json"
         harness_command = [str(exe), *_harness_args(args, raw_path)]
@@ -545,6 +553,7 @@ def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[s
             {
                 "variant": variant,
                 "hip_wavefront_size_request": args.hip_wavefront_size,
+                "hip_fixed_block_index": args.hip_fixed_block_index,
                 "build_command": build_command,
                 "harness_command": harness_command,
                 "object_path": str(obj),
@@ -563,6 +572,7 @@ def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[s
         gfx_arch=args.gfx_arch,
         environment_ref=str(args.environment_ref) if args.environment_ref else None,
         hip_wavefront_size=args.hip_wavefront_size,
+        hip_fixed_block_index=args.hip_fixed_block_index,
     )
 
 
@@ -611,6 +621,7 @@ def _run_vulkan(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dic
         gfx_arch=args.gfx_arch,
         environment_ref=str(args.environment_ref) if args.environment_ref else None,
         hip_wavefront_size=None,
+        hip_fixed_block_index=None,
     )
 
 
@@ -717,6 +728,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--gfx-arch", help="Override gfx arch and HIP offload arch")
     parser.add_argument("--hardware-gpu", help="Override GPU name in normalized output")
     parser.add_argument("--hip-wavefront-size", choices=["default", "32", "64"], default="default")
+    parser.add_argument(
+        "--hip-fixed-block-index",
+        action="store_true",
+        help="Compile HIP with launch bounds and kBlockSize-based global indexing",
+    )
     parser.add_argument("--variants", default=DEFAULT_VARIANTS)
     parser.add_argument("--n", type=int, default=32768)
     parser.add_argument("--body-iters", type=int, default=128)
@@ -736,6 +752,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--compare and --backend are mutually exclusive")
     if not args.compare and not args.backend:
         parser.error("one of --backend or --compare is required")
+    if args.backend != "hip" and args.hip_fixed_block_index:
+        parser.error("--hip-fixed-block-index only applies to --backend hip")
     if min(args.n, args.body_iters, args.reps, args.warmup + 1, args.samples) <= 0:
         parser.error("--n, --body-iters, --reps, and --samples must be positive")
     if args.debug_n <= 0 or args.debug_body_iters <= 0:
