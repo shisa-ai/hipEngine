@@ -18,14 +18,18 @@ benchmarks/micro/
   runners/
     geometry_sweep.py
     isa_stats.py
+    vopd_sweep.py
     hip_geometry_sweep.hip
+    hip_vopd_sweep.hip
     hip_dispatch_floor.py
     vulkan_geometry_sweep.cpp
+    vulkan_vopd_sweep.cpp
     vulkan_dispatch_floor.py
     vulkan_dispatch_floor.cpp
   kernels/
     vulkan/
       geometry_sweep.comp
+      vopd_sweep.comp
   schemas/
     environment.schema.json
     result.schema.json
@@ -287,10 +291,65 @@ python3 benchmarks/micro/runners/isa_stats.py \
   --out benchmarks/micro/results/gfx1100/w7900/geometry-isa-stats-comparison.json
 ```
 
+## VOPD Scheduling Sweep
+
+`runners/vopd_sweep.py` runs paired pure-VALU diagnostics for VOPD and VALU
+scheduling. Each variant is compiled separately with mode/accumulator macros so
+the ISA evidence corresponds to exactly one kernel body. The default variants
+cover independent f32 FMA chains, dependent f32 FMA chains, mixed int+float,
+and dequant-like shift/mask/cvt/FMA chains.
+
+Example paired run:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json
+
+HIPENGINE_HIP_ARCH=gfx1100 \
+python3 benchmarks/micro/runners/vopd_sweep.py \
+  --backend hip \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --n 65536 \
+  --body-iters 2048 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 7 \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/hip-vopd-sweep.json
+
+python3 benchmarks/micro/runners/vopd_sweep.py \
+  --backend vulkan \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-vopd-sweep.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --n 65536 \
+  --body-iters 2048 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 7 \
+  --debug-n 1024 \
+  --debug-body-iters 64 \
+  --quiet-shader-dump \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vulkan-vopd-sweep.json
+
+python3 benchmarks/micro/runners/vopd_sweep.py \
+  --compare benchmarks/micro/results/gfx1100/w7900/hip-vopd-sweep.json \
+            benchmarks/micro/results/gfx1100/w7900/vulkan-vopd-sweep.json \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vopd-sweep-comparison.json
+```
+
 ## Retained Results
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | VOPD scheduling sweep | Pure VALU rows all pass the sampled CPU oracle. HIP emits VOPD in every retained row while RADV final disassembly emits 0 VOPD in every row. Vulkan is modestly faster only on independent-8 (`1.05x`), mixed int+float (`1.08x`), and dequant-like (`1.04x`); HIP is faster on independent-2/4 and dependent-4. Classified `diagnostic_unclassified`; this is a negative result for the "ACO wins through VOPD" hypothesis. | `results/gfx1151/strix-halo/vopd-sweep-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 geometry ISA/stat extraction | K=2048 rows=1 wg64/wg256 extraction passed correctness references. HIP reports 18 SGPR, 11 VGPR, no scratch/spills, wave32, and 2 VOPD instructions; RADV final disassembly has no VOPD, wave64, and no official VGPR/SGPR allocation counts exposed. The geometry gap is not a missed-HIP-VOPD or HIP-spill story; still classified `diagnostic_unclassified`. | `results/gfx1151/strix-halo/geometry-isa-stats-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 GEMV geometry sweep | Repeat-shifted matched f32 GEMV/reduction rows all pass the CPU oracle. HIP and Vulkan both prefer wg256, so workgroup shape alone does not explain the gap; Vulkan remains `5.79x-14.03x` faster on best-native rows. Classified `diagnostic_unclassified`; paired ISA extraction rules out a simple missed-HIP-VOPD explanation but does not yet identify the primary cause. | `results/gfx1151/strix-halo/geometry-sweep-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | dispatch/grid floor | Vulkan command-buffer replay is much cheaper than HIP direct/graph for one-block launch-heavy bursts (`0.043621 us` vs HIP tiny direct `2.0087 us` and HIP graph `1.8069 us` at N=941), but the gap narrows to about `1.10x` at 8192 blocks. Classified `runtime_dispatch`, not `compiler_aco`. | `results/gfx1151/strix-halo/dispatch-floor-comparison.json` |
