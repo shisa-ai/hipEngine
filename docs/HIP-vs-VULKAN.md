@@ -50,8 +50,8 @@ LLVM-AMDGPU" as a single explanation.
   (`1.02x`). HIP reports no scratch and no spills, while RADV still exposes only
   estimated register spans. Simple rows show slightly fewer RADV waitcnt-family
   instructions; fixed-shape controls do not close the gap, but better RADV
-  allocation stats and real-slice evidence are still needed before turning this
-  into an LLVM-AMDGPU waitcnt/scheduling claim.
+  allocation stats and matching memory-bound real-slice evidence are still
+  needed before turning this into an LLVM-AMDGPU waitcnt/scheduling claim.
 - The retained packed dot-path sweep rules out a missing-HIP-dot-instruction
   story for the current q8/q4/q6 idiom. HIP and RADV both emit final dot4
   instructions for q8 signed, q4 unsigned-byte by signed-q8, and q6 zero-point
@@ -78,6 +78,14 @@ LLVM-AMDGPU" as a single explanation.
   small (`0.0025-0.0027 ms`) in these retained slices. This is **not** a Vulkan
   real-slice comparison; it only says q8_1 layout cost is not the blocker on
   the HIP side.
+- The first matched Vulkan production-slice probe does **not** transfer the
+  synthetic Vulkan dot-path win to the Q6_K selected-down X8 hot shape. On the
+  retained rows=8, experts=256, in=512, out=2048 slice, the best Vulkan
+  local-size row is local_size=64 at `0.03076 ms` prequantized dot and
+  `0.03217 ms` quantize+dot. The retained HIP path is `0.01665 ms` dot and
+  `0.01925 ms` quantize+dot, so Vulkan is `1.85x` slower on dot and `1.67x`
+  slower on the combined path. This is retained as `real_slice_probe`, not
+  `compiler_aco`.
 - We still cannot claim `compiler_aco` for the f32 geometry gap. RADV official
   VGPR/SGPR allocation counts were not exposed by `RADV_DEBUG=shaders`; the
   fixed-workgroup control removes the runtime-`blockDim` confound, but wave mode
@@ -102,6 +110,9 @@ What we have ruled out:
 - Do not reject q8_1/dp4a purely because of activation materialization cost in
   the tested HIP selected-MoE slices. The measured quantization cost is small
   and the full quantize+dot path is faster than the retained HIP float controls.
+- Do not pursue a Vulkan port for the Q6_K selected-down X8 q8_1+dp4a slice as
+  currently implemented. The matched Vulkan real-slice probe is slower than HIP
+  despite passing correctness and using the intended SPIR-V/RADV dot path.
 
 What remains plausible:
 
@@ -115,11 +126,12 @@ What remains plausible:
 - Dot-instruction availability is no longer untested for the packed q8/q4/q6
   idiom: HIP emits dot4. HIP wave64 also does not close the dot gap. The
   fixed-block control also does not close it. HIP real-slice q8_1 materialization
-  is positive, so the remaining dot-path work is a Vulkan implementation of the
-  same production slice before deciding whether a narrow hand-ISA sequence is
-  worth carrying.
-- Real Vulkan inference slices still need to confirm that the microbench deltas
-  predict shipped hot buckets.
+  is positive, and the first Vulkan real-slice probe is negative for Q6_K X8
+  selected-down. A narrow hand-ISA sequence is only worth considering for a
+  specific hot slice after the remaining layout/stat confounds are gone.
+- Real Vulkan inference slices still need caution: the first production-shaped
+  q6 selected-down probe did **not** predict a Vulkan win, so synthetic Vulkan
+  dot-path wins should not be promoted without a matching real slice.
 
 Operationally, keep the Vulkan work as an attribution/probe path until real
 inference slices prove production value. The HIP roadmap should first try to
@@ -150,14 +162,15 @@ Immediate triage:
 | Stop for now | More HIP wave64 dot/memory rows | Wave64 did not close dot or memory gaps and badly regressed gather. |
 | Stop for now | More HIP fixed-block dot/memory controls | Fixed block indexing was flat or mixed and did not close the Vulkan lead. |
 | Stop for now | Dispatch-only Vulkan probes | The runtime-dispatch win is already classified and does not prove compiler quality. |
-| Test next | One matched Vulkan production slice | This is the missing evidence between synthetic microbench wins and shipped hot buckets. |
+| Stop for now | Vulkan Q6_K selected-down X8 port | The matched real-slice probe is slower than retained HIP by `1.67x` on quantize+dot. |
 | Test next | Better RADV allocation/stat extraction | Needed before turning memory/geometry rows into LLVM-AMDGPU issue material. |
+| Optional | Vulkan Q4_K selected-dual gate/up slice | Useful only if we need a second hot-bucket transfer check after the q6 result. |
 
-1. A real Vulkan probe for one selected-MoE small-K or q6 lm-head/q6 selected
-   rowtile slice. The HIP q8_1 layout controls are positive, but they do not
-   prove Vulkan can carry the same production layout.
-2. Better RADV allocation/stat extraction, if we can get official VGPR/SGPR
+1. Better RADV allocation/stat extraction, if we can get official VGPR/SGPR
    counts for final shaders without changing the benchmark shape.
+2. Vulkan Q4_K selected-dual gate/up real-slice probe, only if we need a second
+   production hot-bucket transfer check. The Q6_K selected-down Vulkan probe is
+   already negative.
 3. HIP wave64 plus fixed-workgroup geometry control, if we need to remove the
    remaining wave-mode confound before a compiler-facing geometry claim.
 4. Cross-GPU reruns only after the harnesses above stabilize. gfx1100/W7900 and
@@ -172,8 +185,9 @@ Priority summary:
 | Done | HIP wave64 dot/memory controls | Wave64 does not close dot/memory gaps and regresses gather |
 | Done | HIP fixed-shape memory/dot/geometry controls | Runtime `blockDim`/fixed-shape overhead does not close retained gaps |
 | Done | HIP q8_1 real-slice layout controls | q8_1 materialization is small and positive on tested HIP selected-MoE slices |
-| P1 | Real Vulkan selected-MoE or q6 lm-head slice | Check whether the microbench diagnosis predicts a shipped hot bucket |
+| Done | Vulkan Q6_K selected-down X8 real-slice probe | Synthetic Vulkan dot-path win does not transfer to this shipped hot bucket |
 | P1 | Better RADV allocation/stat extraction | Decide whether memory/geometry rows are suitable LLVM issue evidence |
+| P2 | Vulkan Q4_K selected-dual gate/up slice | Optional second hot-bucket transfer check |
 | P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after fixed-shape and real-slice harnesses are classified on gfx1151 |
 
 Tooling that would improve attribution quality, but should not displace the
@@ -673,9 +687,66 @@ Q6_K selected-down result:
 Conclusion: q8_1 materialization cost is not the reason to avoid q8_1/dp4a on
 these HIP selected-MoE slices. The quantization stage is only about
 `0.0025-0.0027 ms` and the full quantize+dot path is faster than the tested HIP
-float controls. This does **not** prove the Vulkan ceiling transfers to a real
-backend; the next production-value test is a Vulkan probe for one of these same
-slice shapes.
+float controls. The matched Vulkan Q6_K X8 selected-down probe below shows that
+this positive HIP layout result does **not** automatically transfer to a Vulkan
+backend.
+
+### gfx1151 Vulkan Q6_K X8 Real-Slice Probe
+
+Retained artifacts:
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json`,
+and
+`benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Shape: Q6_K selected-down X8, rows=`8`, experts=`256`, in=`512`,
+  out=`2048`, q8_1 activation format, bf16 output.
+- Vulkan implementation: standalone microbench probe with a q8_1 quantize
+  shader plus Q6_K X8 selected-down dp4a shader. Timings use pre-recorded
+  command buffers and exclude shader compilation, pipeline creation, and
+  host-device transfers.
+- Correctness: full CPU reference for q8_1 quantize plus Q6_K X8 selected-down
+  dp4a. All retained local-size rows pass with top-1 `1.0`; best local_size=64
+  max abs is `0.25`, mean abs `0.00308`.
+- Classification: `real_slice_probe`; this is production-shaped backend
+  evidence, not a generic compiler proof.
+
+Timing result:
+
+| Backend / local size | q8_1 quantize | X8 dot, prequantized | q8_1 quantize+X8 dot | Correctness |
+| --- | ---: | ---: | ---: | --- |
+| HIP retained, threads=64 | `0.00275 ms` | `0.01665 ms` | `0.01925 ms` | top-1 `1.0` vs production T16 |
+| Vulkan local_size=64 | `0.000357 ms` | `0.03076 ms` | `0.03217 ms` | top-1 `1.0` vs CPU |
+| Vulkan local_size=128 | `0.000356 ms` | `0.03258 ms` | `0.03326 ms` | top-1 `1.0` vs CPU |
+| Vulkan local_size=256 | `0.000356 ms` | `0.03500 ms` | `0.03707 ms` | top-1 `1.0` vs CPU |
+
+Best retained Vulkan row is local_size=64. Relative to retained HIP, Vulkan is:
+
+| Metric | Vulkan / HIP |
+| --- | ---: |
+| X8 dot, prequantized | `1.85x` slower |
+| q8_1 quantize+X8 dot | `1.67x` slower |
+
+ISA/stat extraction for local_size=64:
+
+| Shader | SPIR-V dot ops | RADV final dot4 | RADV subgroup | RADV VOPD | Estimated registers | Wait/load notes |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| q8_1 quantize | `0` | `0` | `64` | `0` | VGPR span `96`, SGPR span `16` | `6` waitcnt, `1` buffer load |
+| Q6_K X8 dot | `9` `OpSUDot` | `9` | `64` | `0` | VGPR span `48`, SGPR span `24` | `89` waitcnt, `82` buffer loads |
+
+Conclusion: the first matched Vulkan production slice is negative. The
+synthetic packed dot-path sweep showed Vulkan can be much faster on a simplified
+dot loop, but this Q6_K selected-down X8 production-shaped shader does not beat
+HIP once the real layout, q8_1 materialization, selected rows, output shape, and
+subgroup reduction are present. Do not promote a Vulkan backend or hand-ISA
+path from this q6 selected-down evidence. The remaining compiler-facing work is
+better RADV allocation/stat extraction for the generic memory/geometry rows and
+optional transfer checks for other hot slices such as Q4_K selected-dual gate/up.
 
 ## Questions To Answer
 
@@ -699,8 +770,8 @@ slice shapes.
 7. **dp4a/sudot4:** Does the compiler matter once the code uses the intended
    RDNA3 dot instruction? Retained gfx1151 packed-dot rows say HIP and RADV
    both emit dot4, while HIP wave64 and fixed-block indexing do not close the
-   gap, so the remaining gap is surrounding scheduling or layout/activation
-   quantization economics.
+   gap. The first Q6_K X8 real-slice Vulkan probe also emits dot4 but is slower
+   than HIP, so synthetic dot-path wins do not transfer automatically.
 8. **LLVM roadmap:** For each confirmed RADV/ACO win, what exactly would LLVM
    need to improve?
 
@@ -1095,13 +1166,17 @@ Promotion requirements:
    selected-down. Status: retained on gfx1151; q8_1 materialization is small
    and production-layout HIP q8_1+dp4a is positive.
 9. Port one matched Vulkan real slice: selected-MoE small-K or q6 lm-head
-   rowtile. Status: pending.
+   rowtile. Status: retained for Q6_K selected-down X8 on gfx1151; Vulkan is
+   slower than HIP by `1.67x` on quantize+dot, so this slice is not a Vulkan
+   backend candidate as implemented.
 10. Classify each retained row using the result buckets above.
 11. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
-The next most useful test is now one matched Vulkan real slice for a production
-selected-MoE or q6 lm-head/selected-down shape.
+The next most useful test is now better RADV allocation/stat extraction for the
+remaining memory/geometry compiler-facing rows. A Vulkan Q4_K selected-dual
+gate/up real-slice probe is optional if we need a second production hot-bucket
+transfer check, but the Q6_K selected-down X8 slice is already negative.
 The gfx1151 geometry, VOPD, memory/waitcnt, and dot-path extractions already
 found that the current gap is not a missed-HIP-VOPD, HIP-spill, or missed-dot4
 story. The next stop is isolating the remaining hypotheses rather than rerunning
