@@ -145912,3 +145912,28 @@ python3 scripts/gguf_mtp_bench.py \
   `PYTHONPATH=. pytest -q tests/test_micro_collect_env.py` all passed. An
   earlier parallel `json.tool` invocation raced the writer and failed before
   the sequential parse passed.
+
+## 2026-07-07 - HIP dispatch-floor microbench runner
+
+- Added `benchmarks/micro/runners/hip_dispatch_floor.py`, a dependency-free
+  wrapper around `scripts/graph_node_microbench.py` that runs or normalizes the
+  existing HIP direct-launch/graph-replay diagnostic into the
+  `hipengine_micro_result` schema with `runtime_dispatch` classification.
+- The runner records wrapper command, legacy command, source hash, environment
+  snapshot or `environment_ref`, hardware override, primary per-launch timing,
+  full legacy rows, grid sweep rows, and graph/arg-scaling verdicts. It also
+  prepends the repo root to child `PYTHONPATH` so `scripts/` subprocesses can
+  import `hipengine` reliably.
+- Added `tests/test_micro_hip_dispatch_floor.py` for schema-shaped
+  normalization with embedded environment data and external environment refs.
+- Updated `benchmarks/micro/README.md` with the dispatch-floor workflow and the
+  compact retained-artifact pattern.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/hip_dispatch_floor.py`,
+  `PYTHONPATH=. pytest -q tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`,
+  `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`,
+  `rocminfo | grep -E 'Name:|gfx'`, and a one-rep gfx1151 smoke
+  `python3 benchmarks/micro/runners/hip_dispatch_floor.py --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --counts 1 --kernels tiny --reps 1 --warmup 0 --skip-device-probes --pretty --out /tmp/hipengine-micro-dispatch-smoke.json`
+  plus `python3 -m json.tool /tmp/hipengine-micro-dispatch-smoke.json >/dev/null`
+  all passed. The smoke only validates wrapper/HIP execution and JSON shape; it
+  is not retained performance evidence.

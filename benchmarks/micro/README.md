@@ -15,6 +15,8 @@ artifacts and utilities used to execute that plan.
 benchmarks/micro/
   README.md
   collect_env.py
+  runners/
+    hip_dispatch_floor.py
   schemas/
     environment.schema.json
     result.schema.json
@@ -30,7 +32,6 @@ Suggested future layout:
 ```text
 benchmarks/micro/
   runners/
-    hip_dispatch_floor.py
     vulkan_dispatch_floor.py
     compare_results.py
   kernels/
@@ -83,6 +84,45 @@ python3 benchmarks/micro/collect_env.py --skip-device-probes --pretty
 
 The collector is dependency-free and intentionally tolerant: missing commands
 are recorded as unavailable instead of failing the run.
+
+## HIP Dispatch/Grid Floor
+
+The first runner wraps the existing `scripts/graph_node_microbench.py` HIP
+diagnostic and normalizes it into `schemas/result.schema.json`:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 \
+python3 benchmarks/micro/runners/hip_dispatch_floor.py \
+  --counts 1,50,200,941 \
+  --kernels tiny,wide \
+  --grid-sweep 1,128,1024,8192 \
+  --reps 50 \
+  --warmup 10 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/dispatch-floor.json
+```
+
+For compact retained artifacts, capture the environment once and reference it:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/environment.json
+
+HIPENGINE_HIP_ARCH=gfx1100 \
+python3 benchmarks/micro/runners/hip_dispatch_floor.py \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --counts 1,50,200,941 \
+  --kernels tiny,wide \
+  --grid-sweep 1,128,1024,8192 \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/dispatch-floor.json
+```
+
+Use `--legacy-input <path>` to normalize an existing
+`scripts/graph_node_microbench.py --json` artifact without rerunning HIP.
 
 ## Classification
 
