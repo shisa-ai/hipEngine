@@ -1,0 +1,96 @@
+{
+  "best_vulkan_combined": {
+    "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json",
+    "dp4a_quantize_plus_dot_ms": 0.2923832875,
+    "hip_over_vulkan_combined": 1.182758527068937,
+    "local_size": 64,
+    "vulkan_over_hip_combined": 0.8454811164863537
+  },
+  "best_vulkan_dot": {
+    "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json",
+    "dp4a_dot_prequantized_ms": 0.2960678375,
+    "hip_over_vulkan_dot": 1.1699392184129818,
+    "local_size": 64,
+    "vulkan_over_hip_dot": 0.8547452587806196
+  },
+  "classification": "real_slice_probe",
+  "conclusion": "Vulkan Q4_K selected-dual local_size=64 is faster than retained HIP on this production-shaped q8_1+dp4a slice; unlike the negative Q6_K X8 probe, this Q4 hot bucket transfers a real Vulkan win. Treat as slice-specific real_slice_probe evidence, not broad compiler_aco proof.",
+  "hardware": "gfx1151 / Radeon 8060S Graphics / RADV STRIX_HALO",
+  "hip_artifact": "benchmarks/micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json",
+  "hip_retained": {
+    "correctness_vs_raw": {
+      "gate": {
+        "kl_max": 0.012451213693840456,
+        "kl_mean": 0.003112803423460114,
+        "max_abs": 2.0,
+        "mean_abs": 0.23107124865055084,
+        "top1": 1.0
+      },
+      "up": {
+        "kl_max": 0.012451213693840456,
+        "kl_mean": 0.0031128034234601133,
+        "max_abs": 2.0,
+        "mean_abs": 0.23107124865055084,
+        "top1": 1.0
+      }
+    },
+    "dp4a_dot_prequantized_ms": 0.3463813744019717,
+    "dp4a_quantize_plus_dot_ms": 0.3458188264630735,
+    "q8_1_quantize_ms": 0.002469387254677713,
+    "raw_selected_dual_ms": 0.9583647246472538,
+    "threads": 256
+  },
+  "schema": "hipengine.micro.q4_selected_dual_real_slice_comparison.v1",
+  "shape": {
+    "activation_seed": 27,
+    "experts": 256,
+    "in_features": 2048,
+    "input_scale": 0.1,
+    "out_features": 512,
+    "quant": "q4_k",
+    "rows": 32,
+    "weight_layout": "GGUF Q4_K raw bytes; A experts roll base by expert, B experts roll base by expert*3",
+    "x_rows": 4
+  },
+  "vulkan_artifacts": [
+    "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json",
+    "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json",
+    "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json"
+  ],
+  "vulkan_isa_artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json",
+  "vulkan_rows": [
+    {
+      "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json",
+      "correctness_pass": true,
+      "dp4a_dot_prequantized_ms": 0.2960678375,
+      "dp4a_quantize_plus_dot_ms": 0.2923832875,
+      "local_size": 64,
+      "max_abs": 1,
+      "mean_abs": 0.03408358991,
+      "q8_1_quantize_ms": 0.0005368875,
+      "top1": 1
+    },
+    {
+      "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json",
+      "correctness_pass": true,
+      "dp4a_dot_prequantized_ms": 0.3025433625,
+      "dp4a_quantize_plus_dot_ms": 0.2964784875,
+      "local_size": 128,
+      "max_abs": 1,
+      "mean_abs": 0.03408358991,
+      "q8_1_quantize_ms": 0.0005618125,
+      "top1": 1
+    },
+    {
+      "artifact": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json",
+      "correctness_pass": true,
+      "dp4a_dot_prequantized_ms": 0.3111589125,
+      "dp4a_quantize_plus_dot_ms": 0.313163675,
+      "local_size": 256,
+      "max_abs": 1,
+      "mean_abs": 0.03408358991,
+      "q8_1_quantize_ms": 0.000549275,
+      "top1": 1
+    }
+  ]
+}
