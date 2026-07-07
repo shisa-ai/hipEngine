@@ -1,8 +1,9 @@
-# HIP vs Vulkan Attribution Plan
+# HIP vs Vulkan Attribution Results And Plan
 
-This document defines the microbenchmark suite we need before turning the
-current "Vulkan/RADV/ACO is better than HIP/LLVM here" read into actionable
-compiler or backend work. It is a plan, not a performance claim. Retained
+This document records the HIP vs Vulkan/RADV attribution suite and the retained
+conclusions from it. It started as a plan for turning "Vulkan/RADV/ACO is better
+than HIP/LLVM here" into actionable compiler or backend work; it is now also the
+project ledger for what the microbenchmarks have actually proven. Retained
 results must follow the evidence policy in `docs/BENCHMARK.md`.
 
 The motivating observation from `docs/ROOFLINE.md` and
@@ -21,7 +22,9 @@ Vulkan backend, or a tiny hand-ISA path.
 ## Current Conclusion
 
 As of the retained gfx1151/STRIX_HALO runs on 2026-07-08, the retained
-conclusion is split:
+conclusion is split. The short answer is **no**: the evidence does not support
+"HIP is slower simply because Mesa RADV/ACO is better optimized than
+LLVM-AMDGPU" as a single explanation.
 
 - Vulkan/RADV command-buffer replay has a real runtime-dispatch advantage for
   launch-heavy tiny-kernel bursts. This is retained as `runtime_dispatch`, not
@@ -52,15 +55,30 @@ conclusion is split:
   current evidence mixes HIP runtime `blockDim` code with Vulkan specialization
   constants and different wave/subgroup modes.
 
-So the current project-level answer is **not** "HIP is simply slower because
-ACO is better." The retained answer is: Vulkan has a proven dispatch/runtime
-advantage on gfx1151; Vulkan has a large matched-math advantage in one f32
-diagnostic; and targeted VOPD evidence points away from "ACO wins by finding
-dual issue that LLVM misses." Memory/waitcnt evidence now looks like a serious
-part of the gap, but still needs a wave-mode and specialization control before
-it becomes a clean LLVM issue. The remaining compiler-facing questions are now
-dot-instruction lowering, wave/subgroup mode, fixed-shape specialization, and
-whether the memory/waitcnt delta predicts real inference slices.
+What we have ruled out:
+
+- Do not attribute the current Vulkan ceiling to RADV/ACO finding VOPD/dual
+  issue opportunities that LLVM/HIP misses. The retained gfx1151 VOPD evidence
+  points the other way: HIP emits VOPD, RADV does not.
+- Do not attribute the f32 geometry gap to HIP spills or scratch use. HIP
+  reports `0` scratch and `0` spills in the retained ISA/stat rows.
+- Do not attribute the f32 geometry gap only to a bad HIP workgroup-size choice.
+  HIP and Vulkan both prefer wg256 in the retained best-native rows.
+
+What remains plausible:
+
+- Vulkan has a proven dispatch/runtime advantage on gfx1151.
+- Vulkan has a large matched-math advantage in one f32 diagnostic, but that row
+  is still `diagnostic_unclassified`.
+- Memory/access scheduling is now the strongest compiler-facing lead. It may
+  become an LLVM-AMDGPU waitcnt/scheduling issue, but only after HIP wave64 and
+  fixed-shape controls remove the current wave/subgroup and specialization
+  confounds.
+- Dot-instruction lowering is still untested. The q8/q4/q6 paths may land as
+  LLVM intrinsic/pattern work, layout/quant work, or narrow hand-ISA work,
+  depending on whether HIP emits the intended RDNA3 dot instructions.
+- Real inference slices still need to confirm that the microbench deltas predict
+  shipped hot buckets.
 
 Operationally, keep the Vulkan work as an attribution/probe path until real
 inference slices prove production value. The HIP roadmap should first try to
@@ -78,9 +96,10 @@ items or carefully scoped hand-ISA candidates.
 
 ## What To Test Next
 
-Do **not** spend more gfx1151 time on dispatch-only, broad geometry-only,
-generic VOPD, or generic memory sweeps. The next useful tranche is
-decision-grade controls:
+Yes, there is more worth testing, but the useful list is now narrow. Do **not**
+spend more gfx1151 time on dispatch-only, broad geometry-only, generic VOPD, or
+generic memory sweeps. Those have already answered the coarse questions. The
+next useful tranche is decision-grade controls:
 
 1. Dot-path microbenches: q8_1/q4 or q8_0 shapes that prove whether HIP and
    Vulkan both emit the intended RDNA3 dot instructions. If both do and timing
@@ -94,6 +113,9 @@ decision-grade controls:
 3. One representative inference slice after the microbench deltas are
    classified. The best first slices are selected-MoE small-K or q6 lm-head
    rowtile, because they map directly to exposed hipEngine buckets.
+4. Cross-GPU reruns only after the harnesses above stabilize. gfx1100/W7900 and
+   7900 XTX reruns should check portability of a classified diagnosis, not
+   replace the missing controls.
 
 Priority summary:
 
@@ -103,7 +125,16 @@ Priority summary:
 | P0 | HIP wave64/fixed-shape memory controls | Decide whether retained memory/waitcnt wins are wave-mode, specialization, or LLVM scheduling |
 | P1 | Fixed-workgroup HIP geometry variants | Remove the Vulkan specialization-constant vs HIP runtime-`blockDim` confound |
 | P1 | One real selected-MoE or q6 lm-head slice | Check whether the microbench diagnosis predicts a shipped hot bucket |
-| P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after the harnesses are classified on gfx1151 |
+| P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after the dot/wave/fixed-shape harnesses are classified on gfx1151 |
+
+Tooling that would improve attribution quality, but should not displace the P0
+tests:
+
+- Better RADV allocation/stat extraction, via whatever Mesa/RADV or RGP path
+  exposes official VGPR/SGPR allocation counts for final shaders.
+- A small comparison utility that rolls HIP/Vulkan artifacts into a one-page
+  retained-result diff with timing, correctness, wave mode, instruction counts,
+  waits, dot/VOPD counts, and classification.
 
 Cross-GPU reruns on gfx1100/W7900 and 7900 XTX are important after the harnesses
 are stable. They should confirm portability of the gfx1151 conclusions, not
