@@ -145818,3 +145818,40 @@ python3 scripts/gguf_mtp_bench.py \
   full-request **1.049x/1.108x**, HIP/Vulkan decode-only **1.040x/1.132x**).
   The remaining MTP-vs-AR gap at c=4/c=8 is not a c>N scaling blocker; it is
   the documented verifier LM-head/sample optimization target.
+
+## 2026-07-07 - Local benchmark artifact triage
+
+- Audited the remaining untracked local artifact pile after merging
+  `mtp-server` into `main`: **158** untracked
+  `benchmarks/results/*.json` files, **6.8 MiB** total, plus an untracked
+  local `uv.lock`.
+- Exact-reference audit against `README.md`, `benchmarks/README.md`,
+  `benchmarks/CHANGELOG.md`, `docs/*.md`, and `WORKLOG.md` found
+  **0** tracked references to those untracked JSON paths. The previously
+  referenced missing probe artifacts were already committed in
+  `178bd2fe`.
+- Classification:
+  - **8** `2026-07-07 *benefit-sweep.json` files are first-pass/cold sweep
+    artifacts superseded by the tracked warm `*benefit-sweep-rerun.json`
+    artifacts used in the README and worklog tables.
+  - **36** AR files are superseded c>N retry/intermediate probes
+    (`native-batch`, `streams`, `packed-deferred`, `chunked-prefill-arfix`,
+    `startup-warm*`, `routecap4-retry`, etc.) superseded by the tracked
+    retained AR rows and full-access retry validations.
+  - **46** files are rejected or diagnostic probe families (`probe`,
+    `rolling4`, `q6t16`, `rowtile12`, `runtimecap8`, `globalcap4`,
+    `nosamplesync`, `selected-wmma`, `persistentpool`, `verifychunk3`,
+    `vlmheadtop1`, `streamupload`, etc.).
+  - **66** MTP files are superseded intermediate route measurements already
+    represented by tracked retained artifacts such as the rowtile-chunk,
+    deferred-scatter resetfix, scaling-audit, full-access, and benefit-sweep
+    rerun rows.
+  - **2** remaining AR files are older packed-prefill/streamchunk intermediates
+    superseded by later retained AR route-cap/full-access evidence.
+- Decision: do **not** promote any of the remaining untracked JSON artifacts
+  into `main`; they would add duplicate or rejected evidence without a live
+  tracked reference. Keep them local for now unless a future investigation needs
+  one and adds a concrete doc/worklog reference. The untracked `uv.lock` is also
+  left local; this repo has not been tracking a lockfile, so dependency-lock
+  policy should be handled separately rather than bundled with benchmark
+  evidence cleanup.
