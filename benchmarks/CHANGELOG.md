@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-08
+
+- [micro diagnostic retained] gfx1151 / Radeon 8060S / HIP vs Vulkan dispatch-grid floor: Vulkan command-buffer replay measured **0.043621 us/dispatch** at N=941 one-block versus HIP tiny direct **2.0087 us** and HIP graph **1.8069 us** (**46.0x / 41.4x** runtime-dispatch gap); at 8192 blocks the gap narrowed to Vulkan **11.9779 us** versus HIP wide direct **13.2324 us** and HIP graph **13.0226 us** (**1.10x / 1.09x**). Classified `runtime_dispatch`, not `compiler_aco`; this is not shader-codegen evidence. `benchmarks/micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json`.
+
 ## 2026-07-06
 
 - [validation] Qwen3.6-35B-A3B GGUF Q4_K_M / gfx1151 / hipEngine OpenAI server natural24 MTP c>N: current-HEAD scaling audit measured **44.95/70.47/79.48/79.45 tok/s** at c=1/c=2/c=4/c=8, with c=8 rerun used for the scaling ratio and unchanged c>N economy (`draft=165`, `accepted=141`, accept rate **0.8545**). This confirms MTP c8/c1 scaling **1.768x**, above retained PARO native c8/c1 **1.588x** and llama.cpp HIP/Vulkan MTP c8/c1 full-request **1.049x/1.108x** and decode-only **1.040x/1.132x**; no topline row supersession because retained best c=1/c=2/c=8 rows remain **45.38/70.53/79.61 tok/s**. `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c1-bw5-scaling-audit.json`, `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-scaling-audit.json`, `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-scaling-audit.json`, `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-scaling-audit-rerun.json`.
