@@ -146474,3 +146474,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passed exact sampled CPU-oracle correctness. RADV final ISA emitted dot4 in
   q8/q4/q6 rows (`4/4/8`) and none for scalar; SPIR-V op counts were `OpSDot=1`
   for q8, `OpSUDot=1/2` for q4/q6, and no dot ops for scalar.
+
+## 2026-07-08 - gfx1151 packed dot-path sweep
+
+- Captured clean-source environment after `f2a232eb`:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-dot-path.json`.
+- Ran retained HIP packed dot-path sweep:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/dot_path.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-dot-path.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-dot-path.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-dot-path.json`.
+- Ran retained Vulkan/RADV packed dot-path sweep:
+  `python3 benchmarks/micro/runners/dot_path.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-dot-path.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-dot-path.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-dot-path.json`.
+- Built retained comparison:
+  `python3 benchmarks/micro/runners/dot_path.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-dot-path.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-dot-path.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/dot-path-comparison.json`.
+- Result: all HIP and Vulkan rows passed exact sampled CPU-oracle correctness
+  with max abs `0.0`. Vulkan speedups were q8 signed `3.43x`, q4 unsigned-byte
+  by signed-q8 `3.41x`, q6 zero-corrected `3.29x`, and scalar q4 dequant
+  `3.29x`.
+- HIP and RADV both emitted final dot4 instructions for q8/q4/q6 rows
+  (`16/16/32` dot4 counts) and both emitted zero dot4 for scalar dequant.
+  Vulkan SPIR-V contained `OpSDot=1` for q8, `OpSUDot=1` for q4, `OpSUDot=2`
+  for q6, and no dot ops for scalar. HIP reported wave32, no scratch, and no
+  spills; RADV final shaders were wave64 with estimated register spans only.
+- Interpretation: this rules out a missed-HIP-dot4 explanation for the packed
+  q8/q4/q6 idiom. The retained gap remains `diagnostic_unclassified`; next
+  controls are HIP wave64/fixed-shape dot/memory/geometry variants and one real
+  selected-MoE or q6 lm-head slice with q8_1/layout costs included.
+- Validation:
+  `python3 -m json.tool` passed for environment, HIP dot-path, Vulkan dot-path,
+  and comparison artifacts. Updated `docs/HIP-vs-VULKAN.md`,
+  `benchmarks/micro/README.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`.
