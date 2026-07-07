@@ -146166,3 +146166,30 @@ graphless decode launch-collapse path without regressing target/serial parity.
   next useful benchmark, followed by VOPD, waitcnt/memory, q8_1/sudot4, and a
   real selected-MoE or q6 lm-head slice. Repeating dispatch on gfx1100/W7900 is
   useful for cross-GPU scope, but should not displace matched math kernels.
+
+## 2026-07-08 - Matched HIP/Vulkan f32 geometry sweep harness
+
+- Added `benchmarks/micro/runners/hip_geometry_sweep.hip`, a HIP harness for a
+  matched f32 GEMV/reduction diagnostic: one workgroup per output row, strided
+  FMA over K, shared-memory tree reduction, runtime workgroup-size sweep, CPU
+  oracle using the same reduction order, and JSON row output.
+- Added `benchmarks/micro/kernels/vulkan/geometry_sweep.comp` and
+  `benchmarks/micro/runners/vulkan_geometry_sweep.cpp`, the Vulkan equivalent
+  using device-local buffers, host staging outside the timed region, a
+  `local_size_x` specialization constant, and pre-recorded command-buffer
+  replay for timed dispatches.
+- Added `benchmarks/micro/runners/geometry_sweep.py`, which compiles/runs HIP
+  or Vulkan, normalizes raw rows into `hipengine_micro_result`, and builds a
+  matched HIP/Vulkan comparison artifact keyed by K/rows/workgroup/body-repeat.
+- Added `tests/test_micro_geometry_sweep.py` for normalization and comparison
+  behavior, and updated `benchmarks/micro/README.md` with paired run commands.
+- Validation:
+  `hipcc --offload-arch=gfx1151 -O3 -std=c++17 benchmarks/micro/runners/hip_geometry_sweep.hip -o /tmp/hipengine-hip-geometry-sweep-test`,
+  a small HIP smoke with K=128/rows=1/workgroups=32,64,
+  `glslc -O benchmarks/micro/kernels/vulkan/geometry_sweep.comp -o /tmp/hipengine-geometry-sweep.spv`,
+  `c++ -O2 -std=c++17 benchmarks/micro/runners/vulkan_geometry_sweep.cpp -o /tmp/hipengine-vulkan-geometry-sweep-test -lvulkan`,
+  a small Vulkan smoke with K=128/rows=1/workgroups=32,64,
+  `python3 -m py_compile benchmarks/micro/runners/geometry_sweep.py`, and
+  `PYTHONPATH=. pytest -q tests/test_micro_geometry_sweep.py tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`
+  all passed. The smokes validate execution and JSON shape only; retained
+  gfx1151 rows will be run after committing this clean harness unit.
