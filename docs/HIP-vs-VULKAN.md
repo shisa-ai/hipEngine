@@ -34,6 +34,12 @@ conclusion is split:
   wins through VOPD pairing" story for this f32 geometry harness. HIP emits two
   static VOPD instructions while RADV emits none in the final shader disassembly
   for the tested wg64/wg256 shapes. HIP also reports no scratch or spills.
+- The targeted VOPD scheduling sweep also does **not** support the idea that
+  RADV/ACO's ceiling comes from better VOPD pairing on gfx1151. HIP emits VOPD
+  in all retained VOPD rows; RADV emits zero VOPD in all final shader
+  disassemblies. Vulkan is only modestly faster in the heavier independent and
+  mixed/dequant rows, while HIP is faster in independent-2, independent-4, and
+  dependent-4.
 - We still cannot claim `compiler_aco` for the f32 geometry gap. RADV official
   VGPR/SGPR allocation counts were not exposed by `RADV_DEBUG=shaders`, and the
   current evidence mixes HIP runtime `blockDim` code with Vulkan specialization
@@ -41,10 +47,18 @@ conclusion is split:
 
 So the current project-level answer is **not** "HIP is simply slower because
 ACO is better." The retained answer is: Vulkan has a proven dispatch/runtime
-advantage on gfx1151, Vulkan has a large matched-math advantage in one f32
-diagnostic, and the next tests must determine whether that second advantage is
-ACO/LLVM memory scheduling, wave/subgroup behavior, specialization, hidden
-runtime/pipeline behavior, or an algorithmic detail we have not controlled yet.
+advantage on gfx1151; Vulkan has a large matched-math advantage in one f32
+diagnostic; and targeted VOPD evidence points away from "ACO wins by finding
+dual issue that LLVM misses." The remaining compiler-facing question is now
+narrower: memory scheduling/waitcnt, dot-instruction lowering, wave/subgroup
+mode, and specialization behavior.
+
+Operationally, keep the Vulkan work as an attribution/probe path until real
+inference slices prove production value. The HIP roadmap should first try to
+reproduce the useful pieces inside HIP: fixed-shape kernels, dot intrinsics or
+small hand-ISA sequences where proven, better launch fusion, and memory/waitcnt
+controls. A production Vulkan backend is not justified by the dispatch row or
+generic geometry row alone.
 
 HIP also does not give us a PTX-equivalent escape hatch in the normal runtime
 path. We can inspect LLVM IR, AMDGPU assembly, and code-object metadata, and we
@@ -55,32 +69,39 @@ items or carefully scoped hand-ISA candidates.
 
 ## What To Test Next
 
-Do **not** spend more gfx1151 time on dispatch-only or geometry-only sweeps. The
-next useful tranche is:
+Do **not** spend more gfx1151 time on dispatch-only, broad geometry-only, or
+generic VOPD sweeps. The next useful tranche is decision-grade controls:
 
-1. VOPD-specific paired microbenches: independent f32 FMA chains, dependent f32
-   chains, dequant-like integer/float chains, and mixed address-math plus FMA.
-   Only call this an ACO dual-issue win if Vulkan emits more useful VOPD or an
-   equivalent dual-issue schedule at matched occupancy and instruction count.
-2. Memory/waitcnt microbenches: coalesced load+accumulate, strided
+1. Memory/waitcnt microbenches: coalesced load+accumulate, strided
    load+accumulate, gather IDs, and load-compute interleave. These decide
    whether the f32 geometry gap is memory scheduling/waitcnt quality rather than
    generic ALU scheduling.
-3. Dot-path microbenches: q8_1/q4 or q8_0 shapes that prove whether HIP and
+2. Dot-path microbenches: q8_1/q4 or q8_0 shapes that prove whether HIP and
    Vulkan both emit the intended RDNA3 dot instructions. If both do and timing
    is close, the remaining work is layout/quant economics; if HIP misses the
    instruction or surrounds it with worse scheduling, that becomes an LLVM or
    hand-ISA target.
-4. HIP specialization controls for the f32 geometry kernel: compile fixed
+3. HIP specialization controls for the f32 geometry kernel: compile fixed
    workgroup-size variants or otherwise remove runtime `blockDim` address/control
    overhead, then compare against Vulkan specialization constants.
-5. One representative inference slice after the microbench deltas are
+4. One representative inference slice after the microbench deltas are
    classified. The best first slices are selected-MoE small-K or q6 lm-head
    rowtile, because they map directly to exposed hipEngine buckets.
 
+Priority summary:
+
+| Priority | Test | Decision It Enables |
+| --- | --- | --- |
+| P0 | Memory/waitcnt load+accumulate and interleave | Decide whether the geometry gap is an LLVM waitcnt/scheduling target |
+| P0 | Dot-path q8/q4/q6 kernels with dot ISA counts | Decide between LLVM intrinsic/pattern work, hand-ISA, or layout-only work |
+| P1 | Fixed-workgroup HIP geometry variants | Remove the Vulkan specialization-constant vs HIP runtime-`blockDim` confound |
+| P1 | One real selected-MoE or q6 lm-head slice | Check whether the microbench diagnosis predicts a shipped hot bucket |
+| P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after the harnesses are classified on gfx1151 |
+
 Cross-GPU reruns on gfx1100/W7900 and 7900 XTX are important after the harnesses
-are stable. They should confirm portability of a conclusion, not replace the
-missing gfx1151 ISA evidence.
+are stable. They should confirm portability of the gfx1151 conclusions, not
+replace the remaining memory/waitcnt, dot-path, specialization, and real-slice
+tests.
 
 ## Current Retained Evidence
 
@@ -239,8 +260,58 @@ Immediate reads:
   official allocation counts are missing.
 - Add fixed-workgroup HIP variants to remove dynamic `blockDim` overhead before
   using this f32 geometry row as a compiler-codegen proxy.
-- The next compiler-facing tests should be targeted VOPD and memory/waitcnt
-  microbenches where the expected instruction-level win is isolated by design.
+- The next compiler-facing tests should be memory/waitcnt microbenches where
+  load scheduling is isolated by design.
+
+### gfx1151 VOPD/VALU Scheduling Sweep
+
+Retained artifact:
+`benchmarks/micro/results/gfx1151/strix-halo/vopd-sweep-comparison.json`.
+Backend artifacts:
+`benchmarks/micro/results/gfx1151/strix-halo/hip-vopd-sweep.json` and
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-vopd-sweep.json`.
+The run uses the shared environment artifact
+`benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Vulkan driver: RADV, Mesa `26.1.2-arch2.1`.
+- Benchmark family: pure VALU VOPD diagnostics with sampled CPU oracle,
+  N=`65536`, body iters=`2048`, block size=`256`.
+- Variants: independent f32 FMA with `2/4/8` accumulators, dependent f32 FMA
+  with `4` chained operations, mixed int+float with `4` accumulators, and
+  dequant-like shift/mask/cvt/FMA with `4` accumulators.
+- Classification: `diagnostic_unclassified`, with a negative result for the
+  "ACO wins through VOPD" hypothesis.
+
+Retained timing and VOPD summary:
+
+| Variant | HIP median | Vulkan median | Vulkan vs HIP | HIP VOPD | RADV VOPD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| independent f32 FMA, 2 accum | `250.7432 us` | `285.6322 us` | `0.88x` | `4` | `0` |
+| independent f32 FMA, 4 accum | `447.9288 us` | `462.4270 us` | `0.97x` | `9` | `0` |
+| independent f32 FMA, 8 accum | `877.3634 us` | `833.0101 us` | `1.05x` | `12` | `0` |
+| dependent f32 FMA, 4 ops | `426.6930 us` | `453.9037 us` | `0.94x` | `1` | `0` |
+| mixed int+float, 4 accum | `1020.2676 us` | `946.9001 us` | `1.08x` | `6` | `0` |
+| dequant-like, 4 accum | `1019.7762 us` | `978.8506 us` | `1.04x` | `5` | `0` |
+
+Register/stat summary:
+
+- HIP reports no scratch in every retained VOPD row. VGPRs rise with
+  independent accumulators: `8/11/21` VGPR for `2/4/8` independent accumulators.
+- RADV official VGPR/SGPR allocation counts are still unavailable from
+  `RADV_DEBUG=shaders`; the artifact records estimated physical register spans.
+- RADV emits wave64 final shaders in these rows; HIP emits wave32 code objects.
+- Both backends pass the sampled CPU oracle with max abs `2.384185791e-07`.
+
+Conclusion: do **not** attribute the current Vulkan ceiling to RADV/ACO finding
+better VOPD pairing than LLVM/HIP. In this targeted family, LLVM/HIP is the
+backend emitting VOPD. Vulkan's modest wins on independent-8, mixed int+float,
+and dequant-like rows must come from something else: wave64 execution shape,
+non-VOPD scheduling, instruction selection, runtime/pipeline effects, or
+measurement noise. The next relevant compiler tests are memory/waitcnt and
+dot-path diagnostics, not more generic VOPD speculation.
 
 ## Questions To Answer
 
@@ -256,8 +327,9 @@ Immediate reads:
    or because command-buffer/pipeline execution reduces per-dispatch cost?
 5. **Memory scheduling:** Does ACO sustain higher effective bandwidth on
    coalesced, strided, and quantized GEMV inner loops?
-6. **VOPD:** Does ACO find dual-issue opportunities that LLVM misses on
-   independent VALU chains? Are those opportunities material for decode kernels?
+6. **VOPD portability:** gfx1151 retained evidence is negative for "ACO finds
+   VOPD that LLVM misses." Do gfx1100/W7900 and 7900 XTX reproduce that answer,
+   or is this driver/GPU-specific?
 7. **dp4a/sudot4:** Does the compiler matter once the code uses the intended
    RDNA3 dot instruction, or is the remaining gap layout and quant economics?
 8. **LLVM roadmap:** For each confirmed RADV/ACO win, what exactly would LLVM
@@ -392,6 +464,12 @@ Purpose: determine whether RADV/ACO materially beats LLVM on RDNA3 dual-issue.
 Attribution rule: count VOPD instructions and compare elapsed cycles. ACO only
 "wins on dual issue" if the Vulkan shader emits more useful VOPD or equivalent
 dual-issue scheduling at matched occupancy and instruction count.
+
+Status: retained on gfx1151. HIP emitted VOPD in all retained rows and RADV
+emitted none, so the current retained evidence is a negative result for
+"Vulkan wins because ACO finds VOPD that LLVM misses." Cross-GPU reruns can
+check portability, but the next gfx1151 compiler tests should move to
+memory/waitcnt and dot-path diagnostics.
 
 ### 5. Dot4 / q8_1 / sudot4
 
@@ -565,8 +643,9 @@ Good candidates:
   known and LLVM emits extra work.
 - Small-K selected-MoE kernels where ACO proves better waitcnt/register
   scheduling at identical geometry.
-- F32/BF16 dequant chains where a microbench proves missed VOPD pairing matters
-  after occupancy and memory traffic are controlled.
+- F32/BF16 dequant chains only if a future microbench proves missed pairing or
+  a specific instruction sequence matters after occupancy and memory traffic are
+  controlled. Current gfx1151 VOPD rows do not provide that proof.
 - Tiny sampler/top-k reductions if subgroup/VOPD scheduling is the only
   remaining exposed bucket.
 
@@ -606,7 +685,9 @@ Promotion requirements:
    kernel. Status: retained on gfx1151 for K=2048 rows=1 wg64/wg256; HIP emits
    VOPD, RADV does not, and the row remains `diagnostic_unclassified`.
 4. Add dependent-chain and independent-accumulator VOPD microbenches with
-   ISA/stat extraction.
+   ISA/stat extraction. Status: retained on gfx1151; HIP emits VOPD and RADV
+   does not in all retained rows, so VOPD pairing is not the current ACO
+   explanation.
 5. Add memory waitcnt microbenches: coalesced load+accumulate, strided
    load+accumulate, gather IDs, and load-compute interleave.
 6. Add q8_1/sudot4 and scalar-dequant GEMV pairs.
@@ -615,11 +696,11 @@ Promotion requirements:
 9. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
-The next most useful tests are now targeted VOPD and memory/waitcnt
-microbenches, plus a fixed-workgroup HIP geometry control. The gfx1151 geometry
-ISA extraction already found that the f32 geometry gap is not a missed-HIP-VOPD
+The next most useful tests are now memory/waitcnt microbenches, dot-path
+microbenches, and a fixed-workgroup HIP geometry control. The gfx1151 geometry
+and VOPD extractions already found that the current gap is not a missed-HIP-VOPD
 or HIP-spill story. The next stop is isolating the remaining hypotheses rather
-than rerunning broader geometry sweeps.
+than rerunning broader geometry or generic VOPD sweeps.
 
 The expected useful output is not a single "Vulkan is faster" number. It is a
 ranked list of deltas like: "Vulkan wins small-K expert-down by X%; Y% is
