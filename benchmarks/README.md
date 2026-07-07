@@ -3,9 +3,9 @@
 Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan attribution microbenches on
 Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, geometry
 ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
-dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, and HIP
-q8_1 real-slice layout controls, plus a matched Vulkan Q6_K X8 selected-down
-real-slice probe.
+dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
+shaderstats allocation extraction, HIP q8_1 real-slice layout controls, plus a
+matched Vulkan Q6_K X8 selected-down real-slice probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -15,25 +15,27 @@ and Vulkan both prefer wg256, and Vulkan remains **5.79x-14.03x** faster on
 best-native rows; classification **diagnostic_unclassified**. Geometry ISA/stat
 extraction at K=2048 rows=1 wg64/wg256 shows HIP has actual **18 SGPR / 11
 VGPR**, **0 scratch/spills**, wave32, and **2 VOPD** instructions, while RADV
-final disassembly has wave64 and **0 VOPD** with only estimated register spans
-available; this rules out a simple missed-HIP-VOPD or HIP-spill explanation but
-does not prove `compiler_aco`. VOPD scheduling sweep: HIP emits VOPD in every
+shaderstats reports official **108 SGPR / 12 VGPR**, **0 scratch/spills**,
+wave64, and **0 VOPD**; this rules out a simple missed-HIP-VOPD,
+HIP-spill, or missing-RADV-allocation-data explanation but does not prove
+`compiler_aco`. VOPD scheduling sweep: HIP emits VOPD in every
 retained row, RADV emits **0 VOPD** in every retained final shader
 disassembly, and Vulkan is only modestly faster on independent-8/mixed/dequant
 rows while HIP is faster on independent-2/4 and dependent-4; this is a negative
 result for the "ACO wins through VOPD" hypothesis.
 Memory/waitcnt sweep: device-memory load rows all pass sampled CPU oracle;
-Vulkan is **1.30x-2.35x** faster on most coalesced, strided, and interleave
+Vulkan is **1.02x-2.25x** faster across retained rows, with most wins in
+coalesced, strided, and interleave
 rows while gather is essentially tied (**1.02x**). HIP reports wave32 and
-**0 scratch/spills**; RADV final shaders are wave64 with only estimated
-register spans available. Classified **diagnostic_unclassified**: strong
-memory-side evidence, but not yet a clean `compiler_aco` proof until
-better RADV allocation stats and real-slice confirmation land; fixed-shape
-controls below do not close it.
+**0 scratch/spills**; RADV shaderstats reports wave64, official
+**12/24/48 VGPR buckets**, **108 SGPR**, and **0 scratch/spills**. Classified
+**diagnostic_unclassified**: strong memory-side evidence, but not yet a clean
+`compiler_aco` proof until wave/subgroup shape and memory-bound real-slice
+confirmation land; fixed-shape controls below do not close it.
 Packed dot-path sweep: q8 signed, q4 unsigned-byte by signed-q8, q6
 zero-corrected, and scalar q4 rows all pass exact sampled CPU oracle; HIP and
 RADV both emit final dot4 instructions in q8/q4/q6 rows, HIP reports
-**0 scratch/spills**, and Vulkan remains **3.29x-3.43x** faster, including
+**0 scratch/spills**, and Vulkan remains **3.28x-3.42x** faster, including
 scalar dequant. Classified **diagnostic_unclassified**: this rules out missed
 HIP dot4; after wave64 controls, the remaining likely causes are
 fixed-shape/surrounding scheduling or layout/activation quantization economics.
@@ -56,8 +58,9 @@ passes full CPU correctness but measures **0.03076 ms** prequantized dot and
 **0.03217 ms** quantize+dot versus retained HIP **0.01665 ms** and
 **0.01925 ms**; Vulkan is **1.85x** slower on dot and **1.67x** slower on the
 combined path. RADV final dot shader has **9** final dot4 instructions,
-subgroup size **64**, **0 VOPD**, estimated **48 VGPR / 24 SGPR** spans, **89**
-waitcnt-family instructions, and **82** buffer loads. Artifacts:
+subgroup size **64**, **0 VOPD**, official **48 VGPR / 108 SGPR** with
+**0 scratch/spills**, **89** waitcnt-family instructions, and **82** buffer
+loads. Artifacts:
 [`micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`](micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json),

@@ -45,18 +45,18 @@ LLVM-AMDGPU" as a single explanation.
   dependent-4.
 - The retained memory/waitcnt sweep is the first direct evidence that Vulkan has
   a real advantage on memory-side scheduling/access shapes. On matched
-  device-memory load+accumulate rows, Vulkan is `1.30x-2.35x` faster for most
+  device-memory load+accumulate rows, Vulkan is `1.02x-2.25x` faster for most
   coalesced, strided, and interleave variants; gather is essentially tied
-  (`1.02x`). HIP reports no scratch and no spills, while RADV still exposes only
-  estimated register spans. Simple rows show slightly fewer RADV waitcnt-family
-  instructions; fixed-shape controls do not close the gap, but better RADV
-  allocation stats and matching memory-bound real-slice evidence are still
-  needed before turning this into an LLVM-AMDGPU waitcnt/scheduling claim.
+  (`1.02x`). HIP and RADV both report no scratch and no spills in the refreshed
+  shaderstats artifacts. Simple rows show slightly fewer RADV waitcnt-family
+  instructions; fixed-shape controls do not close the gap, but the row still
+  needs wave-shape and memory-bound real-slice confirmation before becoming an
+  LLVM-AMDGPU waitcnt/scheduling claim.
 - The retained packed dot-path sweep rules out a missing-HIP-dot-instruction
   story for the current q8/q4/q6 idiom. HIP and RADV both emit final dot4
   instructions for q8 signed, q4 unsigned-byte by signed-q8, and q6 zero-point
-  correction rows; HIP reports no scratch/spills. Vulkan is still `3.29x-3.43x`
-  faster, including the scalar-dequant row (`3.29x`). After the HIP wave64 and
+  correction rows; HIP reports no scratch/spills. Vulkan is still `3.28x-3.42x`
+  faster, including the scalar-dequant row (`3.30x`). After the HIP wave64 and
   fixed-block controls, the remaining dot-path gap is more likely surrounding
   scheduling or layout/activation quantization economics than basic dot
   lowering, wave mode, or runtime block indexing.
@@ -86,10 +86,13 @@ LLVM-AMDGPU" as a single explanation.
   `0.01925 ms` quantize+dot, so Vulkan is `1.85x` slower on dot and `1.67x`
   slower on the combined path. This is retained as `real_slice_probe`, not
   `compiler_aco`.
-- We still cannot claim `compiler_aco` for the f32 geometry gap. RADV official
-  VGPR/SGPR allocation counts were not exposed by `RADV_DEBUG=shaders`; the
-  fixed-workgroup control removes the runtime-`blockDim` confound, but wave mode
-  and official RADV allocation stats remain unresolved.
+- We still cannot claim `compiler_aco` for the f32 geometry gap. The refreshed
+  RADV shaderstats extraction reports no Vulkan scratch/spills and official
+  `12` VGPR / `108` SGPR allocation for the retained wg64/wg256 shaders, while
+  HIP reports `11` VGPR / `18` SGPR and no scratch/spills. That removes the
+  missing-allocation-stat blocker, but the f32 geometry row is still
+  `diagnostic_unclassified` because wave/subgroup shape and source/runtime
+  structure remain confounds.
 
 What we have ruled out:
 
@@ -120,9 +123,10 @@ What remains plausible:
 - Vulkan has a large matched-math advantage in one f32 diagnostic, but that row
   is still `diagnostic_unclassified`.
 - Memory/access scheduling is still the strongest compiler-facing lead, but HIP
-  wave64 and fixed block indexing are not the fix. It may become an
-  LLVM-AMDGPU waitcnt/scheduling issue only after real-slice checks and better
-  RADV allocation stats remove the remaining layout/stat confounds.
+  wave64 and fixed block indexing are not the fix. Refreshed RADV shaderstats
+  remove the allocation-count visibility blocker and show no Vulkan
+  scratch/spills, so the remaining blockers are wave/subgroup shape and
+  memory-bound real-slice confirmation.
 - Dot-instruction availability is no longer untested for the packed q8/q4/q6
   idiom: HIP emits dot4. HIP wave64 also does not close the dot gap. The
   fixed-block control also does not close it. HIP real-slice q8_1 materialization
@@ -163,17 +167,16 @@ Immediate triage:
 | Stop for now | More HIP fixed-block dot/memory controls | Fixed block indexing was flat or mixed and did not close the Vulkan lead. |
 | Stop for now | Dispatch-only Vulkan probes | The runtime-dispatch win is already classified and does not prove compiler quality. |
 | Stop for now | Vulkan Q6_K selected-down X8 port | The matched real-slice probe is slower than retained HIP by `1.67x` on quantize+dot. |
-| Test next | Better RADV allocation/stat extraction | Needed before turning memory/geometry rows into LLVM-AMDGPU issue material. |
-| Optional | Vulkan Q4_K selected-dual gate/up slice | Useful only if we need a second hot-bucket transfer check after the q6 result. |
+| Done | Better RADV allocation/stat extraction | `RADV_DEBUG=shaders,shaderstats` now gives official RADV VGPR/SGPR/spill/scratch data for retained Vulkan rows. |
+| Test next | Vulkan Q4_K selected-dual gate/up slice | Useful as a second production hot-bucket transfer check after the negative q6 result. |
+| Optional | HIP wave64 plus fixed-workgroup geometry | Only needed if we want to remove the remaining f32 geometry wave/subgroup confound. |
 
-1. Better RADV allocation/stat extraction, if we can get official VGPR/SGPR
-   counts for final shaders without changing the benchmark shape.
-2. Vulkan Q4_K selected-dual gate/up real-slice probe, only if we need a second
+1. Vulkan Q4_K selected-dual gate/up real-slice probe, if we need a second
    production hot-bucket transfer check. The Q6_K selected-down Vulkan probe is
    already negative.
-3. HIP wave64 plus fixed-workgroup geometry control, if we need to remove the
+2. HIP wave64 plus fixed-workgroup geometry control, if we need to remove the
    remaining wave-mode confound before a compiler-facing geometry claim.
-4. Cross-GPU reruns only after the harnesses above stabilize. gfx1100/W7900 and
+3. Cross-GPU reruns only after the harnesses above stabilize. gfx1100/W7900 and
    7900 XTX reruns should check portability of a classified diagnosis, not
    replace the missing controls.
 
@@ -186,15 +189,14 @@ Priority summary:
 | Done | HIP fixed-shape memory/dot/geometry controls | Runtime `blockDim`/fixed-shape overhead does not close retained gaps |
 | Done | HIP q8_1 real-slice layout controls | q8_1 materialization is small and positive on tested HIP selected-MoE slices |
 | Done | Vulkan Q6_K selected-down X8 real-slice probe | Synthetic Vulkan dot-path win does not transfer to this shipped hot bucket |
-| P1 | Better RADV allocation/stat extraction | Decide whether memory/geometry rows are suitable LLVM issue evidence |
-| P2 | Vulkan Q4_K selected-dual gate/up slice | Optional second hot-bucket transfer check |
+| Done | RADV shaderstats allocation extraction | Official RADV allocation counts show no Vulkan scratch/spills in retained rows |
+| P1 | Vulkan Q4_K selected-dual gate/up slice | Optional second hot-bucket transfer check |
+| P2 | HIP wave64 plus fixed-workgroup geometry | Remove the remaining f32 geometry wave/subgroup confound if needed |
 | P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after fixed-shape and real-slice harnesses are classified on gfx1151 |
 
 Tooling that would improve attribution quality, but should not displace the
 remaining real-slice work:
 
-- Better RADV allocation/stat extraction, via whatever Mesa/RADV or RGP path
-  exposes official VGPR/SGPR allocation counts for final shaders.
 - A small comparison utility that rolls HIP/Vulkan artifacts into a one-page
   retained-result diff with timing, correctness, wave mode, instruction counts,
   waits, dot/VOPD counts, and classification.
@@ -325,18 +327,18 @@ Hardware/software context:
   K=`2048`, rows=`1`, workgroup=`64/256`, body repeats=`128`.
 - HIP evidence: `hipcc --save-temps`, `llvm-readobj --notes`, and
   `llvm-objdump -d --no-show-raw-insn`.
-- Vulkan evidence: `RADV_DEBUG=shaders` final disassembly plus ACO after-RA
-  presence. RADV did not print official VGPR/SGPR allocation counts in this
-  environment, so Vulkan register rows are estimated physical register spans,
-  not allocation-count claims.
+- Vulkan evidence: `RADV_DEBUG=shaders,shaderstats` final disassembly, ACO
+  after-RA presence, and RADV shaderstats allocation counts. Estimated physical
+  register spans are retained as a cross-check, but the primary RADV VGPR/SGPR
+  rows below are official shaderstats allocation counts.
 - Classification: `diagnostic_unclassified`.
 
 Retained ISA/stat summary:
 
 | Workgroup | HIP ISA | Vulkan/RADV ISA |
 | ---: | --- | --- |
-| 64 | actual `18` SGPR, `11` VGPR, scratch `0`, spills `0`, wave32, `118` static instructions, `6` waitcnt-family instructions, `2` VOPD instructions / `4` VOPD ops | estimated span `16` SGPR / `9` VGPR, wave64, `100` static instructions, `9` waitcnt-family instructions, `0` VOPD |
-| 256 | actual `18` SGPR, `11` VGPR, scratch `0`, spills `0`, wave32, `118` static instructions, `6` waitcnt-family instructions, `2` VOPD instructions / `4` VOPD ops | estimated span `16` SGPR / `9` VGPR, wave64, `142` static instructions, `20` waitcnt-family instructions including `9` depctr waits, `0` VOPD |
+| 64 | actual `18` SGPR, `11` VGPR, scratch `0`, spills `0`, wave32, `118` static instructions, `6` waitcnt-family instructions, `2` VOPD instructions / `4` VOPD ops | official `108` SGPR, `12` VGPR, scratch `0`, spills `0`, estimated span `16` SGPR / `9` VGPR, wave64, `100` static instructions, `9` waitcnt-family instructions, `0` VOPD |
+| 256 | actual `18` SGPR, `11` VGPR, scratch `0`, spills `0`, wave32, `118` static instructions, `6` waitcnt-family instructions, `2` VOPD instructions / `4` VOPD ops | official `108` SGPR, `12` VGPR, scratch `0`, spills `0`, estimated span `16` SGPR / `9` VGPR, wave64, `142` static instructions, `20` waitcnt-family instructions including `9` depctr waits, `0` VOPD |
 
 Matched timing context from the geometry sweep:
 
@@ -356,8 +358,9 @@ or a source/harness detail still not controlled.
 Immediate reads:
 
 - Do not file an LLVM VOPD issue from this geometry kernel.
-- Do not claim RADV has better register allocation from this artifact; Vulkan
-  official allocation counts are missing.
+- Do not claim RADV has better register allocation from this artifact. Official
+  RADV shaderstats now show no Vulkan scratch/spills, but they do not explain
+  the geometry timing gap or prove better allocation than HIP.
 - Add fixed-workgroup HIP variants to remove dynamic `blockDim` overhead before
   using this f32 geometry row as a compiler-codegen proxy.
 - The next compiler-facing tests should be memory/waitcnt microbenches where
@@ -400,8 +403,9 @@ Register/stat summary:
 
 - HIP reports no scratch in every retained VOPD row. VGPRs rise with
   independent accumulators: `8/11/21` VGPR for `2/4/8` independent accumulators.
-- RADV official VGPR/SGPR allocation counts are still unavailable from
-  `RADV_DEBUG=shaders`; the artifact records estimated physical register spans.
+- RADV shaderstats reports official `12/12/24` VGPR for independent `2/4/8`,
+  official `12/24/24` VGPR for dependent/mixed/dequant rows, `108` SGPR in all
+  rows, and `0` scratch/spills in all rows.
 - RADV emits wave64 final shaders in these rows; HIP emits wave32 code objects.
 - Both backends pass the sampled CPU oracle with max abs `2.384185791e-07`.
 
@@ -411,7 +415,7 @@ backend emitting VOPD. Vulkan's modest wins on independent-8, mixed int+float,
 and dequant-like rows must come from something else: wave64 execution shape,
 non-VOPD scheduling, instruction selection, runtime/pipeline effects, or
 measurement noise. The next relevant compiler tests are real-slice confirmation
-and better allocation/stat extraction, not more generic VOPD speculation.
+and real-slice confirmation, not more generic VOPD speculation.
 
 ### gfx1151 Memory / Waitcnt Sweep
 
@@ -434,34 +438,37 @@ Hardware/software context:
   `1/2/4/8/16`.
 - Classification: `diagnostic_unclassified`, with strong memory/waitcnt
   evidence but not yet a pure `compiler_aco` proof because wave32 vs wave64 and
-  RADV allocation-count visibility remain confounds.
+  real-slice transfer remain confounds.
 
 Retained timing and ISA summary:
 
 | Variant | HIP median | Vulkan median | Vulkan vs HIP | HIP GB/s | Vulkan GB/s | HIP wait/load | RADV wait/load |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| coalesced width 1 | `26.6127 us` | `16.8441 us` | `1.58x` | `630.42` | `996.03` | `4/1` | `3/1` |
-| coalesced width 2 | `44.6948 us` | `32.8837 us` | `1.36x` | `750.75` | `1020.40` | `5/2` | `4/2` |
-| coalesced width 4 | `282.1829 us` | `124.3344 us` | `2.27x` | `237.82` | `539.74` | `7/4` | `6/4` |
-| coalesced width 8 | `639.5150 us` | `289.0281 us` | `2.21x` | `209.87` | `464.38` | `11/8` | `10/8` |
-| strided stride 2 | `44.5751 us` | `31.4315 us` | `1.42x` | `376.38` | `533.77` | `4/1` | `3/1` |
-| strided stride 4 | `281.3058 us` | `119.6366 us` | `2.35x` | `59.64` | `140.23` | `4/1` | `3/1` |
-| strided stride 8 | `557.0604 us` | `269.2068 us` | `2.07x` | `30.12` | `62.32` | `4/1` | `3/1` |
-| strided stride 16 | `1144.5523 us` | `645.8128 us` | `1.77x` | `14.66` | `25.98` | `4/1` | `3/1` |
-| gather IDs | `493.0500 us` | `484.9378 us` | `1.02x` | `68.05` | `69.19` | `5/2` | `4/2` |
-| interleave unroll 1 | `25.8722 us` | `15.4284 us` | `1.68x` | `648.47` | `1087.42` | `4/1` | `3/1` |
-| interleave unroll 2 | `49.8455 us` | `38.2383 us` | `1.30x` | `673.17` | `877.51` | `5/2` | `4/2` |
-| interleave unroll 4 | `281.1671 us` | `128.7873 us` | `2.18x` | `238.68` | `521.08` | `6/4` | `6/4` |
-| interleave unroll 8 | `580.6280 us` | `288.4835 us` | `2.01x` | `231.16` | `465.25` | `10/8` | `10/8` |
-| interleave unroll 16 | `1611.1334 us` | `1428.9660 us` | `1.13x` | `166.61` | `187.85` | `13/16` | `18/16` |
+| coalesced width 1 | `26.6127 us` | `18.9185 us` | `1.41x` | `630.42` | `887.02` | `4/1` | `3/1` |
+| coalesced width 2 | `44.6948 us` | `32.0182 us` | `1.40x` | `750.75` | `1048.01` | `5/2` | `4/2` |
+| coalesced width 4 | `282.1829 us` | `125.2440 us` | `2.25x` | `237.82` | `535.82` | `7/4` | `6/4` |
+| coalesced width 8 | `639.5150 us` | `303.7756 us` | `2.11x` | `209.87` | `441.94` | `11/8` | `10/8` |
+| strided stride 2 | `44.5751 us` | `34.3159 us` | `1.30x` | `376.38` | `488.92` | `4/1` | `3/1` |
+| strided stride 4 | `281.3058 us` | `146.2196 us` | `1.92x` | `59.64` | `114.75` | `4/1` | `3/1` |
+| strided stride 8 | `557.0604 us` | `249.6609 us` | `2.23x` | `30.12` | `67.19` | `4/1` | `3/1` |
+| strided stride 16 | `1144.5523 us` | `576.7278 us` | `1.98x` | `14.66` | `29.09` | `4/1` | `3/1` |
+| gather IDs | `493.0500 us` | `484.7561 us` | `1.02x` | `68.05` | `69.22` | `5/2` | `4/2` |
+| interleave unroll 1 | `25.8722 us` | `15.8026 us` | `1.64x` | `648.47` | `1061.67` | `4/1` | `3/1` |
+| interleave unroll 2 | `49.8455 us` | `40.9710 us` | `1.22x` | `673.17` | `818.98` | `5/2` | `4/2` |
+| interleave unroll 4 | `281.1671 us` | `135.2524 us` | `2.08x` | `238.68` | `496.19` | `6/4` | `6/4` |
+| interleave unroll 8 | `580.6280 us` | `289.8444 us` | `2.00x` | `231.16` | `463.06` | `10/8` | `10/8` |
+| interleave unroll 16 | `1611.1334 us` | `1452.4936 us` | `1.11x` | `166.61` | `184.80` | `13/16` | `18/16` |
 
 Register/stat summary:
 
 - All HIP and Vulkan rows pass the sampled CPU oracle with max abs `0.0`.
 - HIP reports wave32, no scratch, and no spills in all retained rows. HIP VGPR
   rises with interleave width from `8` at unroll 1 to `36` at unroll 16.
-- RADV final shaders are wave64. Official RADV VGPR/SGPR allocation counts are
-  still unavailable; the artifact records estimated physical register spans.
+- RADV final shaders are wave64. RADV shaderstats reports official VGPR
+  allocation of `12` for simple coalesced/strided/gather rows, `12/24/24/48/48`
+  for interleave `1/2/4/8/16`, `108` SGPR in all rows, and `0`
+  scratch/spills in all rows. Estimated physical register spans remain in the
+  artifacts as cross-checks.
 - Simple coalesced, strided, gather, and low-unroll interleave rows show one
   fewer RADV waitcnt-family instruction than HIP at the same static load count.
   Wider interleave rows have equal or higher RADV waitcnt counts, so waitcnt
@@ -471,9 +478,10 @@ Conclusion: memory/access scheduling is now a serious candidate for the Vulkan
 ceiling. Vulkan is consistently faster on coalesced, strided, and most
 interleave rows, while gather is essentially tied. This does **not** yet justify
 a clean LLVM `compiler_aco` issue because the retained rows still compare HIP
-wave32 against RADV wave64 and RADV allocation counts are estimated. The
-fixed-block control below does not close the memory gap; the dot-path result
-below separately shows basic q8/q4/q6 dot lowering is present in HIP.
+wave32 against RADV wave64 and do not yet show the same effect inside a
+production memory-bound real slice. The fixed-block control below does not
+close the memory gap; the dot-path result below separately shows basic
+q8/q4/q6 dot lowering is present in HIP.
 
 ### gfx1151 Packed Dot Path
 
@@ -501,22 +509,23 @@ Retained timing and ISA summary:
 
 | Variant | HIP median | Vulkan median | Vulkan vs HIP | HIP dot4 | RADV dot4 | SPIR-V dot op | HIP wait/load | RADV wait/load |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |
-| q8 signed | `7114.77 us` | `2071.66 us` | `3.43x` | `16` | `16` | `OpSDot=1` | `19/32` | `18/32` |
-| q4 unsigned x q8 | `7109.06 us` | `2085.04 us` | `3.41x` | `16` | `16` | `OpSUDot=1` | `19/32` | `18/32` |
-| q6 zero-corrected | `6831.89 us` | `2076.40 us` | `3.29x` | `32` | `32` | `OpSUDot=2` | `20/32` | `18/32` |
-| scalar q4 dequant | `7342.70 us` | `2228.58 us` | `3.29x` | `0` | `0` | none | `35/32` | `20/32` |
+| q8 signed | `7114.77 us` | `2079.47 us` | `3.42x` | `16` | `16` | `OpSDot=1` | `19/32` | `18/32` |
+| q4 unsigned x q8 | `7109.06 us` | `2088.64 us` | `3.40x` | `16` | `16` | `OpSUDot=1` | `19/32` | `18/32` |
+| q6 zero-corrected | `6831.89 us` | `2082.13 us` | `3.28x` | `32` | `32` | `OpSUDot=2` | `20/32` | `18/32` |
+| scalar q4 dequant | `7342.70 us` | `2223.05 us` | `3.30x` | `0` | `0` | none | `35/32` | `20/32` |
 
 Register/stat summary:
 
 - All HIP and Vulkan rows pass the exact sampled CPU oracle with max abs `0.0`.
 - HIP reports wave32, no scratch, and no spills. HIP dot rows use
   `41-42` VGPR and `14` SGPR; scalar dequant uses `50` VGPR.
-- RADV final shaders are wave64. Official RADV VGPR/SGPR allocation counts are
-  still unavailable; estimated spans are `34` VGPR for q8/q4 and `48` VGPR for
-  q6/scalar.
+- RADV final shaders are wave64. RADV shaderstats reports official `36` VGPR
+  for q8/q4, `48` VGPR for q6/scalar, `108` SGPR in all rows, and `0`
+  scratch/spills in all rows. Estimated physical register spans remain in the
+  artifact as a cross-check.
 - HIP and RADV emit the same final dot4 counts in q8/q4/q6 rows. Vulkan SPIR-V
   also contains the expected `OpSDot`/`OpSUDot` operations before RADV lowering.
-- The scalar row is also `3.29x` faster on Vulkan despite using no dot4, so the
+- The scalar row is also `3.30x` faster on Vulkan despite using no dot4, so the
   retained gap cannot be explained only by dot-instruction selection.
 
 Conclusion: do **not** spend more gfx1151 time proving whether HIP can emit the
@@ -637,7 +646,7 @@ switch for the retained gfx1151 gaps. Fixed geometry gives a useful small HIP
 improvement, especially K=2048 rows=1 wg256, but the Vulkan geometry lead
 remains large. Dot fixed-block is flat, and memory fixed-block is mixed with a
 gather regression. Treat memory/access scheduling and geometry as still
-unclassified until real slices and better RADV allocation stats are available.
+unclassified until real-slice and wave/subgroup confounds are resolved.
 
 ### gfx1151 HIP q8_1 Real-Slice Layout Controls
 
@@ -734,10 +743,10 @@ Best retained Vulkan row is local_size=64. Relative to retained HIP, Vulkan is:
 
 ISA/stat extraction for local_size=64:
 
-| Shader | SPIR-V dot ops | RADV final dot4 | RADV subgroup | RADV VOPD | Estimated registers | Wait/load notes |
+| Shader | SPIR-V dot ops | RADV final dot4 | RADV subgroup | RADV VOPD | RADV registers | Wait/load notes |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| q8_1 quantize | `0` | `0` | `64` | `0` | VGPR span `96`, SGPR span `16` | `6` waitcnt, `1` buffer load |
-| Q6_K X8 dot | `9` `OpSUDot` | `9` | `64` | `0` | VGPR span `48`, SGPR span `24` | `89` waitcnt, `82` buffer loads |
+| q8_1 quantize | `0` | `0` | `64` | `0` | official `96` VGPR / `108` SGPR, no scratch/spills; span `96/16` | `6` waitcnt, `1` buffer load |
+| Q6_K X8 dot | `9` `OpSUDot` | `9` | `64` | `0` | official `48` VGPR / `108` SGPR, no scratch/spills; span `48/24` | `89` waitcnt, `82` buffer loads |
 
 Conclusion: the first matched Vulkan production slice is negative. The
 synthetic packed dot-path sweep showed Vulkan can be much faster on a simplified
@@ -745,8 +754,9 @@ dot loop, but this Q6_K selected-down X8 production-shaped shader does not beat
 HIP once the real layout, q8_1 materialization, selected rows, output shape, and
 subgroup reduction are present. Do not promote a Vulkan backend or hand-ISA
 path from this q6 selected-down evidence. The remaining compiler-facing work is
-better RADV allocation/stat extraction for the generic memory/geometry rows and
-optional transfer checks for other hot slices such as Q4_K selected-dual gate/up.
+now optional transfer checks for other hot slices such as Q4_K selected-dual
+gate/up, plus a HIP wave64/fixed-workgroup geometry control only if we need to
+remove the remaining f32 geometry wave/subgroup confound.
 
 ## Questions To Answer
 
@@ -890,12 +900,13 @@ Attribution rule: same memory traffic but lower waitcnt density and higher
 effective GB/s on Vulkan is an ACO scheduling win. Same waitcnt but better
 coalescing is a source/layout issue.
 
-Status: retained on gfx1151. Vulkan is `1.30x-2.35x` faster on most coalesced,
+Status: retained on gfx1151. Vulkan is `1.02x-2.25x` faster on most coalesced,
 strided, and interleave rows, while gather is essentially tied at `1.02x`.
 HIP wave64 and fixed-block controls do not close the gap; both severely regress
 gather in their retained runs. This is strong memory-side evidence but remains
-`diagnostic_unclassified` because official RADV register allocation counts and
-real-slice confirmation are still missing.
+`diagnostic_unclassified` because wave/subgroup shape and memory-bound
+real-slice confirmation are still unresolved. RADV shaderstats now gives
+official allocation counts and shows no Vulkan scratch/spills.
 
 ### 4. VOPD And VALU Scheduling
 
@@ -916,7 +927,7 @@ Status: retained on gfx1151. HIP emitted VOPD in all retained rows and RADV
 emitted none, so the current retained evidence is a negative result for
 "Vulkan wins because ACO finds VOPD that LLVM misses." Cross-GPU reruns can
 check portability, but the next gfx1151 compiler tests should move to real-slice
-confirmation and allocation/stat extraction.
+confirmation, not more generic VOPD sweeps.
 
 ### 5. Dot4 / q8_1 / sudot4
 
@@ -937,7 +948,7 @@ LLVM codegen target or a hand-ISA candidate.
 Status: retained on gfx1151 for packed q8 signed, q4 unsigned-byte by signed-q8,
 q6 zero-point correction, and scalar q4 dequant rows. HIP and RADV both emit
 final dot4 instructions in q8/q4/q6 rows, and HIP reports no scratch/spills.
-Vulkan remains `3.29x-3.43x` faster, including the scalar row, and HIP wave64
+Vulkan remains `3.28x-3.42x` faster, including the scalar row, and HIP wave64
 and fixed-block controls do not close the gap, so basic dot-instruction
 availability, wave mode, and runtime block indexing are no longer the main
 questions. HIP real-slice q8_1 materialization/layout controls are retained and
@@ -1153,11 +1164,12 @@ Promotion requirements:
 5. Add memory waitcnt microbenches: coalesced load+accumulate, strided
    load+accumulate, gather IDs, and load-compute interleave. Status: retained
    on gfx1151; Vulkan has a broad memory-side advantage except gather, but
-   wave64 and fixed-block controls do not close it. RADV allocation-count and
-   real-slice confounds keep it `diagnostic_unclassified`.
+   wave64 and fixed-block controls do not close it. RADV shaderstats now shows
+   no Vulkan scratch/spills, so wave/subgroup shape and real-slice transfer
+   keep it `diagnostic_unclassified`.
 6. Add q8_1/sudot4 and scalar-dequant GEMV pairs. Status: retained on gfx1151
    for packed dot-path diagnostics; HIP and RADV both emit dot4 in q8/q4/q6
-   rows, but Vulkan remains `3.29x-3.43x` faster. HIP wave64 and fixed-block
+   rows, but Vulkan remains `3.28x-3.42x` faster. HIP wave64 and fixed-block
    controls do not close the gap, and the row is `diagnostic_unclassified`.
 7. Add HIP fixed-shape controls for dot, memory, and geometry. Status:
    retained on gfx1151; runtime block indexing/workgroup specialization is not
@@ -1173,10 +1185,11 @@ Promotion requirements:
 11. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
-The next most useful test is now better RADV allocation/stat extraction for the
-remaining memory/geometry compiler-facing rows. A Vulkan Q4_K selected-dual
-gate/up real-slice probe is optional if we need a second production hot-bucket
-transfer check, but the Q6_K selected-down X8 slice is already negative.
+The next most useful test is now a Vulkan Q4_K selected-dual gate/up real-slice
+probe if we need a second production hot-bucket transfer check; the Q6_K
+selected-down X8 slice is already negative. A HIP wave64 plus fixed-workgroup
+geometry control is optional if we want to remove the remaining f32 geometry
+wave/subgroup confound.
 The gfx1151 geometry, VOPD, memory/waitcnt, and dot-path extractions already
 found that the current gap is not a missed-HIP-VOPD, HIP-spill, or missed-dot4
 story. The next stop is isolating the remaining hypotheses rather than rerunning
