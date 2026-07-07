@@ -372,7 +372,7 @@ PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
   --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
   --warmup-runs 2 --measured-runs 5 --warmup-decode-tokens 1 \
   --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-  --use-wmma-prefill --use-gemv-decode \
+  --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode \
   --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
   --json "benchmarks/results/<date>-<gpu>-hipengine-gguf-q4km-readme-sweep.json"
 ```

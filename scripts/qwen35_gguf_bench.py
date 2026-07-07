@@ -100,8 +100,12 @@ def main() -> int:
     parser.add_argument(
         "--graph-replay-decode",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use one-step HIP graph replay for measured decode (default).",
+        default=False,
+        help=(
+            "Deprecated GGUF decode-graph diagnostic flag. Current GGUF resident "
+            "decode is eager by default; if graph support is unavailable, the "
+            "benchmark records the disabled reason and falls back to eager decode."
+        ),
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
     parser.add_argument(
@@ -576,10 +580,8 @@ def _run_existing_session_once(
     prefill_seconds = 0.0
     warmup_decode_seconds = 0.0
     decode_seconds = 0.0
-    host_token_embedding_graph_disabled = bool(
-        graph_replay_decode and getattr(session, "host_token_embedding_enabled", False)
-    )
-    effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
+    decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
+    effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
         first = session.prefill(
@@ -683,13 +685,13 @@ def _run_existing_session_once(
         "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
         "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
         "fastpath_safety": fastpath_safety,
+        "requested_graph_replay_decode": bool(graph_replay_decode),
+        "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "decode_graph_reused": bool(decode_graph_reused),
         "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
-        "decode_graph_disabled_reason": (
-            "host_token_embedding" if host_token_embedding_graph_disabled else None
-        ),
+        "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
             "load_seconds_is_shared_session": bool(persistent_session),
@@ -772,10 +774,8 @@ def _run_once(
     generated_token_ids: list[int] = []
     final = None
     graph_capture_seconds = 0.0
-    host_token_embedding_graph_disabled = bool(
-        graph_replay_decode and getattr(session, "host_token_embedding_enabled", False)
-    )
-    effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
+    decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
+    effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
         prefill_start = time.perf_counter()
         first = session.prefill(
@@ -850,11 +850,11 @@ def _run_once(
         "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
         "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
         "fastpath_safety": fastpath_safety,
+        "requested_graph_replay_decode": bool(graph_replay_decode),
+        "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
-        "decode_graph_disabled_reason": (
-            "host_token_embedding" if host_token_embedding_graph_disabled else None
-        ),
+        "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
             "prefill_seconds": prefill_seconds,
@@ -879,6 +879,16 @@ def _run_once(
         "memory": _memory_summary(memory_snapshots),
         "memory_snapshots": memory_snapshots,
     }
+
+
+def _decode_graph_disabled_reason(session: Any, requested: bool) -> str | None:
+    if not requested:
+        return None
+    if not callable(getattr(session, "capture_decode_graph", None)):
+        return "capture_decode_graph_unavailable"
+    if getattr(session, "host_token_embedding_enabled", False):
+        return "host_token_embedding"
+    return None
 
 
 def _summary(runs: list[dict[str, Any]]) -> dict[str, Any]:

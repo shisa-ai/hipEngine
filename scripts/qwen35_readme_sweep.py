@@ -4,9 +4,11 @@
 This is the llama-bench-style harness for hipEngine hardware comparison rows: a
 single resident session is created for the largest requested workload, then each
 prompt/decode shape is run multiple times with ``session.reset()`` between runs.
-The measured timing window excludes load/build and graph capture; load is still
-reported once so GGUF decode-repack cost remains visible without multiplying it
-by every shape/repetition.
+The measured timing window excludes load/build and PARO graph capture; load is
+still reported once so GGUF decode-repack cost remains visible without
+multiplying it by every shape/repetition. GGUF resident decode is eager by
+default because the retired GGUF decode-graph path corrupted recurrent state on
+relaunch.
 """
 
 from __future__ import annotations
@@ -71,7 +73,7 @@ def main() -> int:
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0)
     parser.add_argument("--prefill-chunk-autotune", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--prefill-chunk-memory-budget-gib", type=float, default=0.0)
-    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--graph-replay-decode", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
     parser.add_argument("--force-bulk-prefill", action="store_true", help="GGUF: pass use_bulk=True")
     parser.add_argument("--no-bulk-prefill", action="store_true", help="GGUF: pass use_bulk=False")
@@ -90,6 +92,8 @@ def main() -> int:
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
+    if args.graph_replay_decode is None:
+        args.graph_replay_decode = args.engine == "paro"
 
     workloads = [_parse_workload(item) for item in args.workloads]
     workloads.sort(key=lambda item: (item[0], item[1]))
@@ -510,7 +514,7 @@ def _sweep_output(
         "notes": [
             "The model/session is loaded once for the largest requested shape and reset between repetitions.",
             "Each workload uses warmup_runs discarded repetitions followed by measured_runs measured repetitions.",
-            "Measured decode excludes HIP graph capture time when graph replay is enabled; graph capture is reported per first run of each shape.",
+            "Measured decode excludes HIP graph capture time when graph replay is enabled; PARO defaults to graph replay, while GGUF defaults to eager resident decode because its decode graph was retired.",
         ],
     }
 
