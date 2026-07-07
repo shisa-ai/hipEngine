@@ -1,9 +1,9 @@
 # hipEngine Benchmark Rollup
 
 Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan attribution microbenches on
-Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, and geometry
-ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, and packed
-dot-path diagnostics.
+Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, geometry
+ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
+dot-path diagnostics, HIP wave64 controls, and HIP fixed-shape controls.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -26,7 +26,8 @@ rows while gather is essentially tied (**1.02x**). HIP reports wave32 and
 **0 scratch/spills**; RADV final shaders are wave64 with only estimated
 register spans available. Classified **diagnostic_unclassified**: strong
 memory-side evidence, but not yet a clean `compiler_aco` proof until
-fixed-shape controls and better RADV allocation stats land.
+better RADV allocation stats and real-slice confirmation land; fixed-shape
+controls below do not close it.
 Packed dot-path sweep: q8 signed, q4 unsigned-byte by signed-q8, q6
 zero-corrected, and scalar q4 rows all pass exact sampled CPU oracle; HIP and
 RADV both emit final dot4 instructions in q8/q4/q6 rows, HIP reports
@@ -37,7 +38,16 @@ fixed-shape/surrounding scheduling or layout/activation quantization economics.
 HIP wave64 controls: dot-path wave64 is **1.007x-1.061x slower** than HIP
 wave32 and still trails same-commit Vulkan by **2.63x-3.55x**;
 memory/waitcnt wave64 is mixed, leaves Vulkan faster on most rows, and regresses
-gather by **6.35x** versus HIP wave32. Artifacts:
+gather by **6.35x** versus HIP wave32.
+HIP fixed-shape controls: dot fixed-block indexing is **0.993x-1.000x** versus
+same-commit runtime HIP and still trails Vulkan by **3.31x-3.43x**;
+memory fixed-block indexing is mixed (**0.906x-1.290x** fixed/runtime) and
+Vulkan remains faster on every row (**1.04x-2.36x**); fixed-workgroup geometry
+improves some HIP wg256 rows by up to **6.3%**, but Vulkan still leads
+best-native geometry by **5.56x-14.03x**. Artifacts:
+[`micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json),
+[`micro/results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json),
+[`micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json`](micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json),
 [`micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/dot-path-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-comparison.json),
