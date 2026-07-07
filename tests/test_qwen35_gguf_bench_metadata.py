@@ -54,6 +54,23 @@ def test_exact_command_payload_preserves_argv_and_shell_command() -> None:
     assert shlex.split(payload["command"]) == argv
 
 
+def test_decode_graph_disabled_reason_tracks_retired_gguf_graph_path() -> None:
+    class NoGraphSession:
+        pass
+
+    class GraphSession:
+        def capture_decode_graph(self) -> None:  # pragma: no cover - only capability probe
+            raise AssertionError("helper should not call capture_decode_graph")
+
+    class HostEmbeddingGraphSession(GraphSession):
+        host_token_embedding_enabled = True
+
+    assert bench._decode_graph_disabled_reason(NoGraphSession(), requested=False) is None
+    assert bench._decode_graph_disabled_reason(NoGraphSession(), requested=True) == "capture_decode_graph_unavailable"
+    assert bench._decode_graph_disabled_reason(GraphSession(), requested=True) is None
+    assert bench._decode_graph_disabled_reason(HostEmbeddingGraphSession(), requested=True) == "host_token_embedding"
+
+
 def test_gguf_tensor_inventory_hash_is_stable_and_metadata_sensitive() -> None:
     first = _model_info(
         _tensor("token_embd.weight", offset=0, data_offset=4096),

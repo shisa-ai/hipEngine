@@ -145855,3 +145855,35 @@ python3 scripts/gguf_mtp_bench.py \
   left local; this repo has not been tracking a lockfile, so dependency-lock
   policy should be handled separately rather than bundled with benchmark
   evidence cleanup.
+
+## 2026-07-07 - W7900 README sweep stale GGUF graph fallback fix
+
+- Started the documented W7900/GPU0 README hipEngine refresh from a detached clean worktree:
+  ```bash
+  RUN_TAG=20260707-103747
+  WT=/tmp/hipengine-readme-w7900-${RUN_TAG}
+  git worktree add --detach "$WT" HEAD
+  OUTDIR=/home/lhl/hipEngine-mtp-gguf/benchmarks/results \
+    RUN_TAG="$RUN_TAG" REPO_ROOT="$WT" \
+    "$WT/scripts/run_w7900_readme_refresh.sh" hipengine
+  ```
+- The run failed before measured rows during GGUF prebuild because the current
+  `scripts/run_w7900_readme_refresh.sh` still passed the retired GGUF
+  `--graph-replay-decode` path, and `Qwen35GGUFResidentSession` no longer has
+  `capture_decode_graph`:
+  `/tmp/hipengine-readme-runs/20260707-103747/prebuild-gguf.log` ended with
+  `AttributeError: 'Qwen35GGUFResidentSession' object has no attribute 'capture_decode_graph'`.
+  PARO prebuild completed and wrote `/tmp/hipengine-readme-runs/20260707-103747/prebuild-paro.json`.
+- Fix: made `scripts/qwen35_gguf_bench.py --graph-replay-decode` default to
+  eager decode and record `decode_graph_disabled_reason="capture_decode_graph_unavailable"`
+  instead of calling the removed method; `scripts/qwen35_readme_sweep.py` now
+  defaults graph replay by engine (PARO on, GGUF off), and the W7900 README
+  wrapper passes `--no-graph-replay-decode` for GGUF prebuild/measured rows.
+  Updated README benchmark docs and `docs/REFACTOR.md` to match the retired GGUF
+  graph path.
+- Validation:
+  ```bash
+  python3 -m py_compile scripts/qwen35_gguf_bench.py scripts/qwen35_readme_sweep.py
+  python3 -m pytest tests/test_qwen35_gguf_bench_metadata.py -q
+  ```
+  Result: compile OK; `4 passed`.
