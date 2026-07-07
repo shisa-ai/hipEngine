@@ -146288,3 +146288,29 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Validation:
   `python3 -m py_compile benchmarks/micro/runners/isa_stats.py` and
   `PYTHONPATH=. pytest -q tests/test_micro_isa_stats.py` passed.
+
+## 2026-07-08 - gfx1151 f32 geometry ISA/stat extraction
+
+- Captured clean-source environment after `ffd7ce95`:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-isa-stats.json`.
+- Ran retained HIP ISA extraction:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/isa_stats.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-isa-stats.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-isa-stats.json --geometry-result benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --k 2048 --rows 1 --workgroups 64,256 --body-repeats 128 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats.json`.
+- Ran retained Vulkan/RADV ISA extraction:
+  `python3 benchmarks/micro/runners/isa_stats.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-isa-stats.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-isa-stats.json --geometry-result benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --k 2048 --rows 1 --workgroups 64,256 --body-repeats 128 --reps 1 --warmup 0 --samples 1 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-isa-stats.json`.
+- Built retained comparison:
+  `python3 benchmarks/micro/runners/isa_stats.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-isa-stats.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/geometry-isa-stats-comparison.json`.
+- Result: for K=2048 rows=1 wg64/wg256, HIP reports actual code-object
+  metadata of 18 SGPR, 11 VGPR, 0 scratch, 0 SGPR/VGPR spills, wave32, 118
+  static instructions, 6 waitcnt-family instructions, and 2 VOPD instructions
+  / 4 VOPD ops. RADV final disassembly uses wave64, emits 0 VOPD, and reports
+  estimated physical spans of 16 SGPR / 9 VGPR; official RADV allocation counts
+  were not exposed by `RADV_DEBUG=shaders`.
+- The retained f32 geometry gap is therefore not a simple missed-HIP-VOPD or
+  HIP-spill story. The row remains `diagnostic_unclassified`; next tests should
+  isolate fixed-workgroup HIP specialization, memory/waitcnt behavior, and
+  targeted VOPD pairing.
+- Validation:
+  `python3 -m json.tool` passed for environment, HIP ISA stats, Vulkan ISA
+  stats, and comparison artifacts. Updated `docs/HIP-vs-VULKAN.md`,
+  `benchmarks/micro/README.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`.

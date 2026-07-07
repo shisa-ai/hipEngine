@@ -1,0 +1,121 @@
+{
+  "bench": "f32_gemv_geometry_isa_stats",
+  "classification": "diagnostic_unclassified",
+  "command": [
+    "benchmarks/micro/runners/isa_stats.py",
+    "--compare",
+    "benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats.json",
+    "benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-isa-stats.json",
+    "--pretty",
+    "--out",
+    "benchmarks/micro/results/gfx1151/strix-halo/geometry-isa-stats-comparison.json"
+  ],
+  "correctness": {
+    "hip": {
+      "artifact_ref": "benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep.json",
+      "oracle": "Referenced retained geometry-sweep CPU oracle artifact",
+      "source_correctness": {
+        "max_abs": 0.0,
+        "max_rel": 0.0,
+        "oracle": "CPU f32 reference using the same per-workgroup reduction order",
+        "status": "pass"
+      },
+      "status": "pass"
+    },
+    "vulkan": {
+      "geometry_result_ref": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json",
+      "oracle": "Vulkan geometry harness CPU reference during RADV_DEBUG=shaders run",
+      "per_workgroup": {
+        "256": true,
+        "64": true
+      },
+      "raw_probe_retained": false,
+      "status": "pass"
+    }
+  },
+  "hardware": {
+    "hip": {
+      "gfx_arch": "gfx1151",
+      "gpu_name": "Radeon 8060S Graphics"
+    },
+    "vulkan": {
+      "gfx_arch": "gfx1151",
+      "gpu_name": "Radeon 8060S Graphics"
+    }
+  },
+  "inputs": {
+    "hip_result": "benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats.json",
+    "out": "benchmarks/micro/results/gfx1151/strix-halo/geometry-isa-stats-comparison.json",
+    "vulkan_result": "benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-isa-stats.json"
+  },
+  "interpretation": "ISA/stat comparison for the retained f32 geometry family. HIP has actual code-object register/spill metadata; Vulkan has RADV final disassembly and estimated physical register spans, not official allocation counts. On this evidence alone, do not classify the geometry timing gap as compiler_aco.",
+  "kind": "hipengine_micro_comparison",
+  "matched_rows": [
+    {
+      "body_repeats": 128,
+      "hip_dot4_count": 0,
+      "hip_instruction_count": 118,
+      "hip_scratch_bytes": 0,
+      "hip_sgpr": 18,
+      "hip_sgpr_spill_count": 0,
+      "hip_vgpr": 11,
+      "hip_vgpr_spill_count": 0,
+      "hip_vopd_count": 2,
+      "hip_vopd_op_count": 4,
+      "hip_waitcnt_count": 6,
+      "hip_wave_size": 32,
+      "k": 2048,
+      "rows": 1,
+      "vulkan_correctness_pass": true,
+      "vulkan_dot4_count": 0,
+      "vulkan_estimated_sgpr_span": 16,
+      "vulkan_estimated_vgpr_span": 9,
+      "vulkan_instruction_count": 100,
+      "vulkan_official_register_counts": null,
+      "vulkan_shared_size": 1024,
+      "vulkan_vopd_count": 0,
+      "vulkan_vopd_op_count": 0,
+      "vulkan_waitcnt_count": 9,
+      "vulkan_waitcnt_depctr_count": 0,
+      "vulkan_wave_size": 64,
+      "workgroup_size": 64
+    },
+    {
+      "body_repeats": 128,
+      "hip_dot4_count": 0,
+      "hip_instruction_count": 118,
+      "hip_scratch_bytes": 0,
+      "hip_sgpr": 18,
+      "hip_sgpr_spill_count": 0,
+      "hip_vgpr": 11,
+      "hip_vgpr_spill_count": 0,
+      "hip_vopd_count": 2,
+      "hip_vopd_op_count": 4,
+      "hip_waitcnt_count": 6,
+      "hip_wave_size": 32,
+      "k": 2048,
+      "rows": 1,
+      "vulkan_correctness_pass": true,
+      "vulkan_dot4_count": 0,
+      "vulkan_estimated_sgpr_span": 16,
+      "vulkan_estimated_vgpr_span": 9,
+      "vulkan_instruction_count": 142,
+      "vulkan_official_register_counts": null,
+      "vulkan_shared_size": 1024,
+      "vulkan_vopd_count": 0,
+      "vulkan_vopd_op_count": 0,
+      "vulkan_waitcnt_count": 20,
+      "vulkan_waitcnt_depctr_count": 9,
+      "vulkan_wave_size": 64,
+      "workgroup_size": 256
+    }
+  ],
+  "schema_version": 1,
+  "source": {
+    "branch": "benchmarks-micro",
+    "commit": "ffd7ce9507cfcf7a3d1f5ac1656d2eeed313cdae",
+    "dirty": false,
+    "repo": "/home/lhl/hipEngine-benchmarks-micro",
+    "source_hash": "sha256:743d3807e7d3f19cc93b0f81c6e1cdd628782337d067f70526dbc552b4e2d95c"
+  }
+}

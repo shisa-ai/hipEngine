@@ -17,6 +17,7 @@ benchmarks/micro/
   collect_env.py
   runners/
     geometry_sweep.py
+    isa_stats.py
     hip_geometry_sweep.hip
     hip_dispatch_floor.py
     vulkan_geometry_sweep.cpp
@@ -229,11 +230,69 @@ This family can classify workgroup-shape effects. It is not sufficient
 `compiler_aco` evidence until paired ISA/stat extraction shows register,
 scratch, waitcnt, VOPD, or instruction-count differences at identical shape.
 
+## F32 Geometry ISA/Stat Extraction
+
+`runners/isa_stats.py` extracts compiler/output statistics for the geometry
+kernel without making a new timing claim. HIP extraction uses `hipcc
+--save-temps`, `llvm-readobj --notes`, and `llvm-objdump`. Vulkan extraction
+runs the Vulkan geometry harness under `RADV_DEBUG=shaders` and parses RADV
+final shader disassembly. RADV does not always expose official VGPR/SGPR
+allocation counts; when it does not, the artifact records estimated physical
+register spans from the final disassembly instead of allocation-count claims.
+
+Example paired run:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json
+
+HIPENGINE_HIP_ARCH=gfx1100 \
+python3 benchmarks/micro/runners/isa_stats.py \
+  --backend hip \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
+  --geometry-result benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --k 2048 \
+  --rows 1 \
+  --workgroups 64,256 \
+  --body-repeats 128 \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/hip-geometry-isa-stats.json
+
+python3 benchmarks/micro/runners/isa_stats.py \
+  --backend vulkan \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-isa-stats.json \
+  --geometry-result benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --k 2048 \
+  --rows 1 \
+  --workgroups 64,256 \
+  --body-repeats 128 \
+  --reps 1 \
+  --warmup 0 \
+  --samples 1 \
+  --quiet-shader-dump \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-isa-stats.json
+
+python3 benchmarks/micro/runners/isa_stats.py \
+  --compare benchmarks/micro/results/gfx1100/w7900/hip-geometry-isa-stats.json \
+            benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-isa-stats.json \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/geometry-isa-stats-comparison.json
+```
+
 ## Retained Results
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
-| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 GEMV geometry sweep | Repeat-shifted matched f32 GEMV/reduction rows all pass the CPU oracle. HIP and Vulkan both prefer wg256, so workgroup shape alone does not explain the gap; Vulkan remains `5.79x-14.03x` faster on best-native rows. Classified `diagnostic_unclassified` pending ISA/register/waitcnt/VOPD evidence. | `results/gfx1151/strix-halo/geometry-sweep-comparison.json` |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 geometry ISA/stat extraction | K=2048 rows=1 wg64/wg256 extraction passed correctness references. HIP reports 18 SGPR, 11 VGPR, no scratch/spills, wave32, and 2 VOPD instructions; RADV final disassembly has no VOPD, wave64, and no official VGPR/SGPR allocation counts exposed. The geometry gap is not a missed-HIP-VOPD or HIP-spill story; still classified `diagnostic_unclassified`. | `results/gfx1151/strix-halo/geometry-isa-stats-comparison.json` |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 GEMV geometry sweep | Repeat-shifted matched f32 GEMV/reduction rows all pass the CPU oracle. HIP and Vulkan both prefer wg256, so workgroup shape alone does not explain the gap; Vulkan remains `5.79x-14.03x` faster on best-native rows. Classified `diagnostic_unclassified`; paired ISA extraction rules out a simple missed-HIP-VOPD explanation but does not yet identify the primary cause. | `results/gfx1151/strix-halo/geometry-sweep-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | dispatch/grid floor | Vulkan command-buffer replay is much cheaper than HIP direct/graph for one-block launch-heavy bursts (`0.043621 us` vs HIP tiny direct `2.0087 us` and HIP graph `1.8069 us` at N=941), but the gap narrows to about `1.10x` at 8192 blocks. Classified `runtime_dispatch`, not `compiler_aco`. | `results/gfx1151/strix-halo/dispatch-floor-comparison.json` |
 
 ## Classification
@@ -249,6 +308,7 @@ Every retained benchmark should choose one primary classification:
 | `layout_quant` | Dot/layout/quantization dominates compiler choice |
 | `fusion_topology` | Per-op kernels match, but fused Vulkan topology wins |
 | `not_reproducible` | The old difference disappears under the controlled harness |
+| `diagnostic_unclassified` | Gap remains but the retained evidence is insufficient for one primary cause |
 
 If a row cannot be classified, keep it diagnostic and do not use it to justify
 LLVM work, kernel rewrites, or a Vulkan backend.
