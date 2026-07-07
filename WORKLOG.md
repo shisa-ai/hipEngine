@@ -146913,3 +146913,43 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `git diff --check`.
 - Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - LDS/barrier/subgroup reduction sweep retained
+
+- Added the reduction-topology controls for the f32 geometry gap:
+  `benchmarks/micro/runners/hip_geometry_sweep.hip` now supports
+  compile-time `HIPENGINE_REDUCTION_VARIANT=0/1/2` for LDS tree, extra-barrier
+  LDS tree, and HIP wave-shuffle reduction; added Vulkan shaders
+  `benchmarks/micro/kernels/vulkan/reduction_extra_barrier.comp` and
+  `benchmarks/micro/kernels/vulkan/reduction_subgroup.comp`; added wrapper
+  `benchmarks/micro/runners/reduction_sweep.py`.
+- Smoke command:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/reduction_sweep.py --backend both --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --build-dir /tmp/hipengine-micro-reduction-smoke --out /tmp/hipengine-reduction-smoke.json --k-list 128 --rows-list 1 --workgroups 64,128 --body-repeats 4 --reps 2 --warmup 1 --samples 2 --pretty`.
+  All HIP/Vulkan variants passed the CPU oracle.
+- Retained command:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/reduction_sweep.py --backend both --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --build-dir /tmp/hipengine-micro-reduction-sweep --out benchmarks/micro/results/gfx1151/strix-halo/reduction-sweep.json --k-list 512,2048,8192 --rows-list 1 --workgroups 64,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --pretty`.
+- Artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/reduction-sweep.json`. All
+  retained rows passed the CPU oracle.
+- Matched LDS result: Vulkan remains faster than HIP by `11.64x/8.19x` at
+  K=512 wg64/wg256, `13.57x/11.97x` at K=2048 wg64/wg256, and
+  `14.55x/14.16x` at K=8192 wg64/wg256.
+- Variant deltas: HIP extra-barrier / HIP LDS is `1.002x-1.028x`; HIP
+  wave-shuffle / HIP LDS is `0.991x-1.005x`; Vulkan extra-barrier / Vulkan LDS
+  is `0.991x-1.005x`; Vulkan subgroup / Vulkan LDS is `0.984x-1.132x`;
+  Vulkan subgroup remains `8.24x-13.86x` faster than HIP wave-shuffle.
+- Retained conclusion: reduction topology is not the missing f32 geometry
+  switch. HIP wave-shuffle and Vulkan subgroup controls do not close the
+  backend gap. Classification remains `diagnostic_unclassified`, not
+  `compiler_aco`.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/reduction_sweep.py`;
+  `glslc --target-env=vulkan1.1 -O benchmarks/micro/kernels/vulkan/reduction_extra_barrier.comp -o /tmp/reduction_extra_barrier.spv && glslc --target-env=vulkan1.1 -O benchmarks/micro/kernels/vulkan/reduction_subgroup.comp -o /tmp/reduction_subgroup.spv`;
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/reduction-sweep.json`;
+  `git diff --check`.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`. Remaining
+  useful tests are cross-GPU reruns, integrated Q4_K backend validation if it
+  decides backend priority, memory-bound production-slice confirmation before
+  LLVM waitcnt claims, and a narrow HIP Q4 recovery experiment only if acting
+  on the measured ISA delta.
