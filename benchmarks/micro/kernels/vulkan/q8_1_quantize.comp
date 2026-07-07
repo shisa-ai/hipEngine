@@ -1,0 +1,63 @@
+#version 450
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint rows;
+    uint in_features;
+    uint out_features;
+    uint experts;
+    uint q8_blocks_per_row;
+    uint out_packed;
+    uint blocks_per_row;
+    uint reserved;
+} pc;
+
+layout(set = 0, binding = 0) readonly buffer XBuffer {
+    uint x_bf16[];
+};
+
+layout(set = 0, binding = 1) buffer XQBuffer {
+    uint xq_words[];
+};
+
+float bf16_to_f32(uint bits) {
+    return uintBitsToFloat((bits & 0xffffu) << 16);
+}
+
+uint i8_to_byte(int value) {
+    return uint(value) & 0xffu;
+}
+
+void main() {
+    uint q8_block = gl_WorkGroupID.x;
+    uint row = gl_WorkGroupID.y;
+    uint lane = gl_LocalInvocationID.x;
+    if (row >= pc.rows || q8_block >= pc.q8_blocks_per_row || lane >= 32u) {
+        return;
+    }
+
+    uint k = q8_block * 32u + lane;
+    float xv = k < pc.in_features ? bf16_to_f32(x_bf16[row * pc.in_features + k]) : 0.0;
+    float amax = subgroupMax(abs(xv));
+    float sum = subgroupAdd(xv);
+    float d = amax / 127.0;
+    int q = amax == 0.0 ? 0 : int(round(xv / d));
+    q = clamp(q, -128, 127);
+
+    uint block_word = (row * pc.q8_blocks_per_row + q8_block) * 9u;
+    if (lane < 9u) {
+        xq_words[block_word + lane] = 0u;
+    }
+    memoryBarrierBuffer();
+    barrier();
+
+    if (lane == 0u) {
+        xq_words[block_word] = packHalf2x16(vec2(d, sum));
+    }
+
+    uint q_word = block_word + 1u + (lane >> 2);
+    uint q_shift = (lane & 3u) * 8u;
+    atomicOr(xq_words[q_word], i8_to_byte(q) << q_shift);
+}
