@@ -34,6 +34,14 @@ def test_parse_dot_path_variants() -> None:
     ]
 
 
+def test_dot_path_wavefront_flags() -> None:
+    module = _load_runner_module()
+
+    assert module._hip_wavefront_flags("default") == []
+    assert module._hip_wavefront_flags("32") == ["-mno-wavefrontsize64"]
+    assert module._hip_wavefront_flags("64") == ["-mwavefrontsize64"]
+
+
 def test_build_dot_path_comparison() -> None:
     module = _load_runner_module()
     hip = {

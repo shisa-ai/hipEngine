@@ -146503,3 +146503,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   and comparison artifacts. Updated `docs/HIP-vs-VULKAN.md`,
   `benchmarks/micro/README.md`, `benchmarks/README.md`, and
   `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - HIP wavefront-size microbench controls
+
+- Added `--hip-wavefront-size default|32|64` to
+  `benchmarks/micro/runners/dot_path.py` and
+  `benchmarks/micro/runners/memory_waitcnt.py`. The option appends
+  `-mwavefrontsize64` or `-mno-wavefrontsize64` to HIP builds and records the
+  requested mode in normalized artifacts; code-object metadata remains the
+  source of truth for the actual wave size.
+- Updated `benchmarks/micro/README.md` and added focused unit checks for the
+  compiler-flag mapping in `tests/test_micro_dot_path.py` and
+  `tests/test_micro_memory_waitcnt.py`.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/dot_path.py benchmarks/micro/runners/memory_waitcnt.py benchmarks/micro/runners/isa_stats.py`
+  and
+  `PYTHONPATH=. pytest -q tests/test_micro_dot_path.py tests/test_micro_memory_waitcnt.py tests/test_micro_isa_stats.py`
+  passed.
+- HIP wave64 smoke:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/dot_path.py --backend hip --gfx-arch gfx1151 --hip-wavefront-size 64 --variants q4_unsigned:4 --n 1024 --body-iters 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-dot-wave64-smoke.json`
+  passed exact sampled CPU-oracle correctness and reported `wave_size=64`,
+  `scratch_bytes=0`, and `dot4_count=4`.
+- HIP memory wave64 smoke:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/memory_waitcnt.py --backend hip --gfx-arch gfx1151 --hip-wavefront-size 64 --variants coalesced:1 --n 1024 --body-iters 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-memory-wave64-smoke.json`
+  passed sampled CPU-oracle correctness and reported `wave_size=64` and
+  `scratch_bytes=0`.

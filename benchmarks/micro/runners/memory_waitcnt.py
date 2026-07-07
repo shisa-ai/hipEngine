@@ -191,10 +191,19 @@ def _compile_defines(variant: dict[str, Any]) -> list[str]:
     ]
 
 
+def _hip_wavefront_flags(wavefront_size: str) -> list[str]:
+    if wavefront_size == "64":
+        return ["-mwavefrontsize64"]
+    if wavefront_size == "32":
+        return ["-mno-wavefrontsize64"]
+    return []
+
+
 def _compile_hip_variant(
     build_dir: Path,
     variant: dict[str, Any],
     gfx_arch: str | None,
+    hip_wavefront_size: str,
 ) -> tuple[Path, Path, list[str]]:
     build_dir.mkdir(parents=True, exist_ok=True)
     hipcc = shutil.which("hipcc")
@@ -207,6 +216,7 @@ def _compile_hip_variant(
         [
             "-O3",
             "-std=c++17",
+            *_hip_wavefront_flags(hip_wavefront_size),
             "--save-temps",
             *_compile_defines(variant),
             str(HIP_HARNESS),
@@ -379,6 +389,7 @@ def _normalize_result(
     hardware_gpu: str | None,
     gfx_arch: str | None,
     environment_ref: str | None,
+    hip_wavefront_size: str | None,
 ) -> dict[str, Any]:
     rows = []
     for raw, isa in zip(raw_rows, isa_rows, strict=True):
@@ -426,6 +437,7 @@ def _normalize_result(
             "n": primary.get("n"),
             "body_iters": primary.get("body_iters"),
             "block_size": primary.get("block_size"),
+            "hip_wavefront_size_request": hip_wavefront_size,
             "commands": commands,
         },
         "correctness": {
@@ -509,7 +521,9 @@ def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[s
     commands: list[dict[str, Any]] = []
     for variant in variants:
         variant_dir = args.build_dir / "hip" / _variant_name(variant)
-        exe, obj, build_command = _compile_hip_variant(variant_dir, variant, args.gfx_arch)
+        exe, obj, build_command = _compile_hip_variant(
+            variant_dir, variant, args.gfx_arch, args.hip_wavefront_size
+        )
         raw_path = variant_dir / "raw.json"
         harness_command = [str(exe), *_harness_args(args, raw_path)]
         completed = _run_command(harness_command, cwd=REPO_ROOT)
@@ -523,6 +537,7 @@ def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[s
         commands.append(
             {
                 "variant": variant,
+                "hip_wavefront_size_request": args.hip_wavefront_size,
                 "build_command": build_command,
                 "harness_command": harness_command,
                 "object_path": str(obj),
@@ -540,6 +555,7 @@ def _run_hip(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dict[s
         hardware_gpu=args.hardware_gpu,
         gfx_arch=args.gfx_arch,
         environment_ref=str(args.environment_ref) if args.environment_ref else None,
+        hip_wavefront_size=args.hip_wavefront_size,
     )
 
 
@@ -587,6 +603,7 @@ def _run_vulkan(args: argparse.Namespace, variants: list[dict[str, Any]]) -> dic
         hardware_gpu=args.hardware_gpu,
         gfx_arch=args.gfx_arch,
         environment_ref=str(args.environment_ref) if args.environment_ref else None,
+        hip_wavefront_size=None,
     )
 
 
@@ -688,6 +705,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD_DIR)
     parser.add_argument("--gfx-arch", help="Override gfx arch and HIP offload arch")
     parser.add_argument("--hardware-gpu", help="Override GPU name in normalized output")
+    parser.add_argument("--hip-wavefront-size", choices=["default", "32", "64"], default="default")
     parser.add_argument("--variants", default=DEFAULT_VARIANTS)
     parser.add_argument("--n", type=int, default=32768)
     parser.add_argument("--body-iters", type=int, default=128)
