@@ -146876,3 +146876,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   machines are available, an integrated Q4_K selected-dual Vulkan probe only if
   it changes backend priority, and a targeted HIP Q4_K selected-dual
   investigation if we need to explain the one retained Vulkan real-slice win.
+
+## 2026-07-08 - Q4 selected-dual HIP/RADV ISA comparison retained
+
+- Added `benchmarks/micro/runners/q4_selected_dual_isa_stats.py` to compile the
+  production HIP Q4_K selected-dual source with `hipcc --save-temps`, parse HIP
+  code-object metadata plus `llvm-objdump` disassembly, and compare the
+  retained HIP rows against the retained Vulkan/RADV shaderstats artifact.
+- Command:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/q4_selected_dual_isa_stats.py --hip-result benchmarks/micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json --vulkan-isa-result benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json --build-dir /tmp/hipengine-micro-q4-selected-dual-isa-stats --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --out benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`.
+- Artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`.
+  Timing context remains the retained Q4 real-slice row: Vulkan local_size=64 is
+  `1.17x` faster on prequantized dot and `1.18x` faster on quantize+dot versus
+  retained HIP.
+- HIP q8_1 quantize ISA: wave32, `16` SGPR / `11` VGPR, `0`
+  scratch/spills, `157` static instructions, `12` waitcnt-family instructions,
+  `5` VOPD, and `0` dot4. Matched RADV q8_1 quantize shader: wave64 API,
+  official `108` SGPR / `96` VGPR, `0` scratch/spills, `111` static
+  instructions, `6` waitcnt-family instructions, `0` VOPD, and `0` dot4.
+- HIP Q4_K selected-dual dot ISA: wave32, `31` SGPR / `22` VGPR, `0`
+  scratch/spills, `564` static instructions, `35` waitcnt-family instructions,
+  `4` VOPD, `3` dot4, `18` global loads, `6` LDS loads, and `2` LDS stores.
+  Matched RADV Q4 dot shader: wave64, official `108` SGPR / `48` VGPR, `0`
+  scratch/spills, `526` static instructions, `26` waitcnt-family instructions,
+  `0` VOPD, `3` dot4, `22` buffer loads, `1` LDS load, and `1` LDS store.
+- Retained conclusion: the one positive Vulkan Q4 real-slice row is not missing
+  HIP dot4, HIP spills, or RADV VOPD pairing. Treat it as a slice-specific
+  `real_slice_probe`; remaining useful work is cross-GPU portability,
+  integrated Q4 backend validation, memory-bound production-slice confirmation
+  before LLVM waitcnt claims, or a narrow HIP Q4 recovery experiment targeting
+  the measured instruction/waitcnt/reduction delta.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/q4_selected_dual_isa_stats.py`;
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`;
+  `git diff --check`.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.

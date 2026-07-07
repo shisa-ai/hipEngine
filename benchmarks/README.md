@@ -7,7 +7,7 @@ dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
 shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
 q8_1 real-slice layout controls, plus a matched Vulkan Q6_K X8 selected-down
 real-slice probe and matched Vulkan Q4_K selected-dual gate/up real-slice
-probe.
+probe with targeted HIP/RADV ISA comparison.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -77,8 +77,17 @@ prequantized dot and **0.29238 ms** quantize+dot versus retained HIP
 dot4 instructions, subgroup size **64**, **0 VOPD**, official
 **48 VGPR / 108 SGPR** with **0 scratch/spills**, **26** waitcnt-family
 instructions, and **22** buffer loads. This is retained as slice-specific
-`real_slice_probe`, not broad `compiler_aco`.
+`real_slice_probe`, not broad `compiler_aco`. Targeted HIP/RADV ISA comparison
+for the same Q4 slice shows HIP also emits **3** dot4 instructions with
+**0 scratch/spills**, and emits **4 VOPD** where RADV emits **0 VOPD**. HIP's
+dot shader has **31 SGPR / 22 VGPR**, **564** static instructions, and **35**
+waitcnt-family instructions versus RADV official **108 SGPR / 48 VGPR**,
+**526** static instructions, and **26** waitcnt-family instructions. The Q4
+lead is therefore not missing HIP dot4, HIP spills, or RADV VOPD pairing; it is
+a narrower scheduling/source/reduction lead to investigate only if it changes
+backend or HIP implementation priority.
 Artifacts:
+[`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json),
 [`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json),
