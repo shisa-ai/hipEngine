@@ -31,7 +31,8 @@ void main() {
 
     for (uint repeat = 0; repeat < pc.body_repeats; ++repeat) {
         for (uint i = lid; i < pc.k; i += wg) {
-            sum = fma(x[i], w[row * pc.k + i], sum);
+            uint j = (i + repeat) % pc.k;
+            sum = fma(x[j], w[row * pc.k + j], sum);
         }
     }
 

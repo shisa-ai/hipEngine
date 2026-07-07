@@ -160,7 +160,8 @@ std::vector<float> cpu_reference(
       float sum = 0.0f;
       for (uint32_t repeat = 0; repeat < body_repeats; ++repeat) {
         for (uint32_t i = lid; i < k; i += workgroup_size) {
-          sum = std::fma(x[i], w[static_cast<size_t>(row) * k + i], sum);
+          uint32_t j = (i + repeat) % k;
+          sum = std::fma(x[j], w[static_cast<size_t>(row) * k + j], sum);
         }
       }
       scratch[lid] = sum;
@@ -215,7 +216,8 @@ __global__ void f32_gemv_geometry_kernel(
   float sum = 0.0f;
   for (uint32_t repeat = 0; repeat < body_repeats; ++repeat) {
     for (uint32_t i = lid; i < k; i += wg) {
-      sum = fmaf(x[i], w[static_cast<size_t>(row) * k + i], sum);
+      uint32_t j = (i + repeat) % k;
+      sum = fmaf(x[j], w[static_cast<size_t>(row) * k + j], sum);
     }
   }
   scratch[lid] = sum;
@@ -365,7 +367,7 @@ void write_json(
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
-  *out << "    \"method\": \"one workgroup per row; strided f32 FMA inner loop; shared-memory tree reduction\"\n";
+  *out << "    \"method\": \"one workgroup per row; repeat-shifted strided f32 FMA inner loop; shared-memory tree reduction\"\n";
   *out << "  },\n";
   *out << "  \"rows\": [\n";
   for (size_t i = 0; i < rows.size(); ++i) {
