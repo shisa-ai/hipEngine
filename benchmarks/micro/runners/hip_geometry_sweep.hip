@@ -17,6 +17,10 @@
 #define HIPENGINE_FIXED_WORKGROUP_SIZE 0
 #endif
 
+#ifndef HIPENGINE_REDUCTION_VARIANT
+#define HIPENGINE_REDUCTION_VARIANT 0
+#endif
+
 namespace {
 
 #if HIPENGINE_FIXED_WORKGROUP_SIZE
@@ -218,6 +222,15 @@ void print_json_array(std::ostream& out, const std::vector<T>& values) {
   out << "]";
 }
 
+#if HIPENGINE_REDUCTION_VARIANT == 2
+__device__ float wave_reduce_sum(float value) {
+  for (int offset = warpSize >> 1; offset > 0; offset >>= 1) {
+    value += __shfl_down(value, offset);
+  }
+  return value;
+}
+#endif
+
 HIPENGINE_GEOMETRY_LAUNCH_BOUNDS
 __global__ void f32_gemv_geometry_kernel(
     const float* __restrict__ x,
@@ -241,6 +254,23 @@ __global__ void f32_gemv_geometry_kernel(
       sum = fmaf(x[j], w[static_cast<size_t>(row) * k + j], sum);
     }
   }
+#if HIPENGINE_REDUCTION_VARIANT == 2
+  uint32_t lane = lid % warpSize;
+  uint32_t wave = lid / warpSize;
+  uint32_t wave_count = (wg + warpSize - 1) / warpSize;
+  float wave_sum = wave_reduce_sum(sum);
+  if (lane == 0) {
+    scratch[wave] = wave_sum;
+  }
+  __syncthreads();
+  if (wave == 0) {
+    float partial = lane < wave_count ? scratch[lane] : 0.0f;
+    float total = wave_reduce_sum(partial);
+    if (lane == 0) {
+      out[row] = total;
+    }
+  }
+#else
   scratch[lid] = sum;
   __syncthreads();
   for (uint32_t offset = wg >> 1; offset > 0; offset >>= 1) {
@@ -248,10 +278,14 @@ __global__ void f32_gemv_geometry_kernel(
       scratch[lid] += scratch[lid + offset];
     }
     __syncthreads();
+#if HIPENGINE_REDUCTION_VARIANT == 1
+    __syncthreads();
+#endif
   }
   if (lid == 0) {
     out[row] = scratch[0];
   }
+#endif
 }
 
 Row run_config(
@@ -386,6 +420,7 @@ void write_json(
   *out << ",\n";
   *out << "    \"body_repeats\": " << args.body_repeats << ",\n";
   *out << "    \"hip_fixed_workgroup_size\": " << HIPENGINE_FIXED_WORKGROUP_SIZE << ",\n";
+  *out << "    \"hip_reduction_variant\": " << HIPENGINE_REDUCTION_VARIANT << ",\n";
   *out << "    \"reps\": " << args.reps << ",\n";
   *out << "    \"warmup\": " << args.warmup << ",\n";
   *out << "    \"samples\": " << args.samples << ",\n";
