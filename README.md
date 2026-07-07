@@ -251,6 +251,24 @@ work is on the MTP-bearing `UD-Q4_K_M` GGUF.
 | GGUF MTP `llama-compat` server natural24 | Same GGUF/model on gfx1151, B2, OpenAI server, `--speculative-mtp-serving opt_in`, 5 ms coalescing window | c=2 **70.53 tok/s**, c=4 **78.76 tok/s**, warm c=8 **79.61 tok/s** | Packed MTP prefill, startup MTP hidden-seed prefill/verify warmup, stream-draft/stream-verify, four-slot route cap, no-WMMA small-B target verifier, chunked Q6_K rowtile LM-head for packed verifier rows >6, and deferred verifier scatter/accepted-row commit. Same-server AR is **66.39/82.46/81.94 tok/s** at c=2/c=4/c=8; MTP c=8 moves **54.88 -> 65.79 -> 68.83 -> 76.46 -> 79.61 tok/s** after route-cap, small-B verifier, rowtile-chunk, and deferred-scatter fixes. MTP now beats AR at c=2 and trails AR by **3.70 tok/s** at c=4 and **2.33 tok/s** at c=8; artifacts: [`c2`](benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c2-bw5-default-defer-scatter-resetfix-rerun.json), [`c4`](benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-default-defer-scatter-resetfix-rerun2.json), [`c8`](benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c8-bw5-default-defer-scatter-resetfix-rerun.json), [`AR-c8`](benchmarks/results/2026-07-06-hipengine-server-ar-natural24-c8-bw5-routecap4-arfix.json). |
 | llama.cpp MTP server diagnostics | Same GGUF/model on gfx1151, B2, HIP/Vulkan, c=1/4/8 | HIP: c=1 `75.56` (`1.448x`), c=4 `78.21` (`0.722x`), c=8 `78.56` (`0.630x`). Vulkan: c=1 `91.48` (`1.426x`), c=4 `92.19` (`0.739x`), c=8 `103.57` (`0.741x`) | Cross-engine diagnostics: MTP wins c=1 but loses aggregate decode under c=4/c=8 on this prompt suite. See [`benchmarks/README.md`](benchmarks/README.md#natural24-mtp-vs-ar-concurrency-diagnostic). |
 
+The direct `llama-compat` row and the OpenAI-server rows answer different
+questions. Direct suite timing is the decode/cycle-wall comparison used for
+llama.cpp parity; server timing is full request wall time and includes prompt
+prefill, request accounting, and response handling. On short natural24 requests,
+the shared prompt prefill cost dilutes the visible MTP uplift:
+
+| Protocol | Includes prompt prefill? | AR timed work | MTP timed work | AR tok/s | MTP tok/s | MTP/AR | Artifact |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Direct `llama-compat` natural24 cyclecap24 | No: decode/cycle wall only | `4380.7 ms / 240 tok` | `3361.1 ms / 240 tok` | 54.79 | **71.52** | **1.3055x** | [`direct`](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json) |
+| Server c=1 natural24 warm rerun | Yes: full request wall includes ~`2.34 s` prompt prefill | `6564.3 ms total`, including `2343.7 ms` prefill | `5946.0 ms total`, including `2339.7 ms` prefill | 40.93 | **45.24** | **1.105x** | [`AR`](benchmarks/results/2026-07-07-hipengine-server-ar-natural24-c1-bw5-benefit-sweep-rerun.json), [`MTP`](benchmarks/results/2026-07-07-hipengine-server-mtp-natural24-c1-bw5-benefit-sweep-rerun.json) |
+
+If the direct decode/cycle numbers are adjusted by adding the same ~`2.34 s`
+prefill cost to both sides, the expected c=1 uplift falls from **1.305x** to
+about **1.18x** before server-specific overhead. The measured server c=1 row is
+**1.105x**; target verification itself is close to the direct row, while the
+remaining delta is mostly serving-loop overhead around context write, draft
+proposal, and the short AR tail.
+
 Server MTP is available as a guarded, default-off GGUF llama-compat route. Start
 the OpenAI server with `--speculative-mtp-serving opt_in` and pass
 `"speculative_mtp": true` on a non-streaming greedy request, or use
