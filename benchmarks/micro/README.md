@@ -169,10 +169,12 @@ explained before any real math kernel runs.
 ## F32 GEMV Geometry Sweep
 
 `runners/geometry_sweep.py` runs a matched math diagnostic on HIP or Vulkan.
-Each row uses one workgroup per output row, strided f32 FMA accumulation over K,
-and a shared-memory tree reduction. HIP uses the runtime block size; Vulkan uses
-a `local_size_x` specialization constant. The harness validates every row
-against a CPU reference that mirrors the same per-workgroup reduction order.
+Each row uses one workgroup per output row, repeat-shifted strided f32 FMA
+accumulation over K, and a shared-memory tree reduction. The repeat-shift keeps
+the body loop from collapsing into one identical dot product. HIP uses the
+runtime block size; Vulkan uses a `local_size_x` specialization constant. The
+harness validates every row against a CPU reference that mirrors the same
+per-workgroup reduction order.
 
 Example paired run:
 

@@ -146193,3 +146193,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `PYTHONPATH=. pytest -q tests/test_micro_geometry_sweep.py tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`
   all passed. The smokes validate execution and JSON shape only; retained
   gfx1151 rows will be run after committing this clean harness unit.
+
+## 2026-07-08 - Geometry sweep repeat-shift fairness fix
+
+- The first full gfx1151 geometry run showed a suspiciously large Vulkan win
+  with the original body-repeat loop. Since each repeat computed the exact same
+  dot product, ACO could plausibly simplify repeated work in a way HIP did not.
+  Those preliminary rows are not retained.
+- Updated the HIP CPU oracle/kernel and Vulkan CPU oracle/shader to use a
+  repeat-shifted index `(i + repeat) % k`. This keeps the same K/rows/workgroup
+  shape but prevents collapsing the loop into one repeated identical dot.
+- Updated runner/README wording to mark the family as repeat-shifted.
+- Validation:
+  rebuilt the HIP harness with `hipcc --offload-arch=gfx1151 -O3 -std=c++17`,
+  rebuilt the Vulkan shader/harness with `glslc -O` and `c++ -O2 -std=c++17`,
+  reran small HIP/Vulkan K=128 smokes, `python3 -m py_compile
+  benchmarks/micro/runners/geometry_sweep.py`, and
+  `PYTHONPATH=. pytest -q tests/test_micro_geometry_sweep.py tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`.
