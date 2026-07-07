@@ -8,7 +8,7 @@ shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
 q8_1 real-slice layout controls, LDS/barrier/subgroup reduction controls, plus
 a matched Vulkan Q6_K X8 selected-down real-slice probe and matched Vulkan
 Q4_K selected-dual gate/up real-slice probe with targeted HIP/RADV ISA
-comparison.
+comparison and a bounded Q4 setup/amortization probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -95,7 +95,19 @@ waitcnt-family instructions versus RADV official **108 SGPR / 48 VGPR**,
 lead is therefore not missing HIP dot4, HIP spills, or RADV VOPD pairing; it is
 a narrower scheduling/source/reduction lead to investigate only if it changes
 backend or HIP implementation priority.
+Q4_K Vulkan setup/amortization probe: instrumented local_size=64 rerun passes
+full CPU correctness and keeps the steady-state win at **0.292745 ms**
+prequantized dot and **0.293117 ms** quantize+dot versus retained HIP
+**0.34638 ms** and **0.34582 ms**. Standalone backend setup before steady
+replay is **47.8645 ms**, dominated by **25.3268 ms** synthetic host staging
+and **17.4106 ms** Vulkan instance/device setup; pipeline creation is only
+**0.1736 ms**, device upload **3.4389 ms**, descriptor setup **0.0171 ms**,
+and command recording **0.0639 ms**. If all measured setup is charged to the
+Q4 quantize+dot delta, breakeven is about **908 calls**. Classified as a
+bounded setup probe: useful only with persistent pipelines and resident buffers,
+not a one-shot-call or production-backend win.
 Artifacts:
+[`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json),
 [`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json),
 [`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json),
