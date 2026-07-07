@@ -146159,3 +146159,23 @@ python3 scripts/gguf_mtp_bench.py \
   stats, and comparison artifacts. Updated `docs/HIP-vs-VULKAN.md`,
   `benchmarks/micro/README.md`, `benchmarks/README.md`, and
   `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - VOPD scheduling microbench runner
+
+- Added `benchmarks/micro/runners/hip_vopd_sweep.hip`,
+  `benchmarks/micro/kernels/vulkan/vopd_sweep.comp`,
+  `benchmarks/micro/runners/vulkan_vopd_sweep.cpp`, and
+  `benchmarks/micro/runners/vopd_sweep.py`.
+- The VOPD family compiles one variant at a time with mode/accumulator macros:
+  independent f32 FMA, dependent f32 FMA, mixed int+float, and dequant-like
+  shift/mask/cvt/FMA. The Python runner records timing, sampled CPU-oracle
+  correctness, HIP code-object metadata, HIP/RADV disassembly instruction
+  counts, VOPD counts, and comparison rows keyed by mode/accumulator count.
+- Added `tests/test_micro_vopd_sweep.py` for variant parsing and comparison
+  artifact construction.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/vopd_sweep.py benchmarks/micro/runners/isa_stats.py`,
+  `PYTHONPATH=. pytest -q tests/test_micro_vopd_sweep.py tests/test_micro_isa_stats.py`,
+  a HIP wrapper smoke for `independent_fma:2,dependent_fma:4`, and a Vulkan
+  wrapper smoke for the same variants all passed. The smoke rows were not
+  retained; retained gfx1151 rows will be run from a clean commit.
