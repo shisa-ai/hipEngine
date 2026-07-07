@@ -146123,3 +146123,13 @@ python3 scripts/gguf_mtp_bench.py \
 - Validation:
   `python3 -m py_compile benchmarks/micro/runners/isa_stats.py` and
   `PYTHONPATH=. pytest -q tests/test_micro_isa_stats.py` passed.
+
+## 2026-07-08 - ISA stats artifact cleanup
+
+- Removed non-retained `/tmp` raw-probe path references from Vulkan ISA stats
+  artifacts; retained artifacts keep the parsed correctness map and mark raw
+  probes/shader dumps as not retained.
+- Tightened branch instruction counting to include conditional branch mnemonics.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/isa_stats.py` and
+  `PYTHONPATH=. pytest -q tests/test_micro_isa_stats.py` passed.
