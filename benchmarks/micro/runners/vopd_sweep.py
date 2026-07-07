@@ -429,6 +429,8 @@ def _normalize_result(
             "vgpr_spill_count",
             "subgroups_per_simd",
             "code_size_bytes",
+            "register_count_status",
+            "shaderstats_status",
         ):
             if isa.get(key) is not None:
                 row[key] = isa.get(key)

@@ -146565,3 +146565,48 @@ python3 scripts/gguf_mtp_bench.py \
   Vulkan port as implemented; next compiler-facing work remains better RADV
   allocation/stat extraction, with a Q4_K selected-dual Vulkan slice optional
   only as a second hot-bucket transfer check.
+
+## 2026-07-08 - gfx1151 RADV shaderstats allocation refresh
+
+- Discovered that this Mesa/RADV build exposes official shader allocation stats
+  through `RADV_DEBUG=shaderstats`; combined `RADV_DEBUG=shaders,shaderstats`
+  preserves the final disassembly/ACO-after-RA dump while adding official
+  VGPR/SGPR/spill/scratch/code-size stats.
+- Added parser support in `benchmarks/micro/runners/isa_stats.py` and switched
+  the Vulkan debug probes in `isa_stats.py`, `memory_waitcnt.py`,
+  `dot_path.py`, and `vopd_sweep.py` to `RADV_DEBUG=shaders,shaderstats`.
+- Parser smoke:
+  `RADV_DEBUG=shaders,shaderstats /tmp/hipengine-micro-q6-x8-real-slice-ls64/vulkan_q6_x8_selected_down --quantize-spirv /tmp/hipengine-micro-q6-x8-real-slice-ls64/q8_1_quantize.spv --dot-spirv /tmp/hipengine-micro-q6-x8-real-slice-ls64/q6_x8_selected_down.spv --json /tmp/vulkan-q6-x8-parser-smoke.json --rows 8 --experts 256 --in-features 512 --out-features 2048 --input-scale 0.1 --local-size 64 --reps 1 --warmup 0 --samples 1 --device-index 0`
+  passed correctness. Parsed rows: q8_1 quantize official `96` VGPR /
+  `108` SGPR / `0` scratch/spills; Q6_K X8 dot official `48` VGPR /
+  `108` SGPR / `0` scratch/spills, with `9` final dot4 and `0` VOPD.
+- Refreshed retained Vulkan geometry ISA stats:
+  `python3 benchmarks/micro/runners/isa_stats.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-isa-stats.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-isa-stats.json --geometry-result benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --k 2048 --rows 1 --workgroups 64,256 --body-repeats 128 --reps 1 --warmup 0 --samples 1 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-isa-stats.json`.
+  Rebuilt `geometry-isa-stats-comparison.json`.
+- Geometry shaderstats result: RADV official `108` SGPR / `12` VGPR /
+  `0` scratch/spills for both wg64 and wg256; RADV still emits `0` VOPD while
+  HIP emits `2` VOPD and reports `18` SGPR / `11` VGPR / `0` scratch/spills.
+- Refreshed retained Vulkan memory/waitcnt artifact:
+  `python3 benchmarks/micro/runners/memory_waitcnt.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json`.
+  Rebuilt `memory-waitcnt-comparison.json`; all rows passed sampled CPU oracle.
+- Memory/waitcnt result after rerun: Vulkan is `1.02x-2.25x` faster across
+  retained rows; gather remains tied at `1.02x`. RADV shaderstats reports
+  official `12/24/48` VGPR buckets, `108` SGPR, and `0` scratch/spills.
+- Refreshed retained Vulkan dot-path artifact:
+  `python3 benchmarks/micro/runners/dot_path.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-dot-path.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-dot-path.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-dot-path.json`.
+  Rebuilt `dot-path-comparison.json`; all rows passed exact sampled CPU oracle.
+- Dot-path result after rerun: Vulkan remains `3.28x-3.42x` faster than the
+  retained HIP artifact. RADV shaderstats reports official `36` VGPR for q8/q4,
+  `48` VGPR for q6/scalar, `108` SGPR, and `0` scratch/spills.
+- Refreshed retained Vulkan VOPD artifact:
+  `python3 benchmarks/micro/runners/vopd_sweep.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --n 65536 --body-iters 2048 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 64 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-vopd-sweep.json`.
+  Rebuilt `vopd-sweep-comparison.json`; all rows passed sampled CPU oracle.
+- VOPD result after rerun: RADV still emits `0` VOPD in all retained rows.
+  RADV shaderstats reports official `12/24` VGPR buckets, `108` SGPR, and
+  `0` scratch/spills.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`. Interpretation:
+  the missing RADV allocation-count blocker is resolved for retained rows, and
+  it does **not** turn the current evidence into a register-allocation win.
+  Memory remains the strongest compiler-facing lead, but its remaining blockers
+  are wave/subgroup shape and memory-bound real-slice transfer.
