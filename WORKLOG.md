@@ -146673,3 +146673,50 @@ graphless decode launch-collapse path without regressing target/serial parity.
   allocation/stat extraction. Updated `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md` with the retained
   HIP q8_1 layout artifacts.
+
+## 2026-07-08 - gfx1151 Vulkan Q6_K X8 selected-down real-slice probe
+
+- Added a standalone Vulkan microbench probe for the Q6_K selected-down X8
+  q8_1+dp4a shape under `benchmarks/micro/runners/q6_x8_real_slice.py`,
+  `benchmarks/micro/runners/vulkan_q6_x8_selected_down.cpp`, and the Vulkan
+  shaders `q8_1_quantize.comp` / `q6_x8_selected_down.comp`.
+- Smoke validation:
+  `python3 benchmarks/micro/runners/q6_x8_real_slice.py --out /tmp/vulkan-q6-x8-smoke.json --rows 2 --experts 8 --in-features 256 --out-features 64 --reps 2 --warmup 1 --samples 2 --local-size 64`
+  passed full CPU correctness.
+- Ran retained local_size=64 production-shape probe:
+  `python3 benchmarks/micro/runners/q6_x8_real_slice.py --build-dir /tmp/hipengine-micro-q6-x8-real-slice-ls64 --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json --rows 8 --experts 256 --in-features 512 --out-features 2048 --input-scale 0.1 --local-size 64 --reps 120 --warmup 30 --samples 9 --device-index 0`.
+- local_size=64 result: full CPU correctness passed with top-1 `1.0`,
+  max abs `0.25`, mean abs `0.00308`; q8_1 quantize `0.000357 ms`,
+  X8 dot prequantized `0.03076 ms`, quantize+dot `0.03217 ms`.
+- Ran retained local_size=128 production-shape probe:
+  `python3 benchmarks/micro/runners/q6_x8_real_slice.py --build-dir /tmp/hipengine-micro-q6-x8-real-slice-ls128 --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json --rows 8 --experts 256 --in-features 512 --out-features 2048 --input-scale 0.1 --local-size 128 --reps 120 --warmup 30 --samples 9 --device-index 0`.
+- local_size=128 result: full CPU correctness passed; q8_1 quantize
+  `0.000356 ms`, X8 dot prequantized `0.03258 ms`, quantize+dot
+  `0.03326 ms`.
+- Ran retained local_size=256 production-shape probe:
+  `python3 benchmarks/micro/runners/q6_x8_real_slice.py --build-dir /tmp/hipengine-micro-q6-x8-real-slice-ls256 --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json --rows 8 --experts 256 --in-features 512 --out-features 2048 --input-scale 0.1 --local-size 256 --reps 120 --warmup 30 --samples 9 --device-index 0`.
+- local_size=256 result: full CPU correctness passed; q8_1 quantize
+  `0.000356 ms`, X8 dot prequantized `0.03500 ms`, quantize+dot
+  `0.03707 ms`.
+- Built comparison artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`.
+  Best Vulkan row is local_size=64. Compared with retained HIP
+  `benchmarks/micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json`,
+  Vulkan is `1.85x` slower on prequantized dot and `1.67x` slower on
+  quantize+dot.
+- Captured RADV final-disassembly stats with:
+  `RADV_DEBUG=shaders /tmp/hipengine-micro-q6-x8-real-slice-ls64/vulkan_q6_x8_selected_down --quantize-spirv /tmp/hipengine-micro-q6-x8-real-slice-ls64/q8_1_quantize.spv --dot-spirv /tmp/hipengine-micro-q6-x8-real-slice-ls64/q6_x8_selected_down.spv --json /tmp/vulkan-q6-x8-radv-debug.json --rows 8 --experts 256 --in-features 512 --out-features 2048 --input-scale 0.1 --local-size 64 --reps 1 --warmup 0 --samples 1 --device-index 0`.
+- ISA/stat result:
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json`.
+  The dot shader SPIR-V contains `9` `OpSUDot` operations; RADV final dot
+  shader has subgroup size `64`, `9` final dot4 instructions, `0` VOPD,
+  estimated VGPR/SGPR spans `48/24`, `89` waitcnt-family instructions, and
+  `82` buffer loads. RADV still does not expose official allocation counts in
+  this path.
+- Interpretation: the first matched Vulkan production slice is negative. The
+  synthetic packed dot-path Vulkan win does not transfer to Q6_K selected-down
+  X8 once the real layout, q8_1 materialization, selected rows, output shape,
+  and subgroup reduction are present. Do not pursue this q6 selected-down
+  Vulkan port as implemented; next compiler-facing work remains better RADV
+  allocation/stat extraction, with a Q4_K selected-dual Vulkan slice optional
+  only as a second hot-bucket transfer check.
