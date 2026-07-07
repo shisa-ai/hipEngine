@@ -18,6 +18,68 @@ The goal of this suite is to split those causes cleanly enough to decide
 whether the next high-leverage path is an LLVM issue, a HIP kernel rewrite, a
 Vulkan backend, or a tiny hand-ISA path.
 
+## Current Conclusion
+
+As of the retained gfx1151/STRIX_HALO runs on 2026-07-08, the retained
+conclusion is split:
+
+- Vulkan/RADV command-buffer replay has a real runtime-dispatch advantage for
+  launch-heavy tiny-kernel bursts. This is retained as `runtime_dispatch`, not
+  `compiler_aco`.
+- Vulkan remains much faster on the matched repeat-shifted f32 GEMV/reduction
+  harness, and both backends prefer wg256 on all retained best-native rows.
+  This rules out the simple "HIP picked the wrong workgroup size" explanation
+  for that harness.
+- We still cannot claim that RADV/ACO beats LLVM/HIP at low-level scheduling,
+  register allocation, waitcnt placement, or VOPD pairing. The geometry result
+  makes that hypothesis more important, but the missing evidence is
+  disassembly/register/scratch/waitcnt/VOPD/dot-instruction data at identical
+  shape.
+
+So the current project-level answer is **not** "HIP is simply slower because
+ACO is better." The retained answer is: Vulkan has a proven dispatch/runtime
+advantage on gfx1151, Vulkan has a large matched-math advantage in one f32
+diagnostic, and the next tests must determine whether that second advantage is
+ACO/LLVM codegen, hidden runtime/pipeline behavior, or an algorithmic detail we
+have not controlled yet.
+
+HIP also does not give us a PTX-equivalent escape hatch in the normal runtime
+path. We can inspect LLVM IR, AMDGPU assembly, and code-object metadata, and we
+can use AMDGCN builtins, inline AMDGCN assembly, or standalone HSACO/module
+kernels for narrow cases. But normal HIP source is ultimately relying on
+LLVM-AMDGPU codegen, so confirmed compiler misses become either LLVM roadmap
+items or carefully scoped hand-ISA candidates.
+
+## What To Test Next
+
+Do **not** spend more gfx1151 time on dispatch-only or geometry-only sweeps until
+the compiler evidence exists. The next useful tranche is:
+
+1. ISA/stat extraction for the retained f32 geometry kernels at identical
+   K/rows/workgroup shapes. Parse HIP code-object metadata and RADV shader dumps
+   for VGPR, SGPR, scratch/private memory, wave/subgroup size, LDS use,
+   instruction mix, waitcnt count, barrier count, VOPD count, and dot count.
+2. VOPD-specific paired microbenches: independent f32 FMA chains, dependent f32
+   chains, dequant-like integer/float chains, and mixed address-math plus FMA.
+   Only call this an ACO dual-issue win if Vulkan emits more useful VOPD or an
+   equivalent dual-issue schedule at matched occupancy and instruction count.
+3. Memory/waitcnt microbenches: coalesced load+accumulate, strided
+   load+accumulate, gather IDs, and load-compute interleave. These decide
+   whether the f32 geometry gap is memory scheduling/waitcnt quality rather than
+   generic ALU scheduling.
+4. Dot-path microbenches: q8_1/q4 or q8_0 shapes that prove whether HIP and
+   Vulkan both emit the intended RDNA3 dot instructions. If both do and timing
+   is close, the remaining work is layout/quant economics; if HIP misses the
+   instruction or surrounds it with worse scheduling, that becomes an LLVM or
+   hand-ISA target.
+5. One representative inference slice after the microbench deltas are
+   classified. The best first slices are selected-MoE small-K or q6 lm-head
+   rowtile, because they map directly to exposed hipEngine buckets.
+
+Cross-GPU reruns on gfx1100/W7900 and 7900 XTX are important after the harnesses
+are stable. They should confirm portability of a conclusion, not replace the
+missing gfx1151 ISA evidence.
+
 ## Current Retained Evidence
 
 ### gfx1151 Dispatch/Grid Floor

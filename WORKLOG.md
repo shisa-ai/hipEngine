@@ -146246,3 +146246,18 @@ graphless decode launch-collapse path without regressing target/serial parity.
   normalized/raw, and comparison artifacts. Updated `docs/HIP-vs-VULKAN.md`,
   `benchmarks/micro/README.md`, `benchmarks/README.md`, and
   `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - HIP vs Vulkan conclusion doc refresh
+
+- Updated `docs/HIP-vs-VULKAN.md` with the current retained conclusion:
+  dispatch/grid floor is a confirmed `runtime_dispatch` Vulkan/RADV advantage
+  on gfx1151, the repeat-shifted f32 GEMV/reduction gap rules out a simple
+  wrong-workgroup explanation for that harness, and `compiler_aco` remains
+  unproven until disassembly/register/scratch/waitcnt/VOPD/dot evidence is
+  collected at identical shape.
+- Added the next-test queue: ISA/stat extraction for retained geometry kernels,
+  VOPD-specific paired microbenches, memory/waitcnt microbenches, dot-path
+  microbenches, and then one real inference slice such as selected-MoE small-K
+  or q6 lm-head rowtile.
+- Validation: re-read the changed section end-to-end; no GPU run needed for
+  this docs-only update.
