@@ -146610,3 +146610,23 @@ python3 scripts/gguf_mtp_bench.py \
   it does **not** turn the current evidence into a register-allocation win.
   Memory remains the strongest compiler-facing lead, but its remaining blockers
   are wave/subgroup shape and memory-bound real-slice transfer.
+
+## 2026-07-08 - HIP vs Vulkan retained conclusion update
+
+- Updated `docs/HIP-vs-VULKAN.md` only; no new benchmark rows or artifacts were
+  created in this pass.
+- Retained project conclusion: broad gfx1151 attribution sweeps should stop for
+  now. The current evidence does not support "HIP is slower simply because
+  RADV/ACO is better optimized than LLVM-AMDGPU"; it instead splits into
+  runtime dispatch wins, unclassified geometry/memory/dot diagnostics, positive
+  HIP q8_1 real-slice layout economics, and a negative matched Vulkan Q6_K X8
+  real-slice transfer check.
+- Documented next-test gate: the only near-term benchmark still worth running
+  is a Vulkan Q4_K selected-dual gate/up real-slice probe if we want one more
+  production hot-bucket transfer check. HIP wave64+fixed-workgroup geometry and
+  gfx1100/W7900/7900 XTX reruns are optional validation steps after the
+  harnesses stabilize.
+- Documented backend/hand-ISA gate: do not start production Vulkan from the
+  current evidence, and do not start broad hand-ISA from generic VOPD/dot-path
+  diagnostics. Production Vulkan needs retained real-slice wins; hand-ISA needs
+  a specific hot HIP slice with a measured LLVM codegen miss.

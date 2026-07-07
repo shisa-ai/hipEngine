@@ -26,6 +26,25 @@ conclusion is split. The short answer is **no**: the evidence does not support
 "HIP is slower simply because Mesa RADV/ACO is better optimized than
 LLVM-AMDGPU" as a single explanation.
 
+The practical conclusion is:
+
+- Stop broad gfx1151 attribution sweeps for now. Dispatch, f32 geometry,
+  VOPD, memory/waitcnt, dot-path, HIP wave64, HIP fixed-shape, HIP q8_1
+  real-slice layout, RADV shaderstats, and one matched Vulkan real slice are
+  already retained.
+- The only useful near-term benchmark still missing is a Vulkan Q4_K
+  selected-dual gate/up real-slice probe, and only if we want a second
+  production hot-bucket transfer check after the negative Q6_K X8 result.
+- Do not start a production Vulkan backend from the current evidence. The
+  dispatch win is real, but it is a runtime result; the first production-shaped
+  Vulkan q6 slice is slower than HIP.
+- Do not start a hand-ISA path from the current generic VOPD or packed-dot
+  evidence. HIP already emits VOPD in the retained VOPD rows and dot4 in the
+  retained q8/q4/q6 rows. Hand-ISA only becomes reasonable for a specific hot
+  HIP slice with a proven LLVM codegen miss after matched real-slice controls.
+
+The detailed retained reads are:
+
 - Vulkan/RADV command-buffer replay has a real runtime-dispatch advantage for
   launch-heavy tiny-kernel bursts. This is retained as `runtime_dispatch`, not
   `compiler_aco`.
@@ -136,6 +155,10 @@ What remains plausible:
 - Real Vulkan inference slices still need caution: the first production-shaped
   q6 selected-down probe did **not** predict a Vulkan win, so synthetic Vulkan
   dot-path wins should not be promoted without a matching real slice.
+- The most actionable HIP-side work from this suite is not "switch to Vulkan";
+  it is to preserve the q8_1/dp4a real-slice wins, keep reducing launches and
+  fusion boundaries, and isolate memory/waitcnt behavior inside shipped hot
+  kernels before filing LLVM work.
 
 Operationally, keep the Vulkan work as an attribution/probe path until real
 inference slices prove production value. The HIP roadmap should first try to
@@ -153,10 +176,11 @@ items or carefully scoped hand-ISA candidates.
 
 ## What To Test Next
 
-Yes, there is more worth testing, but the useful list is now narrow. Do **not**
-spend more gfx1151 time on dispatch-only, broad geometry-only, generic VOPD, or
-generic memory sweeps. Those have already answered the coarse questions. The
-next useful tranche is decision-grade controls:
+There is still one useful near-term test, but the broad attribution phase is
+done for gfx1151. Do **not** spend more gfx1151 time on dispatch-only, broad
+geometry-only, generic VOPD, generic memory, basic dot-lowering, HIP wave64, or
+HIP fixed-block sweeps. Those have already answered the coarse questions. The
+remaining useful work is decision-grade only:
 
 Immediate triage:
 
@@ -168,17 +192,21 @@ Immediate triage:
 | Stop for now | Dispatch-only Vulkan probes | The runtime-dispatch win is already classified and does not prove compiler quality. |
 | Stop for now | Vulkan Q6_K selected-down X8 port | The matched real-slice probe is slower than retained HIP by `1.67x` on quantize+dot. |
 | Done | Better RADV allocation/stat extraction | `RADV_DEBUG=shaders,shaderstats` now gives official RADV VGPR/SGPR/spill/scratch data for retained Vulkan rows. |
-| Test next | Vulkan Q4_K selected-dual gate/up slice | Useful as a second production hot-bucket transfer check after the negative q6 result. |
+| Test next, if one more real-slice check is needed | Vulkan Q4_K selected-dual gate/up slice | Useful as the only remaining production hot-bucket transfer check after the negative q6 result. |
 | Optional | HIP wave64 plus fixed-workgroup geometry | Only needed if we want to remove the remaining f32 geometry wave/subgroup confound. |
 
-1. Vulkan Q4_K selected-dual gate/up real-slice probe, if we need a second
+Recommended next tests, in order:
+
+1. Vulkan Q4_K selected-dual gate/up real-slice probe, only if we want a second
    production hot-bucket transfer check. The Q6_K selected-down Vulkan probe is
-   already negative.
-2. HIP wave64 plus fixed-workgroup geometry control, if we need to remove the
-   remaining wave-mode confound before a compiler-facing geometry claim.
-3. Cross-GPU reruns only after the harnesses above stabilize. gfx1100/W7900 and
+   already negative, so a Q4_K win would need to be large and clean before
+   changing the backend roadmap.
+2. HIP wave64 plus fixed-workgroup geometry control, only if we want to remove
+   the remaining wave-mode confound before making any compiler-facing f32
+   geometry claim.
+3. Cross-GPU reruns after the harnesses above stabilize. gfx1100/W7900 and
    7900 XTX reruns should check portability of a classified diagnosis, not
-   replace the missing controls.
+   replace the Q4_K real-slice check.
 
 Priority summary:
 
@@ -190,7 +218,7 @@ Priority summary:
 | Done | HIP q8_1 real-slice layout controls | q8_1 materialization is small and positive on tested HIP selected-MoE slices |
 | Done | Vulkan Q6_K selected-down X8 real-slice probe | Synthetic Vulkan dot-path win does not transfer to this shipped hot bucket |
 | Done | RADV shaderstats allocation extraction | Official RADV allocation counts show no Vulkan scratch/spills in retained rows |
-| P1 | Vulkan Q4_K selected-dual gate/up slice | Optional second hot-bucket transfer check |
+| P1 | Vulkan Q4_K selected-dual gate/up slice | Only remaining near-term production hot-bucket transfer check |
 | P2 | HIP wave64 plus fixed-workgroup geometry | Remove the remaining f32 geometry wave/subgroup confound if needed |
 | P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after fixed-shape and real-slice harnesses are classified on gfx1151 |
 
@@ -203,7 +231,7 @@ remaining real-slice work:
 
 Cross-GPU reruns on gfx1100/W7900 and 7900 XTX are important after the harnesses
 are stable. They should confirm portability of the gfx1151 conclusions, not
-replace the remaining real-slice and allocation-stat tests.
+replace the remaining Q4_K real-slice transfer check.
 
 ## Current Retained Evidence
 
@@ -415,7 +443,7 @@ backend emitting VOPD. Vulkan's modest wins on independent-8, mixed int+float,
 and dequant-like rows must come from something else: wave64 execution shape,
 non-VOPD scheduling, instruction selection, runtime/pipeline effects, or
 measurement noise. The next relevant compiler tests are real-slice confirmation
-and real-slice confirmation, not more generic VOPD speculation.
+and memory-bound production transfer checks, not more generic VOPD speculation.
 
 ### gfx1151 Memory / Waitcnt Sweep
 
@@ -531,11 +559,12 @@ Register/stat summary:
 Conclusion: do **not** spend more gfx1151 time proving whether HIP can emit the
 basic q8/q4/q6 dot instruction; it can. The retained dot-path gap is still
 large, but the fixed-block control below shows runtime block indexing is not
-the missing switch. The useful next control is a representative real slice that
-includes q8_1 activation materialization and layout costs. A hand-ISA path is
-not justified by this artifact alone; it would need to beat the same HIP dot
-body after wave/fixed-shape controls and then move a shipped selected-MoE or q6
-lm-head slice.
+the missing switch. HIP q8_1 real-slice layout controls are positive, and the
+first matched Vulkan Q6_K X8 real slice is negative. The only remaining
+dot-related production transfer check worth running on gfx1151 is Q4_K
+selected-dual gate/up. A hand-ISA path is not justified by this artifact alone;
+it would need to beat the same HIP dot body after wave/fixed-shape controls and
+then move a shipped selected-MoE or q6 lm-head slice.
 
 ### gfx1151 HIP Wave64 Controls
 
@@ -905,7 +934,7 @@ strided, and interleave rows, while gather is essentially tied at `1.02x`.
 HIP wave64 and fixed-block controls do not close the gap; both severely regress
 gather in their retained runs. This is strong memory-side evidence but remains
 `diagnostic_unclassified` because wave/subgroup shape and memory-bound
-real-slice confirmation are still unresolved. RADV shaderstats now gives
+production-slice confirmation are still unresolved. RADV shaderstats now gives
 official allocation counts and shows no Vulkan scratch/spills.
 
 ### 4. VOPD And VALU Scheduling
@@ -952,8 +981,8 @@ Vulkan remains `3.28x-3.42x` faster, including the scalar row, and HIP wave64
 and fixed-block controls do not close the gap, so basic dot-instruction
 availability, wave mode, and runtime block indexing are no longer the main
 questions. HIP real-slice q8_1 materialization/layout controls are retained and
-positive; the next dot work is a Vulkan implementation of the same production
-slice.
+positive; the Q6_K X8 Vulkan real-slice check is retained and negative. The
+only remaining dot-layout transfer check is Q4_K selected-dual gate/up.
 
 ### 6. LDS, Barriers, And Subgroup Reductions
 
@@ -990,7 +1019,9 @@ predicts the direction and the actual slice confirms it.
 Status: retained on gfx1151 for HIP q8_1 layout economics on Q4_K selected-dual
 gate/up and Q6_K selected-down X8. The retained HIP slices confirm q8_1
 materialization cost is small and the full q8_1+dp4a path is faster than the
-tested HIP float controls. A matched Vulkan production slice is still missing.
+tested HIP float controls. The matched Vulkan Q6_K X8 selected-down production
+slice is retained and negative; the Q4_K selected-dual gate/up Vulkan slice is
+the only remaining near-term production-slice transfer check.
 
 ## Result Classification
 
@@ -1026,7 +1057,9 @@ justify hipEngine kernel rewrites or a Vulkan backend.
 
 ## Vulkan Backend Effort Scale
 
-There are two distinct scopes.
+There are two distinct scopes. The retained evidence supports the first scope
+as an attribution tool. It does **not** yet support the second scope as product
+work.
 
 ### Narrow Vulkan Probe Backend
 
@@ -1036,6 +1069,12 @@ one or two hot inference slices.
 Effort class: **bounded probe**. This is a contained runtime/tooling project,
 not a production backend. The value is high because it can falsify or confirm
 the Vulkan ceiling without touching `hipengine.LLM.generate()`.
+
+Current status: **partially implemented and already useful**. The retained
+dispatch, geometry, memory/waitcnt, VOPD, dot-path, shaderstats, and Q6_K X8
+real-slice rows all came from this style of standalone Vulkan probe. The only
+near-term extension still worth doing is Q4_K selected-dual gate/up if we want
+one more production hot-bucket transfer check.
 
 Work:
 
@@ -1057,6 +1096,11 @@ productizing without disturbing the current HIP backend.
 The retained gfx1151 dispatch result strengthens the case for this probe, but
 only for launch-heavy or command-fusion-sensitive paths. It is not sufficient
 evidence for a production backend by itself.
+
+Decision gate for continuing the probe: add only tests that can change an
+engineering decision. More generic dispatch/VOPD/dot/memory rows should stop;
+Q4_K selected-dual is still useful because it tests whether the negative Q6_K
+real-slice result is slice-specific or general.
 
 ### Production Vulkan Backend
 
@@ -1101,21 +1145,33 @@ Risks:
 - Some wins may depend on RADV/ACO behavior and not general Vulkan.
 - Debug/profiling loops are slower than HIP until the harness is mature.
 
-Decision gate for starting production Vulkan: at least two real inference slices
-must show retained Vulkan wins that are not reproduced by HIP geometry, compiler
-flags, or small hand-ISA changes.
+Current decision: **do not start production Vulkan yet**. The retained
+dispatch-row win is a runtime result, and the first matched production-shaped
+Q6_K X8 Vulkan slice is slower than HIP. Production Vulkan should wait for at
+least two retained real inference slices showing Vulkan wins that are not
+reproduced by HIP geometry, compiler flags, launch fusion, or small hand-ISA
+changes.
 
 ## Hand-ISA / Inline Assembly Candidates
 
 Hand-ISA is narrower than a Vulkan backend. It is justified when a hot HIP
 kernel is stable, isolated, and blocked by LLVM codegen rather than algorithm.
 
+Current decision: **no broad hand-ISA path yet**. The retained gfx1151 evidence
+does not show LLVM missing VOPD or dot4 in the generic diagnostics. HIP emits
+VOPD in the retained VOPD rows, HIP emits dot4 in the retained q8/q4/q6
+dot-path rows, and the first matched Vulkan Q6_K X8 real slice is slower than
+HIP. A hand-ISA candidate must therefore come from a specific hot HIP slice with
+a measured codegen problem, not from the generic Vulkan ceiling observation.
+
 Good candidates:
 
-- Inner q8_1/q4/q5/q6 dot loops where the desired `v_dot4_i32_iu8` sequence is
-  known and LLVM emits extra work.
-- Small-K selected-MoE kernels where ACO proves better waitcnt/register
-  scheduling at identical geometry.
+- Inner q8_1/q4/q5/q6 dot loops only where the desired `v_dot4_i32_iu8`
+  sequence is known, HIP's final ISA contains avoidable surrounding work, and a
+  real slice proves that fixing it moves wall time.
+- Small-K selected-MoE kernels only where ACO proves better waitcnt/register
+  scheduling at identical geometry and the same production slice is faster on
+  Vulkan.
 - F32/BF16 dequant chains only if a future microbench proves missed pairing or
   a specific instruction sequence matters after occupancy and memory traffic are
   controlled. Current gfx1151 VOPD rows do not provide that proof.
@@ -1146,6 +1202,10 @@ Promotion requirements:
 - `rocprofv3 --kernel-trace` proving the kernel ran.
 - Same-suite non-regression in the real inference slice.
 - A `docs/REFACTOR.md` entry for any diagnostic env flag.
+
+Do not use hand-ISA to address launch overhead, backend command replay, or
+generic geometry gaps. Those need launch fusion, backend scheduling, or HIP
+kernel-shape work, not inline assembly.
 
 ## Initial Execution Order
 
