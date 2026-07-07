@@ -146031,3 +146031,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   from serial bridge fallback without inferring from the path string alone.
 - Reset now clears `last_batch_decode_execution`, matching the stale-metadata
   lesson from GGUF packed verifier warmup.
+
+## 2026-07-07 - HIP vs Vulkan attribution benchmark plan
+
+- Added `docs/HIP-vs-VULKAN.md` as the proposed microbenchmark and roadmap doc
+  for testing whether RADV/ACO beats LLVM/HIP through compiler scheduling,
+  workgroup/subgroup geometry, dispatch/runtime behavior, memory scheduling,
+  VOPD pairing, or q8_1/sudot4 layout/precision effects.
+- The doc defines paired HIP/Vulkan microbench families, result
+  classification buckets (`compiler_aco`, `geometry`, `wave_mode`,
+  `runtime_dispatch`, `layout_quant`, `fusion_topology`, `not_reproducible`),
+  and the evidence needed before turning a Vulkan win into an LLVM ask.
+- It also records relative effort classes instead of calendar estimates:
+  a **bounded probe** for the standalone Vulkan harness, a **large, narrow
+  path** for a single-model/single-quant production decode backend, and a
+  **very large, systemic path** for a maintainable Vulkan backend with
+  server/profiling/parity coverage. Hand-ISA candidates are restricted to
+  stable hot inner loops where disassembly proves LLVM codegen is the blocker.
