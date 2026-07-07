@@ -146630,3 +146630,53 @@ python3 scripts/gguf_mtp_bench.py \
   current evidence, and do not start broad hand-ISA from generic VOPD/dot-path
   diagnostics. Production Vulkan needs retained real-slice wins; hand-ISA needs
   a specific hot HIP slice with a measured LLVM codegen miss.
+
+## 2026-07-08 - Vulkan Q4_K selected-dual real-slice retention
+
+- Added the standalone Vulkan Q4_K selected-dual gate/up q8_1+dp4a probe:
+  `benchmarks/micro/kernels/vulkan/q4_selected_dual.comp`,
+  `benchmarks/micro/runners/vulkan_q4_selected_dual.cpp`, and
+  `benchmarks/micro/runners/q4_selected_dual_real_slice.py`.
+- The runner generates HIP-matching BF16 activations with NumPy seed `27`,
+  x_rows=`4`, rows=`32`, experts=`256`, in=`2048`, out=`512`, input_scale=`0.1`,
+  and uses the same deterministic Q4_K raw-byte selected-dual expert rotations
+  as the retained HIP control.
+- Production-shape commands:
+  `python3 benchmarks/micro/runners/q4_selected_dual_real_slice.py --build-dir /tmp/hipengine-micro-q4-selected-dual-ls64 --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json --x-rows 4 --rows 32 --experts 256 --in-features 2048 --out-features 512 --input-scale 0.1 --local-size 64 --reps 80 --warmup 20 --samples 9 --device-index 0`;
+  repeated with `--local-size 128` and output
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json`;
+  repeated with `--local-size 256` and output
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json`.
+- Correctness: all retained Vulkan Q4 rows pass the full CPU q8_1+Q4_K
+  selected-dual oracle with top-1 `1.0`; best local_size=64 has max abs `1`
+  and mean abs `0.03408358991`.
+- Timing: best Vulkan local_size=64 measured q8_1 quantize `0.0005368875 ms`,
+  prequantized dot `0.2960678375 ms`, and quantize+dot `0.2923832875 ms`.
+  Retained HIP Q4 artifact is q8_1 quantize `0.002469387254677713 ms`,
+  prequantized dot `0.3463813744019717 ms`, and quantize+dot
+  `0.3458188264630735 ms`, so Vulkan is `1.16994x` faster on dot and
+  `1.18276x` faster combined.
+- ISA/stat artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json`.
+  Captured with `RADV_DEBUG=shaders,shaderstats`. Q4 selected-dual SPIR-V has
+  `3` `OpSUDot`; RADV final dot shader has `3` dot4, `0` VOPD, official
+  `48` VGPR / `108` SGPR, no scratch/spills, `26` waitcnt-family instructions,
+  `22` buffer loads, and LDS `1024` bytes.
+- Comparison artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`.
+  Conclusion: unlike the negative Q6_K X8 probe, this Q4_K selected-dual hot
+  bucket transfers a real Vulkan win. Retain as slice-specific
+  `real_slice_probe`, not broad `compiler_aco` proof.
+- Validation:
+  final smoke
+  `python3 benchmarks/micro/runners/q4_selected_dual_real_slice.py --build-dir /tmp/hipengine-micro-q4-selected-dual-final-smoke --out /tmp/vulkan-q4-selected-dual-final-smoke.json --x-rows 2 --rows 4 --experts 8 --in-features 256 --out-features 16 --local-size 64 --reps 2 --warmup 1 --samples 2 --device-index 0`
+  passed CPU correctness with top-1 `1`, max abs `0.03125`, and mean abs
+  `0.003082275391`;
+  `python3 -m py_compile benchmarks/micro/runners/q4_selected_dual_real_slice.py`;
+  `jq empty benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`;
+  `git diff --check`.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`. Current
+  conclusion: broad gfx1151 sweeps are done; next useful tests are cross-GPU
+  reruns, an integrated Q4 Vulkan probe only if it decides backend priority,
+  and optional HIP wave64+fixed-workgroup geometry cleanup.
