@@ -146152,3 +146152,17 @@ graphless decode launch-collapse path without regressing target/serial parity.
   `python3 -m json.tool` passed for environment, HIP normalized/raw, Vulkan
   normalized/raw, and comparison artifacts. Updated `benchmarks/README.md`,
   `benchmarks/CHANGELOG.md`, and `benchmarks/micro/README.md`.
+
+## 2026-07-08 - HIP vs Vulkan attribution conclusions update
+
+- Updated `docs/HIP-vs-VULKAN.md` with the retained gfx1151 dispatch/grid-floor
+  result and explicitly classified it as `runtime_dispatch`, not
+  `compiler_aco`.
+- Documented that Vulkan command-buffer replay is a strong launch-heavy win on
+  the STRIX_HALO gfx1151 system, but that the gap narrows to about `1.09x`
+  against HIP graph replay at 8192 blocks, so compiler scheduling remains
+  unproven.
+- Updated the next-test priority: geometry sweep for f32 GEMV/reduction is the
+  next useful benchmark, followed by VOPD, waitcnt/memory, q8_1/sudot4, and a
+  real selected-MoE or q6 lm-head slice. Repeating dispatch on gfx1100/W7900 is
+  useful for cross-GPU scope, but should not displace matched math kernels.
