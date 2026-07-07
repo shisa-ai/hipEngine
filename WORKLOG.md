@@ -145783,3 +145783,17 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   All eight warm JSON artifacts validated and the OpenAI server was stopped
   after the sweep; port `18082` is clear.
+
+## 2026-07-07 - README MTP direct-vs-server protocol note
+
+- Updated the top-level `README.md` MTP section to document why the direct
+  `llama-compat` c=1 uplift (**71.52 vs 54.79 tok/s**, **1.3055x**) is much
+  larger than the OpenAI-server c=1 uplift (**45.24 vs 40.93 tok/s**,
+  **1.105x**). The new table separates direct decode/cycle-wall timing from
+  full-request server timing and calls out the shared ~**2.34 s** prompt prefill
+  cost that dilutes short natural24 server-request economics.
+- This was docs-only; no benchmark rerun was needed. Source artifacts:
+  `benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json`,
+  `benchmarks/results/2026-07-07-hipengine-server-ar-natural24-c1-bw5-benefit-sweep-rerun.json`,
+  and
+  `benchmarks/results/2026-07-07-hipengine-server-mtp-natural24-c1-bw5-benefit-sweep-rerun.json`.
