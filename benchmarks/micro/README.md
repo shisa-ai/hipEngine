@@ -17,6 +17,8 @@ benchmarks/micro/
   collect_env.py
   runners/
     hip_dispatch_floor.py
+    vulkan_dispatch_floor.py
+    vulkan_dispatch_floor.cpp
   schemas/
     environment.schema.json
     result.schema.json
@@ -32,11 +34,10 @@ Suggested future layout:
 ```text
 benchmarks/micro/
   runners/
-    vulkan_dispatch_floor.py
     compare_results.py
   kernels/
-    hip/
     vulkan/
+      dispatch_floor.comp
   results/
     gfx1100/
       w7900/
@@ -123,6 +124,41 @@ python3 benchmarks/micro/runners/hip_dispatch_floor.py \
 
 Use `--legacy-input <path>` to normalize an existing
 `scripts/graph_node_microbench.py --json` artifact without rerunning HIP.
+
+## Vulkan Dispatch/Grid Floor
+
+The Vulkan runner builds a tiny storage-buffer compute shader and a standalone
+`libvulkan` C++ harness, records command buffers outside the timed region, and
+normalizes submit+fence timing into the same result schema:
+
+```bash
+python3 benchmarks/micro/runners/vulkan_dispatch_floor.py \
+  --counts 1,50,200,941 \
+  --grid-sweep 1,128,1024,8192 \
+  --reps 50 \
+  --warmup 10 \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vulkan-dispatch-floor.json
+```
+
+For paired retained rows, use the same environment artifact as the HIP run:
+
+```bash
+python3 benchmarks/micro/runners/vulkan_dispatch_floor.py \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --counts 1,50,200,941 \
+  --grid-sweep 1,128,1024,8192 \
+  --gfx-arch gfx1100 \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vulkan-dispatch-floor.json
+```
+
+This is a dispatch/runtime diagnostic only. It does not establish RADV/ACO
+shader codegen quality; it tells us how much of a HIP vs Vulkan delta can be
+explained before any real math kernel runs.
 
 ## Classification
 
