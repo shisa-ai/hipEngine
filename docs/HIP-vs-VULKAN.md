@@ -32,7 +32,8 @@ The practical conclusion is:
   VOPD, memory/waitcnt, dot-path, HIP wave64, HIP fixed-shape, HIP q8_1
   real-slice layout, RADV shaderstats, HIP fixed-wave64 geometry, and two
   matched Vulkan real slices are already retained. LDS/barrier/subgroup
-  reduction controls are also retained for the f32 reduction question.
+  reduction controls are also retained for the f32 reduction question, and the
+  positive Q4_K Vulkan slice now has a bounded setup/amortization probe.
 - The matched real-slice evidence is now split: Q6_K selected-down X8 is slower
   on Vulkan, while Q4_K selected-dual gate/up is faster on Vulkan. The targeted
   Q4_K HIP/RADV ISA comparison explains what that one win is not: not missing
@@ -40,9 +41,13 @@ The practical conclusion is:
   slice-specific evidence, but still not a broad `compiler_aco` proof.
 - Do not start a production Vulkan backend from the current evidence. The
   dispatch win is real, but it is a runtime result; the first two
-  production-shaped slices disagree by quant/layout shape. Production Vulkan
-  needs either another retained hot-slice win or an integrated backend probe
-  that moves end-to-end wall time.
+  production-shaped slices disagree by quant/layout shape. The Q4_K
+  setup/amortization probe shows the standalone steady win requires persistent
+  device/pipeline/buffer residency: if all measured standalone backend setup is
+  charged to each call, the `47.9 ms` setup cost needs roughly `908` retained
+  Q4 quantize+dot calls to amortize. Production Vulkan still needs another
+  retained hot-slice win or a true registry/end-to-end probe that moves wall
+  time.
 - Do not start a broad hand-ISA path from the current generic VOPD or
   packed-dot evidence. HIP already emits VOPD in the retained VOPD rows and
   dot4 in the retained q8/q4/q6 rows. The Q4_K selected-dual slice now has a
@@ -148,6 +153,16 @@ The detailed retained reads are:
   it narrows the likely explanation to surrounding scheduling, reduction/source
   structure, or memory/address code rather than basic dot lowering, spills, or
   dual-issue pairing.
+- The bounded Q4_K setup/amortization probe keeps the local_size=64 Vulkan
+  steady-state result positive: `0.292745 ms` prequantized dot and
+  `0.293117 ms` quantize+dot versus retained HIP `0.34638 ms` and
+  `0.34582 ms`. It also measures `47.8645 ms` of standalone backend setup
+  before steady replay, dominated by `25.3268 ms` host staging for the
+  synthetic dual-weight fixture and `17.4106 ms` Vulkan instance/device setup.
+  Pipeline creation is only `0.1736 ms`, device upload is `3.4389 ms`, and
+  descriptor plus command recording are tiny. This says Q4 Vulkan is only
+  interesting with persistent device/pipeline/buffer residency; it is not a
+  one-shot-call backend win.
 - We still cannot claim `compiler_aco` for the f32 geometry gap. The refreshed
   RADV shaderstats extraction reports no Vulkan scratch/spills and official
   `12` VGPR / `108` SGPR allocation for the retained wg64/wg256 shaders, while
@@ -216,9 +231,11 @@ What remains plausible:
   layout/stat confounds are gone.
 - Real Vulkan inference slices still need caution: the retained production
   probes are split, with Q6_K selected-down negative and Q4_K selected-dual
-  positive. Synthetic Vulkan dot-path wins should not be promoted without a
-  matching real slice, and one real-slice win is not enough to justify a second
-  production backend.
+  positive. The Q4 setup/amortization probe says persistent residency is
+  mandatory for that positive slice. Synthetic Vulkan dot-path wins should not
+  be promoted without a matching real slice, and one real-slice win plus a
+  standalone setup probe is still not enough to justify a second production
+  backend.
 - The most actionable HIP-side work from this suite is not "switch to Vulkan";
   it is to preserve the q8_1/dp4a real-slice wins, keep reducing launches and
   fusion boundaries, isolate memory/waitcnt behavior inside shipped hot
@@ -263,7 +280,7 @@ Immediate triage:
 | Done | Targeted Q4_K selected-dual HIP/RADV ISA comparison | Both paths emit `3` dot4 instructions and no scratch/spills; HIP emits VOPD, RADV emits none, and RADV has fewer static instructions/waitcnts. This narrows but does not finish Q4 attribution. |
 | Done | HIP wave64 plus fixed-workgroup geometry | HIP fixed-wave64 is slower than fixed-wave32 and leaves Vulkan `6.31x-16.18x` faster, removing the remaining f32 geometry wave-mode confound. |
 | Done | LDS/barrier/subgroup reduction sweep | HIP wave-shuffle is flat versus HIP LDS, Vulkan subgroup is flat to modestly slower versus Vulkan LDS, and matched Vulkan LDS remains `8.19x-14.55x` faster than HIP LDS. |
-| Test only if it changes backend priority | Integrated Q4_K selected-dual Vulkan probe | Useful only if we want to know whether the standalone Q4 win survives real dispatch, residency, and pipeline/cache integration. |
+| Done, bounded | Q4_K selected-dual Vulkan setup/amortization probe | Steady Q4 remains positive, but standalone backend setup is `47.9 ms`, so the win needs persistent device/pipeline/buffer residency and does not justify a production backend by itself. |
 | Test only if it changes HIP implementation priority | Narrow Q4_K HIP source/inline-asm experiment | Useful only if it targets the measured Q4 instruction/waitcnt/reduction delta and validates a real-slice speedup; not justified as a broad hand-ISA path. |
 
 Recommended next tests, in order:
@@ -271,17 +288,17 @@ Recommended next tests, in order:
 1. Cross-GPU reruns on gfx1100/W7900 and 7900 XTX using the retained harness
    set. This checks whether the split real-slice result and negative VOPD
    conclusion are gfx1151-specific.
-2. Integrated Q4_K selected-dual Vulkan probe only if we are willing to use the
-   result to decide backend priority. The standalone slice is positive; the
-   next question is whether the win survives real residency, dispatch, and
-   integration costs.
-3. Memory-bound production-slice confirmation only if we intend to file an
+2. Memory-bound production-slice confirmation only if we intend to file an
    LLVM-AMDGPU waitcnt/scheduling issue. The synthetic memory/waitcnt rows are
    strong, but still need transfer into a shipped hot slice.
-4. Narrow HIP Q4_K selected-dual source or inline-asm experiment only if we are
+3. Narrow HIP Q4_K selected-dual source or inline-asm experiment only if we are
    willing to validate a concrete real-slice recovery. The first ISA comparison
    is already retained and rules out the easy dot4/spill/VOPD explanations; a
    follow-up should target the measured instruction/waitcnt/reduction shape.
+4. True production-registry Vulkan Q4 probe only after we decide the bounded
+   probe and cross-GPU portability justify backend work. The retained
+   setup/amortization row does not cover hipEngine registry integration or
+   full inference wall time.
 
 Priority summary:
 
@@ -297,10 +314,11 @@ Priority summary:
 | Done | Targeted Q4_K selected-dual HIP/RADV ISA comparison | Q4 win is not missing HIP dot4, HIP spills, or RADV VOPD pairing; remaining lead is narrower scheduling/source/reduction work |
 | Done | HIP wave64 plus fixed-workgroup geometry | Wave mode plus fixed workgroup does not close the f32 geometry gap |
 | Done | LDS/barrier/subgroup reduction sweep | Reduction topology does not close the f32 geometry gap |
+| Done, bounded | Q4_K Vulkan setup/amortization probe | Steady Q4 win needs persistent residency; one-shot setup cost swamps the per-call win |
 | P1 | gfx1100/W7900 and 7900 XTX reruns | Check portability of the classified gfx1151 conclusions |
-| P2 | Integrated Q4_K Vulkan probe | Decide whether the standalone Q4 win has backend value after integration costs |
 | P3 | Memory-bound production-slice confirmation | Decide whether retained memory/waitcnt diagnostics should become an LLVM-AMDGPU scheduling issue |
 | P3 | Narrow Q4_K HIP recovery experiment | Decide whether the one positive Vulkan slice can be recovered without a Vulkan backend |
+| P3 | True production-registry Vulkan Q4 probe | Decide whether a persistent Vulkan path moves real hipEngine wall time |
 
 Tooling that would improve attribution quality, but should not displace the
 remaining portability and integration work:
@@ -954,6 +972,8 @@ Retained artifacts:
 `benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`,
 and
 `benchmarks/micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`.
+Bounded setup/amortization artifact:
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json`.
 
 Hardware/software context:
 
@@ -1009,6 +1029,38 @@ scratch/spills. Treat this as a slice-specific lead. The next useful work is
 either an integrated Q4 Vulkan probe to see whether the standalone win survives
 backend costs, or a targeted HIP Q4 recovery experiment that attacks the
 measured instruction/waitcnt/reduction delta for this exact slice.
+
+Bounded setup/amortization probe:
+
+| Metric | Retained value |
+| --- | ---: |
+| Vulkan steady Q4_K dot, prequantized | `0.292745 ms` |
+| Vulkan steady q8_1 quantize+Q4_K dot | `0.293117 ms` |
+| Retained HIP Q4_K dot, prequantized | `0.34638 ms` |
+| Retained HIP q8_1 quantize+Q4_K dot | `0.34582 ms` |
+| Standalone Vulkan backend setup before steady replay | `47.8645 ms` |
+| Breakeven calls if all measured setup is charged to the Q4 quantize+dot win | `~908` |
+
+Setup breakdown:
+
+| Phase | Time |
+| --- | ---: |
+| Vulkan instance/device setup | `17.4106 ms` |
+| Pipeline creation | `0.1736 ms` |
+| Buffer allocation | `0.4923 ms` |
+| Host staging fill for synthetic dual weights | `25.3268 ms` |
+| Device upload | `3.4389 ms` |
+| Descriptor setup | `0.0171 ms` |
+| Correctness run and readback | `0.9352 ms` |
+| Command recording | `0.0639 ms` |
+
+Interpretation: the Q4 Vulkan steady-state win survives the instrumented rerun,
+but the standalone first-use envelope only makes sense with persistent Vulkan
+objects and resident weights. Pipeline creation is not the blocker in this
+probe; the one-shot costs are instance/device setup and synthetic weight
+staging/upload. This is still not a production `vulkan_radv_gfx11` backend
+result because it does not exercise hipEngine registry integration, whole-layer
+residency, or end-to-end decode wall time.
 
 ## Questions To Answer
 
@@ -1256,9 +1308,11 @@ gate/up and Q6_K selected-down X8. The retained HIP slices confirm q8_1
 materialization cost is small and the full q8_1+dp4a path is faster than the
 tested HIP float controls. The matched Vulkan Q6_K X8 selected-down production
 slice is retained and negative; the matched Vulkan Q4_K selected-dual gate/up
-slice is retained and positive. This split result is why production backend
-work needs integrated or cross-GPU confirmation instead of more generic
-microbenchmarks.
+slice is retained and positive. A bounded setup/amortization probe for that
+Q4_K slice is also retained: steady replay remains positive, but one-shot
+standalone setup requires roughly `908` calls to amortize if charged directly.
+This split result is why production backend work needs true registry/end-to-end
+or cross-GPU confirmation instead of more generic microbenchmarks.
 
 ## Result Classification
 
@@ -1335,11 +1389,11 @@ evidence for a production backend by itself.
 
 Decision gate for continuing the probe: add only tests that can change an
 engineering decision. More generic dispatch/VOPD/dot/memory rows should stop.
-The next Vulkan work should be cross-GPU validation or an integrated Q4_K
-selected-dual probe that can decide whether the standalone Q4 win has backend
-value. The targeted Q4 ISA comparison is already retained, so more standalone
-Q4 disassembly is only useful if paired with a HIP source/inline-asm recovery
-attempt.
+The next Vulkan work should be cross-GPU validation or a true production-registry
+Q4_K selected-dual probe only if the bounded setup/amortization result is enough
+to justify backend work. The targeted Q4 ISA comparison and bounded setup probe
+are already retained, so more standalone Q4 work is only useful if paired with
+a HIP source/inline-asm recovery attempt or end-to-end integration.
 
 ### Production Vulkan Backend
 
@@ -1387,10 +1441,13 @@ Risks:
 Current decision: **do not start production Vulkan yet**. The retained
 dispatch-row win is a runtime result, and the first two matched
 production-shaped slices are split: Q6_K X8 is slower on Vulkan, Q4_K
-selected-dual is faster. Production Vulkan should wait for another retained hot
-slice win or an integrated Q4 probe showing that the standalone win survives
-real residency, dispatch, pipeline-cache, and registry costs, and that HIP
-cannot recover the delta with a narrower geometry/codegen/hand-ISA fix.
+selected-dual is faster. The bounded Q4 setup/amortization probe shows steady
+replay remains positive but one-shot standalone setup swamps the per-call win
+unless Vulkan objects and weights are persistent. Production Vulkan should wait
+for another retained hot-slice win or a true production-registry/end-to-end Q4
+probe showing that persistent residency and registry costs still move wall time,
+and that HIP cannot recover the delta with a narrower geometry/codegen/hand-ISA
+fix.
 
 ## Hand-ISA / Inline Assembly Candidates
 
@@ -1501,15 +1558,18 @@ kernel-shape work, not inline assembly.
 12. Add LDS/barrier/subgroup reduction controls. Status: retained on gfx1151;
    HIP wave-shuffle and Vulkan subgroup reduction do not close the f32 geometry
    gap, so reduction topology is not the missing switch.
-13. Classify each retained row using the result buckets above.
-14. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
+13. Add bounded Q4_K Vulkan setup/amortization probe. Status: retained on
+   gfx1151; steady Q4 remains positive, but standalone setup requires persistent
+   residency and does not justify production Vulkan by itself.
+14. Classify each retained row using the result buckets above.
+15. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
 The next useful tests are cross-GPU reruns of the retained harnesses, an
-integrated Q4_K selected-dual Vulkan probe only if it will decide backend
-priority, memory-bound production-slice confirmation only if we intend to file
-an LLVM waitcnt/scheduling issue, and a narrow HIP Q4_K selected-dual recovery
-experiment only if we intend to act on the measured ISA delta.
+memory-bound production-slice confirmation only if we intend to file an LLVM
+waitcnt/scheduling issue, a narrow HIP Q4_K selected-dual recovery experiment
+only if we intend to act on the measured ISA delta, and a true production-registry
+Q4 Vulkan probe only if we decide to invest in backend work.
 The gfx1151 geometry, VOPD, memory/waitcnt, and dot-path extractions already
 found that the current gap is not a missed-HIP-VOPD, HIP-spill, missed-dot4,
 broad HIP wave-mode, or simple LDS/subgroup reduction-topology story. The next
