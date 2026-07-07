@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan attribution microbenches on
 Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, and geometry
-ISA/stat evidence, plus a targeted VOPD scheduling sweep.
+ISA/stat evidence, targeted VOPD scheduling, and memory/waitcnt sweeps.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -18,7 +18,17 @@ does not prove `compiler_aco`. VOPD scheduling sweep: HIP emits VOPD in every
 retained row, RADV emits **0 VOPD** in every retained final shader
 disassembly, and Vulkan is only modestly faster on independent-8/mixed/dequant
 rows while HIP is faster on independent-2/4 and dependent-4; this is a negative
-result for the "ACO wins through VOPD" hypothesis. Artifacts:
+result for the "ACO wins through VOPD" hypothesis.
+Memory/waitcnt sweep: device-memory load rows all pass sampled CPU oracle;
+Vulkan is **1.30x-2.35x** faster on most coalesced, strided, and interleave
+rows while gather is essentially tied (**1.02x**). HIP reports wave32 and
+**0 scratch/spills**; RADV final shaders are wave64 with only estimated
+register spans available. Classified **diagnostic_unclassified**: strong
+memory-side evidence, but not yet a clean `compiler_aco` proof until wave and
+specialization controls land. Artifacts:
+[`micro/results/gfx1151/strix-halo/memory-waitcnt-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-comparison.json),
+[`micro/results/gfx1151/strix-halo/hip-memory-waitcnt.json`](micro/results/gfx1151/strix-halo/hip-memory-waitcnt.json),
+[`micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json`](micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json),
 [`micro/results/gfx1151/strix-halo/vopd-sweep-comparison.json`](micro/results/gfx1151/strix-halo/vopd-sweep-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-vopd-sweep.json`](micro/results/gfx1151/strix-halo/hip-vopd-sweep.json),
 [`micro/results/gfx1151/strix-halo/vulkan-vopd-sweep.json`](micro/results/gfx1151/strix-halo/vulkan-vopd-sweep.json),
