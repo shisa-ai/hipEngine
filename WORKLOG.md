@@ -145855,3 +145855,24 @@ python3 scripts/gguf_mtp_bench.py \
   left local; this repo has not been tracking a lockfile, so dependency-lock
   policy should be handled separately rather than bundled with benchmark
   evidence cleanup.
+
+## 2026-07-07 - PARO follow-up queue from GGUF/MTP transfer review
+
+- Confirmed `/home/lhl/hipEngine-main` on `main` is the latest worktree for new
+  PARO follow-up work; `/home/lhl/hipEngine` remains the older `mtp-gguf`
+  branch reference.
+- Added `docs/PARO-GGUF-MTP-TRANSFER.md` as the active TODO ledger separating
+  portable GGUF/MTP lessons (server c>N measurement, startup shape warmup,
+  route-cap tuning, stage buckets, verifier lifecycle review) from non-portable
+  GGUF quant kernels.
+- Added an opt-in PARO server startup native-batch warmup hook:
+  `HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP=1` makes
+  `prepare_request_scratch(..., max_batch_size>1)` exercise tiny packed prefill
+  widths 2/4/8 up to the configured batch width and report warmed widths in the
+  scratch probe result. Native c>N decode warmup remains behind the existing
+  `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` gate.
+- PARO `last_batch_generation` now preserves `batch_execution.to_json_dict()`
+  when available, so server/debug metadata can distinguish native c>N decode
+  from serial bridge fallback without inferring from the path string alone.
+- Reset now clears `last_batch_decode_execution`, matching the stale-metadata
+  lesson from GGUF packed verifier warmup.

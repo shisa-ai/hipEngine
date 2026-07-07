@@ -555,6 +555,7 @@ auth, diagnostics, and current limitations.
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
 | [`docs/DFLASH.md`](docs/DFLASH.md) | DFlash draft-model speculative decode plan |
+| [`docs/PARO-GGUF-MTP-TRANSFER.md`](docs/PARO-GGUF-MTP-TRANSFER.md) | PARO follow-up queue from GGUF/MTP server and verifier work |
 | [`benchmarks/README.md`](benchmarks/README.md) | Current-fastest rollup and external comparison baselines |
 | [`AGENTS.md`](AGENTS.md) | Ground rules for every coding / review / benchmarking task |
 | [`WORKLOG.md`](WORKLOG.md) | Append-only cross-session journal of decisions and measurements |
