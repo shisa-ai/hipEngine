@@ -67,6 +67,60 @@ Immediate reads:
 - The remaining compiler questions need matched math kernels with disassembly,
   VGPR/SGPR/scratch, waitcnt, VOPD, and dot-instruction evidence.
 
+### gfx1151 F32 GEMV Geometry Sweep
+
+Retained artifact:
+`benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-comparison.json`.
+Backend artifacts:
+`benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep.json` and
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json`.
+The run uses the shared environment artifact
+`benchmarks/micro/results/gfx1151/strix-halo/environment-geometry-sweep.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Vulkan driver: RADV, Mesa `26.1.2-arch2.1`.
+- Benchmark family: repeat-shifted f32 GEMV/reduction, one workgroup per row,
+  CPU oracle, K=`512/2048/8192`, rows=`1/4/8`,
+  workgroup=`32/64/128/256`, body repeats=`128`.
+- Classification: `diagnostic_unclassified`.
+
+Retained best-native shape summary:
+
+| K | Rows | HIP best | Vulkan best | Vulkan vs HIP |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 1 | wg256, `23.5944 us` | wg256, `3.0412 us` | `7.76x` |
+| 512 | 4 | wg256, `23.6302 us` | wg256, `3.2942 us` | `7.17x` |
+| 512 | 8 | wg256, `23.6439 us` | wg256, `4.0837 us` | `5.79x` |
+| 2048 | 1 | wg256, `85.6870 us` | wg256, `7.3849 us` | `11.60x` |
+| 2048 | 4 | wg256, `86.2845 us` | wg256, `7.7645 us` | `11.11x` |
+| 2048 | 8 | wg256, `82.9754 us` | wg256, `8.7624 us` | `9.47x` |
+| 8192 | 1 | wg256, `392.8771 us` | wg256, `28.0126 us` | `14.03x` |
+| 8192 | 4 | wg256, `396.4413 us` | wg256, `31.5848 us` | `12.55x` |
+| 8192 | 8 | wg256, `408.1349 us` | wg256, `33.9988 us` | `12.00x` |
+
+Conclusion: in this matched f32 GEMV/reduction harness, HIP and Vulkan both
+prefer the 256-thread workgroup. Moving HIP from 64 to 256 threads improves
+substantially, but it does **not** close the Vulkan gap. Vulkan remains
+`5.79x-14.03x` faster on best-native rows, and the largest identical-shape
+speedups are `12.88x-15.34x` at smaller workgroups.
+
+This rules out the simple "HIP used the wrong workgroup size" explanation for
+this microbench. It still does **not** prove `compiler_aco`, because no
+disassembly/register/waitcnt/VOPD evidence has been collected for these kernels.
+The next required step is ISA/stat extraction at identical shape.
+
+Immediate reads:
+
+- Workgroup shape matters for HIP, but all retained best rows are wg256 on both
+  backends.
+- The matched-shape Vulkan gap is large enough that compiler scheduling,
+  register allocation, waitcnt placement, or a hidden harness/runtime difference
+  must be tested directly.
+- This result makes VOPD/waitcnt/register-stat microbenches higher priority
+  than more geometry sweeps on gfx1151.
+
 ## Questions To Answer
 
 1. **Compiler scheduling:** When the algorithm, data layout, wave/subgroup size,
@@ -279,6 +333,7 @@ Each retained result should classify the win into exactly one primary bucket:
 | `layout_quant` | Dot/layout changes dominate compiler choice | Port layout, not backend |
 | `fusion_topology` | Per-op kernels match, fused Vulkan command wins | Fuse kernels or add backend-level composite |
 | `not_reproducible` | Difference disappears under controlled harness | Do not roadmap work from the old observation |
+| `diagnostic_unclassified` | Gap remains but evidence is insufficient for one primary cause | Add the missing control or ISA/stat evidence |
 
 ## LLVM Improvement Map
 
@@ -423,7 +478,9 @@ Promotion requirements:
 
 1. Implement dispatch/grid floor rows for HIP and Vulkan. Status: retained on
    gfx1151; rerun on gfx1100/W7900 when that machine is available.
-2. Implement geometry sweep for f32 GEMV/reduction at K=512/2048/8192.
+2. Implement geometry sweep for f32 GEMV/reduction at K=512/2048/8192. Status:
+   retained on gfx1151; workgroup shape alone does not explain the gap in the
+   repeat-shifted f32 GEMV/reduction harness.
 3. Add dependent-chain and independent-accumulator VOPD microbenches with
    ISA/stat extraction.
 4. Add memory waitcnt microbenches: coalesced load+accumulate, strided
@@ -434,10 +491,9 @@ Promotion requirements:
 8. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
-The next most useful test is the geometry sweep, not more dispatch-only runs.
-It should report matched HIP/Vulkan shapes and each backend's best native shape.
-If HIP with a 64-thread shape closes the gap, the roadmap is HIP kernel
-geometry. If Vulkan still wins at identical geometry, the next stop is compiler
+The next most useful test is now ISA/stat extraction, not more dispatch-only or
+geometry-only rows. The gfx1151 geometry sweep found that both backends prefer
+wg256 and Vulkan still wins at identical geometry. The next stop is compiler
 evidence: disassembly, register counts, scratch, waitcnt density, and VOPD or
 dot-instruction counts.
 

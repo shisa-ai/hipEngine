@@ -1,14 +1,18 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan dispatch-floor microbench:
-Vulkan pre-recorded command-buffer dispatch is far cheaper than HIP direct or
-HIP graph replay for one-block launch-heavy bursts on Radeon 8060S/RADV Mesa
-26.1.2: at N=941, Vulkan is **0.043621 us/dispatch** versus HIP tiny direct
-**2.0087 us** and HIP graph **1.8069 us** (**46.0x / 41.4x**). The gap narrows
-as grid size grows: at 8192 blocks Vulkan is **11.9779 us/dispatch** versus HIP
-wide direct **13.2324 us** and HIP graph **13.0226 us** (**1.10x / 1.09x**).
-Classification is **runtime_dispatch**, not `compiler_aco`; this does not prove
-RADV/ACO shader-codegen superiority. Artifacts:
+Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan attribution microbenches on
+Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch and f32 geometry evidence.
+Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
+**0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
+**1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
+at 8192 blocks; classification **runtime_dispatch**, not `compiler_aco`.
+F32 GEMV geometry sweep: repeat-shifted matched rows all pass CPU oracle, HIP
+and Vulkan both prefer wg256, and Vulkan remains **5.79x-14.03x** faster on
+best-native rows; classification **diagnostic_unclassified** pending
+disassembly/register/waitcnt/VOPD evidence. Artifacts:
+[`micro/results/gfx1151/strix-halo/geometry-sweep-comparison.json`](micro/results/gfx1151/strix-halo/geometry-sweep-comparison.json),
+[`micro/results/gfx1151/strix-halo/hip-geometry-sweep.json`](micro/results/gfx1151/strix-halo/hip-geometry-sweep.json),
+[`micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json`](micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json),
 [`micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json`](micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-dispatch-floor.json`](micro/results/gfx1151/strix-halo/hip-dispatch-floor.json),
 [`micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json`](micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json).)
