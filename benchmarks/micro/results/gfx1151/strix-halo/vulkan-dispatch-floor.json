@@ -1,0 +1,205 @@
+{
+  "backend": "vulkan",
+  "bench": "dispatch_grid_floor",
+  "classification": "runtime_dispatch",
+  "command": [
+    "/home/lhl/miniforge3/envs/therock/bin/python3",
+    "benchmarks/micro/runners/vulkan_dispatch_floor.py",
+    "--environment-json",
+    "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+    "--environment-ref",
+    "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+    "--gfx-arch",
+    "gfx1151",
+    "--hardware-gpu",
+    "Radeon 8060S Graphics",
+    "--counts",
+    "1,50,200,941",
+    "--grid-sweep",
+    "1,128,1024,8192",
+    "--reps",
+    "50",
+    "--warmup",
+    "10",
+    "--legacy-json",
+    "benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor-raw.json",
+    "--pretty",
+    "--out",
+    "benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json"
+  ],
+  "correctness": {
+    "oracle": "dispatch-floor diagnostic; shader writes only prevent empty dispatch removal",
+    "status": "not_applicable"
+  },
+  "cwd": "/home/lhl/hipEngine-benchmarks-micro",
+  "environment_ref": "benchmarks/micro/results/gfx1151/strix-halo/environment.json",
+  "hardware": {
+    "device_id": "0x1586",
+    "gfx_arch": "gfx1151",
+    "gpu_name": "Radeon 8060S Graphics"
+  },
+  "kind": "hipengine_micro_result",
+  "measurements": {
+    "grid_sweep_rows": [
+      {
+        "burst_us_median": 40.3705,
+        "burst_us_min": 39.164,
+        "dispatch_count": 941,
+        "grid_blocks": 1,
+        "reps": 50,
+        "us_per_dispatch": 0.042902
+      },
+      {
+        "burst_us_median": 217.3635,
+        "burst_us_min": 212.58,
+        "dispatch_count": 941,
+        "grid_blocks": 128,
+        "reps": 50,
+        "us_per_dispatch": 0.230992
+      },
+      {
+        "burst_us_median": 1592.52,
+        "burst_us_min": 1386.924,
+        "dispatch_count": 941,
+        "grid_blocks": 1024,
+        "reps": 50,
+        "us_per_dispatch": 1.69237
+      },
+      {
+        "burst_us_median": 11271.184,
+        "burst_us_min": 10735.128,
+        "dispatch_count": 941,
+        "grid_blocks": 8192,
+        "reps": 50,
+        "us_per_dispatch": 11.977879
+      }
+    ],
+    "rows": [
+      {
+        "burst_us_median": 17.2775,
+        "burst_us_min": 15.238,
+        "dispatch_count": 1,
+        "grid_blocks": 1,
+        "reps": 50,
+        "us_per_dispatch": 17.2775
+      },
+      {
+        "burst_us_median": 16.521,
+        "burst_us_min": 16.07,
+        "dispatch_count": 50,
+        "grid_blocks": 1,
+        "reps": 50,
+        "us_per_dispatch": 0.33042
+      },
+      {
+        "burst_us_median": 18.5095,
+        "burst_us_min": 17.993,
+        "dispatch_count": 200,
+        "grid_blocks": 1,
+        "reps": 50,
+        "us_per_dispatch": 0.092547
+      },
+      {
+        "burst_us_median": 41.047,
+        "burst_us_min": 39.595,
+        "dispatch_count": 941,
+        "grid_blocks": 1,
+        "reps": 50,
+        "us_per_dispatch": 0.043621
+      }
+    ]
+  },
+  "notes": "Vulkan command buffers are pre-recorded outside the timed region. Timing is wall time around vkQueueSubmit+vkWaitForFences, so this isolates steady dispatch/replay cost rather than shader compilation, pipeline creation, or descriptor setup.",
+  "parameters": {
+    "benchmark_family": "dispatch_and_grid_floor",
+    "counts": [
+      1,
+      50,
+      200,
+      941
+    ],
+    "grid_sweep": [
+      1,
+      128,
+      1024,
+      8192
+    ],
+    "grid_sweep_count": 941,
+    "harness_build_command": [
+      "/usr/bin/c++",
+      "-O2",
+      "-std=c++17",
+      "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/runners/vulkan_dispatch_floor.cpp",
+      "-o",
+      "/tmp/hipengine-micro-vulkan-build/vulkan_dispatch_floor",
+      "-lvulkan"
+    ],
+    "legacy_command": [
+      "/tmp/hipengine-micro-vulkan-build/vulkan_dispatch_floor",
+      "--spirv",
+      "/tmp/hipengine-micro-vulkan-build/dispatch_floor.spv",
+      "--counts",
+      "1,50,200,941",
+      "--n",
+      "256",
+      "--reps",
+      "50",
+      "--warmup",
+      "10",
+      "--grid-sweep-count",
+      "941",
+      "--device-index",
+      "0",
+      "--json",
+      "benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor-raw.json",
+      "--grid-sweep",
+      "1,128,1024,8192"
+    ],
+    "legacy_run_tag": "vulkan-dispatch-floor",
+    "legacy_status": "diagnostic",
+    "local_size_x": 256,
+    "method": "pre-recorded Vulkan command buffer with N compute dispatches; wall time around vkQueueSubmit+vkWaitForFences; shader writes a storage buffer to prevent empty-shader elimination",
+    "n_elements": 256,
+    "reps": 50,
+    "shader": "benchmarks/micro/kernels/vulkan/dispatch_floor.comp",
+    "shader_command": [
+      "/usr/bin/glslc",
+      "-O",
+      "/home/lhl/hipEngine-benchmarks-micro/benchmarks/micro/kernels/vulkan/dispatch_floor.comp",
+      "-o",
+      "/tmp/hipengine-micro-vulkan-build/dispatch_floor.spv"
+    ],
+    "vulkan_hardware": {
+      "api_version": "1.4.348",
+      "device_id": 5510,
+      "device_name": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "device_type": 1,
+      "driver_version_raw": 109056002,
+      "queue_family": 0,
+      "vendor_id": 4098
+    },
+    "vulkan_runner": "benchmarks/micro/runners/vulkan_dispatch_floor.cpp",
+    "warmup": 10
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "benchmarks-micro",
+    "commit": "263d00b52e36e32c3363386532181134a9ccb359",
+    "dirty": false,
+    "repo": "/home/lhl/hipEngine-benchmarks-micro",
+    "source_hash": "sha256:99fa6dcfb63d99ea26675d08ceafdcc6c88611909977db87d0161796df69f08a"
+  },
+  "timing": {
+    "measured_iters": 50,
+    "median": 0.043621,
+    "primary": {
+      "burst_us_median": 41.047,
+      "burst_us_min": 39.595,
+      "dispatch_count": 941,
+      "grid_blocks": 1,
+      "us_per_dispatch": 0.043621
+    },
+    "unit": "us_per_dispatch",
+    "warmup_iters": 10
+  }
+}

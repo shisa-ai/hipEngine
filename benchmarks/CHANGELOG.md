@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-08
+
+- [micro diagnostic retained] gfx1151 / Radeon 8060S / HIP vs Vulkan dispatch-grid floor: Vulkan command-buffer replay measured **0.043621 us/dispatch** at N=941 one-block versus HIP tiny direct **2.0087 us** and HIP graph **1.8069 us** (**46.0x / 41.4x** runtime-dispatch gap); at 8192 blocks the gap narrowed to Vulkan **11.9779 us** versus HIP wide direct **13.2324 us** and HIP graph **13.0226 us** (**1.10x / 1.09x**). Classified `runtime_dispatch`, not `compiler_aco`; this is not shader-codegen evidence. `benchmarks/micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json`.
+
 ## 2026-07-07
 
 - [refresh] Qwen3.6-35B-A3B PARO / w4_paro BF16 KV / W7900 README 5-run sweep: current clean-worktree rerun measured prefill **2796.9/2917.1/2904.9/2103.7/1575.3/1064.0 tok/s** and decode **112.2/102.5/102.9/91.7/77.2/60.0 tok/s** at 512/1K/4K/32K/64K/128K over 128 decode tokens, versus the prior 2026-06-14 row prefill **2729.7/2907.0/2879.6/2079.4/1559.1/1053.9** (+0.3% to +2.5%) and decode **115.2/102.9/105.3/92.0/77.7/60.3** (-2.6% to -0.2%). `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-paro-packed-5run.json`.

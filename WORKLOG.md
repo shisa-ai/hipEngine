@@ -146121,3 +146121,34 @@ graphless decode launch-collapse path without regressing target/serial parity.
   plus `python3 -m json.tool /tmp/hipengine-vulkan-dispatch-smoke.json >/dev/null`
   all passed. The smoke only validates wrapper/Vulkan execution and JSON shape;
   it is not retained performance evidence.
+
+## 2026-07-08 - gfx1151 HIP vs Vulkan dispatch-floor comparison
+
+- Installed/validated `vulkaninfo` via `paru -Syy --needed --noconfirm
+  vulkan-tools`; `vulkan-radeon` was already current. `vulkaninfo --summary`
+  reports `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `driverName = radv`,
+  `driverInfo = Mesa 26.1.2-arch2.1`.
+- Captured shared environment:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment.json`.
+- Ran full HIP dispatch-floor benchmark:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/hip_dispatch_floor.py --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --counts 1,50,200,941 --kernels tiny,wide --grid-sweep 1,128,1024,8192 --reps 50 --warmup 10 --legacy-json benchmarks/micro/results/gfx1151/strix-halo/hip-dispatch-floor-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-dispatch-floor.json`.
+- Ran full Vulkan dispatch-floor benchmark:
+  `python3 benchmarks/micro/runners/vulkan_dispatch_floor.py --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --counts 1,50,200,941 --grid-sweep 1,128,1024,8192 --reps 50 --warmup 10 --legacy-json benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-dispatch-floor.json`.
+- Retained comparison artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json`.
+- Result: at N=941, one-block Vulkan command-buffer replay measured
+  `0.043621 us/dispatch` versus HIP tiny direct `2.0087 us` and HIP graph
+  `1.8069 us` (`46.0x` / `41.4x` faster). HIP wide direct/graph was
+  `2.0583 us` / `1.8562 us`; arg count added only about `0.05 us`.
+- Grid sweep: at 1/128/1024/8192 blocks, Vulkan measured
+  `0.042902/0.230992/1.69237/11.977879 us/dispatch`; HIP wide direct measured
+  `2.06510/2.07479/3.29108/13.23239 us/dispatch`; HIP graph measured
+  `1.85857/1.86143/3.07608/13.02259 us/dispatch`.
+- Interpretation: this is strong `runtime_dispatch` evidence for launch-heavy
+  command-buffer replay on gfx1151/RADV. It is **not** `compiler_aco` evidence:
+  the shader body is intentionally trivial, and the Vulkan/HIP gap narrows to
+  only about `1.10x` at 8192 blocks where grid scheduling dominates.
+- Validation:
+  `python3 -m json.tool` passed for environment, HIP normalized/raw, Vulkan
+  normalized/raw, and comparison artifacts. Updated `benchmarks/README.md`,
+  `benchmarks/CHANGELOG.md`, and `benchmarks/micro/README.md`.

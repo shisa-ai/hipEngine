@@ -160,6 +160,12 @@ This is a dispatch/runtime diagnostic only. It does not establish RADV/ACO
 shader codegen quality; it tells us how much of a HIP vs Vulkan delta can be
 explained before any real math kernel runs.
 
+## Retained Results
+
+| Date | Hardware | Bench | Finding | Artifacts |
+| --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | dispatch/grid floor | Vulkan command-buffer replay is much cheaper than HIP direct/graph for one-block launch-heavy bursts (`0.043621 us` vs HIP tiny direct `2.0087 us` and HIP graph `1.8069 us` at N=941), but the gap narrows to about `1.10x` at 8192 blocks. Classified `runtime_dispatch`, not `compiler_aco`. | `results/gfx1151/strix-halo/dispatch-floor-comparison.json` |
+
 ## Classification
 
 Every retained benchmark should choose one primary classification:
