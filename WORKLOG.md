@@ -146241,3 +146241,34 @@ python3 scripts/gguf_mtp_bench.py \
   a HIP smoke for `coalesced:1,gather:1`, and a Vulkan smoke for the same
   variants all passed. Smoke artifacts were not retained; retained gfx1151 rows
   will be run from a clean commit.
+
+## 2026-07-08 - gfx1151 memory/waitcnt sweep
+
+- Captured clean-source environment after `7f612273`:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json`.
+- Ran retained HIP memory/waitcnt sweep:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/memory_waitcnt.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt.json`.
+- Ran retained Vulkan/RADV memory/waitcnt sweep:
+  `python3 benchmarks/micro/runners/memory_waitcnt.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json`.
+- Built retained comparison:
+  `python3 benchmarks/micro/runners/memory_waitcnt.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/memory-waitcnt-comparison.json`.
+- Result: all HIP and Vulkan rows passed the sampled CPU oracle with max abs
+  `0.0`. Vulkan was faster on most memory shapes: coalesced width 1/2/4/8
+  speedups were `1.58x/1.36x/2.27x/2.21x`, strided 2/4/8/16 were
+  `1.42x/2.35x/2.07x/1.77x`, interleave 1/2/4/8/16 were
+  `1.68x/1.30x/2.18x/2.01x/1.13x`, and gather was essentially tied at
+  `1.02x`.
+- HIP reports wave32, 0 scratch, and 0 spills across retained rows. RADV final
+  disassembly is wave64 with estimated register spans only; official RADV
+  allocation counts remain unavailable. Simple rows show one fewer
+  waitcnt-family instruction on RADV at the same static load count, but wider
+  interleave rows do not. The row remains `diagnostic_unclassified`; next
+  controls are HIP wave64/fixed-shape memory and dot-path diagnostics.
+- Validation:
+  `python3 -m json.tool` passed for environment, HIP memory/waitcnt, Vulkan
+  memory/waitcnt, and comparison artifacts.
+  `python3 -m py_compile benchmarks/micro/runners/memory_waitcnt.py benchmarks/micro/runners/isa_stats.py benchmarks/micro/runners/vopd_sweep.py benchmarks/micro/runners/geometry_sweep.py`,
+  `PYTHONPATH=. pytest -q tests/test_micro_memory_waitcnt.py tests/test_micro_isa_stats.py tests/test_micro_vopd_sweep.py tests/test_micro_geometry_sweep.py tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`,
+  and `git diff --check` passed. Updated `docs/HIP-vs-VULKAN.md`,
+  `benchmarks/micro/README.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`.
