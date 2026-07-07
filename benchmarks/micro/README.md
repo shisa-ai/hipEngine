@@ -16,9 +16,15 @@ benchmarks/micro/
   README.md
   collect_env.py
   runners/
+    geometry_sweep.py
+    hip_geometry_sweep.hip
     hip_dispatch_floor.py
+    vulkan_geometry_sweep.cpp
     vulkan_dispatch_floor.py
     vulkan_dispatch_floor.cpp
+  kernels/
+    vulkan/
+      geometry_sweep.comp
   schemas/
     environment.schema.json
     result.schema.json
@@ -159,6 +165,67 @@ python3 benchmarks/micro/runners/vulkan_dispatch_floor.py \
 This is a dispatch/runtime diagnostic only. It does not establish RADV/ACO
 shader codegen quality; it tells us how much of a HIP vs Vulkan delta can be
 explained before any real math kernel runs.
+
+## F32 GEMV Geometry Sweep
+
+`runners/geometry_sweep.py` runs a matched math diagnostic on HIP or Vulkan.
+Each row uses one workgroup per output row, strided f32 FMA accumulation over K,
+and a shared-memory tree reduction. HIP uses the runtime block size; Vulkan uses
+a `local_size_x` specialization constant. The harness validates every row
+against a CPU reference that mirrors the same per-workgroup reduction order.
+
+Example paired run:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/environment.json
+
+HIPENGINE_HIP_ARCH=gfx1100 \
+python3 benchmarks/micro/runners/geometry_sweep.py \
+  --backend hip \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --k-list 512,2048,8192 \
+  --rows-list 1,4,8 \
+  --workgroups 32,64,128,256 \
+  --body-repeats 128 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 11 \
+  --raw-json benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep-raw.json \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep.json
+
+python3 benchmarks/micro/runners/geometry_sweep.py \
+  --backend vulkan \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --k-list 512,2048,8192 \
+  --rows-list 1,4,8 \
+  --workgroups 32,64,128,256 \
+  --body-repeats 128 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 11 \
+  --raw-json benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep-raw.json \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep.json
+
+python3 benchmarks/micro/runners/geometry_sweep.py \
+  --compare benchmarks/micro/results/gfx1100/w7900/hip-geometry-sweep.json \
+            benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-sweep.json \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/geometry-sweep-comparison.json
+```
+
+This family can classify workgroup-shape effects. It is not sufficient
+`compiler_aco` evidence until paired ISA/stat extraction shows register,
+scratch, waitcnt, VOPD, or instruction-count differences at identical shape.
 
 ## Retained Results
 
