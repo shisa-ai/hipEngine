@@ -244,6 +244,65 @@ def parse_disassembly_stats(disasm: str) -> dict[str, Any]:
     return stats
 
 
+_RADV_SHADERSTATS_KEYS = {
+    "Driver pipeline hash": "radv_pipeline_hash",
+    "SGPRs": "sgpr",
+    "VGPRs": "vgpr",
+    "Spilled SGPRs": "sgpr_spill_count",
+    "Spilled VGPRs": "vgpr_spill_count",
+    "Code size": "code_size_bytes",
+    "LDS size": "shaderstats_lds_size_bytes",
+    "Scratch size": "scratch_bytes",
+    "Subgroups per SIMD": "subgroups_per_simd",
+    "Combined inputs": "combined_inputs",
+    "Combined outputs": "combined_outputs",
+    "Hash": "shader_hash",
+    "Instructions": "shaderstats_instruction_count",
+    "Copies": "copy_count",
+    "Branches": "shaderstats_branch_count",
+    "Latency": "aco_latency",
+    "Inverse Throughput": "aco_inverse_throughput",
+    "VMEM Clause": "vmem_clause_count",
+    "SMEM Clause": "smem_clause_count",
+    "Pre-Sched SGPRs": "presched_sgpr",
+    "Pre-Sched VGPRs": "presched_vgpr",
+    "VALU": "shaderstats_valu_count",
+    "SALU": "shaderstats_salu_count",
+    "VMEM": "shaderstats_vmem_count",
+    "SMEM": "shaderstats_smem_count",
+    "VOPD": "shaderstats_vopd_count",
+}
+
+
+def _parse_shaderstats_value(text: str) -> int | float | str:
+    value = text.strip()
+    if re.fullmatch(r"-?[0-9]+", value):
+        return int(value)
+    if re.fullmatch(r"-?(?:[0-9]*\.)?[0-9]+", value):
+        return float(value)
+    return value
+
+
+def parse_radv_shader_stats(dump: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    pattern = re.compile(r"(?s)\*\*\* SHADER STATS \*\*\*\n(.*?)\n\*{20,}")
+    for match in pattern.finditer(dump):
+        row: dict[str, Any] = {
+            "shaderstats_status": "radv_debug_shaderstats",
+            "register_count_status": "official_radv_debug_shaderstats",
+        }
+        for raw_line in match.group(1).splitlines():
+            line = raw_line.strip()
+            if not line or ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            mapped = _RADV_SHADERSTATS_KEYS.get(key.strip())
+            if mapped:
+                row[mapped] = _parse_shaderstats_value(value)
+        rows.append(row)
+    return rows
+
+
 def split_radv_shader_sections(dump: str) -> list[str]:
     starts = [match.start() for match in re.finditer(r"(?m)^shader:\s+MESA_SHADER_COMPUTE\b", dump)]
     if not starts:
@@ -267,10 +326,19 @@ def _extract_final_disasm(section: str) -> str:
 
 def parse_radv_shader_dump(dump: str) -> list[dict[str, Any]]:
     parsed = []
-    for section in split_radv_shader_sections(dump):
+    shaderstats_rows = parse_radv_shader_stats(dump)
+    for index, section in enumerate(split_radv_shader_sections(dump)):
         disasm = _extract_final_disasm(section)
         stats = parse_disassembly_stats(disasm)
         workgroup = _parse_header_int(section, "workgroup_size")
+        shaderstats = shaderstats_rows[index] if index < len(shaderstats_rows) else {}
+        register_status = shaderstats.get(
+            "register_count_status",
+            (
+                "estimated_from_final_disasm_physical_register_span; "
+                "RADV_DEBUG=shaderstats did not print official allocation counts"
+            ),
+        )
         parsed.append(
             {
                 "workgroup_size": workgroup,
@@ -281,10 +349,8 @@ def parse_radv_shader_dump(dump: str) -> list[dict[str, Any]]:
                 "has_after_ra": "After RA:" in section,
                 "has_final_disasm": bool(disasm.strip()),
                 **stats,
-                "register_count_status": (
-                    "estimated_from_final_disasm_physical_register_span; "
-                    "RADV_DEBUG=shaders did not print official allocation counts"
-                ),
+                **shaderstats,
+                "register_count_status": register_status,
             }
         )
     return parsed
@@ -531,11 +597,11 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     completed = _run_command(
         harness_command,
         cwd=REPO_ROOT,
-        env={"RADV_DEBUG": "shaders"},
+        env={"RADV_DEBUG": "shaders,shaderstats"},
         echo=not args.quiet_shader_dump,
     )
     if completed.returncode != 0:
-        raise RuntimeError("Vulkan RADV_DEBUG=shaders run failed")
+        raise RuntimeError("Vulkan RADV_DEBUG=shaders,shaderstats run failed")
     dump = completed.stdout + completed.stderr
     shader_rows = parse_radv_shader_dump(dump)
     raw = json.loads(raw_json.read_text(encoding="utf-8"))
@@ -574,7 +640,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
             "shader_command": shader_command,
             "build_command": build_command,
             "harness_command": harness_command,
-            "debug_env": {"RADV_DEBUG": "shaders"},
+            "debug_env": {"RADV_DEBUG": "shaders,shaderstats"},
             "raw_probe_retained": False,
             "shader_dump_bytes": len(dump.encode("utf-8")),
             "shader_dump_retained": False,
@@ -583,9 +649,10 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     result["isa"] = _json_safe(primary)
     result["measurements"] = {"rows": _json_safe(rows)}
     result["notes"] = (
-        "Vulkan ISA stats come from RADV_DEBUG=shaders. This exposes final disassembly "
-        "and ACO after-RA text, but this Mesa build did not print official VGPR/SGPR "
-        "allocation counts; register spans are estimates from physical register names."
+        "Vulkan ISA stats come from RADV_DEBUG=shaders,shaderstats. This exposes final "
+        "disassembly, ACO after-RA text, and RADV shaderstats allocation counts when "
+        "the Mesa build supports them. Estimated physical register spans are also kept "
+        "for cross-checking."
     )
     return _json_safe(result)
 
@@ -629,7 +696,16 @@ def build_comparison(
                 "hip_vopd_count": hip.get("vopd_count"),
                 "hip_vopd_op_count": hip.get("vopd_op_count"),
                 "hip_dot4_count": hip.get("dot4_count"),
-                "vulkan_official_register_counts": None,
+                "vulkan_official_register_counts": (
+                    vulkan.get("register_count_status") == "official_radv_debug_shaderstats"
+                ),
+                "vulkan_vgpr": vulkan.get("vgpr"),
+                "vulkan_sgpr": vulkan.get("sgpr"),
+                "vulkan_scratch_bytes": vulkan.get("scratch_bytes"),
+                "vulkan_vgpr_spill_count": vulkan.get("vgpr_spill_count"),
+                "vulkan_sgpr_spill_count": vulkan.get("sgpr_spill_count"),
+                "vulkan_subgroups_per_simd": vulkan.get("subgroups_per_simd"),
+                "vulkan_code_size_bytes": vulkan.get("code_size_bytes"),
                 "vulkan_estimated_vgpr_span": vulkan.get("estimated_vgpr_span"),
                 "vulkan_estimated_sgpr_span": vulkan.get("estimated_sgpr_span"),
                 "vulkan_wave_size": vulkan.get("wave_size"),
@@ -669,9 +745,9 @@ def build_comparison(
             "interpretation": (
                 "ISA/stat comparison for the retained f32 geometry family. HIP has "
                 "actual code-object register/spill metadata; Vulkan has RADV final "
-                "disassembly and estimated physical register spans, not official "
-                "allocation counts. On this evidence alone, do not classify the "
-                "geometry timing gap as compiler_aco."
+                "disassembly plus RADV shaderstats allocation counts when present. "
+                "On this evidence alone, do not classify the geometry timing gap as "
+                "compiler_aco."
             ),
         }
     )
