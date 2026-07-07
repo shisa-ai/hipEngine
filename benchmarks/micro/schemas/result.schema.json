@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.local/schemas/micro/result.schema.json",
+  "title": "hipEngine microbenchmark result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "bench",
+    "backend",
+    "hardware",
+    "source",
+    "command",
+    "parameters",
+    "correctness",
+    "timing",
+    "classification"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "hipengine_micro_result"
+    },
+    "bench": {
+      "type": "string"
+    },
+    "backend": {
+      "enum": [
+        "hip",
+        "vulkan",
+        "cpu",
+        "comparison"
+      ]
+    },
+    "hardware": {
+      "type": "object",
+      "required": [
+        "gpu_name",
+        "gfx_arch"
+      ],
+      "properties": {
+        "gpu_name": {
+          "type": "string"
+        },
+        "gfx_arch": {
+          "type": "string"
+        },
+        "device_id": {
+          "type": "string"
+        },
+        "vram_bytes": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "environment": {
+      "type": "object"
+    },
+    "environment_ref": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "repo",
+        "commit",
+        "dirty"
+      ],
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "source_hash": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "correctness": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_applicable",
+            "not_run"
+          ]
+        },
+        "oracle": {
+          "type": "string"
+        },
+        "max_abs": {
+          "type": "number"
+        },
+        "kl": {
+          "type": "number"
+        },
+        "top1": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "timing": {
+      "type": "object",
+      "required": [
+        "unit"
+      ],
+      "properties": {
+        "unit": {
+          "type": "string"
+        },
+        "median": {
+          "type": "number"
+        },
+        "p05": {
+          "type": "number"
+        },
+        "p95": {
+          "type": "number"
+        },
+        "warmup_iters": {
+          "type": "integer"
+        },
+        "measured_iters": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "isa": {
+      "type": "object",
+      "properties": {
+        "vgpr": {
+          "type": "integer"
+        },
+        "sgpr": {
+          "type": "integer"
+        },
+        "scratch_bytes": {
+          "type": "integer"
+        },
+        "lds_bytes": {
+          "type": "integer"
+        },
+        "wave_size": {
+          "type": "integer"
+        },
+        "workgroup_size": {
+          "type": "integer"
+        },
+        "vopd_count": {
+          "type": "integer"
+        },
+        "dot4_count": {
+          "type": "integer"
+        },
+        "waitcnt_count": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "classification": {
+      "enum": [
+        "compiler_aco",
+        "geometry",
+        "wave_mode",
+        "runtime_dispatch",
+        "layout_quant",
+        "fusion_topology",
+        "not_reproducible",
+        "diagnostic_unclassified"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "environment"
+      ]
+    },
+    {
+      "required": [
+        "environment_ref"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}
