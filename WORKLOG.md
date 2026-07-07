@@ -146334,3 +146334,40 @@ graphless decode launch-collapse path without regressing target/serial parity.
   a HIP wrapper smoke for `independent_fma:2,dependent_fma:4`, and a Vulkan
   wrapper smoke for the same variants all passed. The smoke rows were not
   retained; retained gfx1151 rows will be run from a clean commit.
+
+## 2026-07-08 - gfx1151 VOPD scheduling sweep
+
+- Captured clean-source environment after `38dd67e1`:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json`.
+- Ran retained HIP VOPD sweep:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/vopd_sweep.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --n 65536 --body-iters 2048 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-vopd-sweep.json`.
+- Ran retained Vulkan/RADV VOPD sweep:
+  `python3 benchmarks/micro/runners/vopd_sweep.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-vopd-sweep.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --n 65536 --body-iters 2048 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 64 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-vopd-sweep.json`.
+- Built retained comparison:
+  `python3 benchmarks/micro/runners/vopd_sweep.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-vopd-sweep.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-vopd-sweep.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vopd-sweep-comparison.json`.
+- Result: all HIP and Vulkan rows passed the sampled CPU oracle. HIP emitted
+  VOPD in every row: independent f32 FMA 2/4/8 accumulators emitted 4/9/12
+  VOPD instructions, dependent f32 FMA emitted 1, mixed int+float emitted 6,
+  and dequant-like emitted 5. RADV final disassembly emitted 0 VOPD in every
+  retained row.
+- Timing: Vulkan/HIP was 0.88x independent-2, 0.97x independent-4, 1.05x
+  independent-8, 0.94x dependent-4, 1.08x mixed int+float, and 1.04x
+  dequant-like. This is a negative result for "ACO wins through VOPD" and
+  remains `diagnostic_unclassified`.
+- Validation:
+  `python3 -m json.tool` passed for environment, HIP VOPD, Vulkan VOPD, and
+  comparison artifacts. Updated `docs/HIP-vs-VULKAN.md`,
+  `benchmarks/micro/README.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - HIP vs Vulkan conclusion refresh
+
+- Updated `docs/HIP-vs-VULKAN.md` to make the retained conclusion explicit:
+  the project-level answer is not "HIP is simply slower because ACO is better."
+  The retained gfx1151 evidence proves a Vulkan runtime-dispatch advantage and
+  one large f32 geometry gap, but the geometry ISA/stat and targeted VOPD
+  sweeps rule out a simple missed-HIP-VOPD or HIP-spill explanation.
+- Ranked the next tests as memory/waitcnt and dot-path diagnostics first, then
+  fixed-workgroup HIP geometry controls and one representative inference slice.
+  Broad gfx1151 geometry-only and generic VOPD reruns are no longer the best
+  use of iteration time.
