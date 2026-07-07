@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-08
 
+- [micro diagnostic retained] gfx1151 / Radeon 8060S / HIP vs Vulkan f32 GEMV geometry sweep: repeat-shifted matched K=`512/2048/8192`, rows=`1/4/8`, workgroup=`32/64/128/256` rows all passed CPU oracle; HIP and Vulkan both prefer wg256, so workgroup shape alone does not explain the gap, while Vulkan remains **5.79x-14.03x** faster on best-native rows. Classified `diagnostic_unclassified` pending disassembly/register/waitcnt/VOPD evidence. `benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-comparison.json`.
 - [micro diagnostic retained] gfx1151 / Radeon 8060S / HIP vs Vulkan dispatch-grid floor: Vulkan command-buffer replay measured **0.043621 us/dispatch** at N=941 one-block versus HIP tiny direct **2.0087 us** and HIP graph **1.8069 us** (**46.0x / 41.4x** runtime-dispatch gap); at 8192 blocks the gap narrowed to Vulkan **11.9779 us** versus HIP wide direct **13.2324 us** and HIP graph **13.0226 us** (**1.10x / 1.09x**). Classified `runtime_dispatch`, not `compiler_aco`; this is not shader-codegen evidence. `benchmarks/micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json`.
 
 ## 2026-07-06

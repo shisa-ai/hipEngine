@@ -146065,3 +146065,29 @@ python3 scripts/gguf_mtp_bench.py \
   `compiler_aco`.
 - Validation:
   `PYTHONPATH=. pytest -q tests/test_micro_geometry_sweep.py tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`.
+
+## 2026-07-08 - gfx1151 HIP vs Vulkan f32 geometry sweep comparison
+
+- Captured clean-source environment after `a8dd85b1`:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-geometry-sweep.json`.
+- Ran retained HIP geometry sweep:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/geometry_sweep.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-geometry-sweep.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-geometry-sweep.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --k-list 512,2048,8192 --rows-list 1,4,8 --workgroups 32,64,128,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --raw-json benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep.json`.
+- Ran retained Vulkan geometry sweep:
+  `python3 benchmarks/micro/runners/geometry_sweep.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-geometry-sweep.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-geometry-sweep.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --k-list 512,2048,8192 --rows-list 1,4,8 --workgroups 32,64,128,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --raw-json benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json`.
+- Built retained comparison:
+  `python3 benchmarks/micro/runners/geometry_sweep.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-comparison.json`.
+- Result: all 36 HIP rows and all 36 Vulkan rows passed the CPU oracle. HIP
+  and Vulkan both prefer wg256 in every K/rows best-native summary row, so
+  workgroup shape alone does not explain this microbench gap.
+- Best-native Vulkan-vs-HIP speedups by K/rows:
+  K512 rows 1/4/8 = `7.76x/7.17x/5.79x`; K2048 rows 1/4/8 =
+  `11.60x/11.11x/9.47x`; K8192 rows 1/4/8 =
+  `14.03x/12.55x/12.00x`.
+- Classification: `diagnostic_unclassified`, not `compiler_aco`, because ISA
+  stats are still missing. The retained result raises the priority of
+  disassembly/register/scratch/waitcnt/VOPD extraction at identical shapes.
+- Validation:
+  `python3 -m json.tool` passed for environment, HIP normalized/raw, Vulkan
+  normalized/raw, and comparison artifacts. Updated `docs/HIP-vs-VULKAN.md`,
+  `benchmarks/micro/README.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`.

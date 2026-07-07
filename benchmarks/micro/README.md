@@ -233,6 +233,7 @@ scratch, waitcnt, VOPD, or instruction-count differences at identical shape.
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | f32 GEMV geometry sweep | Repeat-shifted matched f32 GEMV/reduction rows all pass the CPU oracle. HIP and Vulkan both prefer wg256, so workgroup shape alone does not explain the gap; Vulkan remains `5.79x-14.03x` faster on best-native rows. Classified `diagnostic_unclassified` pending ISA/register/waitcnt/VOPD evidence. | `results/gfx1151/strix-halo/geometry-sweep-comparison.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | dispatch/grid floor | Vulkan command-buffer replay is much cheaper than HIP direct/graph for one-block launch-heavy bursts (`0.043621 us` vs HIP tiny direct `2.0087 us` and HIP graph `1.8069 us` at N=941), but the gap narrows to about `1.10x` at 8192 blocks. Classified `runtime_dispatch`, not `compiler_aco`. | `results/gfx1151/strix-halo/dispatch-floor-comparison.json` |
 
 ## Classification
