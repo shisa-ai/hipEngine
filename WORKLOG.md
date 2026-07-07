@@ -145730,3 +145730,56 @@ python3 scripts/gguf_mtp_bench.py \
   ```
   All five JSON artifacts validated and the OpenAI server was stopped after the
   sweep; port `18082` is clear.
+
+## 2026-07-07 - GGUF server AR vs MTP benefit sweep
+
+- Ran a current-HEAD GGUF OpenAI server natural24 diagnostic to answer whether
+  MTP is slower than AR at every concurrency. No code changes were made.
+  Hardware: AMD Ryzen AI Max+ 395 / Radeon 8060S, `gfx1151`. Server:
+  ```bash
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_GGUF_GEMV_DECODE=1 \
+  PYTHONPATH=. uv run --isolated --extra dev python -m hipengine.server \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name llama \
+    --speculative-mtp-serving opt_in --generation-batch-window-ms 5 \
+    --max-active-requests 8 --host 127.0.0.1 --port 18082 --log-level warning
+  ```
+  `/ready` reported `packed_ar_prefill_widths=[2,4]`,
+  `packed_mtp_prefill_widths=[2,4,8]`,
+  `packed_mtp_verify_widths=[2,4,8]`, `scratch_probe_s=39.493964`, and
+  `startup_total_s=97.938642`.
+- Client shape:
+  ```bash
+  PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py \
+    --mode server --url http://127.0.0.1:18082 --model llama \
+    --prompts-file /tmp/hipengine-mtpbench-code-general-ja.json \
+    --max-tokens 24 --temperature 0 --top-p 1 --concurrency C \
+    [--extra-payload '{"speculative_mtp":true}'] \
+    --out benchmarks/results/2026-07-07-hipengine-server-{ar,mtp}-natural24-cC-bw5-benefit-sweep-rerun.json
+  ```
+- Warm rerun results:
+  | c | AR tok/s | MTP tok/s | MTP/AR | MTP economy |
+  | ---: | ---: | ---: | ---: | --- |
+  | 1 | 40.93 | **45.24** | **1.105x** | draft 163, accepted 142, accept 0.8712 |
+  | 2 | 66.34 | **70.07** | **1.056x** | draft 165, accepted 141, accept 0.8545 |
+  | 4 | 82.02 | 79.09 | 0.964x | draft 165, accepted 141, accept 0.8545 |
+  | 8 | 80.51 | 79.23 | 0.984x | draft 165, accepted 141, accept 0.8545 |
+- Interpretation: MTP is not slower than AR everywhere. It gives a measured
+  same-server benefit at c=1 and c=2 on the natural24 mtpbench suite. It still
+  trails warm AR at c=4/c=8, with the known verifier LM-head/sample bucket
+  remaining the non-scaling optimization target. The first-pass c=2/c=4 MTP
+  sweep had cold packed-MTP anomalies and is not used for the comparison; the
+  warm artifacts above match the retained route band.
+- Validation:
+  ```bash
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-ar-natural24-c1-bw5-benefit-sweep-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-ar-natural24-c2-bw5-benefit-sweep-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-ar-natural24-c4-bw5-benefit-sweep-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-ar-natural24-c8-bw5-benefit-sweep-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-mtp-natural24-c1-bw5-benefit-sweep-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-mtp-natural24-c2-bw5-benefit-sweep-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-mtp-natural24-c4-bw5-benefit-sweep-rerun.json >/dev/null
+  python3 -m json.tool benchmarks/results/2026-07-07-hipengine-server-mtp-natural24-c8-bw5-benefit-sweep-rerun.json >/dev/null
+  ```
+  All eight warm JSON artifacts validated and the OpenAI server was stopped
+  after the sweep; port `18082` is clear.
