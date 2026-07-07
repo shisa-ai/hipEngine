@@ -146562,3 +146562,36 @@ graphless decode launch-collapse path without regressing target/serial parity.
 - Tightened `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`, and
   `benchmarks/micro/README.md` wording so the current conclusion no longer lists
   wave64 as an unresolved broad explanation after the retained wave64 controls.
+
+## 2026-07-08 - HIP fixed-shape microbench controls
+
+- Added `--hip-fixed-block-index` to `benchmarks/micro/runners/dot_path.py` and
+  `benchmarks/micro/runners/memory_waitcnt.py`. The flag compiles HIP with
+  `__launch_bounds__(256)` and `kBlockSize`-based global indexing instead of
+  `blockDim.x`, and records `hip_fixed_block_index` in normalized artifacts.
+- Added `--hip-workgroup-specialization fixed` to
+  `benchmarks/micro/runners/geometry_sweep.py`. The fixed mode compiles one HIP
+  binary per requested workgroup size with
+  `HIPENGINE_FIXED_WORKGROUP_SIZE=<wg>`, runs each single-workgroup artifact,
+  then merges the rows so they can compare against the existing Vulkan
+  `local_size_x` specialization sweep.
+- Updated `benchmarks/micro/README.md` and added focused unit checks in
+  `tests/test_micro_dot_path.py`, `tests/test_micro_memory_waitcnt.py`, and
+  `tests/test_micro_geometry_sweep.py`.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/dot_path.py benchmarks/micro/runners/memory_waitcnt.py benchmarks/micro/runners/geometry_sweep.py`
+  and
+  `PYTHONPATH=. pytest -q tests/test_micro_dot_path.py tests/test_micro_memory_waitcnt.py tests/test_micro_geometry_sweep.py`
+  passed.
+- HIP fixed dot smoke:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/dot_path.py --backend hip --gfx-arch gfx1151 --hip-fixed-block-index --variants q4_unsigned:4 --n 1024 --body-iters 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-dot-fixed-block-smoke.json`
+  passed exact sampled CPU-oracle correctness and recorded
+  `hip_fixed_block_index=true`.
+- HIP fixed memory smoke:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/memory_waitcnt.py --backend hip --gfx-arch gfx1151 --hip-fixed-block-index --variants coalesced:4 --n 1024 --body-iters 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-memory-fixed-block-smoke.json`
+  passed sampled CPU-oracle correctness and recorded
+  `hip_fixed_block_index=true`.
+- HIP fixed geometry smoke:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/geometry_sweep.py --backend hip --gfx-arch gfx1151 --hip-workgroup-specialization fixed --k-list 512 --rows-list 1 --workgroups 64 --body-repeats 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-geometry-fixed-wg-smoke.json`
+  passed CPU-oracle correctness and recorded
+  `hip_workgroup_specialization=fixed` with `hip_fixed_workgroup_sizes=[64]`.
