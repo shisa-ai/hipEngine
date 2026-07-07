@@ -146644,3 +146644,32 @@ graphless decode launch-collapse path without regressing target/serial parity.
   artifacts, raw geometry artifacts, and comparison artifacts. Updated
   `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
   `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
+
+## 2026-07-08 - gfx1151 HIP q8_1 real-slice layout controls
+
+- Captured clean-source environment for real-slice q8_1 controls:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-real-slice-q8_1.json`.
+- Ran HIP Q4_K selected-dual gate/up q8_1 dp4a control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_q4_k_selected_dual_dp4a_microbench.py --x-rows 4 --rows 32 --experts 256 --in-features 2048 --out-features 512 --threads 256 --iters 80 --warmup 20 --json benchmarks/micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json`.
+- Q4_K result: raw selected-dual `0.9584 ms`, q8_1 quantize
+  `0.00247 ms`, q8_1 dp4a dot prequantized `0.3464 ms`,
+  q8_1 quantize+dot `0.3458 ms`, raw/quantize+dot `2.77x`,
+  KL mean `0.00311`, max abs `2.0`, top-1 `1.0` for gate/up.
+- Ran HIP Q6_K selected-down X8 q8_1 dp4a control:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_x8_selected_down_dp4a_microbench.py --quant q6 --rows 8 --experts 256 --in-features 512 --out-features 2048 --raw-threads 128 --x8-threads 64 --iters 120 --warmup 30 --json benchmarks/micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json`.
+- Q6_K selected-down result: production T16 float `0.03228 ms`,
+  q8_1 quantize `0.00275 ms`, X8 dp4a dot prequantized
+  `0.01665 ms`, X8 quantize+dot `0.01925 ms`, production
+  T16/quantize+dot `1.68x`, raw float/quantize+dot `2.38x`,
+  KL mean `0.00137`, max abs `0.5`, top-1 `1.0`; X8 vs raw dp4a
+  max abs `1.91e-6`, top-1 `1.0`.
+- Interpretation: q8_1 materialization is small and production-layout
+  q8_1+dp4a is positive on the tested HIP selected-MoE slices. This is
+  classified `layout_quant`; it is HIP-only evidence, not a matched Vulkan
+  real-slice result.
+- Updated `docs/HIP-vs-VULKAN.md` with current conclusions and explicit testing
+  triage: stop generic gfx1151 VOPD/wave64/fixed-block/dispatch-only probes for
+  now; next tests are one matched Vulkan production slice and better RADV
+  allocation/stat extraction. Updated `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md` with the retained
+  HIP q8_1 layout artifacts.
