@@ -146216,3 +146216,28 @@ python3 scripts/gguf_mtp_bench.py \
   fixed-workgroup HIP geometry controls and one representative inference slice.
   Broad gfx1151 geometry-only and generic VOPD reruns are no longer the best
   use of iteration time.
+
+## 2026-07-08 - Memory/waitcnt microbench runner
+
+- Added paired HIP/Vulkan memory/waitcnt diagnostics:
+  `benchmarks/micro/runners/hip_memory_waitcnt.hip`,
+  `benchmarks/micro/kernels/vulkan/memory_waitcnt.comp`,
+  `benchmarks/micro/runners/vulkan_memory_waitcnt.cpp`, and
+  `benchmarks/micro/runners/memory_waitcnt.py`.
+- The runner compiles one mode/parameter variant at a time and records timing,
+  sampled CPU-oracle correctness, HIP code-object metadata, HIP/RADV
+  disassembly instruction counts, load counts, waitcnt counts, register/scratch
+  evidence, and HIP-vs-Vulkan comparison rows. Variants cover coalesced
+  vector-width loads, strided loads, gather-ID addressing, and load/compute
+  interleave.
+- Vulkan timed rows use device-local storage buffers with staging copies,
+  matching the geometry harness pattern instead of timing host-visible storage
+  buffers.
+- Added `tests/test_micro_memory_waitcnt.py` for variant parsing and comparison
+  artifact construction.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/memory_waitcnt.py benchmarks/micro/runners/isa_stats.py`,
+  `PYTHONPATH=. pytest -q tests/test_micro_memory_waitcnt.py tests/test_micro_isa_stats.py tests/test_micro_vopd_sweep.py`,
+  a HIP smoke for `coalesced:1,gather:1`, and a Vulkan smoke for the same
+  variants all passed. Smoke artifacts were not retained; retained gfx1151 rows
+  will be run from a clean commit.

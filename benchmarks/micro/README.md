@@ -18,17 +18,21 @@ benchmarks/micro/
   runners/
     geometry_sweep.py
     isa_stats.py
+    memory_waitcnt.py
     vopd_sweep.py
     hip_geometry_sweep.hip
+    hip_memory_waitcnt.hip
     hip_vopd_sweep.hip
     hip_dispatch_floor.py
     vulkan_geometry_sweep.cpp
+    vulkan_memory_waitcnt.cpp
     vulkan_vopd_sweep.cpp
     vulkan_dispatch_floor.py
     vulkan_dispatch_floor.cpp
   kernels/
     vulkan/
       geometry_sweep.comp
+      memory_waitcnt.comp
       vopd_sweep.comp
   schemas/
     environment.schema.json
@@ -289,6 +293,60 @@ python3 benchmarks/micro/runners/isa_stats.py \
             benchmarks/micro/results/gfx1100/w7900/vulkan-geometry-isa-stats.json \
   --pretty \
   --out benchmarks/micro/results/gfx1100/w7900/geometry-isa-stats-comparison.json
+```
+
+## Memory / Waitcnt Sweep
+
+`runners/memory_waitcnt.py` runs paired device-memory load diagnostics with
+ISA/stat extraction. The retained variants should cover coalesced vector-width
+loads, strided loads, gather-ID addressing, and load/compute interleave. Vulkan
+uses device-local storage buffers with staging copies so the timed region is not
+just a host-visible-buffer diagnostic.
+
+Example paired run:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json
+
+HIPENGINE_HIP_ARCH=gfx1100 \
+python3 benchmarks/micro/runners/memory_waitcnt.py \
+  --backend hip \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --n 32768 \
+  --body-iters 128 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 7 \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/hip-memory-waitcnt.json
+
+python3 benchmarks/micro/runners/memory_waitcnt.py \
+  --backend vulkan \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-memory-waitcnt.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --n 32768 \
+  --body-iters 128 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 7 \
+  --debug-n 1024 \
+  --debug-body-iters 8 \
+  --quiet-shader-dump \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vulkan-memory-waitcnt.json
+
+python3 benchmarks/micro/runners/memory_waitcnt.py \
+  --compare benchmarks/micro/results/gfx1100/w7900/hip-memory-waitcnt.json \
+            benchmarks/micro/results/gfx1100/w7900/vulkan-memory-waitcnt.json \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/memory-waitcnt-comparison.json
 ```
 
 ## VOPD Scheduling Sweep

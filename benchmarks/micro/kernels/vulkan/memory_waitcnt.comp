@@ -1,0 +1,78 @@
+#version 450
+
+#ifndef HIPENGINE_MEM_MODE
+#define HIPENGINE_MEM_MODE 0
+#endif
+
+#ifndef HIPENGINE_MEM_PARAM
+#define HIPENGINE_MEM_PARAM 1
+#endif
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint n;
+    uint body_iters;
+    uint data_mask;
+    uint reserved;
+} pc;
+
+layout(set = 0, binding = 0) readonly buffer XBuffer {
+    float x[];
+};
+
+layout(set = 0, binding = 1) readonly buffer IdBuffer {
+    uint ids[];
+};
+
+layout(set = 0, binding = 2) buffer OutputBuffer {
+    float out_values[];
+};
+
+uint hash_u32(uint value) {
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    value ^= value >> 16;
+    return value;
+}
+
+float run_value(uint idx) {
+    float sum = 0.0;
+    uint state = idx * 747796405u + 2891336453u;
+    for (uint iter = 0u; iter < pc.body_iters; ++iter) {
+#if HIPENGINE_MEM_MODE == 0
+        uint base = (iter * pc.n * HIPENGINE_MEM_PARAM + idx * HIPENGINE_MEM_PARAM) & pc.data_mask;
+#pragma unroll
+        for (uint u = 0u; u < HIPENGINE_MEM_PARAM; ++u) {
+            float value = x[(base + u) & pc.data_mask];
+            sum = fma(value, 1.000001 + float(u) * 0.000001, sum);
+        }
+#elif HIPENGINE_MEM_MODE == 1
+        uint addr = (iter * pc.n * HIPENGINE_MEM_PARAM + idx * HIPENGINE_MEM_PARAM) & pc.data_mask;
+        sum = fma(x[addr], 1.000001, sum);
+#elif HIPENGINE_MEM_MODE == 2
+        uint id = ids[iter * pc.n + idx] & pc.data_mask;
+        sum = fma(x[id], 1.000001, sum);
+#elif HIPENGINE_MEM_MODE == 3
+        uint base = (iter * pc.n * HIPENGINE_MEM_PARAM + idx * HIPENGINE_MEM_PARAM) & pc.data_mask;
+#pragma unroll
+        for (uint u = 0u; u < HIPENGINE_MEM_PARAM; ++u) {
+            state = hash_u32(state + iter + u);
+            float value = x[(base + u) & pc.data_mask];
+            float bias = float(state & 0xffu) * 0.0000001;
+            sum = fma(value + bias, 0.999999 + float(u) * 0.000001, sum);
+        }
+#endif
+    }
+    return sum;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.n) {
+        return;
+    }
+    out_values[idx] = run_value(idx);
+}
