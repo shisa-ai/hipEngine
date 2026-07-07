@@ -418,7 +418,7 @@ def build_comparison(
         "schema_version": 1,
         "kind": "hipengine_micro_comparison",
         "bench": BENCH_NAME,
-        "classification": "geometry",
+        "classification": "diagnostic_unclassified",
         "source": source,
         "command": command,
         "hardware": {
@@ -438,9 +438,10 @@ def build_comparison(
         "shape_summary": shape_summary,
         "interpretation": (
             "Matched f32 GEMV/reduction workgroup sweep. This artifact can "
-            "classify workgroup geometry effects. It is not compiler_aco "
-            "evidence until paired ISA/stat extraction shows register, scratch, "
-            "waitcnt, VOPD, or instruction-count differences at identical shape."
+            "test whether workgroup geometry explains a HIP/Vulkan gap. If "
+            "Vulkan still wins at identical shape, the result remains "
+            "diagnostic_unclassified until paired ISA/stat extraction shows "
+            "register, scratch, waitcnt, VOPD, or instruction-count differences."
         ),
     }
     return _json_safe(comparison)

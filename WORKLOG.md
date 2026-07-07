@@ -146210,3 +146210,13 @@ graphless decode launch-collapse path without regressing target/serial parity.
   reran small HIP/Vulkan K=128 smokes, `python3 -m py_compile
   benchmarks/micro/runners/geometry_sweep.py`, and
   `PYTHONPATH=. pytest -q tests/test_micro_geometry_sweep.py tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`.
+
+## 2026-07-08 - Geometry comparison classification tightening
+
+- Updated geometry comparison artifacts to classify as
+  `diagnostic_unclassified`, not `geometry`. The family tests geometry, but if
+  Vulkan still wins at identical K/rows/workgroup/body-repeat shape, the result
+  is not a confirmed `geometry` explanation and still lacks ISA evidence for
+  `compiler_aco`.
+- Validation:
+  `PYTHONPATH=. pytest -q tests/test_micro_geometry_sweep.py tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`.
