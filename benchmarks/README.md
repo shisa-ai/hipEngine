@@ -4,9 +4,10 @@ Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan attribution microbenches on
 Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, geometry
 ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
 dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
-shaderstats allocation extraction, HIP q8_1 real-slice layout controls, plus a
-matched Vulkan Q6_K X8 selected-down real-slice probe and matched Vulkan Q4_K
-selected-dual gate/up real-slice probe.
+shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
+q8_1 real-slice layout controls, plus a matched Vulkan Q6_K X8 selected-down
+real-slice probe and matched Vulkan Q4_K selected-dual gate/up real-slice
+probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -31,8 +32,8 @@ rows while gather is essentially tied (**1.02x**). HIP reports wave32 and
 **0 scratch/spills**; RADV shaderstats reports wave64, official
 **12/24/48 VGPR buckets**, **108 SGPR**, and **0 scratch/spills**. Classified
 **diagnostic_unclassified**: strong memory-side evidence, but not yet a clean
-`compiler_aco` proof until wave/subgroup shape and memory-bound real-slice
-confirmation land; fixed-shape controls below do not close it.
+`compiler_aco` proof until memory-bound real-slice confirmation lands;
+fixed-shape and wave64 controls below do not close it.
 Packed dot-path sweep: q8 signed, q4 unsigned-byte by signed-q8, q6
 zero-corrected, and scalar q4 rows all pass exact sampled CPU oracle; HIP and
 RADV both emit final dot4 instructions in q8/q4/q6 rows, HIP reports
@@ -50,6 +51,12 @@ memory fixed-block indexing is mixed (**0.906x-1.290x** fixed/runtime) and
 Vulkan remains faster on every row (**1.04x-2.36x**); fixed-workgroup geometry
 improves some HIP wg256 rows by up to **6.3%**, but Vulkan still leads
 best-native geometry by **5.56x-14.03x**.
+HIP fixed-wave64 geometry controls: forcing wave64 while also specializing
+fixed workgroup sizes makes HIP **1.13x-1.23x slower** than fixed wave32 on
+best-native rows, and Vulkan remains **6.31x-16.18x faster** than HIP
+fixed-wave64. HIP fixed-wave64 reports wave64, **11 VGPR / 20 SGPR**,
+**0 scratch/spills**, and **0 VOPD** for K=2048 rows=1 wg64/wg256. Classified
+**diagnostic_unclassified**; wave mode is not the missing f32 geometry switch.
 HIP q8_1 real-slice layout controls: Q4_K selected-dual gate/up q8_1
 quantize+dp4a is **2.77x** faster than raw selected-dual, and Q6_K
 selected-down X8 q8_1 quantize+dp4a is **1.68x** faster than production T16
@@ -87,6 +94,10 @@ Artifacts:
 [`micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json),
 [`micro/results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json),
 [`micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json`](micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json),
+[`micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-wave64-comparison.json`](micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-wave64-comparison.json),
+[`micro/results/gfx1151/strix-halo/geometry-sweep-fixed-wave64-delta.json`](micro/results/gfx1151/strix-halo/geometry-sweep-fixed-wave64-delta.json),
+[`micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json`](micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json),
+[`micro/results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json`](micro/results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/dot-path-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-comparison.json),
