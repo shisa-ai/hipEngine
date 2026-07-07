@@ -145937,3 +145937,32 @@ python3 scripts/gguf_mtp_bench.py \
   plus `python3 -m json.tool /tmp/hipengine-micro-dispatch-smoke.json >/dev/null`
   all passed. The smoke only validates wrapper/HIP execution and JSON shape; it
   is not retained performance evidence.
+
+## 2026-07-07 - Vulkan dispatch-floor microbench runner
+
+- Added `benchmarks/micro/kernels/vulkan/dispatch_floor.comp`, a tiny
+  storage-buffer compute shader with `local_size_x=256` and push constants, so
+  the dispatch body cannot collapse to a totally empty shader.
+- Added `benchmarks/micro/runners/vulkan_dispatch_floor.cpp`, a standalone
+  `libvulkan` harness that creates a compute pipeline, pre-records command
+  buffers containing N dispatches, and measures wall time around
+  `vkQueueSubmit` + `vkWaitForFences`. Pipeline creation, descriptor setup, and
+  command-buffer recording are outside the timed region.
+- Added `benchmarks/micro/runners/vulkan_dispatch_floor.py`, which compiles the
+  GLSL shader with `glslc`/`glslangValidator`, builds the C++ harness with
+  `libvulkan`, runs it, and normalizes the raw Vulkan JSON into the
+  `hipengine_micro_result` schema with `runtime_dispatch` classification.
+- Added `tests/test_micro_vulkan_dispatch_floor.py` for Vulkan normalization
+  with embedded environment data and external environment refs.
+- Updated `benchmarks/micro/README.md` with Vulkan dispatch-floor commands and
+  paired HIP/Vulkan environment-reference workflow.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/vulkan_dispatch_floor.py benchmarks/micro/runners/hip_dispatch_floor.py`,
+  `glslc -O benchmarks/micro/kernels/vulkan/dispatch_floor.comp -o /tmp/hipengine-dispatch-floor-test.spv`,
+  `c++ -O2 -std=c++17 benchmarks/micro/runners/vulkan_dispatch_floor.cpp -o /tmp/hipengine-vulkan-dispatch-floor-test -lvulkan`,
+  `PYTHONPATH=. pytest -q tests/test_micro_vulkan_dispatch_floor.py tests/test_micro_hip_dispatch_floor.py tests/test_micro_collect_env.py`,
+  and a one-rep gfx1151 Vulkan smoke
+  `python3 benchmarks/micro/runners/vulkan_dispatch_floor.py --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --counts 1 --grid-sweep 1 --grid-sweep-count 1 --reps 1 --warmup 0 --skip-device-probes --pretty --out /tmp/hipengine-vulkan-dispatch-smoke.json`
+  plus `python3 -m json.tool /tmp/hipengine-vulkan-dispatch-smoke.json >/dev/null`
+  all passed. The smoke only validates wrapper/Vulkan execution and JSON shape;
+  it is not retained performance evidence.
