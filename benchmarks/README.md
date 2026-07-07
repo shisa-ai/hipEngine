@@ -25,14 +25,21 @@ Vulkan is **1.30x-2.35x** faster on most coalesced, strided, and interleave
 rows while gather is essentially tied (**1.02x**). HIP reports wave32 and
 **0 scratch/spills**; RADV final shaders are wave64 with only estimated
 register spans available. Classified **diagnostic_unclassified**: strong
-memory-side evidence, but not yet a clean `compiler_aco` proof until wave and
-specialization controls land. Packed dot-path sweep: q8 signed, q4
-unsigned-byte by signed-q8, q6 zero-corrected, and scalar q4 rows all pass exact
-sampled CPU oracle; HIP and RADV both emit final dot4 instructions in q8/q4/q6
-rows, HIP reports **0 scratch/spills**, and Vulkan remains **3.29x-3.43x**
-faster, including scalar dequant. Classified **diagnostic_unclassified**: this
-rules out missed HIP dot4, but not wave/fixed-shape/surrounding scheduling
-confounds. Artifacts:
+memory-side evidence, but not yet a clean `compiler_aco` proof until
+fixed-shape controls and better RADV allocation stats land.
+Packed dot-path sweep: q8 signed, q4 unsigned-byte by signed-q8, q6
+zero-corrected, and scalar q4 rows all pass exact sampled CPU oracle; HIP and
+RADV both emit final dot4 instructions in q8/q4/q6 rows, HIP reports
+**0 scratch/spills**, and Vulkan remains **3.29x-3.43x** faster, including
+scalar dequant. Classified **diagnostic_unclassified**: this rules out missed
+HIP dot4; after wave64 controls, the remaining likely causes are
+fixed-shape/surrounding scheduling or layout/activation quantization economics.
+HIP wave64 controls: dot-path wave64 is **1.007x-1.061x slower** than HIP
+wave32 and still trails same-commit Vulkan by **2.63x-3.55x**;
+memory/waitcnt wave64 is mixed, leaves Vulkan faster on most rows, and regresses
+gather by **6.35x** versus HIP wave32. Artifacts:
+[`micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json),
+[`micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json),
 [`micro/results/gfx1151/strix-halo/dot-path-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-dot-path.json`](micro/results/gfx1151/strix-halo/hip-dot-path.json),
 [`micro/results/gfx1151/strix-halo/vulkan-dot-path.json`](micro/results/gfx1151/strix-halo/vulkan-dot-path.json),

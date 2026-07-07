@@ -146373,3 +146373,37 @@ python3 scripts/gguf_mtp_bench.py \
   `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/memory_waitcnt.py --backend hip --gfx-arch gfx1151 --hip-wavefront-size 64 --variants coalesced:1 --n 1024 --body-iters 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-memory-wave64-smoke.json`
   passed sampled CPU-oracle correctness and reported `wave_size=64` and
   `scratch_bytes=0`.
+
+## 2026-07-08 - gfx1151 HIP wave64 controls
+
+- Captured clean-source environment after `65b38ade`:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json`.
+- Ran retained HIP dot-path wave64 sweep:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/dot_path.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --hip-wavefront-size 64 --build-dir /tmp/hipengine-micro-dot-wave64-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-dot-path-wave64.json`.
+- Ran same-commit Vulkan dot-path control:
+  `python3 benchmarks/micro/runners/dot_path.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-dot-wave64-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-dot-path-wave64-control.json`.
+- Built dot-path wave64 comparison:
+  `python3 benchmarks/micro/runners/dot_path.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-dot-path-wave64.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-dot-path-wave64-control.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/dot-path-wave64-comparison.json`.
+- Dot result: all rows passed exact sampled CPU-oracle correctness. HIP wave64
+  reported wave64, no scratch/spills, and the same dot4 counts as wave32. Versus
+  retained HIP wave32, wave64 was slower on q8/q4/q6/scalar by
+  `1.061x/1.034x/1.040x/1.007x`; same-commit Vulkan remained `3.13x/3.55x/2.63x/3.16x`
+  faster than HIP wave64 on q8/q4/q6/scalar.
+- Ran retained HIP memory/waitcnt wave64 sweep:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/memory_waitcnt.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --hip-wavefront-size 64 --build-dir /tmp/hipengine-micro-memory-wave64-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt-wave64.json`.
+- Ran same-commit Vulkan memory/waitcnt control:
+  `python3 benchmarks/micro/runners/memory_waitcnt.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-wave64-controls.json --gfx-arch gfx1151 --hardware-gpu "Radeon 8060S Graphics" --build-dir /tmp/hipengine-micro-memory-wave64-build --n 32768 --body-iters 128 --reps 20 --warmup 5 --samples 7 --debug-n 1024 --debug-body-iters 8 --quiet-shader-dump --pretty --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt-wave64-control.json`.
+- Built memory/waitcnt wave64 comparison:
+  `python3 benchmarks/micro/runners/memory_waitcnt.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt-wave64.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt-wave64-control.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/memory-waitcnt-wave64-comparison.json`.
+- Memory result: all rows passed sampled CPU-oracle correctness. HIP wave64 was
+  mixed versus wave32: coalesced width 8 and interleave 16 improved
+  (`0.921x`/`0.922x` wave64/wave32), but gather regressed `6.349x`; Vulkan
+  remained faster on most same-commit rows, with HIP wave64 only beating Vulkan
+  on interleave 16 (`0.87x` Vulkan/HIP speedup).
+- Interpretation: HIP wave64 is not the missing switch for the retained dot or
+  memory gaps. Keep fixed-shape/specialization controls and a real selected-MoE
+  or q6 lm-head slice as the next attribution steps; do not promote broad
+  wave64 HIP routing from this evidence.
+- Tightened `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`, and
+  `benchmarks/micro/README.md` wording so the current conclusion no longer lists
+  wave64 as an unresolved broad explanation after the retained wave64 controls.
