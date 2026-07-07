@@ -73,6 +73,22 @@ struct Correctness {
   bool pass = false;
 };
 
+struct PhaseTimings {
+  double cpu_fixture_prepare_us = 0.0;
+  double vulkan_instance_device_us = 0.0;
+  double pipeline_create_us = 0.0;
+  double command_pool_fence_us = 0.0;
+  double buffer_allocate_us = 0.0;
+  double host_stage_fill_us = 0.0;
+  double device_upload_us = 0.0;
+  double descriptor_setup_us = 0.0;
+  double correctness_run_readback_us = 0.0;
+  double command_record_us = 0.0;
+  double steady_timing_wall_us = 0.0;
+  double backend_setup_before_steady_us = 0.0;
+  double total_process_us = 0.0;
+};
+
 [[noreturn]] void fail(const std::string& message) {
   throw std::runtime_error(message);
 }
@@ -83,6 +99,12 @@ void check(VkResult result, const char* what) {
     oss << what << " failed with VkResult " << static_cast<int>(result);
     fail(oss.str());
   }
+}
+
+using Clock = std::chrono::steady_clock;
+
+double elapsed_us(Clock::time_point start, Clock::time_point end) {
+  return std::chrono::duration<double, std::micro>(end - start).count();
 }
 
 std::string require_value(int& index, int argc, char** argv, const std::string& flag) {
@@ -1019,6 +1041,25 @@ void write_timing_json(const char* name, const TimingStats& stats, std::ostream&
   out << "    }" << suffix << "\n";
 }
 
+void write_phase_timing_json(const PhaseTimings& phase, std::ostream& out) {
+  out << "  \"integration_timing\": {\n";
+  out << "    \"cpu_fixture_prepare_us\": " << phase.cpu_fixture_prepare_us << ",\n";
+  out << "    \"vulkan_instance_device_us\": " << phase.vulkan_instance_device_us << ",\n";
+  out << "    \"pipeline_create_us\": " << phase.pipeline_create_us << ",\n";
+  out << "    \"command_pool_fence_us\": " << phase.command_pool_fence_us << ",\n";
+  out << "    \"buffer_allocate_us\": " << phase.buffer_allocate_us << ",\n";
+  out << "    \"host_stage_fill_us\": " << phase.host_stage_fill_us << ",\n";
+  out << "    \"device_upload_us\": " << phase.device_upload_us << ",\n";
+  out << "    \"descriptor_setup_us\": " << phase.descriptor_setup_us << ",\n";
+  out << "    \"correctness_run_readback_us\": " << phase.correctness_run_readback_us << ",\n";
+  out << "    \"command_record_us\": " << phase.command_record_us << ",\n";
+  out << "    \"steady_timing_wall_us\": " << phase.steady_timing_wall_us << ",\n";
+  out << "    \"backend_setup_before_steady_us\": " << phase.backend_setup_before_steady_us << ",\n";
+  out << "    \"total_process_us\": " << phase.total_process_us << ",\n";
+  out << "    \"method\": \"single-process phase timers; shader compilation is outside this process; steady replay timings below use pre-recorded command buffers\"\n";
+  out << "  },\n";
+}
+
 std::string command_line(int argc, char** argv) {
   std::ostringstream out;
   for (int i = 0; i < argc; ++i) {
@@ -1037,6 +1078,7 @@ void write_json(
     const VkPhysicalDeviceProperties& properties,
     uint32_t queue_family,
     const Correctness& correctness,
+    const PhaseTimings& phase,
     const TimingStats& quantize_stats,
     const TimingStats& dot_stats,
     const TimingStats& combined_stats,
@@ -1075,6 +1117,7 @@ void write_json(
   out << "    \"samples\": " << args.samples << ",\n";
   out << "    \"method\": \"pre-recorded Vulkan command buffer, host wall divided by reps; transfer and pipeline creation excluded\"\n";
   out << "  },\n";
+  write_phase_timing_json(phase, out);
   out << "  \"timing\": {\n";
   write_timing_json("q8_1_quantize", quantize_stats, out, ",");
   write_timing_json("selected_dual_dp4a_dot_prequantized", dot_stats, out, ",");
@@ -1096,7 +1139,11 @@ void write_json(
 
 int main(int argc, char** argv) {
   try {
+    auto process_t0 = Clock::now();
+    PhaseTimings phase{};
     Args args = parse_args(argc, argv);
+
+    auto fixture_t0 = Clock::now();
     std::vector<uint32_t> quantize_spirv = read_spirv(args.quantize_spirv_path);
     std::vector<uint32_t> dot_spirv = read_spirv(args.dot_spirv_path);
     std::vector<uint32_t> x = make_x_bf16(args);
@@ -1104,7 +1151,9 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> weights = make_q4_dual_weights(args);
     std::vector<uint32_t> expected = cpu_dot_dual(cpu_quantize_q8_1(x, args), selected, weights, args);
     std::vector<uint32_t> actual(expected.size(), 0);
+    phase.cpu_fixture_prepare_us = elapsed_us(fixture_t0, Clock::now());
 
+    auto instance_t0 = Clock::now();
     VkApplicationInfo app_info{};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "hipEngine Vulkan Q4 selected-dual";
@@ -1141,14 +1190,18 @@ int main(int argc, char** argv) {
     VkDevice device = create_device(physical_device, queue_family, &queue_priority);
     VkQueue queue = VK_NULL_HANDLE;
     vkGetDeviceQueue(device, queue_family, 0, &queue);
+    phase.vulkan_instance_device_us = elapsed_us(instance_t0, Clock::now());
 
+    auto pipeline_t0 = Clock::now();
     VkShaderModule quant_module = create_shader_module(device, quantize_spirv);
     VkShaderModule dot_module = create_shader_module(device, dot_spirv);
     VkDescriptorSetLayout descriptor_layout = create_descriptor_set_layout(device);
     VkPipelineLayout pipeline_layout = create_pipeline_layout(device, descriptor_layout);
     VkPipeline quant_pipeline = create_pipeline(device, pipeline_layout, quant_module);
     VkPipeline dot_pipeline = create_pipeline(device, pipeline_layout, dot_module);
+    phase.pipeline_create_us = elapsed_us(pipeline_t0, Clock::now());
 
+    auto pool_t0 = Clock::now();
     VkCommandPoolCreateInfo command_pool_info{};
     command_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     command_pool_info.queueFamilyIndex = queue_family;
@@ -1159,7 +1212,9 @@ int main(int argc, char** argv) {
     fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     VkFence fence = VK_NULL_HANDLE;
     check(vkCreateFence(device, &fence_info, nullptr, &fence), "vkCreateFence");
+    phase.command_pool_fence_us = elapsed_us(pool_t0, Clock::now());
 
+    auto allocate_t0 = Clock::now();
     VkDeviceSize x_bytes = sizeof(uint32_t) * x.size();
     VkDeviceSize selected_bytes = sizeof(uint32_t) * selected.size();
     VkDeviceSize weights_bytes = sizeof(uint32_t) * weights.size();
@@ -1230,14 +1285,21 @@ int main(int argc, char** argv) {
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         false);
+    phase.buffer_allocate_us = elapsed_us(allocate_t0, Clock::now());
 
+    auto host_fill_t0 = Clock::now();
     std::memcpy(x_stage.mapped, x.data(), static_cast<size_t>(x_bytes));
     std::memcpy(selected_stage.mapped, selected.data(), static_cast<size_t>(selected_bytes));
     std::memcpy(weights_stage.mapped, weights.data(), static_cast<size_t>(weights_bytes));
+    phase.host_stage_fill_us = elapsed_us(host_fill_t0, Clock::now());
+
+    auto upload_t0 = Clock::now();
     copy_to_device(device, queue, command_pool, x_stage, x_device, x_bytes);
     copy_to_device(device, queue, command_pool, selected_stage, selected_device, selected_bytes);
     copy_to_device(device, queue, command_pool, weights_stage, weights_device, weights_bytes);
+    phase.device_upload_us = elapsed_us(upload_t0, Clock::now());
 
+    auto descriptor_t0 = Clock::now();
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
     VkDescriptorSet descriptor_set = create_descriptor_set(
         device,
@@ -1248,6 +1310,7 @@ int main(int argc, char** argv) {
         weights_device,
         out_device,
         descriptor_pool);
+    phase.descriptor_setup_us = elapsed_us(descriptor_t0, Clock::now());
 
     PushConstants quant_push{
         args.x_rows,
@@ -1268,6 +1331,7 @@ int main(int argc, char** argv) {
         args.in_features / QK_K,
         args.x_rows};
 
+    auto correctness_t0 = Clock::now();
     VkCommandBuffer correctness_cmd = begin_one_time(device, command_pool);
     record_quantize_dot(
         correctness_cmd,
@@ -1292,12 +1356,14 @@ int main(int argc, char** argv) {
     submit_and_free(device, queue, command_pool, correctness_cmd);
     std::memcpy(actual.data(), out_stage.mapped, static_cast<size_t>(out_bytes));
     Correctness correctness = compare_outputs(expected, actual, args);
+    phase.correctness_run_readback_us = elapsed_us(correctness_t0, Clock::now());
     if (!correctness.pass) {
       std::cerr << "warning: correctness failed max_abs=" << correctness.max_abs
                 << " top1=" << correctness.top1
                 << " bf16_mismatches=" << correctness.exact_bf16_mismatches << "\n";
     }
 
+    auto record_t0 = Clock::now();
     VkCommandBuffer quant_cmd = begin_one_time(device, command_pool);
     record_quantize(quant_cmd, quant_pipeline, pipeline_layout, descriptor_set, quant_push, args.reps);
     check(vkEndCommandBuffer(quant_cmd), "vkEndCommandBuffer quantize");
@@ -1318,10 +1384,24 @@ int main(int argc, char** argv) {
         xq_device,
         args.reps);
     check(vkEndCommandBuffer(combined_cmd), "vkEndCommandBuffer combined");
+    phase.command_record_us = elapsed_us(record_t0, Clock::now());
+    phase.backend_setup_before_steady_us =
+        phase.vulkan_instance_device_us +
+        phase.pipeline_create_us +
+        phase.command_pool_fence_us +
+        phase.buffer_allocate_us +
+        phase.host_stage_fill_us +
+        phase.device_upload_us +
+        phase.descriptor_setup_us +
+        phase.correctness_run_readback_us +
+        phase.command_record_us;
 
+    auto steady_t0 = Clock::now();
     TimingStats quantize_stats = time_command(device, queue, quant_cmd, fence, args.reps, args.warmup, args.samples);
     TimingStats dot_stats = time_command(device, queue, dot_cmd, fence, args.reps, args.warmup, args.samples);
     TimingStats combined_stats = time_command(device, queue, combined_cmd, fence, args.reps, args.warmup, args.samples);
+    phase.steady_timing_wall_us = elapsed_us(steady_t0, Clock::now());
+    phase.total_process_us = elapsed_us(process_t0, Clock::now());
 
     std::cout << "[vulkan-q4-selected-dual] quantize=" << quantize_stats.median_us / 1000.0
               << " ms dot=" << dot_stats.median_us / 1000.0
@@ -1329,13 +1409,35 @@ int main(int argc, char** argv) {
               << " ms correctness=" << (correctness.pass ? "pass" : "fail") << "\n";
 
     if (args.json_path.empty()) {
-      write_json(args, argc, argv, properties, queue_family, correctness, quantize_stats, dot_stats, combined_stats, std::cout);
+      write_json(
+          args,
+          argc,
+          argv,
+          properties,
+          queue_family,
+          correctness,
+          phase,
+          quantize_stats,
+          dot_stats,
+          combined_stats,
+          std::cout);
     } else {
       std::ofstream output(args.json_path);
       if (!output) {
         fail("could not open JSON path: " + args.json_path);
       }
-      write_json(args, argc, argv, properties, queue_family, correctness, quantize_stats, dot_stats, combined_stats, output);
+      write_json(
+          args,
+          argc,
+          argv,
+          properties,
+          queue_family,
+          correctness,
+          phase,
+          quantize_stats,
+          dot_stats,
+          combined_stats,
+          output);
     }
 
     vkFreeCommandBuffers(device, command_pool, 1, &quant_cmd);
