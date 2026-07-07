@@ -3,8 +3,9 @@
 Last updated: 2026-07-07 (W7900/GPU0 README refresh `20260707-104756`:
 current PARO 5-run medians are stable-to-slightly-up versus the prior refresh,
 while current GGUF Q4_K_M eager resident rows supersede the retired graph-replay
-rows and measure **653.98/35.84 tok/s** at 512/128 and **490.29/35.43 tok/s** at
-128K/128. Full artifacts are under
+rows and run the correctness-first GDN decode-order prefill fallback, measuring
+**653.98/35.84 tok/s** at 512/128 and **490.29/35.43 tok/s** at 128K/128. Full
+artifacts are under
 `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-*`.
 Prior 2026-07-06 note: hipEngine GGUF server MTP deferred verifier scatter;
 current retained bw5 server c=1 is
@@ -530,7 +531,7 @@ git diff --check
 ## hipEngine vs llama.cpp HIP/Vulkan Q4_K_M comparison (W7900 GPU0, same model)
 
 Same MTP-bearing Qwen3.6-35B-A3B `UD-Q4_K_M.gguf` on the same AMD Radeon Pro W7900 (48 GiB).
-hipEngine: decode-repack + WMMA prefill + GEMV eager decode, hermetic TheRock 7.13 wrapper, 2 warmups + 5 measured runs (2026-07-07 clean-worktree rerun; tracked peak 25.492 GiB). GGUF graph replay is retired, so these rows supersede older graph-derived rows.
+hipEngine: decode-repack + WMMA prefill + GEMV eager decode, hermetic TheRock 7.13 wrapper, 2 warmups + 5 measured runs (2026-07-07 clean-worktree rerun; tracked peak 25.492 GiB). GGUF graph replay is retired, and current bulk prefill uses the correctness-first GDN decode-order fallback instead of the older split chain, so these rows supersede older graph/split-chain-derived rows.
 llama.cpp HIP: ngl=99, flash-attn=1, f16 KV cache, build `263cc04a5`.
 llama.cpp Vulkan: ngl=99, flash-attn=1, f16 KV cache, RADV NAVI31.
 
@@ -545,6 +546,7 @@ llama.cpp Vulkan: ngl=99, flash-attn=1, f16 KV cache, RADV NAVI31.
 
 Artifacts:
 - hipEngine: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-gguf-q4km-5run.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-gguf-q4km-5run.json)
+- hipEngine GGUF GDN audit: [`2026-07-07-w7900-gpu0-gguf-q4km-current-gdn-audit.json`](results/2026-07-07-w7900-gpu0-gguf-q4km-current-gdn-audit.json)
 - llama.cpp HIP: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json)
 - llama.cpp Vulkan: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json)
 

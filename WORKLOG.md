@@ -145977,3 +145977,37 @@ python3 scripts/gguf_mtp_bench.py \
   HIP loaded; `rocminfo` and llama.cpp device lists mapped GPU0/Vulkan0 to the
   Radeon Pro W7900; all promoted JSON artifacts validated and current artifact
   links resolved.
+
+
+## 2026-07-07 — GGUF Q4_K_M README row audit: current numbers are the correctness-first path
+
+Followed up on the W7900 README GGUF Q4_K_M suspicion. Short answer: the
+`~650 tok/s` prefill and `~35 tok/s` decode rows are reproducible for the
+current clean-tree README command, but they are not the older split-GDN/graph
+performance path.
+
+Evidence:
+- The retained `2026-07-07` README artifact records
+  `requested_graph_replay_decode=false`, `effective_graph_replay_decode=false`,
+  effective WMMA prefill/GEMV decode true, and stable final IDs `[9707]*5` for
+  all W7900 shapes.
+- A fresh W7900/GPU0 512-token prefill-only rocprof with the same TheRock 7.13
+  wrapper and `--no-graph-replay-decode --use-wmma-prefill --use-gemv-decode`
+  measured `623.288 tok/s` (`prefill_seconds=0.82145`). The compact diagnostic
+  artifact is
+  `benchmarks/results/2026-07-07-w7900-gpu0-gguf-q4km-current-gdn-audit.json`.
+- The rocprof summary shows prefill dominated by current correctness-first GDN
+  prefill: `gdn_prefill_recurrent` / `decode_order_bf16` took `592.336 ms` over
+  `30` dispatches out of `744.955 ms` total profiled prefill kernel time.
+- This traces to commit `937c13d1` (`fix: align GGUF target math contracts`),
+  which intentionally bypassed the faster split `prepare + k2 recurrent +
+  rmsnorm_gate` GDN chain in favor of the legacy fused decode-order kernel after
+  the split chain failed target AR/serial parity on the llama.cpp greeting trace.
+- The old `~106 tok/s` W7900 decode rows were graph-derived; commit `3b0f6067`
+  retired GGUF decode graphs because the graph path corrupted GDN state on 3rd+
+  relaunches and eager became the correctness baseline.
+
+Docs clarified in `README.md` and `benchmarks/README.md`: the current GGUF
+Q4_K_M column is the correctness-first eager/decode-order fallback, and the next
+real optimization target is re-certifying a fast GDN prefill chain plus a
+graphless decode launch-collapse path without regressing target/serial parity.
