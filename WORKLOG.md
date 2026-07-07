@@ -145797,3 +145797,24 @@ python3 scripts/gguf_mtp_bench.py \
   `benchmarks/results/2026-07-07-hipengine-server-ar-natural24-c1-bw5-benefit-sweep-rerun.json`,
   and
   `benchmarks/results/2026-07-07-hipengine-server-mtp-natural24-c1-bw5-benefit-sweep-rerun.json`.
+
+## 2026-07-07 - GGUF mtp-server c>N scaling goal closure
+
+- Goal status: complete.
+- Objective: fix the GGUF `mtp-server` so it scales at least as well as PARO
+  and llama.cpp c>N scaling, first validating AR c>N scaling and then MTP c>N
+  scaling.
+- Time used: 14h 42m.
+- Tokens used: 31.1M.
+- Final retained AR validation: natural24 GGUF OpenAI server AR c=2/c=4/c=8
+  measured **66.39/82.46/81.94 tok/s**, with full-access retry5 confirming
+  **66.10/82.48/82.07 tok/s**.
+- Final MTP scaling audit: natural24 GGUF OpenAI server MTP c=1/c=2/c=4/c=8
+  measured **44.95/70.47/79.48/79.45 tok/s** on the retained route, with
+  normal c>N economy (`draft=165`, `accepted=141`, accept rate **0.8545**) and
+  c8/c1 scaling **1.768x**.
+- Completion evidence: MTP c8/c1 scaling **1.768x** exceeds retained PARO
+  native c8/c1 **1.584x** and llama.cpp MTP c8/c1 rows (HIP/Vulkan
+  full-request **1.049x/1.108x**, HIP/Vulkan decode-only **1.040x/1.132x**).
+  The remaining MTP-vs-AR gap at c=4/c=8 is not a c>N scaling blocker; it is
+  the documented verifier LM-head/sample optimization target.
