@@ -146288,3 +146288,34 @@ python3 scripts/gguf_mtp_bench.py \
   lm-head real slice, and then cross-GPU reruns after the harnesses are
   classified. Generic gfx1151 dispatch, broad geometry, generic VOPD, and
   generic memory reruns are no longer priority.
+
+## 2026-07-08 - Dot-path HIP/Vulkan microbench runner
+
+- Added paired packed dot-path diagnostics:
+  `benchmarks/micro/runners/hip_dot_path.hip`,
+  `benchmarks/micro/kernels/vulkan/dot_path.comp`,
+  `benchmarks/micro/runners/vulkan_dot_path.cpp`, and
+  `benchmarks/micro/runners/dot_path.py`.
+- Variants cover q8 signed dot, q4 unsigned-byte by signed-q8 dot, q6
+  zero-point correction (`dot_u - 32 * q8_sum`), and scalar q4 dequant.
+  Vulkan explicitly requires `VK_KHR_shader_integer_dot_product` and records
+  SPIR-V `OpSDot`/`OpSUDot`/`OpUDot` counts in addition to RADV final ISA
+  stats.
+- Added `tests/test_micro_dot_path.py` for variant parsing and comparison
+  artifact construction. Updated `benchmarks/micro/README.md` with retained-run
+  examples and recorded fields.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/dot_path.py benchmarks/micro/runners/isa_stats.py`
+  and
+  `PYTHONPATH=. pytest -q tests/test_micro_dot_path.py tests/test_micro_isa_stats.py tests/test_micro_memory_waitcnt.py tests/test_micro_vopd_sweep.py`
+  passed.
+- HIP smoke:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/dot_path.py --backend hip --gfx-arch gfx1151 --variants q8_signed:4,q4_unsigned:4,q6_zero:4,scalar_dequant:4 --n 1024 --body-iters 4 --reps 2 --warmup 1 --samples 2 --skip-device-probes --pretty --out /tmp/hip-dot-smoke.json`
+  passed exact sampled CPU-oracle correctness. ISA sanity: HIP emitted dot4 in
+  q8/q4/q6 rows (`4/4/8` static dot4 counts for groups=4), emitted no dot4 for
+  scalar dequant, reported wave32 and 0 scratch.
+- Vulkan smoke:
+  `python3 benchmarks/micro/runners/dot_path.py --backend vulkan --gfx-arch gfx1151 --variants q8_signed:4,q4_unsigned:4,q6_zero:4,scalar_dequant:4 --n 1024 --body-iters 4 --reps 2 --warmup 1 --samples 2 --debug-n 256 --debug-body-iters 2 --skip-device-probes --quiet-shader-dump --pretty --out /tmp/vulkan-dot-smoke.json`
+  passed exact sampled CPU-oracle correctness. RADV final ISA emitted dot4 in
+  q8/q4/q6 rows (`4/4/8`) and none for scalar; SPIR-V op counts were `OpSDot=1`
+  for q8, `OpSUDot=1/2` for q4/q6, and no dot ops for scalar.

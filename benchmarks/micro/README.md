@@ -16,14 +16,17 @@ benchmarks/micro/
   README.md
   collect_env.py
   runners/
+    dot_path.py
     geometry_sweep.py
     isa_stats.py
     memory_waitcnt.py
     vopd_sweep.py
+    hip_dot_path.hip
     hip_geometry_sweep.hip
     hip_memory_waitcnt.hip
     hip_vopd_sweep.hip
     hip_dispatch_floor.py
+    vulkan_dot_path.cpp
     vulkan_geometry_sweep.cpp
     vulkan_memory_waitcnt.cpp
     vulkan_vopd_sweep.cpp
@@ -31,6 +34,7 @@ benchmarks/micro/
     vulkan_dispatch_floor.cpp
   kernels/
     vulkan/
+      dot_path.comp
       geometry_sweep.comp
       memory_waitcnt.comp
       vopd_sweep.comp
@@ -174,6 +178,68 @@ python3 benchmarks/micro/runners/vulkan_dispatch_floor.py \
 This is a dispatch/runtime diagnostic only. It does not establish RADV/ACO
 shader codegen quality; it tells us how much of a HIP vs Vulkan delta can be
 explained before any real math kernel runs.
+
+## Packed Dot Path
+
+`runners/dot_path.py` runs matched packed-int dot diagnostics on HIP and Vulkan.
+The retained variants cover q8 signed dot, q4 unsigned-byte by signed-q8 dot,
+q6 zero-point correction (`dot_u - 32 * q8_sum`), and a scalar q4 dequant
+baseline. HIP uses the same `__builtin_amdgcn_sudot4` idiom as the shipped GGUF
+diagnostic kernels; Vulkan requires `VK_KHR_shader_integer_dot_product` and
+uses `dotPacked4x8EXT`.
+
+Example paired run:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json
+
+HIPENGINE_HIP_ARCH=gfx1100 \
+python3 benchmarks/micro/runners/dot_path.py \
+  --backend hip \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --variants q8_signed:16,q4_unsigned:16,q6_zero:16,scalar_dequant:16 \
+  --n 32768 \
+  --body-iters 128 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 7 \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/hip-dot-path.json
+
+python3 benchmarks/micro/runners/dot_path.py \
+  --backend vulkan \
+  --environment-json benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
+  --environment-ref benchmarks/micro/results/gfx1100/w7900/environment-dot-path.json \
+  --gfx-arch gfx1100 \
+  --hardware-gpu "AMD Radeon Pro W7900" \
+  --variants q8_signed:16,q4_unsigned:16,q6_zero:16,scalar_dequant:16 \
+  --n 32768 \
+  --body-iters 128 \
+  --reps 20 \
+  --warmup 5 \
+  --samples 7 \
+  --debug-n 1024 \
+  --debug-body-iters 8 \
+  --quiet-shader-dump \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/vulkan-dot-path.json
+
+python3 benchmarks/micro/runners/dot_path.py \
+  --compare benchmarks/micro/results/gfx1100/w7900/hip-dot-path.json \
+            benchmarks/micro/results/gfx1100/w7900/vulkan-dot-path.json \
+  --pretty \
+  --out benchmarks/micro/results/gfx1100/w7900/dot-path-comparison.json
+```
+
+The runner records CPU-oracle correctness, timing, HIP code-object metadata,
+RADV final shader disassembly stats, final dot4 counts, waitcnt/load counts,
+wave/subgroup size, HIP scratch/spill evidence, and SPIR-V `OpSDot`/`OpSUDot`
+counts for the Vulkan rows.
 
 ## F32 GEMV Geometry Sweep
 
