@@ -146048,3 +146048,22 @@ graphless decode launch-collapse path without regressing target/serial parity.
   **very large, systemic path** for a maintainable Vulkan backend with
   server/profiling/parity coverage. Hand-ISA candidates are restricted to
   stable hot inner loops where disassembly proves LLVM codegen is the blocker.
+
+## 2026-07-07 - benchmarks-micro worktree and scaffold
+
+- Created a clean sibling worktree `/home/lhl/hipEngine-benchmarks-micro` on new
+  branch `benchmarks-micro` from current `main` commit `20e1575d`, leaving the
+  untracked benchmark artifact pile in `/home/lhl/hipEngine-main` untouched.
+- Added `benchmarks/micro/` with a README, retained-result/environment JSON
+  schemas, an empty `results/` anchor, and a dependency-free
+  `collect_env.py` environment collector for git, host, HIP/ROCm, Vulkan/Mesa,
+  and GPU metadata.
+- Added `tests/test_micro_collect_env.py` to exercise the collector without
+  ROCm/Vulkan device probes.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/collect_env.py`,
+  `python3 benchmarks/micro/collect_env.py --skip-device-probes --pretty --out /tmp/hipengine-micro-env-smoke.json`,
+  `python3 -m json.tool /tmp/hipengine-micro-env-smoke.json >/dev/null`, and
+  `PYTHONPATH=. pytest -q tests/test_micro_collect_env.py` all passed. An
+  earlier parallel `json.tool` invocation raced the writer and failed before
+  the sequential parse passed.
