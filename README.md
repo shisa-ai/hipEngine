@@ -142,42 +142,42 @@ With `-ub 512`:
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation is competitive with current local llama.cpp builds on the same W7900/GPU0 host. The W7900 table below combines the hipEngine PARO refresh from `2026-06-14`, the hipEngine GGUF Q4_K_M final current-tree rerun from `2026-06-21`, and the llama.cpp Q4_K_M HIP/Vulkan sweeps from `2026-06-16`. All hipEngine rows use the hermetic TheRock ROCm 7.13 wrapper from `scripts/run_w7900_readme_refresh.sh` (`HIP version: 7.13.26162-1140233ffe`) and one resident max-context session for 2 warmups + 5 measured in-session repetitions per shape. Direct non-hermetic W7900 shell runs can under-report GGUF prefill while leaving decode in-family, so retained rows must use the wrapper. llama.cpp rows use Q4_K_M GGUF split prefill/decode with f16 KV and one `llama-bench` repetition per phase while sampling W7900 whole-card VRAM. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The GGUF AR loader accepts current MTP-bearing GGUF files by ignoring trailing `blk.40.nextn.*` predictor tensors while keeping strict mapping for the 40 executable AR layers.
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 PARO path remains competitive with current local llama.cpp builds on the same W7900/GPU0 host. The W7900 table below is the `2026-07-07` clean-worktree refresh (`b4edca09`, run tag `20260707-104756`) for hipEngine PARO, hipEngine GGUF Q4_K_M, llama.cpp HIP/Vulkan Q4_K_M, and the W7900 concurrency rows. All hipEngine rows use the hermetic TheRock ROCm 7.13 wrapper from `scripts/run_w7900_readme_refresh.sh` (`HIP version: 7.13.26162-1140233ffe`) and one resident max-context session for 2 warmups + 5 measured in-session repetitions per shape. GGUF graph replay has been retired, so the GGUF column is the current eager resident path and supersedes older graph-replay-derived rows. llama.cpp rows use the same MTP-bearing Q4_K_M GGUF, split prefill/decode with f16 KV, and one `llama-bench` repetition per phase while sampling W7900 whole-card VRAM. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The GGUF AR loader accepts current MTP-bearing GGUF files by ignoring trailing `blk.40.nextn.*` predictor tensors while keeping strict mapping for the 40 executable AR layers.
 
 ### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 2729.701 | 2109.6 | 2515.628 | **2822.688** |
-| 1K/128 | **2906.950** | 2331.3 | 2430.947 | 2710.994 |
-| 4K/128 | **2879.578** | 2332.8 | 2303.237 | 2581.819 |
-| 32K/128 | **2079.424** | 1799.8 | 1685.089 | 1968.760 |
-| 64K/128 | **1559.096** | 1398.1 | 1324.775 | 1411.790 |
-| 128K/128 | 1053.919 | 971.1 | 918.128 | **1081.646** |
+| 512/128 | **2796.853** | 653.979 | 2502.690 | 2731.086 |
+| 1K/128 | **2917.115** | 664.564 | 2423.728 | 2642.684 |
+| 4K/128 | **2904.920** | 668.125 | 2294.828 | 2539.920 |
+| 32K/128 | **2103.724** | 635.321 | 1680.677 | 1950.575 |
+| 64K/128 | **1575.284** | 578.702 | 1319.054 | 1417.008 |
+| 128K/128 | 1063.951 | 490.289 | 913.108 | **1075.764** |
 
 ### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **115.227** | 106.5 | 79.568 | 106.235 |
-| 1K/128 | 102.927 | 95.8 | 79.256 | **106.204** |
-| 4K/128 | **105.253** | 97.1 | 78.688 | 102.556 |
-| 32K/128 | **91.965** | 84.9 | 71.842 | 91.644 |
-| 64K/128 | 77.666 | 72.4 | 66.453 | **83.326** |
-| 128K/128 | 60.349 | 57.2 | 57.713 | **70.476** |
+| 512/128 | **112.207** | 35.838 | 79.603 | 107.216 |
+| 1K/128 | 102.458 | 35.610 | 79.498 | **106.851** |
+| 4K/128 | **102.918** | 34.836 | 78.627 | 102.677 |
+| 32K/128 | **91.745** | 35.162 | 72.228 | 91.480 |
+| 64K/128 | 77.213 | 35.592 | 66.437 | **83.106** |
+| 128K/128 | 59.999 | 35.426 | 57.712 | **70.479** |
 
 ### Peak GiB (lower is better)
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_M | llama.cpp HIP Q4_K_M | llama.cpp Vulkan Q4_K_M |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **21.029** | 24.985 | 21.621 | 21.261 |
-| 1K/128 | 21.241 | 24.985 | 21.633 | **21.220** |
-| 4K/128 | 21.973 | 24.985 | 21.690 | **21.278** |
-| 32K/128 | 22.082 | 24.985 | 22.232 | **21.855** |
-| 64K/128 | **22.082** | 24.985 | 22.910 | 22.512 |
-| 128K/128 | **22.124** | 24.985 | 24.103 | 23.824 |
+| 512/128 | **21.029** | 25.492 | 21.598 | 21.260 |
+| 1K/128 | 21.241 | 25.492 | 21.610 | **21.220** |
+| 4K/128 | 21.973 | 25.492 | 21.666 | **21.278** |
+| 32K/128 | 22.082 | 25.492 | 22.208 | **21.855** |
+| 64K/128 | **22.082** | 25.492 | 22.887 | 22.512 |
+| 128K/128 | **22.124** | 25.492 | 24.080 | 23.824 |
 
-W7900 row sources: PARO from the prior `2026-06-14` refresh, GGUF from the corrected hermetic `2026-06-21` final Q4_K_M current-tree rerun ([hipEngine GGUF](benchmarks/results/2026-06-21-w7900-gpu0-gguf-q4km-final-readme-sweep.json)), llama.cpp from the `2026-06-16` Q4_K_M sweep ([HIP](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-hip-q4km-f16kv-sweep.json), [Vulkan](benchmarks/results/2026-06-16-w7900-gpu0-llamacpp-vulkan-q4km-f16kv-sweep.json)). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`). The GGUF peak memory includes a recent chunk-outer loop prefill rewrite that reduced scratch by ~1.3 GiB (from 26.3 to 25.0 GiB). The corrected final GGUF rerun kept stable IDs and stayed near the `2026-06-17` row; all GGUF columns use Q4_K_M, while PARO is a different quant/format (`w4_paro`).
+W7900 row sources: [`summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json), [`hipEngine PARO`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-paro-packed-5run.json), [`hipEngine GGUF`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-gguf-q4km-5run.json), [`llama.cpp HIP`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json), and [`llama.cpp Vulkan`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json). hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`). PARO is stable versus the prior refresh (prefill within +0.3% to +2.5%, decode within -2.6% to -0.2%). GGUF is intentionally no longer using the retired graph-replay path; current eager Q4_K_M rows are slower than the superseded `2026-06-21` graph-derived rows and are tracked as the next optimization target. All GGUF columns use Q4_K_M, while PARO is a different quant/format (`w4_paro`).
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 
@@ -306,35 +306,36 @@ the batch; *per-sequence* is tok/s seen by one request. See
 
 ### gfx1100 / W7900 decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128)
 
-This current-code diagnostic uses median-of-3 runs. hipEngine uses PARO W4A16
-with BF16 KV. llama.cpp uses the available Qwen3.6 GGUF `UD-Q4_K_S` with Vulkan
-RADV, f16 KV, exact token-id prompts, and `llama-server -np c -c 1024*c`, so it
-is a useful server-side comparison but not same-quant. vLLM uses a local
-`v0.22.1rc1.dev499+g470229c37.d20260613` source build with
+This current-code diagnostic uses median-of-3 runs from the same `2026-07-07`
+W7900 refresh. hipEngine uses PARO W4A16 with BF16 KV. llama.cpp uses the
+MTP-bearing Qwen3.6 GGUF `UD-Q4_K_M` with Vulkan RADV, f16 KV, exact token-id
+prompts, and `llama-server -np c -c 1024*c`, so it is a useful server-side
+comparison but not same-quant. vLLM uses a local
+`v0.22.1rc1.dev499+g470229c37.d20260613` source build with the local snapshot of
 `palmfuture/Qwen3.6-35B-A3B-GPTQ-Int4`, no MTP, exact token-id prompts, and the
 OpenAI `/v1/completions` API. vLLM values are wall-throughput because the OpenAI
 response path does not expose llama.cpp-style pure decode timings.
 
 | Concurrency `c` | hipEngine aggregate | hipEngine per-seq | llama.cpp Vulkan aggregate | llama.cpp per-seq | vLLM OpenAI aggregate | vLLM per-seq |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | **115.36** | **115.36** | 105.76 | 105.76 | 20.04 | 20.04 |
-| 2 | 115.35 | 57.67 | **157.38** | **78.69** | 38.42 | 19.21 |
-| 4 | **160.74** | **40.19** | 75.29 | 18.82 | 73.28 | 18.32 |
-| 8 | **190.15** | **23.77** | 25.15 | 3.14 | 116.56 | 14.57 |
+| 1 | **114.98** | **114.98** | 105.63 | 105.63 | 21.32 | 21.32 |
+| 2 | 113.34 | 56.67 | **156.06** | **78.03** | 40.61 | 20.31 |
+| 4 | **158.25** | **39.56** | 76.52 | 19.13 | 78.41 | 19.60 |
+| 8 | **189.59** | **23.70** | 26.47 | 3.31 | 116.44 | 14.55 |
 
 hipEngine aggregate throughput scales from c1 to c8 by **1.65x**. The `c=2`
 aggregate is effectively flat versus `c=1`; this is the known small-context
 `c>1` dispatch-bound regime. llama.cpp wins this protocol at c=2, then falls off
 at c4/c8 with this server/Vulkan setup. vLLM now runs via the local source build;
 this no-MTP OpenAI-wall measurement is slower than hipEngine, but it reaches
-116.56 aggregate tok/s at c8 and its Prometheus post-TTFT aggregate estimates are
-20.62/40.15/77.22/126.95 tok/s for c1/c2/c4/c8.
+116.44 aggregate tok/s at c8 and its Prometheus post-TTFT aggregate estimates are
+22.00/42.30/83.91/127.25 tok/s for c1/c2/c4/c8.
 
 Source artifacts:
-[`hipEngine W7900`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-hipengine-concurrency-w7900/summary.json),
-[`llama.cpp Vulkan W7900`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-llamacpp-vulkan-concurrency-w7900/summary.json),
-[`vLLM local build W7900`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
-[`full W7900 refresh summary`](benchmarks/results/2026-06-14-w7900-gpu0-readme-refresh-20260614-141414-summary.json),
+[`hipEngine W7900`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-concurrency-w7900/summary.json),
+[`llama.cpp Vulkan W7900`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-concurrency-w7900/summary.json),
+[`vLLM local build W7900`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json),
+[`full W7900 refresh summary`](benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json),
 and [`vLLM RDNA3 notes`](docs/VLLM_RDNA3.md).
 
 ### gfx1151 / Radeon 8060S decode tok/s vs concurrency (Qwen3.6 35B-A3B, 512/128)
@@ -388,9 +389,10 @@ decode-repacked T16 layouts, and fast-path controls.
 
 Current caveats:
 
-- PARO models take ~24s to load on the W7900 test host; GGUF currently takes
-  about 60s because decode-repack happens on load. On-disk caching could reduce
-  startup time later, but would require additional storage for repacked layouts.
+- PARO models take ~22s to load on the W7900 test host in the current refresh;
+  GGUF Q4_K_M currently takes about 74s because decode-repack happens on load.
+  On-disk caching could reduce startup time later, but would require additional
+  storage for repacked layouts.
 - GGUF has higher base weight residency than packed PARO before KV cache is the
   deciding factor. The full-attention KV slope is the same 10-layer Qwen3.6
   shape; the 24 GiB long-context gap is mostly the loaded-weight baseline.
