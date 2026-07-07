@@ -145887,3 +145887,93 @@ python3 scripts/gguf_mtp_bench.py \
   python3 -m pytest tests/test_qwen35_gguf_bench_metadata.py -q
   ```
   Result: compile OK; `4 passed`.
+
+## 2026-07-07 - W7900 README refresh rerun
+
+- Reran the W7900/GPU0 README benchmark suite from a detached clean worktree at
+  `b4edca09` after retiring the stale GGUF graph-replay path:
+  ```bash
+  RUN_TAG=20260707-104756
+  WT=/tmp/hipengine-readme-w7900-${RUN_TAG}
+  git worktree add --detach "$WT" HEAD
+  OUTDIR=/home/lhl/hipEngine-mtp-gguf/benchmarks/results \
+    RUN_TAG="$RUN_TAG" REPO_ROOT="$WT" \
+    "$WT/scripts/run_w7900_readme_refresh.sh" hipengine
+  OUTDIR=/home/lhl/hipEngine-mtp-gguf/benchmarks/results \
+    RUN_TAG="$RUN_TAG" REPO_ROOT="$WT" \
+    LLAMACPP_Q4KM_MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    "$WT/scripts/run_w7900_readme_refresh.sh" llamacpp
+  ```
+- hipEngine PARO 5-run medians (prefill/decode tok/s at
+  512/1K/4K/32K/64K/128K over 128 decode tokens):
+  **2796.9/112.2**, **2917.1/102.5**, **2904.9/102.9**,
+  **2103.7/91.7**, **1575.3/77.2**, **1064.0/60.0**. Versus the
+  `2026-06-14` refresh, prefill is +0.3% to +2.5% and decode is -2.6% to
+  -0.2%; no PARO regression.
+- hipEngine GGUF Q4_K_M current eager resident path medians:
+  **654.0/35.8**, **664.6/35.6**, **668.1/34.8**, **635.3/35.2**,
+  **578.7/35.6**, **490.3/35.4**. This intentionally supersedes the old
+  `2026-06-21` graph-derived rows after GGUF graph replay retirement; the old
+  prefill/decode rows drop by -69.0%..-49.5% / -66.3%..-38.1%. Final token IDs
+  stayed stable (`[9707]*5` for every shape), and tracked peak moved
+  **24.985 -> 25.492 GiB**.
+- llama.cpp same-model Q4_K_M refresh:
+  - HIP prefill/decode at 512/1K/4K/32K/64K/128K:
+    **2502.7/79.6**, **2423.7/79.5**, **2294.8/78.6**,
+    **1680.7/72.2**, **1319.1/66.4**, **913.1/57.7**.
+  - Vulkan prefill/decode:
+    **2731.1/107.2**, **2642.7/106.9**, **2539.9/102.7**,
+    **1950.6/91.5**, **1417.0/83.1**, **1075.8/70.5**.
+- The first concurrency phase failed because the documented temporary fixture
+  `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json` was no
+  longer present. Restored a deterministic fixture from tracked
+  `fixtures/dflash/stable_prompts.jsonl` plus fixed-seed padding
+  (`prompt_ids_sha256=dcfa065adee90452021a6783bbba3252e7e4efb51e18d48fb9fecbd24a9a2baf`),
+  then reran:
+  ```bash
+  OUTDIR=/home/lhl/hipEngine-mtp-gguf/benchmarks/results \
+    RUN_TAG=20260707-104756 REPO_ROOT=/tmp/hipengine-readme-w7900-20260707-104756 \
+    LLAMACPP_Q4KM_MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    /tmp/hipengine-readme-w7900-20260707-104756/scripts/run_w7900_readme_refresh.sh concurrency
+  ```
+  Median aggregate decode tok/s at c=1/2/4/8: hipEngine PARO
+  **114.98/113.34/158.25/189.59**, llama.cpp Vulkan Q4_K_M
+  **105.63/156.06/76.52/26.47**.
+- The first vLLM server attempt against the repo id hit a root-owned HF cache
+  `PermissionError`; reran with the equivalent local snapshot path:
+  ```bash
+  OUTDIR=/home/lhl/hipEngine-mtp-gguf/benchmarks/results \
+    RUN_TAG=20260707-104756 REPO_ROOT=/tmp/hipengine-readme-w7900-20260707-104756 \
+    VLLM_MODEL=/home/lhl/.cache/huggingface/hub/models--palmfuture--Qwen3.6-35B-A3B-GPTQ-Int4/snapshots/d1fef185160f938fca00c3c664f21250dd544d63 \
+    /tmp/hipengine-readme-w7900-20260707-104756/scripts/run_w7900_readme_refresh.sh vllm
+  ```
+  vLLM OpenAI wall aggregate at c=1/2/4/8 measured
+  **21.32/40.61/78.41/116.44 tok/s**; post-TTFT aggregate medians were
+  **22.00/42.30/83.91/127.25 tok/s**. Server was stopped after the sweep and
+  port 8008 is clear.
+- Artifacts promoted:
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json`
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-paro-packed-5run.json`
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-gguf-q4km-5run.json`
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json`
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json`
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-concurrency-w7900/summary.json`
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-concurrency-w7900/summary.json`
+  - `benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json`
+- Validation:
+  ```bash
+  python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
+  rocminfo | grep -E 'Name:|gfx' | head -n 40
+  /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench --list-devices
+  /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench --list-devices
+  for f in \
+    benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-*.json \
+    benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-concurrency-w7900/summary.json \
+    benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-concurrency-w7900/summary.json; do
+    python3 -m json.tool "$f" >/dev/null
+  done
+  git diff --check
+  ```
+  HIP loaded; `rocminfo` and llama.cpp device lists mapped GPU0/Vulkan0 to the
+  Radeon Pro W7900; all promoted JSON artifacts validated and current artifact
+  links resolved.

@@ -1,0 +1,353 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-07",
+  "created_at": "2026-07-07T13:18:32.100265+00:00",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "gfx1100",
+    "hip_visible_devices": "0",
+    "amdgpu_card": "card1",
+    "vram_total_gib": 44.984375
+  },
+  "measured_code_commit": "b4edca09",
+  "clean_worktree": "/tmp/hipengine-readme-w7900-20260707-104756",
+  "run_tag": "20260707-104756",
+  "runner": "scripts/run_w7900_readme_refresh.sh",
+  "runner_notes": "hipEngine, llama.cpp, concurrency, and vLLM phases were run from a detached clean worktree at b4edca09 with OUTDIR pointing to this checkout. llama.cpp used LLAMACPP_Q4KM_MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf. The /tmp concurrency fixture was restored before the successful concurrency/vLLM phases from fixtures/dflash/stable_prompts.jsonl plus deterministic padding; prompt_ids_sha256=dcfa065adee90452021a6783bbba3252e7e4efb51e18d48fb9fecbd24a9a2baf. The first vLLM server attempt against the repo id hit a root-owned Hugging Face cache PermissionError, so the retained vLLM rerun used the equivalent local snapshot path.",
+  "software": {
+    "therock_hipcc_version_file": "/tmp/hipengine-readme-runs/20260707-104756/hipcc-version-713.txt",
+    "therock_hipcc_first_line": "HIP version: 7.13.26162-1140233ffe",
+    "llamacpp_hip_binary": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-bench",
+    "llamacpp_hip_commit": "263cc04a5",
+    "llamacpp_vulkan_binary": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench",
+    "llamacpp_vulkan_commit": "263cc04a5",
+    "vllm_env": "/home/lhl/mambaforge/envs/vllm",
+    "vllm_version": "0.22.1rc1.dev499+g470229c37.d20260613"
+  },
+  "models": {
+    "hipengine_paro": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "hipengine_gguf_q4km": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "llamacpp_q4km": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "vllm": "/home/lhl/.cache/huggingface/hub/models--palmfuture--Qwen3.6-35B-A3B-GPTQ-Int4/snapshots/d1fef185160f938fca00c3c664f21250dd544d63"
+  },
+  "artifacts": {
+    "hipengine_paro": "benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-paro-packed-5run.json",
+    "hipengine_gguf_q4km": "benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-gguf-q4km-5run.json",
+    "llamacpp_hip_q4km": "benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-hip-q4km-f16kv.json",
+    "llamacpp_vulkan_q4km": "benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json",
+    "hipengine_concurrency": "benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-hipengine-concurrency-w7900/summary.json",
+    "llamacpp_vulkan_concurrency": "benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-concurrency-w7900/summary.json",
+    "vllm_concurrency": "benchmarks/results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-vllm-localbuild-gptq-int4-concurrency-c1-c8-w7900.json"
+  },
+  "main_sweep": {
+    "hipengine_paro": {
+      "512/128": {
+        "prefill_tok_s": 2796.8531446182037,
+        "decode_tok_s": 112.20744790961858,
+        "peak_gib": 21.02878673374653,
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      },
+      "1K/128": {
+        "prefill_tok_s": 2917.114822930383,
+        "decode_tok_s": 102.45813294131227,
+        "peak_gib": 21.24085719883442,
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      },
+      "4K/128": {
+        "prefill_tok_s": 2904.920495459851,
+        "decode_tok_s": 102.91809777312453,
+        "peak_gib": 21.973118856549263,
+        "final_token_ids": [
+          17,
+          17,
+          17,
+          17,
+          17
+        ]
+      },
+      "32K/128": {
+        "prefill_tok_s": 2103.7243859843115,
+        "decode_tok_s": 91.74452193397062,
+        "peak_gib": 22.082493856549263,
+        "final_token_ids": [
+          348,
+          348,
+          348,
+          348,
+          348
+        ]
+      },
+      "64K/128": {
+        "prefill_tok_s": 1575.2844653489828,
+        "decode_tok_s": 77.21274615490633,
+        "peak_gib": 22.082493856549263,
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      },
+      "128K/128": {
+        "prefill_tok_s": 1063.9512869126277,
+        "decode_tok_s": 59.9991248001123,
+        "peak_gib": 22.123909033834934,
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ]
+      }
+    },
+    "hipengine_gguf_q4km": {
+      "512/128": {
+        "prefill_tok_s": 653.9792052667674,
+        "decode_tok_s": 35.83767706623187,
+        "peak_gib": 25.491525173187256,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "1K/128": {
+        "prefill_tok_s": 664.5637968775113,
+        "decode_tok_s": 35.60963034215447,
+        "peak_gib": 25.491525173187256,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "4K/128": {
+        "prefill_tok_s": 668.1251144121889,
+        "decode_tok_s": 34.83594443873104,
+        "peak_gib": 25.491525173187256,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "32K/128": {
+        "prefill_tok_s": 635.3214931078867,
+        "decode_tok_s": 35.1616686730678,
+        "peak_gib": 25.491525173187256,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "64K/128": {
+        "prefill_tok_s": 578.7023484932924,
+        "decode_tok_s": 35.59154837890224,
+        "peak_gib": 25.491525173187256,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "128K/128": {
+        "prefill_tok_s": 490.28910279861043,
+        "decode_tok_s": 35.42574992010405,
+        "peak_gib": 25.491525173187256,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      }
+    },
+    "llamacpp_hip_q4km": {
+      "512/128": {
+        "prefill_tok_s": 2502.690294,
+        "decode_tok_s": 79.602687,
+        "peak_gib": 21.598186492919922,
+        "prefill_peak_gib": 21.547840118408203,
+        "decode_peak_gib": 21.598186492919922
+      },
+      "1K/128": {
+        "prefill_tok_s": 2423.728472,
+        "decode_tok_s": 79.49782,
+        "peak_gib": 21.609882354736328,
+        "prefill_peak_gib": 21.559532165527344,
+        "decode_peak_gib": 21.609882354736328
+      },
+      "4K/128": {
+        "prefill_tok_s": 2294.82802,
+        "decode_tok_s": 78.627389,
+        "peak_gib": 21.6663818359375,
+        "prefill_peak_gib": 21.616107940673828,
+        "decode_peak_gib": 21.6663818359375
+      },
+      "32K/128": {
+        "prefill_tok_s": 1680.676502,
+        "decode_tok_s": 72.228208,
+        "peak_gib": 22.208057403564453,
+        "prefill_peak_gib": 22.158031463623047,
+        "decode_peak_gib": 22.208057403564453
+      },
+      "64K/128": {
+        "prefill_tok_s": 1319.054463,
+        "decode_tok_s": 66.436738,
+        "peak_gib": 22.88693618774414,
+        "prefill_peak_gib": 22.837432861328125,
+        "decode_peak_gib": 22.88693618774414
+      },
+      "128K/128": {
+        "prefill_tok_s": 913.107788,
+        "decode_tok_s": 57.71236,
+        "peak_gib": 24.080379486083984,
+        "prefill_peak_gib": 24.031753540039062,
+        "decode_peak_gib": 24.080379486083984
+      }
+    },
+    "llamacpp_vulkan_q4km": {
+      "512/128": {
+        "prefill_tok_s": 2731.085535,
+        "decode_tok_s": 107.216413,
+        "peak_gib": 21.260208129882812,
+        "prefill_peak_gib": 21.25489044189453,
+        "decode_peak_gib": 21.260208129882812
+      },
+      "1K/128": {
+        "prefill_tok_s": 2642.68445,
+        "decode_tok_s": 106.850629,
+        "peak_gib": 21.219600677490234,
+        "prefill_peak_gib": 21.21446990966797,
+        "decode_peak_gib": 21.219600677490234
+      },
+      "4K/128": {
+        "prefill_tok_s": 2539.920298,
+        "decode_tok_s": 102.67695,
+        "peak_gib": 21.27817153930664,
+        "prefill_peak_gib": 21.273029327392578,
+        "decode_peak_gib": 21.27817153930664
+      },
+      "32K/128": {
+        "prefill_tok_s": 1950.574981,
+        "decode_tok_s": 91.479976,
+        "peak_gib": 21.855392456054688,
+        "prefill_peak_gib": 21.85015869140625,
+        "decode_peak_gib": 21.855392456054688
+      },
+      "64K/128": {
+        "prefill_tok_s": 1417.008126,
+        "decode_tok_s": 83.105569,
+        "peak_gib": 22.511672973632812,
+        "prefill_peak_gib": 22.253551483154297,
+        "decode_peak_gib": 22.511672973632812
+      },
+      "128K/128": {
+        "prefill_tok_s": 1075.764402,
+        "decode_tok_s": 70.478703,
+        "peak_gib": 23.824230194091797,
+        "prefill_peak_gib": 23.818973541259766,
+        "decode_peak_gib": 23.824230194091797
+      }
+    }
+  },
+  "concurrency": {
+    "hipengine_paro": {
+      "1": {
+        "decode_tok_s_aggregate_median": 114.97649088753315,
+        "decode_tok_s_per_request_median": 114.97649088753315
+      },
+      "2": {
+        "decode_tok_s_aggregate_median": 113.33772757887225,
+        "decode_tok_s_per_request_median": 56.668863789436124
+      },
+      "4": {
+        "decode_tok_s_aggregate_median": 158.25035127950085,
+        "decode_tok_s_per_request_median": 39.56258781987521
+      },
+      "8": {
+        "decode_tok_s_aggregate_median": 189.5895301799036,
+        "decode_tok_s_per_request_median": 23.69869127248795
+      }
+    },
+    "llamacpp_vulkan_q4km": {
+      "1": {
+        "decode_tok_s_aggregate_median": 105.63461646381519,
+        "decode_tok_s_per_request_median": 105.63461646381519,
+        "e2e_tok_s_aggregate_median": 88.42628450916878
+      },
+      "2": {
+        "decode_tok_s_aggregate_median": 156.05987822452627,
+        "decode_tok_s_per_request_median": 78.02993911226314,
+        "e2e_tok_s_aggregate_median": 110.04784809875773
+      },
+      "4": {
+        "decode_tok_s_aggregate_median": 76.5157592575102,
+        "decode_tok_s_per_request_median": 19.12893981437755,
+        "e2e_tok_s_aggregate_median": 67.39335424376058
+      },
+      "8": {
+        "decode_tok_s_aggregate_median": 26.473890552024315,
+        "decode_tok_s_per_request_median": 3.3092363190030394,
+        "e2e_tok_s_aggregate_median": 21.35198868684194
+      }
+    },
+    "vllm_gptq_int4": {
+      "1": {
+        "decode_tok_s_aggregate_median": 21.31564599753692,
+        "decode_tok_s_per_request_median": 21.31564599753692,
+        "e2e_tok_s_aggregate_median": 21.315241943583338,
+        "post_ttft_tok_s_aggregate_median": 21.99862551336322
+      },
+      "2": {
+        "decode_tok_s_aggregate_median": 40.613448279027786,
+        "decode_tok_s_per_request_median": 20.306724139513893,
+        "e2e_tok_s_aggregate_median": 40.6123977405074,
+        "post_ttft_tok_s_aggregate_median": 42.300920660202735
+      },
+      "4": {
+        "decode_tok_s_aggregate_median": 78.41259535098774,
+        "decode_tok_s_per_request_median": 19.603148837746936,
+        "e2e_tok_s_aggregate_median": 78.40826923068998,
+        "post_ttft_tok_s_aggregate_median": 83.9115796145942
+      },
+      "8": {
+        "decode_tok_s_aggregate_median": 116.4357795625955,
+        "decode_tok_s_per_request_median": 14.554472445324437,
+        "e2e_tok_s_aggregate_median": 116.42505825523853,
+        "post_ttft_tok_s_aggregate_median": 127.24932153115282
+      }
+    }
+  },
+  "known_invalidated_rows": {
+    "hipengine_gguf_graph_replay": "Prior GGUF README rows that depended on capture_decode_graph are superseded; current GGUF resident README sweep uses eager decode because GGUF graph replay was retired."
+  }
+}
