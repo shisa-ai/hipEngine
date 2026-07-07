@@ -2,7 +2,8 @@
 
 Last updated: 2026-07-08 (gfx1151 HIP vs Vulkan attribution microbenches on
 Radeon 8060S/RADV Mesa 26.1.2 now retain dispatch, f32 geometry, and geometry
-ISA/stat evidence, targeted VOPD scheduling, and memory/waitcnt sweeps.
+ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, and packed
+dot-path diagnostics.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -25,7 +26,16 @@ rows while gather is essentially tied (**1.02x**). HIP reports wave32 and
 **0 scratch/spills**; RADV final shaders are wave64 with only estimated
 register spans available. Classified **diagnostic_unclassified**: strong
 memory-side evidence, but not yet a clean `compiler_aco` proof until wave and
-specialization controls land. Artifacts:
+specialization controls land. Packed dot-path sweep: q8 signed, q4
+unsigned-byte by signed-q8, q6 zero-corrected, and scalar q4 rows all pass exact
+sampled CPU oracle; HIP and RADV both emit final dot4 instructions in q8/q4/q6
+rows, HIP reports **0 scratch/spills**, and Vulkan remains **3.29x-3.43x**
+faster, including scalar dequant. Classified **diagnostic_unclassified**: this
+rules out missed HIP dot4, but not wave/fixed-shape/surrounding scheduling
+confounds. Artifacts:
+[`micro/results/gfx1151/strix-halo/dot-path-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-comparison.json),
+[`micro/results/gfx1151/strix-halo/hip-dot-path.json`](micro/results/gfx1151/strix-halo/hip-dot-path.json),
+[`micro/results/gfx1151/strix-halo/vulkan-dot-path.json`](micro/results/gfx1151/strix-halo/vulkan-dot-path.json),
 [`micro/results/gfx1151/strix-halo/memory-waitcnt-comparison.json`](micro/results/gfx1151/strix-halo/memory-waitcnt-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-memory-waitcnt.json`](micro/results/gfx1151/strix-halo/hip-memory-waitcnt.json),
 [`micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json`](micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json),
