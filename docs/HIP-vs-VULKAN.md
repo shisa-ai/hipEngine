@@ -40,6 +40,13 @@ conclusion is split:
   disassemblies. Vulkan is only modestly faster in the heavier independent and
   mixed/dequant rows, while HIP is faster in independent-2, independent-4, and
   dependent-4.
+- The retained memory/waitcnt sweep is the first direct evidence that Vulkan has
+  a real advantage on memory-side scheduling/access shapes. On matched
+  device-memory load+accumulate rows, Vulkan is `1.30x-2.35x` faster for most
+  coalesced, strided, and interleave variants; gather is essentially tied
+  (`1.02x`). HIP reports no scratch and no spills, while RADV still exposes only
+  estimated register spans. Simple rows show slightly fewer RADV waitcnt-family
+  instructions, but wave32 vs wave64 is still a confound.
 - We still cannot claim `compiler_aco` for the f32 geometry gap. RADV official
   VGPR/SGPR allocation counts were not exposed by `RADV_DEBUG=shaders`, and the
   current evidence mixes HIP runtime `blockDim` code with Vulkan specialization
@@ -49,9 +56,11 @@ So the current project-level answer is **not** "HIP is simply slower because
 ACO is better." The retained answer is: Vulkan has a proven dispatch/runtime
 advantage on gfx1151; Vulkan has a large matched-math advantage in one f32
 diagnostic; and targeted VOPD evidence points away from "ACO wins by finding
-dual issue that LLVM misses." The remaining compiler-facing question is now
-narrower: memory scheduling/waitcnt, dot-instruction lowering, wave/subgroup
-mode, and specialization behavior.
+dual issue that LLVM misses." Memory/waitcnt evidence now looks like a serious
+part of the gap, but still needs a wave-mode and specialization control before
+it becomes a clean LLVM issue. The remaining compiler-facing questions are now
+dot-instruction lowering, wave/subgroup mode, fixed-shape specialization, and
+whether the memory/waitcnt delta predicts real inference slices.
 
 Operationally, keep the Vulkan work as an attribution/probe path until real
 inference slices prove production value. The HIP roadmap should first try to
@@ -69,22 +78,20 @@ items or carefully scoped hand-ISA candidates.
 
 ## What To Test Next
 
-Do **not** spend more gfx1151 time on dispatch-only, broad geometry-only, or
-generic VOPD sweeps. The next useful tranche is decision-grade controls:
+Do **not** spend more gfx1151 time on dispatch-only, broad geometry-only,
+generic VOPD, or generic memory sweeps. The next useful tranche is
+decision-grade controls:
 
-1. Memory/waitcnt microbenches: coalesced load+accumulate, strided
-   load+accumulate, gather IDs, and load-compute interleave. These decide
-   whether the f32 geometry gap is memory scheduling/waitcnt quality rather than
-   generic ALU scheduling.
-2. Dot-path microbenches: q8_1/q4 or q8_0 shapes that prove whether HIP and
+1. Dot-path microbenches: q8_1/q4 or q8_0 shapes that prove whether HIP and
    Vulkan both emit the intended RDNA3 dot instructions. If both do and timing
    is close, the remaining work is layout/quant economics; if HIP misses the
    instruction or surrounds it with worse scheduling, that becomes an LLVM or
    hand-ISA target.
-3. HIP specialization controls for the f32 geometry kernel: compile fixed
-   workgroup-size variants or otherwise remove runtime `blockDim` address/control
-   overhead, then compare against Vulkan specialization constants.
-4. One representative inference slice after the microbench deltas are
+2. HIP wave/specialization controls for the f32 geometry and memory kernels:
+   compile fixed workgroup-size variants, test HIP wave64 where practical, and
+   remove runtime `blockDim` address/control overhead before attributing the
+   remaining gap to LLVM scheduling.
+3. One representative inference slice after the microbench deltas are
    classified. The best first slices are selected-MoE small-K or q6 lm-head
    rowtile, because they map directly to exposed hipEngine buckets.
 
@@ -92,16 +99,15 @@ Priority summary:
 
 | Priority | Test | Decision It Enables |
 | --- | --- | --- |
-| P0 | Memory/waitcnt load+accumulate and interleave | Decide whether the geometry gap is an LLVM waitcnt/scheduling target |
 | P0 | Dot-path q8/q4/q6 kernels with dot ISA counts | Decide between LLVM intrinsic/pattern work, hand-ISA, or layout-only work |
+| P0 | HIP wave64/fixed-shape memory controls | Decide whether retained memory/waitcnt wins are wave-mode, specialization, or LLVM scheduling |
 | P1 | Fixed-workgroup HIP geometry variants | Remove the Vulkan specialization-constant vs HIP runtime-`blockDim` confound |
 | P1 | One real selected-MoE or q6 lm-head slice | Check whether the microbench diagnosis predicts a shipped hot bucket |
 | P2 | gfx1100/W7900 and 7900 XTX reruns | Check portability after the harnesses are classified on gfx1151 |
 
 Cross-GPU reruns on gfx1100/W7900 and 7900 XTX are important after the harnesses
 are stable. They should confirm portability of the gfx1151 conclusions, not
-replace the remaining memory/waitcnt, dot-path, specialization, and real-slice
-tests.
+replace the remaining dot-path, HIP wave/specialization, and real-slice tests.
 
 ## Current Retained Evidence
 
@@ -310,8 +316,70 @@ better VOPD pairing than LLVM/HIP. In this targeted family, LLVM/HIP is the
 backend emitting VOPD. Vulkan's modest wins on independent-8, mixed int+float,
 and dequant-like rows must come from something else: wave64 execution shape,
 non-VOPD scheduling, instruction selection, runtime/pipeline effects, or
-measurement noise. The next relevant compiler tests are memory/waitcnt and
-dot-path diagnostics, not more generic VOPD speculation.
+measurement noise. The next relevant compiler tests are dot-path diagnostics
+and HIP wave/specialization controls, not more generic VOPD speculation.
+
+### gfx1151 Memory / Waitcnt Sweep
+
+Retained artifact:
+`benchmarks/micro/results/gfx1151/strix-halo/memory-waitcnt-comparison.json`.
+Backend artifacts:
+`benchmarks/micro/results/gfx1151/strix-halo/hip-memory-waitcnt.json` and
+`benchmarks/micro/results/gfx1151/strix-halo/vulkan-memory-waitcnt.json`.
+The run uses the shared environment artifact
+`benchmarks/micro/results/gfx1151/strix-halo/environment-memory-waitcnt.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Vulkan driver: RADV, Mesa `26.1.2-arch2.1`.
+- Benchmark family: device-memory load+accumulate diagnostics with sampled CPU
+  oracle, N=`32768`, body iters=`128`, block size=`256`.
+- Variants: coalesced vector-width loads `1/2/4/8`, strided loads
+  `2/4/8/16`, gather-ID loads, and load/compute interleave
+  `1/2/4/8/16`.
+- Classification: `diagnostic_unclassified`, with strong memory/waitcnt
+  evidence but not yet a pure `compiler_aco` proof because wave32 vs wave64 and
+  RADV allocation-count visibility remain confounds.
+
+Retained timing and ISA summary:
+
+| Variant | HIP median | Vulkan median | Vulkan vs HIP | HIP GB/s | Vulkan GB/s | HIP wait/load | RADV wait/load |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| coalesced width 1 | `26.6127 us` | `16.8441 us` | `1.58x` | `630.42` | `996.03` | `4/1` | `3/1` |
+| coalesced width 2 | `44.6948 us` | `32.8837 us` | `1.36x` | `750.75` | `1020.40` | `5/2` | `4/2` |
+| coalesced width 4 | `282.1829 us` | `124.3344 us` | `2.27x` | `237.82` | `539.74` | `7/4` | `6/4` |
+| coalesced width 8 | `639.5150 us` | `289.0281 us` | `2.21x` | `209.87` | `464.38` | `11/8` | `10/8` |
+| strided stride 2 | `44.5751 us` | `31.4315 us` | `1.42x` | `376.38` | `533.77` | `4/1` | `3/1` |
+| strided stride 4 | `281.3058 us` | `119.6366 us` | `2.35x` | `59.64` | `140.23` | `4/1` | `3/1` |
+| strided stride 8 | `557.0604 us` | `269.2068 us` | `2.07x` | `30.12` | `62.32` | `4/1` | `3/1` |
+| strided stride 16 | `1144.5523 us` | `645.8128 us` | `1.77x` | `14.66` | `25.98` | `4/1` | `3/1` |
+| gather IDs | `493.0500 us` | `484.9378 us` | `1.02x` | `68.05` | `69.19` | `5/2` | `4/2` |
+| interleave unroll 1 | `25.8722 us` | `15.4284 us` | `1.68x` | `648.47` | `1087.42` | `4/1` | `3/1` |
+| interleave unroll 2 | `49.8455 us` | `38.2383 us` | `1.30x` | `673.17` | `877.51` | `5/2` | `4/2` |
+| interleave unroll 4 | `281.1671 us` | `128.7873 us` | `2.18x` | `238.68` | `521.08` | `6/4` | `6/4` |
+| interleave unroll 8 | `580.6280 us` | `288.4835 us` | `2.01x` | `231.16` | `465.25` | `10/8` | `10/8` |
+| interleave unroll 16 | `1611.1334 us` | `1428.9660 us` | `1.13x` | `166.61` | `187.85` | `13/16` | `18/16` |
+
+Register/stat summary:
+
+- All HIP and Vulkan rows pass the sampled CPU oracle with max abs `0.0`.
+- HIP reports wave32, no scratch, and no spills in all retained rows. HIP VGPR
+  rises with interleave width from `8` at unroll 1 to `36` at unroll 16.
+- RADV final shaders are wave64. Official RADV VGPR/SGPR allocation counts are
+  still unavailable; the artifact records estimated physical register spans.
+- Simple coalesced, strided, gather, and low-unroll interleave rows show one
+  fewer RADV waitcnt-family instruction than HIP at the same static load count.
+  Wider interleave rows have equal or higher RADV waitcnt counts, so waitcnt
+  count alone is not the whole story.
+
+Conclusion: memory/access scheduling is now a serious candidate for the Vulkan
+ceiling. Vulkan is consistently faster on coalesced, strided, and most
+interleave rows, while gather is essentially tied. This does **not** yet justify
+a clean LLVM `compiler_aco` issue because the retained rows still compare HIP
+wave32 against RADV wave64 and RADV allocation counts are estimated. The next
+control is HIP wave64/fixed-shape memory and geometry variants, plus dot-path
+tests that decide whether quant kernels are instruction-selection-bound.
 
 ## Questions To Answer
 
@@ -325,8 +393,9 @@ dot-path diagnostics, not more generic VOPD speculation.
    or does it regress because of occupancy/register pressure?
 4. **Dispatch/runtime:** Is Vulkan faster because individual shaders are faster,
    or because command-buffer/pipeline execution reduces per-dispatch cost?
-5. **Memory scheduling:** Does ACO sustain higher effective bandwidth on
-   coalesced, strided, and quantized GEMV inner loops?
+5. **Memory scheduling:** Retained gfx1151 rows show higher Vulkan bandwidth on
+   coalesced, strided, and interleave loops. Does that survive HIP wave64 and
+   fixed-shape controls, and does it predict quantized GEMV inner loops?
 6. **VOPD portability:** gfx1151 retained evidence is negative for "ACO finds
    VOPD that LLVM misses." Do gfx1100/W7900 and 7900 XTX reproduce that answer,
    or is this driver/GPU-specific?
@@ -450,6 +519,12 @@ Attribution rule: same memory traffic but lower waitcnt density and higher
 effective GB/s on Vulkan is an ACO scheduling win. Same waitcnt but better
 coalescing is a source/layout issue.
 
+Status: retained on gfx1151. Vulkan is `1.30x-2.35x` faster on most coalesced,
+strided, and interleave rows, while gather is essentially tied at `1.02x`.
+This is strong memory-side evidence but remains `diagnostic_unclassified`
+because HIP wave32 vs RADV wave64 and missing official RADV register allocation
+counts prevent a clean `compiler_aco` attribution.
+
 ### 4. VOPD And VALU Scheduling
 
 Purpose: determine whether RADV/ACO materially beats LLVM on RDNA3 dual-issue.
@@ -469,7 +544,7 @@ Status: retained on gfx1151. HIP emitted VOPD in all retained rows and RADV
 emitted none, so the current retained evidence is a negative result for
 "Vulkan wins because ACO finds VOPD that LLVM misses." Cross-GPU reruns can
 check portability, but the next gfx1151 compiler tests should move to
-memory/waitcnt and dot-path diagnostics.
+dot-path diagnostics and HIP wave/specialization controls.
 
 ### 5. Dot4 / q8_1 / sudot4
 
@@ -689,18 +764,22 @@ Promotion requirements:
    does not in all retained rows, so VOPD pairing is not the current ACO
    explanation.
 5. Add memory waitcnt microbenches: coalesced load+accumulate, strided
-   load+accumulate, gather IDs, and load-compute interleave.
+   load+accumulate, gather IDs, and load-compute interleave. Status: retained
+   on gfx1151; Vulkan has a broad memory-side advantage except gather, but
+   wave-mode and RADV allocation-count confounds keep it
+   `diagnostic_unclassified`.
 6. Add q8_1/sudot4 and scalar-dequant GEMV pairs.
 7. Port one real slice: selected-MoE small-K or q6 lm-head rowtile.
 8. Classify each retained row using the result buckets above.
 9. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
-The next most useful tests are now memory/waitcnt microbenches, dot-path
-microbenches, and a fixed-workgroup HIP geometry control. The gfx1151 geometry
-and VOPD extractions already found that the current gap is not a missed-HIP-VOPD
-or HIP-spill story. The next stop is isolating the remaining hypotheses rather
-than rerunning broader geometry or generic VOPD sweeps.
+The next most useful tests are now dot-path microbenches, HIP wave64/fixed-shape
+controls for the retained memory and geometry rows, and one representative real
+slice. The gfx1151 geometry, VOPD, and memory/waitcnt extractions already found
+that the current gap is not a missed-HIP-VOPD or HIP-spill story. The next stop
+is isolating the remaining hypotheses rather than rerunning broader geometry,
+generic VOPD, or generic memory sweeps.
 
 The expected useful output is not a single "Vulkan is faster" number. It is a
 ranked list of deltas like: "Vulkan wins small-K expert-down by X%; Y% is
