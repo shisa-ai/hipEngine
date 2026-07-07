@@ -274,7 +274,7 @@ def normalize_raw_result(
         "parameters": _json_safe(
             {
                 "benchmark_family": "geometry_sweep",
-                "algorithm": "f32_gemv_row_shared_tree_reduce",
+                "algorithm": "repeat_shifted_f32_gemv_row_shared_tree_reduce",
                 "raw_config": config,
                 "harness_command": harness_command,
                 "build_command": build_command,
@@ -327,8 +327,8 @@ def normalize_raw_result(
             "rows": rows,
         },
         "notes": (
-            "Matched f32 GEMV/reduction geometry diagnostic. Uses the same data, "
-            "K/rows/workgroup/body-repeat shape, and CPU oracle on both backends. "
+            "Matched repeat-shifted f32 GEMV/reduction geometry diagnostic. Uses "
+            "the same data, K/rows/workgroup/body-repeat shape, and CPU oracle on both backends. "
             "Do not use this row alone as compiler_aco evidence until ISA stats "
             "are collected."
         ),
