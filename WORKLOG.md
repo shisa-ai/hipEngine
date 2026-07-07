@@ -146835,3 +146835,44 @@ graphless decode launch-collapse path without regressing target/serial parity.
   conclusion: broad gfx1151 sweeps are done; next useful tests are cross-GPU
   reruns, an integrated Q4 Vulkan probe only if it decides backend priority,
   and optional HIP wave64+fixed-workgroup geometry cleanup.
+
+## 2026-07-08 - HIP fixed-wave64 geometry control retained
+
+- Added HIP fixed-workgroup wavefront controls to the f32 geometry tooling:
+  `benchmarks/micro/runners/geometry_sweep.py` now supports
+  `--hip-wavefront-size {default,32,64}` for HIP timing runs, and
+  `benchmarks/micro/runners/isa_stats.py` now supports
+  `--hip-wavefront-size {default,32,64}` plus
+  `--hip-workgroup-specialization {runtime,fixed}` for HIP ISA extraction.
+- Timing command:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/geometry_sweep.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --hip-workgroup-specialization fixed --hip-wavefront-size 64 --k-list 512,2048,8192 --rows-list 1,4,8 --workgroups 32,64,128,256 --body-repeats 128 --reps 20 --warmup 5 --samples 11 --raw-json benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup-wave64-raw.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup-wave64.json`.
+  All retained rows passed the geometry CPU oracle.
+- Comparison command:
+  `python3 benchmarks/micro/runners/geometry_sweep.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup-wave64.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-sweep-fixed-control.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-wave64-comparison.json`.
+- Delta artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-wave64-delta.json`.
+  Best-native HIP fixed-wave64 is slower than HIP fixed-wave32 by
+  `1.131x-1.135x` at K=512, `1.153x-1.234x` at K=2048, and
+  `1.148x-1.167x` at K=8192. Same-commit Vulkan remains faster than HIP
+  fixed-wave64 by `6.31x-8.61x`, `11.29x-13.88x`, and `14.09x-16.18x`
+  across those shape groups.
+- ISA command:
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/isa_stats.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json --geometry-result benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-sweep-fixed-workgroup-wave64.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --hip-workgroup-specialization fixed --hip-wavefront-size 64 --k 2048 --rows 1 --workgroups 64,256 --body-repeats 128 --pretty --out benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json`.
+- ISA comparison command:
+  `python3 benchmarks/micro/runners/isa_stats.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-geometry-isa-stats.json --pretty --out benchmarks/micro/results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json`.
+  HIP fixed-wave64 K=2048 rows=1 wg64/wg256 reports wave64,
+  `20` SGPR / `11` VGPR, `0` scratch/spills, `0` VOPD, and `20/24`
+  waitcnt-family instructions. Matched RADV geometry rows remain wave64,
+  official `108` SGPR / `12` VGPR, `0` scratch/spills, `0` VOPD, and `9/20`
+  waitcnt-family instructions.
+- Retained conclusion: wave mode is not the missing f32 geometry switch.
+  Combining fixed-workgroup geometry with HIP wave64 removes the broad
+  wave-mode confound, makes HIP slower than fixed wave32, and leaves Vulkan
+  much faster. Classification stays `diagnostic_unclassified`, not
+  `compiler_aco`.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`. Remaining
+  useful tests are cross-GPU reruns on gfx1100/W7900 and 7900 XTX when those
+  machines are available, an integrated Q4_K selected-dual Vulkan probe only if
+  it changes backend priority, and a targeted HIP Q4_K selected-dual
+  investigation if we need to explain the one retained Vulkan real-slice win.

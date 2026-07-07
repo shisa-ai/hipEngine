@@ -30,8 +30,8 @@ The practical conclusion is:
 
 - Stop broad gfx1151 attribution sweeps for now. Dispatch, f32 geometry,
   VOPD, memory/waitcnt, dot-path, HIP wave64, HIP fixed-shape, HIP q8_1
-  real-slice layout, RADV shaderstats, and two matched Vulkan real slices are
-  already retained.
+  real-slice layout, RADV shaderstats, HIP fixed-wave64 geometry, and two
+  matched Vulkan real slices are already retained.
 - The matched real-slice evidence is now split: Q6_K selected-down X8 is slower
   on Vulkan, while Q4_K selected-dual gate/up is faster on Vulkan. That is
   useful slice-specific evidence, but it is still not a broad `compiler_aco`
@@ -94,6 +94,12 @@ The detailed retained reads are:
   Vulkan remains faster on every retained row (`1.04x-2.36x`). Fixed-workgroup
   geometry improves some HIP wg256 rows by up to `6.3%`, but Vulkan still leads
   best-native geometry by `5.56x-14.03x`.
+- The retained HIP fixed-workgroup plus wave64 geometry control removes the
+  remaining f32 geometry wave-mode confound and still does not close the gap.
+  HIP fixed-wave64 is `1.13x-1.23x` slower than HIP fixed-wave32 on
+  best-native rows, and Vulkan remains `6.31x-16.18x` faster than HIP
+  fixed-wave64. HIP fixed-wave64 reports wave64, `11` VGPR / `20` SGPR,
+  no scratch/spills, and `0` VOPD for wg64/wg256.
 - The first retained HIP real-slice q8_1 layout controls are positive for HIP:
   Q4_K selected-dual gate/up q8_1 quantize+dp4a is `2.77x` faster than the raw
   selected-dual path, and Q6_K selected-down X8 q8_1 quantize+dp4a is `1.68x`
@@ -122,10 +128,10 @@ The detailed retained reads are:
 - We still cannot claim `compiler_aco` for the f32 geometry gap. The refreshed
   RADV shaderstats extraction reports no Vulkan scratch/spills and official
   `12` VGPR / `108` SGPR allocation for the retained wg64/wg256 shaders, while
-  HIP reports `11` VGPR / `18` SGPR and no scratch/spills. That removes the
-  missing-allocation-stat blocker, but the f32 geometry row is still
-  `diagnostic_unclassified` because wave/subgroup shape and source/runtime
-  structure remain confounds.
+  HIP fixed-wave64 reports `11` VGPR / `20` SGPR and no scratch/spills. That
+  removes both the missing-allocation-stat blocker and the broad wave-mode
+  blocker, but the f32 geometry row is still `diagnostic_unclassified` because
+  source/runtime structure and memory/address scheduling remain confounds.
 
 What we have ruled out:
 
@@ -136,6 +142,9 @@ What we have ruled out:
   reports `0` scratch and `0` spills in the retained ISA/stat rows.
 - Do not attribute the f32 geometry gap only to a bad HIP workgroup-size choice.
   HIP and Vulkan both prefer wg256 in the retained best-native rows.
+- Do not attribute the f32 geometry gap to HIP wave32 versus RADV wave64 alone.
+  HIP fixed-wave64 makes the best-native rows slower than HIP fixed-wave32 and
+  leaves Vulkan much faster.
 - Do not attribute current q8/q4/q6 dot-path gaps to HIP failing to emit dot4.
   HIP emits the expected dot4 instructions in the retained packed-dot rows.
 - Do not treat HIP wave64 as the missing switch for the retained dot/memory
@@ -162,8 +171,8 @@ What remains plausible:
 - Memory/access scheduling is still the strongest compiler-facing lead, but HIP
   wave64 and fixed block indexing are not the fix. Refreshed RADV shaderstats
   remove the allocation-count visibility blocker and show no Vulkan
-  scratch/spills, so the remaining blockers are wave/subgroup shape and
-  memory-bound real-slice confirmation.
+  scratch/spills; memory-bound real-slice confirmation is still needed before
+  filing an LLVM-AMDGPU waitcnt/scheduling claim.
 - Dot-instruction availability is no longer untested for the packed q8/q4/q6
   idiom: HIP emits dot4. HIP wave64 also does not close the dot gap. The
   fixed-block control also does not close it. HIP real-slice q8_1 materialization
@@ -215,8 +224,8 @@ Immediate triage:
 | Stop for now | Vulkan Q6_K selected-down X8 port | The matched real-slice probe is slower than retained HIP by `1.67x` on quantize+dot. |
 | Done | Better RADV allocation/stat extraction | `RADV_DEBUG=shaders,shaderstats` now gives official RADV VGPR/SGPR/spill/scratch data for retained Vulkan rows. |
 | Done | Vulkan Q4_K selected-dual gate/up slice | The matched real-slice probe is faster than retained HIP by `1.18x` on quantize+dot, but remains slice-specific `real_slice_probe` evidence. |
+| Done | HIP wave64 plus fixed-workgroup geometry | HIP fixed-wave64 is slower than fixed-wave32 and leaves Vulkan `6.31x-16.18x` faster, removing the remaining f32 geometry wave-mode confound. |
 | Test only if it changes backend priority | Integrated Q4_K selected-dual Vulkan probe | Useful only if we want to know whether the standalone Q4 win survives real dispatch, residency, and pipeline/cache integration. |
-| Optional | HIP wave64 plus fixed-workgroup geometry | Only needed if we want to remove the remaining f32 geometry wave/subgroup confound. |
 
 Recommended next tests, in order:
 
@@ -227,10 +236,7 @@ Recommended next tests, in order:
    result to decide backend priority. The standalone slice is positive; the
    next question is whether the win survives real residency, dispatch, and
    integration costs.
-3. HIP wave64 plus fixed-workgroup geometry control, only if we want to remove
-   the remaining wave-mode confound before making any compiler-facing f32
-   geometry claim.
-4. Targeted HIP Q4_K selected-dual investigation: compare HIP ISA against the
+3. Targeted HIP Q4_K selected-dual investigation: compare HIP ISA against the
    retained Q4 Vulkan shader and try a narrow HIP source/inline-asm fix only if
    the delta is attributable to a specific LLVM codegen miss.
 
@@ -245,9 +251,9 @@ Priority summary:
 | Done | Vulkan Q6_K selected-down X8 real-slice probe | Synthetic Vulkan dot-path win does not transfer to this shipped hot bucket |
 | Done | RADV shaderstats allocation extraction | Official RADV allocation counts show no Vulkan scratch/spills in retained rows |
 | Done | Vulkan Q4_K selected-dual gate/up slice | One production-shaped Q4 hot bucket is faster on Vulkan, but not broad `compiler_aco` proof |
+| Done | HIP wave64 plus fixed-workgroup geometry | Wave mode plus fixed workgroup does not close the f32 geometry gap |
 | P1 | gfx1100/W7900 and 7900 XTX reruns | Check portability of the classified gfx1151 conclusions |
 | P2 | Integrated Q4_K Vulkan probe | Decide whether the standalone Q4 win has backend value after integration costs |
-| P2 | HIP wave64 plus fixed-workgroup geometry | Remove the remaining f32 geometry wave/subgroup confound if needed |
 
 Tooling that would improve attribution quality, but should not displace the
 remaining portability and integration work:
@@ -644,8 +650,12 @@ HIP wave64 routing from this evidence.
 Retained artifacts:
 `benchmarks/micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`,
 `benchmarks/micro/results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-wave64-comparison.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-wave64-delta.json`,
+`benchmarks/micro/results/gfx1151/strix-halo/hip-geometry-isa-stats-fixed-wave64.json`,
 and
-`benchmarks/micro/results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json`.
+`benchmarks/micro/results/gfx1151/strix-halo/geometry-isa-stats-fixed-wave64-comparison.json`.
 Backend artifacts include same-commit runtime HIP controls, fixed HIP controls,
 and same-commit Vulkan controls:
 `hip-dot-path-runtime-control.json`, `hip-dot-path-fixed-block.json`,
@@ -654,7 +664,8 @@ and same-commit Vulkan controls:
 `hip-memory-waitcnt-fixed-block.json`,
 `vulkan-memory-waitcnt-fixed-control.json`,
 `hip-geometry-sweep-runtime-control.json`,
-`hip-geometry-sweep-fixed-workgroup.json`, and
+`hip-geometry-sweep-fixed-workgroup.json`,
+`hip-geometry-sweep-fixed-workgroup-wave64.json`, and
 `vulkan-geometry-sweep-fixed-control.json`. The run uses
 `environment-fixed-shape-controls.json`.
 
@@ -668,6 +679,9 @@ Hardware/software context:
 - HIP geometry control: `--hip-workgroup-specialization fixed`, which compiles
   one HIP binary per requested workgroup size and replaces runtime
   `blockDim.x` in the reduction/indexing path.
+- HIP combined geometry control: `--hip-workgroup-specialization fixed
+  --hip-wavefront-size 64`, which compiles one fixed-workgroup wave64 code
+  object per requested workgroup.
 - Classification: `diagnostic_unclassified`; this is a runtime-shape control,
   not final compiler attribution.
 
@@ -697,12 +711,30 @@ Geometry fixed-workgroup result:
 | K=2048 rows=1/4/8 | `0.937x-0.999x` | `9.79x-11.56x` |
 | K=8192 rows=1/4/8 | `0.976x-0.991x` | `12.07x-14.03x` |
 
+Geometry fixed-workgroup plus wave64 result:
+
+| Shape group | HIP fixed wave64 / fixed wave32 at best HIP wg256 | Same-commit Vulkan vs HIP fixed wave64 best-native |
+| --- | ---: | ---: |
+| K=512 rows=1/4/8 | `1.131x-1.135x` slower | `6.31x-8.61x` |
+| K=2048 rows=1/4/8 | `1.153x-1.234x` slower | `11.29x-13.88x` |
+| K=8192 rows=1/4/8 | `1.148x-1.167x` slower | `14.09x-16.18x` |
+
+Fixed-wave64 geometry ISA/stat result for K=2048 rows=1:
+
+| Workgroup | HIP fixed-wave64 ISA | Vulkan/RADV ISA |
+| ---: | --- | --- |
+| 64 | actual `20` SGPR, `11` VGPR, scratch `0`, spills `0`, wave64, `0` VOPD, `20` waitcnt-family instructions | official `108` SGPR, `12` VGPR, scratch `0`, spills `0`, wave64, `0` VOPD, `9` waitcnt-family instructions |
+| 256 | actual `20` SGPR, `11` VGPR, scratch `0`, spills `0`, wave64, `0` VOPD, `24` waitcnt-family instructions | official `108` SGPR, `12` VGPR, scratch `0`, spills `0`, wave64, `0` VOPD, `20` waitcnt-family instructions |
+
 Conclusion: HIP runtime `blockDim`/shape specialization is not the missing
 switch for the retained gfx1151 gaps. Fixed geometry gives a useful small HIP
 improvement, especially K=2048 rows=1 wg256, but the Vulkan geometry lead
 remains large. Dot fixed-block is flat, and memory fixed-block is mixed with a
-gather regression. Treat memory/access scheduling and geometry as still
-unclassified until real-slice and wave/subgroup confounds are resolved.
+gather regression. Combining fixed-workgroup geometry with wave64 makes HIP
+slower than fixed wave32 and still leaves Vulkan much faster, so wave mode is
+not the missing geometry switch either. Treat memory/access scheduling and
+geometry as still unclassified until source/runtime structure and production
+real-slice transfer are resolved.
 
 ### gfx1151 HIP q8_1 Real-Slice Layout Controls
 
@@ -810,9 +842,10 @@ dot loop, but this Q6_K selected-down X8 production-shaped shader does not beat
 HIP once the real layout, q8_1 materialization, selected rows, output shape, and
 subgroup reduction are present. Do not promote a Vulkan backend or hand-ISA
 path from this q6 selected-down evidence. The remaining compiler-facing work is
-now a HIP wave64/fixed-workgroup geometry control only if we need to remove the
-remaining f32 geometry wave/subgroup confound, plus Q4_K-specific follow-up
-because the next section shows a different real-slice answer.
+now Q4_K-specific follow-up because the next section shows a different
+real-slice answer. The HIP fixed-wave64 geometry control below removes the
+broad f32 geometry wave-mode confound and is negative: it makes HIP slower,
+while Vulkan remains much faster.
 
 ### gfx1151 Vulkan Q4_K Selected-Dual Real-Slice Probe
 
@@ -879,9 +912,10 @@ work for this exact slice.
    `s_waitcnt`, better unroll, or more VOPD pairing?
 2. **Geometry:** How much of the Vulkan win comes from 64-thread subgroup
    shapes versus the common HIP 128/256-thread block shapes?
-3. **Wave mode:** HIP wave64 did not close retained dot/memory gaps; a
-   fixed-workgroup wave64 geometry row remains optional if we need to remove the
-   last wave-mode confound before filing compiler work.
+3. **Wave mode:** HIP wave64 did not close retained dot/memory gaps. Combining
+   HIP wave64 with fixed-workgroup geometry is also negative: HIP gets slower
+   than fixed wave32 and Vulkan remains much faster, so wave mode is not the
+   missing f32 geometry switch.
 4. **Dispatch/runtime:** Is Vulkan faster because individual shaders are faster,
    or because command-buffer/pipeline execution reduces per-dispatch cost?
 5. **Memory scheduling:** Retained gfx1151 rows show higher Vulkan bandwidth on
@@ -1019,9 +1053,10 @@ Status: retained on gfx1151. Vulkan is `1.02x-2.25x` faster on most coalesced,
 strided, and interleave rows, while gather is essentially tied at `1.02x`.
 HIP wave64 and fixed-block controls do not close the gap; both severely regress
 gather in their retained runs. This is strong memory-side evidence but remains
-`diagnostic_unclassified` because wave/subgroup shape and memory-bound
-production-slice confirmation are still unresolved. RADV shaderstats now gives
-official allocation counts and shows no Vulkan scratch/spills.
+`diagnostic_unclassified` because a memory-bound production-slice transfer is
+still needed before filing an LLVM-AMDGPU waitcnt/scheduling claim. RADV
+shaderstats now gives official allocation counts and shows no Vulkan
+scratch/spills.
 
 ### 4. VOPD And VALU Scheduling
 
@@ -1317,8 +1352,9 @@ kernel-shape work, not inline assembly.
    load+accumulate, gather IDs, and load-compute interleave. Status: retained
    on gfx1151; Vulkan has a broad memory-side advantage except gather, but
    wave64 and fixed-block controls do not close it. RADV shaderstats now shows
-   no Vulkan scratch/spills, so wave/subgroup shape and real-slice transfer
-   keep it `diagnostic_unclassified`.
+   no Vulkan scratch/spills; memory-bound production-slice transfer is the
+   remaining gate before treating it as an LLVM-AMDGPU waitcnt/scheduling
+   claim.
 6. Add q8_1/sudot4 and scalar-dequant GEMV pairs. Status: retained on gfx1151
    for packed dot-path diagnostics; HIP and RADV both emit dot4 in q8/q4/q6
    rows, but Vulkan remains `3.28x-3.42x` faster. HIP wave64 and fixed-block
@@ -1326,27 +1362,30 @@ kernel-shape work, not inline assembly.
 7. Add HIP fixed-shape controls for dot, memory, and geometry. Status:
    retained on gfx1151; runtime block indexing/workgroup specialization is not
    the missing switch.
-8. Port HIP real-slice q8_1 layout controls: selected-MoE small-K and q6
+8. Add HIP fixed-wave64 geometry controls. Status: retained on gfx1151; HIP
+   fixed-wave64 is slower than fixed wave32 and leaves Vulkan
+   `6.31x-16.18x` faster, so wave mode is not the missing f32 geometry switch.
+9. Port HIP real-slice q8_1 layout controls: selected-MoE small-K and q6
    selected-down. Status: retained on gfx1151; q8_1 materialization is small
    and production-layout HIP q8_1+dp4a is positive.
-9. Port matched Vulkan real slices. Status: retained for Q6_K selected-down X8
+10. Port matched Vulkan real slices. Status: retained for Q6_K selected-down X8
    and Q4_K selected-dual gate/up on gfx1151. Q6_K is slower than HIP by
    `1.67x` on quantize+dot, while Q4_K is faster than HIP by `1.18x` on
    quantize+dot. This split result argues for targeted follow-up, not a broad
    backend jump.
-10. Classify each retained row using the result buckets above.
-11. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
+11. Classify each retained row using the result buckets above.
+12. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
 The next useful tests are cross-GPU reruns of the retained harnesses, an
 integrated Q4_K selected-dual Vulkan probe only if it will decide backend
-priority, and a HIP wave64 plus fixed-workgroup geometry control only if we
-want to remove the remaining f32 geometry wave/subgroup confound.
+priority, and a targeted HIP Q4_K selected-dual investigation if we need to
+explain the one retained Vulkan real-slice win.
 The gfx1151 geometry, VOPD, memory/waitcnt, and dot-path extractions already
-found that the current gap is not a missed-HIP-VOPD, HIP-spill, or missed-dot4
-story. The next stop is portability and integration validation rather than
-rerunning broader geometry, generic VOPD, generic memory, or basic dot-lowering
-sweeps.
+found that the current gap is not a missed-HIP-VOPD, HIP-spill, missed-dot4, or
+broad HIP wave-mode story. The next stop is portability and integration
+validation rather than rerunning broader geometry, generic VOPD, generic
+memory, or basic dot-lowering sweeps.
 
 The expected useful output is not a single "Vulkan is faster" number. It is a
 ranked list of deltas like: "Vulkan wins small-K expert-down by X%; Y% is
