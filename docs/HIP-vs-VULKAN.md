@@ -18,6 +18,55 @@ The goal of this suite is to split those causes cleanly enough to decide
 whether the next high-leverage path is an LLVM issue, a HIP kernel rewrite, a
 Vulkan backend, or a tiny hand-ISA path.
 
+## Current Retained Evidence
+
+### gfx1151 Dispatch/Grid Floor
+
+Retained artifact:
+`benchmarks/micro/results/gfx1151/strix-halo/dispatch-floor-comparison.json`.
+The artifact records exact HIP/Vulkan commands and references the shared
+environment artifact
+`benchmarks/micro/results/gfx1151/strix-halo/environment.json`.
+
+Hardware/software context:
+
+- GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
+- Vulkan driver: RADV, Mesa `26.1.2-arch2.1`.
+- Benchmark family: dispatch/grid floor with trivial shader bodies.
+- Classification: `runtime_dispatch`.
+
+Retained result:
+
+| Shape | Vulkan command-buffer replay | HIP direct | HIP graph |
+| --- | ---: | ---: | ---: |
+| 941 dispatches, 1 block, tiny args | `0.043621 us/dispatch` | `2.0087 us/dispatch` | `1.8069 us/dispatch` |
+
+Grid sweep at 941 dispatches:
+
+| Blocks | Vulkan | HIP graph | Vulkan vs HIP graph |
+| ---: | ---: | ---: | ---: |
+| 1 | `0.042902 us/dispatch` | `1.85857 us/dispatch` | `43.3x` |
+| 128 | `0.230992 us/dispatch` | `1.86143 us/dispatch` | `8.1x` |
+| 1024 | `1.69237 us/dispatch` | `3.07608 us/dispatch` | `1.8x` |
+| 8192 | `11.977879 us/dispatch` | `13.02259 us/dispatch` | `1.09x` |
+
+Conclusion: Vulkan/RADV command-buffer replay is dramatically cheaper than HIP
+direct launches and HIP graph replay for launch-heavy one-block bursts on this
+gfx1151 system. The gap collapses as grid work grows, so this result supports
+kernel fusion, fewer launches, and a narrow Vulkan probe for launch-heavy paths.
+It does **not** prove that RADV/ACO emits better math code than LLVM-AMDGPU,
+because the shader body is intentionally trivial and no ISA/stat evidence was
+collected for compiler scheduling.
+
+Immediate reads:
+
+- HIP graph replay trims the direct-launch floor only modestly in the retained
+  N=941 row (`2.0087` to `1.8069 us/dispatch` for tiny args).
+- HIP argument count is not the dominant cost in this harness: wide args add
+  about `0.05 us/dispatch` at N=941.
+- The remaining compiler questions need matched math kernels with disassembly,
+  VGPR/SGPR/scratch, waitcnt, VOPD, and dot-instruction evidence.
+
 ## Questions To Answer
 
 1. **Compiler scheduling:** When the algorithm, data layout, wave/subgroup size,
@@ -119,6 +168,10 @@ Purpose: separate command/runtime overhead from shader body speed.
 
 Retain this first. If Vulkan only wins here, then a Vulkan backend may help
 launch-heavy paths, but LLVM kernel codegen is not the target.
+
+Status: retained on gfx1151/STRIX_HALO. Repeat on gfx1100/W7900 before treating
+the magnitude as cross-GPU, but do not spend more iteration time here until the
+matched math kernels exist.
 
 ### 2. Geometry Sweep
 
@@ -274,6 +327,10 @@ Work:
 This scope is the right first step because it answers whether Vulkan is worth
 productizing without disturbing the current HIP backend.
 
+The retained gfx1151 dispatch result strengthens the case for this probe, but
+only for launch-heavy or command-fusion-sensitive paths. It is not sufficient
+evidence for a production backend by itself.
+
 ### Production Vulkan Backend
 
 Purpose: a real hipEngine backend registered as a peer of `hip_gfx1100`, likely
@@ -364,14 +421,25 @@ Promotion requirements:
 
 ## Initial Execution Order
 
-1. Implement dispatch/grid floor rows for HIP and Vulkan.
+1. Implement dispatch/grid floor rows for HIP and Vulkan. Status: retained on
+   gfx1151; rerun on gfx1100/W7900 when that machine is available.
 2. Implement geometry sweep for f32 GEMV/reduction at K=512/2048/8192.
-3. Add VOPD and waitcnt microbenches with ISA/stat extraction.
-4. Add q8_1/sudot4 and scalar-dequant GEMV pairs.
-5. Port one real slice: selected-MoE small-K or q6 lm-head rowtile.
-6. Classify each retained row using the result buckets above.
-7. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
+3. Add dependent-chain and independent-accumulator VOPD microbenches with
+   ISA/stat extraction.
+4. Add memory waitcnt microbenches: coalesced load+accumulate, strided
+   load+accumulate, gather IDs, and load-compute interleave.
+5. Add q8_1/sudot4 and scalar-dequant GEMV pairs.
+6. Port one real slice: selected-MoE small-K or q6 lm-head rowtile.
+7. Classify each retained row using the result buckets above.
+8. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
+
+The next most useful test is the geometry sweep, not more dispatch-only runs.
+It should report matched HIP/Vulkan shapes and each backend's best native shape.
+If HIP with a 64-thread shape closes the gap, the roadmap is HIP kernel
+geometry. If Vulkan still wins at identical geometry, the next stop is compiler
+evidence: disassembly, register counts, scratch, waitcnt density, and VOPD or
+dot-instruction counts.
 
 The expected useful output is not a single "Vulkan is faster" number. It is a
 ranked list of deltas like: "Vulkan wins small-K expert-down by X%; Y% is
