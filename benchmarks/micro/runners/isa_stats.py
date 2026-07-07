@@ -236,7 +236,7 @@ def parse_disassembly_stats(disasm: str) -> dict[str, Any]:
         "ds_load_count": sum(1 for name in instructions if name.startswith("ds_load")),
         "ds_store_count": sum(1 for name in instructions if name.startswith("ds_store")),
         "barrier_count": sum(1 for name in instructions if name == "s_barrier"),
-        "branch_count": sum(1 for name in instructions if name.endswith("branch") or "_branch" in name),
+        "branch_count": sum(1 for name in instructions if "branch" in name),
         "delay_alu_count": sum(1 for name in instructions if name == "s_delay_alu"),
         "nop_count": sum(1 for name in instructions if name == "s_nop"),
     }
@@ -565,7 +565,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
     result["correctness"] = {
         "status": "pass" if all_pass else "fail",
         "oracle": "Vulkan geometry harness CPU reference during RADV_DEBUG=shaders run",
-        "raw_probe_ref": str(raw_json),
+        "raw_probe_retained": False,
         "geometry_result_ref": str(args.geometry_result) if args.geometry_result else None,
         "per_workgroup": correctness_by_wg,
     }
@@ -575,7 +575,7 @@ def _run_vulkan(args: argparse.Namespace) -> dict[str, Any]:
             "build_command": build_command,
             "harness_command": harness_command,
             "debug_env": {"RADV_DEBUG": "shaders"},
-            "raw_probe_path": str(raw_json),
+            "raw_probe_retained": False,
             "shader_dump_bytes": len(dump.encode("utf-8")),
             "shader_dump_retained": False,
         }
