@@ -20,6 +20,7 @@ benchmarks/micro/
     geometry_sweep.py
     isa_stats.py
     memory_waitcnt.py
+    q4_selected_dual_real_slice.py
     vopd_sweep.py
     hip_dot_path.hip
     hip_geometry_sweep.hip
@@ -29,6 +30,7 @@ benchmarks/micro/
     vulkan_dot_path.cpp
     vulkan_geometry_sweep.cpp
     vulkan_memory_waitcnt.cpp
+    vulkan_q4_selected_dual.cpp
     vulkan_vopd_sweep.cpp
     vulkan_dispatch_floor.py
     vulkan_dispatch_floor.cpp
@@ -37,6 +39,8 @@ benchmarks/micro/
       dot_path.comp
       geometry_sweep.comp
       memory_waitcnt.comp
+      q4_selected_dual.comp
+      q8_1_quantize.comp
       vopd_sweep.comp
   schemas/
     environment.schema.json
@@ -486,6 +490,7 @@ python3 benchmarks/micro/runners/vopd_sweep.py \
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q4_K selected-dual real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness and does transfer a real Vulkan win. Best Vulkan local_size=64 is `0.29607 ms` prequantized dot and `0.29238 ms` quantize+dot versus retained HIP `0.34638 ms` and `0.34582 ms`, so Vulkan is `1.17x` faster on dot and `1.18x` faster combined. RADV final dot shader has 3 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 26 waitcnt-family instructions, and 22 buffer loads. Classified slice-specific `real_slice_probe`, not broad `compiler_aco`. | `results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-isa-stats.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Vulkan Q6_K X8 selected-down real slice | Matched production-shaped Vulkan q8_1+dp4a probe passes full CPU correctness but does not transfer the synthetic Vulkan dot-path win. Best Vulkan local_size=64 is `0.03076 ms` prequantized dot and `0.03217 ms` quantize+dot versus retained HIP `0.01665 ms` and `0.01925 ms`, so Vulkan is `1.85x` slower on dot and `1.67x` slower combined. RADV final dot shader has 9 dot4 instructions, subgroup 64, 0 VOPD, official 48 VGPR / 108 SGPR, no scratch/spills, 89 waitcnt-family instructions, and 82 buffer loads. Classified `real_slice_probe`; do not pursue this q6 selected-down Vulkan port as implemented. | `results/gfx1151/strix-halo/q6-x8-real-slice-hip-vulkan-comparison.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json`, `results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S | HIP q8_1 real-slice layout controls | HIP production-layout q8_1 controls are positive. Q4_K selected-dual gate/up q8_1 quantize+dp4a is `2.77x` faster than raw selected-dual with top-1 `1.0`; Q6_K selected-down X8 q8_1 quantize+dp4a is `1.68x` faster than production T16 float with top-1 `1.0`. q8_1 quantization is only `0.0025-0.0027 ms`. Classified `layout_quant`; this is HIP-only evidence, not a matched Vulkan real-slice result. | `results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json`, `results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | HIP fixed-shape controls | Fixed-shape controls do not close the retained gaps. Dot fixed-block indexing is `0.993x-1.000x` versus same-commit runtime HIP and Vulkan remains `3.31x-3.43x` faster. Memory fixed-block indexing is mixed (`0.906x-1.290x` fixed/runtime) and Vulkan remains faster on every row (`1.04x-2.36x`). Fixed-workgroup geometry improves some HIP wg256 rows by up to `6.3%`, but Vulkan still leads best-native geometry by `5.56x-14.03x`. Classified `diagnostic_unclassified`; runtime `blockDim`/specialization is not the missing switch. | `results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`, `results/gfx1151/strix-halo/memory-waitcnt-fixed-block-comparison.json`, `results/gfx1151/strix-halo/geometry-sweep-fixed-workgroup-comparison.json` |
