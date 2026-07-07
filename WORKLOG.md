@@ -146261,3 +146261,20 @@ graphless decode launch-collapse path without regressing target/serial parity.
   or q6 lm-head rowtile.
 - Validation: re-read the changed section end-to-end; no GPU run needed for
   this docs-only update.
+
+## 2026-07-08 - Geometry ISA/stat extraction runner
+
+- Added `benchmarks/micro/runners/isa_stats.py`, a paired ISA/stat extractor
+  for the repeat-shifted f32 geometry kernels. HIP extraction builds the HIP
+  harness with `--save-temps`, parses `llvm-readobj --notes` code-object
+  metadata, and counts final `llvm-objdump` instructions. Vulkan extraction
+  builds the GLSL/C++ harness, runs it under `RADV_DEBUG=shaders`, parses RADV
+  shader sections, and records final-disassembly instruction counts plus
+  estimated physical register spans where official RADV allocation counts are
+  unavailable.
+- Added `tests/test_micro_isa_stats.py` for HIP metadata parsing, HIP/RADV
+  disassembly counting, RADV multi-section parsing, and HIP/Vulkan ISA
+  comparison artifact construction.
+- Validation:
+  `python3 -m py_compile benchmarks/micro/runners/isa_stats.py` and
+  `PYTHONPATH=. pytest -q tests/test_micro_isa_stats.py` passed.
