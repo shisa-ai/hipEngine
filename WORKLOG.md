@@ -146953,3 +146953,43 @@ graphless decode launch-collapse path without regressing target/serial parity.
   decides backend priority, memory-bound production-slice confirmation before
   LLVM waitcnt claims, and a narrow HIP Q4 recovery experiment only if acting
   on the measured ISA delta.
+
+## 2026-07-08 - Q4 selected-dual Vulkan setup/amortization probe retained
+
+- Continued the HIP-vs-Vulkan completion audit after the reduction controls.
+  Local hardware probes show only gfx1151/RADV STRIX_HALO is available on this
+  host (`rocminfo` reports `gfx1151`; `vulkaninfo --summary` reports
+  `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`), so gfx1100/W7900 and 7900 XTX
+  portability remains an external-machine gate.
+- Added phase timers to
+  `benchmarks/micro/runners/vulkan_q4_selected_dual.cpp` so the positive Q4_K
+  selected-dual Vulkan real-slice probe reports CPU fixture preparation,
+  Vulkan instance/device setup, pipeline creation, buffer allocation, host
+  staging, device upload, descriptor setup, correctness/readback, command
+  recording, and steady replay wall time separately.
+- Smoke command:
+  `python3 benchmarks/micro/runners/q4_selected_dual_real_slice.py --build-dir /tmp/hipengine-micro-q4-integration-smoke --out /tmp/hipengine-q4-integration-smoke.json --local-size 64 --reps 2 --warmup 1 --samples 2`.
+  Correctness passed.
+- Retained command:
+  `python3 benchmarks/micro/runners/q4_selected_dual_real_slice.py --build-dir /tmp/hipengine-micro-q4-integration-retained --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json --local-size 64 --reps 120 --warmup 30 --samples 11`.
+- Artifact:
+  `benchmarks/micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json`.
+  Full CPU correctness passed with top-1 `1.0`, max abs `1`, and mean abs
+  `0.03408358991`.
+- Steady replay remains positive: Vulkan local_size=64 measured
+  `0.292745 ms` prequantized dot and `0.293117 ms` quantize+dot versus
+  retained HIP `0.34638 ms` and `0.34582 ms`.
+- Standalone backend setup before steady replay measured `47.8645 ms`.
+  Breakdown: Vulkan instance/device `17.4106 ms`, pipeline creation
+  `0.1736 ms`, buffer allocation `0.4923 ms`, synthetic host staging
+  `25.3268 ms`, device upload `3.4389 ms`, descriptor setup `0.0171 ms`,
+  correctness/readback `0.9352 ms`, command recording `0.0639 ms`.
+  CPU fixture generation was separate at `502.189 ms` and is not counted in the
+  backend setup figure.
+- Interpretation: this is a bounded setup/amortization probe. If all measured
+  standalone backend setup is charged to the retained Q4 quantize+dot delta,
+  breakeven is about `908` calls. Q4 Vulkan remains interesting only with
+  persistent pipelines and resident buffers; this still does not justify a
+  production Vulkan backend without true registry/end-to-end evidence.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
