@@ -168,7 +168,7 @@ def test_geometry_comparison_matches_rows() -> None:
     )
 
     assert comparison["kind"] == "hipengine_micro_comparison"
-    assert comparison["classification"] == "geometry"
+    assert comparison["classification"] == "diagnostic_unclassified"
     assert len(comparison["matched_rows"]) == 3
     reference = [
         row
