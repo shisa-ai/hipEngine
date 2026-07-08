@@ -37,12 +37,13 @@ The practical conclusion is:
 - Stop broad gfx1151 attribution sweeps for now. Dispatch, f32 geometry,
   VOPD, memory/waitcnt, dot-path, HIP wave64, HIP fixed-shape, HIP q8_1
   real-slice layout, RADV shaderstats, HIP fixed-wave64 geometry, and two
-  matched Vulkan real slices are already retained. LDS/barrier/subgroup
-  reduction controls are also retained for the f32 reduction question, and the
-  positive Q4_K Vulkan slice now has a targeted HIP/RADV ISA comparison plus a
-  bounded setup/amortization probe. The negative Q6_K X8 slice also now has a
-  targeted HIP/RADV ISA comparison. The sampler/top-1 and deterministic
-  top-k8 argmax bucket now has matched HIP/Vulkan diagnostic rows as well.
+  matched Vulkan real slices are already retained. LDS/barrier/subgroup and
+  4/8/16 lane-local accumulator reduction controls are also retained for the
+  f32 reduction question, and the positive Q4_K Vulkan slice now has a targeted
+  HIP/RADV ISA comparison plus a bounded setup/amortization probe. The negative
+  Q6_K X8 slice also now has a targeted HIP/RADV ISA comparison. The
+  sampler/top-1 and deterministic top-k8 argmax bucket now has matched
+  HIP/Vulkan diagnostic rows as well.
 - The matched real-slice evidence is now split: Q6_K selected-down X8 is slower
   on Vulkan, while Q4_K selected-dual gate/up is faster on Vulkan. The targeted
   Q4_K HIP/RADV ISA comparison explains what that one win is not: not missing
@@ -133,6 +134,15 @@ The detailed retained reads are:
   slower versus Vulkan LDS (`0.984x-1.132x`). Matched Vulkan LDS remains
   `8.19x-14.55x` faster than matched HIP LDS. This is a reduction/topology
   control, not a clean `compiler_aco` proof.
+- The retained accumulator reduction sweep extends that negative result to
+  4/8/16 lane-local accumulators and one-wave/no-shared-final controls. On
+  K=512/2048/8192 rows=1 wg32/wg64/wg256, HIP multi-accumulator variants are
+  mostly slower than HIP LDS (`1.02x-2.40x` slower), Vulkan
+  multi-accumulator variants are mixed (`0.90x-1.77x` versus Vulkan LDS), and
+  matched Vulkan accumulator rows remain `9.57x-15.81x` faster than matched
+  HIP. This closes the proposed no-LDS-accumulator diagnostic as a negative
+  HIP-recovery result. It still does **not** cover a true two-stage
+  block-partial plus final-reduce launch sequence.
 - The retained sampler argmax sweeps cover the previously deferred
   sampler/argmax bucket for deterministic top-1 and deterministic top-k8
   reductions. Rows=`1/4/8`, vocab=`32768`, and workgroups=`64/128/256` all
@@ -220,6 +230,9 @@ What we have ruled out:
 - Do not attribute the f32 geometry gap to HIP's LDS tree reduction or a missing
   subgroup/shuffle reduction alone. The isolated reduction sweep keeps the
   backend gap after HIP wave-shuffle and Vulkan subgroup controls.
+- Do not attribute the f32 geometry gap to missing 4/8/16 lane-local
+  accumulator variants. The retained accumulator sweep keeps the backend gap
+  and usually slows HIP versus the LDS tree.
 - Do not attribute current q8/q4/q6 dot-path gaps to HIP failing to emit dot4.
   HIP emits the expected dot4 instructions in the retained packed-dot rows.
 - Do not treat HIP wave64 as the missing switch for the retained dot/memory
@@ -254,10 +267,10 @@ What remains plausible:
 - Vulkan has a proven dispatch/runtime advantage on gfx1151.
 - Vulkan has a large matched-math advantage in one f32 diagnostic, but that row
   is still `diagnostic_unclassified`.
-- Reduction topology is not the missing f32 geometry fix. The remaining f32
-  geometry lead is more likely source/runtime structure, address/memory
-  scheduling, or another compiler/runtime effect outside the isolated
-  reduction variants.
+- Reduction topology and lane-local accumulator count are not the missing f32
+  geometry fix. The remaining f32 geometry lead is more likely source/runtime
+  structure, address/memory scheduling, or another compiler/runtime effect
+  outside the isolated reduction variants.
 - Memory/access scheduling remains a useful diagnostic lead, but it is not yet
   an LLVM-AMDGPU filing target. HIP wave64 and fixed block indexing are not the
   fix, refreshed RADV shaderstats remove the allocation-count visibility
@@ -309,9 +322,9 @@ The broad attribution phase is done for gfx1151. The answer to "is there
 anything else we should test?" is: yes, but only tests that can change an
 implementation decision. Do **not** spend more gfx1151 time on dispatch-only,
 broad geometry-only, generic VOPD, generic memory, basic dot-lowering, HIP
-wave64, HIP fixed-block, generic LDS/subgroup reduction variants, or more Q4/Q6
-standalone real-slice sweeps. Those have already answered the coarse questions.
-The remaining useful work is decision-grade only:
+wave64, HIP fixed-block, generic LDS/subgroup/accumulator reduction variants,
+or more Q4/Q6 standalone real-slice sweeps. Those have already answered the
+coarse questions. The remaining useful work is decision-grade only:
 
 Immediate triage:
 
@@ -327,6 +340,7 @@ Immediate triage:
 | Done | Targeted Q4_K selected-dual HIP/RADV ISA comparison | Both paths emit `3` dot4 instructions and no scratch/spills; HIP emits VOPD, RADV emits none, and RADV has fewer static instructions/waitcnts. This narrows but does not finish Q4 attribution. |
 | Done | HIP wave64 plus fixed-workgroup geometry | HIP fixed-wave64 is slower than fixed-wave32 and leaves Vulkan `6.31x-16.18x` faster, removing the remaining f32 geometry wave-mode confound. |
 | Done | LDS/barrier/subgroup reduction sweep | HIP wave-shuffle is flat versus HIP LDS, Vulkan subgroup is flat to modestly slower versus Vulkan LDS, and matched Vulkan LDS remains `8.19x-14.55x` faster than HIP LDS. |
+| Done | Reduction accumulator controls | HIP 4/8/16 lane-local accumulator variants are mostly slower than HIP LDS and matched Vulkan accumulator rows remain `9.57x-15.81x` faster. True two-stage block-partial reduction remains unrun because no retained profile makes it decision-grade. |
 | Done, deterministic top-1/top-k8 | Sampler/argmax diagnostic | Vulkan top-1 argmax is `12.75x-26.94x` faster and deterministic top-k8 is `12.79x-25.93x` faster with CPU correctness and no scratch/spills on either backend; stochastic sampling remains separate. |
 | Done, bounded | Q4_K selected-dual Vulkan setup/amortization probe | Steady Q4 remains positive, but standalone backend setup is `47.9 ms`, so the win needs persistent device/pipeline/buffer residency and does not justify a production backend by itself. |
 | Done, negative for broad LLVM claim | Q6_K X8 memory-heavy production-slice transfer | The matched Vulkan Q6_K X8 slice is `1.67x` slower than HIP combined, and the targeted HIP/RADV ISA comparison shows RADV has more static instructions and waitcnt-family instructions. Do not file a generic LLVM waitcnt/scheduling issue from the synthetic memory sweep alone. |
@@ -413,7 +427,7 @@ not be run until profiling or backend scope makes it decision-grade.
 | command burst | Covered | `dispatch-floor-comparison.json` covers N-kernel HIP launch/graph versus Vulkan command-buffer replay. |
 | dependent chain for compiler body scheduling | Covered by replacement | `vopd-sweep-comparison.json` includes dependent f32 chains with ISA/stat extraction; a separate dispatch-floor dependent-chain row would not change the current conclusion. |
 | f32 GEMV row geometry | Covered | `geometry-sweep-comparison.json`, fixed-workgroup controls, and fixed-wave64 controls cover K/rows/workgroup/wave shape. |
-| reduction only | Covered | `reduction-sweep.json` covers LDS, extra-barrier LDS, HIP wave-shuffle, and Vulkan subgroup controls. |
+| reduction only | Covered | `reduction-sweep.json` covers LDS, extra-barrier LDS, HIP wave-shuffle, and Vulkan subgroup controls; `reduction-accum-sweep.json` adds wg32/wg64/wg256 accumulator controls. |
 | selected-MoE index gather | Covered by replacement | `memory-waitcnt-comparison.json` covers gather-ID address behavior, and Q4/Q6 selected real slices cover production selected-row behavior. |
 | rows>1 verifier GEMV | Partial | Geometry rows=1/4/8 are covered; HIP rowtile verifier evidence exists in benchmark rollups, but no matched Vulkan rowtile verifier microbench is retained. Run only if verifier profiling makes it a Vulkan/LLVM decision. |
 | coalesced, strided, gather, interleave memory/waitcnt | Covered | `memory-waitcnt-comparison.json` plus HIP wave64/fixed-block controls and Q6 X8 production transfer. |
@@ -423,7 +437,7 @@ not be run until profiling or backend scope makes it decision-grade.
 | q8_0 dense GEMV | Deferred | Packed q8 signed dot lowering is retained, but no production-shaped dense q8_0 Vulkan GEMV is retained. This is a future row only if dense q8_0 attention/shared projections become the deciding backend question. |
 | q8_1 activation quantize | Covered | HIP and Vulkan Q4/Q6 real-slice probes include q8_1 quantize timing and correctness. |
 | two-stage reduction | Deferred | One-row reduction controls did not identify reduction topology as the missing switch. Run two-stage only if a large-K reduction bucket reappears in profiling. |
-| no-LDS accumulator reduction | Deferred | Current LDS/shuffle/subgroup controls are enough to rule out the simple f32 reduction-topology hypothesis. Run no-LDS accumulators only if register-pressure profiling points there. |
+| no-LDS accumulator reduction | Covered negative | `reduction-accum-sweep.json` covers 4/8/16 lane-local accumulators plus one-wave/no-shared-final controls. Accumulators do not recover HIP and matched Vulkan accumulator rows remain `9.57x-15.81x` faster. |
 | barrier stress | Covered | `reduction-sweep.json` includes extra-barrier HIP and Vulkan reduction variants. |
 | small-K expert-down | Covered | Q6_K selected-down X8 real-slice probe plus ISA comparison covers the retained small-K selected-down production bucket. |
 | selected gate+up dual | Covered | Q4_K selected-dual HIP layout, Vulkan real slice, HIP/RADV ISA comparison, and setup/amortization probe are retained. |
@@ -916,23 +930,31 @@ not the missing geometry switch either. Treat memory/access scheduling and
 geometry as still unclassified until source/runtime structure and production
 real-slice transfer are resolved.
 
-### gfx1151 LDS / Barrier / Subgroup Reduction Sweep
+### gfx1151 LDS / Barrier / Subgroup / Accumulator Reduction Sweep
 
 Retained artifact:
 `benchmarks/micro/results/gfx1151/strix-halo/reduction-sweep.json`.
+Accumulator extension artifact:
+`benchmarks/micro/results/gfx1151/strix-halo/reduction-accum-sweep.json`.
 The run uses the shared environment artifact
 `benchmarks/micro/results/gfx1151/strix-halo/environment-fixed-shape-controls.json`.
+The accumulator extension uses
+`benchmarks/micro/results/gfx1151/strix-halo/environment-reduction-accum.json`.
 
 Hardware/software context:
 
 - GPU: `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`, `gfx1151`.
 - Vulkan driver: RADV, Mesa `26.1.2-arch2.1`.
 - Benchmark family: one-row repeat-shifted f32 reduction, K=`512/2048/8192`,
-  rows=`1`, workgroup=`64/256`, body repeats=`128`, CPU oracle.
+  rows=`1`, workgroup=`64/256` in the original reduction sweep and
+  workgroup=`32/64/256` in the accumulator extension, body repeats=`128`, CPU
+  oracle.
 - HIP variants: LDS tree, LDS tree with an extra barrier per reduction stage,
-  and wave-shuffle reduction with one LDS value per wave for cross-wave merge.
+  wave-shuffle reduction with one LDS value per wave for cross-wave merge, and
+  4/8/16 lane-local accumulator variants before the workgroup reduction.
 - Vulkan variants: LDS tree, LDS tree with an extra barrier per reduction
-  stage, and `GL_KHR_shader_subgroup_arithmetic` subgroup reduction.
+  stage, `GL_KHR_shader_subgroup_arithmetic` subgroup reduction, and 4/8/16
+  lane-local accumulator variants before the workgroup reduction.
 - Classification: `diagnostic_unclassified`; this is a reduction-topology
   control for the f32 geometry gap, not a final compiler attribution.
 
@@ -957,14 +979,41 @@ Variant deltas:
 | Vulkan subgroup / Vulkan LDS | `0.984x-1.132x` |
 | Vulkan subgroup / HIP wave-shuffle | `0.072x-0.121x` wall-time ratio, i.e. Vulkan is `8.24x-13.86x` faster |
 
+Accumulator extension matched backend timing:
+
+| Variant | Shapes | Vulkan vs HIP |
+| --- | --- | ---: |
+| LDS tree | K=`512/2048/8192`, wg=`32/64/256` | `9.14x-14.54x` faster |
+| multi_accum4 | K=`512/2048/8192`, wg=`32/64/256` | `10.03x-15.74x` faster |
+| multi_accum8 | K=`512/2048/8192`, wg=`32/64/256` | `9.58x-15.23x` faster |
+| multi_accum16 | K=`512/2048/8192`, wg=`32/64/256` | `12.41x-15.81x` faster |
+
+Accumulator extension variant deltas:
+
+| Control | Retained range |
+| --- | ---: |
+| HIP multi_accum4 / HIP LDS | `1.037x-1.236x` |
+| HIP multi_accum8 / HIP LDS | `1.023x-1.531x` |
+| HIP multi_accum16 / HIP LDS | `1.023x-2.405x` |
+| Vulkan multi_accum4 / Vulkan LDS | `0.927x-1.126x` |
+| Vulkan multi_accum8 / Vulkan LDS | `0.939x-1.462x` |
+| Vulkan multi_accum16 / Vulkan LDS | `0.904x-1.772x` |
+
 Conclusion: reduction topology is not the missing f32 geometry switch. HIP
 wave-shuffle reduction is essentially flat versus HIP's LDS tree, and Vulkan
 subgroup reduction is mostly flat to modestly slower than Vulkan's LDS tree on
 the retained shapes. Adding one extra barrier per reduction stage is also flat
-to small relative to the backend gap. The f32 geometry row remains
-`diagnostic_unclassified`; remaining explanations are more likely source/runtime
-structure, address/memory scheduling, or another compiler/runtime effect outside
-the isolated reduction topology.
+to small relative to the backend gap. The accumulator extension closes the
+proposed no-LDS-accumulator control as a negative HIP recovery result:
+4/8/16 lane-local accumulators mostly slow HIP and do not reduce the matched
+Vulkan lead. The one-wave HIP wave-shuffle and one-subgroup Vulkan subgroup
+paths now bypass shared memory for the final write, but multi-wave workgroups
+still need shared memory for the cross-wave final reduction. A true two-stage
+block-partial plus final-reduce launch sequence remains unrun because no
+retained profile currently makes it decision-grade. The f32 geometry row
+remains `diagnostic_unclassified`; remaining explanations are more likely
+source/runtime structure, address/memory scheduling, or another compiler/runtime
+effect outside the isolated reduction topology.
 
 ### gfx1151 Sampler Top-1 And Top-K8 Argmax Sweep
 
@@ -1519,11 +1568,17 @@ Attribution rule: subgroup reduction wins are not automatically compiler wins.
 They are usually algorithm/geometry wins unless matched HIP shuffle code still
 lags with similar ISA quality.
 
-Status: retained on gfx1151 for one-row K=`512/2048/8192`, wg=`64/256`.
-HIP wave-shuffle reduction is flat versus HIP LDS (`0.991x-1.005x`), Vulkan
-subgroup reduction is mostly flat to modestly slower versus Vulkan LDS
-(`0.984x-1.132x`), and matched Vulkan LDS remains `8.19x-14.55x` faster than
-matched HIP LDS. Reduction topology does not close the f32 geometry gap.
+Status: retained on gfx1151 for one-row K=`512/2048/8192`, wg=`64/256` in the
+original LDS/barrier/subgroup sweep and wg=`32/64/256` in the accumulator
+extension. HIP wave-shuffle reduction is flat versus HIP LDS
+(`0.991x-1.005x`), Vulkan subgroup reduction is mostly flat to modestly slower
+versus Vulkan LDS (`0.984x-1.132x`), and matched Vulkan LDS remains
+`8.19x-14.55x` faster than matched HIP LDS. HIP 4/8/16 lane-local accumulator
+variants are mostly slower than HIP LDS (`1.02x-2.40x`), while matched Vulkan
+accumulator rows remain `9.57x-15.81x` faster than HIP. Reduction topology and
+accumulator count do not close the f32 geometry gap. True two-stage
+block-partial reduction remains deferred until profiling shows a large-K
+reduction bucket where it can change an implementation decision.
 
 ### 7. Representative Inference Slices
 
@@ -1807,11 +1862,15 @@ kernel-shape work, not inline assembly.
 13. Add LDS/barrier/subgroup reduction controls. Status: retained on gfx1151;
    HIP wave-shuffle and Vulkan subgroup reduction do not close the f32 geometry
    gap, so reduction topology is not the missing switch.
-14. Add bounded Q4_K Vulkan setup/amortization probe. Status: retained on
+14. Add 4/8/16 lane-local accumulator reduction controls. Status: retained on
+   gfx1151; accumulators do not recover HIP and matched Vulkan accumulator rows
+   remain `9.57x-15.81x` faster. True two-stage reduction is still unrun and
+   not decision-grade without a new large-K reduction profile.
+15. Add bounded Q4_K Vulkan setup/amortization probe. Status: retained on
    gfx1151; steady Q4 remains positive, but standalone setup requires persistent
    residency and does not justify production Vulkan by itself.
-15. Classify each retained row using the result buckets above.
-16. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
+16. Classify each retained row using the result buckets above.
+17. Only then decide between LLVM issue, HIP rewrite, hand-ISA, or production
    Vulkan backend.
 
 The next useful tests are cross-GPU reruns of the retained harnesses, a narrow
@@ -1822,10 +1881,10 @@ test only if new profiling identifies a shipped hot bucket that should transfer;
 the retained Q6_K X8 check already answers the first one negatively.
 The gfx1151 geometry, VOPD, memory/waitcnt, and dot-path extractions already
 found that the current gap is not a missed-HIP-VOPD, HIP-spill, missed-dot4,
-broad HIP wave-mode, or simple LDS/subgroup reduction-topology story. The next
-stop is portability and integration validation rather than rerunning broader
-geometry, generic VOPD, generic memory, reduction-topology, or basic
-dot-lowering sweeps.
+broad HIP wave-mode, simple LDS/subgroup reduction-topology story, or missing
+lane-local accumulator variant. The next stop is portability and integration
+validation rather than rerunning broader geometry, generic VOPD, generic
+memory, reduction-topology, accumulator, or basic dot-lowering sweeps.
 
 The expected useful output is not a single "Vulkan is faster" number. It is a
 ranked list of deltas like: "Vulkan wins small-K expert-down by X%; Y% is
