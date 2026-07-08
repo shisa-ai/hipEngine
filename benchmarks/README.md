@@ -6,7 +6,7 @@ ISA/stat evidence, targeted VOPD scheduling, memory/waitcnt sweeps, packed
 dot-path diagnostics, HIP wave64 controls, HIP fixed-shape controls, RADV
 shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
 q8_1 real-slice layout controls, LDS/barrier/subgroup reduction controls,
-sampler/top-1 argmax diagnostics, plus a matched Vulkan Q6_K X8 selected-down
+sampler top-1/top-k8 argmax diagnostics, plus a matched Vulkan Q6_K X8 selected-down
 real-slice probe and matched Vulkan Q4_K selected-dual gate/up real-slice probe
 with targeted HIP/RADV ISA comparisons and a bounded Q4 setup/amortization
 probe.
@@ -68,15 +68,16 @@ slower than HIP LDS, HIP wave-shuffle is flat versus HIP LDS
 than Vulkan LDS (**0.984x-1.132x**). Matched Vulkan LDS remains
 **8.19x-14.55x faster** than matched HIP LDS, so reduction topology is not the
 missing f32 geometry switch.
-Sampler/top-1 argmax diagnostic: rows **1/4/8**, vocab **32768**, and
-workgroups **64/128/256** all pass the CPU argmax oracle on HIP and Vulkan.
-Vulkan is **12.75x-26.94x** faster across matched rows; both backends prefer
-wg256 for best-native rows, where Vulkan is **12.75x-16.85x** faster. HIP
-reports wave32, **15 SGPR / 7 VGPR**, **0 scratch/spills**, and **3 VOPD**;
-RADV reports wave64, official **108 SGPR / 12 VGPR**, **0 scratch/spills**,
-and **0 VOPD**. Classified **diagnostic_unclassified**: a real exposed-bucket
-top-1 argmax lead, not a full top-k/stochastic sampler or fused lm-head+sample
-result.
+Sampler argmax diagnostics: rows **1/4/8**, vocab **32768**, and workgroups
+**64/128/256** all pass CPU oracles on HIP and Vulkan for deterministic top-1
+and top-k8. Vulkan is **12.75x-26.94x** faster across matched top-1 rows and
+**12.79x-25.93x** faster across matched top-k8 rows. Both backends prefer
+wg256 for best-native top-k8 rows, where HIP measures
+**132.701/135.923/162.030 us** versus Vulkan **5.7205/5.9910/12.6654 us** for
+rows 1/4/8. HIP reports no scratch/spills and emits VOPD in both sampler
+variants; RADV reports no scratch/spills and **0 VOPD**. Classified
+**diagnostic_unclassified**: a real exposed-bucket argmax lead, not stochastic
+sampling or fused lm-head+sample integration.
 HIP q8_1 real-slice layout controls: Q4_K selected-dual gate/up q8_1
 quantize+dp4a is **2.77x** faster than raw selected-dual, and Q6_K
 selected-down X8 q8_1 quantize+dp4a is **1.68x** faster than production T16
@@ -127,6 +128,9 @@ Artifacts:
 [`micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json`](micro/results/gfx1151/strix-halo/sampler-argmax-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-sampler-argmax.json`](micro/results/gfx1151/strix-halo/hip-sampler-argmax.json),
 [`micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json`](micro/results/gfx1151/strix-halo/vulkan-sampler-argmax.json),
+[`micro/results/gfx1151/strix-halo/sampler-topk8-comparison.json`](micro/results/gfx1151/strix-halo/sampler-topk8-comparison.json),
+[`micro/results/gfx1151/strix-halo/hip-sampler-topk8.json`](micro/results/gfx1151/strix-halo/hip-sampler-topk8.json),
+[`micro/results/gfx1151/strix-halo/vulkan-sampler-topk8.json`](micro/results/gfx1151/strix-halo/vulkan-sampler-topk8.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json`](micro/results/gfx1151/strix-halo/vulkan-real-q4-selected-dual-q8_1-dp4a-integration.json),
 [`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-isa-comparison.json),
 [`micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json`](micro/results/gfx1151/strix-halo/q4-selected-dual-real-slice-hip-vulkan-comparison.json),

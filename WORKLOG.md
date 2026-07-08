@@ -147141,3 +147141,28 @@ graphless decode launch-collapse path without regressing target/serial parity.
   passed with correctness; and
   `python3 benchmarks/micro/runners/sampler_argmax.py --backend vulkan --skip-device-probes --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --rows-list 1 --workgroups 64 --top-k-list 8 --vocab 1024 --debug-vocab 256 --reps 2 --warmup 1 --samples 2 --build-dir /tmp/hipengine-micro-sampler-topk-smoke --out /tmp/vulkan-sampler-topk-smoke.json --quiet-shader-dump --pretty`
   passed with correctness.
+
+## 2026-07-08 - HIP vs Vulkan sampler deterministic top-k8 retained
+
+- Retained deterministic top-k8 sampler argmax artifacts on gfx1151/Radeon
+  8060S/RADV Mesa 26.1.2:
+  `benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json`,
+  `hip-sampler-topk8.json`, `vulkan-sampler-topk8.json`, and
+  `sampler-topk8-comparison.json`.
+- Retained commands:
+  `python3 benchmarks/micro/collect_env.py --pretty --out benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json`;
+  `HIPENGINE_HIP_ARCH=gfx1151 python3 benchmarks/micro/runners/sampler_argmax.py --backend hip --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --rows-list 1,4,8 --workgroups 64,128,256 --top-k-list 8 --vocab 32768 --reps 50 --warmup 10 --samples 9 --build-dir /tmp/hipengine-micro-sampler-topk8-retained --out benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-topk8.json --pretty`;
+  `python3 benchmarks/micro/runners/sampler_argmax.py --backend vulkan --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-sampler-topk.json --gfx-arch gfx1151 --hardware-gpu 'Radeon 8060S Graphics' --rows-list 1,4,8 --workgroups 64,128,256 --top-k-list 8 --vocab 32768 --debug-vocab 1024 --reps 50 --warmup 10 --samples 9 --build-dir /tmp/hipengine-micro-sampler-topk8-retained --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-topk8.json --quiet-shader-dump --pretty`;
+  `python3 benchmarks/micro/runners/sampler_argmax.py --compare benchmarks/micro/results/gfx1151/strix-halo/hip-sampler-topk8.json benchmarks/micro/results/gfx1151/strix-halo/vulkan-sampler-topk8.json --out benchmarks/micro/results/gfx1151/strix-halo/sampler-topk8-comparison.json --pretty`.
+- Result: rows=`1/4/8`, vocab=`32768`, wg=`64/128/256` all pass CPU top-k
+  correctness on HIP and Vulkan. Vulkan is `12.79x-25.93x` faster across
+  matched rows. Best-native wg256 rows are HIP
+  `132.701/135.923/162.030 us` versus Vulkan `5.7205/5.9910/12.6654 us`
+  for rows `1/4/8`, speedups `23.20x/22.69x/12.79x`.
+- ISA/stat read: HIP reports wave32, `32-34` SGPR / `18-20` VGPR, no
+  scratch/spills, and `5-7` VOPD across retained workgroups; RADV reports
+  wave64, official `108` SGPR / `12` VGPR, no scratch/spills, and `0` VOPD.
+  The row extends the sampler bucket from deterministic top-1 to deterministic
+  top-k8, but still does not cover stochastic sampling or fused lm-head+sample.
+- Updated `docs/HIP-vs-VULKAN.md`, `benchmarks/README.md`,
+  `benchmarks/micro/README.md`, and `benchmarks/CHANGELOG.md`.
