@@ -245,6 +245,16 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
                 )
                 if key in decode_state
             }
+            backend_generated = first_number(decode_state.get("generated_tokens"))
+            if backend_generated is not None:
+                record["backend_generated_tokens"] = int(backend_generated)
+                record["backend_generated_per_second"] = round(
+                    float(backend_generated) / wall_s,
+                    2,
+                ) if wall_s > 0 else 0.0
+            backend_prompt = first_number(decode_state.get("prompt_tokens"))
+            if backend_prompt is not None:
+                record["backend_prompt_tokens"] = int(backend_prompt)
     record["accept_rate"] = (
         round(record["draft_n_accepted"] / record["draft_n"], 4) if record["draft_n"] else None
     )
@@ -253,10 +263,17 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
 
 def format_result_line(record: dict[str, Any]) -> str:
     accept_rate = f"{record['accept_rate']:.3f}" if record["accept_rate"] is not None else "n/a"
+    backend_generated = record.get("backend_generated_tokens")
+    backend_tok_s = record.get("backend_generated_per_second")
+    backend_part = (
+        f" gen={int(backend_generated):>4} gen_tok/s={float(backend_tok_s):.1f}"
+        if isinstance(backend_generated, int) and isinstance(backend_tok_s, (int, float))
+        else ""
+    )
     return (
         f"  {record['name']:<18} pred={record['predicted_n']:>4} "
         f"draft={record['draft_n']:>4} acc={record['draft_n_accepted']:>4} "
-        f"rate={accept_rate} tok/s={record['predicted_per_second']:.1f}"
+        f"rate={accept_rate} tok/s={record['predicted_per_second']:.1f}{backend_part}"
     )
 
 
@@ -269,6 +286,7 @@ def aggregate(
     total_draft = sum(int(x.get("draft_n") or 0) for x in results)
     total_accepted = sum(int(x.get("draft_n_accepted") or 0) for x in results)
     total_predicted = sum(int(x.get("predicted_n") or 0) for x in results)
+    total_backend_generated = sum(int(x.get("backend_generated_tokens") or 0) for x in results)
     request_wall = sum(float(x.get("wall_s") or 0.0) for x in results)
     aggregate_wall = float(client_wall_s) if client_wall_s is not None else request_wall
     backend_timing_totals: dict[str, float] = {}
@@ -293,6 +311,13 @@ def aggregate(
         "request_wall_s_total": round(request_wall, 2),
         "aggregate_predicted_per_second": round(total_predicted / aggregate_wall, 2) if aggregate_wall > 0 else None,
     }
+    if total_backend_generated > 0:
+        payload["total_backend_generated"] = total_backend_generated
+        payload["aggregate_backend_generated_per_second"] = (
+            round(total_backend_generated / aggregate_wall, 2)
+            if aggregate_wall > 0
+            else None
+        )
     if backend_timing_totals:
         payload["backend_timing_totals_ms"] = {
             key: round(value, 3)
