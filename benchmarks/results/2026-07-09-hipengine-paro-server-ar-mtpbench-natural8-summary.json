@@ -1,0 +1,274 @@
+{
+  "schema": 1,
+  "kind": "hipengine_paro_server_ar_mtpbench_natural8_sweep_summary",
+  "created_at": "2026-07-08T16:59:33.241255+00:00",
+  "performance_claim": false,
+  "hardware": {
+    "arch": "gfx1151",
+    "gpu": "Radeon 8060S"
+  },
+  "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "quant": "w4_paro",
+  "workload": {
+    "prompt_suite": "benchmarks/fixtures/llamacpp_mtp_bench_prompts.json",
+    "prompt_limit": 8,
+    "max_tokens": 128,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "ignore_eos": true,
+    "batch_window_ms": 5
+  },
+  "methodology_note": "OpenAI server natural chat prompts; backend_generated_tok_s uses choices[].hipengine.decode_state.generated_tokens / client aggregate wall. This is not the direct retained 512-token exact-token protocol because /v1/completions rejects token-id prompt arrays.",
+  "server_command_template": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 [env flags] uv run --isolated --extra dev python -m hipengine.server --model <model> --backend auto --quant w4_paro --served-model-name llama --generation-batch-window-ms 5 --max-active-requests <N> --max-context-tokens 1024 --metrics prometheus --host 127.0.0.1 --port 18083 --log-level warning",
+  "client_command_template": "PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py --url http://127.0.0.1:18083 --model llama --limit 8 --max-tokens 128 --temperature 0 --top-p 1 --ignore-eos --concurrency <C> --out <artifact>",
+  "rows": [
+    {
+      "config": "default",
+      "max_active_requests": 8,
+      "concurrency": 1,
+      "backend_generated_tok_s": 35.5,
+      "visible_text_tok_s": 17.65,
+      "wall_s": 28.84,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c1-bw5-default.json",
+      "execution_paths": [],
+      "native_caware_decode_values": [],
+      "serial_decode_fallback_values": []
+    },
+    {
+      "config": "default",
+      "max_active_requests": 8,
+      "concurrency": 2,
+      "backend_generated_tok_s": 35.39,
+      "visible_text_tok_s": 20.46,
+      "wall_s": 28.93,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c2-bw5-default.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_serial_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "True"
+      ]
+    },
+    {
+      "config": "default",
+      "max_active_requests": 8,
+      "concurrency": 4,
+      "backend_generated_tok_s": 35.5,
+      "visible_text_tok_s": 21.18,
+      "wall_s": 28.85,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c4-bw5-default.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_serial_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "True"
+      ]
+    },
+    {
+      "config": "default",
+      "max_active_requests": 8,
+      "concurrency": 8,
+      "backend_generated_tok_s": 35.61,
+      "visible_text_tok_s": 20.59,
+      "wall_s": 28.75,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c8-bw5-default.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_serial_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "True"
+      ]
+    },
+    {
+      "config": "native_decode",
+      "max_active_requests": 8,
+      "concurrency": 1,
+      "backend_generated_tok_s": 35.5,
+      "visible_text_tok_s": 17.65,
+      "wall_s": 28.84,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c1-bw5-native-decode.json",
+      "execution_paths": [],
+      "native_caware_decode_values": [],
+      "serial_decode_fallback_values": []
+    },
+    {
+      "config": "native_decode",
+      "max_active_requests": 8,
+      "concurrency": 2,
+      "backend_generated_tok_s": 37.48,
+      "visible_text_tok_s": 22.03,
+      "wall_s": 27.32,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c2-bw5-native-decode.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "True"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    },
+    {
+      "config": "native_decode",
+      "max_active_requests": 8,
+      "concurrency": 4,
+      "backend_generated_tok_s": 40.33,
+      "visible_text_tok_s": 22.96,
+      "wall_s": 25.39,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c4-bw5-native-decode.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    },
+    {
+      "config": "native_decode",
+      "max_active_requests": 8,
+      "concurrency": 8,
+      "backend_generated_tok_s": 42.36,
+      "visible_text_tok_s": 32.43,
+      "wall_s": 24.17,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c8-bw5-native-decode.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    },
+    {
+      "config": "native_decode_startup_warmup",
+      "max_active_requests": 8,
+      "concurrency": 1,
+      "backend_generated_tok_s": 35.66,
+      "visible_text_tok_s": 14.63,
+      "wall_s": 28.72,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c1-bw5-native-decode-warmup.json",
+      "execution_paths": [],
+      "native_caware_decode_values": [],
+      "serial_decode_fallback_values": []
+    },
+    {
+      "config": "native_decode_startup_warmup",
+      "max_active_requests": 8,
+      "concurrency": 2,
+      "backend_generated_tok_s": 37.55,
+      "visible_text_tok_s": 26.22,
+      "wall_s": 27.27,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c2-bw5-native-decode-warmup.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "True"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    },
+    {
+      "config": "native_decode_startup_warmup",
+      "max_active_requests": 8,
+      "concurrency": 4,
+      "backend_generated_tok_s": 40.56,
+      "visible_text_tok_s": 27.76,
+      "wall_s": 25.25,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c4-bw5-native-decode-warmup.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    },
+    {
+      "config": "native_decode_startup_warmup",
+      "max_active_requests": 8,
+      "concurrency": 8,
+      "backend_generated_tok_s": 41.51,
+      "visible_text_tok_s": 27.6,
+      "wall_s": 24.67,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c8-bw5-native-decode-warmup.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    },
+    {
+      "config": "native_decode_startup_warmup_cap4",
+      "max_active_requests": 4,
+      "concurrency": 8,
+      "backend_generated_tok_s": 39.59,
+      "visible_text_tok_s": 28.96,
+      "wall_s": 25.86,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c8-bw5-native-decode-warmup-cap4.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "False"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    },
+    {
+      "config": "native_decode_startup_warmup_cap2",
+      "max_active_requests": 2,
+      "concurrency": 8,
+      "backend_generated_tok_s": 37.47,
+      "visible_text_tok_s": 22.4,
+      "wall_s": 27.33,
+      "backend_generated_tokens": 1024,
+      "artifact": "benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-c8-bw5-native-decode-warmup-cap2.json",
+      "execution_paths": [
+        "scheduler_native_packed_prefill_native_decode"
+      ],
+      "native_caware_decode_values": [
+        "True"
+      ],
+      "serial_decode_fallback_values": [
+        "False"
+      ]
+    }
+  ]
+}

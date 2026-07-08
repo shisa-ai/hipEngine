@@ -147509,3 +147509,38 @@ graphless decode launch-collapse path without regressing target/serial parity.
   AR/MTP diagnostics need a backend-token metric for decode throughput.
 - Validation: `python3 -m py_compile scripts/mtp-bench.py`; `git diff --check
   -- scripts/mtp-bench.py`.
+
+## 2026-07-09 - PARO server AR first sweep on gfx1151
+
+- Ran PARO OpenAI server AR diagnostics on gfx1151/Radeon 8060S with
+  shisa `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, 8 natural chat prompts from
+  `benchmarks/fixtures/llamacpp_mtp_bench_prompts.json`, `max_tokens=128`,
+  greedy, `ignore_eos=true`, batch window `5 ms`, and backend generated-token
+  throughput from `choices[].hipengine.decode_state.generated_tokens`.
+- Important methodology caveat: `/v1/completions` rejects token-id prompt
+  arrays, so this first server sweep is a natural-prompt diagnostic, not the
+  direct retained 512/128 exact-token protocol.
+- Commands:
+  server template:
+  `PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 [env flags] uv run --isolated --extra dev python -m hipengine.server --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend auto --quant w4_paro --served-model-name llama --generation-batch-window-ms 5 --max-active-requests <N> --max-context-tokens 1024 --metrics prometheus --host 127.0.0.1 --port 18083 --log-level warning`;
+  client template:
+  `PYTHONPATH=. uv run --isolated --extra dev python scripts/mtp-bench.py --url http://127.0.0.1:18083 --model llama --limit 8 --max-tokens 128 --temperature 0 --top-p 1 --ignore-eos --concurrency <C> --out <artifact>`.
+- Results, backend generated tok/s:
+  default server c=1/2/4/8 = `35.50 / 35.39 / 35.50 / 35.61`;
+  native decode env = `35.50 / 37.48 / 40.33 / 42.36`;
+  native decode plus startup native-batch warmup =
+  `35.66 / 37.55 / 40.56 / 41.51`.
+- Route cap sweep under native decode + startup warmup at c=8:
+  max-active `8/4/2` = `41.51 / 39.59 / 37.47` backend generated tok/s.
+- Telemetry: default c=8 reports
+  `scheduler_native_packed_prefill_serial_decode` with
+  `serial_decode_fallback=true`; native-decode c=8 reports
+  `scheduler_native_packed_prefill_native_decode`, but
+  `native_caware_decode=false`, so the server is still not getting the direct
+  retained c>N economics.
+- Retained diagnostics:
+  `benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-summary.json`
+  plus the referenced per-config sweep, readiness, and capabilities JSON files.
+- Validation:
+  `jq empty benchmarks/results/2026-07-09-hipengine-paro-server-ar-mtpbench-natural8-*.json`;
+  no process left listening on port `18083`.
