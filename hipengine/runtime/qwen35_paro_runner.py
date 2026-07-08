@@ -218,16 +218,13 @@ def _env_int_set(name: str) -> set[int]:
 def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
     """Evidence-backed rowchunk layer scope for native c>N PARO decode.
 
-    Empty means "chunk every full-attention layer" and is intentionally kept
-    for row counts without stable selected-layer evidence.
+    When rowchunking is active, an empty set means "chunk every full-attention
+    layer." It is intentional for row counts whose green evidence requires
+    all-layer rowchunking, and for rows without stable selected-layer evidence.
     """
 
     if rows in {3, 5, 6}:
         return {3, 7, 11, 15}
-    if rows == 4:
-        return {3, 15}
-    if rows == 8:
-        return {3, 7, 11, 15, 19, 23}
     return set()
 
 
