@@ -21,6 +21,7 @@ benchmarks/micro/
     isa_stats.py
     q4_selected_dual_isa_stats.py
     q6_x8_isa_stats.py
+    q6_lm_head_rowtile_probe.py
     memory_waitcnt.py
     q4_selected_dual_real_slice.py
     reduction_sweep.py
@@ -552,6 +553,61 @@ python3 benchmarks/micro/runners/q6_x8_isa_stats.py \
 This is an attribution artifact for the retained negative Q6_K X8 Vulkan
 real-slice result. It does not create a new timing claim by itself.
 
+## Q6 lm-head Rowtile Diagnostic
+
+`runners/q6_lm_head_rowtile_probe.py` compares the HIP production-style
+BF16 x Q6_K T16 lm-head rowtile path against the existing Vulkan Q6_K X8
+q8_1+dp4a full-output shader. This is intentionally diagnostic rather than a
+bit-identical cross-backend math/layout comparison: HIP correctness is checked
+against per-row decode output, while Vulkan correctness is checked against the
+existing CPU q8_1+Q6_K X8 oracle.
+
+Retained gfx1151 commands:
+
+```bash
+python3 benchmarks/micro/collect_env.py \
+  --pretty \
+  --out benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json
+
+HIPENGINE_HIP_ARCH=gfx1151 \
+python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py \
+  --backend hip \
+  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
+  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
+  --gfx-arch gfx1151 \
+  --hardware-gpu "Radeon 8060S Graphics" \
+  --shapes 2048x32768,2048x152064 \
+  --rows-list 1,4,8 \
+  --reps 10 \
+  --warmup 3 \
+  --samples 5 \
+  --build-dir /tmp/hipengine-q6-lmhead-retained \
+  --out benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json \
+  --pretty
+
+python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py \
+  --backend vulkan \
+  --environment-json benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
+  --environment-ref benchmarks/micro/results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json \
+  --gfx-arch gfx1151 \
+  --hardware-gpu "Radeon 8060S Graphics" \
+  --shapes 2048x32768,2048x152064 \
+  --rows-list 1,4,8 \
+  --local-sizes 64,128,256 \
+  --reps 10 \
+  --warmup 3 \
+  --samples 5 \
+  --build-dir /tmp/hipengine-q6-lmhead-retained-vulkan \
+  --out benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json \
+  --pretty
+
+python3 benchmarks/micro/runners/q6_lm_head_rowtile_probe.py \
+  --compare benchmarks/micro/results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json \
+            benchmarks/micro/results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json \
+  --out benchmarks/micro/results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json \
+  --pretty
+```
+
 ## Q4 Selected-Dual Vulkan Setup / Amortization Probe
 
 `runners/q4_selected_dual_real_slice.py` now records Vulkan setup phase timings
@@ -778,6 +834,7 @@ python3 benchmarks/micro/runners/sampler_argmax.py \
 
 | Date | Hardware | Bench | Finding | Artifacts |
 | --- | --- | --- | --- | --- |
+| 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Q6_K lm-head rowtile diagnostic | HIP BF16 x Q6_K T16 rowtile chunks and Vulkan Q6_K X8 q8_1+dp4a full-output rows both pass their own correctness gates: HIP `6/6`, Vulkan `18/18`. Across shapes `2048x32768` and `2048x152064`, rows=`1/4/8`, and Vulkan local_size=`64/128/256`, Vulkan/HIP speedup ranges `0.367x-1.058x` for quantize+dot and `0.367x-1.112x` for prequantized dot. Vulkan only wins the smaller `2048x32768` rows=1 case; full-vocab rows=1 is near parity/slower and rows=4/8 strongly favor HIP. Classified `real_slice_probe`; closes q6 lm-head as mostly negative for the current Vulkan X8 target on gfx1151. | `results/gfx1151/strix-halo/q6-lm-head-rowtile-comparison.json`, `results/gfx1151/strix-halo/hip-q6-lm-head-rowtile.json`, `results/gfx1151/strix-halo/vulkan-q6-lm-head-rowtile-probe.json`, `results/gfx1151/strix-halo/environment-q6-lm-head-rowtile.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | True two-stage reduction | Block-partial plus final-reduce rows K=`8192/32768/65536`, rows=`1/4/8`, wg=`128/256`, split_count=`2/4/8` all pass CPU correctness across 54 matched rows. Vulkan/HIP speedup ranges `0.690x-1.118x`, median `0.835x`; only 3/54 wg256/split8 rows are above parity. Classified `diagnostic_unclassified`; closes true two-stage reduction as negative for a broad Vulkan/RADV reduction win on gfx1151. | `results/gfx1151/strix-halo/two-stage-reduction.json`, `results/gfx1151/strix-halo/environment-two-stage-reduction.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Dense Q8_0 real-slice probe | Raw GGUF Q8_0 dense q8_1+dp4a shapes `768x2048`, `2048x2048`, and `2048x6144`, rows=`1/4/8`, row_tile=`1/4` all pass CPU correctness on HIP and Vulkan. Across 54 matched rows, Vulkan/HIP speedup ranges `0.279x-1.120x` for quantize+dot and `0.238x-1.169x` for prequantized dot. Vulkan only wins useful smaller `768x2048` cases; larger rows favor HIP, including `2048x2048` rows=4 row_tile=4 at `0.863x` combined and `2048x6144` rows=8 row_tile=4 at `0.707x` combined. Classified `real_slice_probe`; closes dense Q8_0 as mostly negative for Vulkan on current gfx1151 data. | `results/gfx1151/strix-halo/q8-0-dense-real-slice-comparison.json`, `results/gfx1151/strix-halo/hip-q8-0-dense-real-slice.json`, `results/gfx1151/strix-halo/vulkan-q8-0-dense-real-slice.json`, `results/gfx1151/strix-halo/environment-q8-0-dense.json` |
 | 2026-07-08 | gfx1151 / Radeon 8060S / RADV Mesa 26.1.2 | Reduction accumulator sweep | One-row K=512/2048/8192 wg32/wg64/wg256 rows all pass CPU correctness. HIP 4/8/16 lane-local accumulators are mostly slower than HIP LDS (`1.02x-2.40x`), Vulkan accumulator variants are mixed versus Vulkan LDS (`0.90x-1.77x`), and matched Vulkan accumulator rows remain `9.57x-15.81x` faster than HIP. Classified `diagnostic_unclassified`; closes the no-LDS-accumulator row as negative for HIP recovery. True two-stage is covered separately by `two-stage-reduction.json`. | `results/gfx1151/strix-halo/reduction-accum-sweep.json`, `results/gfx1151/strix-halo/environment-reduction-accum.json` |
