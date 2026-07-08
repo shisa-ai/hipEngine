@@ -4,6 +4,10 @@
 #define HIPENGINE_ARGMAX_WG 256
 #endif
 
+#ifndef HIPENGINE_ARGMAX_TOPK
+#define HIPENGINE_ARGMAX_TOPK 1
+#endif
+
 layout(local_size_x = HIPENGINE_ARGMAX_WG, local_size_y = 1, local_size_z = 1) in;
 
 layout(push_constant) uniform PushConstants {
@@ -27,6 +31,8 @@ layout(set = 0, binding = 2) buffer ValueBuffer {
 
 shared float shared_values[HIPENGINE_ARGMAX_WG];
 shared uint shared_indices[HIPENGINE_ARGMAX_WG];
+shared float selected_values[HIPENGINE_ARGMAX_TOPK];
+shared uint selected_indices[HIPENGINE_ARGMAX_TOPK];
 
 bool better_pair(float a_value, uint a_index, float b_value, uint b_index) {
     return (a_value > b_value) || (a_value == b_value && a_index < b_index);
@@ -39,35 +45,58 @@ void main() {
         return;
     }
 
-    float best_value = -3.4028234663852886e+38;
-    uint best_index = 0xffffffffu;
-    uint base = row * pc.vocab;
-    for (uint col = tid; col < pc.vocab; col += HIPENGINE_ARGMAX_WG) {
-        float value = logits[base + col];
-        if (better_pair(value, col, best_value, best_index)) {
-            best_value = value;
-            best_index = col;
-        }
+    if (tid < HIPENGINE_ARGMAX_TOPK) {
+        selected_values[tid] = -3.4028234663852886e+38;
+        selected_indices[tid] = 0xffffffffu;
     }
-
-    shared_values[tid] = best_value;
-    shared_indices[tid] = best_index;
     barrier();
 
-    for (uint offset = HIPENGINE_ARGMAX_WG / 2u; offset > 0u; offset >>= 1u) {
-        if (tid < offset) {
-            float other_value = shared_values[tid + offset];
-            uint other_index = shared_indices[tid + offset];
-            if (better_pair(other_value, other_index, shared_values[tid], shared_indices[tid])) {
-                shared_values[tid] = other_value;
-                shared_indices[tid] = other_index;
+    uint base = row * pc.vocab;
+    for (uint pass = 0u; pass < HIPENGINE_ARGMAX_TOPK; ++pass) {
+        float best_value = -3.4028234663852886e+38;
+        uint best_index = 0xffffffffu;
+        for (uint col = tid; col < pc.vocab; col += HIPENGINE_ARGMAX_WG) {
+            bool already_selected = false;
+            for (uint i = 0u; i < HIPENGINE_ARGMAX_TOPK; ++i) {
+                if (i < pass && selected_indices[i] == col) {
+                    already_selected = true;
+                }
             }
+            if (already_selected) {
+                continue;
+            }
+            float value = logits[base + col];
+            if (better_pair(value, col, best_value, best_index)) {
+                best_value = value;
+                best_index = col;
+            }
+        }
+
+        shared_values[tid] = best_value;
+        shared_indices[tid] = best_index;
+        barrier();
+
+        for (uint offset = HIPENGINE_ARGMAX_WG / 2u; offset > 0u; offset >>= 1u) {
+            if (tid < offset) {
+                float other_value = shared_values[tid + offset];
+                uint other_index = shared_indices[tid + offset];
+                if (better_pair(other_value, other_index, shared_values[tid], shared_indices[tid])) {
+                    shared_values[tid] = other_value;
+                    shared_indices[tid] = other_index;
+                }
+            }
+            barrier();
+        }
+
+        if (tid == 0u) {
+            selected_values[pass] = shared_values[0];
+            selected_indices[pass] = shared_indices[0];
         }
         barrier();
     }
 
-    if (tid == 0u) {
-        out_indices[row] = shared_indices[0];
-        out_values[row] = shared_values[0];
+    if (tid < HIPENGINE_ARGMAX_TOPK) {
+        out_indices[row * HIPENGINE_ARGMAX_TOPK + tid] = selected_indices[tid];
+        out_values[row * HIPENGINE_ARGMAX_TOPK + tid] = selected_values[tid];
     }
 }
