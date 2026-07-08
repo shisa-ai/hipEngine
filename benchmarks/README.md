@@ -8,7 +8,7 @@ shaderstats allocation extraction, HIP fixed-wave64 geometry controls, HIP
 q8_1 real-slice layout controls, LDS/barrier/subgroup reduction controls, plus
 a matched Vulkan Q6_K X8 selected-down real-slice probe and matched Vulkan
 Q4_K selected-dual gate/up real-slice probe with targeted HIP/RADV ISA
-comparison and a bounded Q4 setup/amortization probe.
+comparisons and a bounded Q4 setup/amortization probe.
 Dispatch/grid floor: at N=941 one-block, Vulkan command-buffer replay is
 **0.043621 us/dispatch** versus HIP tiny direct **2.0087 us** and HIP graph
 **1.8069 us** (**46.0x / 41.4x**), but the gap narrows to **1.10x / 1.09x**
@@ -32,9 +32,10 @@ coalesced, strided, and interleave
 rows while gather is essentially tied (**1.02x**). HIP reports wave32 and
 **0 scratch/spills**; RADV shaderstats reports wave64, official
 **12/24/48 VGPR buckets**, **108 SGPR**, and **0 scratch/spills**. Classified
-**diagnostic_unclassified**: strong memory-side evidence, but not yet a clean
-`compiler_aco` proof until memory-bound real-slice confirmation lands;
-fixed-shape and wave64 controls below do not close it.
+**diagnostic_unclassified**: strong memory-side evidence, but not a clean
+`compiler_aco` proof because the first memory-heavy production transfer check
+is negative; fixed-shape and wave64 controls below do not close the synthetic
+gap.
 Packed dot-path sweep: q8 signed, q4 unsigned-byte by signed-q8, q6
 zero-corrected, and scalar q4 rows all pass exact sampled CPU oracle; HIP and
 RADV both emit final dot4 instructions in q8/q4/q6 rows, HIP reports
@@ -77,7 +78,13 @@ passes full CPU correctness but measures **0.03076 ms** prequantized dot and
 combined path. RADV final dot shader has **9** final dot4 instructions,
 subgroup size **64**, **0 VOPD**, official **48 VGPR / 108 SGPR** with
 **0 scratch/spills**, **89** waitcnt-family instructions, and **82** buffer
-loads.
+loads. Targeted HIP/RADV ISA comparison for the same Q6 slice shows HIP also
+emits **9** dot4 instructions with **0 scratch/spills**, but HIP is wave32 with
+**30 SGPR / 51 VGPR**, **599** static instructions, **39** waitcnt-family
+instructions, and **51 VOPD**, while RADV is wave64 with official
+**108 SGPR / 48 VGPR**, **1117** static instructions, **89** waitcnt-family
+instructions, and **0 VOPD**. This is a negative production-transfer result for
+the broad synthetic memory/waitcnt claim.
 Matched Vulkan Q4_K selected-dual gate/up real-slice probe: best Vulkan
 local_size=64 passes full CPU correctness and measures **0.29607 ms**
 prequantized dot and **0.29238 ms** quantize+dot versus retained HIP
@@ -119,6 +126,7 @@ Artifacts:
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls128.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-ls256.json),
 [`micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json`](micro/results/gfx1151/strix-halo/vulkan-real-q6-selected-down-x8-q8_1-dp4a-isa-stats.json),
+[`micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json`](micro/results/gfx1151/strix-halo/q6-x8-real-slice-isa-comparison.json),
 [`micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/hip-real-q4-selected-dual-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json`](micro/results/gfx1151/strix-halo/hip-real-q6-selected-down-x8-q8_1-dp4a.json),
 [`micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json`](micro/results/gfx1151/strix-halo/dot-path-fixed-block-comparison.json),
